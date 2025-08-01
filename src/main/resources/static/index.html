@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+</head>
+<body>
+<h1>Football Match Simulator</h1>
+<button onclick="startSimulation()">Start Simulation</button>
+
+<script>
+  function startSimulation() {
+      window.location.href = "/match_visualisation.html";
+       fetch('/matches/start-simulation', { method: 'POST' });
+  }
+
+</script>
+
+</body>
+</html>
