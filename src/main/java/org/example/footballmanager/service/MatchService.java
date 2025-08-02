@@ -4,8 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
-import org.example.footballmanager.model.tactics.Formation;
-import org.example.footballmanager.model.tactics.Tactics;
+import org.example.footballmanager.model.event.MatchEndedEvent;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.simulator.MatchSimulator;
 import org.example.footballmanager.util.MatchRatingCalculator;
@@ -60,20 +59,29 @@ public class MatchService {
             throw new RuntimeException("Each team must have exactly 11 players in lineup.");
         }
 
-        // 🔁 Simulacija preko MatchSimulator-a
+        // Simulacija preko MatchSimulator-a
         matchSimulator.simulateMatch(match, homePlayers, awayPlayers);
 
         // Konačan rezultat baziran na golovima
-        int finalHomeGoals = (int) match.getGoalEvents().stream()
+        int finalHomeGoals = (int) match.getGoals().stream()
                 .filter(g -> g.getTeam().equals(match.getHomeTeam()))
                 .count();
-        int finalAwayGoals = (int) match.getGoalEvents().stream()
+        int finalAwayGoals = (int) match.getGoals().stream()
                 .filter(g -> g.getTeam().equals(match.getAwayTeam()))
                 .count();
 
         match.setHomeGoals(finalHomeGoals);
         match.setAwayGoals(finalAwayGoals);
         match.setPlayed(true);
+
+        // Dodaj kraj utakmice kao event
+        MatchEndedEvent endedEvent = new MatchEndedEvent();
+        endedEvent.setMatch(match);
+        endedEvent.setMinute(90);
+        //endedEvent.setDescription("Match ended: " + finalHomeGoals + " - " + finalAwayGoals);
+        endedEvent.setKeyEvent(true);
+        endedEvent.setVisualize(true);
+        match.getAllMatchEvents().add(endedEvent);
 
         simulateInjuriesAndCards(homePlayers);
         simulateInjuriesAndCards(awayPlayers);
@@ -100,11 +108,11 @@ public class MatchService {
 
     private void savePlayerStats(Match match, List<Player> players) {
         for (Player player : players) {
-            long goals = match.getGoalEvents().stream()
+            long goals = match.getGoals().stream()
                     .filter(g -> g.getScorer().equals(player))
                     .count();
 
-            long assists = match.getGoalEvents().stream()
+            long assists = match.getGoals().stream()
                     .filter(g -> player.equals(g.getAssistant()))
                     .count();
 
@@ -140,7 +148,6 @@ public class MatchService {
     }
 
     public void printMatchDetails(Match match) {
-        // Ispiši full izveštaj
         System.out.println("\n" + generateMatchReport(match));
     }
 
@@ -165,7 +172,7 @@ public class MatchService {
                 match.getAwayTeam().getName()));
 
         sb.append("Strelci:\n");
-        match.getGoalEvents().stream()
+        match.getGoals().stream()
                 .sorted(Comparator.comparingInt(GoalEvent::getMinute))
                 .forEach(g -> {
                     String assist = g.getAssistant() != null ? " (asist. " + g.getAssistant().getName() + ")" : "";

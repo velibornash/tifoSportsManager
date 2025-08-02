@@ -2,63 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Omladinac Manager App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- Omogućava responsivnost -->
+  <title>Omladinac Manager App</title> <!-- Ostavljen u head za referencu u pretraživačima, može se ukloniti -->
   <style>
     body {
       margin: 0;
       padding: 0;
-      background-image: url('/images/OmladinacManager.png');
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      height: 100vh;
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
       color: white;
       font-family: Arial, sans-serif;
     }
+    .background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('/images/OmladinacManager.png');
+      background-size: contain; /* Skalira sliku da bude potpuno vidljiva */
+      background-position: center;
+      background-repeat: no-repeat; /* Sprečava dupliranje */
+      background-color: #1e7d32; /* Promenjena boja za praznine */
+      z-index: -1; /* Pozadina iza sadržaja */
+    }
     .container {
       text-align: center;
-      background-color: rgba(0, 0, 0, 0.5);
-      padding: 20px;
-      border-radius: 10px;
+      padding: 5vw; /* Relativna jedinica za padding */
+      border-radius: 1rem;
+      max-width: 90%; /* Ograničava širinu na 90% ekrana */
     }
     button {
-      padding: 10px 20px;
-      font-size: 18px;
+      padding: 1.5rem 3rem; /* Relativne jedinice */
+      font-size: 1.2rem;
       cursor: pointer;
       border: none;
-      border-radius: 5px;
-      background-color: #28a745;
+      border-radius: 0.5rem;
+      background-color: rgba(40, 167, 69, 0.7); /* Zadržana transparentnost dugmeta */
       color: white;
       transition: background-color 0.3s;
+      position: relative; /* Omogućava pomeranje */
+      top: 10vh; /* Smanjeno pomeranje dole na 10% visine */
+      left: -5vw; /* Smanjeno pomeranje levo na 5% širine */
     }
     button:hover {
-      background-color: #218838;
+      background-color: rgba(33, 136, 56, 0.7); /* Transparentnost u hover stanju */
     }
     audio {
       display: none; /* Skriva kontrolu */
     }
+    /* Medijski upiti za različite veličine ekrana */
+    @media (max-width: 768px) { /* Tableti i mobilni */
+      .container {
+        padding: 4vw;
+      }
+      button {
+        padding: 1rem 2rem;
+        font-size: 1rem;
+        top: 5vh; /* Prilagođeno za manje ekrane */
+        left: -2vw; /* Smanjeno pomeranje */
+      }
+    }
+    @media (max-width: 480px) { /* Manji mobilni */
+      .container {
+        padding: 3vw;
+      }
+      button {
+        padding: 0.8rem 1.5rem;
+        font-size: 0.9rem;
+        top: 3vh; /* Prilagođeno za još manje ekrane */
+        left: -1vw; /* Smanjeno pomeranje */
+      }
+    }
   </style>
 </head>
 <body>
+<div class="background"></div>
 <div class="container">
-  <h1>Omladinac Manager App</h1>
+  <!-- Uklonjen <h1>Omladinac Manager App</h1> jer se duplira sa slikom -->
   <button onclick="startSimulation()">Start Simulation</button>
   <audio id="backgroundMusic" autoplay>
     <source src="/audio/intro.mp3" type="audio/mpeg">
     Your browser does not support the audio element.
   </audio>
 </div>
-
 <script>
   function startSimulation() {
     window.location.href = "/match_visualisation.html";
     fetch('/matches/start-simulation', { method: 'POST' });
   }
-
-  // Postavi jačinu zvuka na 50% i pokreni muziku
   window.addEventListener('load', () => {
     const audio = document.getElementById('backgroundMusic');
     if (audio) {

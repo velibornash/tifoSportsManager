@@ -80,6 +80,22 @@ public class Match {
     @JsonManagedReference
     private List<SubstitutionEvent> substitutions = new ArrayList<>();
 
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL)
+    @JsonManagedReference
+    private List<CornerEvent> corners = new ArrayList<>();
+
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL)
+    @JsonManagedReference
+    private List<VARReviewEvent> vars = new ArrayList<>();
+
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL)
+    @JsonManagedReference
+    private List<OffsideEvent> offsides = new ArrayList<>();
+
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL)
+    @JsonManagedReference
+    private List<MatchEndedEvent> ended = new ArrayList<>();
+
     public List<GoalEvent> getGoalEvents() {
         return goals.stream()
                 .filter(e -> e instanceof GoalEvent)
@@ -100,6 +116,10 @@ public class Match {
         all.addAll(chances);
         all.addAll(injuries);
         all.addAll(substitutions);
+        all.addAll(corners);
+        all.addAll(vars);
+        all.addAll(offsides);
+        all.addAll(ended);
         return all;
     }
 

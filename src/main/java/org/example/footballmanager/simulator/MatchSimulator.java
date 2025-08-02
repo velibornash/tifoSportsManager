@@ -6,8 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
-import org.example.footballmanager.model.event.MatchEvent;
-import org.example.footballmanager.model.event.SubstitutionEvent;
+import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.util.MatchEventWebSocketHandler;
 import org.example.footballmanager.util.TacticsAdjustmentService;
@@ -31,7 +30,7 @@ public class MatchSimulator {
     public void simulateMatch(Match match, List<Player> homePlayers, List<Player> awayPlayers) {
         MatchContext context = new MatchContext(match);
         context.setPossessionTeam(match.getHomeTeam()); // Početni posed domaćinu
-        Thread.sleep(2000);
+        Thread.sleep(5000);
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);
             updateFatigue(context);
@@ -44,6 +43,11 @@ public class MatchSimulator {
                     log.info("[{}'] Event created: {}", minute, event.getDescription());
                     webSocketHandler.broadcastEvent(event);
                     Thread.sleep(4000);
+
+                    // Automatski trigger za Substitution kod Injury
+                    if (event instanceof InjuryEvent) {
+                        performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
+                    }
                 }
             }
 
@@ -52,6 +56,18 @@ public class MatchSimulator {
                 performSubstitution(match, context, awayPlayers, false);
             }
         }
+
+        MatchEndedEvent endEvent = new MatchEndedEvent();
+        endEvent.setMatch(match);
+        endEvent.setMinute(90);
+        endEvent.setType("Match Ended");
+        endEvent.setKeyEvent(true);
+        endEvent.setVisualize(true);
+        endEvent.setImpact("HIGH");
+
+        endEvent.apply(context); // postavlja match.setPlayed(true)
+        webSocketHandler.broadcastEvent(endEvent); // šalje preko websocket-a
+
     }
 
     @SneakyThrows
@@ -142,5 +158,9 @@ public class MatchSimulator {
         log.info("Minute: {}, Event Probability: {}, Home Strength: {}, Away Strength: {}, Fatigue: {}",
                 context.getCurrentMinute(), probability, homeStrength, awayStrength, fatigueFactor);
         return probability;
+    }
+
+    private boolean isHomeTeam(MatchEvent event) {
+        return event.getTeam() != null && event.getTeam().equals(event.getMatch().getHomeTeam());
     }
 }
