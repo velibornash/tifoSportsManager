@@ -342,6 +342,7 @@
         let x = canvasWidth / 2;
         let y = canvasHeight / 2 + 80;
 
+        push();  // Čuva trenutno stanje (fill, stroke, rectMode...)
         // Pozadina poluprovidna ispod teksta
         fill(0, 0, 0, 150);
         rectMode(CENTER);
@@ -375,7 +376,7 @@ function loadPlayerImageByName(fullName) {
         return;
     }
 
-    let fileName = "player_" + fullName.replace(/\s+/g, "_") + ".jpg";
+    let fileName = fullName.replace(/\s+/g, "_") + ".jpg";
 
     loadImage(`/images/${fileName}`,
         img => {
