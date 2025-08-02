@@ -2,19 +2,57 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Title</title>
+  <title>Omladinac Manager App</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-image: url('/images/OmladinacManager.png');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      text-align: center;
+      background-color: rgba(0, 0, 0, 0.5); /* poluprovidna pozadina iza dugmeta */
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      background-color: #28a745;
+      color: white;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #218838;
+    }
+  </style>
 </head>
 <body>
-<h1>Football Match Simulator</h1>
-<button onclick="startSimulation()">Start Simulation</button>
+<div class="container">
+  <h1>Omladinac Manager App</h1>
+  <button onclick="startSimulation()">Start Simulation</button>
+</div>
 
 <script>
   function startSimulation() {
-      window.location.href = "/match_visualisation.html";
-       fetch('/matches/start-simulation', { method: 'POST' });
+    window.location.href = "/match_visualisation.html";
+    fetch('/matches/start-simulation', { method: 'POST' });
   }
-
 </script>
-
 </body>
 </html>
