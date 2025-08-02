@@ -18,14 +18,12 @@
       color: white;
       font-family: Arial, sans-serif;
     }
-
     .container {
       text-align: center;
-      background-color: rgba(0, 0, 0, 0.5); /* poluprovidna pozadina iza dugmeta */
+      background-color: rgba(0, 0, 0, 0.5);
       padding: 20px;
       border-radius: 10px;
     }
-
     button {
       padding: 10px 20px;
       font-size: 18px;
@@ -36,9 +34,11 @@
       color: white;
       transition: background-color 0.3s;
     }
-
     button:hover {
       background-color: #218838;
+    }
+    audio {
+      display: none; /* Skriva kontrolu */
     }
   </style>
 </head>
@@ -46,6 +46,10 @@
 <div class="container">
   <h1>Omladinac Manager App</h1>
   <button onclick="startSimulation()">Start Simulation</button>
+  <audio id="backgroundMusic" autoplay>
+    <source src="/audio/intro.mp3" type="audio/mpeg">
+    Your browser does not support the audio element.
+  </audio>
 </div>
 
 <script>
@@ -53,6 +57,15 @@
     window.location.href = "/match_visualisation.html";
     fetch('/matches/start-simulation', { method: 'POST' });
   }
+
+  // Postavi jačinu zvuka na 50% i pokreni muziku
+  window.addEventListener('load', () => {
+    const audio = document.getElementById('backgroundMusic');
+    if (audio) {
+      audio.volume = 0.5; // 50% jačina
+      audio.play().catch(error => console.log('Auto-play blocked:', error));
+    }
+  });
 </script>
 </body>
 </html>
