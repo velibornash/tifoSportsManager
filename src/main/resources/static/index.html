@@ -90,17 +90,17 @@
 </div>
 <script>
   function startSimulation() {
-    window.location.href = "/match_visualisation.html";
-    fetch('/matches/start-simulation', { method: 'POST' });
+    window.location.href = "/matches/start-simulation";
   }
 
-        window.addEventListener('load', () => {
-          const audio = document.getElementById('backgroundMusic');
-          if (audio) {
-            audio.volume = 0.5; // 50% jačina
-            audio.play().catch(error => console.log('Auto-play blocked:', error));
-          }
-        });
+
+          window.addEventListener('load', () => {
+            const audio = document.getElementById('backgroundMusic');
+            if (audio) {
+              audio.volume = 0.5; // 50% jačina
+              audio.play().catch(error => console.log('Auto-play blocked:', error));
+            }
+          });
 </script>
 </body>
 </html>

@@ -37,7 +37,7 @@ public class MatchController {
     }
 
     @PostMapping("/start-simulation")
-    public void simulateMatch() {
+    public String simulateMatch() {
         Team homeTeam = new Team(); homeTeam.setName("Omladinac");
         Team awayTeam = new Team(); awayTeam.setName("Sloga");
         teamRepository.save(homeTeam); teamRepository.save(awayTeam);
@@ -69,6 +69,8 @@ public class MatchController {
 
         Match played = matchService.playMatch(match.getId());
         System.out.println(matchService.generateMatchReport(played));
+        return "redirect:/match_visualisation.html";
+
     }
 
     @PostMapping("/play")
