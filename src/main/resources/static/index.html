@@ -89,17 +89,23 @@
   </audio>
 </div>
 <script>
-  function startSimulation() {
-    window.location.href = "/match_visualisation.html";
-    fetch('/matches/start-simulation', { method: 'POST' });
-  }
-  window.addEventListener('load', () => {
-    const audio = document.getElementById('backgroundMusic');
-    if (audio) {
-      audio.volume = 0.5; // 50% jačina
-      audio.play().catch(error => console.log('Auto-play blocked:', error));
+  async function startSimulation() {
+    const response = await fetch('/matches/start-simulation', { method: 'POST' });
+    if (response.ok) {
+      window.location.href = "/match_visualisation.html";
+    } else {
+      alert("Greška pri pokretanju simulacije");
     }
-  });
+  }
+
+
+      window.addEventListener('load', () => {
+        const audio = document.getElementById('backgroundMusic');
+        if (audio) {
+          audio.volume = 0.5; // 50% jačina
+          audio.play().catch(error => console.log('Auto-play blocked:', error));
+        }
+      });
 </script>
 </body>
 </html>
