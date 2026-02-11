@@ -90,7 +90,7 @@
 </div>
 <script>
   async function startSimulation() {
-  await fetch('/matches/start-simulation', { method: 'POST' });
+  fetch('/matches/start-simulation', { method: 'POST' });
    window.location.href = "/match_visualisation.html";
   }
     window.addEventListener('load', () => {
