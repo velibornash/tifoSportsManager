@@ -9,8 +9,6 @@ import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.util.MatchEventWebSocketHandler;
 import org.example.footballmanager.util.TacticsAdjustmentService;
 import org.springframework.stereotype.Component;
-
-import java.io.IOException;
 import java.util.List;
 import java.util.Random;
 

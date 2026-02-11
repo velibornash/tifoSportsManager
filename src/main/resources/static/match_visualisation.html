@@ -286,15 +286,25 @@ function initTeams(event) {
         }
     }
 
-    function setupWebSocket() {
-       const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-       const socket = new WebSocket(`${wsProtocol}://${window.location.host}/match-events`);
+let socket;
 
-        socket.onopen = () => console.log("✅ WebSocket connected");
+function setupWebSocket() {
+
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${wsProtocol}://${window.location.host}/match-events`;
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+            console.log("✅ WebSocket connected");
+            lastEventBox.textContent = "🟢 Povezano, čekamo događaje...";
+        };
 
         socket.onmessage = (msg) => {
             let event = JSON.parse(msg.data);
             console.log("📩 Event received:", event);
+
             initTeams(event);
             updateScore(event);
 
@@ -302,8 +312,21 @@ function initTeams(event) {
             lastEventBox.textContent = buildLastEventText(event);
         };
 
-        socket.onclose = () => console.log("❌ WebSocket closed");
+        socket.onclose = () => {
+            console.log("❌ WebSocket closed. Reconnecting...");
+            lastEventBox.textContent = "🔄 Pokušavamo reconnect...";
+            setTimeout(connect, 2000); // retry za 2 sekunde
+        };
+
+        socket.onerror = (err) => {
+            console.log("⚠️ WebSocket error:", err);
+            socket.close();
+        };
     }
+
+    connect();
+}
+
 
     function drawGoalAnimation() {
         if (!showGoalAnim) return;

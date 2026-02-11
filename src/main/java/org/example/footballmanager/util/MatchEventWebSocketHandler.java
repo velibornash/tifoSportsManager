@@ -3,6 +3,7 @@ package org.example.footballmanager.util;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.model.event.MatchEvent;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -23,12 +24,10 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) {
         sessions.add(session);
     }
-
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         sessions.remove(session);
     }
-
     public void broadcastEvent(MatchEvent event) {
         try {
             String json = objectMapper.writeValueAsString(event);
@@ -50,6 +49,18 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
     }
     public int getSessionCount() {
         return sessions.size();
+    }
+    @Scheduled(fixedRate = 25000)
+    public void sendPing() {
+        for (WebSocketSession session : sessions) {
+            try {
+                if (session.isOpen()) {
+                    session.sendMessage(new TextMessage("{\"type\":\"PING\"}"));
+                }
+            } catch (Exception e) {
+                sessions.remove(session);
+            }
+        }
     }
 
 }
