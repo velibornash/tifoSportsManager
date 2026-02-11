@@ -10,13 +10,13 @@ import lombok.Setter;
 public class VARReviewEvent extends MatchEvent {
     int number;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private GoalEvent reviewedGoalEvent;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private PenaltyEvent reviewedPenaltyEvent;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private OffsideEvent reviewedOffsideEvent;
 
     private String decision; // "Overturned" ili "Confirmed"

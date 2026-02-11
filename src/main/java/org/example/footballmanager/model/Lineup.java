@@ -9,19 +9,18 @@ import java.util.List;
 @Data
 @Entity
 public class Lineup {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private Team team;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "match_id")
     private Match match;
 
-    @OneToMany(cascade = CascadeType.PERSIST)
+    @OneToMany(cascade = CascadeType.ALL)
     @JoinTable(
             name = "lineup_starting_players",
             joinColumns = @JoinColumn(name = "lineup_id"),
@@ -29,7 +28,7 @@ public class Lineup {
     )
     private List<Player> startingPlayers = new ArrayList<>();
 
-    @OneToMany(cascade = CascadeType.PERSIST)
+    @OneToMany(cascade = CascadeType.ALL)
     @JoinTable(
             name = "lineup_substitutes",
             joinColumns = @JoinColumn(name = "lineup_id"),

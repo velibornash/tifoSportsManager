@@ -36,7 +36,7 @@ public class Player {
     private int totalGoals;
     private int totalAssists;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "team_id")
     private Team team;
 

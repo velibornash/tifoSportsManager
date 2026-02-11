@@ -10,7 +10,6 @@ import java.util.Set;
 @Data
 @Entity
 public class Transfer {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

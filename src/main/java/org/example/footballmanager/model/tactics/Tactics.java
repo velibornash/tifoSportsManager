@@ -6,7 +6,6 @@ import lombok.Data;
 @Data
 @Entity
 public class Tactics {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

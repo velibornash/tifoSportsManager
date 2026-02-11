@@ -26,10 +26,10 @@ public class Match {
     @ManyToOne
     private Team awayTeam;
 
-    @OneToOne(cascade = CascadeType.PERSIST)
+    @OneToOne(cascade = CascadeType.ALL)
     private Lineup homeLineup;
 
-    @OneToOne(cascade = CascadeType.PERSIST)
+    @OneToOne(cascade = CascadeType.ALL)
     private Lineup awayLineup;
 
     private int homeGoals;

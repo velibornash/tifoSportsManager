@@ -16,10 +16,10 @@ public class FreeKickEvent extends MatchEvent {
     private boolean direct; // true = šut direktno, false = centaršut
     private boolean dangerous;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private Player taker;
 
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne(cascade = CascadeType.ALL)
     private Player player;
     @Override
     public void apply() {

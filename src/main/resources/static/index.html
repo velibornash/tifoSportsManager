@@ -90,10 +90,9 @@
 </div>
 <script>
   function startSimulation() {
-     fetch('/matches/start-simulation', { method: 'POST' });
-    setTimeout(() => {
-      window.location.href = "/match_visualisation.html";
-    }, 2000);
+   window.location.href = "/match_visualisation.html";
+   fetch('/matches/start-simulation', { method: 'POST' });
+
   }
       window.addEventListener('load', () => {
         const audio = document.getElementById('backgroundMusic');

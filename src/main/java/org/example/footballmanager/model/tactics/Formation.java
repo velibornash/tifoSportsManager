@@ -10,7 +10,6 @@ import java.util.Map;
 @Data
 @Entity
 public class Formation {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

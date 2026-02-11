@@ -34,7 +34,6 @@ import org.example.footballmanager.model.Match;
 
 })
 public abstract class MatchEvent {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
