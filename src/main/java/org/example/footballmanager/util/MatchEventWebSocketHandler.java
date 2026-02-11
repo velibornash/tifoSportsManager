@@ -29,12 +29,27 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session);
     }
 
-    public void broadcastEvent(MatchEvent event) throws IOException {
-        String json = objectMapper.writeValueAsString(event);
-        for (WebSocketSession session : sessions) {
-            if (session.isOpen()) {
-                session.sendMessage(new TextMessage(json));
+    public void broadcastEvent(MatchEvent event) {
+        try {
+            String json = objectMapper.writeValueAsString(event);
+
+            for (WebSocketSession session : sessions) {
+                try {
+                    if (session.isOpen()) {
+                        session.sendMessage(new TextMessage(json));
+                    } else {
+                        sessions.remove(session);
+                    }
+                } catch (Exception e) {
+                    sessions.remove(session);
+                }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
+    public int getSessionCount() {
+        return sessions.size();
+    }
+
 }

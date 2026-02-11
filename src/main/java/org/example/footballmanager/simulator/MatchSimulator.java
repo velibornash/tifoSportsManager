@@ -39,6 +39,13 @@ public class MatchSimulator {
         Formation homeFormation = homeTactics.getFormation();
         Formation awayFormation = awayTactics.getFormation();
         Thread.sleep(1500);
+        // čekaj da bar jedan WebSocket klijent bude povezan
+        int waitCounter = 0;
+        while (webSocketHandler.getSessionCount() == 0 && waitCounter < 10) {
+            Thread.sleep(1000);
+            waitCounter++;
+        }
+
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);
 
@@ -60,7 +67,7 @@ public class MatchSimulator {
 
                         webSocketHandler.broadcastEvent(event);
                         Thread.sleep(2000);
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         log.error("WebSocket broadcast failed", e);
                     }
                     if (event instanceof PenaltyEvent)
@@ -86,7 +93,7 @@ public class MatchSimulator {
 
                                 webSocketHandler.broadcastEvent(goal);
                                 Thread.sleep(2000);
-                            } catch (IOException e) {
+                            } catch (Exception e) {
                                 log.error("WebSocket broadcast failed", e);
                             }
                             match.getGoals().add(goal);
@@ -132,7 +139,7 @@ public class MatchSimulator {
         log.info("[{}'] Substitution: {} out, {} in", context.getCurrentMinute(), out.getName(), in.getName());
         try {
             webSocketHandler.broadcastEvent(sub);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Error broadcasting substitution", e);
         }
 
