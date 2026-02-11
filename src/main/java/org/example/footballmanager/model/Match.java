@@ -38,6 +38,7 @@ public class Match {
     private LocalDateTime matchDate;
 
     private boolean played;
+    private boolean started;
 
     // Formacije kao string
     private String homeFormation;

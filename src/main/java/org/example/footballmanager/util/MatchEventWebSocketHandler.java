@@ -47,20 +47,4 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
             e.printStackTrace();
         }
     }
-    public int getSessionCount() {
-        return sessions.size();
-    }
-    @Scheduled(fixedRate = 25000)
-    public void sendPing() {
-        for (WebSocketSession session : sessions) {
-            try {
-                if (session.isOpen()) {
-                    session.sendMessage(new TextMessage("{\"type\":\"PING\"}"));
-                }
-            } catch (Exception e) {
-                sessions.remove(session);
-            }
-        }
-    }
-
 }

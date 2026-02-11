@@ -37,12 +37,14 @@ public class MatchSimulator {
         Formation homeFormation = homeTactics.getFormation();
         Formation awayFormation = awayTactics.getFormation();
         Thread.sleep(1500);
-        // čekaj da bar jedan WebSocket klijent bude povezan
-        int waitCounter = 0;
-        while (webSocketHandler.getSessionCount() == 0 && waitCounter < 10) {
-            Thread.sleep(1000);
-            waitCounter++;
-        }
+
+        // start meča
+        MatchStartEvent startEvent = new MatchStartEvent();
+        startEvent.setMinute(1);
+        startEvent.setMatch(match);
+        startEvent.apply();
+        webSocketHandler.broadcastEvent(startEvent);
+        Thread.sleep(1500);
 
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);
