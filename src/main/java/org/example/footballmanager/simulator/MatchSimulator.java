@@ -36,7 +36,7 @@ public class MatchSimulator {
 
         Formation homeFormation = homeTactics.getFormation();
         Formation awayFormation = awayTactics.getFormation();
-        Thread.sleep(1500);
+        Thread.sleep(4500);
         // čekaj da bar jedan WebSocket klijent bude povezan
         int waitCounter = 0;
         while (webSocketHandler.getSessionCount() == 0 && waitCounter < 10) {
