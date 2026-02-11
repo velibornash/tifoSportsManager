@@ -39,7 +39,7 @@ public class MatchSimulator {
         Thread.sleep(1500);
         // čekaj da bar jedan WebSocket klijent bude povezan
         int waitCounter = 0;
-        while (webSocketHandler.getSessionCount() == 0 && waitCounter < 50) {
+        while (webSocketHandler.getSessionCount() == 0 && waitCounter < 10) {
             Thread.sleep(1000);
             waitCounter++;
         }
