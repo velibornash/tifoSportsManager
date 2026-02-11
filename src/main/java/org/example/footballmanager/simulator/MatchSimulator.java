@@ -44,6 +44,7 @@ public class MatchSimulator {
         startEvent.setMatch(match);
         startEvent.apply();
         webSocketHandler.broadcastEvent(startEvent);
+        log.info("[{}'] Event: {}", startEvent.getMinute(), startEvent.getDescription());
         Thread.sleep(1500);
 
         for (int minute = 1; minute <= 90; minute++) {
@@ -119,6 +120,7 @@ public class MatchSimulator {
         endEvent.setMatch(match);
         endEvent.apply();
         webSocketHandler.broadcastEvent(endEvent);
+        log.info("[{}'] Event: {}", endEvent.getMinute(), endEvent.getDescription());
 
         match.setPlayed(true);
     }

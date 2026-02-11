@@ -90,8 +90,8 @@
 </div>
 <script>
   async function startSimulation() {
+  await fetch('/matches/start-simulation', { method: 'POST' });
    window.location.href = "/match_visualisation.html";
-   await fetch('/matches/start-simulation', { method: 'POST' });
   }
     window.addEventListener('load', () => {
       const audio = document.getElementById('backgroundMusic');
