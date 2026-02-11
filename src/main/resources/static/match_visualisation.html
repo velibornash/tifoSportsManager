@@ -296,14 +296,10 @@ function setupWebSocket() {
     function connect() {
         socket = new WebSocket(wsUrl);
 
-socket.onopen = () => {
-    console.log("✅ WebSocket connected");
-
-    fetch('/matches/start-simulation', { method: 'POST' });
-
-    lastEventBox.textContent = "✅ Povezano, pokrećemo meč...";
-};
-
+        socket.onopen = () => {
+            console.log("✅ WebSocket connected");
+            lastEventBox.textContent = "🟢 Povezano, čekamo događaje...";
+        };
 
         socket.onmessage = (msg) => {
             let event = JSON.parse(msg.data);

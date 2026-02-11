@@ -43,9 +43,12 @@ public class MatchController {
     @PostMapping("/start-simulation")
     public void simulateMatch() {
         Thread.sleep(1500);
-        Team homeTeam = new Team(); homeTeam.setName("Omladinac");
-        Team awayTeam = new Team(); awayTeam.setName("Sloga");
-        teamRepository.save(homeTeam); teamRepository.save(awayTeam);
+        Team homeTeam = new Team();
+        homeTeam.setName("Omladinac");
+        Team awayTeam = new Team();
+        awayTeam.setName("Sloga");
+        teamRepository.save(homeTeam);
+        teamRepository.save(awayTeam);
 
         List<Player> homePlayers = PlayerFactory.createOmladinacPlayers(homeTeam);
         List<Player> awayPlayers = PlayerFactory.createRandomTeamPlayers("Sloga", awayTeam);
