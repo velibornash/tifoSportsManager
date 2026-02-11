@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import lombok.SneakyThrows;
 import org.example.footballmanager.dto.GoalEventDTO;
 import org.example.footballmanager.dto.MatchDetailsDTO;
 import org.example.footballmanager.dto.PlayerDTO;
@@ -38,8 +39,10 @@ public class MatchController {
 
 
 
+    @SneakyThrows
     @PostMapping("/start-simulation")
     public void simulateMatch() {
+        Thread.sleep(1500);
         Team homeTeam = new Team(); homeTeam.setName("Omladinac");
         Team awayTeam = new Team(); awayTeam.setName("Sloga");
         teamRepository.save(homeTeam); teamRepository.save(awayTeam);
