@@ -1,52 +1,31 @@
 package org.example.footballmanager.model.event;
 
-import jakarta.persistence.*;
+import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
-import org.example.footballmanager.model.Match;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
-import org.example.footballmanager.simulator.MatchContext;
+import jakarta.persistence.Entity;
+import org.springframework.stereotype.Component;
 
+@Entity
 @Getter
 @Setter
-@Entity
+@Slf4j
+@Component
 public class PenaltyEvent extends MatchEvent {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private boolean scored;
-
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne
+    private Team team;
+    @ManyToOne
     private Player taker;
-
+    private boolean scored;
+    @SneakyThrows
     @Override
-    public void apply(MatchContext context) {
-        if (scored) {
-            GoalEvent goal = new GoalEvent();
-            goal.setMatch(match);
-            goal.setTeam(team);
-            goal.setScorer(taker);
-            goal.setMinute(minute);
-            goal.setAssistant(null);
-
-            // Izračunaj rezultat odmah
-            Match match = context.getMatch();
-            long homeGoals = match.getGoals().stream()
-                    .filter(g -> g.getTeam().equals(match.getHomeTeam()))
-                    .count() + (team.equals(match.getHomeTeam()) ? 1 : 0);
-
-            long awayGoals = match.getGoals().stream()
-                    .filter(g -> g.getTeam().equals(match.getAwayTeam()))
-                    .count() + (team.equals(match.getAwayTeam()) ? 1 : 0);
-
-            goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
-
-            match.getGoals().add(goal);
-            match.getAllMatchEvents().add(goal);
-        }
+    public void apply() {
+        match.getAllMatchEvents().add(this);
+        match.getPenalties().add(this);
     }
 
     @Override

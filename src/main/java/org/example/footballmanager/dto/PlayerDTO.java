@@ -23,15 +23,6 @@ public class PlayerDTO {
 
     public static PlayerDTO from(Player player, Match match, MatchPlayerStats stats) {
         return new PlayerDTO(
-                player.getId(),
-                player.getName(),
-                player.getPosition(),
-                player.getForm(),
-                stats.getRating(),
-                player.getTotalGoals(),
-                player.getTotalAssists(),
-                stats.getGoals(),
-                stats.getAssists()
         );
     }
 }

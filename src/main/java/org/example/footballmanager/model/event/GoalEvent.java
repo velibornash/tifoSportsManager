@@ -1,51 +1,44 @@
 package org.example.footballmanager.model.event;
 
-import jakarta.persistence.*;
+import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
-import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
-import org.example.footballmanager.simulator.MatchContext;
-
+import jakarta.persistence.Entity;
 @Entity
 @Getter
 @Setter
 public class GoalEvent extends MatchEvent {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne
+    private Team team;
+    @ManyToOne
     private Player scorer;
-
-    @ManyToOne(cascade = CascadeType.PERSIST)
+    @ManyToOne
     private Player assistant;
-
     private String scoreAfterGoal;
+    private boolean scored;
 
     @Override
-    public void apply(MatchContext context) {
-        context.goalScored(team);
-        context.getMatch().getGoals().add(this); // prvo dodaj
+    public void apply() {
+        match.getAllMatchEvents().add(this);
+        match.getGoals().add(this);
 
-        // tek sada izračunaj rezultat
-        long homeGoals = context.getMatch().getGoals().stream()
-                .filter(g -> g.getTeam().equals(context.getMatch().getHomeTeam()))
-                .count();
-        long awayGoals = context.getMatch().getGoals().stream()
-                .filter(g -> g.getTeam().equals(context.getMatch().getAwayTeam()))
-                .count();
+        if (team.equals(match.getHomeTeam())) {
+            match.setHomeGoals(match.getHomeGoals() + 1);
+        } else {
+            match.setAwayGoals(match.getAwayGoals() + 1);
+        }
+    }
 
-        this.scoreAfterGoal = String.format("%d:%d", homeGoals, awayGoals);
+    public boolean isScored() {
+        scored = true;
+        return scored;
     }
-    public String getPlayerName() {
-        return scorer != null ? scorer.getName() : null;
-    }
+
+
     @Override
     public String getDescription() {
-        String assistPart = assistant != null ? " (asist. " + assistant.getName() + ")" : "";
-        return String.format("⚽ %d' %s%s --> %s", minute, scorer.getName(), assistPart, scoreAfterGoal);
+        return String.format("%d' ⚽ %s", getMinute(), scorer.getName());
     }
 }

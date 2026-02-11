@@ -1,37 +1,34 @@
 package org.example.footballmanager.model.tactics;
 
-import lombok.Getter;
+import jakarta.persistence.*;
+import lombok.Data;
+import org.example.footballmanager.model.Position;
 
-@Getter
+import java.util.HashMap;
+import java.util.Map;
 
-public enum Formation {
-    F_433(1.2, 0.8, 1.0),
-    F_3223(1.5,0.7,1.0),
-    F_442(1.0, 1.0, 1.0),
-    F_541(0.8, 1.2, 0.9),
-    F_352(1.1, 1.0, 1.2),
-    F_343(1.3, 0.7, 1.1);
+@Data
+@Entity
+public class Formation {
 
-    private final double offenseModifier;
-    private final double defenseModifier;
-    private final double possessionModifier;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    Formation(double offenseModifier, double defenseModifier, double possessionModifier) {
-        this.offenseModifier = offenseModifier;
-        this.defenseModifier = defenseModifier;
-        this.possessionModifier = possessionModifier;
-    }
+    private String name; // npr. "4-3-3", "4-4-2"
 
-    public static Formation fromString(String code) {
-        return switch (code) {
-            case "4-3-3" -> F_433;
-            case "3-2-2-3" -> F_3223;
-            case "4-4-2" -> F_442;
-            case "5-4-1" -> F_541;
-            case "3-5-2" -> F_352;
-            case "3-4-3" -> F_343;
+    @ElementCollection
+    @CollectionTable(name = "formation_positions", joinColumns = @JoinColumn(name = "formation_id"))
+    @MapKeyColumn(name = "position")
+    @Column(name = "count")
+    @Enumerated(EnumType.STRING)
+    private Map<Position, Integer> positions = new HashMap<>();
 
-            default -> F_442;
-        };
+    private double offenseModifier = 1.0;
+    private double defenseModifier = 1.0;
+    private double possessionModifier = 1.0;
+
+    public int getPlayersOnPosition(Position position) {
+        return positions.getOrDefault(position, 0);
     }
 }

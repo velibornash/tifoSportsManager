@@ -115,7 +115,7 @@ public class PlayerFactory {
         p.setWeight(weight);
         p.setForm(form);
         p.setTalent((20.0 - (discipline + form)) / 2.0); // approx
-        p.setPosition(position.name());
+        p.setPosition(position);
         Skills s = new Skills();
         s.setStamina(stamina);
         s.setGoalkeeper(keeper);

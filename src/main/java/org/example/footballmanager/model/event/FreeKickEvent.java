@@ -1,22 +1,18 @@
 package org.example.footballmanager.model.event;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
-import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
-import org.example.footballmanager.simulator.MatchContext;
-
+import jakarta.persistence.Entity;
+@Entity
 @Getter
 @Setter
-@Entity
 public class FreeKickEvent extends MatchEvent {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
+    @ManyToOne
+    private Team team;
     private boolean direct; // true = šut direktno, false = centaršut
     private boolean dangerous;
 
@@ -25,10 +21,10 @@ public class FreeKickEvent extends MatchEvent {
 
     @ManyToOne(cascade = CascadeType.PERSIST)
     private Player player;
-
     @Override
-    public void apply(MatchContext context) {
-        context.setBallPosition("box");
+    public void apply() {
+        match.getAllMatchEvents().add(this);
+        match.getFreeKicks().add(this);
     }
 
     @Override

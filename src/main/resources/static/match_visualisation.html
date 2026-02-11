@@ -62,8 +62,8 @@
     let awayScore = 0;
 
     // Slike
-    let playerImg, goalImg, offsideImg, cornerImg, freeKickImg, injuryImg, matchStartingImg, matchEndedImg;
-
+    let playerImg, goalImg, offsideImg, cornerImg, freeKickImg, injuryImg, matchStartingImg, matchEndedImg, penaltyImg,fallbackPlayerImg, dynamicPlayerImg  ;
+    let varImg, shotImg, yellowCardImg, redCardImg;
     let showGoalAnim = false;
     let goalAnimTimer = 0;
     const goalAnimDurationFrames = 90; // 3 seconds at 30fps
@@ -83,6 +83,10 @@
         matchStartingImg = loadImage("/images/match_starting.jpg");
         matchEndedImg = loadImage("/images/match_ended.jpg");
         penaltyImg = loadImage("/images/penalty.jpg");
+        varImg = loadImage("/images/var.jpg");
+        shotImg = loadImage("/images/shot.jpg");
+        redCardImg = loadImage("/images/redcard.png");
+        yellowCardImg = loadImage("/images/yellowcard.jpg");
         fallbackPlayerImg = loadImage("/images/player.jpg");
         dynamicPlayerImg = loadImage("/images/player.jpg");
     }
@@ -193,6 +197,12 @@
         if (event.offender) return event.offender;
         return "";
     }
+function initTeams(event) {
+    if (!event?.match) return;
+
+    if (!homeTeamName) homeTeamName = event.match.homeTeam.name;
+    if (!awayTeamName) awayTeamName = event.match.awayTeam.name;
+}
 
     function buildLastEventText(event) {
         if (!event) return "⌛ Čekamo događaje...";
@@ -262,7 +272,7 @@
 
         const type = event.type.toLowerCase();
 
-        if ((type === "goal") || (type === "penalty" && event.scored === true)) {
+        if (type === "goal") {
             if (event.team.name === homeTeamName) {
                 homeScore++;
                 console.log(`Home score updated: ${homeScore}`);
@@ -285,7 +295,7 @@
         socket.onmessage = (msg) => {
             let event = JSON.parse(msg.data);
             console.log("📩 Event received:", event);
-
+            initTeams(event);
             updateScore(event);
 
             lastEvent = event;
@@ -389,6 +399,30 @@ function loadPlayerImageByName(fullName) {
         }
     );
 }
+function drawEventOverlay() {
+    if (!lastEvent) return;
+
+    let type = lastEvent.type.toLowerCase();
+    let img = null;
+
+    if (type === "goal") img = goalImg;
+    else if (type.includes("offside")) img = offsideImg;
+    else if (type.includes("corner")) img = cornerImg;
+    else if (type.includes("penalty")) img = penaltyImg;
+    else if (type.includes("injury")) img = injuryImg;
+    else if (type.includes("free kick")) img = freeKickImg;
+    else if (type.includes("shot")) img = shotImg;
+    else if (type.includes("var")) img = varImg;
+    else if (type.includes("yellow card")) img = yellowCardImg;
+    else if (type.includes("red card")) img = redCardImg;
+
+    if (img) {
+        imageMode(CENTER);
+        image(img, canvasWidth - 60, canvasHeight - 60, 80, 80);
+    }
+
+}
+
     function draw() {
         drawField();
 
@@ -447,11 +481,8 @@ function loadPlayerImageByName(fullName) {
                 }
             } else if (eventType === "goal") {
                 drawGoalAnimation();
-            } else if (x === canvasWidth / 2 && y === canvasHeight / 2) {
-                if (showGoalAnim) {
-                    drawGoalAnimation();
-                }
-            } else {
+            }
+            else {
                 if (showGoalAnim) {
                     drawGoalAnimation();
                 } else {
@@ -497,6 +528,7 @@ function loadPlayerImageByName(fullName) {
             // Nema eventa, ali ako je goal animacija, crtamo je
             if (showGoalAnim) drawGoalAnimation();
         }
+        drawEventOverlay();
     }
 </script>
 </body>

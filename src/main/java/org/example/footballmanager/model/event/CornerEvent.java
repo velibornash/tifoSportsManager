@@ -1,30 +1,29 @@
 package org.example.footballmanager.model.event;
 
-import jakarta.persistence.*;
+import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.footballmanager.model.Player;
-import org.example.footballmanager.simulator.MatchContext;
-
+import org.example.footballmanager.model.Team;
+import jakarta.persistence.Entity;
+@Entity
 @Getter
 @Setter
-@Entity
-public class CornerEvent extends MatchEvent{
+public class CornerEvent extends MatchEvent {
+    @ManyToOne
+    private Team team;
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne(cascade = CascadeType.PERSIST)
-    private Player taker;
+    @ManyToOne
+    private Player player;
 
     @Override
-    public void apply(MatchContext context) {
-        context.getMatch().getCorners().add(this);
+    public void apply() {
+        match.getAllMatchEvents().add(this);
+        match.getCorners().add(this);
     }
 
     @Override
     public String getDescription() {
-        return String.format("∟ %d'Korner: %s", minute, taker.getName());
+        return String.format("∟ %d'Korner: %s", minute, player.getName());
     }
 }

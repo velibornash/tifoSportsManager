@@ -1,39 +1,25 @@
 package org.example.footballmanager.model.tactics;
 
-import jakarta.persistence.Embeddable;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.Data;
 
-@Embeddable
-@Getter
-@Setter
-@AllArgsConstructor
-@NoArgsConstructor
+@Data
+@Entity
 public class Tactics {
-    private double aggression;       // 0.0 – 2.0
-    private double pressing;        // 0.0 – 2.0
-    private double counterAttack;   // 0.0 – 2.0
-    private double ballControl;     // 0.0 – 2.0
 
-    public static Tactics defaultBalanced() {
-        return new Tactics(1.0, 1.0, 1.0, 1.0);
-    }
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public void setAggression(double aggression) {
-        this.aggression = Math.max(0.0, Math.min(2.0, aggression));
-    }
+    private String name; // npr. "Attacking", "Defensive", "Balanced"
 
-    public void setPressing(double pressing) {
-        this.pressing = Math.max(0.0, Math.min(2.0, pressing));
-    }
+    private double aggression;    // 0.0 - 10.0
+    private double defenseLine;   // 0.0 - 10.0
+    private double pressing;      // 0.0 - 10.0
+    private double possession;    // 0.0 - 10.0
+    private double counterAttack; // 0.0 - 10.0
+    private double ballControl;   // 0.0 - 10.0
 
-    public void setCounterAttack(double counterAttack) {
-        this.counterAttack = Math.max(0.0, Math.min(2.0, counterAttack));
-    }
-
-    public void setBallControl(double ballControl) {
-        this.ballControl = Math.max(0.0, Math.min(2.0, ballControl));
-    }
+    @ManyToOne(cascade = CascadeType.ALL)
+    private Formation formation;
 }

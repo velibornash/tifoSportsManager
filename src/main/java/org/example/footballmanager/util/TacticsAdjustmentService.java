@@ -14,31 +14,26 @@ public class TacticsAdjustmentService {
         int goalDifference = match.getHomeGoals() - match.getAwayGoals();
 
         // Domaćin
-        Tactics homeTactics = match.getHomeTactics();
+        Tactics homeTactics = context.getHomeTactics();
         adjustTeamTactics(homeTactics, goalDifference, minute, true);
 
         // Gost
-        Tactics awayTactics = match.getAwayTactics();
+        Tactics awayTactics = context.getAwayTactics();
         adjustTeamTactics(awayTactics, -goalDifference, minute, false);
     }
 
     private void adjustTeamTactics(Tactics tactics, int goalDifference, int minute, boolean isHome) {
-        // Ako tim vodi za 2+ gola i posle 70. minuta, prelazi na defanzivu
         if (goalDifference >= 2 && minute > 70) {
             tactics.setAggression(Math.max(1, tactics.getAggression() - 2));
             tactics.setPressing(Math.max(1, tactics.getPressing() - 2));
             tactics.setCounterAttack(Math.max(1, tactics.getCounterAttack() - 1));
             tactics.setBallControl(tactics.getBallControl() + 1);
-        }
-        // Ako tim gubi za 2+ gola i posle 60. minuta, prelazi na napad
-        else if (goalDifference <= -2 && minute > 60) {
+        } else if (goalDifference <= -2 && minute > 60) {
             tactics.setAggression(tactics.getAggression() + 2);
             tactics.setPressing(tactics.getPressing() + 2);
             tactics.setCounterAttack(tactics.getCounterAttack() + 1);
             tactics.setBallControl(Math.max(1, tactics.getBallControl() - 1));
-        }
-        // Domaća prednost: blagi porast agresije
-        else if (isHome && minute < 30) {
+        } else if (isHome && minute < 30) {
             tactics.setAggression(tactics.getAggression() + 1);
             tactics.setPressing(tactics.getPressing() + 1);
         }

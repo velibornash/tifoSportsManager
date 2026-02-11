@@ -10,4 +10,5 @@ public class GoalEventDTO {
     private String assistantName;
     private int minute;
     private String teamName;
+    boolean scored;
 }

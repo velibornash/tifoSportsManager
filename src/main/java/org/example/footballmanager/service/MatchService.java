@@ -1,10 +1,11 @@
 package org.example.footballmanager.service;
 
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
-import org.example.footballmanager.model.event.GoalEvent;
-import org.example.footballmanager.model.event.MatchEvent;
-import org.example.footballmanager.model.event.MatchEndedEvent;
+import org.example.footballmanager.model.event.*;
+import org.example.footballmanager.model.tactics.Formation;
+import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.simulator.MatchSimulator;
 import org.example.footballmanager.util.MatchRatingCalculator;
@@ -24,7 +25,6 @@ public class MatchService {
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
     private final MatchSimulator matchSimulator;
-
     private final Random random = new Random();
 
     public MatchService(MatchRepository matchRepository,
@@ -41,54 +41,62 @@ public class MatchService {
         this.matchSimulator = matchSimulator;
     }
 
+    @SneakyThrows
     public Match playMatch(Long matchId) {
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found"));
 
-        Lineup homeLineup = match.getHomeLineup();
-        Lineup awayLineup = match.getAwayLineup();
-
-        if (homeLineup == null || awayLineup == null) {
+        if (match.getHomeLineup() == null || match.getAwayLineup() == null)
             throw new RuntimeException("Postave nisu dodeljene meču.");
-        }
 
-        List<Player> homePlayers = homeLineup.getStartingPlayers();
-        List<Player> awayPlayers = awayLineup.getStartingPlayers();
+        List<Player> homePlayers = match.getHomeLineup().getStartingPlayers();
+        List<Player> awayPlayers = match.getAwayLineup().getStartingPlayers();
 
-        if (homePlayers.size() != 11 || awayPlayers.size() != 11) {
+        if (homePlayers.size() != 11 || awayPlayers.size() != 11)
             throw new RuntimeException("Each team must have exactly 11 players in lineup.");
-        }
 
-        // Simulacija preko MatchSimulator-a
-        matchSimulator.simulateMatch(match, homePlayers, awayPlayers);
+        // Kreiranje objekata za simulaciju
+        Crowd crowd = new Crowd();
+        Referee referee = new Referee();
 
-        // Konačan rezultat baziran na golovima
-        int finalHomeGoals = (int) match.getGoals().stream()
-                .filter(g -> g.getTeam().equals(match.getHomeTeam()))
-                .count();
-        int finalAwayGoals = (int) match.getGoals().stream()
-                .filter(g -> g.getTeam().equals(match.getAwayTeam()))
-                .count();
+        Tactics homeTactics = new Tactics();
+        Formation homeFormation = new Formation();
+        homeFormation.setName("Home formation");
+        homeTactics.setName("Home tactics");
+        homeTactics.setFormation(homeFormation);
 
-        match.setHomeGoals(finalHomeGoals);
-        match.setAwayGoals(finalAwayGoals);
-        match.setPlayed(true);
+        Tactics awayTactics = new Tactics();
+        Formation awayFormation = new Formation();
+        awayFormation.setName("Away formation");
+        awayTactics.setName("Away tactics");
+        awayTactics.setFormation(awayFormation);
 
-        // Dodaj kraj utakmice kao event
+        // Simulacija meča
+        matchSimulator.simulateMatch(match, crowd, referee, homeTactics, awayTactics, homePlayers, awayPlayers);
+
+        // Brojanje golova
+        match.setHomeGoals((int) match.getGoals().stream()
+                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(match.getHomeTeam()))
+                .count());
+        match.setAwayGoals((int) match.getGoals().stream()
+                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(match.getAwayTeam()))
+                .count());
+
+        // Kraj utakmice
         MatchEndedEvent endedEvent = new MatchEndedEvent();
-        endedEvent.setMatch(match);
         endedEvent.setMinute(90);
-        //endedEvent.setDescription("Match ended: " + finalHomeGoals + " - " + finalAwayGoals);
-        endedEvent.setKeyEvent(true);
-        endedEvent.setVisualize(true);
-        match.getAllMatchEvents().add(endedEvent);
+        endedEvent.setMatch(match);
+        endedEvent.apply();
 
-        simulateInjuriesAndCards(homePlayers);
-        simulateInjuriesAndCards(awayPlayers);
+        // Povrede i kartoni
+        simulateInjuriesAndCards(homePlayers, match);
+        simulateInjuriesAndCards(awayPlayers, match);
 
+        // Ocene igrača
         assignRatings(homePlayers, match);
         assignRatings(awayPlayers, match);
 
+        // Čuvanje statistika
         savePlayerStats(match, homePlayers);
         savePlayerStats(match, awayPlayers);
 
@@ -96,33 +104,43 @@ public class MatchService {
     }
 
     private void assignRatings(List<Player> players, Match match) {
-        for (Player player : players) {
-            int rating = MatchRatingCalculator.calculate(player, match);
-            player.setRating(rating);
-        }
+        for (Player player : players)
+            player.setRating(MatchRatingCalculator.calculate(player, match));
     }
 
-    private void simulateInjuriesAndCards(List<Player> players) {
-        // Placeholder za povrede i kartone
+    private void simulateInjuriesAndCards(List<Player> players, Match match) {
+        for (Player player : players) {
+            // Povrede
+            if (random.nextDouble() < 0.05) {
+                InjuryEvent injury = new InjuryEvent();
+                injury.setMinute(random.nextInt(90) + 1);
+                injury.setPlayer(player);
+                injury.setMatch(match);
+                injury.apply();
+            }
+            // Žuti kartoni
+            if (random.nextDouble() < 0.1) {
+                YellowCardEvent yc = new YellowCardEvent();
+                yc.setMinute(random.nextInt(90) + 1);
+                yc.setPlayer(player);
+                yc.setMatch(match);
+                yc.apply();
+            }
+        }
     }
 
     private void savePlayerStats(Match match, List<Player> players) {
         for (Player player : players) {
-            long goals = match.getGoals().stream()
-                    .filter(g -> g.getScorer().equals(player))
-                    .count();
-
-            long assists = match.getGoals().stream()
-                    .filter(g -> player.equals(g.getAssistant()))
-                    .count();
+            long goals = match.getGoals().stream().filter(g -> g.getScorer().equals(player)).count();
+            long assists = match.getGoals().stream().filter(g -> player.equals(g.getAssistant())).count();
 
             MatchPlayerStats stats = new MatchPlayerStats();
             stats.setMatch(match);
             stats.setPlayer(player);
             stats.setGoals((int) goals);
             stats.setAssists((int) assists);
-            stats.setYellowCards(random.nextInt(2));
-            stats.setRedCards(0);
+            stats.setYellowCards((int) match.getYellowCards().stream().filter(y -> y.getPlayer().equals(player)).count());
+            stats.setRedCards((int) match.getRedCards().stream().filter(r -> r.getPlayer().equals(player)).count());
             stats.setMinutesPlayed(90);
             stats.setRating(player.getRating());
 
@@ -147,24 +165,8 @@ public class MatchService {
         return matchRepository.save(match);
     }
 
-    public void printMatchDetails(Match match) {
-        System.out.println("\n" + generateMatchReport(match));
-    }
-
-    private void printRatings(List<Player> players, Match match) {
-        for (Player player : players) {
-            MatchPlayerStats stats = matchPlayerStatsRepository.findByMatchAndPlayer(match, player);
-            System.out.printf("- %s: %d (golova: %d, asistencija: %d)%n",
-                    player.getName(),
-                    stats.getRating(),
-                    stats.getGoals(),
-                    stats.getAssists());
-        }
-    }
-
     public String generateMatchReport(Match match) {
         StringBuilder sb = new StringBuilder();
-
         sb.append(String.format("%s %d - %d %s%n%n",
                 match.getHomeTeam().getName(),
                 match.getHomeGoals(),
@@ -172,25 +174,19 @@ public class MatchService {
                 match.getAwayTeam().getName()));
 
         sb.append("Strelci:\n");
-        match.getGoals().stream()
-                .sorted(Comparator.comparingInt(GoalEvent::getMinute))
-                .forEach(g -> {
-                    String assist = g.getAssistant() != null ? " (asist. " + g.getAssistant().getName() + ")" : "";
-                    sb.append(String.format("⚽ %d' %s%s %s%n",
-                            g.getMinute(),
-                            g.getScorer().getName(),
-                            assist,
-                            g.getScoreAfterGoal()));
-                });
+        match.getGoals().stream().sorted(Comparator.comparingInt(GoalEvent::getMinute))
+                .forEach(g -> sb.append(String.format("⚽ %d' %s%s%n",
+                        g.getMinute(),
+                        g.getScorer().getName(),
+                        g.getAssistant() != null ? " (asist. " + g.getAssistant().getName() + ")" : ""
+                )));
 
-        sb.append("\nIzveštaj:\n");
-        match.getAllMatchEvents().stream()
-                .sorted(Comparator.comparingInt(MatchEvent::getMinute))
-                .forEach(e -> sb.append(String.format("%s%n", e.getDescription())));
+        sb.append("\nEventi:\n");
+        match.getAllMatchEvents().stream().sorted(Comparator.comparingInt(MatchEvent::getMinute))
+                .forEach(e -> sb.append(String.format("[%d'] %s%n", e.getMinute(), e.getDescription())));
 
         sb.append("\nOcene igrača - ").append(match.getHomeTeam().getName()).append("\n");
         appendPlayerRatings(sb, match.getHomeLineup().getStartingPlayers(), match);
-
         sb.append("\nOcene igrača - ").append(match.getAwayTeam().getName()).append("\n");
         appendPlayerRatings(sb, match.getAwayLineup().getStartingPlayers(), match);
 

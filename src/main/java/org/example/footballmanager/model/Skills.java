@@ -9,6 +9,7 @@ import java.util.Map;
 @Embeddable
 @Data
 public class Skills implements SkillSet {
+
     private int stamina;
     private int goalkeeper;
     private int defender;
@@ -17,6 +18,7 @@ public class Skills implements SkillSet {
     private int playmaker;
     private int passing;
     private int striker;
+    private int fatigue; // NOVO
 
     @Override
     public Map<SkillName, Integer> getSkills() {
@@ -29,6 +31,7 @@ public class Skills implements SkillSet {
         map.put(SkillName.PLAYMAKER, playmaker);
         map.put(SkillName.PASSING, passing);
         map.put(SkillName.STRIKER, striker);
+        map.put(SkillName.FATIGUE, fatigue); // dodajemo
         return map;
     }
 
@@ -43,6 +46,7 @@ public class Skills implements SkillSet {
             case PLAYMAKER -> playmaker = value;
             case PASSING -> passing = value;
             case STRIKER -> striker = value;
+            case FATIGUE -> fatigue = value; // dodajemo
         }
     }
 

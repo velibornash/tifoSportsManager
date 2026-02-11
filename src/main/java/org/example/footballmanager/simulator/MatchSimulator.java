@@ -1,12 +1,10 @@
 package org.example.footballmanager.simulator;
 
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.model.Match;
-import org.example.footballmanager.model.Player;
-import org.example.footballmanager.model.Position;
+import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.*;
+import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.util.MatchEventWebSocketHandler;
 import org.example.footballmanager.util.TacticsAdjustmentService;
@@ -17,99 +15,129 @@ import java.util.List;
 import java.util.Random;
 
 @Slf4j
-@Component
-@RequiredArgsConstructor
+    @Component
 public class MatchSimulator {
 
-    private final MatchEventFactory eventFactory;
-    private final MatchEventWebSocketHandler webSocketHandler;
+    private final MatchEventFactory eventFactory = new MatchEventFactory();
     private final TacticsAdjustmentService tacticsAdjustmentService;
+    private final MatchEventWebSocketHandler webSocketHandler;
     private final Random random = new Random();
 
+    public MatchSimulator(TacticsAdjustmentService tacticsAdjustmentService, MatchEventWebSocketHandler webSocketHandler) {
+        this.tacticsAdjustmentService = tacticsAdjustmentService;
+        this.webSocketHandler = webSocketHandler;
+    }
+
     @SneakyThrows
-    public void simulateMatch(Match match, List<Player> homePlayers, List<Player> awayPlayers) {
-        MatchContext context = new MatchContext(match);
-        context.setPossessionTeam(match.getHomeTeam()); // Početni posed domaćinu
-        Thread.sleep(5000);
+    public void simulateMatch(Match match, Crowd crowd, Referee referee,
+                              Tactics homeTactics, Tactics awayTactics,
+                              List<Player> homePlayers, List<Player> awayPlayers) {
+
+        MatchContext context = new MatchContext(match, crowd, referee, homeTactics, awayTactics);
+        context.setPossessionTeam(match.getHomeTeam()); // start possession
+
+        Formation homeFormation = homeTactics.getFormation();
+        Formation awayFormation = awayTactics.getFormation();
+        Thread.sleep(1500);
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);
+
+            // fatigue i possession
             updateFatigue(context);
-            updatePossession(context, homePlayers, awayPlayers);
-            tacticsAdjustmentService.adjustTactics(context); // Prilagođavanje taktika
+            updatePossession(context, homePlayers, awayPlayers, homeFormation, awayFormation);
 
-            if (random.nextDouble() < eventProbability(match, context)) {
-                MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers);
+            // taktike
+            tacticsAdjustmentService.adjustTactics(context);
+
+            // event probability
+            if (random.nextDouble() < eventProbability(context, match)) {
+                MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers, homeFormation, awayFormation);
                 if (event != null) {
-                    log.info("[{}'] Event created: {}", minute, event.getDescription());
-                    webSocketHandler.broadcastEvent(event);
-                    Thread.sleep(4000);
+                    event.setMinute(minute);
+                    event.apply();
+                    log.info("[{}'] Event: {}", minute, event.getDescription());
+                    try {
 
-                    // Automatski trigger za Substitution kod Injury
-                    if (event instanceof InjuryEvent) {
-                        performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
+                        webSocketHandler.broadcastEvent(event);
+                        Thread.sleep(2000);
+                    } catch (IOException e) {
+                        log.error("WebSocket broadcast failed", e);
                     }
+                    if (event instanceof PenaltyEvent)
+                        if (((PenaltyEvent) event).isScored()) {
+                            GoalEvent goal = new GoalEvent();
+                            goal.setMatch(match);
+                            goal.setTeam(((PenaltyEvent) event).getTeam());
+                            goal.setScorer(((PenaltyEvent) event).getTaker());
+                            goal.setMinute(minute);
+                            goal.isScored();
+                            // Izračunaj rezultat odmah
+                            long homeGoals = match.getGoals().stream()
+                                    .filter(g -> g.getTeam().equals(match.getHomeTeam()))
+                                    .count() + (goal.getTeam().equals(match.getHomeTeam()) ? 1 : 0);
+
+                            long awayGoals = match.getGoals().stream()
+                                    .filter(g -> g.getTeam().equals(match.getAwayTeam()))
+                                    .count() + (goal.getTeam().equals(match.getAwayTeam()) ? 1 : 0);
+
+                            goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
+                            log.info("[{}'] Event: {}", minute, goal.getDescription());
+                            try {
+
+                                webSocketHandler.broadcastEvent(goal);
+                                Thread.sleep(2000);
+                            } catch (IOException e) {
+                                log.error("WebSocket broadcast failed", e);
+                            }
+                            match.getGoals().add(goal);
+                            match.getAllMatchEvents().add(goal);
+
+                        }
+                    // substitution za injury
+                    if (event instanceof InjuryEvent)
+                        performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
                 }
             }
 
+            // random substitutions
             if (minute == 60 || minute == 75) {
                 performSubstitution(match, context, homePlayers, true);
                 performSubstitution(match, context, awayPlayers, false);
             }
         }
 
+        // kraj meča
         MatchEndedEvent endEvent = new MatchEndedEvent();
-        endEvent.setMatch(match);
         endEvent.setMinute(90);
-        endEvent.setType("Match Ended");
-        endEvent.setKeyEvent(true);
-        endEvent.setVisualize(true);
-        endEvent.setImpact("HIGH");
+        endEvent.setMatch(match);
+        endEvent.apply();
+        webSocketHandler.broadcastEvent(endEvent);
 
-        endEvent.apply(context); // postavlja match.setPlayed(true)
-        webSocketHandler.broadcastEvent(endEvent); // šalje preko websocket-a
-
+        match.setPlayed(true);
     }
 
-    @SneakyThrows
     private void performSubstitution(Match match, MatchContext context, List<Player> teamPlayers, boolean isHomeTeam) {
         if (teamPlayers.size() < 12) return;
 
-        Player out = selectPlayerForSubstitution(teamPlayers);
-        Player in = selectReservePlayer(teamPlayers);
+        Player out = teamPlayers.get(random.nextInt(11));
+        Player in = teamPlayers.get(11 + random.nextInt(teamPlayers.size() - 11));
 
         SubstitutionEvent sub = new SubstitutionEvent();
         sub.setMatch(match);
         sub.setMinute(context.getCurrentMinute());
         sub.setPlayerOut(out);
         sub.setPlayerIn(in);
-        sub.setKeyEvent(true);
-        sub.setVisualize(true);
-        sub.setImpact("MEDIUM");
+        sub.apply();
 
-        sub.apply(context);
         log.info("[{}'] Substitution: {} out, {} in", context.getCurrentMinute(), out.getName(), in.getName());
         try {
             webSocketHandler.broadcastEvent(sub);
-            Thread.sleep(2000); // Pauza za zamenu
         } catch (IOException e) {
-            log.error("Error broadcasting substitution event", e);
+            log.error("Error broadcasting substitution", e);
         }
 
         teamPlayers.remove(out);
         teamPlayers.add(in);
-    }
-
-    private Player selectPlayerForSubstitution(List<Player> teamPlayers) {
-        return teamPlayers.stream()
-                .filter(p -> !p.getPositionEnum().equals(Position.GK))
-                .max((p1, p2) -> Double.compare(p1.getForm(), p2.getForm()))
-                .orElse(teamPlayers.get(random.nextInt(teamPlayers.size())));
-    }
-
-    private Player selectReservePlayer(List<Player> teamPlayers) {
-        int reserveCount = teamPlayers.size() - 11;
-        if (reserveCount <= 0) return null;
-        return teamPlayers.get(11 + random.nextInt(reserveCount));
     }
 
     private void updateFatigue(MatchContext context) {
@@ -117,50 +145,33 @@ public class MatchSimulator {
         log.info("Minute: {}, Fatigue Factor: {}", context.getCurrentMinute(), context.getFatigueFactor());
     }
 
-    private void updatePossession(MatchContext context, List<Player> homePlayers, List<Player> awayPlayers) {
-        double homePossessionStrength = TeamStrengthCalculator.calculateTeamStrength(
-                homePlayers, Formation.fromString(context.getMatch().getHomeFormation()),
-                context.getMatch().getHomeTactics(), true);
-        double awayPossessionStrength = TeamStrengthCalculator.calculateTeamStrength(
-                awayPlayers, Formation.fromString(context.getMatch().getAwayFormation()),
-                context.getMatch().getAwayTactics(), false);
+    private void updatePossession(MatchContext context, List<Player> homePlayers, List<Player> awayPlayers, Formation homeFormation, Formation awayFormation) {
+        double homeStrength = TeamStrengthCalculator.calculateTeamStrength(homePlayers, homeFormation, context.getHomeTactics(), true);
+        double awayStrength = TeamStrengthCalculator.calculateTeamStrength(awayPlayers, awayFormation, context.getAwayTactics(), false);
+        double total = homeStrength + awayStrength;
 
-        double total = homePossessionStrength + awayPossessionStrength;
-        if (random.nextDouble() < homePossessionStrength / total) {
+        if (random.nextDouble() < homeStrength / total) {
             context.setPossessionTeam(context.getMatch().getHomeTeam());
-            context.setBallPosition(getRandomBallPosition());
         } else {
             context.setPossessionTeam(context.getMatch().getAwayTeam());
-            context.setBallPosition(getRandomBallPosition());
         }
-        log.info("Minute: {}, Possession: {}, Ball Position: {}", context.getCurrentMinute(), context.getPossessionTeam().getName(), context.getBallPosition());
-    }
-
-    private String getRandomBallPosition() {
-        String[] positions = {"left_wing", "center", "right_wing", "box"};
-        return positions[random.nextInt(positions.length)];
-    }
-
-    private double eventProbability(Match match, MatchContext context) {
-        double homeStrength = TeamStrengthCalculator.calculateTeamStrength(
-                match.getHomeLineup().getStartingPlayers(),
-                Formation.fromString(match.getHomeFormation()),
-                match.getHomeTactics(), true);
-        double awayStrength = TeamStrengthCalculator.calculateTeamStrength(
-                match.getAwayLineup().getStartingPlayers(),
-                Formation.fromString(match.getAwayFormation()),
-                match.getAwayTactics(), false);
-
-        double base = 0.1;
-        double strengthFactor = (homeStrength + awayStrength) / 300.0;
-        double fatigueFactor = context.getFatigueFactor();
-        double probability = Math.min(0.3, base + strengthFactor * fatigueFactor);
-        log.info("Minute: {}, Event Probability: {}, Home Strength: {}, Away Strength: {}, Fatigue: {}",
-                context.getCurrentMinute(), probability, homeStrength, awayStrength, fatigueFactor);
-        return probability;
+        log.info("Minute: {}, Possession: {}", context.getCurrentMinute(), context.getPossessionTeam().getName());
     }
 
     private boolean isHomeTeam(MatchEvent event) {
-        return event.getTeam() != null && event.getTeam().equals(event.getMatch().getHomeTeam());
+        if (event instanceof GoalEvent goal) {
+            return goal.getTeam().equals(goal.getMatch().getHomeTeam());
+        } else if (event instanceof SubstitutionEvent sub) {
+            // recimo da je playerOut tim domaćin
+            return sub.getPlayerOut().getTeam().equals(sub.getMatch().getHomeTeam());
+        }
+        // za ostale evente (kartoni, povrede) možeš vratiti false ili po potrebi
+        return false;
+    }
+
+    private double eventProbability(MatchContext context, Match match) {
+        double base = 0.1;
+        double strengthFactor = 0.2; // simplifikacija
+        return Math.min(0.3, base + strengthFactor * context.getFatigueFactor());
     }
 }

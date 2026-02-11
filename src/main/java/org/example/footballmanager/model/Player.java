@@ -1,40 +1,64 @@
-    package org.example.footballmanager.model;
+package org.example.footballmanager.model;
 
-    import jakarta.persistence.*;
-    import lombok.Data;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
-    import java.util.Optional;
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+public class Player {
 
-    @Data
-    @Entity
-    public class Player {
-        @Id
-        @GeneratedValue(strategy = GenerationType.IDENTITY)
-        private Long id;
-        private String name;
-        @Embedded
-        private Skills skills;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-        private double talent;   // 3.0 top, 9.0 užasan
-        public Position getPositionEnum() {
-            return Optional.ofNullable(position)
-                    .map(String::toUpperCase)
-                    .map(Position::valueOf)
-                    .orElseThrow(() -> new IllegalStateException("Position is null for player: " + name));
-        }
-        private int age;
-        private double playerValue;
-        private double earnings;
-        private double height;   // u metrima, npr 1.85
-        private double weight;   // u kg
-        private double form;     // recimo od 1.0 do 10.0
-        private int rating;      // ocena na utakmici 1-100
-        private String position;
-       // private Position position;
-        private int totalGoals;
-        private int totalAssists;
-        @ManyToOne(cascade = CascadeType.PERSIST)
-        @JoinColumn(name = "team_id")
-        private Team team;
+    private String name;
 
+    @Embedded
+    private Skills skills;
+
+    private double talent;   // 3.0 top, 9.0 loš
+
+    private int age;
+    private double playerValue;
+    private double earnings;
+    private double height;   // u metrima
+    private double weight;   // u kg
+    private double form;     // 1.0 - 10.0
+    private int rating;      // 1-100
+
+    @Enumerated(EnumType.STRING)
+    private Position position;
+
+    private int totalGoals;
+    private int totalAssists;
+
+    @ManyToOne(cascade = CascadeType.PERSIST)
+    @JoinColumn(name = "team_id")
+    private Team team;
+
+    // ========================
+    // Helper methods
+    // ========================
+
+    public Position getPositionEnum() {
+        return position; // sada je već enum
     }
+
+    /**
+     * Trenutni umor igrača = Fatigue skill + form
+     */
+    public double getCurrentFatigue() {
+        return skills.getFatigue() * 0.7 + (10.0 - form) * 0.3;
+    }
+
+    /**
+     * Provera da li igrač može da primi loptu
+     */
+    public boolean canReceiveBall() {
+        return skills.getStamina() > 0 && getCurrentFatigue() < 8.0;
+    }
+}
