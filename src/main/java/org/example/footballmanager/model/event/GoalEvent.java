@@ -38,6 +38,7 @@ public class GoalEvent extends MatchEvent {
         } else {
             match.setAwayGoals(match.getAwayGoals() + 1);
         }
+        scoreAfterGoal=match.getHomeGoals()+":"+match.getAwayGoals();
     }
 
     public boolean isScored() {
