@@ -13,14 +13,15 @@ public class Lineup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     private Team team;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "match_id")
     private Match match;
 
-    @OneToMany(cascade = CascadeType.ALL)
+    // === PROMENA: @ManyToMany umesto @OneToMany ===
+    @ManyToMany
     @JoinTable(
             name = "lineup_starting_players",
             joinColumns = @JoinColumn(name = "lineup_id"),
@@ -28,7 +29,7 @@ public class Lineup {
     )
     private List<Player> startingPlayers = new ArrayList<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
+    @ManyToMany
     @JoinTable(
             name = "lineup_substitutes",
             joinColumns = @JoinColumn(name = "lineup_id"),

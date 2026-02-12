@@ -42,41 +42,53 @@ public class MatchController {
         this.teamRepository = teamRepository;
     }
 
+    private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
+        Lineup lineup = new Lineup();
+        lineup.setTeam(team);
+        lineup.setFormation(formationName);
+
+        // KLJUČNO: ponovo učitaj igrače po ID-ovima da budu managed
+        List<Player> managedStarting = players.subList(0, 11).stream()
+                .map(p -> playerRepository.getReferenceById(p.getId()))  // ili findById ako želiš pun objekat
+                .toList();
+
+        List<Player> managedSubs = players.subList(11, Math.min(15, players.size())).stream()
+                .map(p -> playerRepository.getReferenceById(p.getId()))
+                .toList();
+
+        lineup.setStartingPlayers(managedStarting);
+        lineup.setSubstitutes(managedSubs);
+        lineup.setFormation(formationName);
+        // Ne setuj match ovde – setuje se kasnije u Match entitetu
+        return lineupRepository.save(lineup);
+    }
+
     @SneakyThrows
     @PostMapping("/start-simulation")
     public ResponseEntity<Map<String, Object>> startSimulation() {
         Thread.sleep(800);
 
-        Team homeTeam = new Team();
-        homeTeam.setName("Omladinac");
-        Team awayTeam = new Team();
-        awayTeam.setName("Sloga");
+// 1. Dohvati postojeće timove iz baze (po imenu)
+        Team homeTeam = teamRepository.findByName("Omladinac")
+                .orElseThrow(() -> new RuntimeException("Tim 'Omladinac' ne postoji u bazi!"));
 
-        teamRepository.save(homeTeam);
-        teamRepository.save(awayTeam);
+        Team awayTeam = teamRepository.findByName("Sloga")
+                .orElseThrow(() -> new RuntimeException("Tim 'Sloga' ne postoji u bazi!"));
 
-        homeTeam = teamRepository.getReferenceById(homeTeam.getId());
-        awayTeam = teamRepository.getReferenceById(awayTeam.getId());
-
+// 2. Dohvati igrače iz baze (ne kreiraš nove!)
         PlayerFactory playerFactory = new PlayerFactory(playerRepository);
         List<Player> homePlayers = playerFactory.createOmladinacPlayers(homeTeam);
+        homePlayers = homePlayers.stream()
+                .map(p -> playerRepository.getReferenceById(p.getId()))
+                .toList();
+
         List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sloga", awayTeam);
-
-        Lineup homeLineup = new Lineup();
-        homeLineup.setTeam(homeTeam);
-        homeLineup.setStartingPlayers(homePlayers.subList(0, 11));
-        homeLineup.setSubstitutes(homePlayers.subList(11, 13));
-        homeLineup.setFormation("4-4-2");
-        lineupRepository.save(homeLineup);
-        homeLineup = lineupRepository.getReferenceById(homeLineup.getId());
-
-        Lineup awayLineup = new Lineup();
-        awayLineup.setTeam(awayTeam);
-        awayLineup.setStartingPlayers(awayPlayers.subList(0, 11));
-        awayLineup.setSubstitutes(awayPlayers.subList(11, 15));
-        awayLineup.setFormation("4-2-3-1");
-        lineupRepository.save(awayLineup);
-        awayLineup = lineupRepository.getReferenceById(awayLineup.getId());
+        awayPlayers = awayPlayers.stream()
+                .map(p -> playerRepository.getReferenceById(p.getId()))
+                .toList();
+// 3. Kreiraj postave (ako ih nema, možeš ih kreirati jednom ili ovde proveriti)
+        Lineup homeLineup = createLineupForMatch(homeTeam, homePlayers, "4-4-2");
+        Lineup awayLineup = createLineupForMatch(awayTeam, awayPlayers, "4-2-3-1");
 
         Match match = new Match();
         match.setHomeTeam(homeTeam);

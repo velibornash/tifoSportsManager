@@ -28,10 +28,12 @@ public class Match {
     @ManyToOne
     private Team awayTeam;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @ManyToOne
+    @JoinColumn(name = "home_lineup_id")
     private Lineup homeLineup;
 
-    @OneToOne(cascade = CascadeType.ALL)
+    @ManyToOne
+    @JoinColumn(name = "away_lineup_id")
     private Lineup awayLineup;
 
     private int homeGoals;

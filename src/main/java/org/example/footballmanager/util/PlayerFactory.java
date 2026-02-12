@@ -95,7 +95,7 @@ public class PlayerFactory {
                 position = Position.values()[1 + random.nextInt(3)]; // DEF, MID, ATT
             }
 
-            players.add(createPlayer(
+            Player newPlayer = createPlayer(
                     name,
                     18 + random.nextInt(15),
                     team,
@@ -105,16 +105,20 @@ public class PlayerFactory {
                     Math.round((55 + random.nextDouble() * 40) * 100.0) / 100.0,
                     Math.round((4 + random.nextDouble() * 6) * 100.0) / 100.0,
                     5 + random.nextInt(6),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
-                    random.nextInt(18),
+                    1+random.nextInt(10),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
+                    1+random.nextInt(17),
                     position
-            ));
+            );
+
+            // SAČUVAJ IGRAČA ODMAH
+            Player savedPlayer = playerRepository.save(newPlayer);
+            players.add(savedPlayer);
         }
         return players;
     }
