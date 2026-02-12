@@ -234,25 +234,25 @@
         let extra = "";
 
         switch(type) {
-            case "goal":               symbol = "⚽"; extra = player ? ` – ${player}` : ""; break;
-            case "yellowcard":         symbol = "🟨"; extra = player ? ` ${player}` : ""; break;
-            case "redcard":            symbol = "🟥"; extra = player ? ` ${player}` : ""; break;
-            case "penalty":            symbol = event.scored ? "✅" : "❌"; extra = player ? ` ${player}` : ""; break;
-            case "injury":             symbol = "❌"; extra = player ? ` ${player}` : ""; break;
+            case "goal":               symbol = "⚽"; extra = player ? ` – ${player} Goal!` : ""; break;
+            case "yellowcard":         symbol = "🟨"; extra = player ? ` ${player} Yellow card!` : ""; break;
+            case "redcard":            symbol = "🟥"; extra = player ? ` ${player} Red card!` : ""; break;
+            case "penalty":            symbol = event.scored ? "✅" : "❌"; extra = player ? ` ${player} Penalty!` : ""; break;
+            case "injury":             symbol = "❌"; extra = player ? ` ${player} Injury` : ""; break;
             case "substitution":       symbol = "🔄"; extra = ` ${event.playerOutName||'?'} → ${event.playerInName||'?'} `; break;
-            case "offside":            symbol = "🚩"; extra = player ? ` ${player}` : ""; break;
-            case "corner":             symbol = "⛳"; break;
-            case "freekick":           symbol = "⚽"; extra = player ? ` ${player}` : ""; break;
-            case "shotontarget":       symbol = "🎯"; extra = player ? ` ${player} (u okvir)` : ""; break;
-            case "shotofftarget":      symbol = "🎯"; extra = player ? ` ${player} (promašaj)` : ""; break;
+            case "offside":            symbol = "🚩"; extra = player ? ` ${player} Offside` : ""; break;
+            case "corner":             symbol = "⛳"; extra = player ? ` ${player} Corner` : ""; break;
+            case "freekick":           symbol = "⚽"; extra = player ? ` ${player} Free kick` : ""; break;
+            case "shotontarget":       symbol = "🎯"; extra = player ? ` ${player} Shot on target` : ""; break;
+            case "shotofftarget":      symbol = "🎯"; extra = player ? ` ${player} Shot off target` : ""; break;
             case "varreview":          symbol = "📹"; extra = event.decision ? ` (${event.decision})` : ""; break;
-            case "chance":             symbol = "⚡"; break;
-            case "matchstarted":       symbol = "🏁"; extra = " Početak meča"; break;
-            case "matchended":         symbol = "🏁"; extra = ` KRAJ • ${homeScore}–${awayScore}`; break;
+            case "chance":             symbol = "⚡"; extra = player ? ` ${player} Chance` : ""; break;
+            case "matchstarted":       symbol = "🏁"; extra = " Match started"; break;
+            case "matchended":         symbol = "🏁"; extra = ` Match ended with result • ${homeScore}–${awayScore}`; break;
             default:                   extra = player ? ` ${player}` : "";
         }
 
-        return `${symbol}  [${minute}'] ${type}${extra}`;
+        return `${symbol}  [${minute}'] ${extra}`;
     }
 
     function updateScore(event) {
@@ -524,7 +524,7 @@
             image(matchEndedImg, canvasWidth / 2, canvasHeight / 2, 150, 150);
             fill("white");
             textSize(48);
-            text("KRAJ UTAKMICE", canvasWidth / 2, canvasHeight / 2 + 90);
+            text("END OF MATCH", canvasWidth / 2, canvasHeight / 2 + 90);
             updateQueueInfo();
             return;
         }

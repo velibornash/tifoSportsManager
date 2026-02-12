@@ -201,8 +201,8 @@ public class MatchSimulator {
             dto.setMinute(f.getMinute());
             dto.setDescription(f.getDescription());
 
-            if (f.getPlayer() != null) {
-                Player p = f.getPlayer();
+            if (f.getTaker() != null) {
+                Player p = f.getTaker();
                 dto.setPlayerName(p.getName());
                 dto.setPlayerAge(p.getAge());
                 dto.setPlayerHeight(p.getHeight());
