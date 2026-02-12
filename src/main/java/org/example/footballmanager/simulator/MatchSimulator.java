@@ -89,7 +89,7 @@ public class MatchSimulator {
                                     .count() + (goal.getTeam().equals(match.getAwayTeam()) ? 1 : 0);
 
                             goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
-                            log.info("[{}'] Event: {}", minute, goal.getDescription());
+                           // log.info("[{}'] Event: {}", minute, goal.getDescription());
                             try {
 
                                 webSocketHandler.broadcastEvent(goal);
@@ -108,7 +108,7 @@ public class MatchSimulator {
             }
 
             // random substitutions
-            if (minute == 60 || minute == 75) {
+            if (minute == 65) {
                 performSubstitution(match, context, homePlayers, true);
                 performSubstitution(match, context, awayPlayers, false);
             }

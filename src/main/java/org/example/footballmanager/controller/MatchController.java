@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import jakarta.transaction.Transactional;
 import lombok.SneakyThrows;
 import org.example.footballmanager.dto.GoalEventDTO;
 import org.example.footballmanager.dto.MatchDetailsDTO;
@@ -38,7 +39,7 @@ public class MatchController {
     }
 
 
-
+    @Transactional
     @SneakyThrows
     @PostMapping("/start-simulation")
     public void simulateMatch() {
@@ -49,7 +50,8 @@ public class MatchController {
         awayTeam.setName("Sloga");
         teamRepository.save(homeTeam);
         teamRepository.save(awayTeam);
-
+        homeTeam=teamRepository.getReferenceById(homeTeam.getId());
+        awayTeam=teamRepository.getReferenceById(awayTeam.getId());
         List<Player> homePlayers = PlayerFactory.createOmladinacPlayers(homeTeam);
         List<Player> awayPlayers = PlayerFactory.createRandomTeamPlayers("Sloga", awayTeam);
 
@@ -59,6 +61,7 @@ public class MatchController {
         homeLineup.setSubstitutes(homePlayers.subList(11, 15));
         homeLineup.setFormation("4-4-2");
         lineupRepository.save(homeLineup);
+        homeLineup=lineupRepository.getReferenceById(homeLineup.getId());
 
         Lineup awayLineup = new Lineup();
         awayLineup.setTeam(awayTeam);
@@ -66,6 +69,7 @@ public class MatchController {
         awayLineup.setSubstitutes(awayPlayers.subList(11, 15));
         awayLineup.setFormation("4-2-3-1");
         lineupRepository.save(awayLineup);
+        awayLineup=lineupRepository.getReferenceById(awayLineup.getId());
 
         Match match = new Match();
         match.setHomeTeam(homeTeam);

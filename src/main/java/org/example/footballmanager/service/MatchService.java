@@ -83,10 +83,10 @@ public class MatchService {
                 .count());
 
         // Kraj utakmice
-        MatchEndedEvent endedEvent = new MatchEndedEvent();
+/*        MatchEndedEvent endedEvent = new MatchEndedEvent();
         endedEvent.setMinute(90);
         endedEvent.setMatch(match);
-        endedEvent.apply();
+        endedEvent.apply();*/
 
         // Povrede i kartoni
         simulateInjuriesAndCards(homePlayers, match);
