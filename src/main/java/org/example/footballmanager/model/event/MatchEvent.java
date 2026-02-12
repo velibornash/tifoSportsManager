@@ -11,7 +11,7 @@ import org.example.footballmanager.model.Match;
 @Getter
 @Setter
 @Entity
-@Inheritance(strategy = InheritanceType.JOINED) // svaka konkretna klasa u svojoj tabeli
+@Inheritance(strategy = InheritanceType.JOINED)
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
         include = JsonTypeInfo.As.PROPERTY,
@@ -31,7 +31,6 @@ import org.example.footballmanager.model.Match;
         @JsonSubTypes.Type(value = FreeKickEvent.class, name = "free kick"),
         @JsonSubTypes.Type(value = SubstitutionEvent.class, name = "substitution"),
         @JsonSubTypes.Type(value = MatchEndedEvent.class, name = "match ended")
-
 })
 public abstract class MatchEvent {
     @Id
@@ -39,17 +38,15 @@ public abstract class MatchEvent {
     private Long id;
 
     @ManyToOne
-    @JsonIgnore
+    @JsonIgnore   // ← Sprečava ciklus Match → Events → Match
     protected Match match;
 
     @Column(name = "event_minute")
-    protected int minute; // minuta u kojoj se desio event
+    protected int minute;
 
-    public abstract void apply(); // simulator metoda
+    public abstract void apply();
 
-    // default description
     public String getDescription() {
         return "Event at " + minute + "'";
     }
-
 }

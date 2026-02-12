@@ -1,9 +1,10 @@
 package org.example.footballmanager.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,40 +23,30 @@ public class Team {
     private String country;
     private double budget;
     private double reputation; // 0-100
-    private String stadium; // ime stadiona
+    private String stadium;
 
     @ManyToOne
     private League league;
 
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference   // ← Ovo je forward deo (Team → Players)
     private List<Player> players = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL)
+    @JsonIgnore   // Juniors nisu potrebni u JSON-u eventova
     private List<Junior> juniors = new ArrayList<>();
 
-    // =========================
-    // Helper methods
-    // =========================
-
-    /**
-     * Dodaje igrača u tim i postavlja reference
-     */
+    // Helper methods ostaju isti
     public void addPlayer(Player player) {
         players.add(player);
         player.setTeam(this);
     }
 
-    /**
-     * Uklanja igrača iz tima
-     */
     public void removePlayer(Player player) {
         players.remove(player);
         player.setTeam(null);
     }
 
-    /**
-     * Prosečna ocena svih igrača u timu
-     */
     public double getAverageRating() {
         OptionalDouble avg = players.stream()
                 .mapToInt(Player::getRating)
@@ -63,9 +54,6 @@ public class Team {
         return avg.orElse(0.0);
     }
 
-    /**
-     * Prosečan skill za određenu poziciju
-     */
     public double getAverageSkill(Position position) {
         OptionalDouble avg = players.stream()
                 .filter(p -> p.getPosition() == position)
@@ -74,18 +62,12 @@ public class Team {
         return avg.orElse(0.0);
     }
 
-    /**
-     * Broj dostupnih igrača za utakmicu
-     */
     public long getAvailablePlayers() {
         return players.stream()
                 .filter(p -> p.getForm() > 3.0 && p.getSkills().getFatigue() < 8)
                 .count();
     }
 
-    /**
-     * Provera da li je tim spreman za utakmicu
-     */
     public boolean isMatchReady() {
         return getAvailablePlayers() >= 11;
     }

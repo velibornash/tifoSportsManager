@@ -2,105 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- Omogućava responsivnost -->
-  <title>Omladinac Manager App</title> <!-- Ostavljen u head za referencu u pretraživačima, može se ukloniti -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omladinac Manager App</title>
   <style>
     body {
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: white;
-      font-family: Arial, sans-serif;
+      margin: 0; padding: 0; min-height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+      color: white; font-family: Arial, sans-serif;
     }
     .background {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background-image: url('/images/OmladinacManager.png');
-      background-size: contain; /* Skalira sliku da bude potpuno vidljiva */
-      background-position: center;
-      background-repeat: no-repeat; /* Sprečava dupliranje */
-      background-color: #1e7d32; /* Promenjena boja za praznine */
-      z-index: -1; /* Pozadina iza sadržaja */
+      background-size: contain; background-position: center;
+      background-repeat: no-repeat; background-color: #1e7d32;
+      z-index: -1;
     }
-    .container {
-      text-align: center;
-      padding: 5vw; /* Relativna jedinica za padding */
-      border-radius: 1rem;
-      max-width: 90%; /* Ograničava širinu na 90% ekrana */
-    }
+    .container { text-align: center; padding: 5vw; border-radius: 1rem; max-width: 90%; }
     button {
-      padding: 1.5rem 3rem; /* Relativne jedinice */
-      font-size: 1.2rem;
-      cursor: pointer;
-      border: none;
-      border-radius: 0.5rem;
-      background-color: rgba(40, 167, 69, 0.7); /* Zadržana transparentnost dugmeta */
-      color: white;
+      padding: 1.5rem 3rem; font-size: 1.2rem; cursor: pointer;
+      border: none; border-radius: 0.5rem;
+      background-color: rgba(40, 167, 69, 0.7); color: white;
       transition: background-color 0.3s;
-      position: relative; /* Omogućava pomeranje */
-      top: 10vh; /* Smanjeno pomeranje dole na 10% visine */
-      left: -5vw; /* Smanjeno pomeranje levo na 5% širine */
+      position: relative; top: 10vh; left: -5vw;
     }
-    button:hover {
-      background-color: rgba(33, 136, 56, 0.7); /* Transparentnost u hover stanju */
-    }
-    audio {
-      display: none; /* Skriva kontrolu */
-    }
-    /* Medijski upiti za različite veličine ekrana */
-    @media (max-width: 768px) { /* Tableti i mobilni */
-      .container {
-        padding: 4vw;
-      }
-      button {
-        padding: 1rem 2rem;
-        font-size: 1rem;
-        top: 5vh; /* Prilagođeno za manje ekrane */
-        left: -2vw; /* Smanjeno pomeranje */
-      }
-    }
-    @media (max-width: 480px) { /* Manji mobilni */
-      .container {
-        padding: 3vw;
-      }
-      button {
-        padding: 0.8rem 1.5rem;
-        font-size: 0.9rem;
-        top: 3vh; /* Prilagođeno za još manje ekrane */
-        left: -1vw; /* Smanjeno pomeranje */
-      }
-    }
+    button:hover { background-color: rgba(33, 136, 56, 0.7); }
+    button:disabled { background-color: #666; cursor: not-allowed; }
   </style>
 </head>
 <body>
 <div class="background"></div>
 <div class="container">
-  <!-- Uklonjen <h1>Omladinac Manager App</h1> jer se duplira sa slikom -->
-  <button onclick="startSimulation()">Start Simulation</button>
+  <button id="startBtn" onclick="startSimulation()">Start Simulation</button>
   <audio id="backgroundMusic" autoplay>
     <source src="/audio/intro.mp3" type="audio/mpeg">
-    Your browser does not support the audio element.
   </audio>
 </div>
-<script>
-  function startSimulation() {
-   window.location.href = "/match_visualisation.html";
-   fetch('/matches/start-simulation', { method: 'POST' });
 
+<script>
+  async function startSimulation() {
+      const button = document.getElementById('startBtn');
+      button.disabled = true;
+      button.textContent = "Pokrećem simulaciju...";
+
+      try {
+          const response = await fetch('/matches/start-simulation', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (!response.ok) throw new Error('Server error');
+
+          const data = await response.json();
+
+          // Malo čekanja da thread počne i WebSocket uhvati prve evente
+          await new Promise(resolve => setTimeout(resolve, 2200));
+
+          window.location.href = `/match_visualisation.html?matchId=${data.matchId}`;
+
+      } catch (error) {
+          console.error(error);
+          alert("Greška pri pokretanju simulacije. Pokušaj ponovo.");
+          button.disabled = false;
+          button.textContent = "Start Simulation";
+      }
   }
-      window.addEventListener('load', () => {
-        const audio = document.getElementById('backgroundMusic');
-        if (audio) {
-          audio.volume = 0.5; // 50% jačina
-          audio.play().catch(error => console.log('Auto-play blocked:', error));
-        }
-      });
 </script>
 </body>
 </html>

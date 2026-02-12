@@ -1,5 +1,6 @@
 package org.example.footballmanager.model.event;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,6 +11,7 @@ import org.example.footballmanager.model.Player;
 @Entity
 public class OffsideEvent extends MatchEvent {
     @ManyToOne
+    @JsonIgnore
     private Player player;
 
     @Override

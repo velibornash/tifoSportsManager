@@ -1,5 +1,6 @@
 package org.example.footballmanager.model.event;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,13 +11,17 @@ import lombok.Setter;
 public class VARReviewEvent extends MatchEvent {
     int number;
 
+
     @ManyToOne(cascade = CascadeType.ALL)
+    @JsonIgnore
     private GoalEvent reviewedGoalEvent;
 
     @ManyToOne(cascade = CascadeType.ALL)
+    @JsonIgnore
     private PenaltyEvent reviewedPenaltyEvent;
 
     @ManyToOne(cascade = CascadeType.ALL)
+    @JsonIgnore
     private OffsideEvent reviewedOffsideEvent;
 
     private String decision; // "Overturned" ili "Confirmed"

@@ -1,7 +1,7 @@
 package org.example.footballmanager.controller;
 
-import jakarta.transaction.Transactional;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.GoalEventDTO;
 import org.example.footballmanager.dto.MatchDetailsDTO;
 import org.example.footballmanager.dto.PlayerDTO;
@@ -12,9 +12,13 @@ import org.example.footballmanager.util.PlayerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @RestController
 @RequestMapping("/matches")
 public class MatchController {
@@ -38,20 +42,22 @@ public class MatchController {
         this.teamRepository = teamRepository;
     }
 
-
-    @Transactional
     @SneakyThrows
     @PostMapping("/start-simulation")
-    public void simulateMatch() {
-        Thread.sleep(1500);
+    public ResponseEntity<Map<String, Object>> startSimulation() {
+        Thread.sleep(800);
+
         Team homeTeam = new Team();
         homeTeam.setName("Omladinac");
         Team awayTeam = new Team();
         awayTeam.setName("Sloga");
+
         teamRepository.save(homeTeam);
         teamRepository.save(awayTeam);
-        homeTeam=teamRepository.getReferenceById(homeTeam.getId());
-        awayTeam=teamRepository.getReferenceById(awayTeam.getId());
+
+        homeTeam = teamRepository.getReferenceById(homeTeam.getId());
+        awayTeam = teamRepository.getReferenceById(awayTeam.getId());
+
         List<Player> homePlayers = PlayerFactory.createOmladinacPlayers(homeTeam);
         List<Player> awayPlayers = PlayerFactory.createRandomTeamPlayers("Sloga", awayTeam);
 
@@ -61,7 +67,7 @@ public class MatchController {
         homeLineup.setSubstitutes(homePlayers.subList(11, 15));
         homeLineup.setFormation("4-4-2");
         lineupRepository.save(homeLineup);
-        homeLineup=lineupRepository.getReferenceById(homeLineup.getId());
+        homeLineup = lineupRepository.getReferenceById(homeLineup.getId());
 
         Lineup awayLineup = new Lineup();
         awayLineup.setTeam(awayTeam);
@@ -69,7 +75,7 @@ public class MatchController {
         awayLineup.setSubstitutes(awayPlayers.subList(11, 15));
         awayLineup.setFormation("4-2-3-1");
         lineupRepository.save(awayLineup);
-        awayLineup=lineupRepository.getReferenceById(awayLineup.getId());
+        awayLineup = lineupRepository.getReferenceById(awayLineup.getId());
 
         Match match = new Match();
         match.setHomeTeam(homeTeam);
@@ -79,15 +85,29 @@ public class MatchController {
         match.setMatchDate(LocalDateTime.now());
         matchRepository.save(match);
 
-        Match played = matchService.playMatch(match.getId());
-        System.out.println(matchService.generateMatchReport(played));
+        Long matchId = match.getId();
+
+        // Pokretanje simulacije asinhrono (transakcija se završila, match je u bazi)
+        matchService.playMatch(matchId)
+                .thenAccept(played -> {
+                    log.info("Simulacija završena za meč {}", matchId);
+                    System.out.println(matchService.generateMatchReport(played));
+                })
+                .exceptionally(throwable -> {
+                    log.error("Greška u simulaciji meča {}", matchId, throwable);
+                    return null;
+                });
+
+        return ResponseEntity.ok(Map.of(
+                "matchId", matchId,
+                "status", "started"
+        ));
     }
 
+    // Ostale metode ostaju nepromenjene
     @PostMapping("/play")
-    public Match playMatch(@RequestParam Long homeTeamId,
-                           @RequestParam Long awayTeamId,
-                           @RequestParam String homeFormation,
-                           @RequestParam String awayFormation) {
+    public Match playMatch(@RequestParam Long homeTeamId, @RequestParam Long awayTeamId,
+                           @RequestParam String homeFormation, @RequestParam String awayFormation) {
         return matchService.simulateMatch(homeTeamId, awayTeamId, homeFormation, awayFormation);
     }
 
@@ -95,9 +115,9 @@ public class MatchController {
     public Match assignLineups(@PathVariable Long matchId,
                                @RequestParam Long homeLineupId,
                                @RequestParam Long awayLineupId) {
-        Match match = matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Meč nije pronađen"));
-        Lineup home = lineupRepository.findById(homeLineupId).orElseThrow(() -> new RuntimeException("Home postava nije pronađena"));
-        Lineup away = lineupRepository.findById(awayLineupId).orElseThrow(() -> new RuntimeException("Away postava nije pronađena"));
+        Match match = matchRepository.findById(matchId).orElseThrow();
+        Lineup home = lineupRepository.findById(homeLineupId).orElseThrow();
+        Lineup away = lineupRepository.findById(awayLineupId).orElseThrow();
 
         match.setHomeLineup(home);
         match.setAwayLineup(away);
@@ -105,7 +125,7 @@ public class MatchController {
     }
 
     @PostMapping("/{matchId}/play")
-    public Match simulateMatch(@PathVariable Long matchId) {
+    public CompletableFuture<Match> simulateMatch(@PathVariable Long matchId) {
         return matchService.playMatch(matchId);
     }
 

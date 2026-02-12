@@ -289,6 +289,10 @@ function initTeams(event) {
 let socket;
 
 function setupWebSocket() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const matchId = urlParams.get('matchId');
+
+    console.log("Pokrenut meč sa ID:", matchId);   // za debug
 
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
     const wsUrl = `${wsProtocol}://${window.location.host}/match-events`;
@@ -297,7 +301,7 @@ function setupWebSocket() {
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
-            console.log("✅ WebSocket connected");
+            console.log("✅ WebSocket connected - Match ID:", matchId);
             lastEventBox.textContent = "🟢 Povezano, čekamo događaje...";
         };
 

@@ -1,5 +1,6 @@
 package org.example.footballmanager.model.event;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,9 +12,11 @@ import jakarta.persistence.Entity;
 @Setter
 public class CornerEvent extends MatchEvent {
     @ManyToOne
+    @JsonIgnore
     private Team team;
 
     @ManyToOne
+    @JsonIgnore
     private Player player;
 
     @Override

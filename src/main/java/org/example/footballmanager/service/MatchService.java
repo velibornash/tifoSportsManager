@@ -1,5 +1,6 @@
 package org.example.footballmanager.service;
 
+import jakarta.transaction.Transactional;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
@@ -9,11 +10,13 @@ import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.simulator.MatchSimulator;
 import org.example.footballmanager.util.MatchRatingCalculator;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -41,8 +44,10 @@ public class MatchService {
         this.matchSimulator = matchSimulator;
     }
 
+    @Async
+    @Transactional
     @SneakyThrows
-    public Match playMatch(Long matchId) {
+    public CompletableFuture<Match> playMatch(Long matchId) {
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found"));
 
@@ -55,7 +60,6 @@ public class MatchService {
         if (homePlayers.size() != 11 || awayPlayers.size() != 11)
             throw new RuntimeException("Each team must have exactly 11 players in lineup.");
 
-        // Kreiranje objekata za simulaciju
         Crowd crowd = new Crowd();
         Referee referee = new Referee();
 
@@ -71,38 +75,38 @@ public class MatchService {
         awayTactics.setName("Away tactics");
         awayTactics.setFormation(awayFormation);
 
-        // Simulacija meča
         matchSimulator.simulateMatch(match, crowd, referee, homeTactics, awayTactics, homePlayers, awayPlayers);
 
-        // Brojanje golova
+        // Osveži match iz baze da bi eventovi bili učitani (važno posle simulacije)
+        match = matchRepository.findById(matchId).orElseThrow();
+
+// Brojanje golova
+        final Team homeTeam = match.getHomeTeam();
+        final Team awayTeam = match.getAwayTeam();
+
         match.setHomeGoals((int) match.getGoals().stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(match.getHomeTeam()))
+                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(homeTeam))
                 .count());
+
         match.setAwayGoals((int) match.getGoals().stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(match.getAwayTeam()))
+                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(awayTeam))
                 .count());
 
-        // Kraj utakmice
-/*        MatchEndedEvent endedEvent = new MatchEndedEvent();
-        endedEvent.setMinute(90);
-        endedEvent.setMatch(match);
-        endedEvent.apply();*/
-
-        // Povrede i kartoni
+        // Povrede, kartoni, ocene, statistika
         simulateInjuriesAndCards(homePlayers, match);
         simulateInjuriesAndCards(awayPlayers, match);
-
-        // Ocene igrača
         assignRatings(homePlayers, match);
         assignRatings(awayPlayers, match);
-
-        // Čuvanje statistika
         savePlayerStats(match, homePlayers);
         savePlayerStats(match, awayPlayers);
 
-        return matchRepository.save(match);
+        Match saved = matchRepository.save(match);
+        log.info("Simulacija završena za meč {}", matchId);
+
+        return CompletableFuture.completedFuture(saved);
     }
 
+    // Ostale metode ostaju iste (assignRatings, simulateInjuriesAndCards, savePlayerStats, simulateMatch, generateMatchReport, appendPlayerRatings)
     private void assignRatings(List<Player> players, Match match) {
         for (Player player : players)
             player.setRating(MatchRatingCalculator.calculate(player, match));
@@ -110,7 +114,6 @@ public class MatchService {
 
     private void simulateInjuriesAndCards(List<Player> players, Match match) {
         for (Player player : players) {
-            // Povrede
             if (random.nextDouble() < 0.05) {
                 InjuryEvent injury = new InjuryEvent();
                 injury.setMinute(random.nextInt(90) + 1);
@@ -118,7 +121,6 @@ public class MatchService {
                 injury.setMatch(match);
                 injury.apply();
             }
-            // Žuti kartoni
             if (random.nextDouble() < 0.1) {
                 YellowCardEvent yc = new YellowCardEvent();
                 yc.setMinute(random.nextInt(90) + 1);

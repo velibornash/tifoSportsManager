@@ -36,8 +36,8 @@ public class MatchSimulator {
 
         Formation homeFormation = homeTactics.getFormation();
         Formation awayFormation = awayTactics.getFormation();
-        Thread.sleep(1500);
 
+        Thread.sleep(1500);
         // start meča
         MatchStartEvent startEvent = new MatchStartEvent();
         startEvent.setMinute(1);
@@ -45,7 +45,7 @@ public class MatchSimulator {
         startEvent.apply();
         webSocketHandler.broadcastEvent(startEvent);
         log.info("[{}'] Event: {}", startEvent.getMinute(), startEvent.getDescription());
-        Thread.sleep(1500);
+        Thread.sleep(2500);
 
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);
@@ -93,7 +93,7 @@ public class MatchSimulator {
                             try {
 
                                 webSocketHandler.broadcastEvent(goal);
-                                Thread.sleep(2000);
+                                Thread.sleep(1400);
                             } catch (Exception e) {
                                 log.error("WebSocket broadcast failed", e);
                             }

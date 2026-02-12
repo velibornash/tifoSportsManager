@@ -1,9 +1,8 @@
 package org.example.footballmanager.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import lombok.*;
 
 @Data
 @NoArgsConstructor
@@ -36,28 +35,20 @@ public class Player {
     private int totalGoals;
     private int totalAssists;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "team_id")
+    @JsonBackReference   // ← Ovo je back deo (Player → Team), sprečava ciklus
     private Team team;
 
-    // ========================
-    // Helper methods
-    // ========================
-
+    // Helper methods ostaju isti
     public Position getPositionEnum() {
-        return position; // sada je već enum
+        return position;
     }
 
-    /**
-     * Trenutni umor igrača = Fatigue skill + form
-     */
     public double getCurrentFatigue() {
         return skills.getFatigue() * 0.7 + (10.0 - form) * 0.3;
     }
 
-    /**
-     * Provera da li igrač može da primi loptu
-     */
     public boolean canReceiveBall() {
         return skills.getStamina() > 0 && getCurrentFatigue() < 8.0;
     }

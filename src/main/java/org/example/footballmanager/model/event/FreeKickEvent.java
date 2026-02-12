@@ -1,5 +1,6 @@
 package org.example.footballmanager.model.event;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.ManyToOne;
 import lombok.Getter;
@@ -12,14 +13,17 @@ import jakarta.persistence.Entity;
 @Setter
 public class FreeKickEvent extends MatchEvent {
     @ManyToOne
+    @JsonIgnore
     private Team team;
     private boolean direct; // true = šut direktno, false = centaršut
     private boolean dangerous;
 
     @ManyToOne(cascade = CascadeType.ALL)
+    @JsonIgnore
     private Player taker;
 
     @ManyToOne(cascade = CascadeType.ALL)
+    @JsonIgnore
     private Player player;
     @Override
     public void apply() {
