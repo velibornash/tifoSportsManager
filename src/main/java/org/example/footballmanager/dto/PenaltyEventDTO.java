@@ -5,10 +5,9 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class GoalEventDTO extends MatchEventDTO {
-    private String scorerName;
-    private String assistantName;
+public class PenaltyEventDTO extends MatchEventDTO {
+    private String takerName;
     private String teamName;
-    private String scoreAfterGoal;
     private boolean scored;
+    private String scoreAfterGoal;   // ako je postignut gol
 }

@@ -2,6 +2,7 @@ package org.example.footballmanager.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.example.footballmanager.dto.MatchEventDTO;
 import org.example.footballmanager.model.event.MatchEvent;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,26 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session);
     }
     public void broadcastEvent(MatchEvent event) {
+        try {
+            String json = objectMapper.writeValueAsString(event);
+
+            for (WebSocketSession session : sessions) {
+                try {
+                    if (session.isOpen()) {
+                        session.sendMessage(new TextMessage(json));
+                    } else {
+                        sessions.remove(session);
+                    }
+                } catch (Exception e) {
+                    sessions.remove(session);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void broadcastEvent(MatchEventDTO event) {
         try {
             String json = objectMapper.writeValueAsString(event);
 

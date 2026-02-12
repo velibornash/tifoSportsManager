@@ -19,7 +19,7 @@
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0,0,0,0.75);
             padding: 10px 20px;
             border-radius: 12px;
             font-family: monospace;
@@ -30,22 +30,34 @@
             text-overflow: ellipsis;
             z-index: 10;
         }
+        #queueInfo {
+            position: absolute;
+            bottom: 8px;
+            right: 12px;
+            font-size: 13px;
+            color: #aaa;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-radius: 6px;
+            z-index: 10;
+        }
         canvas {
             display: block;
             margin: 60px auto 10px auto;
             border: 2px solid #555;
-            background-color: #1e7d32; /* grass green */
+            background-color: #1e7d32;
             border-radius: 8px;
         }
     </style>
 </head>
 <body>
 <div id="lastEventBox">⌛ Čekamo događaje...</div>
+<div id="queueInfo">Queue: 0 | Proc: false</div>
 <button onclick="goBackToIndex()" style="position: absolute; top: 10px; right: 20px; z-index: 11;">⏪ Nazad</button>
 
 <script>
     function goBackToIndex() {
-      window.location.href = "/index.html";
+        window.location.href = "/index.html";
     }
 </script>
 
@@ -55,6 +67,7 @@
 
     let lastEvent = null;
     let lastEventBox;
+    let queueInfoBox;
 
     let homeTeamName = null;
     let awayTeamName = null;
@@ -62,67 +75,285 @@
     let awayScore = 0;
 
     // Slike
-    let playerImg, goalImg, offsideImg, cornerImg, freeKickImg, injuryImg, matchStartingImg, matchEndedImg, penaltyImg,fallbackPlayerImg, dynamicPlayerImg  ;
+    let playerImg, goalImg, offsideImg, cornerImg, freeKickImg, injuryImg;
+    let matchStartingImg, matchEndedImg, penaltyImg, fallbackPlayerImg, dynamicPlayerImg;
     let varImg, shotImg, yellowCardImg, redCardImg;
+
     let showGoalAnim = false;
     let goalAnimTimer = 0;
-    const goalAnimDurationFrames = 90; // 3 seconds at 30fps
-    let goalPos = { x: 0, y: 0 };
+    const goalAnimDurationFrames = 90;
 
     let showMatchStarting = true;
     let matchStartingTimer = 0;
-    const matchStartingDurationFrames = 60; // 2 sekunde na 30 fps
+    const matchStartingDurationFrames = 60;
+
+    // Queue + safeguards
+    let eventQueue = [];
+    let isProcessing = false;
+    let currentTimeoutId = null;
+
+    const EVENT_DELAY = 2200;     // 2.2 sekunde za obične evente
+    const GOAL_DELAY   = 2800;    // 2.8 sekunde za golove
+    const STUCK_TIMEOUT = 9000;   // 9 sekundi max čekanje po eventu
+
+    let lastDrawnEventKey = null;
+    let lastProcessStartTime = 0;
+    let receivedCounter = 0;
 
     function preload() {
-        playerImg = loadImage("/images/player.jpg");
-        goalImg = loadImage("/images/goal-gol.gif");
-        offsideImg = loadImage("/images/offside_flag.jpg");
-        cornerImg = loadImage("/images/corner.jpg");
-        freeKickImg = loadImage("/images/free_kick.png");
-        injuryImg = loadImage("/images/injury.jpg");
-        matchStartingImg = loadImage("/images/match_starting.jpg");
-        matchEndedImg = loadImage("/images/match_ended.jpg");
-        penaltyImg = loadImage("/images/penalty.jpg");
-        varImg = loadImage("/images/var.jpg");
-        shotImg = loadImage("/images/shot.jpg");
-        redCardImg = loadImage("/images/redcard.png");
-        yellowCardImg = loadImage("/images/yellowcard.jpg");
+        playerImg         = loadImage("/images/player.jpg");
+        goalImg           = loadImage("/images/goal-gol.gif");
+        offsideImg        = loadImage("/images/offside_flag.jpg");
+        cornerImg         = loadImage("/images/corner.jpg");
+        freeKickImg       = loadImage("/images/free_kick.png");
+        injuryImg         = loadImage("/images/injury.jpg");
+        matchStartingImg  = loadImage("/images/match_starting.jpg");
+        matchEndedImg     = loadImage("/images/match_ended.jpg");
+        penaltyImg        = loadImage("/images/penalty.jpg");
+        varImg            = loadImage("/images/var.jpg");
+        shotImg           = loadImage("/images/shot.jpg");
+        yellowCardImg     = loadImage("/images/yellowcard.jpg");
+        redCardImg        = loadImage("/images/redcard.png");
         fallbackPlayerImg = loadImage("/images/player.jpg");
-        dynamicPlayerImg = loadImage("/images/player.jpg");
+        dynamicPlayerImg  = fallbackPlayerImg;
     }
 
     function setup() {
         let canvas = createCanvas(canvasWidth, canvasHeight);
         canvas.parent(document.body);
 
-        lastEventBox = document.getElementById('lastEventBox');
+        lastEventBox  = document.getElementById('lastEventBox');
+        queueInfoBox  = document.getElementById('queueInfo');
 
         setupWebSocket();
         frameRate(30);
     }
 
+    function updateQueueInfo() {
+        if (queueInfoBox) {
+            queueInfoBox.textContent = `Queue: ${eventQueue.length} | Proc: ${isProcessing}`;
+        }
+    }
+
+    function processNextEvent() {
+        if (currentTimeoutId) {
+            clearTimeout(currentTimeoutId);
+            currentTimeoutId = null;
+        }
+
+        if (isProcessing || eventQueue.length === 0) {
+            updateQueueInfo();
+            return;
+        }
+
+        isProcessing = true;
+        lastProcessStartTime = Date.now();
+
+        let event = eventQueue.shift();
+
+        if (!event || !event.type) {
+            console.warn("Nevalidan event preskočen:", event);
+            isProcessing = false;
+            processNextEvent();
+            return;
+        }
+
+        console.log(`[${new Date().toLocaleTimeString()}] PROCESS #${eventQueue.length + 1} (queued: ${eventQueue.length}) → ${event.type} (${event.minute || '?'})`);
+
+        try {
+            initTeams(event);
+            updateScore(event);
+
+            lastEvent = event;
+            lastEventBox.textContent = buildLastEventText(event);
+
+            let playerFullName = getPlayerName(event)?.trim();
+            if (playerFullName && playerFullName.length > 2) {
+                console.log(`→ Loading image for: ${playerFullName}`);
+                loadPlayerImageByName(playerFullName);
+            } else {
+                dynamicPlayerImg = fallbackPlayerImg;
+            }
+
+            let delay = (event.type.toLowerCase() === "goal") ? GOAL_DELAY : EVENT_DELAY;
+
+            // Safeguard
+            setTimeout(() => {
+                if (isProcessing && Date.now() - lastProcessStartTime > STUCK_TIMEOUT) {
+                    console.warn(`STUCK DETECTED (${((Date.now() - lastProcessStartTime)/1000).toFixed(1)}s) → force next`);
+                    isProcessing = false;
+                    processNextEvent();
+                }
+            }, STUCK_TIMEOUT + 500);
+
+            currentTimeoutId = setTimeout(() => {
+                console.log(`[${new Date().toLocaleTimeString()}] Delay završen → ${event.type} (${event.minute || '?'})`);
+                isProcessing = false;
+                currentTimeoutId = null;
+                processNextEvent();
+            }, delay);
+
+        } catch (err) {
+            console.error("ERROR u processNextEvent:", err);
+            isProcessing = false;
+            currentTimeoutId = null;
+            processNextEvent();
+        }
+
+        updateQueueInfo();
+    }
+
+    // ────────────────────────────────────────────────
+    // DTO HELPER FUNKCIJE
+    // ────────────────────────────────────────────────
+
+    function getPlayerName(event) {
+        return event.scorerName || event.playerName || event.takerName ||
+               event.playerOutName || event.playerInName || "";
+    }
+
+    function getTeamName(event) {
+        return event.teamName || "";
+    }
+
+    function initTeams(event) {
+        if (!event) return;
+        if (event.homeTeamName) homeTeamName = event.homeTeamName;
+        if (event.awayTeamName) awayTeamName = event.awayTeamName;
+        if (event.teamName && !homeTeamName) homeTeamName = event.teamName;
+        if (event.teamName && event.teamName !== homeTeamName) awayTeamName = event.teamName;
+    }
+
+    function buildLastEventText(event) {
+        if (!event) return "⌛ Čekamo događaje...";
+
+        let symbol = '📩';
+        let type = (event.type || 'Unknown').toLowerCase();
+        let minute = event.minute || '?';
+        let player = getPlayerName(event);
+        let extra = "";
+
+        switch(type) {
+            case "goal":               symbol = "⚽"; extra = player ? ` – ${player}` : ""; break;
+            case "yellowcard":         symbol = "🟨"; extra = player ? ` ${player}` : ""; break;
+            case "redcard":            symbol = "🟥"; extra = player ? ` ${player}` : ""; break;
+            case "penalty":            symbol = event.scored ? "✅" : "❌"; extra = player ? ` ${player}` : ""; break;
+            case "injury":             symbol = "❌"; extra = player ? ` ${player}` : ""; break;
+            case "substitution":       symbol = "🔄"; extra = ` ${event.playerOutName||'?'} → ${event.playerInName||'?'} `; break;
+            case "offside":            symbol = "🚩"; extra = player ? ` ${player}` : ""; break;
+            case "corner":             symbol = "⛳"; break;
+            case "freekick":           symbol = "⚽"; extra = player ? ` ${player}` : ""; break;
+            case "shotontarget":       symbol = "🎯"; extra = player ? ` ${player} (u okvir)` : ""; break;
+            case "shotofftarget":      symbol = "🎯"; extra = player ? ` ${player} (promašaj)` : ""; break;
+            case "varreview":          symbol = "📹"; extra = event.decision ? ` (${event.decision})` : ""; break;
+            case "chance":             symbol = "⚡"; break;
+            case "matchstarted":       symbol = "🏁"; extra = " Početak meča"; break;
+            case "matchended":         symbol = "🏁"; extra = ` KRAJ • ${homeScore}–${awayScore}`; break;
+            default:                   extra = player ? ` ${player}` : "";
+        }
+
+        return `${symbol}  [${minute}'] ${type}${extra}`;
+    }
+
+    function updateScore(event) {
+        if (!event || event.type?.toLowerCase() !== "goal") return;
+
+        let team = getTeamName(event);
+        if (team === homeTeamName) {
+            homeScore++;
+            console.log(`HOME GOAL → ${homeScore} : ${awayScore}`);
+        } else if (team === awayTeamName) {
+            awayScore++;
+            console.log(`AWAY GOAL → ${homeScore} : ${awayScore}`);
+        }
+
+        showGoalAnim = true;
+        goalAnimTimer = 0;
+        goalPos = { x: canvasWidth / 2, y: canvasHeight / 2 };
+    }
+
+    // ────────────────────────────────────────────────
+    // WEBSOCKET
+    // ────────────────────────────────────────────────
+
+    let socket;
+
+    function setupWebSocket() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const matchId = urlParams.get('matchId');
+
+        console.log("Vizualizacija pokrenuta → matchId:", matchId);
+
+        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsProtocol}://${window.location.host}/match-events`;
+
+        function connect() {
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("WS povezan → matchId:", matchId);
+                lastEventBox.textContent = "🟢 Povezano – čekamo događaje";
+            };
+
+            socket.onmessage = (msg) => {
+                receivedCounter++;
+                let event;
+                try {
+                    event = JSON.parse(msg.data);
+                } catch (e) {
+                    console.warn("Nevalidan JSON primljen:", msg.data.substring(0,80));
+                    return;
+                }
+
+                if (event.type === 'PING') return;
+
+                console.log(`[${new Date().toLocaleTimeString()}] ← #${receivedCounter} | ${event.type || "?"} | ${event.minute || '?'}′ | queue sada: ${eventQueue.length + 1}`);
+
+                eventQueue.push(event);
+                processNextEvent();
+                updateQueueInfo();
+            };
+
+            socket.onclose = () => {
+                console.log("WS zatvoren → reconnect za 2s...");
+                lastEventBox.textContent = "🔄 Reconnect...";
+                setTimeout(connect, 2000);
+            };
+
+            socket.onerror = (err) => console.error("WS greška:", err);
+        }
+
+        connect();
+    }
+
+    // ────────────────────────────────────────────────
+    // CRTANJE – TEREN, ANIMACIJE, INFO...
+    // ────────────────────────────────────────────────
+
+    let goalPos = { x: 0, y: 0 };
+
     function drawField() {
-        background(30, 130, 70); // Grass green
+        background(30, 130, 70);
 
         stroke(255);
         strokeWeight(2);
         noFill();
 
-        rect(10, 50, canvasWidth - 20, canvasHeight - 100); // Field outline
-        line(canvasWidth / 2, 50, canvasWidth / 2, canvasHeight - 50); // Center line vertical
+        rect(10, 50, canvasWidth - 20, canvasHeight - 100);
+        line(canvasWidth / 2, 50, canvasWidth / 2, canvasHeight - 50);
 
-        ellipse(canvasWidth / 2, canvasHeight / 2, 100, 100); // Center circle
+        ellipse(canvasWidth / 2, canvasHeight / 2, 100, 100);
 
-        rect(10, canvasHeight / 2 - 75, 100, 150); // Left penalty box
-        rect(canvasWidth - 110, canvasHeight / 2 - 75, 100, 150); // Right penalty box
+        rect(10, canvasHeight / 2 - 75, 100, 150);
+        rect(canvasWidth - 110, canvasHeight / 2 - 75, 100, 150);
 
-        rect(10, canvasHeight / 2 - 30, 30, 60); // Left goal box
-        rect(canvasWidth - 40, canvasHeight / 2 - 30, 30, 60); // Right goal box
+        rect(10, canvasHeight / 2 - 30, 30, 60);
+        rect(canvasWidth - 40, canvasHeight / 2 - 30, 30, 60);
 
         fill(255);
         noStroke();
-        ellipse(60, canvasHeight / 2, 8, 8); // Left penalty mark
-        ellipse(canvasWidth - 60, canvasHeight / 2, 8, 8); // Right penalty mark
+        ellipse(60, canvasHeight / 2, 8, 8);
+        ellipse(canvasWidth - 60, canvasHeight / 2, 8, 8);
     }
 
     function mapPositionToCoords(pos) {
@@ -149,11 +380,9 @@
         if (!pos) return { x: canvasWidth / 2, y: canvasHeight / 2 };
 
         if (pos.toLowerCase() === 'penalty_spot') {
-            if (isHome) {
-                return { x: canvasWidth - 60, y: canvasHeight / 2 };
-            } else {
-                return { x: 60, y: canvasHeight / 2 };
-            }
+            return isHome
+                ? { x: canvasWidth - 60, y: canvasHeight / 2 }
+                : { x: 60, y: canvasHeight / 2 };
         }
 
         let coords = mapPositionToCoords(pos);
@@ -171,167 +400,6 @@
         return coords;
     }
 
-    function getPlayerName(event) {
-        if (!event) return "";
-        if (event.scorer?.name) return event.scorer.name;
-        if (event.shooter?.name) return event.shooter.name;
-        if (event.taker?.name) return event.taker.name;
-        if (event.player?.name) return event.player.name;
-        if (event.injuredPlayer?.name) return event.injuredPlayer.name;
-        if (event.assister?.name) return event.assister.name;
-        if (event.creator?.name) return event.creator.name;
-        if (event.offender?.name) return event.offender.name;
-        if (event.playerName) return event.playerName;
-        return "";
-    }
-
-        function getPlayerObject(event) {
-        if (!event) return "";
-        if (event.scorer) return event.scorer;
-        if (event.shooter) return event.shooter;
-        if (event.taker) return event.taker;
-        if (event.player) return event.player;
-        if (event.injuredPlayer) return event.injuredPlayer;
-        if (event.assister) return event.assister;
-        if (event.creator) return event.creator;
-        if (event.offender) return event.offender;
-        return "";
-    }
-function initTeams(event) {
-    if (!event?.match) return;
-
-    if (!homeTeamName) homeTeamName = event.match.homeTeam.name;
-    if (!awayTeamName) awayTeamName = event.match.awayTeam.name;
-}
-
-    function buildLastEventText(event) {
-        if (!event) return "⌛ Čekamo događaje...";
-        let symbol = '📩';
-        let type = event.type || 'Unknown';
-        let minute = event.minute || '?';
-        let playerName = getPlayerName(event);
-        let playerObject = getPlayerObject(event);
-        if (playerObject && playerObject.name) {
-            dynamicPlayerImg = loadPlayerImageByName(playerObject.name);
-        }
-        else
-        {
-            dynamicPlayerImg = fallbackPlayerImg;
-    }
-        let extra = "";
-
-        switch(type.toLowerCase()) {
-            case "goal":
-                symbol = "⚽";
-                extra = playerName ? ` - ${playerName}` : "";
-                break;
-            case "yellow card":
-            case "yellow card second":
-            case "yellow card first":
-                symbol = "🟨";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "red card":
-                symbol = "🔴";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "penalty":
-                symbol = event.scored ? "✅" : "❌";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "injury":
-                symbol = "❌";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "offside":
-                symbol = "🚩";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "corner":
-                symbol = "⭯";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            case "var review":
-                symbol = "📹";
-                extra = playerName ? `: ${playerName}` : "";
-                break;
-            default:
-                extra = playerName ? `: ${playerName}` : "";
-        }
-
-        return `${symbol} [${minute}'] ${type}${extra}`;
-    }
-
-    function updateScore(event) {
-        if (!event.team || !event.type) return;
-
-        if (!homeTeamName) homeTeamName = event.team.name;
-        else if (!awayTeamName && event.team.name !== homeTeamName) awayTeamName = event.team.name;
-
-        console.log(`updateScore called with event.type=${event.type}, scored=${event.scored}, team=${event.team.name}`);
-
-        const type = event.type.toLowerCase();
-
-        if (type === "goal") {
-            if (event.team.name === homeTeamName) {
-                homeScore++;
-                console.log(`Home score updated: ${homeScore}`);
-            } else if (event.team.name === awayTeamName) {
-                awayScore++;
-                console.log(`Away score updated: ${awayScore}`);
-            }
-            showGoalAnim = true;
-            goalAnimTimer = 0;
-            goalPos = mapPositionToCoordsWithSide(event.playerPosition || event.ballPosition || 'center', event.team.name === homeTeamName);
-        }
-    }
-
-let socket;
-
-function setupWebSocket() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const matchId = urlParams.get('matchId');
-
-    console.log("Pokrenut meč sa ID:", matchId);   // za debug
-
-    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const wsUrl = `${wsProtocol}://${window.location.host}/match-events`;
-
-    function connect() {
-        socket = new WebSocket(wsUrl);
-
-        socket.onopen = () => {
-            console.log("✅ WebSocket connected - Match ID:", matchId);
-            lastEventBox.textContent = "🟢 Povezano, čekamo događaje...";
-        };
-
-        socket.onmessage = (msg) => {
-            let event = JSON.parse(msg.data);
-            console.log("📩 Event received:", event);
-
-            initTeams(event);
-            updateScore(event);
-
-            lastEvent = event;
-            lastEventBox.textContent = buildLastEventText(event);
-        };
-
-        socket.onclose = () => {
-            console.log("❌ WebSocket closed. Reconnecting...");
-            lastEventBox.textContent = "🔄 Pokušavamo reconnect...";
-            setTimeout(connect, 2000); // retry za 2 sekunde
-        };
-
-        socket.onerror = (err) => {
-            console.log("⚠️ WebSocket error:", err);
-            socket.close();
-        };
-    }
-
-    connect();
-}
-
-
     function drawGoalAnimation() {
         if (!showGoalAnim) return;
 
@@ -341,26 +409,13 @@ function setupWebSocket() {
         goalAnimTimer++;
         if (goalAnimTimer > goalAnimDurationFrames) {
             showGoalAnim = false;
-            goalAnimTimer = 0;
         }
-    }
-
-    function jitterCoord(coord) {
-        return {
-            x: coord.x + random(-10, 10),
-            y: coord.y + random(-10, 10)
-        };
     }
 
     function drawPlayerCenter() {
         imageMode(CENTER);
-        if (dynamicPlayerImg) {
-            image(dynamicPlayerImg, canvasWidth / 2, canvasHeight / 2, 120, 120);
-        } else if (fallbackPlayerImg) {
-            image(fallbackPlayerImg, canvasWidth / 2, canvasHeight / 2, 120, 120);
-        }
+        image(dynamicPlayerImg || fallbackPlayerImg, canvasWidth / 2, canvasHeight / 2, 120, 120);
     }
-
 
     function drawEventImage(img, x, y, w = 120, h = 120) {
         if (!img) return;
@@ -371,191 +426,174 @@ function setupWebSocket() {
     function drawPlayerInfo() {
         if (!lastEvent) return;
 
-        let player = getPlayerObject(lastEvent);
-        if (!player) return;
-
-        let fullName = player.name;
+        let playerName = getPlayerName(lastEvent);
+        if (!playerName) return;
 
         let x = canvasWidth / 2;
         let y = canvasHeight / 2 + 80;
 
-        push();  // Čuva trenutno stanje (fill, stroke, rectMode...)
-        // Pozadina poluprovidna ispod teksta
+        push();
         fill(0, 0, 0, 150);
         rectMode(CENTER);
-        rect(x, y + 60, 260, 110, 10);
+        rect(x, y + 60, 300, 140, 10);
 
-        // Vrati rectMode na default CORNER da ne bi remetio crtanje terena
-        rectMode(CORNER);
-
-        // Tekst
         fill('white');
         noStroke();
         textAlign(CENTER, TOP);
 
         textSize(20);
         textStyle(BOLD);
-        text(fullName, x, y);
+        text(playerName, x, y);
 
         textSize(16);
         textStyle(NORMAL);
 
-        text(`📏 Visina: ${Math.round(player.height * 100)} cm`, x, y + 30);
-        text(`⚖️ Težina: ${player.weight} kg`, x, y + 55);
-        text(`🎂 Godine: ${player.age}`, x, y + 80);
-        text(`🥅 Golovi ukupno: ${player.totalGoals}`, x, y + 105);
+        text(`📏 Visina: ${lastEvent.playerHeight ? Math.round(lastEvent.playerHeight * 100) + " cm" : "?"}`, x, y + 30);
+        text(`⚖️ Težina: ${lastEvent.playerWeight ? lastEvent.playerWeight + " kg" : "?"}`, x, y + 55);
+        text(`🎂 Godine: ${lastEvent.playerAge || "?"}`, x, y + 80);
+        text(`🥅 Golovi karijera: ${lastEvent.playerTotalGoals || 0}`, x, y + 105);
+
+        pop();
     }
 
+    function drawEventOverlay() {
+        if (!lastEvent) return;
 
-function loadPlayerImageByName(fullName) {
-    if (!fullName) {
-        dynamicPlayerImg = fallbackPlayerImg;
-        return;
-    }
+        let type = (lastEvent.type || "").toLowerCase();
+        let img = null;
 
-    let fileName = fullName.replace(/\s+/g, "_") + ".jpg";
+        if      (type === "goal")                 img = goalImg;
+        else if (type === "offside")              img = offsideImg;
+        else if (type === "corner")               img = cornerImg;
+        else if (type === "penalty")              img = penaltyImg;
+        else if (type === "injury")               img = injuryImg;
+        else if (type === "freekick")             img = freeKickImg;
+        else if (type.includes("shot"))           img = shotImg;
+        else if (type === "varreview")            img = varImg;
+        else if (type === "yellowcard")           img = yellowCardImg;
+        else if (type === "redcard")              img = redCardImg;
 
-    loadImage(`/images/${fileName}`,
-        img => {
-            dynamicPlayerImg = img;
-            console.log("Loaded player image for", fullName);
-        },
-        err => {
-            console.log("Failed to load player image for", fullName, ", using fallback");
-            dynamicPlayerImg = fallbackPlayerImg;
+        if (img) {
+            imageMode(CENTER);
+            image(img, canvasWidth - 60, canvasHeight - 60, 80, 80);
         }
-    );
-}
-function drawEventOverlay() {
-    if (!lastEvent) return;
-
-    let type = lastEvent.type.toLowerCase();
-    let img = null;
-
-    if (type === "goal") img = goalImg;
-    else if (type.includes("offside")) img = offsideImg;
-    else if (type.includes("corner")) img = cornerImg;
-    else if (type.includes("penalty")) img = penaltyImg;
-    else if (type.includes("injury")) img = injuryImg;
-    else if (type.includes("free kick")) img = freeKickImg;
-    else if (type.includes("shot")) img = shotImg;
-    else if (type.includes("var")) img = varImg;
-    else if (type.includes("yellow card")) img = yellowCardImg;
-    else if (type.includes("red card")) img = redCardImg;
-
-    if (img) {
-        imageMode(CENTER);
-        image(img, canvasWidth - 60, canvasHeight - 60, 80, 80);
     }
 
-}
+    function loadPlayerImageByName(fullName) {
+        if (!fullName || fullName.length < 3) {
+            dynamicPlayerImg = fallbackPlayerImg;
+            return;
+        }
+
+        let fileName = fullName.replace(/\s+/g, "_") + ".jpg";
+
+        loadImage(`/images/${fileName}`,
+            img => {
+                dynamicPlayerImg = img;
+                console.log(`✓ Učitana slika: ${fullName} (${img.width}×${img.height})`);
+            },
+            err => {
+                console.warn(`✗ Nema slike za ${fullName} → fallback`);
+                dynamicPlayerImg = fallbackPlayerImg;
+            }
+        );
+    }
 
     function draw() {
         drawField();
 
-        // Prikaz rezultata i timova
         fill("white");
         noStroke();
         textSize(22);
         textAlign(CENTER, CENTER);
-        const homeName = homeTeamName || "Omladinac";
-        const awayName = awayTeamName || "Sloga";
-        text(`${homeName} ${homeScore} - ${awayScore} ${awayName}`, canvasWidth / 2, 30);
+        const home = homeTeamName || "Omladinac";
+        const away = awayTeamName || "Sloga";
+        text(`${home}  ${homeScore} – ${awayScore}  ${away}`, canvasWidth / 2, 30);
 
-        // Prikaz match starting slike na početku (oko 2 sekunde)
         if (showMatchStarting) {
             imageMode(CENTER);
             image(matchStartingImg, canvasWidth / 2, canvasHeight / 2, canvasWidth, canvasHeight);
             matchStartingTimer++;
-            if (matchStartingTimer > matchStartingDurationFrames) {
-                showMatchStarting = false;
-            }
+            if (matchStartingTimer > matchStartingDurationFrames) showMatchStarting = false;
+            updateQueueInfo();
             return;
         }
 
-        // Kraj utakmice sa slikom
-        if (lastEvent && lastEvent.type.toLowerCase() === "match ended") {
+        if (lastEvent && lastEvent.type?.toLowerCase() === "matchended") {
             imageMode(CENTER);
             image(matchEndedImg, canvasWidth / 2, canvasHeight / 2, 150, 150);
-
             fill("white");
             textSize(48);
-            text("🏁 Kraj utakmice", canvasWidth / 2, canvasHeight / 2 + 90);
+            text("KRAJ UTAKMICE", canvasWidth / 2, canvasHeight / 2 + 90);
+            updateQueueInfo();
             return;
         }
 
         if (lastEvent) {
-            let isHome = lastEvent.team?.name === homeTeamName;
-            let coords = mapPositionToCoordsWithSide(lastEvent.playerPosition || lastEvent.ballPosition || 'center', isHome);
+            let isHome = getTeamName(lastEvent) === homeTeamName;
+            let coords = mapPositionToCoordsWithSide('center', isHome);
             let x = coords.x;
             let y = coords.y;
 
-            let teamColor = 'gray';
-            if (lastEvent.team?.name === homeName) teamColor = 'blue';
-            else if (lastEvent.team?.name === awayName) teamColor = 'red';
+            let teamColor = (getTeamName(lastEvent) === home) ? color(60,120,255) :
+                            (getTeamName(lastEvent) === away) ? color(220,40,40) : color(180);
 
-            let eventType = lastEvent.type.toLowerCase();
+            let eventType = (lastEvent.type || "").toLowerCase();
 
-            console.log("🎯 Drawing eventType:", eventType);
+            let currentKey = `${eventType}-${lastEvent.minute || '?'}-${getPlayerName(lastEvent)}`;
+            if (currentKey !== lastDrawnEventKey) {
+                console.log(`Drawing → ${eventType} (${lastEvent.minute || '?'})`);
+                lastDrawnEventKey = currentKey;
+            }
 
             noStroke();
 
-            // Prikaz event slike ili crteža prema tipu događaja
             if (eventType === "penalty") {
                 drawEventImage(penaltyImg, x, y);
-                if (showGoalAnim && lastEvent.scored) {
-                    drawGoalAnimation();
-                }
+                if (showGoalAnim && lastEvent.scored) drawGoalAnimation();
             } else if (eventType === "goal") {
                 drawGoalAnimation();
-            }
-            else {
+            } else {
                 if (showGoalAnim) {
                     drawGoalAnimation();
                 } else {
-                    // Slike za specificirane evente
-                    if (eventType.includes("offside")) {
-                        drawEventImage(offsideImg, x, y);
-                    } else if (eventType.includes("corner")) {
-                        drawEventImage(cornerImg, x, y);
-                    } else if (eventType.includes("free kick")) {
-                        drawEventImage(freeKickImg, x, y);
-                    } else if (eventType.includes("injury")) {
-                        drawEventImage(injuryImg, x, y);
-                    } else if (eventType.includes("yellow card")) {
+                    if      (eventType === "offside")     drawEventImage(offsideImg, x, y);
+                    else if (eventType === "corner")      drawEventImage(cornerImg, x, y);
+                    else if (eventType === "freekick")    drawEventImage(freeKickImg, x, y);
+                    else if (eventType === "injury")      drawEventImage(injuryImg, x, y);
+                    else if (eventType === "yellowcard") {
                         let blink = frameCount % 30 < 15;
-                        fill(blink ? 'yellow' : 'orange');
-                        rect(x - 10, y - 15, 20, 30, 5);
-                    } else if (eventType.includes("red card")) {
+                        fill(blink ? color(255,220,0) : color(220,180,0));
+                        rect(x - 12, y - 18, 24, 36, 6);
+                    }
+                    else if (eventType === "redcard") {
                         let blink = frameCount % 30 < 15;
-                        fill(blink ? 'red' : 'darkred');
-                        rect(x - 10, y - 15, 20, 30, 5);
-                    } else if (eventType.includes("chance")) {
-                        fill('cyan');
-                        ellipse(x, y, 16, 16);
-                    } else if (eventType.includes("var review")) {
-                        fill('white');
-                        textSize(18);
-                        text("📹", x, y);
-                    } else if (eventType.includes("shot")) {
+                        fill(blink ? color(220,0,0) : color(160,0,0));
+                        rect(x - 12, y - 18, 24, 36, 6);
+                    }
+                    else if (eventType.includes("shot")) {
                         fill(teamColor);
-                        ellipse(x, y, 15, 15);
-                    } else {
+                        ellipse(x, y, 16, 16);
+                    }
+                    else {
                         fill(teamColor);
                         ellipse(x, y, 10, 10);
                     }
                 }
             }
 
-            // Uvek crtamo player.jpg u centru terena uz event (ako ima eventa)
             drawPlayerCenter();
             drawPlayerInfo();
-
-        } else {
-            // Nema eventa, ali ako je goal animacija, crtamo je
-            if (showGoalAnim) drawGoalAnimation();
         }
+
         drawEventOverlay();
+
+        fill(220,60,60);
+        textSize(13);
+        textAlign(LEFT, BOTTOM);
+        text(`Img: ${dynamicPlayerImg?.width ? dynamicPlayerImg.width+'×'+dynamicPlayerImg.height : "fallback"}`, 12, canvasHeight-8);
+
+        updateQueueInfo();
     }
 </script>
 </body>

@@ -30,7 +30,9 @@ import org.example.footballmanager.model.Match;
         @JsonSubTypes.Type(value = ShotOffTargetEvent.class, name = "shot off target"),
         @JsonSubTypes.Type(value = FreeKickEvent.class, name = "free kick"),
         @JsonSubTypes.Type(value = SubstitutionEvent.class, name = "substitution"),
-        @JsonSubTypes.Type(value = MatchEndedEvent.class, name = "match ended")
+        @JsonSubTypes.Type(value = MatchEndedEvent.class, name = "match ended"),
+        @JsonSubTypes.Type(value = MatchStartEvent.class, name = "match started")
+
 })
 public abstract class MatchEvent {
     @Id
