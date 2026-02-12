@@ -4,66 +4,85 @@ import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Skills;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.PlayerRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.util.*;
 
+@Component
 public class PlayerFactory {
 
-    private static final Random random = new Random();
+    private  final PlayerRepository playerRepository;
+    private  final Random random = new Random();
 
-    public static List<Player> createOmladinacPlayers(Team team) {
+    @Autowired
+    public PlayerFactory(PlayerRepository playerRepository) {
+        this.playerRepository = playerRepository;
+    }
+
+    /**
+     * Vraća igrače za Omladinac – učitava iz baze ako postoje, kreira samo ako ne postoje
+     */
+    public List<Player> createOmladinacPlayers(Team team) {
         List<Player> players = new ArrayList<>();
 
-        players.add(createPlayer("Zvezdan Vukomanović", 22, team, 186900000, 1888000, 177, 75, 10, 12,
-                9, 17, 4, 9, 4, 4, 8, 3, Position.GK));
+        // Podaci o igračima Omladinca (ime, pozicija, godine, itd.)
+        Object[][] data = {
+                {"Zvezdan Vukomanović", Position.GK, 22, 186900000.0, 1888000.0, 177.0, 75.0, 10.0, 12, 9, 17, 4, 9, 4, 4, 8, 3},
+                {"Borislav Negovanović", Position.ATT, 20, 39320000.0, 482000.0, 180.0, 75.2, 14.0, 15, 9, 0, 4, 14, 11, 5, 6, 11},
+                {"Ljupče Ožegović", Position.ATT, 20, 33740000.0, 366000.0, 190.0, 90.9, 17.0, 13, 7, 1, 3, 14, 6, 7, 4, 11},
+                {"Aleksandar Simić", Position.ATT, 20, 20280000.0, 262000.0, 181.0, 78.2, 6.0, 12, 6, 1, 11, 8, 10, 4, 7, 12},
+                {"Žika Veljković", Position.MID, 24, 103880000.0, 1684000.0, 168.0, 58.5, 10.0, 16, 11, 0, 11, 16, 14, 14, 15, 7},
+                {"Šumenko Dabić", Position.MID, 24, 124740000.0, 1802000.0, 189.0, 80.9, 16.0, 17, 11, 1, 7, 16, 14, 13, 15, 6},
+                {"Darko Živanov", Position.DEF, 25, 113560000.0, 1548000.0, 170.0, 64.5, 18.0, 16, 11, 1, 15, 16, 12, 11, 11, 7},
+                {"David-Ionuţ Petri", Position.DEF, 25, 138580000.0, 1982000.0, 183.0, 76.3, 18.0, 15, 11, 1, 16, 17, 10, 12, 11, 9},
+                {"Ivica Tomić", Position.MID, 25, 141720000.0, 2008000.0, 184.0, 87.9, 18.0, 17, 11, 1, 9, 16, 15, 14, 14, 6},
+                {"Nenad Kačar", Position.DEF, 26, 61660000.0, 1514000.0, 166.0, 63.2, 0.0, 15, 11, 0, 16, 14, 12, 9, 13, 9},
+                {"Vladislav Cvijić", Position.DEF, 29, 138560000.0, 2332000.0, 199.0, 94.9, 17.0, 17, 11, 1, 17, 17, 9, 8, 8, 6},
+                {"Radenko Timić", Position.GK, 23, 106780000.0, 930000.0, 159.0, 65.5, 15.0, 11, 11, 13, 4, 15, 4, 4, 7, 4},
+                {"Luigi Verdone", Position.MID, 31, 118560000.0, 1680000.0, 185.0, 78.7, 17.0, 13, 11, 0, 16, 14, 11, 12, 13, 8},
+                // dodaj ostale igrače po potrebi...
+        };
 
-        players.add(createPlayer("Borislav Negovanović", 20, team, 39320000, 482000, 180, 75.2, 14, 15,
-                9, 0, 4, 14, 11, 5, 6, 11, Position.ATT));
+        for (Object[] row : data) {
+            String name = (String) row[0];
+            Position position = (Position) row[1];
+            int age = (int) row[2];
+            double value = (double) row[3];
+            double earnings = (double) row[4];
+            double height = (double) row[5];
+            double weight = (double) row[6];
+            double form = (double) row[7];
+            int stamina = (int) row[8];
+            int keeper = (int) row[9];
+            int defender = (int) row[10];
+            int pace = (int) row[11];
+            int technique = (int) row[12];
+            int playmaker = (int) row[13];
+            int passing = (int) row[14];
+            int striker = (int) row[15];
 
-        players.add(createPlayer("Ljupče Ožegović", 20, team, 33740000, 366000, 190, 90.9, 17, 13,
-                7, 1, 3, 14, 6, 7, 4, 11, Position.ATT));
+            // === KLJUČNA LOGIKA: FIND OR CREATE ===
+            Player player = playerRepository.findByNameAndTeam(name, team)
+                    .orElseGet(() -> {
+                        Player newPlayer = createPlayer(name, age, team, value, earnings,
+                                height, weight, form, 10, stamina, keeper, defender,
+                                pace, technique, playmaker, passing, striker, position);
 
-        players.add(createPlayer("Aleksandar Simić", 20, team, 20280000, 262000, 181, 78.2, 6, 12,
-                6, 1, 11, 8, 10, 4, 7, 12, Position.ATT));
+                        Player saved = playerRepository.save(newPlayer);
+                        System.out.println("→ Kreiran novi igrač u bazi: " + name);
+                        return saved;
+                    });
 
+            players.add(player);
+        }
 
-        players.add(createPlayer("Žika Veljković", 24, team, 103880000, 1684000, 168, 58.5, 10, 16,
-                11, 0, 11, 16, 14, 14, 15, 7, Position.MID));
-
-        players.add(createPlayer("Šumenko Dabić", 24, team, 124740000, 1802000, 189, 80.9, 16, 17,
-                11, 1, 7, 16, 14, 13, 15, 6, Position.MID));
-
-        players.add(createPlayer("Darko Živanov", 25, team, 113560000, 1548000, 170, 64.5, 18, 16,
-                11, 1, 15, 16, 12, 11, 11, 7, Position.DEF));
-
-        players.add(createPlayer("David-Ionuţ Petri", 25, team, 138580000, 1982000, 183, 76.3, 18, 15,
-                11, 1, 16, 17, 10, 12, 11, 9, Position.DEF));
-
-        players.add(createPlayer("Ivica Tomić", 25, team, 141720000, 2008000, 184, 87.9, 18, 17,
-                11, 1, 9, 16, 15, 14, 14, 6, Position.MID));
-
-        players.add(createPlayer("Nenad Kačar", 26, team, 61660000, 1514000, 166, 63.2, 0, 15,
-                11, 0, 16, 14, 12, 9, 13, 9, Position.DEF));
-
-        players.add(createPlayer("Vladislav Cvijić", 29, team, 138560000, 2332000, 199, 94.9, 17, 17,
-                11, 1, 17, 17, 9, 8, 8, 6, Position.DEF));
-
-        players.add(createPlayer("Radenko Timić", 23, team, 106780000, 930000, 159, 65.5, 15, 11,
-                11, 13, 4, 15, 4, 4, 7, 4, Position.GK));
-
-        players.add(createPlayer("Luigi Verdone", 31, team, 118560000, 1680000, 185, 78.7, 17, 13,
-                11, 0, 16, 14, 11, 12, 13, 8, Position.MID));
-
-        players.add(createPlayer("Velibor Mandzo", 61, team, 200000, 32000, 181, 74.3, 2, 16,
-                6, 0, 0, 0, 0, 0, 0, 0, Position.ATT));
-
-        players.add(createPlayer("Remorker Đetić", 17, team, 2640000, 56000, 182, 86.1, 5, 0,
-                1, 0, 0, 5, 0, 0, 1, 8, Position.DEF));
-
+        System.out.println("Omladinac igrači učitani/kreirani: " + players.size());
         return players;
     }
 
-    public static List<Player> createRandomTeamPlayers(String teamName, Team team) {
+    public List<Player> createRandomTeamPlayers(String teamName, Team team) {
         List<Player> players = new ArrayList<>();
         Set<Integer> gkIndexes = new HashSet<>(List.of(random.nextInt(11), 11 + random.nextInt(4)));
 
@@ -111,11 +130,12 @@ public class PlayerFactory {
         p.setTeam(team);
         p.setPlayerValue(value);
         p.setEarnings(earnings);
-        p.setHeight(height / 100.0); // convert to meters
+        p.setHeight(height / 100.0);
         p.setWeight(weight);
         p.setForm(form);
-        p.setTalent((20.0 - (discipline + form)) / 2.0); // approx
+        p.setTalent((20.0 - (discipline + form)) / 2.0);
         p.setPosition(position);
+
         Skills s = new Skills();
         s.setStamina(stamina);
         s.setGoalkeeper(keeper);
@@ -126,6 +146,7 @@ public class PlayerFactory {
         s.setPassing(passing);
         s.setStriker(striker);
         p.setSkills(s);
+
         return p;
     }
 }

@@ -27,18 +27,18 @@ public class MatchController {
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
     private final TeamRepository teamRepository;
-    private final MatchPlayerStatsRepository matchPlayerStatsRepository;
+    private final PlayerRepository playerRepository;
 
     @Autowired
     public MatchController(MatchService matchService,
                            MatchRepository matchRepository,
                            LineupRepository lineupRepository,
                            MatchPlayerStatsRepository matchPlayerStatsRepository,
-                           TeamRepository teamRepository) {
+                           TeamRepository teamRepository, PlayerRepository playerRepository) {
         this.matchService = matchService;
         this.matchRepository = matchRepository;
         this.lineupRepository = lineupRepository;
-        this.matchPlayerStatsRepository = matchPlayerStatsRepository;
+        this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
     }
 
@@ -58,13 +58,14 @@ public class MatchController {
         homeTeam = teamRepository.getReferenceById(homeTeam.getId());
         awayTeam = teamRepository.getReferenceById(awayTeam.getId());
 
-        List<Player> homePlayers = PlayerFactory.createOmladinacPlayers(homeTeam);
-        List<Player> awayPlayers = PlayerFactory.createRandomTeamPlayers("Sloga", awayTeam);
+        PlayerFactory playerFactory = new PlayerFactory(playerRepository);
+        List<Player> homePlayers = playerFactory.createOmladinacPlayers(homeTeam);
+        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sloga", awayTeam);
 
         Lineup homeLineup = new Lineup();
         homeLineup.setTeam(homeTeam);
         homeLineup.setStartingPlayers(homePlayers.subList(0, 11));
-        homeLineup.setSubstitutes(homePlayers.subList(11, 15));
+        homeLineup.setSubstitutes(homePlayers.subList(11, 13));
         homeLineup.setFormation("4-4-2");
         lineupRepository.save(homeLineup);
         homeLineup = lineupRepository.getReferenceById(homeLineup.getId());

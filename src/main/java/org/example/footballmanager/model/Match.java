@@ -8,7 +8,9 @@ import org.example.footballmanager.model.event.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Data
 @NoArgsConstructor
@@ -45,50 +47,50 @@ public class Match {
     private String awayFormation;
 
     // Helper: sve evente po tipu
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<MatchEvent> allMatchEvents = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<MatchEvent> allMatchEvents = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<GoalEvent> goals = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<GoalEvent> goals = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<ShotOnTargetEvent> shotsOnTarget = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ShotOnTargetEvent> shotsOnTarget = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<ShotOffTargetEvent> shotsOffTarget = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ShotOffTargetEvent> shotsOffTarget = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<YellowCardEvent> yellowCards = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<YellowCardEvent> yellowCards = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<RedCardEvent> redCards = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<RedCardEvent> redCards = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<PenaltyEvent> penalties = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<PenaltyEvent> penalties = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<FreeKickEvent> freeKicks = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<FreeKickEvent> freeKicks = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<OffsideEvent> offsides = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<OffsideEvent> offsides = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<InjuryEvent> injuries = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<InjuryEvent> injuries = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<ChanceEvent> chances = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ChanceEvent> chances = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<SubstitutionEvent> substitutions = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<SubstitutionEvent> substitutions = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<VARReviewEvent> varReviews = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<VARReviewEvent> varReviews = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<CornerEvent> corners = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<CornerEvent> corners = new HashSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    private List<MatchEndedEvent> matchEndEvents = new ArrayList<>();
+    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<MatchEndedEvent> matchEndEvents = new HashSet<>();
 
     @Lob
     private String eventJson;

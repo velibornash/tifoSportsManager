@@ -10,6 +10,7 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -20,7 +21,7 @@ public class MatchReplayService {
 
     @SneakyThrows
     public String saveMatchEvents(Match match) {
-        List<MatchEvent> events = match.getAllMatchEvents();
+        Set<MatchEvent> events = match.getAllMatchEvents();
         String json = objectMapper.writeValueAsString(events);
         match.setEventJson(json);
         matchRepository.save(match);

@@ -7,6 +7,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.footballmanager.model.Match;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -46,6 +50,12 @@ public abstract class MatchEvent {
     @Column(name = "event_minute")
     protected int minute;
 
+    @CreationTimestamp
+    @Column(updatable = false)
+    private LocalDateTime createdAt;      // kada je prvi put upisan
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;      // kada je poslednji put menjan
     public abstract void apply();
 
     public String getDescription() {
