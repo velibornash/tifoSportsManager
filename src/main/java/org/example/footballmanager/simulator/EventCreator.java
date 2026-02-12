@@ -48,14 +48,15 @@ public class EventCreator {
             if(score < 4) {p.setScored(false);} else {p.setScored(true);}
 
                 return p;
-        } else if (roll < 0.21) { // slobodan udarac
+        } else if (roll < 0.23) { // slobodan udarac
             FreeKickEvent fk = new FreeKickEvent();
             Player taker = players.get(random.nextInt(players.size()));
             fk.setMatch(match);
             fk.setTeam(team);
             fk.setTaker(taker);
+            fk.setPlayer(taker);
             return fk;
-        } else if (roll < 0.23) { // korner
+        } else if (roll < 0.26) { // korner
             Player taker = players.get(random.nextInt(players.size()));
             CornerEvent c = new CornerEvent();
             c.setMatch(match);

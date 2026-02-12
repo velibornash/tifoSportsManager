@@ -8,4 +8,5 @@ import org.example.footballmanager.model.Team;
 public class CornerEventDTO extends MatchEventDTO {
     private String teamName;
     private String playerName;
+    private String takerName;
 }

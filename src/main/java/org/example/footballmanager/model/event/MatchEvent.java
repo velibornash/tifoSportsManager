@@ -19,19 +19,19 @@ import org.example.footballmanager.model.Match;
 )
 @JsonSubTypes({
         @JsonSubTypes.Type(value = GoalEvent.class, name = "goal"),
-        @JsonSubTypes.Type(value = YellowCardEvent.class, name = "yellow card"),
-        @JsonSubTypes.Type(value = RedCardEvent.class, name = "red card"),
+        @JsonSubTypes.Type(value = YellowCardEvent.class, name = "yellowCard"),
+        @JsonSubTypes.Type(value = RedCardEvent.class, name = "redCard"),
         @JsonSubTypes.Type(value = PenaltyEvent.class, name = "penalty"),
         @JsonSubTypes.Type(value = InjuryEvent.class, name = "injury"),
         @JsonSubTypes.Type(value = OffsideEvent.class, name = "offside"),
         @JsonSubTypes.Type(value = CornerEvent.class, name = "corner"),
-        @JsonSubTypes.Type(value = VARReviewEvent.class, name = "var review"),
-        @JsonSubTypes.Type(value = ShotOnTargetEvent.class, name = "shot on target"),
-        @JsonSubTypes.Type(value = ShotOffTargetEvent.class, name = "shot off target"),
-        @JsonSubTypes.Type(value = FreeKickEvent.class, name = "free kick"),
+        @JsonSubTypes.Type(value = VARReviewEvent.class, name = "varReview"),
+        @JsonSubTypes.Type(value = ShotOnTargetEvent.class, name = "shotOnTarget"),
+        @JsonSubTypes.Type(value = ShotOffTargetEvent.class, name = "shotOffTarget"),
+        @JsonSubTypes.Type(value = FreeKickEvent.class, name = "freeKick"),
         @JsonSubTypes.Type(value = SubstitutionEvent.class, name = "substitution"),
-        @JsonSubTypes.Type(value = MatchEndedEvent.class, name = "match ended"),
-        @JsonSubTypes.Type(value = MatchStartEvent.class, name = "match started")
+        @JsonSubTypes.Type(value = MatchEndedEvent.class, name = "matchEnded"),
+        @JsonSubTypes.Type(value = MatchStartEvent.class, name = "matchStarted")
 
 })
 public abstract class MatchEvent {

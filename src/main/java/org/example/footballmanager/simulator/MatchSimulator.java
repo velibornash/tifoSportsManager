@@ -193,6 +193,20 @@ public class MatchSimulator {
             dto.setMinute(c.getMinute());
             dto.setDescription(c.getDescription());
             dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
+            if (c.getPlayer() != null) {
+                Player p = c.getPlayer();
+                dto.setPlayerName(p.getName());
+                dto.setPlayerAge(p.getAge());
+                dto.setPlayerHeight(p.getHeight());
+                dto.setPlayerWeight(p.getWeight());
+                dto.setPlayerTotalGoals(p.getTotalGoals());
+                dto.setPlayerTotalAssists(p.getTotalAssists());
+                dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
+                dto.setPlayerRating(p.getRating());
+            }
+            dto.setPlayerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
+            dto.setTakerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
+            dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
             return dto;
 
         } else if (event instanceof FreeKickEvent f) {
@@ -200,7 +214,17 @@ public class MatchSimulator {
             dto.setType("freeKick");
             dto.setMinute(f.getMinute());
             dto.setDescription(f.getDescription());
-
+            if (f.getPlayer() != null) {
+                Player p = f.getTaker();
+                dto.setPlayerName(p.getName());
+                dto.setPlayerAge(p.getAge());
+                dto.setPlayerHeight(p.getHeight());
+                dto.setPlayerWeight(p.getWeight());
+                dto.setPlayerTotalGoals(p.getTotalGoals());
+                dto.setPlayerTotalAssists(p.getTotalAssists());
+                dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
+                dto.setPlayerRating(p.getRating());
+            }
             if (f.getTaker() != null) {
                 Player p = f.getTaker();
                 dto.setPlayerName(p.getName());
@@ -213,8 +237,9 @@ public class MatchSimulator {
                 dto.setPlayerRating(p.getRating());
             }
             dto.setPlayerName(f.getPlayer() != null ? f.getPlayer().getName() : null);
+            dto.setTakerName(f.getTaker() != null ? f.getTaker().getName() : null);
             dto.setTeamName(f.getPlayer() != null && f.getPlayer().getTeam() != null ?
-                    f.getPlayer().getTeam().getName() : null);
+            f.getPlayer().getTeam().getName() : null);
             return dto;
 
         } else if (event instanceof ShotOnTargetEvent s) {

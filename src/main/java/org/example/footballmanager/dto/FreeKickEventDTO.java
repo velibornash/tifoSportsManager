@@ -6,4 +6,5 @@ import lombok.EqualsAndHashCode;
 public class FreeKickEventDTO extends MatchEventDTO {
     private String teamName;
     private String playerName;
+    private String takerName;
 }
