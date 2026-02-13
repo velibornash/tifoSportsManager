@@ -24,6 +24,18 @@ public class CanvasSimulationService {
     private int possessionTicks = 0;
     private int spacePassCooldown = 0;
 
+    // Dodato za simulaciju šuta
+    private boolean isShooting = false;
+    private boolean isRebounding = false;
+    private double targetBallX;
+    private double targetBallY;
+    private int shotTicks = 0;
+    private final int maxShotTicks = 4; // Broj tickova za kretanje lopte tokom šuta (npr. 1 sekunda)
+    private int reboundTicks = 0;
+    private final int maxReboundTicks = 3; // Broj tickova za odbijanje lopte
+
+    private boolean attacksRightDuringShot; // Čuvaj smer napada tokom šuta
+
     // Brojač uzastopnih offside poseda po igraču
     private final Map<Integer, Integer> offsideStreak = new HashMap<>();
 
@@ -59,22 +71,31 @@ public class CanvasSimulationService {
             }
 
             // Držanje lopte (varijabilno)
-            possessionTicks++;
-            if (possessionTicks > 6 + random.nextInt(9)) {  // 6–14 tickova
-                PlayerPositionDTO next = chooseNextAction(currentCarrier, players, random);
-                if (next != null) currentCarrier = next;
-                possessionTicks = 0;
+            if (!isShooting && !isRebounding) {
+                possessionTicks++;
+                if (possessionTicks > 6 + random.nextInt(9)) {  // 6–14 tickova
+                    PlayerPositionDTO next = chooseNextAction(currentCarrier, players, random);
+                    if (next != null) currentCarrier = next;
+                    possessionTicks = 0;
+                }
+
+                // Pas u prostor (povremeno)
+                spacePassCooldown++;
+                if (spacePassCooldown > 8 && random.nextDouble() < 0.17) {
+                    trySpacePass(currentCarrier, players, random);
+                    spacePassCooldown = 0;
+                }
             }
 
-            // Pas u prostor (povremeno)
-            spacePassCooldown++;
-            if (spacePassCooldown > 8 && random.nextDouble() < 0.17) {
-                trySpacePass(currentCarrier, players, random);
-                spacePassCooldown = 0;
+            // Obradi šut ako je u toku
+            if (isShooting) {
+                handleShotMovement(random);
+            } else if (isRebounding) {
+                handleReboundMovement(players, random);
+            } else {
+                ball.setX(currentCarrier.getX());
+                ball.setY(currentCarrier.getY());
             }
-
-            ball.setX(currentCarrier.getX());
-            ball.setY(currentCarrier.getY());
 
             GameStateDTO state = new GameStateDTO(
                     tick[0] / (1000 / TICK_MS),
@@ -263,6 +284,7 @@ public class CanvasSimulationService {
         // Izračunaj distancu do gola
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(carrier.getX() - goalX);
+        System.out.println("Igrac:"+carrier.getId()+" udaljen od gola "+distToGoal);
 
         // Zona šuta - povećana na 38 jedinica + verovatnoća raste kako se približava
         if (distToGoal <= 38) {
@@ -280,7 +302,7 @@ public class CanvasSimulationService {
 
             if (random.nextDouble() < shotProbability) {
                 System.out.println("ŠUT! Distanca: " + String.format("%.1f", distToGoal));
-                performShot(carrier, players, random, attacksRight);
+                initiateShot(carrier, players, random, attacksRight);
                 return carrier;  // nosilac ostaje isti dok se izvrši šut
             }
         }
@@ -294,51 +316,110 @@ public class CanvasSimulationService {
         return findNearbyTeammate(carrier, players);
     }
 
-    private void performShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
-        // Simulacija šuta: lopta ide ka golu, ali sa šansom da bude odbijena (npr. golman brani ili promasaj)
+    // Nova metoda za inicijalizaciju šuta
+    private void initiateShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+        attacksRightDuringShot = attacksRight;
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(shooter.getX() - goalX);
         System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
 
-        double goalY = 50 + (random.nextDouble() - 0.5) * 20;  // Cilj ka centru gola sa varijacijom
+        // Cilj ka koordinatama golmana odbrane
+        PlayerPositionDTO opponentGk = players.stream()
+                .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME") && isGoalkeeper(p))
+                .findFirst()
+                .orElse(null);
 
-        // Odredi da li je gol (20% šansa), odbrana (50%) ili promasaj (30%)
-        double shotOutcome = random.nextDouble();
-        if (shotOutcome < 0.20) {
-            // Gol: lopta prelazi gol-liniju
-            System.out.println("GOL!");
-            ball.setX(goalX);
-            ball.setY(goalY);
-            // Resetuj simulaciju ili nešto, ali za sada samo postavi loptu na gol i promeni poseda
-            currentCarrier = players.stream()
-                    .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME") && isGoalkeeper(p))
-                    .findFirst()
-                    .orElse(shooter);  // Golman suparnika uzima loptu posle gola
-        } else if (shotOutcome < 0.70) {
-            // Odbrana: lopta se odbija blizu gola (npr. golman odbija)
-            System.out.println("Odbijena lopta!");
-            double reboundX = attacksRight ? 90 + random.nextDouble() * 5 : 10 - random.nextDouble() * 5;
-            double reboundY = 40 + random.nextDouble() * 20;
-            ball.setX(clamp(reboundX));
-            ball.setY(clamp(reboundY));
+        if (opponentGk != null) {
+            targetBallX = opponentGk.getX();
+            targetBallY = opponentGk.getY();
+        } else {
+            targetBallX = goalX;
+            targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Fallback na centar gola
+        }
+
+        isShooting = true;
+        shotTicks = 0;
+    }
+
+    // Obrada kretanja lopte tokom šuta
+    private void handleShotMovement(Random random) {
+        shotTicks++;
+        double progress = (double) shotTicks / maxShotTicks;
+        if (progress >= 1) {
+            progress = 1;
+        }
+
+        // Interpoliraj poziciju lopte ka cilju
+        ball.setX(clamp(ball.getX() + (targetBallX - ball.getX()) * progress));
+        ball.setY(clamp(ball.getY() + (targetBallY - ball.getY()) * progress));
+
+        if (shotTicks >= maxShotTicks) {
+            isShooting = false;
+            // Odluči ishod šuta
+            double shotOutcome = random.nextDouble();
+            if (shotOutcome < 0.20) {
+                // Gol: lopta prelazi gol-liniju
+                System.out.println("GOL!");
+                ball.setX(targetBallX);
+                ball.setY(targetBallY);
+                initiateRebound(random);
+
+            } else if (shotOutcome < 0.70) {
+                // Odbrana: pokreni odbijanje lopte
+                System.out.println("Odbijena lopta!");
+                initiateRebound(random);
+            } else {
+                // Promasaj: lopta ide izvan gola
+                System.out.println("Promasaj!");
+                double missX = attacksRightDuringShot ? 100 + 5 : -5;  // Izvan terena
+                double missY = targetBallY + (random.nextDouble() - 0.5) * 30;
+                ball.setX(clamp(missX));
+                ball.setY(clamp(missY));
+                initiateRebound(random);
+
+            }
+        }
+    }
+
+    // Nova metoda za inicijalizaciju odbijanja
+    private void initiateRebound(Random random) {
+        // Odbijanje ka sredini terena, random pozicija blizu igrača broj 6 ili slučajna
+        targetBallX = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po X
+        targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po Y, sa varijacijom
+
+        isRebounding = true;
+        reboundTicks = 0;
+    }
+
+    // Obrada kretanja lopte tokom odbijanja
+    private void handleReboundMovement(List<PlayerPositionDTO> players, Random random) {
+        reboundTicks++;
+        double progress = (double) reboundTicks / maxReboundTicks;
+        if (progress >= 1) {
+            progress = 1;
+        }
+
+        // Interpoliraj poziciju lopte ka cilju odbijanja
+        ball.setX(clamp(ball.getX() + (targetBallX - ball.getX()) * progress));
+        ball.setY(clamp(ball.getY() + (targetBallY - ball.getY()) * progress));
+
+        if (reboundTicks >= maxReboundTicks) {
+            isRebounding = false;
             // Lopta je slobodna, najbliži igrač (bilo koji tim) je uzima
             currentCarrier = players.stream()
                     .min(Comparator.comparingDouble(p -> distance(ball, p)))
-                    .orElse(shooter);
-        } else {
-            // Promasaj: lopta ide izvan gola
-            System.out.println("Promasaj!");
-            double missX = attacksRight ? 100 + 5 : -5;  // Izvan terena
-            double missY = goalY + (random.nextDouble() - 0.5) * 30;
-            ball.setX(clamp(missX));  // Clamp će je staviti na ivicu
-            ball.setY(clamp(missY));
-            // Suparnički golman uzima loptu (aut-gol ili korner, ali za sada samo poseda)
-            currentCarrier = players.stream()
-                    .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME") && isGoalkeeper(p))
-                    .findFirst()
-                    .orElse(shooter);
+                    .orElse(currentCarrier);
         }
     }
+
+/*    private PlayerPositionDTO getOpponentGoalkeeper(boolean attacksRight) {
+        // Pronađi golmana suparnika
+        String opponentTeam = attacksRight ? "AWAY" : "HOME";
+        return players.stream()
+                .filter(p -> p.getTeam().equals(opponentTeam) && isGoalkeeper(p))
+                .findFirst()
+                .orElse(currentCarrier);  // Fallback
+    }*/
 
     private boolean isGoalkeeper(PlayerPositionDTO p) {
         return p.getId() == 1 || p.getId() == 12;  // Pretpostavka da su golmani ID 1 i 12
@@ -394,7 +475,7 @@ public class CanvasSimulationService {
         boolean isOffside = attacksRight ? p.getX() > offsideLine : p.getX() < offsideLine;  // Bolja detekcija: bliži golmanu od drugog poslednjeg defanzivca
 
         int streak = offsideStreak.getOrDefault(p.getId(), 0);
-        Random random = new Random();
+        Random  random = new Random();
         if (isOffside) {
             streak++;
             if (streak > 1) {  // Brže vraćanje: odmah posle 1-2 ticka
@@ -488,4 +569,5 @@ public class CanvasSimulationService {
     private double clamp(double val) {
         return Math.max(0, Math.min(100, val));
     }
+
 }
