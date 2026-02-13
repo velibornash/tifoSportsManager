@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Test</title>
+    <style>
+        body { background:#222; margin:0; text-align:center; }
+        canvas { background:#1e7d32; margin-top:20px; border:2px solid #555; }
+    </style>
+</head>
+<body>
+
+<canvas id="pitch" width="900" height="500"></canvas>
+
+<script>
+    const canvas = document.getElementById("pitch");
+    const ctx = canvas.getContext("2d");
+
+    let players = [];
+    let ball = {x:50,y:50};
+    let second = 0;
+
+    const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${wsProtocol}://${location.host}/match-events`);
+
+    socket.onmessage = (msg) => {
+        let data = JSON.parse(msg.data);
+
+        if (!data.players) return; // ignoriši druge poruke
+
+        players = data.players;
+        ball = data.ball;
+        second = data.second;
+    };
+
+    function drawField() {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+
+        ctx.strokeRect(50,50,800,400);
+        ctx.beginPath();
+        ctx.moveTo(450,50);
+        ctx.lineTo(450,450);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(450,250,60,0,Math.PI*2);
+        ctx.stroke();
+    }
+
+    function drawPlayers() {
+        players.forEach(p => {
+            let x = 50 + (p.x/100)*800;
+            let y = 50 + (p.y/100)*400;
+
+            ctx.beginPath();
+            ctx.fillStyle = p.team === "HOME" ? "blue" : "red";
+            ctx.arc(x,y,8,0,Math.PI*2);
+            ctx.fill();
+        });
+    }
+
+    function drawBall() {
+        let x = 50 + (ball.x/100)*800;
+        let y = 50 + (ball.y/100)*400;
+
+        ctx.beginPath();
+        ctx.fillStyle = "white";
+        ctx.arc(x,y,5,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    function drawClock() {
+        ctx.fillStyle="white";
+        ctx.font="20px Arial";
+        ctx.fillText("Second: "+second,20,30);
+    }
+
+    function loop(){
+        drawField();
+        drawPlayers();
+        drawBall();
+        drawClock();
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+</script>
+
+</body>
+</html>

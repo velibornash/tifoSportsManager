@@ -48,6 +48,18 @@ public class MatchEventWebSocketHandler extends TextWebSocketHandler {
             e.printStackTrace();
         }
     }
+    public void broadcastEvent(Object event) {
+        try {
+            String json = objectMapper.writeValueAsString(event);
+            for (WebSocketSession session : sessions) {
+                if (session.isOpen()) {
+                    session.sendMessage(new TextMessage(json));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     public void broadcastEvent(MatchEventDTO event) {
         try {
