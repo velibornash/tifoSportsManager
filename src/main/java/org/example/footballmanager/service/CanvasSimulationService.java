@@ -4,10 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.dto.*;
 import org.example.footballmanager.util.MatchEventWebSocketHandler;
 import org.springframework.stereotype.Service;
-
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -25,13 +24,20 @@ public class CanvasSimulationService {
     private int possessionTicks = 0;
     private int spacePassCooldown = 0;
 
+    // Brojač uzastopnih offside poseda po igraču
+    private final Map<Integer, Integer> offsideStreak = new HashMap<>();
+
     public void startCanvasTestSimulation() {
 
         Random random = new Random();
         List<PlayerPositionDTO> players = new ArrayList<>();
 
-        for (int i = 1; i <= 11; i++) players.add(new PlayerPositionDTO(i, "HOME", 10 + random.nextDouble() * 35, 10 + random.nextDouble() * 80));
-        for (int i = 12; i <= 22; i++) players.add(new PlayerPositionDTO(i, "AWAY", 65 + random.nextDouble() * 30, 10 + random.nextDouble() * 80));
+        for (int i = 1; i <= 11; i++) {
+            players.add(new PlayerPositionDTO(i, "HOME", 10 + random.nextDouble() * 35, 10 + random.nextDouble() * 80));
+        }
+        for (int i = 12; i <= 22; i++) {
+            players.add(new PlayerPositionDTO(i, "AWAY", 65 + random.nextDouble() * 30, 10 + random.nextDouble() * 80));
+        }
 
         ball = new BallPositionDTO(50, 50);
         currentCarrier = players.getFirst();
@@ -41,32 +47,41 @@ public class CanvasSimulationService {
 
         scheduler.scheduleAtFixedRate(() -> {
 
-            if (tick[0] >= totalTicks) { scheduler.shutdown(); return; }
+            if (tick[0] >= totalTicks) {
+                scheduler.shutdown();
+                return;
+            }
 
+            // Kretanje svih igrača
             for (PlayerPositionDTO p : players) {
                 boolean attacksRight = p.getTeam().equals("HOME");
                 movePlayerByRole(p, players, random, attacksRight);
             }
 
+            // Držanje lopte (varijabilno)
             possessionTicks++;
-            if (possessionTicks > 8) {
-                PlayerPositionDTO next = findNearbyTeammate(currentCarrier, players);
+            if (possessionTicks > 6 + random.nextInt(9)) {  // 6–14 tickova
+                PlayerPositionDTO next = chooseNextAction(currentCarrier, players, random);
                 if (next != null) currentCarrier = next;
                 possessionTicks = 0;
             }
 
+            // Pas u prostor (povremeno)
             spacePassCooldown++;
-            if (spacePassCooldown > 7 && random.nextDouble() < 0.16) {
+            if (spacePassCooldown > 8 && random.nextDouble() < 0.17) {
                 trySpacePass(currentCarrier, players, random);
                 spacePassCooldown = 0;
             }
 
-            tryFinishAttack(currentCarrier, players, random);
-
             ball.setX(currentCarrier.getX());
             ball.setY(currentCarrier.getY());
 
-            GameStateDTO state = new GameStateDTO(tick[0] / (1000 / TICK_MS), new ArrayList<>(players), ball);
+            GameStateDTO state = new GameStateDTO(
+                    tick[0] / (1000 / TICK_MS),
+                    new ArrayList<>(players),
+                    ball
+            );
+
             webSocketHandler.broadcastEvent(state);
             tick[0]++;
 
@@ -87,8 +102,10 @@ public class CanvasSimulationService {
         else if (id == 7 || id == 11 || id == 19 || id == 20) moveWinger(p, players, random, attacksRight);
         else if (id == 9 || id == 10 || id == 21 || id == 22) moveStriker(p, players, random, attacksRight);
 
+        pullTowardsBall(p, random);
         avoidCrowding(p, players, random);
         applyIdleMovement(p, random);
+        handleOffsideTolerance(p, players, attacksRight);
     }
 
     // ================== GOLMANI ==================
@@ -112,7 +129,7 @@ public class CanvasSimulationService {
 
         double dist = Math.hypot(dx, dy);
         if (dist > 0.4) {
-            double speed = 0.75 + random.nextDouble() * 0.35;
+            double speed = 0.65 + random.nextDouble() * 0.25;
             double newX = fb.getX() + (dx / dist) * speed;
             double newY = fb.getY() + (dy / dist) * speed;
 
@@ -132,12 +149,12 @@ public class CanvasSimulationService {
 
         PlayerPositionDTO target = findTargetOpponent(cb, players, random, attacksRight);
 
-        double dx = target != null ? target.getX() - cb.getX() : (attacksRight ? 6 : -6);
+        double dx = target != null ? target.getX() - cb.getX() : (attacksRight ? 5 : -5);
         double dy = preferredY - cb.getY();
 
         double dist = Math.hypot(dx, dy);
         if (dist > 0.4) {
-            double speed = 0.7 + random.nextDouble() * 0.3;
+            double speed = 0.65 + random.nextDouble() * 0.25;
             double newX = cb.getX() + (dx / dist) * speed;
             double newY = cb.getY() + (dy / dist) * speed;
 
@@ -152,12 +169,12 @@ public class CanvasSimulationService {
     private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
         PlayerPositionDTO target = findTargetOpponent(cm, players, random, attacksRight);
 
-        double dx = target != null ? target.getX() - cm.getX() : (attacksRight ? 10 : -10);
-        double dy = (50 - cm.getY()) * 0.75;
+        double dx = target != null ? target.getX() - cm.getX() : (attacksRight ? 8 : -8);
+        double dy = (50 - cm.getY()) * 0.7;
 
         double dist = Math.hypot(dx, dy);
         if (dist > 0.4) {
-            double speed = 0.95 + random.nextDouble() * 0.45;
+            double speed = 0.85 + random.nextDouble() * 0.35;
             double newX = cm.getX() + (dx / dist) * speed;
             newX = Math.max(attacksRight ? 38 : 52, Math.min(attacksRight ? 78 : 92, newX));
 
@@ -166,7 +183,7 @@ public class CanvasSimulationService {
         }
     }
 
-    // ================== KRILA (energično) ==================
+    // ================== KRILA ==================
     private void moveWinger(PlayerPositionDTO winger, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
         double offsideLine = findOffsideLine(players, attacksRight);
         double maxForward = attacksRight ? offsideLine + 12 + random.nextDouble() * 10 : offsideLine - 12 - random.nextDouble() * 10;
@@ -182,15 +199,19 @@ public class CanvasSimulationService {
 
         PlayerPositionDTO target = findTargetOpponent(winger, players, random, attacksRight);
 
-        double dx = target != null ? target.getX() - winger.getX() : (attacksRight ? 20 : -20);
+        double dx = target != null ? target.getX() - winger.getX() : (attacksRight ? 18 : -18);
         double dy = target != null ? target.getY() - winger.getY() : (50 - winger.getY()) * 0.4;
 
-        // KONSTANTNO VUČENJE NAPRED
-        dx += attacksRight ? 1.7 : -1.7;
+        // Jače vučenje ka strani
+        double sidePull = (winger.getY() > 50) ? 88 : 12;
+        dy += (sidePull - winger.getY()) * 0.4;
+
+        // Konstantno napred
+        dx += attacksRight ? 1.6 : -1.6;
 
         double dist = Math.hypot(dx, dy);
         if (dist > 0.4) {
-            double speed = 1.25 + random.nextDouble() * 0.55;
+            double speed = 1.1 + random.nextDouble() * 0.4;
             double newX = winger.getX() + (dx / dist) * speed;
             newX = attacksRight ? Math.min(newX, maxForward) : Math.max(newX, maxForward);
 
@@ -199,129 +220,150 @@ public class CanvasSimulationService {
         }
     }
 
-    // ================== NAPADAČI (glavni napadački pokretač) ==================
-    private void moveStriker(PlayerPositionDTO striker,
-                             List<PlayerPositionDTO> players,
-                             Random random,
-                             boolean attacksRight) {
+    // ================== NAPADAČI ==================
+    private void moveStriker(PlayerPositionDTO striker, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+        double offsideLine = findOffsideLine(players, attacksRight);
+        double maxForward = 80.00;
 
-        // GOAL target
-        double goalX = attacksRight ? 100 : 0;
-        double goalY = 50;
+        if (attacksRight && striker.getX() > offsideLine + 15) {
+            striker.setX(clamp(striker.getX() - 0.6));
+            return;
+        }
+        if (!attacksRight && striker.getX() < offsideLine - 15) {
+            striker.setX(clamp(striker.getX() + 0.6));
+            return;
+        }
 
-        // konstantno vučenje ka golu
-        double forwardPush = attacksRight ? 1.8 : -1.8;
+        double baseTargetX = attacksRight ? 70 + random.nextDouble() * 30 : 30 - random.nextDouble() * 30;
+        double baseTargetY = 32 + random.nextDouble() * 36;
 
-        double dx = (goalX - striker.getX()) + forwardPush;
-        double dy = (goalY - striker.getY()) * 0.6;
+        double dx = baseTargetX - striker.getX();
+        double dy = baseTargetY - striker.getY();
+
+        // Konstantno vučenje napred
+        dx += attacksRight ? 2.0 : -2.0;
 
         double dist = Math.hypot(dx, dy);
-
-        if (dist > 0.01) {
-
-            double speed = 1.2 + random.nextDouble() * 0.4;
-
+        if (dist > 0.4) {
+            double speed = 1.15 + random.nextDouble() * 0.45;
             double newX = striker.getX() + (dx / dist) * speed;
-            double newY = striker.getY() + (dy / dist) * speed;
+            newX = attacksRight ? Math.min(newX, maxForward) : Math.max(newX, maxForward);
 
             striker.setX(clamp(newX));
-            striker.setY(clamp(newY));
+            striker.setY(clamp(striker.getY() + (dy / dist) * speed));
         }
     }
 
     // =============================================
-    // PAS U PROSTOR + ŠUT
+    // ODLUKA NOSIOCA LOPTE
     // =============================================
-    private void trySpacePass(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random) {
+    private PlayerPositionDTO chooseNextAction(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random) {
         boolean attacksRight = carrier.getTeam().equals("HOME");
-        double spaceX = attacksRight ? 82 + random.nextDouble() * 14 : 18 - random.nextDouble() * 14;
-        double spaceY = 28 + random.nextDouble() * 44;
 
-        PlayerPositionDTO receiver = players.stream()
+        // Izračunaj distancu do gola
+        double goalX = attacksRight ? 100 : 0;
+        double distToGoal = Math.abs(carrier.getX() - goalX);
+
+        // Zona šuta - povećana na 38 jedinica + verovatnoća raste kako se približava
+        if (distToGoal <= 38) {
+            double shotProbability;
+
+            if (distToGoal <= 18) {           // unutar ~18m → vrlo velika šansa
+                shotProbability = 0.88;
+            } else if (distToGoal <= 25) {    // 18–25m → dobra šansa
+                shotProbability = 0.75;
+            } else if (distToGoal <= 32) {    // 25–32m → prosečna šansa
+                shotProbability = 0.45;
+            } else {                          // 32–38m → mala šansa (dugi šut)
+                shotProbability = 0.18;
+            }
+
+            if (random.nextDouble() < shotProbability) {
+                System.out.println("ŠUT! Distanca: " + String.format("%.1f", distToGoal));
+                performShot(carrier, players, random, attacksRight);
+                return carrier;  // nosilac ostaje isti dok se izvrši šut
+            }
+        }
+
+        // Ostalo isto: pas u prostor ili običan pas
+        if (random.nextDouble() < 0.48) {
+            PlayerPositionDTO target = trySpacePassTarget(carrier, players, random, attacksRight);
+            if (target != null) return target;
+        }
+
+        return findNearbyTeammate(carrier, players);
+    }
+
+    private void performShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+        // Simulacija šuta: lopta ide ka golu, ali sa šansom da bude odbijena (npr. golman brani ili promasaj)
+        double goalX = attacksRight ? 100 : 0;
+        double distToGoal = Math.abs(shooter.getX() - goalX);
+        System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
+
+        double goalY = 50 + (random.nextDouble() - 0.5) * 20;  // Cilj ka centru gola sa varijacijom
+
+        // Odredi da li je gol (20% šansa), odbrana (50%) ili promasaj (30%)
+        double shotOutcome = random.nextDouble();
+        if (shotOutcome < 0.20) {
+            // Gol: lopta prelazi gol-liniju
+            System.out.println("GOL!");
+            ball.setX(goalX);
+            ball.setY(goalY);
+            // Resetuj simulaciju ili nešto, ali za sada samo postavi loptu na gol i promeni poseda
+            currentCarrier = players.stream()
+                    .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME") && isGoalkeeper(p))
+                    .findFirst()
+                    .orElse(shooter);  // Golman suparnika uzima loptu posle gola
+        } else if (shotOutcome < 0.70) {
+            // Odbrana: lopta se odbija blizu gola (npr. golman odbija)
+            System.out.println("Odbijena lopta!");
+            double reboundX = attacksRight ? 90 + random.nextDouble() * 5 : 10 - random.nextDouble() * 5;
+            double reboundY = 40 + random.nextDouble() * 20;
+            ball.setX(clamp(reboundX));
+            ball.setY(clamp(reboundY));
+            // Lopta je slobodna, najbliži igrač (bilo koji tim) je uzima
+            currentCarrier = players.stream()
+                    .min(Comparator.comparingDouble(p -> distance(ball, p)))
+                    .orElse(shooter);
+        } else {
+            // Promasaj: lopta ide izvan gola
+            System.out.println("Promasaj!");
+            double missX = attacksRight ? 100 + 5 : -5;  // Izvan terena
+            double missY = goalY + (random.nextDouble() - 0.5) * 30;
+            ball.setX(clamp(missX));  // Clamp će je staviti na ivicu
+            ball.setY(clamp(missY));
+            // Suparnički golman uzima loptu (aut-gol ili korner, ali za sada samo poseda)
+            currentCarrier = players.stream()
+                    .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME") && isGoalkeeper(p))
+                    .findFirst()
+                    .orElse(shooter);
+        }
+    }
+
+    private boolean isGoalkeeper(PlayerPositionDTO p) {
+        return p.getId() == 1 || p.getId() == 12;  // Pretpostavka da su golmani ID 1 i 12
+    }
+
+    private PlayerPositionDTO trySpacePassTarget(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+        double spaceX = attacksRight ? 85 + random.nextDouble() * 12 : 15 - random.nextDouble() * 12;
+        double spaceY = 20 + random.nextDouble() * 60;
+
+        return players.stream()
                 .filter(p -> p.getTeam().equals(carrier.getTeam()) && p.getId() != carrier.getId())
                 .min(Comparator.comparingDouble(p -> Math.hypot(p.getX() - spaceX, p.getY() - spaceY)))
                 .orElse(null);
-
-        if (receiver != null) {
-            currentCarrier = receiver;
-            ball.setX(clamp(spaceX));
-            ball.setY(clamp(spaceY));
-        }
-    }
-
-    private void tryFinishAttack(PlayerPositionDTO carrier,
-                                 List<PlayerPositionDTO> players,
-                                 Random random) {
-
-        if (carrier == null) return;
-
-        boolean attacksRight = carrier.getTeam().equals("HOME");
-
-        double goalX = attacksRight ? 100 : 0;
-        double goalY = 50;
-
-        double distanceToGoal = Math.abs(goalX - carrier.getX());
-
-        // zona šuta
-        double shootZone = 22;
-
-        if (distanceToGoal < shootZone) {
-
-            // što je bliže golu → veća šansa
-            double shootChance = 0.25 + (shootZone - distanceToGoal) / shootZone * 0.5;
-
-            if (random.nextDouble() < shootChance) {
-
-                // ----- SMOOTH KRETANJE LOPTE KA GOLU -----
-                double dx = goalX - carrier.getX();
-                double dy = goalY - carrier.getY();
-                double dist = Math.hypot(dx, dy);
-
-                if (dist > 0.01) {
-                    double shotSpeed = 4.0;
-
-                    ball.setX(clamp(carrier.getX() + (dx / dist) * shotSpeed));
-                    ball.setY(clamp(carrier.getY() + (dy / dist) * shotSpeed));
-                }
-
-                // kada lopta pređe 98% terena → posed dobija protivnik
-                if ((attacksRight && ball.getX() > 98) ||
-                        (!attacksRight && ball.getX() < 2)) {
-
-                    PlayerPositionDTO newCarrier = players.stream()
-                            .filter(p -> !p.getTeam().equals(carrier.getTeam()))
-                            .min(Comparator.comparingDouble(p -> distance(ball, p)))
-                            .orElse(null);
-
-                    currentCarrier = newCarrier;
-                }
-
-                return;
-            }
-        }
-
-        // ako je previše blizu aut linije → vrati pas
-        double nearGoalLine = attacksRight ? 96 : 4;
-
-        if ((attacksRight && carrier.getX() > nearGoalLine) ||
-                (!attacksRight && carrier.getX() < nearGoalLine)) {
-
-            if (random.nextDouble() < 0.45) {
-                PlayerPositionDTO back = findBackwardTeammate(carrier, players);
-                if (back != null) {
-                    currentCarrier = back;
-                }
-            }
-        }
     }
 
     // =============================================
-    // OSTALO
+    // POMOĆNE METODE
     // =============================================
 
     private void pullTowardsBall(PlayerPositionDTO p, Random random) {
-        double toBallX = (ball.getX() - p.getX()) * 0.22;
-        double toBallY = (ball.getY() - p.getY()) * 0.26;
+        if (p.getId() == currentCarrier.getId()) return;
+
+        double toBallX = (ball.getX() - p.getX()) * 0.13;
+        double toBallY = (ball.getY() - p.getY()) * 0.15;
+
         p.setX(clamp(p.getX() + toBallX));
         p.setY(clamp(p.getY() + toBallY));
     }
@@ -330,7 +372,7 @@ public class CanvasSimulationService {
         for (PlayerPositionDTO other : players) {
             if (other.getId() == p.getId() || !other.getTeam().equals(p.getTeam())) continue;
             double dist = distance(p, other);
-            if (dist < 10.0) {
+            if (dist < 9.8) {
                 double dx = p.getX() - other.getX();
                 double dy = p.getY() - other.getY();
                 double len = Math.hypot(dx, dy) + 0.001;
@@ -341,16 +383,51 @@ public class CanvasSimulationService {
     }
 
     private void applyIdleMovement(PlayerPositionDTO p, Random random) {
-        // samo blago vertikalno pomeranje
-        p.setY(clamp(p.getY() + (random.nextDouble() - 0.5) * 0.6));
+        p.setY(clamp(p.getY() + (random.nextDouble() - 0.5) * 1.3));
+        //p.setX(clamp(p.getX() + (50 - p.getX()) * 0.09));
     }
 
+    private void handleOffsideTolerance(PlayerPositionDTO p, List<PlayerPositionDTO> players, boolean attacksRight) {
+        if (!isAttacker(p)) return;  // Samo za napadače (strikers i wingers)
+
+        double offsideLine = findOffsideLine(players, attacksRight);
+        boolean isOffside = attacksRight ? p.getX() > offsideLine : p.getX() < offsideLine;  // Bolja detekcija: bliži golmanu od drugog poslednjeg defanzivca
+
+        int streak = offsideStreak.getOrDefault(p.getId(), 0);
+        Random random = new Random();
+        if (isOffside) {
+            streak++;
+            if (streak > 1) {  // Brže vraćanje: odmah posle 1-2 ticka
+                double retreatSpeed = 1.5 + random.nextDouble() * 0.5;  // Brže vraćanje
+                p.setX(clamp(p.getX() + (attacksRight ? -retreatSpeed : retreatSpeed)));
+            }
+        } else {
+            streak = 0;
+        }
+
+        offsideStreak.put(p.getId(), streak);
+    }
+
+    private boolean isAttacker(PlayerPositionDTO p) {
+        int id = p.getId();
+        return (id >= 7 && id <= 11) || (id >= 19 && id <= 22);  // Wingers i strikers
+    }
 
     private double findOffsideLine(List<PlayerPositionDTO> players, boolean attacksRight) {
-        return players.stream()
-                .filter(p -> p.getTeam().equals(attacksRight ? "AWAY" : "HOME"))
-                .mapToDouble(PlayerPositionDTO::getX)
-                .reduce(attacksRight ? 0 : 100, attacksRight ? Math::max : Math::min);
+        // Pronađi drugog poslednjeg defanzivca (isključujući golmana)
+        String defendingTeam = attacksRight ? "AWAY" : "HOME";
+        List<Double> defenderXs = players.stream()
+                .filter(p -> p.getTeam().equals(defendingTeam) && !isGoalkeeper(p))  // Isključi golmana
+                .map(PlayerPositionDTO::getX)
+                .sorted(attacksRight ? Comparator.reverseOrder() : Comparator.naturalOrder())  // Za HOME: max X drugog, za AWAY: min X drugog
+                .limit(2)  // Uzmi dva poslednja
+                .toList();
+
+        if (defenderXs.size() < 2) {
+            return attacksRight ? 100 : 0;  // Ako nema dovoljno, ofsajd na gol-liniji
+        }
+
+        return defenderXs.get(1);  // Drugi poslednji defanzivac određuje liniju
     }
 
     private PlayerPositionDTO findTargetOpponent(PlayerPositionDTO player, List<PlayerPositionDTO> allPlayers,
@@ -383,23 +460,31 @@ public class CanvasSimulationService {
         return candidates.get(new Random().nextInt(candidates.size()));
     }
 
-    private PlayerPositionDTO findBackwardTeammate(PlayerPositionDTO carrier, List<PlayerPositionDTO> players) {
+    private void trySpacePass(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random) {
         boolean attacksRight = carrier.getTeam().equals("HOME");
-        double backX = attacksRight ? carrier.getX() - 28 : carrier.getX() + 28;
+        double spaceX = attacksRight ? 85 + random.nextDouble() * 12 : 15 - random.nextDouble() * 12;
+        double spaceY = 20 + random.nextDouble() * 60;
 
-        return players.stream()
+        PlayerPositionDTO receiver = players.stream()
                 .filter(p -> p.getTeam().equals(carrier.getTeam()) && p.getId() != carrier.getId())
-                .filter(p -> Math.abs(p.getX() - backX) < 35)
-                .min(Comparator.comparingDouble(p -> distance(carrier, p)))
+                .min(Comparator.comparingDouble(p -> Math.hypot(p.getX() - spaceX, p.getY() - spaceY)))
                 .orElse(null);
+
+        if (receiver != null) {
+            currentCarrier = receiver;
+            ball.setX(clamp(spaceX));
+            ball.setY(clamp(spaceY));
+        }
     }
 
     private double distance(PlayerPositionDTO a, PlayerPositionDTO b) {
         return Math.hypot(a.getX() - b.getX(), a.getY() - b.getY());
     }
+
     private double distance(BallPositionDTO ball, PlayerPositionDTO player) {
         return Math.hypot(ball.getX() - player.getX(), ball.getY() - player.getY());
     }
+
     private double clamp(double val) {
         return Math.max(0, Math.min(100, val));
     }
