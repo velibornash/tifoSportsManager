@@ -16,8 +16,23 @@
     const canvas = document.getElementById("pitch");
     const ctx = canvas.getContext("2d");
 
-    let players = [];
-    let ball = {x:50,y:50};
+    const FIELD = {
+        offsetX: 50,
+        offsetY: 50,
+        width: 800,
+        height: 400
+    };
+
+    const MOVE_DURATION = 250; // 250 ms interpolacija
+
+    let players = {};
+    let ball = {
+        x: 50, y: 50,
+        startX: 50, startY: 50,
+        targetX: 50, targetY: 50,
+        moveStartTime: performance.now()
+    };
+
     let second = 0;
 
     const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
@@ -25,13 +40,67 @@
 
     socket.onmessage = (msg) => {
         let data = JSON.parse(msg.data);
+        if (!data.players) return;
 
-        if (!data.players) return; // ignoriši druge poruke
-
-        players = data.players;
-        ball = data.ball;
         second = data.second;
+
+        // UPDATE PLAYERS
+        data.players.forEach(p => {
+
+            if (!players[p.id]) {
+                players[p.id] = {
+                    number: p.number || p.id,
+                    team: p.team,
+                    x: p.x,
+                    y: p.y,
+                    startX: p.x,
+                    startY: p.y,
+                    targetX: p.x,
+                    targetY: p.y,
+                    moveStartTime: performance.now()
+                };
+            }
+
+            let player = players[p.id];
+
+            player.startX = player.x;
+            player.startY = player.y;
+
+            player.targetX = p.x;
+            player.targetY = p.y;
+
+            player.moveStartTime = performance.now();
+        });
+
+        // UPDATE BALL
+        ball.startX = ball.x;
+        ball.startY = ball.y;
+        ball.targetX = data.ball.x;
+        ball.targetY = data.ball.y;
+        ball.moveStartTime = performance.now();
     };
+
+    function toCanvasX(x){
+        return FIELD.offsetX + (x/100)*FIELD.width;
+    }
+
+    function toCanvasY(y){
+        return FIELD.offsetY + (y/100)*FIELD.height;
+    }
+
+    function updatePositions() {
+        const now = performance.now();
+
+        Object.values(players).forEach(p => {
+            const progress = Math.min((now - p.moveStartTime) / MOVE_DURATION, 1);
+            p.x = p.startX + (p.targetX - p.startX) * progress;
+            p.y = p.startY + (p.targetY - p.startY) * progress;
+        });
+
+        const ballProgress = Math.min((now - ball.moveStartTime) / MOVE_DURATION, 1);
+        ball.x = ball.startX + (ball.targetX - ball.startX) * ballProgress;
+        ball.y = ball.startY + (ball.targetY - ball.startY) * ballProgress;
+    }
 
     function drawField() {
         ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -39,7 +108,47 @@
         ctx.strokeStyle = "white";
         ctx.lineWidth = 2;
 
-        ctx.strokeRect(50,50,800,400);
+        ctx.strokeRect(FIELD.offsetX, FIELD.offsetY, FIELD.width, FIELD.height);
+        // LEVI 16m
+ctx.strokeRect(FIELD.offsetX,
+               FIELD.offsetY + 100,
+               120,
+               200);
+
+// LEVI 5m (peterac)
+ctx.strokeRect(FIELD.offsetX,
+               FIELD.offsetY + 150,
+               60,
+               100);
+
+// DESNI 16m
+ctx.strokeRect(FIELD.offsetX + FIELD.width - 120,
+               FIELD.offsetY + 100,
+               120,
+               200);
+
+// DESNI 5m
+ctx.strokeRect(FIELD.offsetX + FIELD.width - 60,
+               FIELD.offsetY + 150,
+               60,
+               100);
+
+// GOLOVI
+ctx.fillStyle = "white";
+
+// levi gol
+ctx.fillRect(FIELD.offsetX - 10,
+             FIELD.offsetY + 180,
+             10,
+             40);
+
+// desni gol
+ctx.fillRect(FIELD.offsetX + FIELD.width,
+             FIELD.offsetY + 180,
+             10,
+             40);
+
+
         ctx.beginPath();
         ctx.moveTo(450,50);
         ctx.lineTo(450,450);
@@ -51,34 +160,44 @@
     }
 
     function drawPlayers() {
-        players.forEach(p => {
-            let x = 50 + (p.x/100)*800;
-            let y = 50 + (p.y/100)*400;
+        Object.values(players).forEach(p => {
+
+            let x = toCanvasX(p.x);
+            let y = toCanvasY(p.y);
 
             ctx.beginPath();
             ctx.fillStyle = p.team === "HOME" ? "blue" : "red";
-            ctx.arc(x,y,8,0,Math.PI*2);
+            ctx.arc(x,y,12,0,Math.PI*2);
             ctx.fill();
+
+            // BROJ NA DRESU
+            ctx.fillStyle = "white";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(p.number, x, y);
         });
     }
 
     function drawBall() {
-        let x = 50 + (ball.x/100)*800;
-        let y = 50 + (ball.y/100)*400;
+        let x = toCanvasX(ball.x);
+        let y = toCanvasY(ball.y);
 
         ctx.beginPath();
         ctx.fillStyle = "white";
-        ctx.arc(x,y,5,0,Math.PI*2);
+        ctx.arc(x,y,6,0,Math.PI*2);
         ctx.fill();
     }
 
     function drawClock() {
         ctx.fillStyle="white";
         ctx.font="20px Arial";
+        ctx.textAlign = "left";
         ctx.fillText("Second: "+second,20,30);
     }
 
     function loop(){
+        updatePositions();
         drawField();
         drawPlayers();
         drawBall();
