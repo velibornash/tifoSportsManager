@@ -14,7 +14,7 @@ public class CanvasSimulationService {
 
     private final MatchEventWebSocketHandler webSocketHandler;
 
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     private static final int TICK_MS = 250;
     private static final int MATCH_DURATION_SECONDS = 90;
@@ -40,7 +40,18 @@ public class CanvasSimulationService {
     private final Map<Integer, Integer> offsideStreak = new HashMap<>();
 
     public void startCanvasTestSimulation() {
+// Ako postoji stari scheduler i još nije ugašen → ugasi ga
+        if (scheduler != null && !scheduler.isShutdown()) {
+            scheduler.shutdownNow();           // odmah prekida sve tekuće zadatke
+            try {
+                scheduler.awaitTermination(5, TimeUnit.SECONDS);  // čekaj do 5 sekundi da se lepo završi
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
 
+        // OBAVEZNO: kreiraj NOVI scheduler
+        this.scheduler = Executors.newSingleThreadScheduledExecutor();
         Random random = new Random();
         List<PlayerPositionDTO> players = new ArrayList<>();
 
