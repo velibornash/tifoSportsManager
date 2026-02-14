@@ -148,49 +148,218 @@ public class CanvasSimulationService {
     }
 
     // ================== BEKOVI ==================
-    private void moveFullback(PlayerPositionDTO fb, List<PlayerPositionDTO> players, Random random,
-                              boolean attacksRight, boolean isRightBack) {
-        double minX = attacksRight ? 12 : 62;
-        double maxX = attacksRight ? 58 : 100;
-        double preferredY = isRightBack ? 88 : 12;
+    private void moveFullback(PlayerPositionDTO fb,
+                              List<PlayerPositionDTO> players,
+                              Random random,
+                              boolean attacksRight,
+                              boolean isRightBack) {
 
-        PlayerPositionDTO target = findTargetOpponent(fb, players, random, attacksRight);
+        double x = fb.getX();
+        double y = fb.getY();
 
-        double dx = target != null ? target.getX() - fb.getX() : (attacksRight ? 5 : -5);
-        double dy = preferredY - fb.getY();
+        // =========================================
+        // 1️⃣ OGRANIČENJE DUBINE (0% - 60%)
+        // =========================================
+        double minX = attacksRight ? 0 : 40;
+        double maxX = attacksRight ? 60 : 100;
+
+        // =========================================
+        // 2️⃣ ŠIRINA TERENA (0–15 / 85–100)
+        // =========================================
+        double minY, maxY;
+
+        if (isRightBack) {
+            minY = 85;
+            maxY = 100;
+            y += (100 - y) * 0.07; // blago ka liniji
+        } else {
+            minY = 0;
+            maxY = 15;
+            y += (0 - y) * 0.07;
+        }
+
+        // random drift
+        y += (random.nextDouble() - 0.5) * 1.0;
+
+        // =========================================
+        // 3️⃣ PRAĆENJE PROTIVNIKA U RADIJUSU 15m
+        // =========================================
+        PlayerPositionDTO nearbyOpponent = players.stream()
+                .filter(p -> !p.getTeam().equals(fb.getTeam()))
+                .filter(p -> distance(fb, p) < 15)
+                .min(Comparator.comparingDouble(p -> distance(fb, p)))
+                .orElse(null);
+
+        double dx = 0;
+        double dy = 0;
+
+        if (nearbyOpponent != null) {
+            // agresivno ka protivniku
+            dx = nearbyOpponent.getX() - x;
+            dy = nearbyOpponent.getY() - y;
+        } else {
+            // guranje napred
+            dx = attacksRight ? 1.8 : -1.8;
+        }
+
+        // =========================================
+        // 4️⃣ U ZADNJIH 25m MOGU UNUTRA
+        // =========================================
+        double goalDistance = attacksRight ? (100 - x) : x;
+
+        if (goalDistance <= 25) {
+            dy += (50 - y) * 0.25; // ulazak unutra
+        }
 
         double dist = Math.hypot(dx, dy);
-        if (dist > 0.4) {
-            double speed = 0.65 + random.nextDouble() * 0.25;
-            double newX = fb.getX() + (dx / dist) * speed;
-            double newY = fb.getY() + (dy / dist) * speed;
+        if (dist > 0.3) {
 
-            newY = Math.max(preferredY - 18, Math.min(preferredY + 18, newY));
+            double speed = 0.95 + random.nextDouble() * 0.35;
+
+            double newX = x + (dx / dist) * speed;
+            double newY = y + (dy / dist) * speed;
+
+            // clamp dubine
             newX = Math.max(minX, Math.min(maxX, newX));
+
+            double cbLine = players.stream()
+                    .filter(p -> p.getTeam().equals(fb.getTeam()))
+                    .filter(p -> isCenterBack(p))
+                    .mapToDouble(PlayerPositionDTO::getX)
+                    .average()
+                    .orElse(fb.getX());
+
+            if (attacksRight) {
+                newX = Math.min(newX, cbLine + 3);
+            } else {
+                newX = Math.max(newX, cbLine - 3);
+            }
+
+
+            // clamp širine
+            newY = Math.max(minY, Math.min(maxY, newY));
 
             fb.setX(clamp(newX));
             fb.setY(clamp(newY));
         }
+
+        // =========================================
+        // 5️⃣ DISTANCA OD SVOG KRILA (DUPLA)
+        // =========================================
+        PlayerPositionDTO winger = players.stream()
+                .filter(p -> p.getTeam().equals(fb.getTeam()))
+                .filter(p -> {
+                    if (isRightBack)
+                        return p.getId() == 7 || p.getId() == 19;
+                    else
+                        return p.getId() == 11 || p.getId() == 20;
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (winger != null) {
+            double distToWinger = distance(fb, winger);
+
+            if (distToWinger < 18) { // duplo više od avoidCrowding (~9)
+                double dxSep = fb.getX() - winger.getX();
+                double dySep = fb.getY() - winger.getY();
+                double len = Math.hypot(dxSep, dySep) + 0.001;
+
+                fb.setX(clamp(fb.getX() + (dxSep / len) * (18 - distToWinger)));
+                fb.setY(clamp(fb.getY() + (dySep / len) * (18 - distToWinger)));
+            }
+        }
     }
 
     // ================== ŠTOPERI ==================
-    private void moveCenterBack(PlayerPositionDTO cb, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
-        double minX = attacksRight ? 18 : 62;
-        double maxX = attacksRight ? 38 : 82;
-        double preferredY = (cb.getId() == 4 || cb.getId() == 14) ? 42 : 58;
+    private void moveCenterBack(PlayerPositionDTO cb,
+                                List<PlayerPositionDTO> players,
+                                Random random,
+                                boolean attacksRight)
+                                 {
 
-        PlayerPositionDTO target = findTargetOpponent(cb, players, random, attacksRight);
+        double x = cb.getX();
+        double y = cb.getY();
 
-        double dx = target != null ? target.getX() - cb.getX() : (attacksRight ? 5 : -5);
-        double dy = preferredY - cb.getY();
+        // =========================================
+        // 1️⃣ OGRANIČENJE DUBINE
+        // =========================================
+        double minX = attacksRight ? 0 : 50;
+        double maxX = attacksRight ? 50 : 100;
 
-        double dist = Math.hypot(dx, dy);
-        if (dist > 0.4) {
-            double speed = 0.65 + random.nextDouble() * 0.25;
-            double newX = cb.getX() + (dx / dist) * speed;
-            double newY = cb.getY() + (dy / dist) * speed;
+        // ne prelaze centar
+        if (attacksRight) {
+            maxX = 50;
+        } else {
+            minX = 50;
+        }
+
+        // =========================================
+        // 2️⃣ CENTRALNA ŠIRINA (NE IDU ŠIROKO)
+        // =========================================
+        double minY = 35;
+        double maxY = 65;
+
+        // =========================================
+        // 3️⃣ RAZMAK IZMEĐU ŠTOPERA (VEĆI)
+        // =========================================
+        PlayerPositionDTO otherCB = players.stream()
+                .filter(p -> p.getTeam().equals(cb.getTeam()))
+                .filter(p -> p.getId() != cb.getId())
+                .filter(p -> isCenterBack(p))
+                .findFirst()
+                .orElse(null);
+
+        if (otherCB != null) {
+            double dist = distance(cb, otherCB);
+
+            if (dist < 14) { // malo veći razmak nego ranije
+                double dx = cb.getX() - otherCB.getX();
+                double dy = cb.getY() - otherCB.getY();
+                double len = Math.hypot(dx, dy) + 0.001;
+
+                cb.setX(clamp(cb.getX() + (dx / len) * 1.2));
+                cb.setY(clamp(cb.getY() + (dy / len) * 1.2));
+            }
+        }
+
+        // =========================================
+        // 4️⃣ OFFSIDE LINE LOGIKA SA BEKOVIMA
+        // =========================================
+        double defensiveLineBase = attacksRight ? 25 : 75;
+
+        // naizmenično istrčavanje (svakih par tickova)
+        if (random.nextDouble() < 0.15) {
+            defensiveLineBase += attacksRight ? 8 : -8; // istrče 8m
+        }
+
+        double dxLine = defensiveLineBase - x;
+
+        // =========================================
+        // 5️⃣ PRAĆENJE NAJBLIŽEG NAPADAČA
+        // =========================================
+        PlayerPositionDTO nearestOpponent = players.stream()
+                .filter(p -> !p.getTeam().equals(cb.getTeam()))
+                .min(Comparator.comparingDouble(p -> distance(cb, p)))
+                .orElse(null);
+
+        double dy = 0;
+
+        if (nearestOpponent != null && distance(cb, nearestOpponent) < 18) {
+            dy = nearestOpponent.getY() - y;
+        }
+
+        double dist = Math.hypot(dxLine, dy);
+
+        if (dist > 0.3) {
+
+            double speed = 0.8 + random.nextDouble() * 0.3;
+
+            double newX = x + (dxLine / dist) * speed;
+            double newY = y + (dy / dist) * speed;
 
             newX = Math.max(minX, Math.min(maxX, newX));
+            newY = Math.max(minY, Math.min(maxY, newY));
 
             cb.setX(clamp(newX));
             cb.setY(clamp(newY));
@@ -199,91 +368,252 @@ public class CanvasSimulationService {
 
     // ================== CENTRALNI VEZNI ==================
     private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
-        PlayerPositionDTO target = findTargetOpponent(cm, players, random, attacksRight);
+        int id = cm.getId();
+        boolean isDMC = (id == 6 || id == 16);  // DMC "policajci"
+        boolean isMC = (id == 8 || id == 18);   // MC/AMC
 
-        double dx = target != null ? target.getX() - cm.getX() : (attacksRight ? 8 : -8);
-        double dy = (50 - cm.getY()) * 0.7;
+        double minX, maxX;
 
-        double dist = Math.hypot(dx, dy);
-        if (dist > 0.4) {
-            double speed = 0.85 + random.nextDouble() * 0.35;
-            double newX = cm.getX() + (dx / dist) * speed;
-            newX = Math.max(attacksRight ? 38 : 52, Math.min(attacksRight ? 78 : 92, newX));
-
-            cm.setX(clamp(newX));
-            cm.setY(clamp(cm.getY() + (dy / dist) * speed));
+        // Postavljamo zone kretanja
+        if (isDMC) {
+            minX = 16;      // od naših 16m
+            maxX = 70;      // do protivničkih 30m
+        } else {
+            minX = 25;      // od naših 25m
+            maxX = 90;      // do protivničkih 10m
         }
+
+        // ===============================
+        // 1️⃣ Provera najbliža 3 protivnička igrača
+        // ===============================
+        List<PlayerPositionDTO> nearestOpponents = players.stream()
+                .filter(p -> !p.getTeam().equals(cm.getTeam()))
+                .sorted(Comparator.comparingDouble(p -> distance(cm, p)))
+                .limit(3)
+                .toList();
+
+        // Proveri da li neko od njih ima loptu
+        Optional<PlayerPositionDTO> withBall = nearestOpponents.stream()
+                .filter(p -> p.getId() == getPlayerWithBall(players))
+                .findFirst();
+
+        double dx = 0, dy = 0;
+
+        if (withBall.isPresent() && isDMC) {
+            // Agresivni pritisak DMC ka igraču sa loptom
+            dx = (withBall.get().getX() - cm.getX()) * 0.5;
+            dy = (withBall.get().getY() - cm.getY()) * 0.5;
+        } else if (isMC) {
+            // MC/AMC težnja ka sredini + spremni za pas u prostor
+            dx = ((minX + maxX) / 2 - cm.getX()) * 0.25;
+            dy = (50 - cm.getY()) * 0.25;
+        } else if (isDMC) {
+            // DMC bez lopte → naginju ka sredini svoje zone
+            dx = ((minX + maxX) / 2 - cm.getX()) * 0.2;
+            dy = (50 - cm.getY()) * 0.15;
+        }
+
+        // ===============================
+        // 2️⃣ Pas u prostor (MC/AMC)
+        // ===============================
+        if (isMC && currentCarrier.getTeam().equals(cm.getTeam())) {
+            // Nađi najbližeg napadača ili spica
+            PlayerPositionDTO targetAttacker = players.stream()
+                    .filter(p -> p.getTeam().equals(cm.getTeam()) && (isStriker(p) || isWinger(p)))
+                    .min(Comparator.comparingDouble(p -> distance(cm, p)))
+                    .orElse(null);
+
+            if (targetAttacker != null) {
+                // Pas u prostor: X malo ispred napadača, Y po širini
+                double spaceX = attacksRight ? targetAttacker.getX() - 1 : targetAttacker.getX() + 1;
+                double spaceY = targetAttacker.getY();
+
+                // Proveri da li je slobodno malo ispred
+                boolean freeSpace = players.stream()
+                        .filter(p -> !p.getTeam().equals(cm.getTeam()))
+                        .noneMatch(p -> Math.hypot(p.getX() - spaceX, p.getY() - spaceY) < 3.0);
+
+                if (freeSpace) {
+                    dx += (spaceX - cm.getX()) * 0.15;
+                    dy += (spaceY - cm.getY()) * 0.15;
+                }
+            }
+        }
+
+        // ===============================
+        // 3️⃣ Šut u zoni šuta
+        // ===============================
+        double goalX = attacksRight ? 100 : 0;
+        double distToGoal = Math.abs(cm.getX() - goalX);
+
+        if (isMC && distToGoal <= 28) { // zona šuta
+            if (random.nextDouble() < 0.25) { // 25% šansa da puca
+                initiateShot(cm, players, random, attacksRight);
+            }
+        }
+
+        // ===============================
+        // 4️⃣ Clamp X/Y unutar zone
+        // ===============================
+        double newX = clamp(cm.getX() + dx);
+        double newY = clamp(cm.getY() + dy);
+
+        newX = Math.max(minX, Math.min(maxX, newX));
+
+        cm.setX(newX);
+        cm.setY(newY);
     }
 
-    // ================== KRILA ==================
+    // ===============================
+// Helper metode
+// ===============================
+    private int getPlayerWithBall(List<PlayerPositionDTO> players) {
+        return currentCarrier != null ? currentCarrier.getId() : -1;
+    }
+
+    private boolean isStriker(PlayerPositionDTO p) {
+        int id = p.getId();
+        return (id >= 9 && id <= 11) || (id >= 21 && id <= 22);
+    }
+
+    private boolean isWinger(PlayerPositionDTO p) {
+        int id = p.getId();
+        return (id == 7 || id == 11 || id == 19 || id == 20);
+    }
+
+// ================== KRILA ==================
     private void moveWinger(PlayerPositionDTO winger, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+
         double offsideLine = findOffsideLine(players, attacksRight);
-        double maxForward = attacksRight ? offsideLine + 12 + random.nextDouble() * 10 : offsideLine - 12 - random.nextDouble() * 10;
 
-        if (attacksRight && winger.getX() > offsideLine + 15) {
-            winger.setX(clamp(winger.getX() - 0.6));
-            return;
+        // Dozvoljeno malo preko ofsajd linije (isto kao špicevi)
+        double maxForward = attacksRight
+                ? offsideLine + 3
+                : offsideLine - 3;
+
+        double x = winger.getX();
+        double y = winger.getY();
+
+        // Odredi da li je levi ili desni winger
+        boolean isRightSide = (winger.getId() == 7 || winger.getId() == 19);
+        // 7 i 19 tretiramo kao desna krila (možeš promeniti ako želiš obrnutu logiku)
+
+    // ===============================
+    // 1️⃣ OGRANIČENJE ŠIRINE (15%) + BLAGO VUČENJE KA LINJI
+    // ===============================
+        double minY, maxY;
+
+        if (isRightSide) {
+            minY = 85;
+            maxY = 100;
+
+            // blago vučenje ka aut liniji (100)
+            y += (100 - y) * 0.08;
+
+        } else {
+            minY = 0;
+            maxY = 15;
+
+            // blago vučenje ka aut liniji (0)
+            y += (0 - y) * 0.08;
         }
-        if (!attacksRight && winger.getX() < offsideLine - 15) {
-            winger.setX(clamp(winger.getX() + 0.6));
-            return;
+
+// dozvoli prirodni random drift unutar zone
+        y += (random.nextDouble() - 0.5) * 1.2;
+
+// clamp samo na granice zone
+        y = Math.max(minY, Math.min(maxY, y));
+
+
+        // ===============================
+        // 2️⃣ NAPRED UZ LINIJU
+        // ===============================
+        double dxForward = attacksRight ? 2.4 : -2.4;
+
+        // ===============================
+        // 3️⃣ KA GOLU TEK U ZADNJIH 25m
+        // ===============================
+        double goalDistance = attacksRight ? (100 - x) : x;
+
+        double dyTowardsGoal = 0;
+
+        if (goalDistance <= 25) {
+            // sme da seče ka sredini
+            dyTowardsGoal = (50 - y) * 0.25;
         }
 
-        PlayerPositionDTO target = findTargetOpponent(winger, players, random, attacksRight);
+        double newX = x + dxForward;
+        double newY = y + dyTowardsGoal;
 
-        double dx = target != null ? target.getX() - winger.getX() : (attacksRight ? 18 : -18);
-        double dy = target != null ? target.getY() - winger.getY() : (50 - winger.getY()) * 0.4;
-
-        // Jače vučenje ka strani
-        double sidePull = (winger.getY() > 50) ? 88 : 12;
-        dy += (sidePull - winger.getY()) * 0.4;
-
-        // Konstantno napred
-        dx += attacksRight ? 1.6 : -1.6;
-
-        double dist = Math.hypot(dx, dy);
-        if (dist > 0.4) {
-            double speed = 1.1 + random.nextDouble() * 0.4;
-            double newX = winger.getX() + (dx / dist) * speed;
-            newX = attacksRight ? Math.min(newX, maxForward) : Math.max(newX, maxForward);
-
-            winger.setX(clamp(newX));
-            winger.setY(clamp(winger.getY() + (dy / dist) * speed));
+        // ===============================
+        // 4️⃣ OFSAJD LIMIT
+        // ===============================
+        if (attacksRight) {
+            newX = Math.min(newX, maxForward);
+        } else {
+            newX = Math.max(newX, maxForward);
         }
+
+        winger.setX(clamp(newX));
+        winger.setY(clamp(newY));
     }
 
-    // ================== NAPADAČI ==================
+// ================== NAPADAČI ==================
     private void moveStriker(PlayerPositionDTO striker, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+
         double offsideLine = findOffsideLine(players, attacksRight);
-        double maxForward = 80.00;
 
-        if (attacksRight && striker.getX() > offsideLine + 15) {
-            striker.setX(clamp(striker.getX() - 0.6));
+        // Dozvoljeno 2-3 ticka iza ofsajd linije
+        double maxForward = attacksRight
+                ? offsideLine + 3
+                : offsideLine - 3;
+
+        // Ako su previše izašli, lagano ih vraćaj
+        if (attacksRight && striker.getX() > offsideLine + 6) {
+            striker.setX(clamp(striker.getX() - 0.8));
             return;
         }
-        if (!attacksRight && striker.getX() < offsideLine - 15) {
-            striker.setX(clamp(striker.getX() + 0.6));
+        if (!attacksRight && striker.getX() < offsideLine - 6) {
+            striker.setX(clamp(striker.getX() + 0.8));
             return;
         }
 
-        double baseTargetX = attacksRight ? 70 + random.nextDouble() * 30 : 30 - random.nextDouble() * 30;
+        double baseTargetX = attacksRight
+                ? 85 + random.nextDouble() * 15
+                : 15 - random.nextDouble() * 15;
+
         double baseTargetY = 32 + random.nextDouble() * 36;
 
         double dx = baseTargetX - striker.getX();
         double dy = baseTargetY - striker.getY();
 
-        // Konstantno vučenje napred
-        dx += attacksRight ? 2.0 : -2.0;
+        // Jače konstantno vučenje napred (agresivnije nego pre)
+        dx += attacksRight ? 3.2 : -3.2;
 
         double dist = Math.hypot(dx, dy);
         if (dist > 0.4) {
-            double speed = 1.15 + random.nextDouble() * 0.45;
+
+            double speed = 1.35 + random.nextDouble() * 0.55;
+
             double newX = striker.getX() + (dx / dist) * speed;
-            newX = attacksRight ? Math.min(newX, maxForward) : Math.max(newX, maxForward);
+            double newY = striker.getY() + (dy / dist) * speed;
+
+            // Ograničenje na ofsajd + 3
+            if (attacksRight) {
+                newX = Math.min(newX, maxForward);
+            } else {
+                newX = Math.max(newX, maxForward);
+            }
 
             striker.setX(clamp(newX));
-            striker.setY(clamp(striker.getY() + (dy / dist) * speed));
+            striker.setY(clamp(newY));
         }
+    }
+
+
+    private boolean isCenterBack(PlayerPositionDTO p) {
+        return p.getId() == 4 || p.getId() == 5
+                || p.getId() == 16 || p.getId() == 17;
     }
 
     // =============================================
@@ -297,17 +627,17 @@ public class CanvasSimulationService {
         double distToGoal = Math.abs(carrier.getX() - goalX);
         System.out.println("Igrac:"+carrier.getId()+" udaljen od gola "+distToGoal);
 
-        // Zona šuta - povećana na 38 jedinica + verovatnoća raste kako se približava
-        if (distToGoal <= 38) {
+        // Zona šuta - povećana na 32 jedinica + verovatnoća raste kako se približava
+        if (distToGoal <= 32) {
             double shotProbability;
 
             if (distToGoal <= 18) {           // unutar ~18m → vrlo velika šansa
                 shotProbability = 0.88;
-            } else if (distToGoal <= 25) {    // 18–25m → dobra šansa
+            } else if (distToGoal <= 22) {    // <22 m → dobra šansa
                 shotProbability = 0.75;
-            } else if (distToGoal <= 32) {    // 25–32m → prosečna šansa
+            } else if (distToGoal <= 27) {    // 22-27m → prosečna šansa
                 shotProbability = 0.45;
-            } else {                          // 32–38m → mala šansa (dugi šut)
+            } else {                          // >27m → mala šansa (dugi šut)
                 shotProbability = 0.18;
             }
 
@@ -489,8 +819,8 @@ public class CanvasSimulationService {
         Random  random = new Random();
         if (isOffside) {
             streak++;
-            if (streak > 1) {  // Brže vraćanje: odmah posle 1-2 ticka
-                double retreatSpeed = 1.5 + random.nextDouble() * 0.5;  // Brže vraćanje
+            if (streak > 3) {
+                double retreatSpeed = 1.5 + random.nextDouble() * 0.5;
                 p.setX(clamp(p.getX() + (attacksRight ? -retreatSpeed : retreatSpeed)));
             }
         } else {
