@@ -57,8 +57,8 @@ button:disabled:hover {
 
 <div class="container">
   <button id="demoBtn" onclick="startDemoTest()">Start Demo Test</button>
-  <button id="canvasBtn" onclick="startCanvasTest()" disabled="disabled">Start Canvas Test (22 Players)</button>
-  <button id="startBtn" onclick="startSimulation()" disabled="disabled">Start Match Simulation</button>
+<!--  <button id="canvasBtn" onclick="startCanvasTest()" disabled="disabled">Start Canvas Test (22 Players)</button>-->
+<!--  <button id="startBtn" onclick="startSimulation()" disabled="disabled">Start Match Simulation</button>-->
   <audio id="backgroundMusic" autoplay>
     <source src="/audio/intro.mp3" type="audio/mpeg">
   </audio>
@@ -74,11 +74,11 @@ button:disabled:hover {
     try {
         const response = await fetch('/start-demo');
         if (!response.ok) throw new Error('Server error');
+        const data = await response.json();
+        const matchId = data.matchId;
 
         await new Promise(resolve => setTimeout(resolve, 500));
-
-        window.location.href = "/demo.html";
-
+        window.location.href = `/demo.html?matchId=${matchId}`;
     } catch (error) {
         console.error(error);
         alert("Greška pri pokretanju demo testa.");

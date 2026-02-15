@@ -10,16 +10,19 @@ import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.simulator.*;
-import org.example.footballmanager.util.*;
+import org.example.footballmanager.simulator.MatchContext;
+import org.example.footballmanager.simulator.MatchEventFactory;
+import org.example.footballmanager.simulator.MatchSimulator;
+import org.example.footballmanager.simulator.TeamStrengthCalculator;
+import org.example.footballmanager.util.DemoMatchEventWebSocketHandler;
+import org.example.footballmanager.util.DemoPositionWebSocketHandler;
+import org.example.footballmanager.util.MatchRatingCalculator;
+import org.example.footballmanager.util.TacticsAdjustmentService;
 import org.hibernate.Hibernate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Slf4j
 @Service
@@ -34,167 +37,200 @@ public class DemoCombinedSimulationService {
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
     private final MatchSimulator matchSimulator;
-    private final TacticsAdjustmentService tacticsAdjustmentService;
-
     private final Random random = new Random();
-    private ScheduledExecutorService scheduler;
-
-    // Stanje Canvas simulacije
-    private PlayerPositionDTO currentCarrier;
-    private BallPositionDTO ball;
-    private int possessionTicks = 0;
-    private int spacePassCooldown = 0;
-    private boolean isShooting = false;
-    private boolean isRebounding = false;
-    private double targetBallX, targetBallY;
-    private int shotTicks = 0;
-    private final int maxShotTicks = 4;
-    private int reboundTicks = 0;
-    private final int maxReboundTicks = 3;
-    private boolean attacksRightDuringShot;
-    private final Map<Integer, Integer> offsideStreak = new HashMap<>();
-
+    private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
     private static final int TICK_MS = 250;
     private static final int MATCH_DURATION_SECONDS = 90;
-
-    private final MatchEventFactory eventFactory = new MatchEventFactory();
-
-    private volatile boolean simulationStarted = false;
+    private final TacticsAdjustmentService tacticsAdjustmentService;
+    private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
+    private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private Long savedMatchId;
 
     public void setMatchId(Long matchId) {
         this.savedMatchId = matchId;
     }
 
+    // ================== START DEMO CANVAS SIMULACIJE ==================
     @Async
     @Transactional
     @SneakyThrows
-    public CompletableFuture<Void> startDemoSimulation(long matchId) {   // ← void – nema više CompletableFuture
-
-        if (simulationStarted) {
-            log.info("Simulacija već pokrenuta – preskačem ponovni start");
+    public CompletableFuture<Match> startDemoSimulation(long matchId) {
+        Match match = loadAndValidateMatch(matchId);
+        if (!startSimulationOnlyIfNotRunning(matchId)) {
             return CompletableFuture.completedFuture(null);
         }
 
-        simulationStarted = true;
+        ScheduledExecutorService scheduler = createAndRegisterScheduler(matchId);
+        DemoMatchRuntime runtime = initializeRuntimeAndPositions(matchId);
 
-        // Cleanup starog schedulera ako postoji
-        if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdownNow();
-            try {
-                scheduler.awaitTermination(5, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {}
-        }
+        startPositionBroadcastLoop(scheduler, matchId, runtime);
 
-        scheduler = Executors.newSingleThreadScheduledExecutor();
+        prepareMatchEntities(match);
 
-        // Inicijalizacija igrača i lopte (canvas deo)
-        List<PlayerPositionDTO> players = new ArrayList<>();
-        Random r = new Random();
-
-        for (int i = 1; i <= 11; i++) {
-            players.add(new PlayerPositionDTO(i, "HOME", 10 + r.nextDouble() * 35, 10 + r.nextDouble() * 80));
-        }
-        for (int i = 12; i <= 22; i++) {
-            players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80));
-        }
-
-        ball = new BallPositionDTO(50, 50);
-        currentCarrier = players.get(0);
-
-        final int[] tick = {0};
-        final int totalTicks = MATCH_DURATION_SECONDS * (1000 / TICK_MS);
-
-        scheduler.scheduleAtFixedRate(() -> {
-            if (tick[0] >= totalTicks) {
-                scheduler.shutdown();
-                log.info("Canvas tick simulacija završena nakon {} tick-ova", tick[0]);
-                return;
-            }
-
-            for (PlayerPositionDTO p : players) {
-                boolean attacksRight = p.getTeam().equals("HOME");
-                movePlayerByRole(p, players, r, attacksRight);
-            }
-
-            if (!isShooting && !isRebounding) {
-                possessionTicks++;
-                if (possessionTicks > 6 + r.nextInt(9)) {
-                    PlayerPositionDTO next = chooseNextAction(currentCarrier, players, r);
-                    if (next != null) currentCarrier = next;
-                    possessionTicks = 0;
-                }
-
-                spacePassCooldown++;
-                if (spacePassCooldown > 8 && r.nextDouble() < 0.17) {
-                    trySpacePass(currentCarrier, players, r);
-                    spacePassCooldown = 0;
-                }
-            }
-
-            if (isShooting) {
-                handleShotMovement(r);
-            } else if (isRebounding) {
-                handleReboundMovement(players, r);
-            } else {
-                ball.setX(currentCarrier.getX());
-                ball.setY(currentCarrier.getY());
-            }
-
-            GameStateDTO state = new GameStateDTO(
-                    tick[0] / (1000 / TICK_MS),
-                    new ArrayList<>(players),
-                    ball
-            );
-
-            positionWs.broadcast(state);
-            tick[0]++;
-
-        }, 0, TICK_MS, TimeUnit.MILLISECONDS);
-
-        // -------------------------------
-        // EVENT + MATCH SIMULACIJA (kao ranije)
-        // -------------------------------
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
-// Inicijalizuj lazy kolekcije
-        Hibernate.initialize(match.getHomeLineup().getStartingPlayers());
-        Hibernate.initialize(match.getAwayLineup().getStartingPlayers());
+        Tactics homeTactics = createHomeTactics(match);
+        Tactics awayTactics = createAwayTactics(match);
 
         List<Player> homePlayers = match.getHomeLineup().getStartingPlayers();
         List<Player> awayPlayers = match.getAwayLineup().getStartingPlayers();
 
-           if (homePlayers.size() != 11 || awayPlayers.size() != 11)
+        simulateMatch(
+                match,
+                new Crowd(),
+                new Referee(),
+                homeTactics,
+                awayTactics,
+                homePlayers,
+                awayPlayers
+        );
+
+        finalizeMatchResult(match, homePlayers, awayPlayers);
+
+        Match saved = matchRepository.save(match);
+        log.info("Simulacija završena za meč {}", matchId);
+
+        return CompletableFuture.completedFuture(saved);
+    }
+    private Match loadAndValidateMatch(long matchId) {
+        return matchRepository.findById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found"));
+    }
+    private boolean startSimulationOnlyIfNotRunning(long matchId) {
+        if (!runningMatches.add(matchId)) {
+            log.info("Match {} već se simulira!", matchId);
+            return false;
+        }
+        return true;
+    }
+    private ScheduledExecutorService createAndRegisterScheduler(long matchId) {
+        ScheduledExecutorService old = schedulers.get(matchId);
+        if (old != null) old.shutdownNow();
+
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        schedulers.put(matchId, scheduler);
+        return scheduler;
+    }
+    private DemoMatchRuntime initializeRuntimeAndPositions(long matchId) {
+        DemoMatchRuntime runtime = new DemoMatchRuntime();
+        runtimes.put(matchId, runtime);
+
+        Random r = new Random();
+        // Home players (1–11)
+        for (int i = 1; i <= 11; i++) {
+            runtime.players.add(new PlayerPositionDTO(i, "HOME", 10 + r.nextDouble() * 35, 10 + r.nextDouble() * 80));
+        }
+        // Away players (12–22)
+        for (int i = 12; i <= 22; i++) {
+            runtime.players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80));
+        }
+
+        runtime.ball = new BallPositionDTO(50, 50);
+        runtime.currentCarrier = runtime.players.get(0);
+
+        return runtime;
+    }
+    private void startPositionBroadcastLoop(ScheduledExecutorService scheduler, long matchId, DemoMatchRuntime runtime) {
+        final int totalTicks = MATCH_DURATION_SECONDS * (1000 / TICK_MS);
+
+        scheduler.scheduleAtFixedRate(() -> {
+            DemoMatchRuntime rt = runtimes.get(matchId);
+            if (rt == null) return;
+
+            if (rt.tick >= totalTicks) {
+                stopMatch(matchId);
+                return;
+            }
+
+            updatePlayerPositions(rt, random);
+
+            handlePossessionAndActions(rt, random);
+
+            updateBallPosition(rt);
+
+            broadcastCurrentState(matchId, rt);
+
+            rt.tick++;
+        }, 0, TICK_MS, TimeUnit.MILLISECONDS);
+    }
+    private void updatePlayerPositions(DemoMatchRuntime rt, Random random) {
+        for (PlayerPositionDTO p : rt.players) {
+            boolean attacksRight = p.getTeam().equals("HOME");
+            movePlayerByRole(p, rt.players, random, attacksRight, rt);
+        }
+    }
+    private void handlePossessionAndActions(DemoMatchRuntime rt, Random random) {
+        if (rt.isShooting || rt.isRebounding) {
+            return;
+        }
+
+        rt.possessionTicks++;
+        if (rt.possessionTicks > 6 + random.nextInt(9)) {
+            PlayerPositionDTO next = chooseNextAction(rt.currentCarrier, rt.players, random, rt);
+            if (next != null) rt.currentCarrier = next;
+            rt.possessionTicks = 0;
+        }
+
+        rt.spacePassCooldown++;
+        if (rt.spacePassCooldown > 8 && random.nextDouble() < 0.17) {
+            trySpacePass(rt.currentCarrier, rt.players, random, rt);
+            rt.spacePassCooldown = 0;
+        }
+    }
+    private void updateBallPosition(DemoMatchRuntime rt) {
+        if (rt.isShooting) {
+            handleShotMovement(random, rt);
+        } else if (rt.isRebounding) {
+            handleReboundMovement(rt.players, random, rt);
+        } else {
+            rt.ball.setX(rt.currentCarrier.getX());
+            rt.ball.setY(rt.currentCarrier.getY());
+        }
+    }
+    private void broadcastCurrentState(long matchId, DemoMatchRuntime rt) {
+        GameStateDTO state = new GameStateDTO(
+                rt.tick / (1000 / TICK_MS),
+                new ArrayList<>(rt.players),
+                rt.ball
+        );
+        positionWs.broadcast(matchId, state);
+    }
+    private void prepareMatchEntities(Match match) {
+        Hibernate.initialize(match.getHomeLineup().getStartingPlayers());
+        Hibernate.initialize(match.getAwayLineup().getStartingPlayers());
+
+        List<Player> home = match.getHomeLineup().getStartingPlayers();
+        List<Player> away = match.getAwayLineup().getStartingPlayers();
+
+        if (home.size() != 11 || away.size() != 11) {
             throw new RuntimeException("Svaki tim mora imati tačno 11 igrača u postavi.");
-
-        Crowd dummyCrowd = new Crowd();
-        Referee dummyReferee = new Referee();
-        Tactics homeTactics = new Tactics();
-        Formation homeFormation = new Formation();
-        homeFormation.setName(match.getHomeLineup().getFormation() != null ? match.getHomeLineup().getFormation() : "4-4-2");
-        homeFormation.setOffenseModifier(1.05);
-        homeFormation.setDefenseModifier(0.95);
-        homeFormation.setPossessionModifier(1.00);
-        homeTactics.setFormation(homeFormation);
-
-        Tactics awayTactics = new Tactics();
-        Formation awayFormation = new Formation();
-        awayFormation.setName(match.getAwayLineup().getFormation() != null ? match.getAwayLineup().getFormation() : "4-2-3-1");
-        awayFormation.setOffenseModifier(1.10);
-        awayFormation.setDefenseModifier(0.98);
-        awayFormation.setPossessionModifier(1.05);
-        awayTactics.setFormation(awayFormation);
-
-        simulateMatch(match, dummyCrowd, dummyReferee, homeTactics, awayTactics, homePlayers, awayPlayers);
-
-        // Brojanje golova i finalizacija
-        final Team homeTeam = match.getHomeTeam();
-        final Team awayTeam = match.getAwayTeam();
+        }
+    }
+    private Tactics createHomeTactics(Match match) {
+        Tactics tactics = new Tactics();
+        Formation formation = new Formation();
+        formation.setName(match.getHomeLineup().getFormation() != null ? match.getHomeLineup().getFormation() : "4-4-2");
+        formation.setOffenseModifier(1.05);
+        formation.setDefenseModifier(0.95);
+        formation.setPossessionModifier(1.0);
+        tactics.setFormation(formation);
+        return tactics;
+    }
+    private Tactics createAwayTactics(Match match) {
+        Tactics tactics = new Tactics();
+        Formation formation = new Formation();
+        formation.setName(match.getAwayLineup().getFormation() != null ? match.getAwayLineup().getFormation() : "4-2-3-1");
+        formation.setOffenseModifier(1.1);
+        formation.setDefenseModifier(0.98);
+        formation.setPossessionModifier(1.05);
+        tactics.setFormation(formation);
+        return tactics;
+    }
+    private void finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers) {
+        Team homeTeam = match.getHomeTeam();
+        Team awayTeam = match.getAwayTeam();
 
         match.setHomeGoals((int) match.getGoals().stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(homeTeam))
                 .count());
-
         match.setAwayGoals((int) match.getGoals().stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(awayTeam))
                 .count());
@@ -205,18 +241,17 @@ public class DemoCombinedSimulationService {
         assignRatings(awayPlayers, match);
         savePlayerStats(match, homePlayers);
         savePlayerStats(match, awayPlayers);
-
-        Match saved = matchRepository.save(match);
-        log.info("Simulacija završena za meč {}", matchId);
-
-        return CompletableFuture.completedFuture(null);
     }
-    // =============================================
-    // SVE METODE IZ CanvasSimulationService
-    // =============================================
+    private void stopMatch(Long matchId) {
+        ScheduledExecutorService scheduler = schedulers.remove(matchId);
+        if (scheduler != null) scheduler.shutdownNow();
+        runtimes.remove(matchId);
+        runningMatches.remove(matchId);
+        log.info("Canvas simulacija završena za meč {}", matchId);
+    }
+    private void movePlayerByRole(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random, boolean attacksRight,DemoMatchRuntime rt) {
 
-    private void movePlayerByRole(PlayerPositionDTO p, List<PlayerPositionDTO> players,
-                                  Random random, boolean attacksRight) {
+
 
         int id = p.getId();
 
@@ -224,27 +259,21 @@ public class DemoCombinedSimulationService {
         else if (id == 2 || id == 13) moveFullback(p, players, random, attacksRight, true);
         else if (id == 3 || id == 16) moveFullback(p, players, random, attacksRight, false);
         else if (id == 4 || id == 5 || id == 14 || id == 15) moveCenterBack(p, players, random, attacksRight);
-        else if (id == 6 || id == 8 || id == 17 || id == 18) moveCentralMidfielder(p, players, random, attacksRight);
+        else if (id == 6 || id == 8 || id == 17 || id == 18) moveCentralMidfielder(p, players, random, attacksRight, rt);
         else if (id == 7 || id == 11 || id == 19 || id == 20) moveWinger(p, players, random, attacksRight);
         else if (id == 9 || id == 10 || id == 21 || id == 22) moveStriker(p, players, random, attacksRight);
 
-        pullTowardsBall(p, random);
+        pullTowardsBall(p, random, rt);
         avoidCrowding(p, players, random);
         applyIdleMovement(p, random);
-        handleOffsideTolerance(p, players, attacksRight);
+        handleOffsideTolerance(p, players, attacksRight, rt);
     }
-
     private void moveGoalkeeper(PlayerPositionDTO gk, Random random, boolean attacksRight) {
         double goalX = attacksRight ? 6 : 94;
         gk.setX(clamp(goalX + (random.nextDouble() - 0.5) * 5));
         gk.setY(clamp(48 + (random.nextDouble() - 0.5) * 12));
     }
-
-    private void moveFullback(PlayerPositionDTO fb,
-                              List<PlayerPositionDTO> players,
-                              Random random,
-                              boolean attacksRight,
-                              boolean isRightBack) {
+    private void moveFullback(PlayerPositionDTO fb, List<PlayerPositionDTO> players, Random random, boolean attacksRight, boolean isRightBack) {
 
         double x = fb.getX();
         double y = fb.getY();
@@ -342,12 +371,7 @@ public class DemoCombinedSimulationService {
             }
         }
     }
-
-    private void moveCenterBack(PlayerPositionDTO cb,
-                                List<PlayerPositionDTO> players,
-                                Random random,
-                                boolean attacksRight)
-    {
+    private void moveCenterBack(PlayerPositionDTO cb, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
 
         double x = cb.getX();
         double y = cb.getY();
@@ -419,8 +443,7 @@ public class DemoCombinedSimulationService {
             cb.setY(clamp(newY));
         }
     }
-
-    private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
+    private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
         int id = cm.getId();
         boolean isDMC = (id == 6 || id == 16);  // DMC "policajci"
         boolean isMC = (id == 8 || id == 18);   // MC/AMC
@@ -442,7 +465,7 @@ public class DemoCombinedSimulationService {
                 .toList();
 
         Optional<PlayerPositionDTO> withBall = nearestOpponents.stream()
-                .filter(p -> p.getId() == getPlayerWithBall(players))
+                .filter(p -> p.getId() == getPlayerWithBall(players, rt))
                 .findFirst();
 
         double dx = 0, dy = 0;
@@ -458,7 +481,7 @@ public class DemoCombinedSimulationService {
             dy = (50 - cm.getY()) * 0.15;
         }
 
-        if (isMC && currentCarrier.getTeam().equals(cm.getTeam())) {
+        if (isMC && rt.currentCarrier.getTeam().equals(cm.getTeam())) {
             PlayerPositionDTO targetAttacker = players.stream()
                     .filter(p -> p.getTeam().equals(cm.getTeam()) && (isStriker(p) || isWinger(p)))
                     .min(Comparator.comparingDouble(p -> distance(cm, p)))
@@ -484,7 +507,7 @@ public class DemoCombinedSimulationService {
 
         if (isMC && distToGoal <= 28) {
             if (random.nextDouble() < 0.25) {
-                initiateShot(cm, players, random, attacksRight);
+                initiateShot(cm, players, random, attacksRight, rt);
             }
         }
 
@@ -495,7 +518,6 @@ public class DemoCombinedSimulationService {
         cm.setX(newX);
         cm.setY(newY);
     }
-
     private void moveWinger(PlayerPositionDTO winger, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
 
         double offsideLine = findOffsideLine(players, attacksRight);
@@ -547,7 +569,6 @@ public class DemoCombinedSimulationService {
         winger.setX(clamp(newX));
         winger.setY(clamp(newY));
     }
-
     private void moveStriker(PlayerPositionDTO striker, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
 
         double offsideLine = findOffsideLine(players, attacksRight);
@@ -590,32 +611,25 @@ public class DemoCombinedSimulationService {
             striker.setY(clamp(newY));
         }
     }
-
-
     private boolean isCenterBack(PlayerPositionDTO p) {
         return p.getId() == 4 || p.getId() == 5
                 || p.getId() == 16 || p.getId() == 17;
     }
-
-    private int getPlayerWithBall(List<PlayerPositionDTO> players) {
-        return currentCarrier != null ? currentCarrier.getId() : -1;
+    private int getPlayerWithBall(List<PlayerPositionDTO> players, DemoMatchRuntime rt) {
+        return rt.currentCarrier != null ? rt.currentCarrier.getId() : -1;
     }
-
     private boolean isStriker(PlayerPositionDTO p) {
         int id = p.getId();
         return (id >= 9 && id <= 11) || (id >= 21 && id <= 22);
     }
-
     private boolean isWinger(PlayerPositionDTO p) {
         int id = p.getId();
         return (id == 7 || id == 11 || id == 19 || id == 20);
     }
-
     private boolean isAttacker(PlayerPositionDTO p) {
         int id = p.getId();
         return (id >= 7 && id <= 11) || (id >= 19 && id <= 22);
     }
-
     private double findOffsideLine(List<PlayerPositionDTO> players, boolean attacksRight) {
         String defendingTeam = attacksRight ? "AWAY" : "HOME";
         List<Double> defenderXs = players.stream()
@@ -631,26 +645,6 @@ public class DemoCombinedSimulationService {
 
         return defenderXs.get(1);
     }
-
-    private PlayerPositionDTO findTargetOpponent(PlayerPositionDTO player, List<PlayerPositionDTO> allPlayers,
-                                                 Random random, boolean attacksRight) {
-        String opponentTeam = attacksRight ? "AWAY" : "HOME";
-        List<PlayerPositionDTO> candidates = allPlayers.stream()
-                .filter(p -> p.getTeam().equals(opponentTeam))
-                .sorted(Comparator.comparingDouble(p -> distance(player, p)))
-                .limit(3)
-                .toList();
-
-        if (candidates.isEmpty()) return null;
-        if (candidates.size() == 1) return candidates.getFirst();
-
-        PlayerPositionDTO mostDangerous = candidates.stream()
-                .max(Comparator.comparingDouble(p -> attacksRight ? p.getX() : (100 - p.getX())))
-                .orElse(candidates.getFirst());
-
-        return random.nextDouble() < 0.68 ? mostDangerous : candidates.get(random.nextInt(candidates.size()));
-    }
-
     private PlayerPositionDTO findNearbyTeammate(PlayerPositionDTO carrier, List<PlayerPositionDTO> players) {
         List<PlayerPositionDTO> candidates = players.stream()
                 .filter(p -> p.getId() != carrier.getId() && p.getTeam().equals(carrier.getTeam()))
@@ -661,8 +655,7 @@ public class DemoCombinedSimulationService {
         if (candidates.isEmpty()) return null;
         return candidates.get(new Random().nextInt(candidates.size()));
     }
-
-    private void trySpacePass(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random) {
+    private void trySpacePass(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random,  DemoMatchRuntime rt) {
         boolean attacksRight = carrier.getTeam().equals("HOME");
         double spaceX = attacksRight ? 85 + random.nextDouble() * 12 : 15 - random.nextDouble() * 12;
         double spaceY = 20 + random.nextDouble() * 60;
@@ -673,92 +666,24 @@ public class DemoCombinedSimulationService {
                 .orElse(null);
 
         if (receiver != null) {
-            currentCarrier = receiver;
-            ball.setX(clamp(spaceX));
-            ball.setY(clamp(spaceY));
+            rt.currentCarrier = receiver;
+            rt.ball.setX(clamp(spaceX));
+           rt. ball.setY(clamp(spaceY));
         }
     }
-
     private double distance(PlayerPositionDTO a, PlayerPositionDTO b) {
         return Math.hypot(a.getX() - b.getX(), a.getY() - b.getY());
     }
-
     private double distance(BallPositionDTO ball, PlayerPositionDTO player) {
         return Math.hypot(ball.getX() - player.getX(), ball.getY() - player.getY());
     }
-
     private double clamp(double val) {
         return Math.max(0, Math.min(100, val));
     }
-
-    // =============================================
-    // SVE METODE IZ MatchService
-    // =============================================
-
-    @Async
-    @Transactional
-    @SneakyThrows
-    public CompletableFuture<Match> playMatch(Long matchId) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
-
-        if (match.getHomeLineup() == null || match.getAwayLineup() == null)
-            throw new RuntimeException("Postave nisu dodeljene meču.");
-
-        List<Player> homePlayers = match.getHomeLineup().getStartingPlayers();
-        List<Player> awayPlayers = match.getAwayLineup().getStartingPlayers();
-
-        if (homePlayers.size() != 11 || awayPlayers.size() != 11)
-            throw new RuntimeException("Each team must have exactly 11 players in lineup.");
-
-        Crowd crowd = new Crowd();
-        Referee referee = new Referee();
-
-        Tactics homeTactics = new Tactics();
-        Formation homeFormation = new Formation();
-        homeFormation.setName("Home formation");
-        homeTactics.setName("Home tactics");
-        homeTactics.setFormation(homeFormation);
-
-        Tactics awayTactics = new Tactics();
-        Formation awayFormation = new Formation();
-        awayFormation.setName("Away formation");
-        awayTactics.setName("Away tactics");
-        awayTactics.setFormation(awayFormation);
-
-        simulateMatch(match, crowd, referee, homeTactics, awayTactics, homePlayers, awayPlayers);
-
-        match = matchRepository.findById(matchId).orElseThrow();
-
-        final Team homeTeam = match.getHomeTeam();
-        final Team awayTeam = match.getAwayTeam();
-
-        match.setHomeGoals((int) match.getGoals().stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(homeTeam))
-                .count());
-
-        match.setAwayGoals((int) match.getGoals().stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(awayTeam))
-                .count());
-
-        simulateInjuriesAndCards(homePlayers, match);
-        simulateInjuriesAndCards(awayPlayers, match);
-        assignRatings(homePlayers, match);
-        assignRatings(awayPlayers, match);
-        savePlayerStats(match, homePlayers);
-        savePlayerStats(match, awayPlayers);
-
-        Match saved = matchRepository.save(match);
-        log.info("Simulacija završena za meč {}", matchId);
-
-        return CompletableFuture.completedFuture(saved);
-    }
-
     private void assignRatings(List<Player> players, Match match) {
         for (Player player : players)
             player.setRating(MatchRatingCalculator.calculate(player, match));
     }
-
     private void simulateInjuriesAndCards(List<Player> players, Match match) {
         for (Player player : players) {
             if (random.nextDouble() < 0.05) {
@@ -777,7 +702,6 @@ public class DemoCombinedSimulationService {
             }
         }
     }
-
     private void savePlayerStats(Match match, List<Player> players) {
         for (Player player : players) {
             long goals = match.getGoals().stream().filter(g -> g.getScorer().equals(player)).count();
@@ -797,24 +721,6 @@ public class DemoCombinedSimulationService {
             // matchPlayerStatsRepository.save(stats);
         }
     }
-
-    public Match simulateMatch(Long homeTeamId, Long awayTeamId, String homeFormation, String awayFormation) {
-        Match match = new Match();
-        match.setHomeFormation(homeFormation);
-        match.setAwayFormation(awayFormation);
-        match.setMatchDate(java.time.LocalDateTime.now());
-
-        Team homeTeam = teamRepository.findById(homeTeamId)
-                .orElseThrow(() -> new RuntimeException("Home team not found"));
-        Team awayTeam = teamRepository.findById(awayTeamId)
-                .orElseThrow(() -> new RuntimeException("Away team not found"));
-
-        match.setHomeTeam(homeTeam);
-        match.setAwayTeam(awayTeam);
-
-        return matchRepository.save(match);
-    }
-
     public String generateMatchReport(Match match) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("%s %d - %d %s%n%n",
@@ -842,7 +748,6 @@ public class DemoCombinedSimulationService {
 
         return sb.toString();
     }
-
     private void appendPlayerRatings(StringBuilder sb, List<Player> players, Match match) {
         for (Player player : players) {
             // Napomena: matchPlayerStatsRepository nije injektovan, pa sam pretpostavio da ćeš ga dodati ako treba
@@ -857,11 +762,6 @@ public class DemoCombinedSimulationService {
             sb.append(String.format("- %s: 0 (golova: 0, asistencija: 0)%n", player.getName()));
         }
     }
-
-    // =============================================
-    // SVE METODE IZ MatchSimulator
-    // =============================================
-
     private MatchEventDTO toDto(MatchEvent event) {
         if (event == null) return null;
 
@@ -1169,7 +1069,6 @@ public class DemoCombinedSimulationService {
         log.warn("Nepoznat event tip za DTO: {}", event.getClass().getSimpleName());
         return null;
     }
-
     @SneakyThrows
     private void simulateMatch(Match match, Crowd crowd, Referee referee,
                                Tactics homeTactics, Tactics awayTactics,
@@ -1190,7 +1089,7 @@ public class DemoCombinedSimulationService {
 
         MatchEventDTO startDto = toDto(startEvent);
         if (startDto != null) {
-            eventWs.broadcast(startDto);
+            eventWs.broadcast(match.getId(),startDto);
         }
 
         log.info("[1'] Event: {}", startEvent.getDescription());
@@ -1202,7 +1101,7 @@ public class DemoCombinedSimulationService {
             updateFatigue(context);
             updatePossession(context, homePlayers, awayPlayers, homeFormation, awayFormation);
             tacticsAdjustmentService.adjustTactics(context);
-
+            MatchEventFactory eventFactory = new MatchEventFactory();
             if (random.nextDouble() < eventProbability(context, match)) {
                 MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers, homeFormation, awayFormation);
                 if (event != null) {
@@ -1212,7 +1111,7 @@ public class DemoCombinedSimulationService {
 
                     MatchEventDTO dto = toDto(event);
                     if (dto != null) {
-                        eventWs.broadcast(dto);
+                        eventWs.broadcast(match.getId(),dto);
                         Thread.sleep(3500);
                     }
 
@@ -1237,7 +1136,7 @@ public class DemoCombinedSimulationService {
 
                         MatchEventDTO goalDto = toDto(goal);
                         if (goalDto != null) {
-                            eventWs.broadcast(goalDto);
+                            eventWs.broadcast(match.getId(),goalDto);
                             Thread.sleep(4400);
                         }
 
@@ -1263,7 +1162,7 @@ public class DemoCombinedSimulationService {
 
         MatchEventDTO endDto = toDto(endEvent);
         if (endDto != null) {
-            eventWs.broadcast(endDto);
+            eventWs.broadcast(match.getId(),endDto);
         }
 
         log.info("[90'] Event: {}", endEvent.getDescription());
@@ -1271,7 +1170,6 @@ public class DemoCombinedSimulationService {
 
         match.setPlayed(true);
     }
-
     private void performSubstitution(Match match, MatchContext context, List<Player> teamPlayers, boolean isHomeTeam) {
         if (teamPlayers.size() < 12) return;
 
@@ -1290,7 +1188,7 @@ public class DemoCombinedSimulationService {
         MatchEventDTO subDto = toDto(sub);
         if (subDto != null) {
             try {
-                eventWs.broadcast(subDto);
+                eventWs.broadcast(match.getId(),subDto);
                 Thread.sleep(3500);
             } catch (Exception e) {
                 log.error("Greška pri broadcastu zamene", e);
@@ -1300,12 +1198,10 @@ public class DemoCombinedSimulationService {
         teamPlayers.remove(out);
         teamPlayers.add(in);
     }
-
     private void updateFatigue(MatchContext context) {
         context.setFatigueFactor(Math.max(0.7, context.getFatigueFactor() - 0.002));
         log.info("Minute: {}, Fatigue Factor: {}", context.getCurrentMinute(), context.getFatigueFactor());
     }
-
     private void updatePossession(MatchContext context, List<Player> homePlayers, List<Player> awayPlayers,
                                   Formation homeFormation, Formation awayFormation) {
         double homeStrength = TeamStrengthCalculator.calculateTeamStrength(homePlayers, homeFormation, context.getHomeTactics(), true);
@@ -1319,13 +1215,11 @@ public class DemoCombinedSimulationService {
         }
         log.info("Minute: {}, Possession: {}", context.getCurrentMinute(), context.getPossessionTeam().getName());
     }
-
     private boolean isHomeTeam(MatchEvent event) {
         if (event instanceof GoalEvent goal) return goal.getTeam().equals(goal.getMatch().getHomeTeam());
         if (event instanceof SubstitutionEvent sub) return sub.getPlayerOut().getTeam().equals(sub.getMatch().getHomeTeam());
         return false;
     }
-
     private double eventProbability(MatchContext context, Match match) {
         double base = 0.1;
         double strengthFactor = 0.2;
@@ -1334,7 +1228,7 @@ public class DemoCombinedSimulationService {
     // =============================================
     // ODLUKA NOSIOCA LOPTE
     // =============================================
-    private PlayerPositionDTO chooseNextAction(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random) {
+    private PlayerPositionDTO chooseNextAction(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random, DemoMatchRuntime rt) {
         boolean attacksRight = carrier.getTeam().equals("HOME");
 
         // Izračunaj distancu do gola
@@ -1358,7 +1252,7 @@ public class DemoCombinedSimulationService {
 
             if (random.nextDouble() < shotProbability) {
                 System.out.println("ŠUT! Distanca: " + String.format("%.1f", distToGoal));
-                initiateShot(carrier, players, random, attacksRight);
+                initiateShot(carrier, players, random, attacksRight, rt);
                 return carrier;  // nosilac ostaje isti dok se izvrši šut
             }
         }
@@ -1372,78 +1266,76 @@ public class DemoCombinedSimulationService {
         return findNearbyTeammate(carrier, players);
     }
     // Obrada kretanja lopte tokom šuta
-    private void handleShotMovement(Random random) {
-        shotTicks++;
-        double progress = (double) shotTicks / maxShotTicks;
+    private void handleShotMovement(Random random,DemoMatchRuntime rt) {
+        rt.shotTicks++;
+        double progress = (double) rt.shotTicks / rt.maxShotTicks;
         if (progress >= 1) {
             progress = 1;
         }
 
         // Interpoliraj poziciju lopte ka cilju
-        ball.setX(clamp(ball.getX() + (targetBallX - ball.getX()) * progress));
-        ball.setY(clamp(ball.getY() + (targetBallY - ball.getY()) * progress));
+        rt.ball.setX(clamp(rt.ball.getX() + (rt.targetBallX - rt.ball.getX()) * progress));
+        rt.ball.setY(clamp(rt.ball.getY() + (rt.targetBallY - rt.ball.getY()) * progress));
 
-        if (shotTicks >= maxShotTicks) {
-            isShooting = false;
+        if (rt.shotTicks >= rt.maxShotTicks) {
+            rt.isShooting = false;
             // Odluči ishod šuta
             double shotOutcome = random.nextDouble();
             if (shotOutcome < 0.20) {
                 // Gol: lopta prelazi gol-liniju
                 System.out.println("GOL!");
-                ball.setX(targetBallX);
-                ball.setY(targetBallY);
-                initiateRebound(random);
+                rt.ball.setX(rt.targetBallX);
+                rt.ball.setY(rt.targetBallY);
+                initiateRebound(random, rt);
 
             } else if (shotOutcome < 0.70) {
                 // Odbrana: pokreni odbijanje lopte
                 System.out.println("Odbijena lopta!");
-                initiateRebound(random);
+                initiateRebound(random, rt);
             } else {
                 // Promasaj: lopta ide izvan gola
                 System.out.println("Promasaj!");
-                double missX = attacksRightDuringShot ? 100 + 5 : -5;  // Izvan terena
-                double missY = targetBallY + (random.nextDouble() - 0.5) * 30;
-                ball.setX(clamp(missX));
-                ball.setY(clamp(missY));
-                initiateRebound(random);
+                double missX = rt.attacksRightDuringShot ? 100 + 5 : -5;  // Izvan terena
+                double missY = rt.targetBallY + (random.nextDouble() - 0.5) * 30;
+                rt.ball.setX(clamp(missX));
+                rt.ball.setY(clamp(missY));
+                initiateRebound(random, rt);
 
             }
         }
     }
     // Obrada kretanja lopte tokom odbijanja
-    private void handleReboundMovement(List<PlayerPositionDTO> players, Random random) {
-        reboundTicks++;
-        double progress = (double) reboundTicks / maxReboundTicks;
+    private void handleReboundMovement(List<PlayerPositionDTO> players, Random random, DemoMatchRuntime rt) {
+        rt.reboundTicks++;
+        double progress = (double) rt.reboundTicks / rt.maxReboundTicks;
         if (progress >= 1) {
             progress = 1;
         }
 
         // Interpoliraj poziciju lopte ka cilju odbijanja
-        ball.setX(clamp(ball.getX() + (targetBallX - ball.getX()) * progress));
-        ball.setY(clamp(ball.getY() + (targetBallY - ball.getY()) * progress));
+        rt.ball.setX(clamp(rt.ball.getX() + (rt.targetBallX - rt.ball.getX()) * progress));
+        rt.ball.setY(clamp(rt.ball.getY() + (rt.targetBallY - rt.ball.getY()) * progress));
 
-        if (reboundTicks >= maxReboundTicks) {
-            isRebounding = false;
+        if (rt.reboundTicks >= rt.maxReboundTicks) {
+            rt.isRebounding = false;
             // Lopta je slobodna, najbliži igrač (bilo koji tim) je uzima
-            currentCarrier = players.stream()
-                    .min(Comparator.comparingDouble(p -> distance(ball, p)))
-                    .orElse(currentCarrier);
+            rt.currentCarrier = players.stream()
+                    .min(Comparator.comparingDouble(p -> distance(rt.ball, p)))
+                    .orElse(rt.currentCarrier);
         }
     }
     // =============================================
     // POMOĆNE METODE
     // =============================================
+    private void pullTowardsBall(PlayerPositionDTO p, Random random, DemoMatchRuntime rt) {
+        if (p.getId() == rt.currentCarrier.getId()) return;
 
-    private void pullTowardsBall(PlayerPositionDTO p, Random random) {
-        if (p.getId() == currentCarrier.getId()) return;
-
-        double toBallX = (ball.getX() - p.getX()) * 0.13;
-        double toBallY = (ball.getY() - p.getY()) * 0.15;
+        double toBallX = (rt.ball.getX() - p.getX()) * 0.13;
+        double toBallY = (rt.ball.getY() - p.getY()) * 0.15;
 
         p.setX(clamp(p.getX() + toBallX));
         p.setY(clamp(p.getY() + toBallY));
     }
-
     private void avoidCrowding(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random) {
         for (PlayerPositionDTO other : players) {
             if (other.getId() == p.getId() || !other.getTeam().equals(p.getTeam())) continue;
@@ -1457,19 +1349,17 @@ public class DemoCombinedSimulationService {
             }
         }
     }
-
     private void applyIdleMovement(PlayerPositionDTO p, Random random) {
         p.setY(clamp(p.getY() + (random.nextDouble() - 0.5) * 1.3));
         //p.setX(clamp(p.getX() + (50 - p.getX()) * 0.09));
     }
-
-    private void handleOffsideTolerance(PlayerPositionDTO p, List<PlayerPositionDTO> players, boolean attacksRight) {
+    private void handleOffsideTolerance(PlayerPositionDTO p, List<PlayerPositionDTO> players, boolean attacksRight, DemoMatchRuntime rt) {
         if (!isAttacker(p)) return;  // Samo za napadače (strikers i wingers)
 
         double offsideLine = findOffsideLine(players, attacksRight);
         boolean isOffside = attacksRight ? p.getX() > offsideLine : p.getX() < offsideLine;  // Bolja detekcija: bliži golmanu od drugog poslednjeg defanzivca
 
-        int streak = offsideStreak.getOrDefault(p.getId(), 0);
+        int streak = rt.offsideStreak.getOrDefault(p.getId(), 0);
         Random  random = new Random();
         if (isOffside) {
             streak++;
@@ -1481,12 +1371,11 @@ public class DemoCombinedSimulationService {
             streak = 0;
         }
 
-        offsideStreak.put(p.getId(), streak);
+        rt.offsideStreak.put(p.getId(), streak);
     }
-
     // Nova metoda za inicijalizaciju šuta
-    private void initiateShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
-        attacksRightDuringShot = attacksRight;
+    private void initiateShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
+        rt.attacksRightDuringShot = attacksRight;
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(shooter.getX() - goalX);
         System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
@@ -1498,21 +1387,19 @@ public class DemoCombinedSimulationService {
                 .orElse(null);
 
         if (opponentGk != null) {
-            targetBallX = opponentGk.getX();
-            targetBallY = opponentGk.getY();
+            rt.targetBallX = opponentGk.getX();
+            rt.targetBallY = opponentGk.getY();
         } else {
-            targetBallX = goalX;
-            targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Fallback na centar gola
+            rt.targetBallX = goalX;
+            rt.targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Fallback na centar gola
         }
 
-        isShooting = true;
-        shotTicks = 0;
+        rt.isShooting = true;
+        rt.shotTicks = 0;
     }
-
     private boolean isGoalkeeper(PlayerPositionDTO p) {
         return p.getId() == 1 || p.getId() == 12;  // Pretpostavka da su golmani ID 1 i 12
     }
-
     private PlayerPositionDTO trySpacePassTarget(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
         double spaceX = attacksRight ? 85 + random.nextDouble() * 12 : 15 - random.nextDouble() * 12;
         double spaceY = 20 + random.nextDouble() * 60;
@@ -1522,14 +1409,13 @@ public class DemoCombinedSimulationService {
                 .min(Comparator.comparingDouble(p -> Math.hypot(p.getX() - spaceX, p.getY() - spaceY)))
                 .orElse(null);
     }
-
     // Nova metoda za inicijalizaciju odbijanja
-    private void initiateRebound(Random random) {
+    private void initiateRebound(Random random, DemoMatchRuntime rt) {
         // Odbijanje ka sredini terena, random pozicija blizu igrača broj 6 ili slučajna
-        targetBallX = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po X
-        targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po Y, sa varijacijom
+        rt.targetBallX = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po X
+        rt.targetBallY = 50 + (random.nextDouble() - 0.5) * 20;  // Oko sredine po Y, sa varijacijom
 
-        isRebounding = true;
-        reboundTicks = 0;
+        rt.isRebounding = true;
+        rt.reboundTicks = 0;
     }
 }

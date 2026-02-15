@@ -106,11 +106,8 @@
     </style>
 </head>
 <body>
-
 <div id="scoreboard">Omladinac 0 - 0 Sremac | Minute: 0</div>
-
 <canvas id="pitch" width="900" height="500"></canvas>
-
 <div id="events-container">
     <div id="lastEventBox">⌛ Čekamo start simulacije...</div>
 
@@ -120,9 +117,7 @@
         <div id="playerInfo"></div>
     </div>
 </div>
-
 <button onclick="window.location.href='/index.html'">⏪ Nazad</button>
-
 <script>
     // ────────────────────────────────────────────────
     // CANVAS + POZICIJE
@@ -229,11 +224,17 @@
     // ────────────────────────────────────────────────
     // WEBSOCKET + EVENTI
     // ────────────────────────────────────────────────
+    function getQueryParam(name) {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(name);
+}
+
     const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
     const base = `${wsProtocol}://${location.host}`;
+    const matchId = getQueryParam('matchId');
 
-    const positionSocket = new WebSocket(base + '/demo-position-updates');
-    const eventSocket    = new WebSocket(base + '/demo-match-events');
+    const positionSocket = new WebSocket(`${base}/demo-position-updates?matchId=${matchId}`);
+    const eventSocket    = new WebSocket(`${base}/demo-match-events?matchId=${matchId}`);
 
     positionSocket.onopen = () => {
         console.log('Position WS connected');

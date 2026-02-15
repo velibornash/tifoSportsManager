@@ -1,10 +1,8 @@
 package org.example.footballmanager.util;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.service.DemoCombinedSimulationService;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -12,51 +10,70 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
 public class DemoPositionWebSocketHandler extends TextWebSocketHandler {
 
-    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-
-
-    @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        sessions.add(session);
-        log.info("[DEMO Position WS] Nova sesija: {}", session.getId());
-    }
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        sessions.remove(session);
-        log.info("[DEMO Position WS] Sesija zatvorena: {}", session.getId());
+    private final Map<Long, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+    private final ObjectMapper objectMapper ;
+    public DemoPositionWebSocketHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 
-    public void broadcast(Object data) {
+    @Override
+    public void afterConnectionEstablished(WebSocketSession session) {
+        Long matchId = getMatchId(session);
+        sessions
+                .computeIfAbsent(matchId, id -> ConcurrentHashMap.newKeySet())
+                .add(session);
+
+        log.info("Nova WS sesija {} za match {}", session.getId(), matchId);
+    }
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        sessions.values().forEach(set -> set.remove(session));
+        log.info("Sesija zatvorena: {}", session.getId());
+    }
+    public void broadcast(Long matchId, Object event) {
+        Set<WebSocketSession> matchSessions = sessions.get(matchId);
+        if (matchSessions == null) return;
+
         try {
-            String json = objectMapper.writeValueAsString(data);
-            TextMessage message = new TextMessage(json);
-
-            log.info("[POSITION BROADCAST] Šaljem → {} sesija | payload: {}",
-                    sessions.size(), json.substring(0, Math.min(200, json.length())));
-
-            int sent = 0;
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    s.sendMessage(message);
-                    sent++;
+            String json = objectMapper.writeValueAsString(event);
+            TextMessage msg = new TextMessage(json);
+            Iterator<WebSocketSession> iterator = matchSessions.iterator();
+            while (iterator.hasNext()) {
+                WebSocketSession s = iterator.next();
+                try {
+                    if (s.isOpen()) {
+                        s.sendMessage(msg);
+                    } else {
+                        iterator.remove();
+                    }
+                } catch (IOException e) {
+                    log.warn("Uklanjam neaktivnu sesiju {}", s.getId());
+                    iterator.remove();
                 }
             }
-            log.info("[POSITION BROADCAST] Uspešno poslato u {} sesija", sent);
-        } catch (JsonProcessingException e) {
-            log.error("[POSITION] JSON greška", e);
-        } catch (IOException e) {
-            log.error("[POSITION] IO greška pri slanju", e);
+
         } catch (Exception e) {
-            log.error("[POSITION BROADCAST ERROR]", e);
+            log.error("Broadcast error", e);
         }
+    }
+    private Long getMatchId(WebSocketSession session) {
+        String query = session.getUri().getQuery(); // matchId=5
+        if (query == null) return -1L;
+
+        for (String param : query.split("&")) {
+            if (param.startsWith("matchId=")) {
+                return Long.parseLong(param.split("=")[1]);
+            }
+        }
+        return -1L;
     }
 }

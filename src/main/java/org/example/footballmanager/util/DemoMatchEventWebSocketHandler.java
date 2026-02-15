@@ -12,49 +12,72 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 @Slf4j
 @Component
 public class DemoMatchEventWebSocketHandler extends TextWebSocketHandler {
+    private final Map<Long, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+    private final ObjectMapper objectMapper;
 
-    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        sessions.add(session);
-        log.info("[DEMO Position WS] Nova sesija: {}", session.getId());
+    public DemoMatchEventWebSocketHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        sessions.remove(session);
-        log.info("[DEMO Event WS] Sesija zatvorena: {}", session.getId());
-    }
+    public void afterConnectionEstablished(WebSocketSession session) {
+        Long matchId = getMatchId(session);
+        sessions
+                .computeIfAbsent(matchId, id -> ConcurrentHashMap.newKeySet())
+                .add(session);
 
-    public void broadcast(Object event) {
+        log.info("Nova WS sesija {} za match {}", session.getId(), matchId);
+    }
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        sessions.values().forEach(set -> set.remove(session));
+        log.info("Sesija zatvorena: {}", session.getId());
+    }
+    public void broadcast(Long matchId, Object event) {
+        Set<WebSocketSession> matchSessions = sessions.get(matchId);
+        if (matchSessions == null) return;
+
         try {
             String json = objectMapper.writeValueAsString(event);
             TextMessage msg = new TextMessage(json);
 
-            log.info("[EVENT BROADCAST] Šaljem → {} sesija | payload: {}",
-                    sessions.size(), json.substring(0, Math.min(200, json.length())));
-
-            int sent = 0;
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    s.sendMessage(msg);
-                    sent++;
+            Iterator<WebSocketSession> iterator = matchSessions.iterator();
+            while (iterator.hasNext()) {
+                WebSocketSession s = iterator.next();
+                try {
+                    if (s.isOpen()) {
+                        s.sendMessage(msg);
+                    } else {
+                        iterator.remove();
+                    }
+                } catch (IOException e) {
+                    log.warn("Uklanjam neaktivnu sesiju {}", s.getId());
+                    iterator.remove();
                 }
             }
-            log.info("[EVENT BROADCAST] Uspešno poslato u {} sesija", sent);
-        } catch (JsonProcessingException e) {
-            log.error("[EVENT] JSON greška", e);
-        } catch (IOException e) {
-            log.error("[EVENT] IO greška pri slanju", e);
+
         } catch (Exception e) {
-            log.error("[EVENT BROADCAST ERROR]", e);
+            log.error("Broadcast error", e);
         }
+    }
+    private Long getMatchId(WebSocketSession session) {
+        String query = session.getUri().getQuery(); // matchId=5
+        if (query == null) return -1L;
+
+        for (String param : query.split("&")) {
+            if (param.startsWith("matchId=")) {
+                return Long.parseLong(param.split("=")[1]);
+            }
+        }
+        return -1L;
     }
 }
