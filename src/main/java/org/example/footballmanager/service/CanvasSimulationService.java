@@ -13,7 +13,6 @@ import java.util.concurrent.*;
 public class CanvasSimulationService {
 
     private final MatchEventWebSocketHandler webSocketHandler;
-
     private ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     private static final int TICK_MS = 250;

@@ -37,71 +37,106 @@
       width: 280px;
     }
     button:hover { background-color: rgba(33, 136, 56, 0.7); }
-    button:disabled { background-color: #666; cursor: not-allowed; }
+    button:disabled,
+button[disabled] {
+    background-color: rgba(100, 100, 100, 0.5) !important;  /* sivo-prozirno */
+    color: #ccc !important;
+    cursor: not-allowed !important;
+    opacity: 0.6;
+    box-shadow: none;
+}
+
+button:disabled:hover {
+    background-color: rgba(100, 100, 100, 0.5) !important;
+    transform: none;
+}
   </style>
 </head>
 <body>
 <div class="background"></div>
 
 <div class="container">
-  <button id="startBtn" onclick="startSimulation()">Start Match Simulation</button>
-  <button id="canvasBtn" onclick="startCanvasTest()">Start Canvas Test (22 Players)</button>
-
+  <button id="demoBtn" onclick="startDemoTest()">Start Demo Test</button>
+  <button id="canvasBtn" onclick="startCanvasTest()" disabled="disabled">Start Canvas Test (22 Players)</button>
+  <button id="startBtn" onclick="startSimulation()" disabled="disabled">Start Match Simulation</button>
   <audio id="backgroundMusic" autoplay>
     <source src="/audio/intro.mp3" type="audio/mpeg">
   </audio>
 </div>
 
 <script>
-  async function startSimulation() {
-      const button = document.getElementById('startBtn');
-      button.disabled = true;
-      button.textContent = "Pokrećem simulaciju...";
 
-      try {
-          const response = await fetch('/matches/start-simulation', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' }
-          });
+  async function startDemoTest() {
+    const button = document.getElementById('demoBtn');
+    button.disabled = true;
+    button.textContent = "Pokrećem demo test...";
 
-          if (!response.ok) throw new Error('Server error');
+    try {
+        const response = await fetch('/start-demo');
+        if (!response.ok) throw new Error('Server error');
 
-          const data = await response.json();
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-          await new Promise(resolve => setTimeout(resolve, 2200));
+        window.location.href = "/demo.html";
 
-          window.location.href = `/match_visualisation.html?matchId=${data.matchId}`;
+    } catch (error) {
+        console.error(error);
+        alert("Greška pri pokretanju demo testa.");
+        button.disabled = false;
+        button.textContent = "Start Demo Test";
+    }
+    button.disabled = false;
+    button.textContent = "Start Demo Test";
+}
+async function startSimulation() {
+    const button = document.getElementById('startBtn');
+    button.disabled = true;
+    button.textContent = "Pokrećem simulaciju...";
 
-      } catch (error) {
-          console.error(error);
-          alert("Greška pri pokretanju simulacije.");
-          button.disabled = false;
-          button.textContent = "Start Match Simulation";
-      }
-  }
+    try {
+        const response = await fetch('/matches/start-simulation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
 
-  async function startCanvasTest() {
-      const button = document.getElementById('canvasBtn');
-      button.disabled = true;
-      button.textContent = "Pokrećem canvas test...";
+        if (!response.ok) throw new Error('Server error');
 
-      try {
-          const response = await fetch('/start-canvas-test');
-          if (!response.ok) throw new Error('Server error');
+        const data = await response.json();
 
-          await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 2200));
 
-          window.location.href = "/canvastest.html";
+        window.location.href = `/match_visualisation.html?matchId=${data.matchId}`;
 
-      } catch (error) {
-          console.error(error);
-          alert("Greška pri pokretanju canvas testa.");
-          button.disabled = false;
-          button.textContent = "Start Canvas Test (22 Players)";
-      }
-      button.disabled = false;
-      button.textContent = "Start Canvas Test (22 Players)";
-  }
+    } catch (error) {
+        console.error(error);
+        alert("Greška pri pokretanju simulacije.");
+        button.disabled = false;
+        button.textContent = "Start Match Simulation";
+    }
+}
+
+async function startCanvasTest() {
+    const button = document.getElementById('canvasBtn');
+    button.disabled = true;
+    button.textContent = "Pokrećem canvas test...";
+
+    try {
+        const response = await fetch('/start-canvas-test');
+        if (!response.ok) throw new Error('Server error');
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        window.location.href = "/canvastest.html";
+
+    } catch (error) {
+        console.error(error);
+        alert("Greška pri pokretanju canvas testa.");
+        button.disabled = false;
+        button.textContent = "Start Canvas Test (22 Players)";
+    }
+    button.disabled = false;
+    button.textContent = "Start Canvas Test (22 Players)";
+}
 </script>
 
 </body>

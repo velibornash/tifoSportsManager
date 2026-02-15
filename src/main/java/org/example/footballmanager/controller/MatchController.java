@@ -117,7 +117,7 @@ public class MatchController {
         ));
     }
 
-    // Ostale metode ostaju nepromenjene
+/*    // Ostale metode ostaju nepromenjene
     @PostMapping("/play")
     public Match playMatch(@RequestParam Long homeTeamId, @RequestParam Long awayTeamId,
                            @RequestParam String homeFormation, @RequestParam String awayFormation) {
@@ -142,7 +142,7 @@ public class MatchController {
         return matchService.playMatch(matchId);
     }
 
-/*    @GetMapping("/{id}/details")
+*//*    @GetMapping("/{id}/details")
     public ResponseEntity<MatchDetailsDTO> getMatchDetails(@PathVariable Long id) {
         return matchRepository.findById(id)
                 .map(match -> {
@@ -168,12 +168,12 @@ public class MatchController {
                             home, away, goals
                     ));
                 }).orElse(ResponseEntity.notFound().build());
-    }*/
+    }*//*
 
     @GetMapping("/{id}/summary")
     public ResponseEntity<String> getMatchSummary(@PathVariable Long id) {
         return matchRepository.findById(id)
                 .map(match -> ResponseEntity.ok(matchService.generateMatchReport(match)))
                 .orElse(ResponseEntity.notFound().build());
-    }
+    }*/
 }
