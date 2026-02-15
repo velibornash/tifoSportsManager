@@ -1,0 +1,234 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+    margin: 0;
+    padding: 0;
+}
+.background {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: url('/images/logo.png');
+      background-size: contain; background-position: center;
+      background-repeat: no-repeat; background-color: #1e7d32;
+      z-index: -1;
+    }
+.login-container {
+    width: 300px;
+    margin: 40px auto;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;           /* razmak između elemenata */
+}
+
+input,
+button {
+    width: 100%;         /* svi elementi pune širine kontejnera */
+    padding: 10px;
+    box-sizing: border-box;  /* da padding ne povećava ukupnu širinu */
+    font-size: 16px;
+}
+
+button {
+    margin-top: 8px;     /* malo veći razmak iznad dugmeta ako želiš */
+    cursor: pointer;
+}
+.top-menu {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+    background-color: #333;
+}
+
+.top-menu button {
+    padding: 10px 15px;
+    color: white;
+    background-color: #555;
+    border: none;
+    cursor: pointer;
+}
+
+.top-menu button.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+.dashboard-content {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+}
+
+.team-card {
+    background: rgba(30, 125, 50, 0.75);   /* tamnije zeleno sa prozirnošću */
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.12);
+}
+
+.team-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.team-logo-placeholder {
+    font-size: 5rem;
+    margin-bottom: 10px;
+    /* Ako kasnije dodaš pravi logo: */
+    /* background: url('/images/team-logo.png') center/contain no-repeat; */
+    /* width: 120px; height: 120px; margin: 0 auto; */
+}
+
+.team-header h1 {
+    margin: 0;
+    font-size: 2.8rem;
+    color: #fff;
+}
+
+.team-subtitle {
+    margin: 8px 0 0;
+    opacity: 0.9;
+    font-size: 1.1rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+    text-align: center;
+}
+
+.stat-item {
+    background: rgba(255,255,255,0.1);
+    padding: 16px;
+    border-radius: 10px;
+}
+
+.stat-value {
+    font-size: 2.4rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+.stat-label {
+    font-size: 0.95rem;
+    opacity: 0.85;
+    margin-top: 6px;
+}
+
+.next-match {
+    background: rgba(0,0,0,0.25);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    margin: 30px 0;
+}
+
+.next-match h3 {
+    margin: 0 0 12px;
+    color: #e0e0e0;
+}
+
+.match-info {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin: 12px 0;
+}
+
+.home, .away { font-weight: 700; }
+.vs { margin: 0 12px; color: #ccc; }
+
+.match-date {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.quick-stats {
+    text-align: center;
+    font-size: 1.1rem;
+    line-height: 1.7;
+}
+
+.form-good {
+    color: #4caf50;
+    font-weight: bold;
+}
+.team-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;                /* razmak između loga i teksta */
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.team-logo {
+    width: 100px;             /* veličina glavnog loga gore */
+    height: 100px;
+    object-fit: contain;      /* da se slika ne iskrivi */
+    border-radius: 12px;      /* opciono zaobljeno */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    background: rgba(255,255,255,0.1); /* ako logo ima providnost */
+}
+
+.team-name-wrapper {
+    text-align: center;
+}
+
+.team-name-wrapper h1 {
+    margin: 0;
+    font-size: 2.6rem;
+}
+
+.team-name-wrapper .team-subtitle {
+    margin: 6px 0 0;
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+/* Sledeća utakmica - logoi */
+.match-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    font-size: 1.6rem;
+    font-weight: bold;
+    margin: 16px 0;
+    flex-wrap: wrap;
+}
+
+.team-away-home {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.match-team-logo.small {
+    width: 30px;              /* manji logo pored imena u meču */
+    height: 30px;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+}
+
+.vs {
+    font-size: 1.8rem;
+    color: #ddd;
+    font-weight: normal;
+    min-width: 40px;
+    text-align: center;
+}
+
+/* Ako želiš responsivno smanjenje na malim ekranima */
+@media (max-width: 500px) {
+    .team-logo { width: 80px; height: 80px; }
+    .match-team-logo.small { width: 50px; height: 50px; }
+    .match-info { font-size: 1.3rem; gap: 12px; }
+}

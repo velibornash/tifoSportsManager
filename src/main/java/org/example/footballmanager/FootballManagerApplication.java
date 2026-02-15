@@ -19,10 +19,10 @@ public class FootballManagerApplication implements CommandLineRunner {
     @Override
     public void run(String... args) {
         try {
-            String url = "http://localhost:8080/";
+            String url = "http://localhost:8080/login.html";
             openBrowser(url);
         } catch (Exception e) {
-            System.err.println("Manual open required: http://localhost:8080/");
+            System.err.println(e.getMessage());
         }
     }
 
