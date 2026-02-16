@@ -2,95 +2,104 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - Demo FC</title>
+    <title>Dashboard - OFK Omladinac</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
-
 <div class="background"></div>
-
 <div class="top-menu">
-    <button class="disabled" title="Coming soon">Matches</button>
-    <button class="disabled" title="Coming soon">Tactics</button>
-    <button class="disabled" title="Coming soon">League Table</button>
-    <button class="disabled" title="Coming soon">Forum</button>
-    <button id="demoBtn" onclick="startSimulation()">Demo</button>
+
+    <div class="menu-button" onclick="toggleSidebar('clubSidebar')">🏟️ Club</div>
+    <div class="menu-button" onclick="toggleSidebar('matchesSidebar')">⚽ Matches</div>
+    <div class="menu-button" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
+    <div class="menu-button" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
+    <div class="menu-button" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
+
 </div>
+<!-- SIDEBARS -->
 
-<div class="dashboard-content">
-    <div class="team-card">
-        <div class="team-header">
-            <img
-                    src="/images/omladinac.png"
-                    alt="Omladinac"
-                    class="team-logo"
-            >
-            <div class="team-name-wrapper">
-                <h1>OFK Omladinac</h1>
-                <p class="team-subtitle">Serbian League Division 2 • Season 2025/26</p>
+<div id="clubSidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Club</h3>
+
+        <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                Players
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam')">First Team</div>
+                <div onclick="loadPage('juniors')">Juniors</div>
             </div>
         </div>
 
-        <div class="stats-grid">
-            <div class="stat-item">
-                <div class="stat-value">1</div>
-                <div class="stat-label">Position</div>
+
+        <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                Tactics
             </div>
-            <div class="stat-item">
-                <div class="stat-value">34</div>
-                <div class="stat-label">Points</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">10-4-5</div>
-                <div class="stat-label">W-D-L</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">+12</div>
-                <div class="stat-label">Goal Diff</div>
+            <div class="accordion-content">
+                <div onclick="loadPage('formations')">Formations</div>
+                <div onclick="loadPage('coaches')">Coaches</div>
             </div>
         </div>
 
-        <div class="next-match">
-            <h3>Next Match</h3>
-            <div class="match-info">
-                <div class="team-away-home">
-                    <img
-                            src="/images/sremac.jpg"
-                            alt="Sremac"
-                            class="match-team-logo small"
-                    >
-                    <span class="home">Sremac Berkasovo</span>
-                </div>
 
-                <span class="vs">vs</span>
-
-                <div class="team-away-home">
-                    <img
-                            src="/images/omladinac.png"
-                            alt="FK Omladinac"
-                            class="match-team-logo small"
-                    >
-                    <span class="away">FK Omladinac</span>
-                </div>
-            </div>
-            <div class="match-date">15.03.2026 • 17:00 • Stadion Livadice</div>
-        </div>
-
-        <div class="quick-stats">
-            <div>Form: <span class="form-good">W W D L W</span></div>
-            <div>Top Scorer: LJ. Ozegovic — 11 goals</div>
-        </div>
+        <div onclick="loadPage('training')">Training Reports</div>
+        <div onclick="loadPage('profile')">Profile</div>
     </div>
 </div>
 
-<script>
-    async function startSimulation() {
-        const button = document.getElementById('demoBtn');
-        // button.disabled = true;  // opciono
-        window.location.href = '/index.html';
-    }
-</script>
+
+<div id="matchesSidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Matches</h3>
+        <div onclick="loadPage('upcoming')">Upcoming</div>
+        <div onclick="loadPage('results')">Results</div>
+        <div onclick="loadPage('fixtures')">Fixtures</div>
+        <div onclick="startDemoTest()">Simulation / Demo</div>
+    </div>
+</div>
+
+<div id="competitionsSidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Competitions</h3>
+        <div onclick="loadPage('leagueTable')">League Table</div>
+        <div onclick="loadPage('cup')">Cup</div>
+        <div onclick="loadPage('international')">International</div>
+        <div onclick="loadPage('friendlies')">Friendlies</div>
+    </div>
+</div>
+
+<div id="communitySidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Community</h3>
+        <div onclick="loadPage('forum')">Forum</div>
+        <div onclick="loadPage('chat')">Chat</div>
+        <div onclick="loadPage('events')">Events</div>
+    </div>
+</div>
+
+<div id="statsSidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Stats</h3>
+        <div onclick="loadPage('playerStats')">Player Stats</div>
+        <div onclick="loadPage('teamStats')">Team Stats</div>
+        <div onclick="loadPage('topScorers')">Top Scorers</div>
+        <div onclick="loadPage('analytics')">Analytics</div>
+    </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="dashboard-content">
+    <div id="main-content"></div>
+</div>
+<script src="/js/sidebar.js"></script>
+<script src="/js/dashboard.js"></script>
+<script src="/js/pages.js"></script>
+<script src="/js/demo.js"></script>
+<script src="/js/app.js"></script>
+
 
 </body>
 </html>

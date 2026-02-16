@@ -72,8 +72,8 @@ public class MatchController {
         Team homeTeam = teamRepository.findByName("Omladinac")
                 .orElseThrow(() -> new RuntimeException("Tim 'Omladinac' ne postoji u bazi!"));
 
-        Team awayTeam = teamRepository.findByName("Sloga")
-                .orElseThrow(() -> new RuntimeException("Tim 'Sloga' ne postoji u bazi!"));
+        Team awayTeam = teamRepository.findByName("Sremac")
+                .orElseThrow(() -> new RuntimeException("Tim 'Sremac' ne postoji u bazi!"));
 
 // 2. Dohvati igrače iz baze (ne kreiraš nove!)
         PlayerFactory playerFactory = new PlayerFactory(playerRepository);
@@ -82,7 +82,7 @@ public class MatchController {
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
-        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sloga", awayTeam);
+        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sremac", awayTeam);
         awayPlayers = awayPlayers.stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();

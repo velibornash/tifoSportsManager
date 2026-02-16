@@ -83,17 +83,23 @@ public class PlayerFactory {
     }
 
     public List<Player> createRandomTeamPlayers(String teamName, Team team) {
+
+        List<Player> existingPlayers = playerRepository.findByTeamId(team.getId());
+
+        if (!existingPlayers.isEmpty()) {
+            System.out.println("→ Tim " + teamName + " već ima igrače.");
+            return existingPlayers;
+        }
+
         List<Player> players = new ArrayList<>();
         Set<Integer> gkIndexes = new HashSet<>(List.of(random.nextInt(11), 11 + random.nextInt(4)));
 
         for (int i = 0; i < 15; i++) {
+
             String name = NameGenerator.fullName();
-            Position position;
-            if (gkIndexes.contains(i)) {
-                position = Position.GK;
-            } else {
-                position = Position.values()[1 + random.nextInt(3)]; // DEF, MID, ATT
-            }
+            Position position = gkIndexes.contains(i)
+                    ? Position.GK
+                    : Position.values()[1 + random.nextInt(3)];
 
             Player newPlayer = createPlayer(
                     name,
@@ -105,23 +111,25 @@ public class PlayerFactory {
                     Math.round((55 + random.nextDouble() * 40) * 100.0) / 100.0,
                     Math.round((4 + random.nextDouble() * 6) * 100.0) / 100.0,
                     5 + random.nextInt(6),
-                    1+random.nextInt(10),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
-                    1+random.nextInt(17),
+                    1 + random.nextInt(10),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
+                    1 + random.nextInt(17),
                     position
             );
 
-            // SAČUVAJ IGRAČA ODMAH
-            Player savedPlayer = playerRepository.save(newPlayer);
-            players.add(savedPlayer);
+            Player saved = playerRepository.save(newPlayer);
+            players.add(saved);
         }
+
+        System.out.println("→ Kreirani random igrači za tim: " + teamName);
         return players;
     }
+
 
     public static Player createPlayer(String name, int age, Team team, double value, double earnings,
                                       double height, double weight, double form, int discipline,

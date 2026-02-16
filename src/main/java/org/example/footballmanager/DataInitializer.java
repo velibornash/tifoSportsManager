@@ -35,14 +35,14 @@ public class DataInitializer implements CommandLineRunner {
         homeTeam.setName("Omladinac");
 
         Team awayTeam = new Team();
-        awayTeam.setName("Sloga");
+        awayTeam.setName("Sremac");
 
         List<Player> homePlayers = new ArrayList<>();
         List<Player> awayPlayers = new ArrayList<>();
 
         homePlayers = PlayerFactory.createOmladinacPlayers(homeTeam);
         teamRepository.save(homeTeam);
-        awayPlayers = PlayerFactory.createRandomTeamPlayers("Sloga", awayTeam);
+        awayPlayers = PlayerFactory.createRandomTeamPlayers("Sremac", awayTeam);
         teamRepository.save(awayTeam);
 
         Lineup homeLineup = new Lineup();

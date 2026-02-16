@@ -11,6 +11,7 @@ import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.DemoSimulationService;
 import org.example.footballmanager.service.MatchService;
 import org.example.footballmanager.util.PlayerFactory;
+import org.example.footballmanager.util.TeamFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,10 +24,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DemoSimulationController {
 
-    private final MatchService matchService;
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
-    private final TeamRepository teamRepository;
+    private final TeamFactory teamFactory;
     private final PlayerRepository playerRepository;
     private final DemoSimulationService demoService;
 
@@ -65,12 +65,10 @@ public class DemoSimulationController {
     public ResponseEntity<Map<String, String>> startDemo() {
         Thread.sleep(800); // mali delay da frontend dobije signal
 
-        // 1. Dohvati postojeće timove
-        Team homeTeam = teamRepository.findByName("Omladinac")
-                .orElseThrow(() -> new RuntimeException("Tim 'Omladinac' ne postoji u bazi!"));
+        // 1. Dohvati postojeće timove ili napravi
+        Team homeTeam = teamFactory.findOrCreate("Omladinac");
+        Team awayTeam = teamFactory.findOrCreate("Sremac");
 
-        Team awayTeam = teamRepository.findByName("Sloga")
-                .orElseThrow(() -> new RuntimeException("Tim 'Sloga' ne postoji u bazi!"));
 
         // 2. Dohvati igrače preko PlayerFactory
         PlayerFactory playerFactory = new PlayerFactory(playerRepository);
@@ -79,7 +77,7 @@ public class DemoSimulationController {
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
-        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sloga", awayTeam)
+        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sremac", awayTeam)
                 .stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();

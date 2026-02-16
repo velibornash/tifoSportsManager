@@ -5,392 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demo Simulation</title>
     <style>
-        body {
-            background: #111;
-            color: #eee;
-            font-family: Arial, Helvetica, sans-serif;
-            margin: 0;
-            padding: 0;
-            text-align: center;
-        }
-        #scoreboard {
-            background: rgba(0,0,0,0.8);
-            padding: 12px 20px;
-            font-size: 22px;
-            font-weight: bold;
-            margin: 15px auto;
-            max-width: 900px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-        }
-        #pitch {
-            background: #1e7d32;
-            margin: 10px auto 20px;
-            border: 2px solid #444;
-            border-radius: 8px;
-            display: block;
-            max-width: 900px;
-        }
-        #events-container {
-            max-width: 900px;
-            margin: 0 auto 30px;
-            padding: 20px;
-            background: rgba(20,20,20,0.85);
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-            min-height: 240px;
-        }
-        #lastEventBox {
-            background: rgba(255,255,255,0.08);
-            padding: 12px 18px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 17px;
-            margin-bottom: 20px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-height: 28px;
-        }
-        .event-content {
-            display: flex;
-            align-items: flex-start;
-            gap: 30px;
-            flex-wrap: wrap;
-        }
-        #eventImage {
-            max-width: 200px;
-            max-height: 200px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-            flex-shrink: 0;
-            object-fit: contain;
-        }
-        #playerInfo {
-            font-size: 15px;
-            line-height: 1.7;
-            padding: 16px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 10px;
-            flex: 1;
-            min-width: 320px;
-            text-align: left;
-            box-sizing: border-box;
-        }
-        #playerImage {
-            display: none !important;
-        }
-        button {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            padding: 8px 16px;
-            background: #2a8c4a;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            z-index: 20;
-        }
-        button:hover { background: #23733e; }
-        @media (max-width: 768px) {
-            .event-content {
-                flex-direction: column;
-                align-items: center;
-            }
-            #eventImage {
-                max-width: 160px;
-                max-height: 160px;
-            }
-        }
+        body { background:#111; color:#eee; font-family:Arial, Helvetica, sans-serif; margin:0; padding:0; text-align:center; }
+        #scoreboard { background:rgba(0,0,0,0.8); padding:12px 20px; font-size:22px; font-weight:bold; margin:15px auto; max-width:900px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); }
+        #pitch { background:#1e7d32; margin:10px auto 20px; border:2px solid #444; border-radius:8px; display:block; max-width:900px; }
+        #events-container { max-width:900px; margin:0 auto 30px; padding:20px; background:rgba(20,20,20,0.85); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); min-height:240px; }
+        #lastEventBox { background: rgba(255,255,255,0.08); padding:12px 18px; border-radius:8px; font-family:monospace; font-size:17px; margin-bottom:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:28px; }
+        .event-content { display:flex; align-items:flex-start; gap:30px; flex-wrap:wrap; }
+        #eventImage { max-width:200px; max-height:200px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); flex-shrink:0; object-fit:contain; display:none; }
+        #playerInfo { font-size:15px; line-height:1.7; padding:16px; background:rgba(255,255,255,0.06); border-radius:10px; flex:1; min-width:320px; text-align:left; box-sizing:border-box; }
+        #playerImage { display:none; border-radius:10px; max-width:120px; max-height:120px; object-fit:cover; }
+        button { position:absolute; top:15px; right:20px; padding:8px 16px; background:#2a8c4a; color:white; border:none; border-radius:6px; cursor:pointer; z-index:20; }
+        button:hover { background:#23733e; }
+        @media (max-width:768px){ .event-content{flex-direction:column; align-items:center;} #eventImage{max-width:160px; max-height:160px;} }
+       @keyframes blink {
+       0%   { color: inherit; }
+       50%  { color: yellow; font-weight: bold; }
+       100% { color: inherit; }
+}
+
+.blink {
+  animation: blink 1s ease-in-out;
+}
     </style>
 </head>
 <body>
-<div id="scoreboard">Omladinac 0 - 0 Sremac </div>
+
+<div id="scoreboard">Omladinac 0 - 0 Sremac</div>
 <canvas id="pitch" width="900" height="500"></canvas>
+
 <div id="events-container">
     <div id="lastEventBox">⌛ Čekamo start simulacije...</div>
-
     <div class="event-content">
-        <img id="eventImage" src="" alt="Event" style="display:none;">
+        <img id="eventImage" src="" alt="Event">
         <img id="playerImage" src="/images/player.jpg" alt="Igrač">
         <div id="playerInfo"></div>
     </div>
 </div>
-<button onclick="window.location.href='/index.html'">⏪ Nazad</button>
-<script>
-    const canvas = document.getElementById('pitch');
-    const ctx = canvas.getContext('2d');
 
-    const FIELD = { offsetX: 50, offsetY: 50, width: 800, height: 400 };
-    const MOVE_DURATION = 320;
+<button onclick="window.location.href='/dashboard.html'">⏪ Nazad</button>
 
-    let players = {};
-    let ball = { x: 50, y: 50, startX: 50, startY: 50, targetX: 50, targetY: 50, moveStartTime: performance.now() };
-    let minute = 0;
-    let currentMinute = 0;
+<script type="module">
+    import { initCanvas } from './js/demo/canvasRenderer.js';
+    import { initSockets } from './js/demo/sockets.js';
+    import { initEventProcessor } from './js/demo/eventProcessor.js';
+    import { initScoreboard } from './js/demo/scoreboard.js';
 
-    function toCanvasX(x) { return FIELD.offsetX + (x/100)*FIELD.width; }
-    function toCanvasY(y) { return FIELD.offsetY + (y/100)*FIELD.height; }
-
-    function updatePositions() {
-        const now = performance.now();
-        Object.values(players).forEach(p => {
-            const progress = Math.min((now - p.moveStartTime) / MOVE_DURATION, 1);
-            p.x = p.startX + (p.targetX - p.startX) * progress;
-            p.y = p.startY + (p.targetY - p.startY) * progress;
-        });
-        const bProg = Math.min((now - ball.moveStartTime) / MOVE_DURATION, 1);
-        ball.x = ball.startX + (ball.targetX - ball.startX) * bProg;
-        ball.y = ball.startY + (ball.targetY - ball.startY) * bProg;
-    }
-
-    function drawField() {
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(FIELD.offsetX, FIELD.offsetY, FIELD.width, FIELD.height);
-        ctx.strokeRect(FIELD.offsetX, FIELD.offsetY + 100, 120, 200);
-        ctx.strokeRect(FIELD.offsetX, FIELD.offsetY + 150, 60, 100);
-        ctx.strokeRect(FIELD.offsetX + FIELD.width - 120, FIELD.offsetY + 100, 120, 200);
-        ctx.strokeRect(FIELD.offsetX + FIELD.width - 60, FIELD.offsetY + 150, 60, 100);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(FIELD.offsetX - 10, FIELD.offsetY + 180, 10, 40);
-        ctx.fillRect(FIELD.offsetX + FIELD.width, FIELD.offsetY + 180, 10, 40);
-        ctx.beginPath();
-        ctx.moveTo(450, FIELD.offsetY);
-        ctx.lineTo(450, FIELD.offsetY + FIELD.height);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(450, FIELD.offsetY + FIELD.height/2, 60, 0, Math.PI*2);
-        ctx.stroke();
-    }
-
-    function drawPlayers() {
-        Object.values(players).forEach(p => {
-            const x = toCanvasX(p.x);
-            const y = toCanvasY(p.y);
-            ctx.beginPath();
-            ctx.fillStyle = p.team === 'HOME' ? '#0066ff' : '#ff3333';
-            ctx.arc(x, y, 12, 0, Math.PI*2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '11px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(p.id, x, y);
-        });
-    }
-
-    function drawBall() {
-        const x = toCanvasX(ball.x);
-        const y = toCanvasY(ball.y);
-        ctx.beginPath();
-        ctx.fillStyle = '#fff';
-        ctx.arc(x, y, 6, 0, Math.PI*2);
-        ctx.fill();
-    }
-
-    function drawClock() {
-        ctx.fillStyle = '#fff';
-        ctx.font = '18px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Minute: ${currentMinute}`, 20, 35);
-    }
-
-    function loop() {
-        updatePositions();
-        drawField();
-        drawPlayers();
-        drawBall();
-        drawClock();
-        requestAnimationFrame(loop);
-    }
-    loop();
-
-    // ───────────── WEBSOCKET I EVENTI ─────────────
-    function getQueryParam(name) {
-        const params = new URLSearchParams(window.location.search);
-        return params.get(name);
-    }
-
-    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const base = `${wsProtocol}://${location.host}`;
-    const matchId = getQueryParam('matchId');
-
-    const positionSocket = new WebSocket(`${base}/demo-position-updates?matchId=${matchId}`);
-    const eventSocket    = new WebSocket(`${base}/demo-match-events?matchId=${matchId}`);
-
-    positionSocket.onmessage = (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            (data.players || []).forEach(p => {
-                if (!players[p.id]) {
-                    players[p.id] = { id: p.id, team: p.team, number: p.id, x: p.x, y: p.y, startX: p.x, startY: p.y, targetX: p.x, targetY: p.y, moveStartTime: performance.now() };
-                } else {
-                    let pl = players[p.id];
-                    pl.startX = pl.x; pl.startY = pl.y;
-                    pl.targetX = p.x; pl.targetY = p.y;
-                    pl.moveStartTime = performance.now();
-                }
-            });
-            if (data.ball) {
-                ball.startX = ball.x; ball.startY = ball.y;
-                ball.targetX = data.ball.x; ball.targetY = data.ball.y;
-                ball.moveStartTime = performance.now();
-            }
-        } catch (err) { console.error('Position parse error:', err); }
-    };
-
-    eventSocket.onopen = () => { document.getElementById('lastEventBox').textContent = '🟢 Povezano – čekamo događaje...'; };
-    eventSocket.onmessage = (e) => {
-        try {
-            const ev = JSON.parse(e.data);
-            eventQueue.push(ev);
-            processNextEvent();
-        } catch (err) { console.error('Event parse error:', err, e.data); }
-    };
-
-    let eventQueue = [];
-    let isProcessing = false;
-    const EVENT_DELAY = 2200;
-    const GOAL_DELAY  = 2800;
-
-    let lastEventBox  = document.getElementById('lastEventBox');
-    let eventImage    = document.getElementById('eventImage');
-    let playerImage   = document.getElementById('playerImage');
-    let playerInfo    = document.getElementById('playerInfo');
-    let scoreboard    = document.getElementById('scoreboard');
-
-    let homeTeamName = "Omladinac";
-    let awayTeamName = "Sloga";
-    let homeScore = 0;
-    let awayScore = 0;
-
-    const images = {
-        goal: "/images/goal-gol.gif",
-        chance: "/images/shot.jpg",
-        shotOnTarget: "/images/shot.jpg",
-        shotOffTarget: "/images/shot.jpg",
-        matchStarted: "/images/match_starting.jpg",
-        matchEnded: "/images/match_ended.jpg",
-        penalty: "/images/penalty.jpg",
-        offside: "/images/offside_flag.jpg",
-        corner: "/images/corner.jpg",
-        freeKick: "/images/free_kick.png",
-        injury: "/images/injury.jpg",
-        yellowCard: "/images/yellowcard.jpg",
-        redCard: "/images/redcard.png",
-        varReview: "/images/var.jpg",
-        substitution: "/images/substitution.jpg"
-    };
-
-    function updatePlayerInfo(ev, goalIncrement = 0) {
-        const name = getPlayerName(ev);
-        if (!name) { playerInfo.innerHTML = ''; return; }
-        const totalGoals = (ev.playerTotalGoals || 0) + goalIncrement;
-        playerInfo.innerHTML = `
-            <strong>${name}</strong><br>
-            📏 Visina: ${ev.playerHeight ? Math.round(ev.playerHeight*100)+' cm' : '?'}<br>
-            ⚖️ Težina: ${ev.playerWeight ? ev.playerWeight+' kg' : '?'}<br>
-            🎂 Godine: ${ev.playerAge || '?'}<br>
-            🥅 Golovi: ${totalGoals}
-        `;
-    }
-
-    function getPlayerName(ev) {
-        return ev.playerName || ev.scorerName || ev.takerName ||
-               ev.playerOutName || ev.playerInName || "";
-    }
-
-    function buildLastEventText(ev) {
-        let symbol = '📩';
-        const type = (ev.type || '').toLowerCase();
-        const min = ev.minute || '?';
-        const player = getPlayerName(ev);
-
-        switch(type) {
-            case 'goal': symbol = '⚽'; return `${symbol} [${min}'] GOOOOL! ${player}`;
-            case 'chance': symbol = '⚡'; return `${symbol} [${min}'] Posed! ${player}`;
-            case 'shotontarget':
-            case 'shotofftarget': symbol = '🎯'; return `${symbol} [${min}'] Šut ${player}`;
-            case 'matchstarted': symbol = '🏁'; return `${symbol} [${min}'] Početak meča!`;
-            case 'matchended': symbol = '🏁'; return `${symbol} [${min}'] Kraj meča → ${homeScore}:${awayScore}`;
-            case 'penalty': symbol = '⚽'; return `${symbol} [${min}'] Penal! ${player}`;
-            case 'offside': symbol = '🚩'; return `${symbol} [${min}'] Ofsajd ${player}`;
-            case 'corner': symbol = '⛳'; return `${symbol} [${min}'] Korner ${player}`;
-            case 'freekick': symbol = '⚽'; return `${symbol} [${min}'] Slobodnjak ${player}`;
-            case 'injury': symbol = '❌'; return `${symbol} [${min}'] Povreda ${player}`;
-            case 'yellowcard': symbol = '🟨'; return `${symbol} [${min}'] Žuti ${player}`;
-            case 'redcard': symbol = '🟥'; return `${symbol} [${min}'] Crveni ${player}`;
-            default: return `${symbol} [${min}'] ${type} ${player ? '- ' + player : ''}`;
-        }
-    }
-
-    function updateScore(ev) {
-        if (ev.type?.toLowerCase() !== 'goal') return;
-        if (ev.teamName === homeTeamName) homeScore++;
-        else if (ev.teamName === awayTeamName) awayScore++;
-        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName}`;
-    }
-
-    function updateMinute(min) {
-        if (min > currentMinute) currentMinute = min;
-        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName}`;
-    }
-
-    function loadPlayerImageByName(name) {
-        const file = name.replace(/\s+/g, '_') + '.jpg';
-        const url = `/images/${file}`;
-        const img = new Image();
-        img.onload = () => playerImage.src = url;
-        img.onerror = () => playerImage.src = '/images/player.jpg';
-        img.src = url;
-    }
-
-    function updateEventImage(ev) {
-        const t = (ev.type || '');
-        eventImage.src = images[t] || '';
-        eventImage.style.display = images[t] ? 'block' : 'none';
-    }
-
-    function processNextEvent() {
-        if (isProcessing || eventQueue.length === 0) return;
-        isProcessing = true;
-        const ev = eventQueue.shift();
-        if (!ev?.type) { isProcessing = false; processNextEvent(); return; }
-
-        initTeams(ev);
-        updateScore(ev);
-        updateMinute(ev.minute || currentMinute);
-        lastEventBox.textContent = buildLastEventText(ev);
-        currentMinute = ev.minute || currentMinute;
-
-        const playerName = getPlayerName(ev)?.trim();
-        if (playerName && playerName.length > 2) loadPlayerImageByName(playerName);
-        else playerImage.src = "/images/player.jpg";
-
-        updateEventImage(ev);
-
-        const delay = ev.type.toLowerCase() === 'goal' ? GOAL_DELAY : EVENT_DELAY;
-
-        if (ev.type.toLowerCase() === 'goal' && ev.playerTotalGoals !== undefined) {
-            // Prikaži golove pre gola
-            updatePlayerInfo(ev, 0);
-            // Nakon 1 sekunde, povecaj broj golova
-            setTimeout(() => updatePlayerInfo(ev, 1), 1000);
-        } else {
-            updatePlayerInfo(ev);
-        }
-
-        setTimeout(() => { isProcessing = false; processNextEvent(); }, delay);
-    }
-
-    function initTeams(ev) {
-        if (ev.homeTeamName) homeTeamName = ev.homeTeamName;
-        if (ev.awayTeamName) awayTeamName = ev.awayTeamName;
-    }
-
+    document.addEventListener("DOMContentLoaded", ()=>{
+        initCanvas();
+        initScoreboard();
+        initEventProcessor();
+        initSockets();
+    });
 </script>
+
 </body>
 </html>
