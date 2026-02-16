@@ -10,8 +10,7 @@ public class MatchStartEvent extends MatchEvent{
 
     @Override
     public void apply() {
-        match.setStarted(true);
-        match.getAllMatchEvents().add(this);
+
     }
 
     @Override

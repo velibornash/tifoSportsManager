@@ -20,8 +20,7 @@ public class ShotOffTargetEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getShotsOffTarget().add(this);
+
     }
 
     @Override

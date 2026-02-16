@@ -20,8 +20,7 @@ public class RedCardEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getRedCards().add(this);
+
     }
     @Override
     public String getDescription() {

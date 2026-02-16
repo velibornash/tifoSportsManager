@@ -27,8 +27,7 @@ public class FreeKickEvent extends MatchEvent {
     private Player player;
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getFreeKicks().add(this);
+
     }
 
     @Override

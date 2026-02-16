@@ -99,10 +99,8 @@ public class DemoSimulationController {
 
         Long matchId = match.getId();
         System.out.println("Match ID: " + matchId);
-
         Thread.sleep(2000); // da se match sačuva pre starta simulacije
-        demoService.setMatchId(matchId);
-        demoService.startDemoSimulation(matchId)
+                demoService.startDemoSimulation(matchId)
                 .thenAccept(played -> {
                     log.info("Simulacija završena za meč {}", matchId);
 

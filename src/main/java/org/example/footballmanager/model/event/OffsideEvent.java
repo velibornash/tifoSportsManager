@@ -16,8 +16,7 @@ public class OffsideEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getOffsides().add(this);
-        match.getAllMatchEvents().add(this);
+
     }
     @Override
     public String getDescription() {

@@ -27,8 +27,7 @@ public class PenaltyEvent extends MatchEvent {
     @SneakyThrows
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getPenalties().add(this);
+
     }
 
     @Override

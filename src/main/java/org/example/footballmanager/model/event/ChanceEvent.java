@@ -25,8 +25,7 @@ public class ChanceEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getChances().add(this);
-        match.getAllMatchEvents().add(this);
+
     }
 
     @Override

@@ -21,8 +21,7 @@ public class YellowCardEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getYellowCards().add(this);
+
     }
 
     @Override

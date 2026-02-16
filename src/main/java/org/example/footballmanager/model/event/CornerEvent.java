@@ -21,8 +21,7 @@ public class CornerEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getCorners().add(this);
+
     }
 
     @Override

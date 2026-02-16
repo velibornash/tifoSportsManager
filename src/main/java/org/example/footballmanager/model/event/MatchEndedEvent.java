@@ -10,8 +10,7 @@ import lombok.Setter;
 public class MatchEndedEvent extends MatchEvent {
     @Override
     public void apply() {
-        match.setPlayed(true);
-        match.getAllMatchEvents().add(this);
+
     }
     @Override
     public String getDescription() {

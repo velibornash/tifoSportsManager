@@ -16,8 +16,7 @@ public class InjuryEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getInjuries().add(this);
-        match.getAllMatchEvents().add(this);
+
     }
     @Override
     public String getDescription() {

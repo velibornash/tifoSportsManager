@@ -30,8 +30,6 @@ public class GoalEvent extends MatchEvent {
 
     @Override
     public void apply() {
-        match.getAllMatchEvents().add(this);
-        match.getGoals().add(this);
 
         if (team.equals(match.getHomeTeam())) {
             match.setHomeGoals(match.getHomeGoals() + 1);
