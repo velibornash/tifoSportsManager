@@ -1,8 +1,11 @@
 package org.example.footballmanager.util;
 
+import jakarta.transaction.Transactional;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.repository.TeamRepository;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 @Component
 public class TeamFactory {
@@ -13,16 +16,24 @@ public class TeamFactory {
         this.teamRepository = teamRepository;
     }
 
+    @Transactional
     public Team findOrCreate(String name) {
+        // 1. Pokušaj da dohvatimo po imenu
+        Optional<Team> existing = teamRepository.findByName(name);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
 
-        return teamRepository.findByName(name)
-                .orElseGet(() -> {
-                    Team team = new Team();
-                    team.setName(name);
+        // 2. Ako ne postoji, kreiraj novi
+        Team newTeam = new Team();
+        newTeam.setName(name);
+        newTeam.setBudget(0);
+        newTeam.setReputation(50);
+        newTeam.setStadium("Unknown");
+        newTeam.setCountry("Serbia");
 
-                    Team saved = teamRepository.save(team);
-                    System.out.println("→ Kreiran novi tim: " + name);
-                    return saved;
-                });
+        // ID NE POSTAVLJAJ - neka PostgreSQL auto-generiše
+        return teamRepository.save(newTeam);
     }
+
 }
