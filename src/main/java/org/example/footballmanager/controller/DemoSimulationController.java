@@ -8,7 +8,7 @@ import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.DemoCombinedSimulationService;
+import org.example.footballmanager.service.DemoSimulationService;
 import org.example.footballmanager.service.MatchService;
 import org.example.footballmanager.util.PlayerFactory;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +28,7 @@ public class DemoSimulationController {
     private final LineupRepository lineupRepository;
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
-    private final DemoCombinedSimulationService demoService;
+    private final DemoSimulationService demoService;
 
     /**
      * Kreira lineup za dati tim sa listom igrača i formacijom.

@@ -119,9 +119,6 @@
 </div>
 <button onclick="window.location.href='/index.html'">⏪ Nazad</button>
 <script>
-    // ────────────────────────────────────────────────
-    // CANVAS + POZICIJE
-    // ────────────────────────────────────────────────
     const canvas = document.getElementById('pitch');
     const ctx = canvas.getContext('2d');
 
@@ -129,12 +126,7 @@
     const MOVE_DURATION = 320;
 
     let players = {};
-    let ball = {
-        x: 50, y: 50,
-        startX: 50, startY: 50,
-        targetX: 50, targetY: 50,
-        moveStartTime: performance.now()
-    };
+    let ball = { x: 50, y: 50, startX: 50, startY: 50, targetX: 50, targetY: 50, moveStartTime: performance.now() };
     let minute = 0;
     let currentMinute = 0;
 
@@ -157,24 +149,18 @@
         ctx.clearRect(0,0,canvas.width,canvas.height);
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
-
         ctx.strokeRect(FIELD.offsetX, FIELD.offsetY, FIELD.width, FIELD.height);
-
         ctx.strokeRect(FIELD.offsetX, FIELD.offsetY + 100, 120, 200);
         ctx.strokeRect(FIELD.offsetX, FIELD.offsetY + 150, 60, 100);
-
         ctx.strokeRect(FIELD.offsetX + FIELD.width - 120, FIELD.offsetY + 100, 120, 200);
         ctx.strokeRect(FIELD.offsetX + FIELD.width - 60, FIELD.offsetY + 150, 60, 100);
-
         ctx.fillStyle = '#fff';
         ctx.fillRect(FIELD.offsetX - 10, FIELD.offsetY + 180, 10, 40);
         ctx.fillRect(FIELD.offsetX + FIELD.width, FIELD.offsetY + 180, 10, 40);
-
         ctx.beginPath();
         ctx.moveTo(450, FIELD.offsetY);
         ctx.lineTo(450, FIELD.offsetY + FIELD.height);
         ctx.stroke();
-
         ctx.beginPath();
         ctx.arc(450, FIELD.offsetY + FIELD.height/2, 60, 0, Math.PI*2);
         ctx.stroke();
@@ -222,13 +208,11 @@
     }
     loop();
 
-    // ────────────────────────────────────────────────
-    // WEBSOCKET + EVENTI
-    // ────────────────────────────────────────────────
+    // ───────────── WEBSOCKET I EVENTI ─────────────
     function getQueryParam(name) {
-    const params = new URLSearchParams(window.location.search);
-    return params.get(name);
-}
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name);
+    }
 
     const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
     const base = `${wsProtocol}://${location.host}`;
@@ -237,80 +221,38 @@
     const positionSocket = new WebSocket(`${base}/demo-position-updates?matchId=${matchId}`);
     const eventSocket    = new WebSocket(`${base}/demo-match-events?matchId=${matchId}`);
 
-    positionSocket.onopen = () => {
-        console.log('Position WS connected');
-    };
-
     positionSocket.onmessage = (e) => {
         try {
             const data = JSON.parse(e.data);
-
-
             (data.players || []).forEach(p => {
                 if (!players[p.id]) {
-                    players[p.id] = {
-                        id: p.id,
-                        team: p.team,
-                        number: p.id,
-                        x: p.x,
-                        y: p.y,
-                        startX: p.x,
-                        startY: p.y,
-                        targetX: p.x,
-                        targetY: p.y,
-                        moveStartTime: performance.now()
-                    };
+                    players[p.id] = { id: p.id, team: p.team, number: p.id, x: p.x, y: p.y, startX: p.x, startY: p.y, targetX: p.x, targetY: p.y, moveStartTime: performance.now() };
                 } else {
                     let pl = players[p.id];
-                    pl.startX = pl.x;
-                    pl.startY = pl.y;
-                    pl.targetX = p.x;
-                    pl.targetY = p.y;
+                    pl.startX = pl.x; pl.startY = pl.y;
+                    pl.targetX = p.x; pl.targetY = p.y;
                     pl.moveStartTime = performance.now();
                 }
             });
-
             if (data.ball) {
-                ball.startX = ball.x;
-                ball.startY = ball.y;
-                ball.targetX = data.ball.x;
-                ball.targetY = data.ball.y;
+                ball.startX = ball.x; ball.startY = ball.y;
+                ball.targetX = data.ball.x; ball.targetY = data.ball.y;
                 ball.moveStartTime = performance.now();
             }
-        } catch (err) {
-            console.error('Position parse error:', err);
-        }
+        } catch (err) { console.error('Position parse error:', err); }
     };
 
-    positionSocket.onerror   = (err) => console.error('Position WS ERROR:', err);
-    positionSocket.onclose   = ()   => console.log('Position WS ZATVOREN');
-
-    eventSocket.onopen = () => {
-        document.getElementById('lastEventBox').textContent = '🟢 Povezano – čekamo događaje...';
-    };
-
+    eventSocket.onopen = () => { document.getElementById('lastEventBox').textContent = '🟢 Povezano – čekamo događaje...'; };
     eventSocket.onmessage = (e) => {
-<!--        console.log('EVENT RAW:', e.data);-->
         try {
             const ev = JSON.parse(e.data);
-
-            console.dir(ev);
             eventQueue.push(ev);
             processNextEvent();
-        } catch (err) {
-            console.error('Event parse error:', err, e.data);
-        }
+        } catch (err) { console.error('Event parse error:', err, e.data); }
     };
 
-    eventSocket.onerror = (err) => console.error('Event WS ERROR:', err);
-    eventSocket.onclose = ()   => console.log('Event WS ZATVOREN');
-
-    // ────────────────────────────────────────────────
-    // EVENT PROCESIRANJE (isti kod)
-    // ────────────────────────────────────────────────
     let eventQueue = [];
     let isProcessing = false;
-
     const EVENT_DELAY = 2200;
     const GOAL_DELAY  = 2800;
 
@@ -324,7 +266,6 @@
     let awayTeamName = "Sloga";
     let homeScore = 0;
     let awayScore = 0;
-
 
     const images = {
         goal: "/images/goal-gol.gif",
@@ -341,50 +282,25 @@
         yellowCard: "/images/yellowcard.jpg",
         redCard: "/images/redcard.png",
         varReview: "/images/var.jpg",
-        substitution: "/images/substitution.jpg" // ako imaš sliku
+        substitution: "/images/substitution.jpg"
     };
 
-    function processNextEvent() {
-        if (isProcessing || eventQueue.length === 0) return;
-        isProcessing = true;
-        const ev = eventQueue.shift();
-        if (!ev?.type) {
-            isProcessing = false;
-            processNextEvent();
-            return;
-        }
-
-        initTeams(ev);
-        updateScore(ev);
-        updateMinute(ev.minute || currentMinute);
-        lastEventBox.textContent = buildLastEventText(ev);
-
-        currentMinute = ev.minute || currentMinute;
-
-
-        const playerName = getPlayerName(ev)?.trim();
-        if (playerName && playerName.length > 2) {
-            loadPlayerImageByName(playerName);
-        } else {
-            playerImage.src = "/images/player.jpg";
-        }
-        updateEventImage(ev);
-        updatePlayerInfo(ev);
-        const delay = ev.type.toLowerCase() === 'goal' ? GOAL_DELAY : EVENT_DELAY;
-        setTimeout(() => {
-            isProcessing = false;
-            processNextEvent();
-        }, delay);
+    function updatePlayerInfo(ev, goalIncrement = 0) {
+        const name = getPlayerName(ev);
+        if (!name) { playerInfo.innerHTML = ''; return; }
+        const totalGoals = (ev.playerTotalGoals || 0) + goalIncrement;
+        playerInfo.innerHTML = `
+            <strong>${name}</strong><br>
+            📏 Visina: ${ev.playerHeight ? Math.round(ev.playerHeight*100)+' cm' : '?'}<br>
+            ⚖️ Težina: ${ev.playerWeight ? ev.playerWeight+' kg' : '?'}<br>
+            🎂 Godine: ${ev.playerAge || '?'}<br>
+            🥅 Golovi: ${totalGoals}
+        `;
     }
 
     function getPlayerName(ev) {
         return ev.playerName || ev.scorerName || ev.takerName ||
                ev.playerOutName || ev.playerInName || "";
-    }
-
-    function initTeams(ev) {
-        if (ev.homeTeamName) homeTeamName = ev.homeTeamName;
-        if (ev.awayTeamName) awayTeamName = ev.awayTeamName;
     }
 
     function buildLastEventText(ev) {
@@ -438,21 +354,43 @@
         eventImage.style.display = images[t] ? 'block' : 'none';
     }
 
-    function updatePlayerInfo(ev) {
-        const name = getPlayerName(ev);
-        if (!name) {
-            playerInfo.innerHTML = '';
-            return;
+    function processNextEvent() {
+        if (isProcessing || eventQueue.length === 0) return;
+        isProcessing = true;
+        const ev = eventQueue.shift();
+        if (!ev?.type) { isProcessing = false; processNextEvent(); return; }
+
+        initTeams(ev);
+        updateScore(ev);
+        updateMinute(ev.minute || currentMinute);
+        lastEventBox.textContent = buildLastEventText(ev);
+        currentMinute = ev.minute || currentMinute;
+
+        const playerName = getPlayerName(ev)?.trim();
+        if (playerName && playerName.length > 2) loadPlayerImageByName(playerName);
+        else playerImage.src = "/images/player.jpg";
+
+        updateEventImage(ev);
+
+        const delay = ev.type.toLowerCase() === 'goal' ? GOAL_DELAY : EVENT_DELAY;
+
+        if (ev.type.toLowerCase() === 'goal' && ev.playerTotalGoals !== undefined) {
+            // Prikaži golove pre gola
+            updatePlayerInfo(ev, 0);
+            // Nakon 1 sekunde, povecaj broj golova
+            setTimeout(() => updatePlayerInfo(ev, 1), 1000);
+        } else {
+            updatePlayerInfo(ev);
         }
 
-        playerInfo.innerHTML = `
-            <strong>${name}</strong><br>
-            📏 Visina: ${ev.playerHeight ? Math.round(ev.playerHeight*100)+' cm' : '?'}<br>
-            ⚖️ Težina: ${ev.playerWeight ? ev.playerWeight+' kg' : '?'}<br>
-            🎂 Godine: ${ev.playerAge || '?'}<br>
-            🥅 Golovi: ${ev.playerTotalGoals || 0}
-        `;
+        setTimeout(() => { isProcessing = false; processNextEvent(); }, delay);
     }
+
+    function initTeams(ev) {
+        if (ev.homeTeamName) homeTeamName = ev.homeTeamName;
+        if (ev.awayTeamName) awayTeamName = ev.awayTeamName;
+    }
+
 </script>
 </body>
 </html>

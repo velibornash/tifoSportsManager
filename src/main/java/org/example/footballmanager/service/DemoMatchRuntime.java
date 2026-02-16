@@ -35,16 +35,17 @@ public class DemoMatchRuntime {
     public List<GoalEvent> runtimeGoals = new ArrayList<>();
     public int homeGoals;
     public int awayGoals;
-    List<Player> home = new ArrayList<>();
-    List<Player> away = new ArrayList<>();
-    List<Player> homePlayers = new ArrayList<>();
-    List<Player> awayPlayers = new ArrayList<>();
-    Tactics homeTactics ;
-    Tactics awayTactics ;
-    Crowd crowd = new Crowd();
-    Referee referee = new Referee();
-    Team homeTeam = new Team();
-    Team awayTeam =  new Team();
+    public List<Player> home = new ArrayList<>();
+    public List<Player> away = new ArrayList<>();
+    public List<Player> homePlayers = new ArrayList<>();
+    public List<Player> awayPlayers = new ArrayList<>();
+    public Tactics homeTactics ;
+    public Tactics awayTactics ;
+    public Crowd crowd = new Crowd();
+    public Referee referee = new Referee();
+    public Team homeTeam = new Team();
+    public Team awayTeam =  new Team();
+
     // tick counter
     public int tick = 0;
 }
