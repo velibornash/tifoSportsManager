@@ -105,7 +105,7 @@ public class DemoSimulationController {
         demoService.startDemoSimulation(matchId)
                 .thenAccept(played -> {
                     log.info("Simulacija završena za meč {}", matchId);
-                    System.out.println(matchService.generateMatchReport(played));
+
                 })
                 .exceptionally(throwable -> {
                     log.error("Greška u simulaciji meča {}", matchId, throwable);

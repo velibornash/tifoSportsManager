@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 )
 @JsonSubTypes({
         @JsonSubTypes.Type(value = GoalEvent.class, name = "goal"),
+        @JsonSubTypes.Type(value = ChanceEvent.class, name = "chance"),
         @JsonSubTypes.Type(value = YellowCardEvent.class, name = "yellowCard"),
         @JsonSubTypes.Type(value = RedCardEvent.class, name = "redCard"),
         @JsonSubTypes.Type(value = PenaltyEvent.class, name = "penalty"),

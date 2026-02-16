@@ -9,9 +9,9 @@ import org.example.footballmanager.model.Team;
 
 import java.util.Random;
 
+@Entity
 @Getter
 @Setter
-@Entity
 public class ChanceEvent extends MatchEvent {
     @ManyToOne
     @JsonIgnore
@@ -26,15 +26,11 @@ public class ChanceEvent extends MatchEvent {
     @Override
     public void apply() {
         match.getChances().add(this);
+        match.getAllMatchEvents().add(this);
     }
 
-    private static final String[] chanceTypes = {
-            "dribling", "centaršut", "dupli pas", "solo prodor", "ubacivanje iz auta"
-    };
     @Override
-    public String getDescription() {
-        String type = chanceTypes[new Random().nextInt(chanceTypes.length)];
-        return String.format("%d' Šansa (%s) - %s", minute, type, player != null ? player.getName() : "Unknown");
-    }
-
+        public String getDescription() {
+            return minute + "' Posed - " + team.getName();
+        }
 }

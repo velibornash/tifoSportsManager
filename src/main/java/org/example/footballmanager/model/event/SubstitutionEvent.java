@@ -20,6 +20,7 @@ public class SubstitutionEvent extends MatchEvent {
     @Override
     public void apply() {
         match.getSubstitutions().add(this);
+        match.getAllMatchEvents().add(this);
     }
     @Override
     public String getDescription() {

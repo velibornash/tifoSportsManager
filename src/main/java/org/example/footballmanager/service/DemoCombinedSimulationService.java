@@ -12,7 +12,6 @@ import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.simulator.MatchContext;
 import org.example.footballmanager.simulator.MatchEventFactory;
-import org.example.footballmanager.simulator.MatchSimulator;
 import org.example.footballmanager.simulator.TeamStrengthCalculator;
 import org.example.footballmanager.util.DemoMatchEventWebSocketHandler;
 import org.example.footballmanager.util.DemoPositionWebSocketHandler;
@@ -32,11 +31,7 @@ public class DemoCombinedSimulationService {
     private final DemoPositionWebSocketHandler positionWs;
     private final DemoMatchEventWebSocketHandler eventWs;
     private final MatchRepository matchRepository;
-    private final LineupRepository lineupRepository;
-    private final TeamRepository teamRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
-    private final PlayerRepository playerRepository;
-    private final MatchSimulator matchSimulator;
     private final Random random = new Random();
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
     private static final int TICK_MS = 250;
@@ -45,51 +40,31 @@ public class DemoCombinedSimulationService {
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private Long savedMatchId;
-
     public void setMatchId(Long matchId) {
         this.savedMatchId = matchId;
     }
 
-    // ================== START DEMO CANVAS SIMULACIJE ==================
     @Async
     @Transactional
     @SneakyThrows
     public CompletableFuture<Match> startDemoSimulation(long matchId) {
         Match match = loadAndValidateMatch(matchId);
-        if (!startSimulationOnlyIfNotRunning(matchId)) {
-            return CompletableFuture.completedFuture(null);
-        }
-
+        if (!startSimulationOnlyIfNotRunning(matchId)) {return CompletableFuture.completedFuture(null);}
         ScheduledExecutorService scheduler = createAndRegisterScheduler(matchId);
         DemoMatchRuntime runtime = initializeRuntimeAndPositions(matchId);
-
         startPositionBroadcastLoop(scheduler, matchId, runtime);
-
         prepareMatchEntities(match);
-
         Tactics homeTactics = createHomeTactics(match);
         Tactics awayTactics = createAwayTactics(match);
-
         List<Player> homePlayers = match.getHomeLineup().getStartingPlayers();
         List<Player> awayPlayers = match.getAwayLineup().getStartingPlayers();
-
-        simulateMatch(
-                match,
-                new Crowd(),
-                new Referee(),
-                homeTactics,
-                awayTactics,
-                homePlayers,
-                awayPlayers
-        );
-
+        simulateMatch(match, new Crowd(), new Referee(), homeTactics, awayTactics, homePlayers, awayPlayers, scheduler);
         finalizeMatchResult(match, homePlayers, awayPlayers);
-
         Match saved = matchRepository.save(match);
         log.info("Simulacija završena za meč {}", matchId);
-
         return CompletableFuture.completedFuture(saved);
     }
+
     private Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found"));
@@ -104,7 +79,6 @@ public class DemoCombinedSimulationService {
     private ScheduledExecutorService createAndRegisterScheduler(long matchId) {
         ScheduledExecutorService old = schedulers.get(matchId);
         if (old != null) old.shutdownNow();
-
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
         return scheduler;
@@ -112,7 +86,6 @@ public class DemoCombinedSimulationService {
     private DemoMatchRuntime initializeRuntimeAndPositions(long matchId) {
         DemoMatchRuntime runtime = new DemoMatchRuntime();
         runtimes.put(matchId, runtime);
-
         Random r = new Random();
         // Home players (1–11)
         for (int i = 1; i <= 11; i++) {
@@ -122,32 +95,22 @@ public class DemoCombinedSimulationService {
         for (int i = 12; i <= 22; i++) {
             runtime.players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80));
         }
-
         runtime.ball = new BallPositionDTO(50, 50);
         runtime.currentCarrier = runtime.players.get(0);
-
         return runtime;
     }
-    private void startPositionBroadcastLoop(ScheduledExecutorService scheduler, long matchId, DemoMatchRuntime runtime) {
-        final int totalTicks = MATCH_DURATION_SECONDS * (1000 / TICK_MS);
-
+    private void startPositionBroadcastLoop(ScheduledExecutorService scheduler, long matchId, DemoMatchRuntime rt) {
+        final int totalTicks = MATCH_DURATION_SECONDS * (2500 / TICK_MS);
         scheduler.scheduleAtFixedRate(() -> {
-            DemoMatchRuntime rt = runtimes.get(matchId);
-            if (rt == null) return;
-
+                    if (rt == null) return;
             if (rt.tick >= totalTicks) {
                 stopMatch(matchId);
                 return;
             }
-
             updatePlayerPositions(rt, random);
-
             handlePossessionAndActions(rt, random);
-
             updateBallPosition(rt);
-
             broadcastCurrentState(matchId, rt);
-
             rt.tick++;
         }, 0, TICK_MS, TimeUnit.MILLISECONDS);
     }
@@ -224,6 +187,114 @@ public class DemoCombinedSimulationService {
         tactics.setFormation(formation);
         return tactics;
     }
+    @SneakyThrows
+    private void simulateMatch(Match match, Crowd crowd, Referee referee, Tactics homeTactics, Tactics awayTactics, List<Player> homePlayers, List<Player> awayPlayers, ScheduledExecutorService scheduler) {
+        Hibernate.initialize(match.getChances());
+        Hibernate.initialize(match.getAllMatchEvents());
+        Hibernate.initialize(match.getCorners());
+        Hibernate.initialize(match.getShotsOnTarget());
+        Hibernate.initialize(match.getShotsOffTarget());
+        Hibernate.initialize(match.getOffsides());
+        Hibernate.initialize(match.getYellowCards());
+        Hibernate.initialize(match.getRedCards());
+        Hibernate.initialize(match.getPenalties());
+        Hibernate.initialize(match.getFreeKicks());
+        Hibernate.initialize(match.getInjuries());
+        Hibernate.initialize(match.getSubstitutions());
+        Hibernate.initialize(match.getVarReviews());
+        MatchContext context = new MatchContext(match, crowd, referee, homeTactics, awayTactics);
+        context.setPossessionTeam(match.getHomeTeam());
+        Formation homeFormation = homeTactics.getFormation();
+        Formation awayFormation = awayTactics.getFormation();
+
+       MatchStartEvent startEvent = new MatchStartEvent();
+        startEvent.setMinute(1);
+        startEvent.setMatch(match);
+        startEvent.apply();
+        MatchEventDTO startDto = toDto(startEvent);
+        if (startDto != null) {
+            scheduler.schedule(() -> {
+                eventWs.broadcast(match.getId(), startDto);
+                log.info("[1'] Event: {}", startEvent.getDescription());
+            }, 500, TimeUnit.MILLISECONDS);
+        }
+        for (int minute = 1; minute <= 92; minute++) {
+            final int currentMinute = minute;
+            scheduler.schedule(() -> {
+            context.setCurrentMinute(currentMinute);
+            updateFatigue(context);
+            updatePossession(context, homePlayers, awayPlayers, homeFormation, awayFormation);
+            tacticsAdjustmentService.adjustTactics(context);
+            MatchEventFactory eventFactory = new MatchEventFactory();
+           if (currentMinute < 91) {
+               MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers, homeFormation, awayFormation);
+
+               if (event != null)
+               {
+                   event.setMinute(currentMinute);
+                   event.apply();
+                   log.info("[{}'] Event: {}", currentMinute, event.getDescription());
+                   MatchEventDTO dto = toDto(event);
+                   if (dto != null) {
+                       eventWs.broadcast(match.getId(), dto);
+                   }
+                   if (event instanceof PenaltyEvent pen ) {
+                       if(pen.isScored()) {
+                           GoalEvent goal = new GoalEvent();
+                           goal.setMatch(match);
+                           goal.setTeam(pen.getTeam());
+                           goal.setScorer(pen.getTaker());
+                           goal.setMinute(currentMinute);
+                           goal.setScored(true);
+
+                           long homeGoals = match.getGoals().stream()
+                                   .filter(g -> g.getTeam().equals(match.getHomeTeam()))
+                                   .count() + (goal.getTeam().equals(match.getHomeTeam()) ? 1 : 0);
+                           long awayGoals = match.getGoals().stream()
+                                   .filter(g -> g.getTeam().equals(match.getAwayTeam()))
+                                   .count() + (goal.getTeam().equals(match.getAwayTeam()) ? 1 : 0);
+                           goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
+                           goal.apply();
+                           log.info("[{}'] Event: {}", currentMinute, goal.getDescription());
+                           match.getGoals().add(goal);
+                           match.getAllMatchEvents().add(goal);
+
+                           MatchEventDTO goalDto = toDto(goal);
+                           if (goalDto != null) {
+                              eventWs.broadcast(match.getId(), goalDto);
+                           }
+                       }
+                   }
+                   if (event instanceof InjuryEvent)
+                       performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
+               }
+
+               if (currentMinute == 65) {
+                   performSubstitution(match, context, homePlayers, true);
+                   performSubstitution(match, context, awayPlayers, false);
+               }
+           }
+           else if (currentMinute == 91)
+           {   MatchEndedEvent endEvent = new MatchEndedEvent();
+               endEvent.setMinute(91);
+               endEvent.setMatch(match);
+               endEvent.apply();
+               MatchEventDTO endDto = toDto(endEvent);
+               if (endDto != null) {
+                   scheduler.schedule(() -> {
+                       eventWs.broadcast(match.getId(), endDto);
+                   }, 30000, TimeUnit.MILLISECONDS);
+               }
+               log.info("[91'] Event: {}", endEvent.getDescription());}
+           else
+           {
+               match.setPlayed(true);
+               System.out.println(generateMatchReport(match));
+           }
+            }, 3000 , TimeUnit.MILLISECONDS);}
+
+    }
+
     private void finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers) {
         Team homeTeam = match.getHomeTeam();
         Team awayTeam = match.getAwayTeam();
@@ -250,9 +321,6 @@ public class DemoCombinedSimulationService {
         log.info("Canvas simulacija završena za meč {}", matchId);
     }
     private void movePlayerByRole(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random, boolean attacksRight,DemoMatchRuntime rt) {
-
-
-
         int id = p.getId();
 
         if (id == 1 || id == 12) moveGoalkeeper(p, random, attacksRight);
@@ -703,6 +771,7 @@ public class DemoCombinedSimulationService {
         }
     }
     private void savePlayerStats(Match match, List<Player> players) {
+
         for (Player player : players) {
             long goals = match.getGoals().stream().filter(g -> g.getScorer().equals(player)).count();
             long assists = match.getGoals().stream().filter(g -> player.equals(g.getAssistant())).count();
@@ -716,9 +785,7 @@ public class DemoCombinedSimulationService {
             stats.setRedCards((int) match.getRedCards().stream().filter(r -> r.getPlayer().equals(player)).count());
             stats.setMinutesPlayed(90);
             stats.setRating(player.getRating());
-
-            // Napomena: matchPlayerStatsRepository nije injektovan u ovu klasu, pa sam pretpostavio da ćeš ga dodati ako treba
-            // matchPlayerStatsRepository.save(stats);
+             matchPlayerStatsRepository.save(stats);
         }
     }
     public String generateMatchReport(Match match) {
@@ -789,7 +856,8 @@ public class DemoCombinedSimulationService {
             dto.setScoreAfterGoal(g.getScoreAfterGoal());
             return dto;
 
-        } else if (event instanceof YellowCardEvent y) {
+        }
+        else if (event instanceof YellowCardEvent y) {
             YellowCardEventDTO dto = new YellowCardEventDTO();
             dto.setType("yellowCard");
             dto.setMinute(y.getMinute());
@@ -812,7 +880,8 @@ public class DemoCombinedSimulationService {
                     y.getPlayer().getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof RedCardEvent r) {
+        }
+        else if (event instanceof RedCardEvent r) {
             RedCardEventDTO dto = new RedCardEventDTO();
             dto.setType("redCard");
             dto.setMinute(r.getMinute());
@@ -831,7 +900,8 @@ public class DemoCombinedSimulationService {
             }
             return dto;
 
-        } else if (event instanceof InjuryEvent i) {
+        }
+        else if (event instanceof InjuryEvent i) {
             InjuryEventDTO dto = new InjuryEventDTO();
             dto.setType("injury");
             dto.setMinute(i.getMinute());
@@ -850,7 +920,8 @@ public class DemoCombinedSimulationService {
             }
             return dto;
 
-        } else if (event instanceof PenaltyEvent p) {
+        }
+        else if (event instanceof PenaltyEvent p) {
             PenaltyEventDTO dto = new PenaltyEventDTO();
             dto.setType("penalty");
             dto.setMinute(p.getMinute());
@@ -872,7 +943,8 @@ public class DemoCombinedSimulationService {
             dto.setScored(p.isScored());
             return dto;
 
-        } else if (event instanceof SubstitutionEvent s) {
+        }
+        else if (event instanceof SubstitutionEvent s) {
             SubstitutionEventDTO dto = new SubstitutionEventDTO();
             dto.setType("substitution");
             dto.setMinute(s.getMinute());
@@ -896,7 +968,8 @@ public class DemoCombinedSimulationService {
                     s.getPlayerOut().getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof OffsideEvent o) {
+        }
+        else if (event instanceof OffsideEvent o) {
             OffsideEventDTO dto = new OffsideEventDTO();
             dto.setType("offside");
             dto.setMinute(o.getMinute());
@@ -918,7 +991,8 @@ public class DemoCombinedSimulationService {
                     o.getPlayer().getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof CornerEvent c) {
+        }
+        else if (event instanceof CornerEvent c) {
             CornerEventDTO dto = new CornerEventDTO();
             dto.setType("corner");
             dto.setMinute(c.getMinute());
@@ -940,7 +1014,8 @@ public class DemoCombinedSimulationService {
             dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof FreeKickEvent f) {
+        }
+        else if (event instanceof FreeKickEvent f) {
             FreeKickEventDTO dto = new FreeKickEventDTO();
             dto.setType("freeKick");
             dto.setMinute(f.getMinute());
@@ -973,7 +1048,8 @@ public class DemoCombinedSimulationService {
                     f.getPlayer().getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof ShotOnTargetEvent s) {
+        }
+        else if (event instanceof ShotOnTargetEvent s) {
             ShotOnTargetEventDTO dto = new ShotOnTargetEventDTO();
             dto.setType("shotOnTarget");
             dto.setMinute(s.getMinute());
@@ -994,7 +1070,8 @@ public class DemoCombinedSimulationService {
             dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof ShotOffTargetEvent s) {
+        }
+        else if (event instanceof ShotOffTargetEvent s) {
             ShotOffTargetEventDTO dto = new ShotOffTargetEventDTO();
             dto.setType("shotOffTarget");
             dto.setMinute(s.getMinute());
@@ -1015,7 +1092,8 @@ public class DemoCombinedSimulationService {
             dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
             return dto;
 
-        } else if (event instanceof VARReviewEvent v) {
+        }
+        else if (event instanceof VARReviewEvent v) {
             VARReviewEventDTO dto = new VARReviewEventDTO();
             dto.setType("varReview");
             dto.setMinute(v.getMinute());
@@ -1023,7 +1101,8 @@ public class DemoCombinedSimulationService {
             dto.setDecision(v.getDecision());
             return dto;
 
-        } else if (event instanceof ChanceEvent c) {
+        }
+        else if (event instanceof ChanceEvent c) {
             ChanceEventDTO dto = new ChanceEventDTO();
             dto.setType("chance");
             dto.setMinute(c.getMinute());
@@ -1045,7 +1124,8 @@ public class DemoCombinedSimulationService {
             dto.setDangerous(c.isDangerous());
             return dto;
 
-        } else if (event instanceof MatchStartEvent ms) {
+        }
+        else if (event instanceof MatchStartEvent ms) {
             MatchStartedDTO dto = new MatchStartedDTO();
             dto.setType("matchStarted");
             dto.setMinute(ms.getMinute());
@@ -1054,7 +1134,8 @@ public class DemoCombinedSimulationService {
             dto.setAwayTeamName(ms.getMatch().getAwayTeam().getName());
             return dto;
 
-        } else if (event instanceof MatchEndedEvent me) {
+        }
+        else if (event instanceof MatchEndedEvent me) {
             MatchEndedDTO dto = new MatchEndedDTO();
             dto.setType("matchEnded");
             dto.setMinute(me.getMinute());
@@ -1068,107 +1149,6 @@ public class DemoCombinedSimulationService {
 
         log.warn("Nepoznat event tip za DTO: {}", event.getClass().getSimpleName());
         return null;
-    }
-    @SneakyThrows
-    private void simulateMatch(Match match, Crowd crowd, Referee referee,
-                               Tactics homeTactics, Tactics awayTactics,
-                               List<Player> homePlayers, List<Player> awayPlayers) {
-
-        MatchContext context = new MatchContext(match, crowd, referee, homeTactics, awayTactics);
-        context.setPossessionTeam(match.getHomeTeam());
-
-        Formation homeFormation = homeTactics.getFormation();
-        Formation awayFormation = awayTactics.getFormation();
-
-        Thread.sleep(3000);
-
-        MatchStartEvent startEvent = new MatchStartEvent();
-        startEvent.setMinute(1);
-        startEvent.setMatch(match);
-        startEvent.apply();
-
-        MatchEventDTO startDto = toDto(startEvent);
-        if (startDto != null) {
-            eventWs.broadcast(match.getId(),startDto);
-        }
-
-        log.info("[1'] Event: {}", startEvent.getDescription());
-        Thread.sleep(3000);
-
-        for (int minute = 1; minute <= 90; minute++) {
-            context.setCurrentMinute(minute);
-
-            updateFatigue(context);
-            updatePossession(context, homePlayers, awayPlayers, homeFormation, awayFormation);
-            tacticsAdjustmentService.adjustTactics(context);
-            MatchEventFactory eventFactory = new MatchEventFactory();
-            if (random.nextDouble() < eventProbability(context, match)) {
-                MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers, homeFormation, awayFormation);
-                if (event != null) {
-                    event.setMinute(minute);
-                    event.apply();
-                    log.info("[{}'] Event: {}", minute, event.getDescription());
-
-                    MatchEventDTO dto = toDto(event);
-                    if (dto != null) {
-                        eventWs.broadcast(match.getId(),dto);
-                        Thread.sleep(3500);
-                    }
-
-                    if (event instanceof PenaltyEvent pen && pen.isScored()) {
-                        GoalEvent goal = new GoalEvent();
-                        goal.setMatch(match);
-                        goal.setTeam(pen.getTeam());
-                        goal.setScorer(pen.getTaker());
-                        goal.setMinute(minute);
-                        goal.setScored(true);
-
-                        long homeGoals = match.getGoals().stream()
-                                .filter(g -> g.getTeam().equals(match.getHomeTeam()))
-                                .count() + (goal.getTeam().equals(match.getHomeTeam()) ? 1 : 0);
-
-                        long awayGoals = match.getGoals().stream()
-                                .filter(g -> g.getTeam().equals(match.getAwayTeam()))
-                                .count() + (goal.getTeam().equals(match.getAwayTeam()) ? 1 : 0);
-
-                        goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
-                        goal.apply();
-
-                        MatchEventDTO goalDto = toDto(goal);
-                        if (goalDto != null) {
-                            eventWs.broadcast(match.getId(),goalDto);
-                            Thread.sleep(4400);
-                        }
-
-                        match.getGoals().add(goal);
-                        match.getAllMatchEvents().add(goal);
-                    }
-
-                    if (event instanceof InjuryEvent)
-                        performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
-                }
-            }
-
-            if (minute == 65) {
-                performSubstitution(match, context, homePlayers, true);
-                performSubstitution(match, context, awayPlayers, false);
-            }
-        }
-
-        MatchEndedEvent endEvent = new MatchEndedEvent();
-        endEvent.setMinute(90);
-        endEvent.setMatch(match);
-        endEvent.apply();
-
-        MatchEventDTO endDto = toDto(endEvent);
-        if (endDto != null) {
-            eventWs.broadcast(match.getId(),endDto);
-        }
-
-        log.info("[90'] Event: {}", endEvent.getDescription());
-        Thread.sleep(5000);
-
-        match.setPlayed(true);
     }
     private void performSubstitution(Match match, MatchContext context, List<Player> teamPlayers, boolean isHomeTeam) {
         if (teamPlayers.size() < 12) return;
@@ -1200,20 +1180,18 @@ public class DemoCombinedSimulationService {
     }
     private void updateFatigue(MatchContext context) {
         context.setFatigueFactor(Math.max(0.7, context.getFatigueFactor() - 0.002));
-        log.info("Minute: {}, Fatigue Factor: {}", context.getCurrentMinute(), context.getFatigueFactor());
+        //log.info("Minute: {}, Fatigue Factor: {}", context.getCurrentMinute(), context.getFatigueFactor());
     }
-    private void updatePossession(MatchContext context, List<Player> homePlayers, List<Player> awayPlayers,
-                                  Formation homeFormation, Formation awayFormation) {
+    private void updatePossession(MatchContext context, List<Player> homePlayers, List<Player> awayPlayers, Formation homeFormation, Formation awayFormation) {
         double homeStrength = TeamStrengthCalculator.calculateTeamStrength(homePlayers, homeFormation, context.getHomeTactics(), true);
         double awayStrength = TeamStrengthCalculator.calculateTeamStrength(awayPlayers, awayFormation, context.getAwayTactics(), false);
         double total = homeStrength + awayStrength;
-
         if (random.nextDouble() < homeStrength / total) {
             context.setPossessionTeam(context.getMatch().getHomeTeam());
         } else {
             context.setPossessionTeam(context.getMatch().getAwayTeam());
         }
-        log.info("Minute: {}, Possession: {}", context.getCurrentMinute(), context.getPossessionTeam().getName());
+        //log.info("Minute: {}, Possession: {}", context.getCurrentMinute(), context.getPossessionTeam().getName());
     }
     private boolean isHomeTeam(MatchEvent event) {
         if (event instanceof GoalEvent goal) return goal.getTeam().equals(goal.getMatch().getHomeTeam());
@@ -1234,7 +1212,7 @@ public class DemoCombinedSimulationService {
         // Izračunaj distancu do gola
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(carrier.getX() - goalX);
-        System.out.println("Igrac:"+carrier.getId()+" udaljen od gola "+distToGoal);
+
 
         // Zona šuta - povećana na 32 jedinica + verovatnoća raste kako se približava
         if (distToGoal <= 32) {
@@ -1251,7 +1229,7 @@ public class DemoCombinedSimulationService {
             }
 
             if (random.nextDouble() < shotProbability) {
-                System.out.println("ŠUT! Distanca: " + String.format("%.1f", distToGoal));
+
                 initiateShot(carrier, players, random, attacksRight, rt);
                 return carrier;  // nosilac ostaje isti dok se izvrši šut
             }
@@ -1283,18 +1261,18 @@ public class DemoCombinedSimulationService {
             double shotOutcome = random.nextDouble();
             if (shotOutcome < 0.20) {
                 // Gol: lopta prelazi gol-liniju
-                System.out.println("GOL!");
+               // System.out.println("GOL!");
                 rt.ball.setX(rt.targetBallX);
                 rt.ball.setY(rt.targetBallY);
                 initiateRebound(random, rt);
 
             } else if (shotOutcome < 0.70) {
                 // Odbrana: pokreni odbijanje lopte
-                System.out.println("Odbijena lopta!");
+                //System.out.println("Odbijena lopta!");
                 initiateRebound(random, rt);
             } else {
                 // Promasaj: lopta ide izvan gola
-                System.out.println("Promasaj!");
+                //System.out.println("Promasaj!");
                 double missX = rt.attacksRightDuringShot ? 100 + 5 : -5;  // Izvan terena
                 double missY = rt.targetBallY + (random.nextDouble() - 0.5) * 30;
                 rt.ball.setX(clamp(missX));
@@ -1378,7 +1356,7 @@ public class DemoCombinedSimulationService {
         rt.attacksRightDuringShot = attacksRight;
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(shooter.getX() - goalX);
-        System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
+        //System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
 
         // Cilj ka koordinatama golmana odbrane
         PlayerPositionDTO opponentGk = players.stream()

@@ -26,6 +26,6 @@ public class MatchEventFactory {
         List<Player> teamPlayers = isHome ? homePlayers : awayPlayers;
 
         double roll = random.nextDouble();
-        return EventCreator.createEventByRoll(roll, context.getMatch(), team, teamPlayers);
+        return EventCreator.createEventByRoll(roll, context.getMatch(), team, teamPlayers, minute);
     }
 }

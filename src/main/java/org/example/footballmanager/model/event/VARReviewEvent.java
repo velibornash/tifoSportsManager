@@ -28,6 +28,7 @@ public class VARReviewEvent extends MatchEvent {
     @Override
     public void apply() {
         match.getVarReviews().add(this);
+        match.getAllMatchEvents().add(this);
         if ("Overturned".equals(decision)) {
             if (number==1) {
                 match.getGoals().remove(reviewedGoalEvent); // Ukloni gol ako je poništen

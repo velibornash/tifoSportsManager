@@ -106,7 +106,7 @@
     </style>
 </head>
 <body>
-<div id="scoreboard">Omladinac 0 - 0 Sremac | Minute: 0</div>
+<div id="scoreboard">Omladinac 0 - 0 Sremac </div>
 <canvas id="pitch" width="900" height="500"></canvas>
 <div id="events-container">
     <div id="lastEventBox">⌛ Čekamo start simulacije...</div>
@@ -135,7 +135,8 @@
         targetX: 50, targetY: 50,
         moveStartTime: performance.now()
     };
-    let second = 0;
+    let minute = 0;
+    let currentMinute = 0;
 
     function toCanvasX(x) { return FIELD.offsetX + (x/100)*FIELD.width; }
     function toCanvasY(y) { return FIELD.offsetY + (y/100)*FIELD.height; }
@@ -208,7 +209,7 @@
         ctx.fillStyle = '#fff';
         ctx.font = '18px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(`Second: ${second}`, 20, 35);
+        ctx.fillText(`Minute: ${currentMinute}`, 20, 35);
     }
 
     function loop() {
@@ -240,11 +241,10 @@
         console.log('Position WS connected');
     };
 
-    // OVO JE KLJUČNO – vraćamo punu obradu pozicija, ali BEZ logovanja RAW poruke
     positionSocket.onmessage = (e) => {
         try {
             const data = JSON.parse(e.data);
-            second = data.second || 0;
+
 
             (data.players || []).forEach(p => {
                 if (!players[p.id]) {
@@ -290,10 +290,11 @@
     };
 
     eventSocket.onmessage = (e) => {
-        console.log('EVENT RAW:', e.data);
+<!--        console.log('EVENT RAW:', e.data);-->
         try {
             const ev = JSON.parse(e.data);
-            console.dir(ev);  // ceo objekat u konzoli
+
+            console.dir(ev);
             eventQueue.push(ev);
             processNextEvent();
         } catch (err) {
@@ -323,7 +324,7 @@
     let awayTeamName = "Sloga";
     let homeScore = 0;
     let awayScore = 0;
-    let currentMinute = 0;
+
 
     const images = {
         goal: "/images/goal-gol.gif",
@@ -357,6 +358,10 @@
         updateScore(ev);
         updateMinute(ev.minute || currentMinute);
         lastEventBox.textContent = buildLastEventText(ev);
+
+        currentMinute = ev.minute || currentMinute;
+
+
         const playerName = getPlayerName(ev)?.trim();
         if (playerName && playerName.length > 2) {
             loadPlayerImageByName(playerName);
@@ -390,7 +395,7 @@
 
         switch(type) {
             case 'goal': symbol = '⚽'; return `${symbol} [${min}'] GOOOOL! ${player}`;
-            case 'chance': symbol = '⚡'; return `${symbol} [${min}'] Šansa! ${player}`;
+            case 'chance': symbol = '⚡'; return `${symbol} [${min}'] Posed! ${player}`;
             case 'shotontarget':
             case 'shotofftarget': symbol = '🎯'; return `${symbol} [${min}'] Šut ${player}`;
             case 'matchstarted': symbol = '🏁'; return `${symbol} [${min}'] Početak meča!`;
@@ -410,12 +415,12 @@
         if (ev.type?.toLowerCase() !== 'goal') return;
         if (ev.teamName === homeTeamName) homeScore++;
         else if (ev.teamName === awayTeamName) awayScore++;
-        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName} | Minute: ${currentMinute}`;
+        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName}`;
     }
 
     function updateMinute(min) {
         if (min > currentMinute) currentMinute = min;
-        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName} | Minute: ${currentMinute}`;
+        scoreboard.textContent = `${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName}`;
     }
 
     function loadPlayerImageByName(name) {

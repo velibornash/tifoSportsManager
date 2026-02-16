@@ -624,7 +624,6 @@ public class CanvasSimulationService {
         // Izračunaj distancu do gola
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(carrier.getX() - goalX);
-        System.out.println("Igrac:"+carrier.getId()+" udaljen od gola "+distToGoal);
 
         // Zona šuta - povećana na 32 jedinica + verovatnoća raste kako se približava
         if (distToGoal <= 32) {
@@ -641,7 +640,6 @@ public class CanvasSimulationService {
             }
 
             if (random.nextDouble() < shotProbability) {
-                System.out.println("ŠUT! Distanca: " + String.format("%.1f", distToGoal));
                 initiateShot(carrier, players, random, attacksRight);
                 return carrier;  // nosilac ostaje isti dok se izvrši šut
             }
@@ -661,7 +659,7 @@ public class CanvasSimulationService {
         attacksRightDuringShot = attacksRight;
         double goalX = attacksRight ? 100 : 0;
         double distToGoal = Math.abs(shooter.getX() - goalX);
-        System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
+       // System.out.println("Šut sa distance: " + String.format("%.1f", distToGoal));
 
         // Cilj ka koordinatama golmana odbrane
         PlayerPositionDTO opponentGk = players.stream()
@@ -699,18 +697,18 @@ public class CanvasSimulationService {
             double shotOutcome = random.nextDouble();
             if (shotOutcome < 0.20) {
                 // Gol: lopta prelazi gol-liniju
-                System.out.println("GOL!");
+                //System.out.println("GOL!");
                 ball.setX(targetBallX);
                 ball.setY(targetBallY);
                 initiateRebound(random);
 
             } else if (shotOutcome < 0.70) {
                 // Odbrana: pokreni odbijanje lopte
-                System.out.println("Odbijena lopta!");
+                //System.out.println("Odbijena lopta!");
                 initiateRebound(random);
             } else {
                 // Promasaj: lopta ide izvan gola
-                System.out.println("Promasaj!");
+                //System.out.println("Promasaj!");
                 double missX = attacksRightDuringShot ? 100 + 5 : -5;  // Izvan terena
                 double missY = targetBallY + (random.nextDouble() - 0.5) * 30;
                 ball.setX(clamp(missX));
