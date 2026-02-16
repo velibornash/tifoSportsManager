@@ -30,6 +30,7 @@ public class DemoCombinedSimulationService {
     private final DemoPositionWebSocketHandler positionWs;
     private final DemoMatchEventWebSocketHandler eventWs;
     private final MatchRepository matchRepository;
+    private final PlayerRepository playerRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final Random random = new Random();
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
@@ -234,7 +235,8 @@ public class DemoCombinedSimulationService {
                             }
 
                             if (event instanceof PenaltyEvent pen ) {
-                                if(pen.isScored()) {
+                                if (pen.isScored()) {
+
                                     GoalEvent goal = new GoalEvent();
                                     goal.setMatch(match);
                                     goal.setTeam(pen.getTeam());
@@ -242,26 +244,20 @@ public class DemoCombinedSimulationService {
                                     goal.setMinute(currentMinute);
                                     goal.setScored(true);
 
-                                    long homeGoals = match.getGoals().stream()
-                                            .filter(g -> g.getTeam().equals(match.getHomeTeam()))
-                                            .count() + (goal.getTeam().equals(match.getHomeTeam()) ? 1 : 0);
-                                    long awayGoals = match.getGoals().stream()
-                                            .filter(g -> g.getTeam().equals(match.getAwayTeam()))
-                                            .count() + (goal.getTeam().equals(match.getAwayTeam()) ? 1 : 0);
-                                    goal.setScoreAfterGoal(String.format("%d:%d", homeGoals, awayGoals));
-                                    goal.apply();
-                                    rt.homeGoals= Math.toIntExact(homeGoals);
-                                    rt.awayGoals= Math.toIntExact(awayGoals);
-                                    log.info("[{}'] Event: {}", currentMinute, goal.getDescription());
-
-                                    MatchEventDTO goalDto = toDto(goal);
-                                    if (goalDto != null) {
-                                        eventWs.broadcast(match.getId(), goalDto);
-                                        if (rt != null) {
-                                            rt.runtimeGoals.add(goal);
-                                        }
+                                    if (goal.getTeam().equals(match.getHomeTeam())) {
+                                        rt.homeGoals++;
+                                    } else {
+                                        rt.awayGoals++;
                                     }
+                                    goal.setScoreAfterGoal(rt.homeGoals + ":" + rt.awayGoals);
+                                    goal.apply();
+                                    rt.runtimeGoals.add(goal);
+                                    rt.runtimeEvents.add(goal);
+                                    log.info("[{}'] Event: {}", currentMinute, goal.getDescription());
+                                    MatchEventDTO goalDto = toDto(goal);
+                                    eventWs.broadcast(match.getId(), goalDto);
                                 }
+
                             }
                             if (event instanceof InjuryEvent)
                                 performSubstitution(match, context, isHomeTeam(event) ? homePlayers : awayPlayers, isHomeTeam(event));
@@ -783,21 +779,37 @@ public class DemoCombinedSimulationService {
     private void savePlayerStats(Match match, List<Player> players) {
 
         for (Player player : players) {
-            long goals = match.getGoals().stream().filter(g -> g.getScorer().equals(player)).count();
-            long assists = match.getGoals().stream().filter(g -> player.equals(g.getAssistant())).count();
+
+            long goals = match.getGoals().stream()
+                    .filter(g -> g.getScorer().equals(player))
+                    .count();
+
+            long assists = match.getGoals().stream()
+                    .filter(g -> player.equals(g.getAssistant()))
+                    .count();
 
             MatchPlayerStats stats = new MatchPlayerStats();
             stats.setMatch(match);
             stats.setPlayer(player);
             stats.setGoals((int) goals);
             stats.setAssists((int) assists);
-            stats.setYellowCards((int) match.getYellowCards().stream().filter(y -> y.getPlayer().equals(player)).count());
-            stats.setRedCards((int) match.getRedCards().stream().filter(r -> r.getPlayer().equals(player)).count());
+            stats.setYellowCards((int) match.getYellowCards().stream()
+                    .filter(y -> y.getPlayer().equals(player)).count());
+            stats.setRedCards((int) match.getRedCards().stream()
+                    .filter(r -> r.getPlayer().equals(player)).count());
             stats.setMinutesPlayed(90);
             stats.setRating(player.getRating());
+
             matchPlayerStatsRepository.save(stats);
+
+            // 🔥 OVO TI FALI
+            player.setTotalGoals(player.getTotalGoals() + (int) goals);
+            player.setTotalAssists(player.getTotalAssists() + (int) assists);
+
+            playerRepository.save(player);
         }
     }
+
     public String generateMatchReport(Match match, DemoMatchRuntime rt) {
         StringBuilder sb = new StringBuilder();
 
@@ -878,6 +890,7 @@ public class DemoCombinedSimulationService {
                 dto.setAssistantName(g.getAssistant() != null ? g.getAssistant().getName() : null);
                 dto.setTeamName(g.getTeam() != null ? g.getTeam().getName() : null);
                 dto.setScoreAfterGoal(g.getScoreAfterGoal());
+
                 return dto;
 
             }
