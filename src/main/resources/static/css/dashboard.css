@@ -170,3 +170,28 @@
 .accordion.open .accordion-content {
     display: flex;
 }
+/* Desktop only / mobile only */
+.desktop-only { display: inline-flex; }
+.mobile-only { display: none; }
+
+@media (max-width: 768px) {
+    .desktop-only { display: none; }
+    .mobile-only { display: inline-flex; }
+}
+
+/* Mobile sidebar */
+#mobileSidebar {
+    position: fixed;
+    top: 0;
+    left: -260px;
+    width: 250px;
+    height: 100%;
+    background: rgba(20,20,20,0.98);
+    box-shadow: 4px 0 12px rgba(0,0,0,0.6);
+    transition: left 0.3s ease;
+    z-index: 50;
+}
+
+#mobileSidebar.active {
+    left: 0;
+}

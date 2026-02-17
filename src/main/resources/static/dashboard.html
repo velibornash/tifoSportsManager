@@ -9,16 +9,42 @@
 <body>
 <div class="background"></div>
 <div class="top-menu">
+    <!-- Desktop menu buttons -->
+    <div class="menu-button desktop-only" onclick="toggleSidebar('clubSidebar')">🏟️ Club</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('matchesSidebar')">⚽ Matches</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
 
-    <div class="menu-button" onclick="toggleSidebar('clubSidebar')">🏟️ Club</div>
-    <div class="menu-button" onclick="toggleSidebar('matchesSidebar')">⚽ Matches</div>
-    <div class="menu-button" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
-    <div class="menu-button" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
-    <div class="menu-button" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
-
+    <!-- Mobile hamburger -->
+    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">☰ Menu</div>
 </div>
-<!-- SIDEBARS -->
 
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3>Menu</h3>
+        <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
+        <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
+        <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
+        <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
+        <div onclick="loadPage('training'); closeMobileMenu()">Training Reports</div>
+        <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
+        <div onclick="loadPage('upcoming'); closeMobileMenu()">Upcoming Matches</div>
+        <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
+        <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
+        <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
+        <div onclick="loadPage('cup'); closeMobileMenu()">Cup</div>
+        <div onclick="loadPage('international'); closeMobileMenu()">International</div>
+        <div onclick="loadPage('friendlies'); closeMobileMenu()">Friendlies</div>
+        <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
+        <div onclick="loadPage('chat'); closeMobileMenu()">Chat</div>
+        <div onclick="loadPage('events'); closeMobileMenu()">Events</div>
+        <div onclick="loadPage('playerStats'); closeMobileMenu()">Player Stats</div>
+        <div onclick="loadPage('teamStats'); closeMobileMenu()">Team Stats</div>
+        <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
+        <div onclick="loadPage('analytics'); closeMobileMenu()">Analytics</div>
+    </div>
+</div>
 <div id="clubSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Club</h3>
@@ -49,8 +75,6 @@
         <div onclick="loadPage('profile')">Profile</div>
     </div>
 </div>
-
-
 <div id="matchesSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Matches</h3>
@@ -60,7 +84,6 @@
         <div onclick="startDemoTest()">Simulation / Demo</div>
     </div>
 </div>
-
 <div id="competitionsSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Competitions</h3>
@@ -70,7 +93,6 @@
         <div onclick="loadPage('friendlies')">Friendlies</div>
     </div>
 </div>
-
 <div id="communitySidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Community</h3>
@@ -79,7 +101,6 @@
         <div onclick="loadPage('events')">Events</div>
     </div>
 </div>
-
 <div id="statsSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Stats</h3>
@@ -89,7 +110,6 @@
         <div onclick="loadPage('analytics')">Analytics</div>
     </div>
 </div>
-
 <!-- MAIN CONTENT -->
 <div class="dashboard-content">
     <div id="main-content"></div>
@@ -99,7 +119,6 @@
 <script src="/js/pages.js"></script>
 <script src="/js/demo.js"></script>
 <script src="/js/app.js"></script>
-
 
 </body>
 </html>

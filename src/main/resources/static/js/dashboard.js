@@ -64,3 +64,22 @@ function loadDashboard() {
         </div>
     `;
 }
+// Desktop toggle: zatvara sve ostale sidebarove
+window.toggleSidebar = function(id) {
+    const sidebars = document.querySelectorAll('.sidebar');
+    sidebars.forEach(sb => {
+        if(sb.id === id) {
+            sb.classList.toggle('active');
+        } else {
+            sb.classList.remove('active');
+        }
+    });
+};
+
+// Mobile toggle
+function toggleMobileMenu() {
+    document.getElementById('mobileSidebar').classList.toggle('active');
+}
+function closeMobileMenu() {
+    document.getElementById('mobileSidebar').classList.remove('active');
+}

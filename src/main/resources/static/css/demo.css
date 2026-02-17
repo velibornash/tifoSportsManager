@@ -1,0 +1,84 @@
+        body { background:#111; color:#eee; font-family:Arial, Helvetica, sans-serif; margin:0; padding:0; text-align:center; }
+        #scoreboard { background:rgba(0,0,0,0.8); padding:12px 20px; font-size:22px; font-weight:bold; margin:15px auto; max-width:900px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); }
+        #pitch { background:#1e7d32; margin:10px auto 20px; border:2px solid #444; border-radius:8px; display:block; max-width:900px; }
+        #events-container { max-width:900px; margin:0 auto 30px; padding:20px; background:rgba(20,20,20,0.85); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); min-height:240px; }
+        #lastEventBox { background: rgba(255,255,255,0.08); padding:12px 18px; border-radius:8px; font-family:monospace; font-size:17px; margin-bottom:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:28px; }
+        .event-content { display:flex; align-items:flex-start; gap:30px; flex-wrap:wrap; }
+        #eventImage { max-width:200px; max-height:200px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); flex-shrink:0; object-fit:contain; display:none; }
+        #playerInfo { font-size:15px; line-height:1.7; padding:16px; background:rgba(255,255,255,0.06); border-radius:10px; flex:1; min-width:320px; text-align:left; box-sizing:border-box; }
+        #playerImage { display:none; border-radius:10px; max-width:120px; max-height:120px; object-fit:cover; }
+        button { position:absolute; top:15px; right:20px; padding:8px 16px; background:#2a8c4a; color:white; border:none; border-radius:6px; cursor:pointer; z-index:20; }
+        button:hover { background:#23733e; }
+/* ===================================================== */
+/* ================= MOBILE VERSION ==================== */
+/* ===================================================== */
+
+@media (max-width:768px){
+
+    body {
+        padding: 10px;
+    }
+
+    #scoreboard {
+        font-size: 18px;
+        padding: 10px;
+        margin-top: 60px; /* da dugme ne preklapa */
+    }
+
+    /* Dugme više nije absolute na mobu */
+    button {
+        position: static;
+        margin-bottom: 10px;
+    }
+
+    /* Canvas skalira ali zadržava odnos */
+    #pitch {
+        width: 100%;
+        height: auto;
+    }
+
+    #events-container {
+        padding: 15px;
+        min-height: auto;
+    }
+
+    #lastEventBox {
+        white-space: normal;        /* dozvoli prelom */
+        font-size: 15px;
+        text-align: center;
+    }
+
+    .event-content{
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+    }
+
+    #eventImage{
+        max-width: 160px;
+        max-height: 160px;
+    }
+
+    #playerImage {
+        max-width: 100px;
+        max-height: 100px;
+    }
+
+    #playerInfo{
+        min-width: unset;      /* uklanjamo 320px */
+        width: 100%;
+        font-size: 14px;
+        padding: 12px;
+        text-align: center;
+    }
+}
+
+       @keyframes blink {
+       0%   { color: inherit; }
+       50%  { color: yellow; font-weight: bold; }
+       100% { color: inherit; }
+       }
+
+       .blink {
+         animation: blink 1s ease-in-out;
+       }
