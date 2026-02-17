@@ -1,8 +1,10 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.springframework.http.ResponseEntity;
@@ -17,10 +19,12 @@ public class TeamController {
 
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
+    private final MatchRepository matchRepository;
 
-    public TeamController(TeamRepository teamRepository, PlayerRepository playerRepository) {
+    public TeamController(TeamRepository teamRepository, PlayerRepository playerRepository, MatchRepository matchRepository) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.matchRepository = matchRepository;
     }
 
     @GetMapping
@@ -53,4 +57,12 @@ public class TeamController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/{teamId}/matches")
+    public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId) {
+        List<MatchDTO> matches = matchRepository.findByHomeTeamIdOrAwayTeamId(teamId, teamId)
+                .stream()
+                .map(MatchDTO::from)
+                .toList();
+        return ResponseEntity.ok(matches);
+    }
 }

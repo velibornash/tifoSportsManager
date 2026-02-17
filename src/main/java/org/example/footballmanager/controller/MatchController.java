@@ -3,6 +3,7 @@ package org.example.footballmanager.controller;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.GoalEventDTO;
+import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.MatchDetailsDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.*;
@@ -117,6 +118,15 @@ public class MatchController {
         ));
     }
 
+    @GetMapping("/{matchId}")
+    public ResponseEntity<MatchDTO> getMatch(@PathVariable Long matchId) {
+        return matchRepository.findById(matchId)
+                .map(MatchDTO::from)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+}
 /*    // Ostale metode ostaju nepromenjene
     @PostMapping("/play")
     public Match playMatch(@RequestParam Long homeTeamId, @RequestParam Long awayTeamId,
@@ -142,7 +152,8 @@ public class MatchController {
         return matchService.playMatch(matchId);
     }
 
-*//*    @GetMapping("/{id}/details")
+*/
+    /*    @GetMapping("/{id}/details")
     public ResponseEntity<MatchDetailsDTO> getMatchDetails(@PathVariable Long id) {
         return matchRepository.findById(id)
                 .map(match -> {
@@ -168,7 +179,8 @@ public class MatchController {
                             home, away, goals
                     ));
                 }).orElse(ResponseEntity.notFound().build());
-    }*//*
+    }*/
+    /*
 
     @GetMapping("/{id}/summary")
     public ResponseEntity<String> getMatchSummary(@PathVariable Long id) {
@@ -176,4 +188,3 @@ public class MatchController {
                 .map(match -> ResponseEntity.ok(matchService.generateMatchReport(match)))
                 .orElse(ResponseEntity.notFound().build());
     }*/
-}

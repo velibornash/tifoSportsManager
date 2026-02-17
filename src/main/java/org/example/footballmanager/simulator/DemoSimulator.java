@@ -704,6 +704,7 @@ public class DemoSimulator {
                                 eventWs.broadcast(match.getId(), dto);
                             }
                             if (event instanceof GoalEvent goal) {
+                                goal.setMatch(match);
                                 rt.runtimeGoals.add(goal);
                                 if (goal.getTeam().equals(match.getHomeTeam())) {
                                     rt.homeGoals++;
