@@ -30,9 +30,9 @@ public class PlayerFactory {
         // Podaci o igračima Omladinca (ime, pozicija, godine, itd.)
         Object[][] data = {
                 {"Zvezdan Vukomanović", Position.GK, 22, 186900000.0, 1888000.0, 177.0, 75.0, 10.0, 12, 9, 17, 4, 9, 4, 4, 8, 3},
-                {"Borislav Negovanović", Position.ATT, 20, 39320000.0, 482000.0, 180.0, 75.2, 14.0, 15, 9, 0, 4, 14, 11, 5, 6, 11},
-                {"Ljupče Ožegović", Position.ATT, 20, 33740000.0, 366000.0, 190.0, 90.9, 17.0, 13, 7, 1, 3, 14, 6, 7, 4, 11},
-                {"Aleksandar Simić", Position.ATT, 20, 20280000.0, 262000.0, 181.0, 78.2, 6.0, 12, 6, 1, 11, 8, 10, 4, 7, 12},
+                {"Borislav Negovanović", Position.ATT, 20, 39320000.0, 482000.0, 180.0, 75.2, 14.0, 15, 9, 0, 4, 14, 11, 5, 6, 13},
+                {"Ljupče Ožegović", Position.ATT, 20, 33740000.0, 366000.0, 190.0, 90.9, 17.0, 13, 7, 1, 3, 14, 6, 7, 4, 14},
+                {"Aleksandar Simić", Position.ATT, 20, 20280000.0, 262000.0, 181.0, 78.2, 6.0, 12, 6, 1, 11, 8, 10, 4, 7, 13},
                 {"Žika Veljković", Position.MID, 24, 103880000.0, 1684000.0, 168.0, 58.5, 10.0, 16, 11, 0, 11, 16, 14, 14, 15, 7},
                 {"Šumenko Dabić", Position.MID, 24, 124740000.0, 1802000.0, 189.0, 80.9, 16.0, 17, 11, 1, 7, 16, 14, 13, 15, 6},
                 {"Darko Živanov", Position.DEF, 25, 113560000.0, 1548000.0, 170.0, 64.5, 18.0, 16, 11, 1, 15, 16, 12, 11, 11, 7},
@@ -54,14 +54,14 @@ public class PlayerFactory {
             double height = (double) row[5];
             double weight = (double) row[6];
             double form = (double) row[7];
-            int stamina = (int) row[8];
-            int keeper = (int) row[9];
-            int defender = (int) row[10];
-            int pace = (int) row[11];
+            int stamina = (int) row[9];
+            int keeper = (int) row[10];
+            int defender = (int) row[11];
+            int pace = (int) row[8];
             int technique = (int) row[12];
-            int playmaker = (int) row[13];
-            int passing = (int) row[14];
-            int striker = (int) row[15];
+            int playmaker = (int) row[15];
+            int passing = (int) row[13];
+            int striker = (int) row[16];
 
             // === KLJUČNA LOGIKA: FIND OR CREATE ===
             Player player = playerRepository.findByNameAndTeam(name, team)

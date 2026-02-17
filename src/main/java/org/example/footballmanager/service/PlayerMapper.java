@@ -25,7 +25,6 @@ public class PlayerMapper {
         PlayerDTO dto = new PlayerDTO();
         dto.setId(player.getId());
         dto.setName(player.getName());
-        dto.setForm(player.getForm());
 
 /*        Optional<Training> training = trainingRepository.findByPlayerId(player.getId());
         training.ifPresent(t -> {

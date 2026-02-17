@@ -206,3 +206,93 @@
 .mobile-overlay.active {
     display: block;
 }
+/* Lista igrača */
+.player-card {
+    width: 180px;
+    background: linear-gradient(145deg, #1e1e1e, #2c2c2c);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.player-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+}
+
+.player-card-image img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+}
+
+.player-card-info {
+    padding: 8px;
+    text-align: center;
+}
+
+.player-card-info h3 {
+    margin: 4px 0;
+    font-size: 16px;
+    color: #fff;
+}
+
+.player-card-info p {
+    font-size: 13px;
+    color: #ccc;
+}
+
+.player-card-stats {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #eee;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+
+/* Pojedinačni igrač */
+.player-detail-card {
+    display: flex;
+    background: linear-gradient(145deg, #1e1e1e, #2c2c2c);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    max-width: 800px;
+    margin: 20px auto;
+    color: #fff;
+    gap: 20px;
+}
+
+.player-detail-image img {
+    width: 240px;
+    height: 320px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 2px solid #555;
+}
+
+.player-detail-info {
+    flex: 1;
+}
+
+.player-detail-info h2 {
+    font-size: 28px;
+    margin-bottom: 12px;
+}
+
+.player-detail-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+    font-size: 16px;
+}
+
+.player-detail-stats div span {
+    font-weight: 600;
+    color: #aaa;
+}
