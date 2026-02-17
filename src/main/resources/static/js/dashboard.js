@@ -78,8 +78,15 @@ window.toggleSidebar = function(id) {
 
 // Mobile toggle
 function toggleMobileMenu() {
-    document.getElementById('mobileSidebar').classList.toggle('active');
+    const sidebar = document.getElementById('mobileSidebar');
+    const overlay = document.getElementById('mobileOverlay');
+
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
 }
+
 function closeMobileMenu() {
     document.getElementById('mobileSidebar').classList.remove('active');
+    document.getElementById('mobileOverlay').classList.remove('active');
 }
+
