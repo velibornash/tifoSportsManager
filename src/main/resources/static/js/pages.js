@@ -97,8 +97,8 @@ async function loadPage(page) {
             html += `
             <div class="match-card" onclick="loadMatch(${match.id})"
                  style="
-                    display:grid;
-                    grid-template-columns: 1fr auto 1fr auto;
+                    display:flex;
+                    flex-direction:column;
                     align-items:center;
                     padding:12px 15px;
                     border-radius:10px;
@@ -106,18 +106,24 @@ async function loadPage(page) {
                     box-shadow: 1px 1px 8px rgba(0,0,0,0.07);
                     cursor:pointer;
                     font-family: 'Arial', sans-serif;
-                    transition: transform 0.15s, box-shadow 0.15s;
-                    gap:10px;
-                 "
-                 onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='2px 2px 12px rgba(0,0,0,0.15)';"
-                 onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='1px 1px 8px rgba(0,0,0,0.07)';">
-                <div style="text-align:left; font-weight:bold; font-size:1em; color:#0f2c54;">${match.homeTeam}</div>
-                <div style="text-align:center; font-weight:bold; font-size:1.1em; color:#0f2c54;">${match.homeGoals} - ${match.awayGoals}</div>
-                <div style="text-align:right; font-weight:bold; font-size:1em; color:#a11;">${match.awayTeam}</div>
-                <div style="text-align:right; font-size:0.85em; color:#555; white-space:nowrap;">${formattedDate}</div>
+                    margin-bottom:10px;
+                 ">
+
+                 <!-- Timovi i rezultat -->
+                 <div style="display:flex; align-items:center; gap:8px; font-weight:bold; font-size:1.1em; color:#222;">
+                     <span style="color:#0f2c54;">${match.homeTeam}</span>
+                     <span>${match.homeGoals}</span>
+                     <span>-</span>
+                     <span>${match.awayGoals}</span>
+                     <span style="color:#a11;">${match.awayTeam}</span>
+                 </div>
+
+                 <!-- Datum -->
+                 <div style="font-size:0.85em; color:#555; margin-top:4px;">
+                     🗓 ${formattedDate}
+                 </div>
             </div>`;
         });
-
 
         html += `</div>
                  <button onclick="loadDashboard()"
@@ -206,39 +212,39 @@ async function loadMatch(matchId) {
         minute: '2-digit'
     });
 
-    mainContent.innerHTML = `
-    <div class="team-card" style="background:#fdfdfd; border-radius:12px; padding:20px; box-shadow: 2px 2px 12px rgba(0,0,0,0.15); font-family:Arial, sans-serif; color:#222;">
-        <h2 style="text-align:center; margin-bottom:15px;">Match Details</h2>
+mainContent.innerHTML = `
+<div class="team-card" style="background:#fafafa; border-radius:12px; padding:20px; box-shadow:2px 2px 12px rgba(0,0,0,0.12); font-family:Arial, sans-serif; color:#222;">
+    <h2 style="text-align:center; margin-bottom:20px; color:#0f2c54;">Match Details</h2>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="text-align:center; flex:1;">
-                <div style="font-size:1.5em; font-weight:bold; color:#1e3a8a;">${match.homeTeam}</div>
-                <div style="font-size:1.2em; color:#555;">${match.homeGoals}</div>
-            </div>
-
-            <div style="flex:0 0 auto; font-size:1.3em; font-weight:bold;">-</div>
-
-            <div style="text-align:center; flex:1;">
-                <div style="font-size:1.5em; font-weight:bold; color:#dc2626;">${match.awayTeam}</div>
-                <div style="font-size:1.2em; color:#555;">${match.awayGoals}</div>
-            </div>
+    <div style="display:flex; justify-content:space-around; align-items:center; margin-bottom:15px;">
+        <div style="text-align:center;">
+            <div style="font-size:1.6em; font-weight:bold; color:#0f2c54;">${match.homeTeam}</div>
+            <div style="font-size:1.3em; font-weight:bold; color:#0a1f3a;">${match.homeGoals}</div>
         </div>
 
-        <div style="text-align:center; font-size:0.95em; color:#444; margin-bottom:15px;">
-            🗓 ${formattedDate}
-        </div>
+        <div style="font-size:1.4em; font-weight:bold; color:#555;">-</div>
 
-        <div style="display:flex; justify-content:center; gap:20px; margin-bottom:20px;">
-            <button style="padding:8px 15px; border:none; border-radius:6px; background:#1e3a8a; color:white; cursor:pointer;">View Stats</button>
-            <button style="padding:8px 15px; border:none; border-radius:6px; background:#dc2626; color:white; cursor:pointer;">View Goals</button>
+        <div style="text-align:center;">
+            <div style="font-size:1.6em; font-weight:bold; color:#a11;">${match.awayTeam}</div>
+            <div style="font-size:1.3em; font-weight:bold; color:#610000;">${match.awayGoals}</div>
         </div>
-
-        <button onclick="loadPage('results')"
-            style="display:block; margin:0 auto; padding:10px 20px; border:none; border-radius:8px; background:#555; color:white; cursor:pointer;">
-            ⬅ Back to Results
-        </button>
     </div>
-    `;
+
+    <div style="text-align:center; font-size:0.9em; color:#444; margin-bottom:20px;">
+        🗓 ${formattedDate}
+    </div>
+
+    <div style="display:flex; justify-content:center; gap:15px; margin-bottom:25px;">
+        <button style="padding:8px 18px; border:none; border-radius:6px; background:#0f2c54; color:white; cursor:pointer;">View Stats</button>
+        <button style="padding:8px 18px; border:none; border-radius:6px; background:#a11; color:white; cursor:pointer;">View Goals</button>
+    </div>
+
+    <button onclick="loadPage('results')"
+        style="display:block; margin:0 auto; padding:10px 20px; border:none; border-radius:8px; background:#555; color:white; cursor:pointer;">
+        ⬅ Back to Results
+    </button>
+</div>`;
+
 }
 
 
