@@ -14,27 +14,39 @@ import java.util.OptionalDouble;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@Getter @Setter
 public class Team {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String name;
-    private String country;
-    private double budget;
-    private double reputation; // 0-100
-    private String stadium;
+
+    @Enumerated(EnumType.STRING)
+    private CompetitionTeamType type; // CLUB ili NATIONAL
 
     @ManyToOne
-    private League league;
+    private Country country;
 
-    @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference   // ← Ovo je forward deo (Team → Players)
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "stadium_id")
+    private Stadium stadium;
+
+
+    private Double budget; // samo za CLUB
+
+    private Double reputation; // 0-100
+
+    @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Player> players = new ArrayList<>();
 
-    @OneToMany(cascade = CascadeType.ALL)
-    @JsonIgnore   // Juniors nisu potrebni u JSON-u eventova
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Junior> juniors = new ArrayList<>();
+
+    // ---- Helper metode ostaju ----
+
+
 
     // Helper methods ostaju isti
     public void addPlayer(Player player) {

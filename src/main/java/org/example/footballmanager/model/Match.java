@@ -7,9 +7,7 @@ import lombok.AllArgsConstructor;
 import org.example.footballmanager.model.event.*;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Data
@@ -22,78 +20,128 @@ public class Match {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     private Team homeTeam;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     private Team awayTeam;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "home_lineup_id")
     private Lineup homeLineup;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "away_lineup_id")
     private Lineup awayLineup;
 
     private int homeGoals;
     private int awayGoals;
-
+    private double possessionHome;
+    private double possessionAway;
     private LocalDateTime matchDate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Stadium stadium;
 
     private boolean played;
     private boolean started;
-
-    // Formacije kao string
     private String homeFormation;
     private String awayFormation;
 
-    // Helper: sve evente po tipu
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "match", fetch = FetchType.LAZY)
     private Set<MatchEvent> allMatchEvents = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<GoalEvent> goals = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<ShotOnTargetEvent> shotsOnTarget = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<ShotOffTargetEvent> shotsOffTarget = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<YellowCardEvent> yellowCards = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<RedCardEvent> redCards = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<PenaltyEvent> penalties = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<FreeKickEvent> freeKicks = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<OffsideEvent> offsides = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<InjuryEvent> injuries = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<ChanceEvent> chances = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<SubstitutionEvent> substitutions = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<VARReviewEvent> varReviews = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<CornerEvent> corners = new HashSet<>();
-
-    @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<MatchEndedEvent> matchEndEvents = new HashSet<>();
 
     @Lob
     private String eventJson;
+
+    // --- helper metode po tipu eventa ---
+    public Set<GoalEvent> getGoals() {
+        Set<GoalEvent> goals = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof GoalEvent) goals.add((GoalEvent) e);
+        return goals;
+    }
+
+    public Set<ChanceEvent> getChances() {
+        Set<ChanceEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof ChanceEvent) list.add((ChanceEvent) e);
+        return list;
+    }
+
+    public Set<YellowCardEvent> getYellowCards() {
+        Set<YellowCardEvent> cards = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof YellowCardEvent) cards.add((YellowCardEvent) e);
+        return cards;
+    }
+
+    public Set<RedCardEvent> getRedCards() {
+        Set<RedCardEvent> cards = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof RedCardEvent) cards.add((RedCardEvent) e);
+        return cards;
+    }
+
+    public Set<PenaltyEvent> getPenalties() {
+        Set<PenaltyEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof PenaltyEvent) list.add((PenaltyEvent) e);
+        return list;
+    }
+
+    public Set<FreeKickEvent> getFreeKicks() {
+        Set<FreeKickEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof FreeKickEvent) list.add((FreeKickEvent) e);
+        return list;
+    }
+
+    public Set<OffsideEvent> getOffsides() {
+        Set<OffsideEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof OffsideEvent) list.add((OffsideEvent) e);
+        return list;
+    }
+
+    public Set<InjuryEvent> getInjuries() {
+        Set<InjuryEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof InjuryEvent) list.add((InjuryEvent) e);
+        return list;
+    }
+
+    public Set<SubstitutionEvent> getSubstitutions() {
+        Set<SubstitutionEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof SubstitutionEvent) list.add((SubstitutionEvent) e);
+        return list;
+    }
+
+    public Set<VARReviewEvent> getVarReviews() {
+        Set<VARReviewEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof VARReviewEvent) list.add((VARReviewEvent) e);
+        return list;
+    }
+
+    public Set<CornerEvent> getCorners() {
+        Set<CornerEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof CornerEvent) list.add((CornerEvent) e);
+        return list;
+    }
+
+    public Set<ShotOnTargetEvent> getShotsOnTarget() {
+        Set<ShotOnTargetEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof ShotOnTargetEvent) list.add((ShotOnTargetEvent) e);
+        return list;
+    }
+
+    public Set<ShotOffTargetEvent> getShotsOffTarget() {
+        Set<ShotOffTargetEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof ShotOffTargetEvent) list.add((ShotOffTargetEvent) e);
+        return list;
+    }
+
+    public Set<MatchEndedEvent> getMatchEndEvents() {
+        Set<MatchEndedEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof MatchEndedEvent) list.add((MatchEndedEvent) e);
+        return list;
+    }
+
+    public Set<MatchStartEvent> getMatchStartEvents() {
+        Set<MatchStartEvent> list = new HashSet<>();
+        for (MatchEvent e : allMatchEvents) if (e instanceof MatchStartEvent) list.add((MatchStartEvent) e);
+        return list;
+    }
 }

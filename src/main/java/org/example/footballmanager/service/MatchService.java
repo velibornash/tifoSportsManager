@@ -24,6 +24,7 @@ public class MatchService {
 
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
+    private final MatchEventRepository matchEventRepository;
     private final TeamRepository teamRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
@@ -35,13 +36,14 @@ public class MatchService {
                         TeamRepository teamRepository,
                         MatchPlayerStatsRepository matchPlayerStatsRepository,
                         PlayerRepository playerRepository,
-                        MatchSimulator matchSimulator) {
+                        MatchSimulator matchSimulator, MatchEventRepository matchEventRepository) {
         this.matchRepository = matchRepository;
         this.lineupRepository = lineupRepository;
         this.teamRepository = teamRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
         this.playerRepository = playerRepository;
         this.matchSimulator = matchSimulator;
+        this.matchEventRepository = matchEventRepository;
     }
 
     @Async
@@ -91,12 +93,12 @@ public class MatchService {
         match.setAwayGoals((int) match.getGoals().stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(awayTeam))
                 .count());
-
+        List<GoalEvent> allGoals = matchEventRepository.findGoalsByMatch(match);
         // Povrede, kartoni, ocene, statistika
         simulateInjuriesAndCards(homePlayers, match);
         simulateInjuriesAndCards(awayPlayers, match);
-        assignRatings(homePlayers, match);
-        assignRatings(awayPlayers, match);
+        homePlayers = assignRatings(homePlayers, allGoals);
+        awayPlayers = assignRatings(awayPlayers, allGoals);
         savePlayerStats(match, homePlayers);
         savePlayerStats(match, awayPlayers);
 
@@ -106,11 +108,13 @@ public class MatchService {
         return CompletableFuture.completedFuture(saved);
     }
 
-    // Ostale metode ostaju iste (assignRatings, simulateInjuriesAndCards, savePlayerStats, simulateMatch, generateMatchReport, appendPlayerRatings)
-    private void assignRatings(List<Player> players, Match match) {
-        for (Player player : players)
-            player.setRating(MatchRatingCalculator.calculate(player, match));
+    private List<Player> assignRatings(List<Player> players, List<GoalEvent> allGoals) {
+        for (Player player : players) {
+            player.setRating(MatchRatingCalculator.calculate(player, player.getTeam(), allGoals));
+        }
+        return players;
     }
+
 
     private void simulateInjuriesAndCards(List<Player> players, Match match) {
         for (Player player : players) {

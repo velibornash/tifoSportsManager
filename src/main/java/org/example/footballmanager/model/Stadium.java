@@ -13,4 +13,15 @@ public class Stadium {
     private String name;
     private Integer capacity;
     private String location;
+    @ManyToOne
+    private Team owner; // opcionalno
+
+    private Double ticketPrice;
+    private Double pitchQuality;
+    private Integer condition; // 0-100
+    private Integer trainingQuality; // utiče na razvoj
+
+    @OneToOne(mappedBy = "stadium")
+    private Team team;
+
 }

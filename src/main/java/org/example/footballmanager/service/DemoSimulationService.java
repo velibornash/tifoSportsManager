@@ -36,8 +36,8 @@ public class DemoSimulationService {
         runtime.homePlayers = match.getHomeLineup().getStartingPlayers();
         runtime.awayPlayers = match.getAwayLineup().getStartingPlayers();
         runtime = simulator.simulateMatch(match, runtime.crowd, runtime.referee, runtime.homeTactics, runtime.awayTactics, runtime.homePlayers, runtime.awayPlayers, scheduler);
-        simulator.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
-        Match saved = matchRepository.save(match);
+        Match saved = simulator.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
+
         log.info("Simulacija završena za meč {}", matchId);
         return CompletableFuture.completedFuture(saved);
     }

@@ -10,10 +10,10 @@ public class MatchPlayerStats {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     private Match match;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     private Player player;
 
     private int goals;

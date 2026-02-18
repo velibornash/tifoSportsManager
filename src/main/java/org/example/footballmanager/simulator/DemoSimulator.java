@@ -1,5 +1,6 @@
 package org.example.footballmanager.simulator;
 
+import jakarta.persistence.EntityManager;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.*;
@@ -7,6 +8,7 @@ import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
+import org.example.footballmanager.repository.MatchEventRepository;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
@@ -15,6 +17,7 @@ import org.example.footballmanager.util.DemoMatchEventWebSocketHandler;
 import org.example.footballmanager.util.DemoPositionWebSocketHandler;
 import org.example.footballmanager.util.MatchRatingCalculator;
 import org.example.footballmanager.util.TacticsAdjustmentService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.concurrent.*;
@@ -22,7 +25,7 @@ import java.util.concurrent.*;
 @Slf4j
 @Component
 public class DemoSimulator {
-    private final MatchEventFactory eventFactory = new MatchEventFactory();
+
     private final TacticsAdjustmentService tacticsAdjustmentService;
     private final DemoMatchEventWebSocketHandler eventWs;
     private final DemoPositionWebSocketHandler positionWs;
@@ -30,6 +33,7 @@ public class DemoSimulator {
     private final Random random = new Random();
     private final PlayerRepository playerRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
+    private final MatchEventRepository matchEventRepository;
     private static final int TICK_MS = 250;
     private static final int MATCH_DURATION_SECONDS = 90;
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
@@ -39,14 +43,88 @@ public class DemoSimulator {
     public DemoSimulator(TacticsAdjustmentService tacticsAdjustmentService,
                          MatchRepository matchRepository, PlayerRepository playerRepository,
                          MatchPlayerStatsRepository matchPlayerStatsRepository, DemoMatchEventWebSocketHandler eventWs
-    , DemoPositionWebSocketHandler positionWs) {
+    , DemoPositionWebSocketHandler positionWs, MatchEventRepository  matchEventRepository) {
         this.tacticsAdjustmentService = tacticsAdjustmentService;
         this.eventWs = eventWs;
         this.matchRepository = matchRepository;
         this.playerRepository = playerRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
         this.positionWs = positionWs;
+        this.matchEventRepository = matchEventRepository;
     }
+
+    @Autowired
+    private EntityManager em;
+
+    private void batchSaveMatchEvents(Match match, List<MatchEvent> events) {
+        int batchSize = 50; // PostgreSQL safe
+        int i = 0;
+
+        for (MatchEvent e : events) {
+            e.setMatch(match);   // samo poveži
+            em.merge(e);         // detached entities + merge
+
+            if (++i % batchSize == 0) {
+                em.flush();
+                em.clear();
+            }
+        }
+
+        em.flush();
+        em.clear();
+    }
+
+    private void batchSaveGoalEvents(Match match, List<GoalEvent> goals, List<Player> homePlayers, List<Player> awayPlayers) {
+        int batchSize = 50; // PostgreSQL safe
+        int i = 0;
+
+        for (GoalEvent g : goals) {
+            g.setMatch(match);
+
+            // --- ažuriraj scorer ---
+            if (g.getScorer() != null) {
+                Player scorer = g.getScorer();
+                scorer.setTotalGoals(scorer.getTotalGoals() + 1);
+                playerRepository.save(scorer);
+
+                // update u runtime listi
+                homePlayers.stream()
+                        .filter(p -> p.getId().equals(scorer.getId()))
+                        .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
+
+                awayPlayers.stream()
+                        .filter(p -> p.getId().equals(scorer.getId()))
+                        .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
+            }
+
+            // --- ažuriraj assistant ---
+            if (g.getAssistant() != null) {
+                Player assistant = g.getAssistant();
+                assistant.setTotalAssists(assistant.getTotalAssists() + 1);
+                playerRepository.save(assistant);
+
+                // update u runtime listi
+                homePlayers.stream()
+                        .filter(p -> p.getId().equals(assistant.getId()))
+                        .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
+
+                awayPlayers.stream()
+                        .filter(p -> p.getId().equals(assistant.getId()))
+                        .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
+            }
+
+            em.persist(g);
+
+            if (++i % batchSize == 0) {
+                em.flush();
+                em.clear();
+            }
+        }
+
+        em.flush();
+        em.clear();
+    }
+
 
     private void movePlayerByRole(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
         int id = p.getId();
@@ -775,49 +853,61 @@ public class DemoSimulator {
         return rt;
     }
 
-    public Match finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers, DemoMatchRuntime rt) {
+    public Match finalizeMatchResult(Match match,
+                                     List<Player> homePlayers,
+                                     List<Player> awayPlayers,
+                                     DemoMatchRuntime rt) {
+
         rt.homeTeam = match.getHomeTeam();
         rt.awayTeam = match.getAwayTeam();
 
-        rt.homeGoals=((int) rt.runtimeGoals.stream()
+        // --- prebrojavanje golova po timu ---
+        rt.homeGoals = (int) rt.runtimeGoals.stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(rt.homeTeam))
-                .count());
-        rt.awayGoals=((int) rt.runtimeGoals.stream()
+                .count();
+
+        rt.awayGoals = (int) rt.runtimeGoals.stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(rt.awayTeam))
-                .count());
+                .count();
 
-        for (MatchEvent e : rt.runtimeEvents) {
-            e.setMatch(match);
-            match.getAllMatchEvents().add(e);
-        }
+        // --- batch merge svih ostalih eventa (kartoni, povrede, itd.) ---
+        batchSaveMatchEvents(match, rt.runtimeEvents);
 
-        for (GoalEvent g : rt.runtimeGoals) {
-            g.setMatch(match);
-            match.getGoals().add(g);
-            Player scorer = g.getScorer();
-            if (scorer != null) {
-                playerRepository.save(scorer);
-            }
+        // --- batch save golova i update igrača ---
+        batchSaveGoalEvents(match, rt.runtimeGoals, homePlayers, awayPlayers);
 
-            Player assistant = g.getAssistant();
-            if (assistant != null) {
-
-                playerRepository.save(assistant);
-            }
-
-        }
+        // --- update meča ---
         match.setHomeGoals(rt.homeGoals);
         match.setAwayGoals(rt.awayGoals);
-        matchRepository.save(match);
+        matchRepository.save(match); // 🔹 sigurni save
+
+        // --- simulacija kartona/povreda ---
         simulateInjuriesAndCards(homePlayers, match);
         simulateInjuriesAndCards(awayPlayers, match);
-        homePlayers = assignRatings(homePlayers, match);
-        awayPlayers = assignRatings(awayPlayers, match);
-        savePlayerStats(match, homePlayers);
-        savePlayerStats(match, awayPlayers);
-        System.out.println(generateMatchReport(match, rt));
+
+        // --- ocene igrača i stats ---
+        homePlayers = assignRatings(homePlayers, rt.runtimeGoals); // koristimo runtime, ne bazu
+        awayPlayers = assignRatings(awayPlayers, rt.runtimeGoals);
+
+        savePlayerStats(match, homePlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
+                        .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
+                rt.runtimeEvents.stream()
+                        .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+        );
+
+        savePlayerStats(match, awayPlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
+                        .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
+                rt.runtimeEvents.stream()
+                        .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+        );
+
+        // --- za report odmah koristimo runtimeGoalove + runtimeEvente ---
+        System.out.println(generateMatchReport(match, rt, homePlayers, awayPlayers));
+
         return match;
     }
+
+
     public Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found"));
@@ -944,11 +1034,14 @@ public class DemoSimulator {
         runningMatches.remove(matchId);
         log.info("Canvas simulacija završena za meč {}", matchId);
     }
-    private List<Player>  assignRatings(List<Player> players, Match match) {
-        for (Player player : players)
-            player.setRating(MatchRatingCalculator.calculate(player, match));
+    private List<Player> assignRatings(List<Player> players, List<GoalEvent> allGoals) {
+        for (Player player : players) {
+            player.setRating(MatchRatingCalculator.calculate(player, player.getTeam(), allGoals));
+        }
         return players;
     }
+
+
     private void simulateInjuriesAndCards(List<Player> players, Match match) {
         for (Player player : players) {
             if (random.nextDouble() < 0.05) {
@@ -967,16 +1060,27 @@ public class DemoSimulator {
             }
         }
     }
-    private void savePlayerStats(Match match, List<Player> players) {
+    private void savePlayerStats(Match match, List<Player> players,
+                                 List<GoalEvent> allGoals,
+                                 List<YellowCardEvent> allYellows,
+                                 List<RedCardEvent> allReds) {
 
         for (Player player : players) {
 
-            long goals = match.getGoals().stream()
-                    .filter(g -> g.getScorer().equals(player))
+            long goals = allGoals.stream()
+                    .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
                     .count();
 
-            long assists = match.getGoals().stream()
-                    .filter(g -> player.equals(g.getAssistant()))
+            long assists = allGoals.stream()
+                    .filter(g -> g.getAssistant() != null && g.getAssistant().equals(player))
+                    .count();
+
+            long yellowCards = allYellows.stream()
+                    .filter(y -> y.getPlayer() != null && y.getPlayer().equals(player))
+                    .count();
+
+            long redCards = allReds.stream()
+                    .filter(r -> r.getPlayer() != null && r.getPlayer().equals(player))
                     .count();
 
             MatchPlayerStats stats = new MatchPlayerStats();
@@ -984,62 +1088,82 @@ public class DemoSimulator {
             stats.setPlayer(player);
             stats.setGoals((int) goals);
             stats.setAssists((int) assists);
-            stats.setYellowCards((int) match.getYellowCards().stream()
-                    .filter(y -> y.getPlayer().equals(player)).count());
-            stats.setRedCards((int) match.getRedCards().stream()
-                    .filter(r -> r.getPlayer().equals(player)).count());
+            stats.setYellowCards((int) yellowCards);
+            stats.setRedCards((int) redCards);
             stats.setMinutesPlayed(90);
             stats.setRating(player.getRating());
             matchPlayerStatsRepository.save(stats);
-/*            player.setTotalGoals(player.getTotalGoals() + (int) goals);
-            player.setTotalAssists(player.getTotalAssists() + (int) assists);
-            playerRepository.save(player);*/
-
         }
     }
-    public String generateMatchReport(Match match, DemoMatchRuntime rt) {
+
+
+    private String generateMatchReport(Match match,
+                                       DemoMatchRuntime rt,
+                                       List<Player> homePlayers,
+                                       List<Player> awayPlayers) {
+
         StringBuilder sb = new StringBuilder();
 
         sb.append(String.format("%s %d - %d %s%n%n",
                 match.getHomeTeam().getName(),
-                match.getHomeGoals(),
-                match.getAwayGoals(),
+                rt.homeGoals,
+                rt.awayGoals,
                 match.getAwayTeam().getName()));
 
+        // --- Strelci ---
         sb.append("Strelci:\n");
-        match.getGoals().stream()
-                .sorted(Comparator.comparingInt(GoalEvent::getMinute))
-                .forEach(g -> sb.append(String.format("⚽ %d' %s%s%n",
-                        g.getMinute(),
-                        g.getScorer().getName(),
-                        g.getAssistant() != null
-                                ? " (asist. " + g.getAssistant().getName() + ")"
-                                : ""
-                )));
+        // koristimo HashSet da ne dupliramo iste golove (minute+scorer)
+        Set<String> addedGoals = new HashSet<>();
+        rt.runtimeGoals.forEach(g -> {
+            String scorerName = g.getScorer() != null ? g.getScorer().getName() : "N/A";
+            String assistName = g.getAssistant() != null ? g.getAssistant().getName() : null;
 
-        sb.append("\nOcene igrača - ")
-                .append(match.getHomeTeam().getName())
-                .append("\n");
-        appendPlayerRatings(sb, match.getHomeLineup().getStartingPlayers(), match);
+            // oblik: 45' ⚽ Igrač (asistencija: Igrač)
+            String desc;
+            if (assistName != null) {
+                desc = String.format("%d' ⚽ %s (asistencija: %s)", g.getMinute(), scorerName, assistName);
+            } else {
+                desc = String.format("%d' ⚽ %s", g.getMinute(), scorerName);
+            }
 
-        sb.append("\nOcene igrača - ")
-                .append(match.getAwayTeam().getName())
-                .append("\n");
-        appendPlayerRatings(sb, match.getAwayLineup().getStartingPlayers(), match);
+            if (!addedGoals.contains(desc)) {
+                sb.append(desc).append("\n");
+                addedGoals.add(desc);
+            }
+        });
+
+        sb.append("\n");
+
+        // --- Ocene igrača ---
+        sb.append("Ocene igrača - ").append(match.getHomeTeam().getName()).append("\n");
+        appendPlayerRatings(sb, homePlayers, rt.runtimeGoals);
+
+        sb.append("\nOcene igrača - ").append(match.getAwayTeam().getName()).append("\n");
+        appendPlayerRatings(sb, awayPlayers, rt.runtimeGoals);
 
         return sb.toString();
     }
-    private void appendPlayerRatings(StringBuilder sb, List<Player> players, Match match) {
-        for (Player player : players) {
 
-            MatchPlayerStats stats = matchPlayerStatsRepository.findByMatchAndPlayer(match, player);
+    // helper za prikaz ocena igrača sa golovima i asistencijama
+    private void appendPlayerRatings(StringBuilder sb, List<Player> players, List<GoalEvent> allGoals) {
+        for (Player player : players) {
+            long goals = allGoals.stream()
+                    .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
+                    .count();
+
+            long assists = allGoals.stream()
+                    .filter(g -> g.getAssistant() != null && g.getAssistant().equals(player))
+                    .count();
+
             sb.append(String.format("- %s: %d (golova: %d, asistencija: %d)%n",
                     player.getName(),
-                    stats.getRating(),
-                    stats.getGoals(),
-                    stats.getAssists()));
+                    player.getRating(),
+                    goals,
+                    assists));
         }
     }
+
+
     private MatchEventDTO toDto(MatchEvent event) {
         switch (event) {
             case null -> {
