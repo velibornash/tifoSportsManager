@@ -25,6 +25,7 @@ public class DemoSimulator {
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
+    private final MatchEventMapper matchEventMapper = new MatchEventMapper();
 
     public DemoSimulator(TacticsAdjustmentService tacticsAdjustmentService,
                          MatchRepository matchRepository,
@@ -47,13 +48,14 @@ public class DemoSimulator {
         startEvent.setMinute(1);
         startEvent.setMatch(match);
         startEvent.apply();
-        MatchEventDTO startDto = toDto(startEvent);
+        MatchEventDTO startDto = matchEventMapper.toDto(startEvent);
         if (startDto != null) {
             scheduler.schedule(() -> {
                 broadcastPositonHandling.broadcastCurrentEvent(match.getId(), startDto);
                 rt.runtimeEvents.add(startEvent);
             }, 500, TimeUnit.MILLISECONDS);
         }
+        MatchEventFactory eventFactory = new MatchEventFactory();
         for (int minute = 1; minute <= 92; minute++) {
             final int currentMinute = minute;
             scheduler.schedule(() -> {
@@ -62,7 +64,7 @@ public class DemoSimulator {
                     updateFatigue(context);
                     updatePossession(context, homePlayers, awayPlayers, homeFormation, awayFormation);
                     tacticsAdjustmentService.adjustTactics(context);
-                    MatchEventFactory eventFactory = new MatchEventFactory();
+
                     if (currentMinute < 91) {
                         MatchEvent event = eventFactory.createRandomEvent(context, homePlayers, awayPlayers, homeFormation, awayFormation);
                         if (event != null)
@@ -71,7 +73,7 @@ public class DemoSimulator {
                             event.apply();
                             rt.runtimeEvents.add(event);
                             log.info("[{}'] Event: {}", currentMinute, event.getDescription());
-                            MatchEventDTO dto = toDto(event);
+                            MatchEventDTO dto = matchEventMapper.toDto(event);
                             if (dto != null) {
                                 broadcastPositonHandling.broadcastCurrentEvent(match.getId(), dto);
                             }
@@ -110,7 +112,7 @@ public class DemoSimulator {
                                     rt.runtimeGoals.add(goal);
                                     rt.runtimeEvents.add(goal);
                                     log.info("[{}'] Event: {}", currentMinute, goal.getDescription());
-                                    MatchEventDTO goalDto = toDto(goal);
+                                    MatchEventDTO goalDto = matchEventMapper.toDto(goal);
                                     broadcastPositonHandling.broadcastCurrentEvent(match.getId(), goalDto);
                                 }
 
@@ -129,7 +131,7 @@ public class DemoSimulator {
                         endEvent.setMinute(91);
                         endEvent.setMatch(match);
                         endEvent.apply();
-                        MatchEventDTO endDto = toDto(endEvent);
+                        MatchEventDTO endDto = matchEventMapper.toDto(endEvent);
                         if (endDto != null) {
                             scheduler.schedule(() -> broadcastPositonHandling.broadcastCurrentEvent(match.getId(), endDto), 30000, TimeUnit.MILLISECONDS);
                             rt.runtimeEvents.add(endEvent   );
@@ -212,333 +214,7 @@ public class DemoSimulator {
         tactics.setFormation(formation);
         return tactics;
     }
-    private MatchEventDTO toDto(MatchEvent event) {
-        switch (event) {
-            case null -> {
-                return null;
-            }
-            case GoalEvent g -> {
-                GoalEventDTO dto = new GoalEventDTO();
-                dto.setType("goal");
-                dto.setMinute(g.getMinute());
-                dto.setDescription(g.getDescription());
 
-                if (g.getScorer() != null) {
-                    Player p = g.getScorer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-
-                dto.setScorerName(g.getScorer() != null ? g.getScorer().getName() : null);
-                dto.setAssistantName(g.getAssistant() != null ? g.getAssistant().getName() : null);
-                dto.setTeamName(g.getTeam() != null ? g.getTeam().getName() : null);
-                dto.setScoreAfterGoal(g.getScoreAfterGoal());
-
-                return dto;
-
-            }
-            case YellowCardEvent y -> {
-                YellowCardEventDTO dto = new YellowCardEventDTO();
-                dto.setType("yellowCard");
-                dto.setMinute(y.getMinute());
-                dto.setDescription(y.getDescription());
-
-                if (y.getPlayer() != null) {
-                    Player p = y.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-
-                dto.setPlayerName(y.getPlayer() != null ? y.getPlayer().getName() : null);
-                dto.setTeamName(y.getPlayer() != null && y.getPlayer().getTeam() != null ?
-                        y.getPlayer().getTeam().getName() : null);
-                return dto;
-
-            }
-            case RedCardEvent r -> {
-                RedCardEventDTO dto = new RedCardEventDTO();
-                dto.setType("redCard");
-                dto.setMinute(r.getMinute());
-                dto.setDescription(r.getDescription());
-
-                if (r.getPlayer() != null) {
-                    Player p = r.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                return dto;
-
-            }
-            case InjuryEvent i -> {
-                InjuryEventDTO dto = new InjuryEventDTO();
-                dto.setType("injury");
-                dto.setMinute(i.getMinute());
-                dto.setDescription(i.getDescription());
-
-                if (i.getPlayer() != null) {
-                    Player p = i.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                return dto;
-
-            }
-            case PenaltyEvent p -> {
-                PenaltyEventDTO dto = new PenaltyEventDTO();
-                dto.setType("penalty");
-                dto.setMinute(p.getMinute());
-                dto.setDescription(p.getDescription());
-
-                if (p.getTaker() != null) {
-                    Player pl = p.getTaker();
-                    dto.setPlayerName(pl.getName());
-                    dto.setPlayerAge(pl.getAge());
-                    dto.setPlayerHeight(pl.getHeight());
-                    dto.setPlayerWeight(pl.getWeight());
-                    dto.setPlayerTotalGoals(pl.getTotalGoals());
-                    dto.setPlayerTotalAssists(pl.getTotalAssists());
-                    dto.setPlayerPosition(pl.getPosition() != null ? pl.getPosition().name() : null);
-                    dto.setPlayerRating(pl.getRating());
-                }
-                dto.setTakerName(p.getTaker() != null ? p.getTaker().getName() : null);
-                dto.setTeamName(p.getTeam() != null ? p.getTeam().getName() : null);
-                dto.setScored(p.isScored());
-                return dto;
-
-            }
-            case SubstitutionEvent s -> {
-                SubstitutionEventDTO dto = new SubstitutionEventDTO();
-                dto.setType("substitution");
-                dto.setMinute(s.getMinute());
-                dto.setDescription(s.getDescription());
-
-                if (s.getPlayerOut() != null) {
-                    Player p = s.getPlayerOut();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-
-                dto.setPlayerOutName(s.getPlayerOut() != null ? s.getPlayerOut().getName() : null);
-                dto.setPlayerInName(s.getPlayerIn() != null ? s.getPlayerIn().getName() : null);
-                dto.setTeamName(s.getPlayerOut() != null && s.getPlayerOut().getTeam() != null ?
-                        s.getPlayerOut().getTeam().getName() : null);
-                return dto;
-
-            }
-            case OffsideEvent o -> {
-                OffsideEventDTO dto = new OffsideEventDTO();
-                dto.setType("offside");
-                dto.setMinute(o.getMinute());
-                dto.setDescription(o.getDescription());
-
-                if (o.getPlayer() != null) {
-                    Player p = o.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(o.getPlayer() != null ? o.getPlayer().getName() : null);
-                dto.setTeamName(o.getPlayer() != null && o.getPlayer().getTeam() != null ?
-                        o.getPlayer().getTeam().getName() : null);
-                return dto;
-
-            }
-            case CornerEvent c -> {
-                CornerEventDTO dto = new CornerEventDTO();
-                dto.setType("corner");
-                dto.setMinute(c.getMinute());
-                dto.setDescription(c.getDescription());
-                dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
-                if (c.getPlayer() != null) {
-                    Player p = c.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
-                dto.setTakerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
-                dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
-                return dto;
-
-            }
-            case FreeKickEvent f -> {
-                FreeKickEventDTO dto = new FreeKickEventDTO();
-                dto.setType("freeKick");
-                dto.setMinute(f.getMinute());
-                dto.setDescription(f.getDescription());
-                if (f.getPlayer() != null) {
-                    Player p = f.getTaker();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                if (f.getTaker() != null) {
-                    Player p = f.getTaker();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(f.getPlayer() != null ? f.getPlayer().getName() : null);
-                dto.setTakerName(f.getTaker() != null ? f.getTaker().getName() : null);
-                dto.setTeamName(f.getPlayer() != null && f.getPlayer().getTeam() != null ?
-                        f.getPlayer().getTeam().getName() : null);
-                return dto;
-
-            }
-            case ShotOnTargetEvent s -> {
-                ShotOnTargetEventDTO dto = new ShotOnTargetEventDTO();
-                dto.setType("shotOnTarget");
-                dto.setMinute(s.getMinute());
-                dto.setDescription(s.getDescription());
-
-                if (s.getShooter() != null) {
-                    Player p = s.getShooter();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(s.getShooter() != null ? s.getShooter().getName() : null);
-                dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
-                return dto;
-
-            }
-            case ShotOffTargetEvent s -> {
-                ShotOffTargetEventDTO dto = new ShotOffTargetEventDTO();
-                dto.setType("shotOffTarget");
-                dto.setMinute(s.getMinute());
-                dto.setDescription(s.getDescription());
-
-                if (s.getShooter() != null) {
-                    Player p = s.getShooter();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(s.getShooter() != null ? s.getShooter().getName() : null);
-                dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
-                return dto;
-
-            }
-            case VARReviewEvent v -> {
-                VARReviewEventDTO dto = new VARReviewEventDTO();
-                dto.setType("varReview");
-                dto.setMinute(v.getMinute());
-                dto.setDescription(v.getDescription());
-                dto.setDecision(v.getDecision());
-                return dto;
-
-            }
-            case ChanceEvent c -> {
-                ChanceEventDTO dto = new ChanceEventDTO();
-                dto.setType("chance");
-                dto.setMinute(c.getMinute());
-                dto.setDescription(c.getDescription());
-
-                if (c.getPlayer() != null) {
-                    Player p = c.getPlayer();
-                    dto.setPlayerName(p.getName());
-                    dto.setPlayerAge(p.getAge());
-                    dto.setPlayerHeight(p.getHeight());
-                    dto.setPlayerWeight(p.getWeight());
-                    dto.setPlayerTotalGoals(p.getTotalGoals());
-                    dto.setPlayerTotalAssists(p.getTotalAssists());
-                    dto.setPlayerPosition(p.getPosition() != null ? p.getPosition().name() : null);
-                    dto.setPlayerRating(p.getRating());
-                }
-                dto.setPlayerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
-                dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
-                dto.setDangerous(c.isDangerous());
-                return dto;
-
-            }
-            case MatchStartEvent ms -> {
-                MatchStartedDTO dto = new MatchStartedDTO();
-                dto.setType("matchStarted");
-                dto.setMinute(ms.getMinute());
-                dto.setDescription(ms.getDescription());
-                dto.setHomeTeamName(ms.getMatch().getHomeTeam().getName());
-                dto.setAwayTeamName(ms.getMatch().getAwayTeam().getName());
-                return dto;
-
-            }
-            case MatchEndedEvent me -> {
-                MatchEndedDTO dto = new MatchEndedDTO();
-                dto.setType("matchEnded");
-                dto.setMinute(me.getMinute());
-                dto.setDescription(me.getDescription());
-                dto.setHomeTeamName(me.getMatch().getHomeTeam().getName());
-                dto.setAwayTeamName(me.getMatch().getAwayTeam().getName());
-                dto.setHomeGoals(me.getMatch().getHomeGoals());
-                dto.setAwayGoals(me.getMatch().getAwayGoals());
-                return dto;
-            }
-            default -> {
-            }
-        }
-
-        log.warn("Nepoznat event tip za DTO: {}", event.getClass().getSimpleName());
-        return null;
-    }
     private void performSubstitution(Match match, MatchContext context, List<Player> teamPlayers, boolean isHomeTeam) {
         if (teamPlayers.size() < 12) return;
 
@@ -554,7 +230,7 @@ public class DemoSimulator {
 
         log.info("[{}'] Substitution: {} out, {} in", context.getCurrentMinute(), out.getName(), in.getName());
 
-        MatchEventDTO subDto = toDto(sub);
+        MatchEventDTO subDto = matchEventMapper.toDto(sub);
         if (subDto != null) {
             try {
                 broadcastPositonHandling.broadcastCurrentEvent(match.getId(),subDto);
@@ -587,4 +263,4 @@ public class DemoSimulator {
         if (event instanceof SubstitutionEvent sub) return sub.getPlayerOut().getTeam().equals(sub.getMatch().getHomeTeam());
         return false;
     }
-}
+    }

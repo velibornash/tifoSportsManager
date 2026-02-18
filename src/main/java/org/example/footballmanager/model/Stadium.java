@@ -2,6 +2,7 @@ package org.example.footballmanager.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 @Data
 @Entity
@@ -14,6 +15,7 @@ public class Stadium {
     private Integer capacity;
     private String location;
     @ManyToOne
+    @EqualsAndHashCode.Exclude
     private Team owner; // opcionalno
 
     private Double ticketPrice;
@@ -22,6 +24,7 @@ public class Stadium {
     private Integer trainingQuality; // utiče na razvoj
 
     @OneToOne(mappedBy = "stadium")
+    @EqualsAndHashCode.Exclude
     private Team team;
 
 }

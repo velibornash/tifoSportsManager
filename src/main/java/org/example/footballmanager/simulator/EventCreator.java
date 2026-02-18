@@ -1,6 +1,7 @@
 package org.example.footballmanager.simulator;
 
 import org.example.footballmanager.model.Player;
+import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.*;
 
@@ -17,15 +18,37 @@ public class EventCreator {
                                                List<Player> players, int minute) {
 
         if (roll < 0.09) { // 9% šansa za gol
-            Player scorer = players.get(random.nextInt(players.size()));
+
+            // Kandidati za strelca (bez golmana)
+            List<Player> scorers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+
+            if (scorers.isEmpty()) return null;
+
+            Player scorer = scorers.get(random.nextInt(scorers.size()));
+
             GoalEvent goal = new GoalEvent();
             goal.setMinute(minute);
             goal.setMatch(match);
             goal.setTeam(team);
             goal.setScorer(scorer);
-            goal.isScored();
+
+            // Kandidati za asistenta (isti tim, nije scorer, nije golman)
+            List<Player> assistants = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .filter(p -> !p.getId().equals(scorer.getId()))
+                    .toList();
+
+            if (!assistants.isEmpty()) {
+                Player assistant = assistants.get(random.nextInt(assistants.size()));
+                goal.setAssistant(assistant);
+            }
+
+            goal.apply();   // nemoj zvati isScored() jer ti samo setuje true
             return goal;
         }
+
         else if (roll < 0.14) { // 5% žuti karton
             Player offender = players.get(random.nextInt(players.size()));
             YellowCardEvent yc = new YellowCardEvent();
@@ -45,7 +68,12 @@ public class EventCreator {
             return rc;
         }
         else if (roll < 0.19) { // penalty
-            Player taker = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player taker = takers.get(random.nextInt(takers.size()));
+
             PenaltyEvent p = new PenaltyEvent();
             p.setMatch(match);
             p.setTeam(team);
@@ -58,7 +86,11 @@ public class EventCreator {
         }
         else if (roll < 0.23) { // slobodan udarac
             FreeKickEvent fk = new FreeKickEvent();
-            Player taker = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player taker = takers.get(random.nextInt(takers.size()));
             fk.setMatch(match);
             fk.setTeam(team);
             fk.setTaker(taker);
@@ -67,7 +99,11 @@ public class EventCreator {
             return fk;
         }
         else if (roll < 0.26) { // korner
-            Player taker = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player taker = takers.get(random.nextInt(takers.size()));
             CornerEvent c = new CornerEvent();
             c.setMatch(match);
             c.setTeam(team);
@@ -76,7 +112,11 @@ public class EventCreator {
             return c;
         }
         else if (roll < 0.37) { // šut na gol
-            Player shooter = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player shooter = takers.get(random.nextInt(takers.size()));
             ShotOnTargetEvent s = new ShotOnTargetEvent();
             s.setMatch(match);
             s.setTeam(team);
@@ -85,7 +125,11 @@ public class EventCreator {
             return s;
         }
         else if (roll < 0.52) { // šut van
-            Player shooter = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player shooter = takers.get(random.nextInt(takers.size()));
             ShotOffTargetEvent s = new ShotOffTargetEvent();
             s.setMatch(match);
             s.setTeam(team);
@@ -95,7 +139,11 @@ public class EventCreator {
         }
         else {
             ChanceEvent ch = new ChanceEvent();
-            Player player = players.get(random.nextInt(players.size()));
+            List<Player> takers = players.stream()
+                    .filter(p -> p.getPosition() != Position.GK)
+                    .toList();
+            if (takers.isEmpty()) return null;
+            Player player = takers.get(random.nextInt(takers.size()));
             ch.setMinute(minute);
             ch.setMatch(match);
             ch.setTeam(team);

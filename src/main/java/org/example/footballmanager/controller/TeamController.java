@@ -4,6 +4,7 @@ import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
@@ -47,6 +48,7 @@ public class TeamController {
         return ResponseEntity.ok(players);
     }
 
+
     // Detalji jednog igrača
     @GetMapping("/{teamId}/players/{playerId}")
     public ResponseEntity<PlayerDTO> getPlayer(@PathVariable Long teamId, @PathVariable Long playerId) {
@@ -65,4 +67,5 @@ public class TeamController {
                 .toList();
         return ResponseEntity.ok(matches);
     }
+
 }

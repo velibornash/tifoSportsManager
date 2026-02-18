@@ -1,150 +1,108 @@
+function buildEmptyState(message) {
+    return `<div class="manager-card" style="text-align:center; padding:40px;">
+                <h2>${message}</h2>
+            </div>`;
+}
 async function loadPage(page) {
-    console.log("loadPage called with:", page);
-    const contentMap = {
-        firstTeam: "First Team",
-        juniors: "Juniors",
-        formations: "Formations",
-        coaches: "Coaches",
-        training: "Training Reports",
-        profile: "Profile",
-        upcoming: "Upcoming Matches",
-        results: "Results",
-        fixtures: "Fixtures",
-        leagueTable: "League Table",
-        cup: "Cup",
-        international: "International",
-        friendlies: "Friendlies",
-        forum: "Forum",
-        chat: "Chat",
-        events: "Events",
-        playerStats: "Player Stats",
-        teamStats: "Team Stats",
-        topScorers: "Top Scorers",
-        analytics: "Analytics"
-    };
-
     const mainContent = document.getElementById("main-content");
 
-    if(page === "firstTeam") {
-        // Fetch players for Omladinac (teamId = 1)
-        console.log("Fetching players for team 1"); // <--- DEBUG
-        const response = await fetch("/teams/1/players");
-        const players = await response.json();
-        console.log("Players fetched:", players); // <--- DEBUG
-        let html = `<div class="team-card">
-                        <h2>First Team - OFK Omladinac</h2>
-                        <div class="player-list" style="display:flex; flex-wrap:wrap; gap:15px;">`;
+    try {
 
-        players.forEach(player => {
-            // kreiranje fajla slike
-            let imageFile = `/images/${player.name.replace(/\s+/g,'_')}.jpg`;
+        switch(page) {
 
-            html += `
-            <div class="player-card" onclick="loadPlayer(${player.id})">
-                <div class="player-card-image">
-                    <img src="${imageFile}" onerror="this.onerror=null;this.src='/images/player.jpg'">
-                </div>
-                <div class="player-card-info">
-                    <h3>${player.name}</h3>
-                    <p>${player.position} | ${player.age} yrs</p>
-                </div>
-            </div>`;
-        });
+            // TEAM
+            case "firstTeam":
+                await loadFirstTeam();
+                break;
 
+            case "juniors":
+                await loadJuniors();
+                break;
 
-        html += `</div>
-                 <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                 </div>`;
+            case "formations":
+                await loadFormations();
+                break;
 
-        mainContent.innerHTML = html;
-        return;
-    }
+            case "coaches":
+                await loadCoaches();
+                break;
 
-    if(page === "results") {
-        const mainContent = document.getElementById("main-content");
-        const teamId = 1;
-        const response = await fetch(`/teams/${teamId}/matches`);
-        const matches = await response.json();
+            case "training":
+                await loadTrainingReports();
+                break;
 
-        // sortiranje descending po datumu
-        matches.sort((a, b) => parseMatchDate(b.matchDate) - parseMatchDate(a.matchDate));
+            case "profile":
+                await loadClubProfile();
+                break;
 
-        if(matches.length === 0) {
-            mainContent.innerHTML = `
-                <div class="team-card" style="text-align:center; padding:20px;">
-                    <h2>Results</h2>
-                    <p>No matches played yet.</p>
-                    <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                </div>`;
-            return;
+            // MATCHES
+            case "upcoming":
+                await loadUpcomingMatches();
+                break;
+
+            case "results":
+                await loadResults();
+                break;
+
+            case "fixtures":
+                await loadFixtures();
+                break;
+
+            // COMPETITIONS
+            case "leagueTable":
+                await loadLeagueTable();
+                break;
+
+            case "cup":
+                await loadCup();
+                break;
+
+            case "international":
+                await loadInternational();
+                break;
+
+            case "friendlies":
+                await loadFriendlies();
+                break;
+
+            // COMMUNITY
+            case "forum":
+                await loadForum();
+                break;
+
+            case "chat":
+                await loadChat();
+                break;
+
+            case "events":
+                await loadEvents();
+                break;
+
+            // STATS
+            case "playerStats":
+                await loadPlayerStats();
+                break;
+
+            case "teamStats":
+                await loadTeamStats();
+                break;
+
+            case "topScorers":
+                await loadTopScorers();
+                break;
+
+            case "analytics":
+                await loadAnalytics();
+                break;
+
+            default:
+                mainContent.innerHTML = buildEmptyState("Page not found");
         }
 
-        let html = `<div class="team-card" style="padding:20px; font-family:Arial, sans-serif; color:#222;">
-                        <h2 style="text-align:center; margin-bottom:15px;">Match Results</h2>
-                        <div class="match-list" style="display:flex; flex-direction:column; gap:15px;">`;
-
-        matches.forEach(match => {
-            const matchDate = parseMatchDate(match.matchDate);
-            const formattedDate = matchDate.toLocaleString('en-GB', {
-                weekday: 'short',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            html += `
-            <div class="match-card" onclick="loadMatch(${match.id})"
-                 style="
-                    display:flex;
-                    flex-direction:column;
-                    align-items:center;
-                    padding:12px 15px;
-                    border-radius:10px;
-                    background:#f5f5f5;
-                    box-shadow: 1px 1px 8px rgba(0,0,0,0.07);
-                    cursor:pointer;
-                    font-family: 'Arial', sans-serif;
-                    margin-bottom:10px;
-                 ">
-
-                 <!-- Timovi i rezultat -->
-                 <div style="display:flex; align-items:center; gap:8px; font-weight:bold; font-size:1.1em; color:#222;">
-                     <span style="color:#0f2c54;">${match.homeTeam}</span>
-                     <span>${match.homeGoals}</span>
-                     <span>-</span>
-                     <span>${match.awayGoals}</span>
-                     <span style="color:#a11;">${match.awayTeam}</span>
-                 </div>
-
-                 <!-- Datum -->
-                 <div style="font-size:0.85em; color:#555; margin-top:4px;">
-                     🗓 ${formattedDate}
-                 </div>
-            </div>`;
-        });
-
-        html += `</div>
-                 <button onclick="loadDashboard()"
-                     style="display:block; margin:20px auto 0; padding:10px 20px; border:none; border-radius:8px; background:#555; color:white; cursor:pointer;">
-                     ⬅ Back to Dashboard
-                 </button>
-                 </div>`;
-
-        mainContent.innerHTML = html;
-        return
+    } catch (err) {
+        console.error(err);
+        mainContent.innerHTML = buildEmptyState("API Error");
     }
-
-    // fallback za ostale stranice
-    const title = contentMap[page] || "Coming Soon";
-    mainContent.innerHTML = `
-        <div class="team-card">
-            <h2>${title}</h2>
-            <p>Ovaj deo će biti povezan sa backend-om.</p>
-            <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-        </div>
-    `;
 }
 function parseMatchDate(dateArr) {
     if(Array.isArray(dateArr)) {
@@ -154,8 +112,6 @@ function parseMatchDate(dateArr) {
     }
     return new Date(dateArr); // fallback za stringove ili timestamps
 }
-
-
 async function loadPlayer(playerId) {
     const mainContent = document.getElementById("main-content");
     const response = await fetch(`/teams/1/players/${playerId}`);
@@ -246,5 +202,363 @@ mainContent.innerHTML = `
 </div>`;
 
 }
+async function loadFirstTeam() {
+    const response = await fetch("/teams/1/players");
+    const players = await response.json();
+    renderPlayers(players, "First Team");
+}
+
+async function loadResults() {
+    const response = await fetch("/teams/1/matches");
+    const matches = await response.json();
+    renderMatches(matches, "Results");
+}
 
 
+// ovo gore su dobre rute i imamo ih samo donje idu na demo
+
+async function loadJuniors() {
+    const response = await fetch("/demo/teams/1/juniors");
+    const players = await response.json();
+    renderPlayers(players, "Juniors");
+}
+
+async function loadFormations() {
+    const response = await fetch("/demo/teams/1/formations");
+    const formations = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card">
+        <h2>Formations</h2>
+        <div class="formation-list">`;
+
+    formations.forEach(f => {
+        html += `
+            <div class="formation-card">
+                <h3>${f.name}</h3>
+                <p>${f.description ?? ""}</p>
+            </div>`;
+    });
+
+    html += `</div></div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadCoaches() {
+    const response = await fetch("/demo/teams/1/coaches");
+    const coaches = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card">
+        <h2>Coaches</h2>
+        <div class="manager-grid">`;
+
+    coaches.forEach(c => {
+        html += `
+            <div class="manager-player-card">
+                <div class="player-name">${c.name}</div>
+                <div class="player-meta">${c.role}</div>
+                <div class="player-rating">Rating ${c.rating}</div>
+            </div>`;
+    });
+
+    html += `</div></div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadTrainingReports() {
+    const response = await fetch("/demo/trainings/1/reports");
+    const reports = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card">
+        <h2>Training Reports</h2>`;
+
+    reports.forEach(r => {
+        html += `
+            <div class="match-row">
+                <span>${r.playerName}</span>
+                <span>${r.note}</span>
+                <span class="score">${r.improvement}</span>
+            </div>`;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadClubProfile() {
+    const response = await fetch("/demo/teams/1/profile");
+    const profile = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    mainContent.innerHTML = `
+    <div class="player-detail-card">
+        <div class="player-detail-image">
+            <img src="${profile.logo || '/images/omladinac.png'}"
+                 onerror="this.onerror=null;this.src='/images/omladinac.png'">
+        </div>
+
+        <div class="player-detail-info">
+            <h2>${profile.name}</h2>
+
+            <div class="player-detail-stats">
+                <div><span>Founded:</span> ${profile.founded}</div>
+                <div><span>Stadium:</span> ${profile.stadium}</div>
+                <div><span>Budget:</span> €${profile.budget.toLocaleString()}</div>
+                <div><span>Reputation:</span> ${profile.reputation}</div>
+            </div>
+
+            <button onclick="loadPage('dashboard')">⬅ Back</button>
+        </div>
+    </div>`;
+}
+
+
+async function loadUpcomingMatches() {
+    const response = await fetch("/demo/matches/teams/1/upcoming");
+    const matches = await response.json();
+    renderMatches(matches, "Upcoming Matches");
+}
+
+async function loadFixtures() {
+    const response = await fetch("/demo/matches/teams/1/fixtures");
+    const matches = await response.json();
+    renderMatches(matches, "Fixtures");
+}
+
+async function loadFriendlies() {
+    const response = await fetch("/demo/matches/teams/1/friendlies");
+    const matches = await response.json();
+    renderMatches(matches, "Friendlies");
+}
+
+async function loadLeagueTable() {
+    const response = await fetch("/demo/leagues/1/table");
+    const table = await response.json();
+    renderTable(table);
+}
+
+async function loadCup() {
+    const response = await fetch("/demo/cups/1");
+    const matches = await response.json();
+    renderMatches(matches, "Cup");
+}
+
+async function loadInternational() {
+    const response = await fetch("/demo/internationals/1");
+    const matches = await response.json();
+    renderMatches(matches, "International Matches");
+}
+
+async function loadForum() {
+    const response = await fetch("/demo/forum/teams/1");
+    const posts = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card"><h2>Forum</h2>`;
+
+    posts.forEach(p => {
+        html += `
+            <div class="match-row">
+                <span>${p.author}</span>
+                <span>${p.title}</span>
+                <span>${p.date}</span>
+            </div>`;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadChat() {
+    const response = await fetch("/demo/chat/teams/1");
+    const messages = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card"><h2>Team Chat</h2>`;
+
+    messages.forEach(m => {
+        html += `
+            <div class="match-row">
+                <span>${m.user}</span>
+                <span>${m.message}</span>
+            </div>`;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadEvents() {
+    const response = await fetch("/demo/events/teams/1");
+    const events = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card"><h2>Events</h2>`;
+
+    events.forEach(e => {
+        html += `
+            <div class="match-row">
+                <span>${e.title}</span>
+                <span>${e.date}</span>
+            </div>`;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadPlayerStats() {
+    const response = await fetch("/demo/stats/teams/1/players");
+    const players = await response.json();
+    renderPlayers(players, "Player Stats");
+}
+
+async function loadTeamStats() {
+    const response = await fetch("/demo/stats/teams/1");
+    const stats = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    mainContent.innerHTML = `
+    <div class="manager-card">
+        <h2>Team Stats</h2>
+        <p>Goals: ${stats.goals}</p>
+        <p>Conceded: ${stats.conceded}</p>
+        <p>Possession: ${stats.possession}%</p>
+        <p>Shots per game: ${stats.shots}</p>
+    </div>`;
+}
+
+async function loadTopScorers() {
+    const response = await fetch("/demo/stats/leagues/1/topscorers");
+    const scorers = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `<div class="manager-card"><h2>Top Scorers</h2>`;
+
+    scorers.forEach((s, i) => {
+        html += `
+            <div class="match-row">
+                <span>${i+1}. ${s.name}</span>
+                <span class="score">${s.goals}</span>
+            </div>`;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+async function loadAnalytics() {
+    const response = await fetch("/demo/analytics/teams/1");
+    const data = await response.json();
+
+    const mainContent = document.getElementById("main-content");
+
+    mainContent.innerHTML = `
+    <div class="manager-card">
+        <h2>Analytics</h2>
+        <p>xG: ${data.xg}</p>
+        <p>xGA: ${data.xga}</p>
+        <p>Pressing Index: ${data.pressing}</p>
+        <p>Form Rating: ${data.form}</p>
+    </div>`;
+}
+
+function renderPlayers(players, title) {
+    const mainContent = document.getElementById("main-content");
+
+    if (!Array.isArray(players)) {
+        mainContent.innerHTML = buildEmptyState("No players found");
+        return;
+    }
+
+    let html = `
+    <div class="manager-card">
+        <h2>${title}</h2>
+        <div class="manager-grid">`;
+
+    players.forEach(player => {
+        html += `
+        <div class="manager-player-card" onclick="loadPlayer(${player.id})">
+            <img src="/images/${player.name.replace(/\s+/g,'_')}.jpg"
+                 onerror="this.src='/images/player.jpg'">
+            <div class="player-name">${player.name}</div>
+            <div class="player-meta">${player.position} • ${player.age}</div>
+            <div class="player-rating">OVR ${player.overall}</div>
+        </div>`;
+    });
+
+            html += `</div>
+                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                     </div>`;
+    mainContent.innerHTML = html;
+}
+
+function renderMatches(matches, title) {
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `
+    <div class="manager-card">
+        <h2>${title}</h2>
+        <div class="match-list">`;
+
+    matches.forEach(match => {
+
+        html += `
+        <div class="match-row" onclick="loadMatch(${match.id})">
+            <span class="team-home">${match.homeTeam}</span>
+            <span class="score">${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}</span>
+            <span class="team-away">${match.awayTeam}</span>
+        </div>`;
+    });
+
+            html += `</div>
+
+                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                     </div>`;
+
+    mainContent.innerHTML = html;
+}
+
+function renderTable(table) {
+
+    const mainContent = document.getElementById("main-content");
+
+    let html = `
+    <div class="manager-card">
+        <h2>League Table</h2>
+        <table class="league-table">
+            <tr>
+                <th>#</th>
+                <th>Team</th>
+                <th>Pts</th>
+                <th>GD</th>
+            </tr>`;
+
+    table.forEach((team, index) => {
+        html += `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${team.name}</td>
+            <td>${team.points}</td>
+            <td>${team.goalDifference}</td>
+        </tr>`;
+    });
+
+            html += `</div>
+                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                     </div>`;
+
+    mainContent.innerHTML = html;
+}

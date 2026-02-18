@@ -31,6 +31,7 @@ public class Team {
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "stadium_id")
+    @EqualsAndHashCode.Exclude  // ⬅ isključeno da ne bi zvao Stadium.hashCode
     private Stadium stadium;
 
 
