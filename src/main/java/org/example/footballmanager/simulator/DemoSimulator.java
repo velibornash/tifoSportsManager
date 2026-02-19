@@ -165,7 +165,7 @@ public class DemoSimulator {
     }
     public ScheduledExecutorService createAndRegisterScheduler(long matchId) {
         ScheduledExecutorService old = schedulers.get(matchId);
-        if (old != null) old.shutdownNow();
+        //if (old != null) old.shutdownNow();
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
         return scheduler;
@@ -263,4 +263,11 @@ public class DemoSimulator {
         if (event instanceof SubstitutionEvent sub) return sub.getPlayerOut().getTeam().equals(sub.getMatch().getHomeTeam());
         return false;
     }
+
+public void shutdownScheduler(long matchId) {
+    ScheduledExecutorService scheduler = schedulers.remove(matchId);
+    if (scheduler != null) {
+        scheduler.shutdownNow();
+    }
+}
     }
