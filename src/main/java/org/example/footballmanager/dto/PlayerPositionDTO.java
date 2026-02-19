@@ -10,4 +10,6 @@ public class PlayerPositionDTO {
     private String team; // HOME / AWAY
     private double x;    // 0 - 100
     private double y;    // 0 - 100
+    private int offsideTicksRemaining = 0;
+
 }

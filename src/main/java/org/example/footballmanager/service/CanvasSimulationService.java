@@ -55,10 +55,10 @@ public class CanvasSimulationService {
         List<PlayerPositionDTO> players = new ArrayList<>();
 
         for (int i = 1; i <= 11; i++) {
-            players.add(new PlayerPositionDTO(i, "HOME", 10 + random.nextDouble() * 35, 10 + random.nextDouble() * 80));
+            players.add(new PlayerPositionDTO(i, "HOME", 10 + random.nextDouble() * 35, 10 + random.nextDouble() * 80,0));
         }
         for (int i = 12; i <= 22; i++) {
-            players.add(new PlayerPositionDTO(i, "AWAY", 65 + random.nextDouble() * 30, 10 + random.nextDouble() * 80));
+            players.add(new PlayerPositionDTO(i, "AWAY", 65 + random.nextDouble() * 30, 10 + random.nextDouble() * 80,0));
         }
 
         ball = new BallPositionDTO(50, 50);

@@ -932,11 +932,11 @@ public class DemoSimulator {
         Random r = new Random();
         // Home players (1–11)
         for (int i = 1; i <= 11; i++) {
-            runtime.players.add(new PlayerPositionDTO(i, "HOME", 10 + r.nextDouble() * 35, 10 + r.nextDouble() * 80));
+            runtime.players.add(new PlayerPositionDTO(i, "HOME", 10 + r.nextDouble() * 35, 10 + r.nextDouble() * 80,0));
         }
         // Away players (12–22)
         for (int i = 12; i <= 22; i++) {
-            runtime.players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80));
+            runtime.players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80,0));
         }
         runtime.ball = new BallPositionDTO(50, 50);
         runtime.currentCarrier = runtime.players.getFirst();

@@ -180,40 +180,6 @@ public class PlayerDecisionActions {
         rt.isShooting = true;
         rt.shotTicks = 0;
     }
-    private boolean isCenterBack(PlayerPositionDTO p) {
-        return p.getId() == 4 || p.getId() == 5
-                || p.getId() == 16 || p.getId() == 17;
-    }
-    private int getPlayerWithBall(DemoMatchRuntime rt) {
-        return rt.currentCarrier != null ? rt.currentCarrier.getId() : -1;
-    }
-    private boolean isStriker(PlayerPositionDTO p) {
-        int id = p.getId();
-        return (id >= 9 && id <= 11) || (id >= 21 && id <= 22);
-    }
-    private boolean isWinger(PlayerPositionDTO p) {
-        int id = p.getId();
-        return (id == 7 || id == 11 || id == 19 || id == 20);
-    }
-    private boolean isAttacker(PlayerPositionDTO p) {
-        int id = p.getId();
-        return (id >= 7 && id <= 11) || (id >= 19 && id <= 22);
-    }
-    private double findOffsideLine(List<PlayerPositionDTO> players, boolean attacksRight) {
-        String defendingTeam = attacksRight ? "AWAY" : "HOME";
-        List<Double> defenderXs = players.stream()
-                .filter(p -> p.getTeam().equals(defendingTeam) && !isGoalkeeper(p))
-                .map(PlayerPositionDTO::getX)
-                .sorted(attacksRight ? Comparator.reverseOrder() : Comparator.naturalOrder())
-                .limit(2)
-                .toList();
-
-        if (defenderXs.size() < 2) {
-            return attacksRight ? 100 : 0;
-        }
-
-        return defenderXs.get(1);
-    }
     private PlayerPositionDTO findNearbyTeammate(PlayerPositionDTO carrier, List<PlayerPositionDTO> players) {
         List<PlayerPositionDTO> candidates = players.stream()
                 .filter(p -> p.getId() != carrier.getId() && p.getTeam().equals(carrier.getTeam()))
