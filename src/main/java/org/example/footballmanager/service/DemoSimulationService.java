@@ -31,9 +31,9 @@ public class DemoSimulationService {
         Match match = simulator.loadAndValidateMatch(matchId);
         if (!simulator.startSimulationOnlyIfNotRunning(matchId)) {return CompletableFuture.completedFuture(null);}
         ScheduledExecutorService scheduler = simulator.createAndRegisterScheduler(matchId);
-        ScheduledExecutorService schedulerAnimation = simulator.createAndRegisterScheduler(matchId);
+
         DemoMatchRuntime runtime = simulator.initializeRuntimeAndPositions(matchId);
-        broadcastPositonHandling.startPositionBroadcastLoop(schedulerAnimation, matchId, runtime);
+        broadcastPositonHandling.startPositionBroadcastLoop(scheduler, matchId, runtime);
         simulator.prepareMatchEntities(match, runtime);
         runtime.homeTactics = simulator.createHomeTactics(match);
         runtime.awayTactics = simulator.createAwayTactics(match);
