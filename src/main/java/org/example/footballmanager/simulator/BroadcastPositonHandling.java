@@ -25,15 +25,21 @@ public class BroadcastPositonHandling {
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
     private final Random random = new Random();
-    PlayerMovementService  playerMovementService;
-    PlayerDecisionActions  playerDecisionActions;
+    private final PlayerMovementService playerMovementService;
+    private final PlayerDecisionActions playerDecisionActions;
     private final DemoMatchEventWebSocketHandler eventWs;
     private final DemoPositionWebSocketHandler positionWs;
-    public BroadcastPositonHandling(DemoMatchEventWebSocketHandler eventWs, DemoPositionWebSocketHandler positionWs) {
+    public BroadcastPositonHandling(
+        DemoMatchEventWebSocketHandler eventWs,
+        DemoPositionWebSocketHandler positionWs,
+        PlayerMovementService playerMovementService,
+        PlayerDecisionActions playerDecisionActions) {
 
-        this.eventWs = eventWs;
-        this.positionWs = positionWs;
-    }
+    this.eventWs = eventWs;
+    this.positionWs = positionWs;
+    this.playerMovementService = playerMovementService;
+    this.playerDecisionActions = playerDecisionActions;
+}
 
     public void startPositionBroadcastLoop(long matchId, DemoMatchRuntime rt) {
             updatePlayerPositions(rt, random);

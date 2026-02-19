@@ -28,6 +28,7 @@ public class DemoSimulationService {
         Match match = simulator.loadAndValidateMatch(matchId);
         if (!simulator.startSimulationOnlyIfNotRunning(matchId)) {return CompletableFuture.completedFuture(null);}
         ScheduledExecutorService scheduler = simulator.createAndRegisterScheduler(matchId);
+
         DemoMatchRuntime runtime = simulator.initializeRuntimeAndPositions(matchId);
         simulator.startPositionBroadcastLoop(scheduler, matchId, runtime);
         simulator.prepareMatchEntities(match, runtime);
