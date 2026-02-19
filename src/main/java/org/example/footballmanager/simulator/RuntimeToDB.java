@@ -52,32 +52,26 @@ public class RuntimeToDB {
     private void batchSaveGoalEvents(Match match, List<GoalEvent> goals, List<Player> homePlayers, List<Player> awayPlayers) {
         int batchSize = 50; // PostgreSQL safe
         int i = 0;
-
         for (GoalEvent g : goals) {
             g.setMatch(match);
-
             // --- ažuriraj scorer ---
             if (g.getScorer() != null) {
                 Player scorer = g.getScorer();
                 scorer.setTotalGoals(scorer.getTotalGoals() + 1);
                 playerRepository.save(scorer);
-
                 // update u runtime listi
                 homePlayers.stream()
                         .filter(p -> p.getId().equals(scorer.getId()))
                         .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
-
                 awayPlayers.stream()
                         .filter(p -> p.getId().equals(scorer.getId()))
                         .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
             }
-
             // --- ažuriraj assistant ---
             if (g.getAssistant() != null) {
                 Player assistant = g.getAssistant();
                 assistant.setTotalAssists(assistant.getTotalAssists() + 1);
                 playerRepository.save(assistant);
-
                 // update u runtime listi
                 homePlayers.stream()
                         .filter(p -> p.getId().equals(assistant.getId()))
@@ -87,41 +81,23 @@ public class RuntimeToDB {
                         .filter(p -> p.getId().equals(assistant.getId()))
                         .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
             }
-
             em.persist(g);
-
             if (++i % batchSize == 0) {
                 em.flush();
                 em.clear();
             }
         }
-
         em.flush();
         em.clear();
     }
-    public Match finalizeMatchResult(Match match,
-                                     List<Player> homePlayers,
-                                     List<Player> awayPlayers,
-                                     DemoMatchRuntime rt) {
-
+    public Match finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers, DemoMatchRuntime rt) {
         rt.homeTeam = match.getHomeTeam();
         rt.awayTeam = match.getAwayTeam();
 
-        // --- prebrojavanje golova po timu ---
-        rt.homeGoals = (int) rt.runtimeGoals.stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(rt.homeTeam))
-                .count();
-
-        rt.awayGoals = (int) rt.runtimeGoals.stream()
-                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(rt.awayTeam))
-                .count();
-
         // --- batch merge svih ostalih eventa (kartoni, povrede, itd.) ---
         batchSaveMatchEvents(match, rt.runtimeEvents);
-
         // --- batch save golova i update igrača ---
-       // batchSaveGoalEvents(match, rt.runtimeGoals, homePlayers, awayPlayers);
-
+        batchSaveGoalEvents(match, rt.runtimeGoals, homePlayers, awayPlayers);
         // --- update meča ---
         match.setHomeGoals(rt.homeGoals);
         match.setAwayGoals(rt.awayGoals);

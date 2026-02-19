@@ -9,6 +9,7 @@ import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.DemoSimulationService;
+import org.example.footballmanager.service.DemoSimulationServiceNew;
 import org.example.footballmanager.service.MatchService;
 import org.example.footballmanager.util.PlayerFactory;
 import org.example.footballmanager.util.TeamFactory;
@@ -29,6 +30,7 @@ public class DemoSimulationController {
     private final TeamFactory teamFactory;
     private final PlayerRepository playerRepository;
     private final DemoSimulationService demoService;
+    private final DemoSimulationServiceNew demoSimulationService;
 
     /**
      * Kreira lineup za dati tim sa listom igrača i formacijom.
@@ -57,14 +59,8 @@ public class DemoSimulationController {
         return lineupRepository.save(lineup);
     }
 
-    /**
-     * Endpoint koji startuje demo simulaciju: kreira timove, lineup, match i pokreće WS evente.
-     */
-    @SneakyThrows
-    @GetMapping("/start-demo")
-    public ResponseEntity<Map<String, String>> startDemo() {
-        Thread.sleep(800); // mali delay da frontend dobije signal
-
+    private long createMatchAndReturnId()
+    {
         // 1. Dohvati postojeće timove ili napravi
         Team homeTeam = teamFactory.findOrCreate("Omladinac");
         Team awayTeam = teamFactory.findOrCreate("Sremac");
@@ -97,12 +93,50 @@ public class DemoSimulationController {
 
         Long matchId = match.getId();
         System.out.println("Match ID: " + matchId);
+        return matchId;
+    }
+    /**
+     * Endpoint koji startuje demo simulaciju: kreira timove, lineup, match i pokreće WS evente.
+     */
+    @SneakyThrows
+    @GetMapping("/start-demo-old")
+    public ResponseEntity<Map<String, String>> startDemo() {
+        Thread.sleep(800); // mali delay da frontend dobije signal
+
+        Long matchId = createMatchAndReturnId();
+        System.out.println("Match ID: " + matchId);
         Thread.sleep(2000); // da se match sačuva pre starta simulacije
                 demoService.startDemoSimulation(matchId)
                 .thenAccept(played -> {
                     log.info("Simulacija završena za meč {}", matchId);
 
                 })
+                .exceptionally(throwable -> {
+                    log.error("Greška u simulaciji meča {}", matchId, throwable);
+                    return null;
+                });
+
+        return ResponseEntity.ok(Map.of(
+                "status", "prepared",
+                "message", "Simulacija pokrenuta – podaci bi trebalo da stižu",
+                "position_socket", "/demo-position-updates",
+                "event_socket", "/demo-match-events",
+                "matchId", matchId.toString()
+        ));
+    }
+
+    @SneakyThrows
+    @GetMapping("/start-demo")
+    public ResponseEntity<Map<String, String>> startDemoNew() {
+        Thread.sleep(800); // mali delay da frontend dobije signal
+
+        Long matchId = createMatchAndReturnId();
+        System.out.println("Match ID: " + matchId);
+        demoSimulationService.startDemoSimulation(matchId)
+                        .thenAccept(played -> {
+            log.info("Simulacija završena za meč {}", matchId);
+
+        })
                 .exceptionally(throwable -> {
                     log.error("Greška u simulaciji meča {}", matchId, throwable);
                     return null;

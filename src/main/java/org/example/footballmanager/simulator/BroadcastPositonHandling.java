@@ -35,20 +35,11 @@ public class BroadcastPositonHandling {
         this.positionWs = positionWs;
     }
 
-    public void startPositionBroadcastLoop(ScheduledExecutorService scheduler, long matchId, DemoMatchRuntime rt) {
-        final int totalTicks = MATCH_DURATION_SECONDS * (2500 / TICK_MS);
-        scheduler.scheduleAtFixedRate(() -> {
-            if (rt == null) return;
-            if (rt.tick >= totalTicks) {
-                stopMatch(matchId);
-                return;
-            }
+    public void startPositionBroadcastLoop(long matchId, DemoMatchRuntime rt) {
             updatePlayerPositions(rt, random);
             handlePossessionAndActions(rt, random);
             updateBallPosition(rt);
             broadcastCurrentState(matchId, rt);
-            rt.tick++;
-        }, 0, TICK_MS, TimeUnit.MILLISECONDS);
     }
     public void stopMatch(Long matchId) {
         ScheduledExecutorService scheduler = schedulers.remove(matchId);

@@ -22,7 +22,7 @@ public class MatchRatingCalculator {
                 .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
                 .count();
         long assists = allGoals.stream()
-                .filter(g -> g.getAssistant() != null && g.getAssistant() != null && g.getAssistant().equals(player))
+                .filter(g ->  g.getAssistant() != null && g.getAssistant().equals(player))
                 .count();
 
         double contribution = goals * 10 + assists * 6;
@@ -33,7 +33,7 @@ public class MatchRatingCalculator {
 
         double cleanSheetBonus = 0;
         if (isOwnTeamCleanSheet && (pos == Position.GK || pos == Position.DEF)) {
-            cleanSheetBonus = 5;
+            cleanSheetBonus = 20;
         }
 
         return (int) Math.round(normalizedSkill + contribution + cleanSheetBonus);

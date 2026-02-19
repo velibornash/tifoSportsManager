@@ -14,7 +14,11 @@ import java.util.Random;
 @Slf4j
 @Component
 public class PlayerDecisionActions {
-    PlayerMovementService playerMovementService;
+    private final PlayerMovementService playerMovementService;
+
+    public PlayerDecisionActions(PlayerMovementService playerMovementService) {
+        this.playerMovementService = playerMovementService;
+    }
 
     // =============================================
     // ODLUKA NOSIOCA LOPTE

@@ -8,9 +8,7 @@ import org.example.footballmanager.dto.*;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.simulator.BroadcastPositonHandling;
 import org.example.footballmanager.simulator.DemoSimulator;
-import org.example.footballmanager.simulator.RuntimeToDB;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import java.util.*;
@@ -21,8 +19,7 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 public class DemoSimulationService {
     private final DemoSimulator simulator;
-    private final BroadcastPositonHandling broadcastPositonHandling;
-    private final RuntimeToDB runtimeToDB;
+    private final MatchRepository matchRepository;
 
     @Async
     @Transactional
@@ -32,14 +29,14 @@ public class DemoSimulationService {
         if (!simulator.startSimulationOnlyIfNotRunning(matchId)) {return CompletableFuture.completedFuture(null);}
         ScheduledExecutorService scheduler = simulator.createAndRegisterScheduler(matchId);
         DemoMatchRuntime runtime = simulator.initializeRuntimeAndPositions(matchId);
-        broadcastPositonHandling.startPositionBroadcastLoop(scheduler, matchId, runtime);
+        simulator.startPositionBroadcastLoop(scheduler, matchId, runtime);
         simulator.prepareMatchEntities(match, runtime);
         runtime.homeTactics = simulator.createHomeTactics(match);
         runtime.awayTactics = simulator.createAwayTactics(match);
         runtime.homePlayers = match.getHomeLineup().getStartingPlayers();
         runtime.awayPlayers = match.getAwayLineup().getStartingPlayers();
         runtime = simulator.simulateMatch(match, runtime.crowd, runtime.referee, runtime.homeTactics, runtime.awayTactics, runtime.homePlayers, runtime.awayPlayers, scheduler);
-        Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
+        Match saved = simulator.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
 
         log.info("Simulacija završena za meč {}", matchId);
         return CompletableFuture.completedFuture(saved);

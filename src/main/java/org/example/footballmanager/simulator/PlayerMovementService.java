@@ -1,11 +1,16 @@
 package org.example.footballmanager.simulator;
 
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.PlayerPositionDTO;
 import org.example.footballmanager.service.DemoMatchRuntime;
+import org.springframework.stereotype.Component;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
+@Component
+@Slf4j
 public class PlayerMovementService {
 
     public void movePlayerByRole(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
