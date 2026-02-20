@@ -112,6 +112,17 @@ function parseMatchDate(dateArr) {
     }
     return new Date(dateArr); // fallback za stringove ili timestamps
 }
+
+// Novi način – transliteruj srpska slova
+function getImageFilename(name) {
+    return name
+        .normalize("NFD")                    // razdvaja dijakritike
+        .replace(/[\u0300-\u036f]/g, "")     // uklanja dijakritike (ć→c, č→c...)
+        .replace(/đ/g, "dj")
+        .replace(/Đ/g, "Dj")
+        .replace(/\s+/g, '_')                // razmak → _
+        .replace(/[^a-zA-Z0-9_-]/g, '');     // uklanja sve što nije slovo/broj/_/-
+}
 async function loadPlayer(playerId) {
     const mainContent = document.getElementById("main-content");
     const response = await fetch(`/teams/1/players/${playerId}`);
@@ -121,13 +132,13 @@ async function loadPlayer(playerId) {
     }
 
     const player = await response.json();
-
-mainContent.innerHTML = `
-<div class="player-detail-card">
-    <div class="player-detail-image">
-        <img src="/images/${player.name.replace(/\s+/g,'_')}.jpg"
-             onerror="this.onerror=null;this.src='/images/player.jpg'">
-    </div>
+    const filename = getImageFilename(player.name);
+    mainContent.innerHTML = `
+        <div class="player-detail-card">
+            <div class="player-detail-image">
+                <img src="/images/${filename}.jpg"
+                     onerror="this.onerror=null;this.src='/images/player.jpg'">
+            </div>
     <div class="player-detail-info">
         <h2>${player.name}</h2>
         <div class="player-detail-stats">
@@ -612,13 +623,13 @@ function renderFixtures(fixtures, title) {
         html += `
         <div class="match-row upcoming-match" onclick="loadFixture(${fixtureId})">
             <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
-                🗓 ${fixture.date || "N/A"} • ${fixture.time || ""}
+                🗓 ${fixture.matchDate || "N/A"} • ${fixture.matchTime || ""}
             </div>
             <span class="team-home">${fixture.homeTeam}</span>
             <span class="score">VS</span>
             <span class="team-away">${fixture.awayTeam}</span>
             <div style="font-size:0.85em; color:#888; margin-top:6px;">
-                🏟️ ${fixture.venue || "N/A"}
+                🏟️ ${fixture.stadiumName || "N/A"}
             </div>
         </div>`;
     });
@@ -865,9 +876,11 @@ function renderPlayers(players, title) {
         <div class="manager-grid">`;
 
     players.forEach(player => {
+        const filename = getImageFilename(player.name);  // ← DODAJ OVO
+
         html += `
         <div class="manager-player-card" onclick="loadPlayer(${player.id})">
-            <img src="/images/${player.name.replace(/\s+/g,'_')}.jpg"
+            <img src="/images/${filename}.jpg"
                  onerror="this.src='/images/player.jpg'">
             <div class="player-name">${player.name}</div>
             <div class="player-meta">${player.position} • ${player.age}</div>

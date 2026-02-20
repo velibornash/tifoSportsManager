@@ -735,22 +735,25 @@ recent-match:hover .result-badge {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.35s ease-out;
-    background: #2a8c4a;
+    background: #1a1a1a;          /* crna pozadina kontejnera */
     border-radius: 0 0 8px 8px;
-    padding: 0 0 10px 0;
+    padding: 0 0 10px 20px;       /* indent, ali bez prelivanja */
 }
 
 .accordion-content div {
-    padding: 14px 28px;
+    padding: 12px 0;              /* manji padding da ne preliva */
     border-bottom: 1px solid #333;
     cursor: pointer;
     color: #ddd;
     transition: background 0.2s, color 0.2s;
+    background: transparent;      /* eksplicitno bez boje po default-u */
 }
 
 .accordion-content div:hover {
-    background: #2a8c4a;                /* puna tamna zelena, bez providnosti */
+    background: #2a8c4a !important;   /* !important da pregazi bilo šta drugo */
     color: white;
+    border-radius: 6px;           /* zaobljeno da izgleda kao poseban item */
+    margin: 2px 0;                /* mali razmak između stavki da se vidi granica */
 }
 
 .accordion-content div:last-child {
