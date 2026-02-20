@@ -784,3 +784,59 @@ recent-match:hover .result-badge {
 .mobile-overlay.active {
     display: block;
 }
+/* FORCED MOBILE FIX – radi na Railway-u */
+@media (max-width: 768px) {
+    /* Spreči horizontalni overflow */
+    body, html {
+        overflow-x: hidden !important;
+        width: 100vw;
+    }
+
+    .dashboard-content,
+    .manager-card,
+    .player-detail-card,
+    .club-profile-card {
+        padding: 0 10px !important;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100% !important;
+    }
+
+    /* Slike – ne smeju biti prevelike */
+    .manager-player-card img,
+    .player-detail-image img {
+        width: 100% !important;
+        max-height: 220px !important; /* ograniči visinu da ne "beži" gore-dole */
+        object-fit: cover !important;
+        object-position: center;
+        border-radius: 12px;
+    }
+
+    /* Grid – 2 kolone kad može, 1 kad je mali ekran */
+    .manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+        gap: 12px !important;
+    }
+
+    /* Tekst ne beži van */
+    .player-detail-info,
+    .player-detail-stats {
+        padding: 0 10px;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        hyphens: auto;
+    }
+
+    .player-detail-stats div {
+        white-space: normal !important;
+    }
+
+    /* Back dugme – centrirano i vidljivo */
+    .back-to-dashboard,
+    .back-to-dashboard-profile {
+        width: 100%;
+        text-align: center;
+        margin: 15px 0;
+    }
+}
+
