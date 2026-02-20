@@ -4,4 +4,8 @@ import org.example.footballmanager.model.event.ChanceEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-@Repository public interface ChanceEventRepository extends JpaRepository<ChanceEvent, Long> {}
+import java.util.List;
+
+@Repository public interface ChanceEventRepository extends JpaRepository<ChanceEvent, Long> {
+    List<ChanceEvent> findByMatchId(Long matchId);
+}

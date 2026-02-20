@@ -151,56 +151,127 @@ mainContent.innerHTML = `
 }
 async function loadMatch(matchId) {
     const mainContent = document.getElementById("main-content");
-    const response = await fetch(`/matches/${matchId}`);
-    if(!response.ok) {
+    const response = await fetch(`/matches/${matchId}/detail`);
+    if (!response.ok) {
         mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p><button onclick="loadPage('results')">⬅ Back</button></div>`;
         return;
     }
 
     const match = await response.json();
+    console.log("MATCH RECEIVED:", match);
+    console.log("All events:", match.allEvents);
+
     const matchDate = parseMatchDate(match.matchDate);
     const formattedDate = matchDate.toLocaleString('en-GB', {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
-mainContent.innerHTML = `
-<div class="team-card" style="background:#fafafa; border-radius:12px; padding:20px; box-shadow:2px 2px 12px rgba(0,0,0,0.12); font-family:Arial, sans-serif; color:#222;">
-    <h2 style="text-align:center; margin-bottom:20px; color:#0f2c54;">Match Details</h2>
-
-    <div style="display:flex; justify-content:space-around; align-items:center; margin-bottom:15px;">
+    mainContent.innerHTML = `
+<div class="team-card">
+    <h2 style="text-align:center;">Match Details</h2>
+    <div style="display:flex; justify-content:space-around;">
         <div style="text-align:center;">
-            <div style="font-size:1.6em; font-weight:bold; color:#0f2c54;">${match.homeTeam}</div>
-            <div style="font-size:1.3em; font-weight:bold; color:#0a1f3a;">${match.homeGoals}</div>
+            <div>${match.homeTeamName}</div>
+            <div>${match.homeGoals}</div>
         </div>
-
-        <div style="font-size:1.4em; font-weight:bold; color:#555;">-</div>
-
+        <div>-</div>
         <div style="text-align:center;">
-            <div style="font-size:1.6em; font-weight:bold; color:#a11;">${match.awayTeam}</div>
-            <div style="font-size:1.3em; font-weight:bold; color:#610000;">${match.awayGoals}</div>
+            <div>${match.awayTeamName}</div>
+            <div>${match.awayGoals}</div>
         </div>
     </div>
+    <div style="text-align:center;">🗓 ${formattedDate}</div>
 
-    <div style="text-align:center; font-size:0.9em; color:#444; margin-bottom:20px;">
-        🗓 ${formattedDate}
+    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
+        <button id="view-stats" style="padding:6px 12px;">View Stats</button>
+        <button id="view-goals" style="padding:6px 12px;">View Goals</button>
+        <button id="view-events" style="padding:6px 12px;">All Events</button>
     </div>
 
-    <div style="display:flex; justify-content:center; gap:15px; margin-bottom:25px;">
-        <button style="padding:8px 18px; border:none; border-radius:6px; background:#0f2c54; color:white; cursor:pointer;">View Stats</button>
-        <button style="padding:8px 18px; border:none; border-radius:6px; background:#a11; color:white; cursor:pointer;">View Goals</button>
-    </div>
+    <div id="match-info" style="margin-top:15px;"></div>
 
-    <button onclick="loadPage('results')"
-        style="display:block; margin:0 auto; padding:10px 20px; border:none; border-radius:8px; background:#555; color:white; cursor:pointer;">
-        ⬅ Back to Results
-    </button>
+    <button onclick="loadPage('results')">⬅ Back to Results</button>
 </div>`;
 
+    const infoDiv = document.getElementById("match-info");
+
+    // --- View Goals ---
+    document.getElementById("view-goals").addEventListener("click", () => {
+        const goals = match.allEvents.filter(e => e.type === "Goal");
+        if (!goals || goals.length === 0) {
+            infoDiv.innerHTML = "<p>No goals recorded for this match.</p>";
+            return;
+        }
+        let html = "<h3>Goals:</h3><ul>";
+        goals.forEach(g => {
+            html += `<li>${g.minute}' ⚽ ${g.player}${g.assistantName ? ` (assist: ${g.assistantName})` : ''}</li>`;
+        });
+        html += "</ul>";
+        infoDiv.innerHTML = html;
+    });
+
+    // --- View Stats ---
+    document.getElementById("view-stats").addEventListener("click", () => {
+        const homeShots = match.allEvents.filter(e => e.teamName === match.homeTeamName &&
+            (e.type === "ShotOnTargetEvent" || e.type === "ShotOffTargetEvent")).length;
+        const awayShots = match.allEvents.filter(e => e.teamName === match.awayTeamName &&
+            (e.type === "ShotOnTargetEvent" || e.type === "ShotOffTargetEvent")).length;
+        const homeCorners = match.allEvents.filter(e => e.teamName === match.homeTeamName && e.type === "CornerEvent").length;
+        const awayCorners = match.allEvents.filter(e => e.teamName === match.awayTeamName && e.type === "CornerEvent").length;
+
+        infoDiv.innerHTML = `
+            <h3>Match Stats:</h3>
+            <ul>
+                <li>${match.homeTeamName} - Shots: ${homeShots}, Corners: ${homeCorners}</li>
+                <li>${match.awayTeamName} - Shots: ${awayShots}, Corners: ${awayCorners}</li>
+            </ul>
+        `;
+    });
+
+    // --- All Events Viewer with filter ---
+    document.getElementById("view-events").addEventListener("click", () => {
+        if (!match.allEvents || match.allEvents.length === 0) {
+            infoDiv.innerHTML = "<p>No events recorded for this match.</p>";
+            return;
+        }
+
+        let html = `<h3>All Events:</h3>
+            <div style="margin-bottom:10px;">
+                <label>Filter by Type:
+                    <select id="event-type-filter">
+                        <option value="">All</option>
+                        ${[...new Set(match.allEvents.map(e => e.type))].map(t => `<option value="${t}">${t}</option>`).join("")}
+                    </select>
+                </label>
+                <label>After Minute: <input type="number" id="event-minute-filter" min="0" style="width:60px;"></label>
+                <button id="apply-event-filter">Apply</button>
+            </div>
+            <ul id="all-events-list"></ul>`;
+
+        infoDiv.innerHTML = html;
+
+        const renderEvents = (events) => {
+            const list = document.getElementById("all-events-list");
+            list.innerHTML = "";
+            events.forEach(e => {
+                let line = `${e.minute}' [${e.type}] - Team: ${e.team}`;
+                if (e.type === "GoalEvent") line += ` - ${e.scorerName}${e.assistantName ? ` (assist: ${e.assistantName})` : ''}`;
+                if (e.type === "ChanceEvent") line += ` - Player: ${e.playerName} - Dangerous: ${e.dangerous}`;
+                if (e.type === "YellowCardEvent" || e.type === "RedCardEvent") line += ` - Player: ${e.playerName}`;
+                if (e.type === "SubstitutionEvent") line += ` - ${e.playerOutName} → ${e.playerInName}`;
+                list.innerHTML += `<li>${line}</li>`;
+            });
+        };
+
+        renderEvents(match.allEvents);
+
+        document.getElementById("apply-event-filter").addEventListener("click", () => {
+            const type = document.getElementById("event-type-filter").value;
+            const minMinute = parseInt(document.getElementById("event-minute-filter").value) || 0;
+            const filtered = match.allEvents.filter(e => (!type || e.type === type) && e.minute >= minMinute);
+            renderEvents(filtered);
+        });
+    });
 }
 async function loadFirstTeam() {
     const response = await fetch("/teams/1/players");

@@ -22,6 +22,7 @@ public abstract class MatchEvent {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
+    @JoinColumn(name = "match_id", nullable = false)
     protected Match match;
 
     @Column(name = "event_minute")

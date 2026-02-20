@@ -21,15 +21,15 @@ public class PlayerMovementService {
         if (id == 1 || id == 12) moveGoalkeeper(p, random, attacksRight);
         else if (id == 2 || id == 13) moveFullback(p, players, random, attacksRight, true, rt);
         else if (id == 3 || id == 16) moveFullback(p, players, random, attacksRight, false, rt);
-        else if (id == 4 || id == 5 || id == 14 || id == 15) moveCenterBack(p, players, random, attacksRight);
+        else if (id == 4 || id == 5 || id == 14 || id == 15) moveCenterBack(p, players, random, attacksRight, rt);
         else if (id == 6 || id == 8 || id == 17 || id == 18) moveCentralMidfielder(p, players, random, attacksRight, rt);
         else if (id == 7 || id == 11 || id == 19 || id == 20) moveWinger(p, players, random, attacksRight, rt);
         else if (id == 9 || id == 10 || id == 21 || id == 22) moveStriker(p, players, random, attacksRight, rt);
 
-        pullTowardsBall(p, random, rt, attacksRight);
-        avoidCrowding(p, players, random);
-        applyIdleMovement(p, random);
+        pullTowardsBall(p, rt);
         handleOffsideTolerance(p, players, attacksRight, rt);
+        applyIdleMovement(p, random);
+        avoidCrowding(p, players);
     }
 
     // -------- Metode po pozicijama --------
@@ -72,14 +72,34 @@ public class PlayerMovementService {
         fb.setY(clamp(lerp(fb.getY(), targetY, smoothFactor)));
     }
 
-    private void moveCenterBack(PlayerPositionDTO cb, List<PlayerPositionDTO> players, Random random, boolean attacksRight) {
-        double baseX = attacksRight ? 15 : 85;
-        double targetX = baseX + (random.nextDouble() - 0.5) * 6;
-        double targetY = 48 + (random.nextDouble() - 0.5) * 12;
+    private void moveCenterBack(PlayerPositionDTO cb, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt)
+    {
+
+        PlayerPositionDTO assignedStriker = getAssignedStriker(cb, players);
+
+        double defensiveLineX = getDefensiveLineX(cb, attacksRight, rt);
+
+        double targetX = defensiveLineX;
+        double targetY = 48;
+
+        if (assignedStriker != null) {
+
+            double dist = distance(cb, assignedStriker);
+
+            // Ako je napadač blizu → markiraj ga
+            if (dist < 12) {
+                targetX = cb.getX() + (assignedStriker.getX() - cb.getX()) * 0.45;
+                targetY = cb.getY() + (assignedStriker.getY() - cb.getY()) * 0.45;
+            }
+
+        }
+
+        targetX += (random.nextDouble() - 0.5) * 2;
+        targetY += (random.nextDouble() - 0.5) * 4;
+
         cb.setX(clamp(lerp(cb.getX(), targetX, smoothFactor)));
         cb.setY(clamp(lerp(cb.getY(), targetY, smoothFactor)));
     }
-
     private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
         double baseX = attacksRight ? 45 : 55;
         double toBallX = (rt.ball.getX() - cm.getX()) * 0.12;
@@ -94,7 +114,7 @@ public class PlayerMovementService {
         double baseY = (winger.getId() == 7 || winger.getId() == 19) ? 76 : 20;
         double minX = 30;
         double maxX = 100;
-        double step = attacksRight ? 2 : -2;
+        double step = attacksRight ? 7 : -7;
         double targetX = attacksRight ? Math.min(maxX, winger.getX() + step) : Math.max(minX, winger.getX() + step);
 
         if (winger.getTeam().equals(rt.currentCarrier.getTeam())) {
@@ -102,7 +122,7 @@ public class PlayerMovementService {
                 if (winger.getOffsideTicksRemaining() < 3) {
                     winger.setOffsideTicksRemaining(winger.getOffsideTicksRemaining() + 1);
                 } else {
-                    targetX -= step * 3;
+                    targetX -= step ;
                     winger.setOffsideTicksRemaining(0);
                 }
             } else {
@@ -118,6 +138,10 @@ public class PlayerMovementService {
             }
         }
 
+        // 🔥 Soft rollback u protivničkih 8m
+        if (attacksRight && winger.getX() > 92) targetX = 80;
+        if (!attacksRight && winger.getX() < 8) targetX = 20;
+
         double targetY = baseY + (random.nextDouble() - 0.5) * 5;
         winger.setX(clamp(lerp(winger.getX(), targetX, smoothFactor)));
         winger.setY(clamp(lerp(winger.getY(), targetY, smoothFactor)));
@@ -125,15 +149,15 @@ public class PlayerMovementService {
 
     private void moveStriker(PlayerPositionDTO striker, List<PlayerPositionDTO> players, Random random, boolean attacksRight, DemoMatchRuntime rt) {
         double goalX = attacksRight ? 100 : 0;
-        double step = attacksRight ? 2 : -2;
+        double step = attacksRight ? 9 : -9;
         double targetX = striker.getX() + step;
 
-        if (!(striker.getId() == rt.currentCarrier.getId())) {
+        if (striker.getId() != rt.currentCarrier.getId()) {
             if (checkOffsideRisk(striker, players, attacksRight, rt)) {
                 if (striker.getOffsideTicksRemaining() < 3) {
                     striker.setOffsideTicksRemaining(striker.getOffsideTicksRemaining() + 1);
                 } else {
-                    targetX -= step * 3;
+                    targetX -= step ;
                     striker.setOffsideTicksRemaining(0);
                 }
             } else {
@@ -141,52 +165,115 @@ public class PlayerMovementService {
             }
         }
 
+        // 🔥 Soft rollback u protivničkih 8m
+        if (attacksRight && striker.getX() > 92) targetX = 80;
+        if (!attacksRight && striker.getX() < 8) targetX = 20;
+
         double targetY = 48 + (random.nextDouble() - 0.5) * 12;
         striker.setX(clamp(lerp(striker.getX(), targetX, smoothFactor)));
         striker.setY(clamp(lerp(striker.getY(), targetY, smoothFactor)));
     }
-
     // -------- Pomoćne metode --------
-    private void pullTowardsBall(PlayerPositionDTO p, Random random, DemoMatchRuntime rt, boolean attacksRight) {
-        if (p.getId() == rt.currentCarrier.getId()) return;
 
-        double weight = 0.13;
-        double minX = (p.getId() == 7 || p.getId() == 19) ? 30 : 45;
-        double maxX = (p.getId() == 7 || p.getId() == 19) ? 55 : 70;
-        double targetX = attacksRight ? Math.min(maxX, p.getX() + 2) : Math.max(minX, p.getX() - 2);
+    private PlayerPositionDTO getAssignedStriker(PlayerPositionDTO cb, List<PlayerPositionDTO> players) {
 
-        if (isWinger(p)) {
-            double toBallX = (rt.ball.getX() - p.getX()) * 0.02;
-            targetX = Math.max(minX, Math.min(maxX, p.getX() + toBallX));
-        } else if (isStriker(p)) weight = 0.1;
-        else if (isCenterBack(p)) weight = 0.07;
+        int id = cb.getId();
 
-        double toBallX = (rt.ball.getX() - p.getX()) * weight;
-        double toBallY = (rt.ball.getY() - p.getY()) * (weight + 0.02);
+        int targetId = switch (id) {
+            case 4 -> 21;
+            case 5 -> 22;
+            case 14 -> 9;
+            case 15 -> 10;
+            default -> -1;
+        };
 
-        p.setX(clamp(lerp(p.getX(), p.getX() + toBallX, smoothFactor)));
-        p.setY(clamp(lerp(p.getY(), p.getY() + toBallY, smoothFactor)));
+        return players.stream()
+                .filter(p -> p.getId() == targetId)
+                .findFirst()
+                .orElse(null);
     }
 
-    private void avoidCrowding(PlayerPositionDTO p, List<PlayerPositionDTO> players, Random random) {
-        double factor = 0.3;
-        if (isWinger(p) || isFullBack(p)) factor = 0.15;
-        else if (isStriker(p)) factor = 0.2;
+    private double getDefensiveLineX(PlayerPositionDTO cb, boolean attacksRight, DemoMatchRuntime rt) {
 
-        for (PlayerPositionDTO other : players) {
-            if (other.getId() == p.getId()) continue;
-            double dx = other.getX() - p.getX();
-            double dy = other.getY() - p.getY();
-            double dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 3) {
-                double targetX = p.getX() - dx * factor;
-                double targetY = p.getY() - dy * factor;
-                p.setX(clamp(lerp(p.getX(), targetX, smoothFactor)));
-                p.setY(clamp(lerp(p.getY(), targetY, smoothFactor)));
+        double ballX = rt.ball.getX();
+
+        double baseLine = attacksRight ? 18 : 82;
+
+        // Ako je lopta daleko → izlaze napred do 35m
+        if (attacksRight && ballX > 55) {
+            return 35;
+        }
+
+        if (!attacksRight && ballX < 45) {
+            return 65;
+        }
+
+        // Ako lopta ulazi u opasnu zonu → povlače se
+        if (attacksRight && ballX < 30) {
+            return 14;
+        }
+
+        if (!attacksRight && ballX > 70) {
+            return 86;
+        }
+
+        return baseLine;
+    }
+    private void pullTowardsBall(PlayerPositionDTO p, DemoMatchRuntime rt) {
+
+        // Ako postoji nosilac lopte → nema gravitacije
+        if (rt.currentCarrier != null) {
+            return;
+        }
+
+        double dx = rt.ball.getX() - p.getX();
+        double dy = rt.ball.getY() - p.getY();
+
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Samo ako je lopta relativno blizu
+        if (distance > 15) {
+            return;
+        }
+
+        double weight;
+
+        if (isStriker(p)) {
+            weight = 0.06;
+        } else if (isCenterBack(p)) {
+            weight = 0.03;
+        } else {
+            weight = 0.08;
+        }
+
+        p.setX(p.getX() + dx * weight);
+        p.setY(p.getY() + dy * weight);
+    }
+    private void avoidCrowding(PlayerPositionDTO p, List<PlayerPositionDTO> allPlayers) {
+
+        double minDistance = 10.0;
+
+        for (PlayerPositionDTO other : allPlayers) {
+
+            if (p == other) continue;
+
+            double dx = p.getX() - other.getX();
+            double dy = p.getY() - other.getY();
+
+            double distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < minDistance && distance > 0.01) {
+
+                double overlap = minDistance - distance;
+
+                // Blaži push da ne eksplodiraju
+                double pushFactor = overlap * 0.08;
+
+                p.setX(p.getX() + (dx / distance) * pushFactor);
+                p.setY(p.getY() + (dy / distance) * pushFactor);
             }
         }
     }
-
     private void applyIdleMovement(PlayerPositionDTO p, Random random) {
         double range = 1.3;
         if (isWinger(p) || isFullBack(p)) range = 0.6;
@@ -197,32 +284,79 @@ public class PlayerMovementService {
     }
 
     private void handleOffsideTolerance(PlayerPositionDTO p, List<PlayerPositionDTO> players, boolean attacksRight, DemoMatchRuntime rt) {
-        double offsideLine = players.stream()
-                .filter(pl -> (attacksRight ? pl.getX() > 50 : pl.getX() < 50) && pl.getId() != p.getId())
-                .map(PlayerPositionDTO::getX)
-                .min(Comparator.naturalOrder())
-                .orElse(50.0);
+
+        // Ofsajd samo za napadački tim
+        if (!p.getTeam().equals(rt.currentCarrier.getTeam())) {
+            return;
+        }
+
+        String defendingTeam = attacksRight ? "AWAY" : "HOME";
+
+        Double offsideLine;
+
+        if (attacksRight) {
+            offsideLine = players.stream()
+                    .filter(pp -> pp.getTeam().equals(defendingTeam) && !isGoalkeeper(pp))
+                    .map(PlayerPositionDTO::getX)
+                    .max(Double::compare)
+                    .orElse(100.0);
+        } else {
+            offsideLine = players.stream()
+                    .filter(pp -> pp.getTeam().equals(defendingTeam) && !isGoalkeeper(pp))
+                    .map(PlayerPositionDTO::getX)
+                    .min(Double::compare)
+                    .orElse(0.0);
+        }
+
 
         double targetX = p.getX();
-        if (attacksRight && p.getX() > offsideLine + 2) targetX = offsideLine + 2;
-        if (!attacksRight && p.getX() < offsideLine - 2) targetX = offsideLine - 2;
+        double tolerance = 1.5;
+        double retreatForce = 4;
+
+        if (attacksRight && p.getX() > offsideLine + tolerance) {
+            targetX = offsideLine - retreatForce;
+        }
+
+        if (!attacksRight && p.getX() < offsideLine - tolerance) {
+            targetX = offsideLine + retreatForce;
+        }
 
         p.setX(clamp(lerp(p.getX(), targetX, smoothFactor)));
     }
 
     // -------- Ostale pomoćne metode --------
-    private boolean checkOffsideRisk(PlayerPositionDTO winger, List<PlayerPositionDTO> players, boolean attacksRight, DemoMatchRuntime rt) {
-        String defendingTeam = attacksRight ? "AWAY" : "HOME";
-        double offsideLine = players.stream()
-                .filter(p -> p.getTeam().equals(defendingTeam) && !isGoalkeeper(p))
-                .map(PlayerPositionDTO::getX)
-                .min(attacksRight ? Comparator.naturalOrder() : Comparator.reverseOrder())
-                .orElse(50.0);
-        return attacksRight ? winger.getX() > offsideLine : winger.getX() < offsideLine;
-    }
+    private boolean checkOffsideRisk(PlayerPositionDTO attacker, List<PlayerPositionDTO> players, boolean attacksRight, DemoMatchRuntime rt) {
 
+        if (!attacker.getTeam().equals(rt.currentCarrier.getTeam())) {
+            return false;
+        }
+
+        String defendingTeam = attacksRight ? "AWAY" : "HOME";
+
+        Double offsideLine;
+
+        if (attacksRight) {
+            offsideLine = players.stream()
+                    .filter(p -> p.getTeam().equals(defendingTeam) && !isGoalkeeper(p))
+                    .map(PlayerPositionDTO::getX)
+                    .max(Double::compare)
+                    .orElse(100.0);
+
+            return attacker.getX() > offsideLine;
+
+        } else {
+            offsideLine = players.stream()
+                    .filter(p -> p.getTeam().equals(defendingTeam) && !isGoalkeeper(p))
+                    .map(PlayerPositionDTO::getX)
+                    .min(Double::compare)
+                    .orElse(0.0);
+
+            return attacker.getX() < offsideLine;
+        }
+    }
     private boolean isGoalkeeper(PlayerPositionDTO p) { return p.getId() == 1 || p.getId() == 12; }
-    private boolean isCenterBack(PlayerPositionDTO p) { return p.getId() == 4 || p.getId() == 5 || p.getId() == 16 || p.getId() == 17; }
+    private boolean isCenterBack(PlayerPositionDTO p)
+    { return p.getId() == 4 || p.getId() == 5 || p.getId() == 14 || p.getId() == 15; }
     private boolean isFullBack(PlayerPositionDTO p) { return p.getId() == 2 || p.getId() == 3 || p.getId() == 13 || p.getId() == 16; }
     private boolean isStriker(PlayerPositionDTO p) { int id = p.getId(); return (id >= 9 && id <= 11) || (id >= 21 && id <= 22); }
     private boolean isWinger(PlayerPositionDTO p) { int id = p.getId(); return (id == 7 || id == 11 || id == 19 || id == 20); }

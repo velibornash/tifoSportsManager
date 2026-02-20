@@ -4,4 +4,8 @@ import org.example.footballmanager.model.event.ShotOnTargetEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-@Repository public interface ShotOnTargetEventRepository extends JpaRepository<ShotOnTargetEvent, Long> {}
+import java.util.List;
+@Repository
+public interface ShotOnTargetEventRepository extends JpaRepository<ShotOnTargetEvent, Long> {
+    List<ShotOnTargetEvent> findByMatchId(Long matchId);
+}

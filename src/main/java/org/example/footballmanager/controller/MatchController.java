@@ -2,13 +2,15 @@ package org.example.footballmanager.controller;
 
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.dto.GoalEventDTO;
-import org.example.footballmanager.dto.MatchDTO;
-import org.example.footballmanager.dto.MatchDetailsDTO;
-import org.example.footballmanager.dto.PlayerDTO;
+import org.example.footballmanager.dto.*;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.DemoMatchRuntime;
+import org.example.footballmanager.service.DemoSimulationServiceNew;
+import org.example.footballmanager.service.MatchDetailService;
 import org.example.footballmanager.service.MatchService;
+import org.example.footballmanager.simulator.DemoMatchEngine;
+import org.example.footballmanager.simulator.MatchStatisticHandling;
 import org.example.footballmanager.util.PlayerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -29,18 +31,17 @@ public class MatchController {
     private final LineupRepository lineupRepository;
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
-
+    private final MatchDetailService  matchDetailService;
     @Autowired
-    public MatchController(MatchService matchService,
-                           MatchRepository matchRepository,
-                           LineupRepository lineupRepository,
-                           MatchPlayerStatsRepository matchPlayerStatsRepository,
-                           TeamRepository teamRepository, PlayerRepository playerRepository) {
+    public MatchController(MatchService matchService, MatchRepository matchRepository, LineupRepository lineupRepository,
+                           TeamRepository teamRepository, PlayerRepository playerRepository,
+                           MatchDetailService matchDetailService) {
         this.matchService = matchService;
         this.matchRepository = matchRepository;
         this.lineupRepository = lineupRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
+        this.matchDetailService = matchDetailService;
     }
 
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
@@ -125,7 +126,15 @@ public class MatchController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
-
+    @GetMapping("/{matchId}/detail")
+    public ResponseEntity<MatchDetailDTO> getMatchDetail(@PathVariable Long matchId) {
+        try {
+            MatchDetailDTO dto = matchDetailService.getMatchDetail(matchId);
+            return ResponseEntity.ok(dto);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
 }
 /*    // Ostale metode ostaju nepromenjene
     @PostMapping("/play")
