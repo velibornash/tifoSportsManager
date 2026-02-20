@@ -785,72 +785,57 @@ recent-match:hover .result-badge {
     display: block;
 }
 
-/* MOBILNI – skillovi u dve kolone, ali bez bekstva i sa lepim skaliranjem */
+/* MOBILNI – detalj igrača: slika gore, skillovi dole u 2 kolone, dozvoli wrap */
 @media (max-width: 768px) {
-    /* Osnovni kontejner – spreči horizontalni skrol */
-    body, html, .dashboard-content {
-        overflow-x: hidden !important;
-        width: 100vw;
-        padding: 0 8px;
-        box-sizing: border-box;
+    .player-detail-card {
+        flex-direction: column !important;
+        gap: 20px;
+        padding: 12px !important;
     }
 
-    /* Detalj igrača – slika manja, skillovi u 2 kolone */
-    .player-detail-card {
-        padding: 12px !important;
-        gap: 16px;
+    .player-detail-image {
+        width: 100%;
+        text-align: center;
     }
 
     .player-detail-image img {
-        max-width: 240px !important;           /* manja slika da stane */
+        max-width: 260px !important;           /* dovoljno velika, ali ne prevelika */
         height: auto !important;
         object-fit: cover;
         border-radius: 16px;
-        display: block;
-        margin: 0 auto;                        /* centrirana */
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
 
+    .player-detail-info h2 {
+        text-align: center;
+        font-size: 1.6em;
+        margin: 10px 0 20px;
+    }
+
+    /* Skillovi – 2 kolone, dozvoli normalno wrap-ovanje */
     .player-detail-stats {
         display: grid !important;
-        grid-template-columns: 1fr 1fr !important;  /* dve kolone */
-        gap: 10px !important;
-        font-size: 0.95em;                     /* malo manji font */
+        grid-template-columns: 1fr 1fr !important;
+        gap: 12px !important;
+        font-size: 1em;
     }
 
     .player-detail-stats div {
         background: rgba(40,40,40,0.8);
-        padding: 10px 12px;
+        padding: 12px;
         border-radius: 10px;
         text-align: left;
-        white-space: nowrap;                   /* ne lomi u dva reda */
-        overflow: hidden;
-        text-overflow: ellipsis;               /* tri tačke ako je predugačko */
-        font-size: 0.9em;
+        white-space: normal !important;          /* ← OVO je ključno – dozvoli prelome */
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        hyphens: auto;                           /* automatski prelomi dugih reči */
+        line-height: 1.4;
     }
 
-    /* Naziv igrača – centriran i ne lomi se */
-    .player-detail-info h2 {
-        text-align: center;
-        font-size: 1.5em;
-        margin: 8px 0 16px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    /* Lista igrača – vrati 2 kolone, slike proporcionalne */
-    .manager-grid {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
-        gap: 12px !important;
-    }
-
-    .manager-player-card img {
-        height: 160px !important;              /* fiksna visina za konzistentnost */
-        object-fit: cover !important;
-        border-radius: 12px;
-    }
-
-    .manager-player-card {
-        padding: 10px !important;
+    /* Ako je ekran baš mali (npr. stari telefoni) – prelazi na 1 kolonu */
+    @media (max-width: 480px) {
+        .player-detail-stats {
+            grid-template-columns: 1fr !important;
+        }
     }
 }
