@@ -10,22 +10,37 @@ public class AllEventDTO {
     private int minute;
     private String player;
     private String team;
+    private String scorerName;
+    private String assistantName;
+    private String teamName;
+    private String scoreAfterGoal;
+    private boolean scored;
+    private boolean dangerous;
+    private String playerInName;
+    private String playerOutName;
+    private String playerName;
+    private String takerName;
+    private String shooterName;
+    private String decision;
 
     public static AllEventDTO fromGoalEvent(GoalEvent g) {
         AllEventDTO dto = new AllEventDTO();
         dto.setType("Goal");
         dto.setMinute(g.getMinute());
-        dto.setPlayer(g.getScorer() != null ? g.getScorer().getName() : "N/A");
+        dto.setScorerName(g.getScorer() != null ? g.getScorer().getName() : "N/A");
+        dto.setAssistantName(g.getAssistant() != null ? g.getAssistant().getName() : "N/A");
         dto.setTeam(g.getTeam().getName());
+        dto.setTeamName(g.getTeam().getName());
         return dto;
     }
 
     public static AllEventDTO fromChanceEvent(ChanceEvent c) {
         AllEventDTO dto = new AllEventDTO();
-        dto.setType("Chance");
+        dto.setType("Possession");
         dto.setMinute(c.getMinute());
         dto.setPlayer(c.getPlayer() != null ? c.getPlayer().getName() : "N/A");
         dto.setTeam(c.getTeam().getName());
+        dto.setTeamName(c.getTeam().getName());
         return dto;
     }
 
@@ -35,6 +50,8 @@ public class AllEventDTO {
         dto.setMinute(y.getMinute());
         dto.setPlayer(y.getPlayer() != null ? y.getPlayer().getName() : "N/A");
         dto.setTeam(y.getPlayer() != null ? y.getPlayer().getTeam().getName() : "N/A");
+        dto.setTeam(y.getTeam().getName());
+        dto.setTeamName(y.getTeam().getName());
         return dto;
     }
 
@@ -44,6 +61,8 @@ public class AllEventDTO {
         dto.setMinute(r.getMinute());
         dto.setPlayer(r.getPlayer() != null ? r.getPlayer().getName() : "N/A");
         dto.setTeam(r.getPlayer() != null ? r.getPlayer().getTeam().getName() : "N/A");
+        dto.setTeam(r.getTeam().getName());
+        dto.setTeamName(r.getTeam().getName());
         return dto;
     }
 
@@ -53,6 +72,7 @@ public class AllEventDTO {
         dto.setMinute(p.getMinute());
         dto.setPlayer(p.getTaker() != null ? p.getTaker().getName() : "N/A");
         dto.setTeam(p.getTeam() != null ? p.getTeam().getName() : "N/A");
+        dto.setTeamName(p.getTeam().getName());
         return dto;
     }
 
@@ -61,7 +81,9 @@ public class AllEventDTO {
         dto.setType("FreeKick");
         dto.setMinute(f.getMinute());
         dto.setPlayer(f.getPlayer() != null ? f.getPlayer().getName() : "N/A");
+        dto.setTakerName(f.getTaker() != null ? f.getTaker().getName() : "N/A");
         dto.setTeam(f.getTeam() != null ? f.getTeam().getName() : "N/A");
+        dto.setTeamName(f.getTeam().getName());
         return dto;
     }
 
@@ -71,6 +93,7 @@ public class AllEventDTO {
         dto.setMinute(o.getMinute());
         dto.setPlayer(o.getPlayer() != null ? o.getPlayer().getName() : "N/A");
         dto.setTeam(o.getPlayer().getTeam() != null ? o.getPlayer().getTeam().getName() : "N/A");
+        dto.setTeamName(o.getPlayer().getTeam().getName());
         return dto;
     }
 
@@ -87,8 +110,10 @@ public class AllEventDTO {
         AllEventDTO dto = new AllEventDTO();
         dto.setType("Substitution");
         dto.setMinute(s.getMinute());
-        dto.setPlayer(s.getPlayerOut() != null ? s.getPlayerOut().getName() : "N/A");
-        dto.setTeam(s.getPlayerIn().getTeam().getName() != null ? s.getPlayerIn().getTeam().getName() : "N/A");
+        dto.setPlayerOutName(s.getPlayerOut() != null ? s.getPlayerOut().getName() : "N/A");
+        dto.setPlayerInName(s.getPlayerIn() != null ? s.getPlayerIn().getName() : "N/");
+        dto.setTeam(s.getTeam() != null ? s.getTeam().getName() : "N/A");
+        dto.setTeamName(s.getTeam().getName());
         return dto;
     }
 
@@ -96,6 +121,7 @@ public class AllEventDTO {
         AllEventDTO dto = new AllEventDTO();
         dto.setType("VARReview");
         dto.setMinute(v.getMinute());
+        dto.setDecision(v.getDecision());
         return dto;
     }
 
@@ -104,7 +130,9 @@ public class AllEventDTO {
         dto.setType("ShotOnTarget");
         dto.setMinute(s.getMinute());
         dto.setPlayer(s.getShooter() != null ? s.getShooter().getName() : "N/A");
+        dto.setShooterName(s.getShooter().getName());
         dto.setTeam(s.getTeam() != null ? s.getTeam().getName() : "N/A");
+        dto.setTeamName(s.getTeam().getName());
         return dto;
     }
 
@@ -113,7 +141,9 @@ public class AllEventDTO {
         dto.setType("ShotOffTarget");
         dto.setMinute(s.getMinute());
         dto.setPlayer(s.getShooter() != null ? s.getShooter().getName() : "N/A");
+        dto.setShooterName(s.getShooter().getName());
         dto.setTeam(s.getTeam() != null ? s.getTeam().getName() : "N/A");
+        dto.setTeamName(s.getTeam().getName());
         return dto;
     }
 

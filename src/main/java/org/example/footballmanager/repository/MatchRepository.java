@@ -9,6 +9,4 @@ import java.util.List;
 
 public interface MatchRepository extends JpaRepository<Match, Long>, PagingAndSortingRepository<Match, Long> {
     List<Match> findByHomeTeamIdOrAwayTeamId(Long homeTeamId, Long awayTeamId);
-
-
 }

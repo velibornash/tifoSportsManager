@@ -13,11 +13,11 @@ import java.util.Random;
 @Getter
 @Setter
 public class ChanceEvent extends MatchEvent {
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player player;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
 

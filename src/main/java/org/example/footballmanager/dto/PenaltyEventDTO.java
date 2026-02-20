@@ -9,5 +9,5 @@ public class PenaltyEventDTO extends MatchEventDTO {
     private String takerName;
     private String teamName;
     private boolean scored;
-    private String scoreAfterGoal;   // ako je postignut gol
+    private String scoreAfterGoal;
 }

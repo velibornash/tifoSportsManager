@@ -16,6 +16,7 @@ public class GoalEventDTO extends MatchEventDTO {
     public static GoalEventDTO fromGoalEvent(GoalEvent g) {
         GoalEventDTO dto = new GoalEventDTO();
         dto.setMinute(g.getMinute());
+        dto.setTeamName(g.getScorer().getTeam().getName());
         dto.setScorerName(g.getScorer() != null ? g.getScorer().getName() : "N/A");
         dto.setAssistantName(g.getAssistant() != null ? g.getAssistant().getName() : null);
         dto.setScoreAfterGoal(g.getScoreAfterGoal());

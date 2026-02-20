@@ -48,8 +48,6 @@ public class MatchDetailDTO {
         dto.setAwayTeamName(match.getAwayTeam().getName());
         dto.setHomeGoals(match.getHomeGoals());
         dto.setAwayGoals(match.getAwayGoals());
-        dto.setPossessionHome(match.getPossessionHome());
-        dto.setPossessionAway(match.getPossessionAway());
         dto.setMatchDate(match.getMatchDate());
         dto.setPlayed(match.isPlayed());
         dto.setStarted(match.isStarted());

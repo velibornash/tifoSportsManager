@@ -12,15 +12,15 @@ public class VARReviewEvent extends MatchEvent {
     int number;
 
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
     private GoalEvent reviewedGoalEvent;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL,fetch = FetchType.LAZY)
     @JsonIgnore
     private PenaltyEvent reviewedPenaltyEvent;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL,fetch = FetchType.LAZY)
     @JsonIgnore
     private OffsideEvent reviewedOffsideEvent;
 

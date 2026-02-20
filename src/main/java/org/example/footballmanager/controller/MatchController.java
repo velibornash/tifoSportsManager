@@ -127,73 +127,12 @@ public class MatchController {
                 .orElse(ResponseEntity.notFound().build());
     }
     @GetMapping("/{matchId}/detail")
-    public ResponseEntity<MatchDetailDTO> getMatchDetail(@PathVariable Long matchId) {
+    public ResponseEntity<List<MatchEventFlatDTO>> getMatchDetail(@PathVariable Long matchId) {
         try {
-            MatchDetailDTO dto = matchDetailService.getMatchDetail(matchId);
-            return ResponseEntity.ok(dto);
+            List<MatchEventFlatDTO> events = matchDetailService.getMatchEventsFlat(matchId);
+            return ResponseEntity.ok(events);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
     }
 }
-/*    // Ostale metode ostaju nepromenjene
-    @PostMapping("/play")
-    public Match playMatch(@RequestParam Long homeTeamId, @RequestParam Long awayTeamId,
-                           @RequestParam String homeFormation, @RequestParam String awayFormation) {
-        return matchService.simulateMatch(homeTeamId, awayTeamId, homeFormation, awayFormation);
-    }
-
-    @PostMapping("/{matchId}/assign-lineups")
-    public Match assignLineups(@PathVariable Long matchId,
-                               @RequestParam Long homeLineupId,
-                               @RequestParam Long awayLineupId) {
-        Match match = matchRepository.findById(matchId).orElseThrow();
-        Lineup home = lineupRepository.findById(homeLineupId).orElseThrow();
-        Lineup away = lineupRepository.findById(awayLineupId).orElseThrow();
-
-        match.setHomeLineup(home);
-        match.setAwayLineup(away);
-        return matchRepository.save(match);
-    }
-
-    @PostMapping("/{matchId}/play")
-    public CompletableFuture<Match> simulateMatch(@PathVariable Long matchId) {
-        return matchService.playMatch(matchId);
-    }
-
-*/
-    /*    @GetMapping("/{id}/details")
-    public ResponseEntity<MatchDetailsDTO> getMatchDetails(@PathVariable Long id) {
-        return matchRepository.findById(id)
-                .map(match -> {
-                    List<PlayerDTO> home = match.getHomeLineup().getStartingPlayers().stream()
-                            .map(p -> PlayerDTO.from(p, match, matchPlayerStatsRepository.findByMatchAndPlayer(match, p)))
-                            .toList();
-                    List<PlayerDTO> away = match.getAwayLineup().getStartingPlayers().stream()
-                            .map(p -> PlayerDTO.from(p, match, matchPlayerStatsRepository.findByMatchAndPlayer(match, p)))
-                            .toList();
-                    List<GoalEventDTO> goals = match.getGoals().stream()
-                            .map(g -> new GoalEventDTO(
-                                    g.getScorer().getName(),
-                                    g.getAssistant() != null ? g.getAssistant().getName() : null,
-                                    g.getMinute(),
-                                    g.getScorer().getTeam().getName(),
-                                    true))
-                            .toList();
-                    return ResponseEntity.ok(new MatchDetailsDTO(
-                            match.getHomeTeam().getName(),
-                            match.getAwayTeam().getName(),
-                            match.getHomeGoals(),
-                            match.getAwayGoals(),
-                            home, away, goals
-                    ));
-                }).orElse(ResponseEntity.notFound().build());
-    }*/
-    /*
-
-    @GetMapping("/{id}/summary")
-    public ResponseEntity<String> getMatchSummary(@PathVariable Long id) {
-        return matchRepository.findById(id)
-                .map(match -> ResponseEntity.ok(matchService.generateMatchReport(match)))
-                .orElse(ResponseEntity.notFound().build());
-    }*/

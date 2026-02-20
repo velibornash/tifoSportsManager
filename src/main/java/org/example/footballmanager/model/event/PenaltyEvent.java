@@ -1,6 +1,7 @@
 package org.example.footballmanager.model.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,10 +18,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class PenaltyEvent extends MatchEvent {
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player taker;
     private boolean scored;

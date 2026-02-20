@@ -9,60 +9,74 @@ function toggleAccordion(header) {
     accordion.classList.toggle('open');
 }
 
-// Klik na link unutar sidebar-a
-function handleSidebarLinkClick(e) {
+// Funkcija za zatvaranje sidebar-a
+function closeSidebar(sidebarId) {
+    document.getElementById(sidebarId).classList.remove('active');
+}
+
+// Generalna funkcija za klik na link unutar sidebar-a
+function handleSidebarLinkClick(e, sidebarId) {
     e.stopPropagation();
 
-    // Zatvori sve accordion-e osim onog u kojem je klik
-    // (ovo može da se preskoči ako je klik na header)
     if (!e.target.classList.contains('accordion-header')) {
         closeAllAccordions();
     }
 
-    // Zatvori sidebar ako je mobilni
-    if(window.innerWidth <= 768) closeMobileMenu();
+    // Zatvori sidebar ako je desktop
+    if(window.innerWidth > 768) {
+        closeSidebar(sidebarId);
+    }
 }
 
-// Desktop accordion link klik
-document.querySelectorAll('#clubSidebar .accordion-content > div').forEach(div => {
-    div.addEventListener('click', async (e) => {
-        e.stopPropagation();
+// Dodaj event listener za SVAKI sidebar
+const sidebars = ['clubSidebar', 'matchesSidebar', 'competitionsSidebar', 'communitySidebar', 'statsSidebar'];
 
-        const match = div.getAttribute('onclick')?.match(/loadPage\('(\w+)'\)/);
-        if(!match) return;
+sidebars.forEach(id => {
+    const sidebar = document.getElementById(id);
 
-        await loadPage(match[1]);
+    if (sidebar) {
+        // Za accordion-content div-ove
+        sidebar.querySelectorAll(".accordion-content > div").forEach(div => {
+            div.addEventListener('click', async e => {
+                handleSidebarLinkClick(e, id);
+                const match = div.getAttribute('onclick')?.match(/loadPage\('(\w+)'\)/);
+                if(match) await loadPage(match[1]);
+            });
+        });
 
-        // Zatvori desktop sidebar kad se izabere podmeni
-        if(window.innerWidth > 768) {
-            document.getElementById('clubSidebar').classList.remove('active');
-        }
-    });
+        // Za direktne div-ove van accordion-a
+        sidebar.querySelectorAll(".sidebar-content > div:not(.accordion)").forEach(div => {
+            div.addEventListener('click', async e => {
+                handleSidebarLinkClick(e, id);
+                const match = div.getAttribute('onclick')?.match(/loadPage\('(\w+)'\)/);
+                if(match) await loadPage(match[1]);
+            });
+        });
+
+        // Za accordion-header
+        sidebar.querySelectorAll(".accordion-header").forEach(header => {
+            header.addEventListener('click', e => {
+                e.stopPropagation();
+                toggleAccordion(header);
+            });
+        });
+    }
 });
 
-// Accordion header klik
-document.querySelectorAll('#clubSidebar .accordion-header').forEach(header => {
-    header.addEventListener('click', e => {
-        e.stopPropagation();
-        toggleAccordion(header);
-    });
-});
-
-// Klik na ostatak sidebar linkova (npr. Training, Profile)
-document.querySelectorAll('#clubSidebar > .sidebar-content > div:not(.accordion)').forEach(div => {
-    div.addEventListener('click', async e => {
-        e.stopPropagation();
-
-        const match = div.getAttribute('onclick')?.match(/loadPage\('(\w+)'\)/);
-        if(!match) return;
-
-        await loadPage(match[1]);
-
-        if(window.innerWidth > 768) {
-            document.getElementById('clubSidebar').classList.remove('active');
-        }
-    });
-});
 function closeAllAccordions() {
     document.querySelectorAll('.accordion').forEach(acc => acc.classList.remove('open'));
+}
+
+// Mobile menu (ostaje isto)
+function toggleMobileMenu() {
+    const sidebar = document.getElementById('mobileSidebar');
+    const overlay = document.getElementById('mobileOverlay');
+
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+}
+
+function closeMobileMenu() {
+    document.getElementById('mobileSidebar').classList.remove('active');
+    document.getElementById('mobileOverlay').classList.remove('active');
 }

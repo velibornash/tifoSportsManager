@@ -10,7 +10,7 @@ import org.example.footballmanager.model.Player;
 @Setter
 @Entity
 public class InjuryEvent extends MatchEvent {
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player player;
 

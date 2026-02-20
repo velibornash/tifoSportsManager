@@ -151,17 +151,34 @@ mainContent.innerHTML = `
 }
 async function loadMatch(matchId) {
     const mainContent = document.getElementById("main-content");
+    console.log(`Pokušavam da učitam meč ID: ${matchId}`);
+    try {
     const response = await fetch(`/matches/${matchId}/detail`);
+    console.log(`Status odgovora: ${response.status}`);
     if (!response.ok) {
+        const text = await response.text();
+        console.error(`Greška ${response.status}: ${text}`);
         mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p><button onclick="loadPage('results')">⬅ Back</button></div>`;
         return;
     }
 
-    const match = await response.json();
-    console.log("MATCH RECEIVED:", match);
-    console.log("All events:", match.allEvents);
+    const events = await response.json(); // sada je niz MatchEventFlatDTO objekata
+    console.log("MATCH EVENTS RECEIVED:", events);
+    console.log("Broj eventa:", events.length);
 
-    const matchDate = parseMatchDate(match.matchDate);
+    if (events.length === 0) {
+        mainContent.innerHTML = `<div class="team-card"><p>No data for this match.</p><button onclick="loadPage('results')">⬅ Back</button></div>`;
+        return;
+    }
+
+    // Uzimamo osnovne podatke iz prvog reda (svi redovi imaju iste osnovne podatke meča)
+    const first = events[0];
+    const homeTeamName = first.homeTeam || "Home";
+    const awayTeamName = first.awayTeam || "Away";
+    const homeGoals = first.homeGoals ?? 0;
+    const awayGoals = first.awayGoals ?? 0;
+
+    const matchDate = parseMatchDate(first.matchDate);
     const formattedDate = matchDate.toLocaleString('en-GB', {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
@@ -169,131 +186,264 @@ async function loadMatch(matchId) {
     mainContent.innerHTML = `
 <div class="team-card">
     <h2 style="text-align:center;">Match Details</h2>
-    <div style="display:flex; justify-content:space-around;">
+    <div style="display:flex; justify-content:space-around; font-size:1.2em; margin:15px 0;">
         <div style="text-align:center;">
-            <div>${match.homeTeamName}</div>
-            <div>${match.homeGoals}</div>
+            <div>${homeTeamName}</div>
+            <div style="font-weight:bold;">${homeGoals}</div>
         </div>
-        <div>-</div>
+        <div style="align-self:center; font-size:1.5em;">-</div>
         <div style="text-align:center;">
-            <div>${match.awayTeamName}</div>
-            <div>${match.awayGoals}</div>
+            <div>${awayTeamName}</div>
+            <div style="font-weight:bold;">${awayGoals}</div>
         </div>
     </div>
-    <div style="text-align:center;">🗓 ${formattedDate}</div>
+    <div style="text-align:center; color:#666; margin-bottom:20px;">🗓 ${formattedDate}</div>
 
-    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
-        <button id="view-stats" style="padding:6px 12px;">View Stats</button>
-        <button id="view-goals" style="padding:6px 12px;">View Goals</button>
-        <button id="view-events" style="padding:6px 12px;">All Events</button>
+    <div style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
+        <button id="view-stats" style="padding:8px 16px; font-weight:bold;">View Stats</button>
+        <button id="view-goals" style="padding:8px 16px; font-weight:bold;">View Goals</button>
+        <button id="view-events" style="padding:8px 16px; font-weight:bold;">All Events</button>
     </div>
 
-    <div id="match-info" style="margin-top:15px;"></div>
+    <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
 
-    <button onclick="loadPage('results')">⬅ Back to Results</button>
+    <button onclick="loadPage('results')" style="margin-top:20px; padding:8px 16px;">⬅ Back to Results</button>
 </div>`;
 
     const infoDiv = document.getElementById("match-info");
 
-    // --- View Goals ---
+    // View Goals
     document.getElementById("view-goals").addEventListener("click", () => {
-        const goals = match.allEvents.filter(e => e.type === "Goal");
-        if (!goals || goals.length === 0) {
-            infoDiv.innerHTML = "<p>No goals recorded for this match.</p>";
+        const goals = events.filter(e => e.eventType === "GoalEvent");
+        if (goals.length === 0) {
+            infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:20px;">No goals recorded for this match.</p>`;
             return;
         }
-        let html = "<h3>Goals:</h3><ul>";
+
+        let html = `<h3 style="text-align:center; margin:0 0 15px 0; color:#2a8c4a;">Goals</h3>`;
+        html += `<ul style="list-style:none; padding:0; margin:0;">`;
+
         goals.forEach(g => {
-            html += `<li>${g.minute}' ⚽ ${g.player}${g.assistantName ? ` (assist: ${g.assistantName})` : ''}</li>`;
+            const assist = g.assistant ? `<span style="color:#888;"> (assist: ${g.assistant})</span>` : '';
+            html += `
+                <li style="padding:10px 15px; margin:6px 0; background:rgba(255,255,255,0.04); border-radius:8px; border-left:4px solid #2a8c4a;">
+                    <span style="color:#eee; font-weight:bold;">${g.matchMinute}'</span> ⚽
+                    <strong style="color:#fff;">${g.scorer || "?"}</strong>${assist}
+                    <span style="color:#888; margin-left:10px;">${g.scoreAfterGoal || ""}</span>
+                </li>`;
         });
-        html += "</ul>";
+
+        html += `</ul>`;
         infoDiv.innerHTML = html;
     });
 
-    // --- View Stats ---
-    document.getElementById("view-stats").addEventListener("click", () => {
-        const homeShots = match.allEvents.filter(e => e.teamName === match.homeTeamName &&
-            (e.type === "ShotOnTargetEvent" || e.type === "ShotOffTargetEvent")).length;
-        const awayShots = match.allEvents.filter(e => e.teamName === match.awayTeamName &&
-            (e.type === "ShotOnTargetEvent" || e.type === "ShotOffTargetEvent")).length;
-        const homeCorners = match.allEvents.filter(e => e.teamName === match.homeTeamName && e.type === "CornerEvent").length;
-        const awayCorners = match.allEvents.filter(e => e.teamName === match.awayTeamName && e.type === "CornerEvent").length;
+// View Stats
+document.getElementById("view-stats").addEventListener("click", () => {
+        const homeShotsOn     = events.filter(e => e.eventType === "ShotOnTargetEvent" && e.shotOnTargetTeam === homeTeamName).length;
+        const awayShotsOn     = events.filter(e => e.eventType === "ShotOnTargetEvent" && e.shotOnTargetTeam === awayTeamName).length;
+        const homeShotsOff    = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === homeTeamName).length;
+        const awayShotsOff    = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === awayTeamName).length;
 
-        infoDiv.innerHTML = `
-            <h3>Match Stats:</h3>
-            <ul>
-                <li>${match.homeTeamName} - Shots: ${homeShots}, Corners: ${homeCorners}</li>
-                <li>${match.awayTeamName} - Shots: ${awayShots}, Corners: ${awayCorners}</li>
-            </ul>
-        `;
-    });
+        const homeTotalShots  = homeShotsOn + homeShotsOff;
+        const awayTotalShots  = awayShotsOn + awayShotsOff;
 
-    // --- All Events Viewer with filter ---
+        const homeCorners     = events.filter(e => e.eventType === "CornerEvent" && e.cornerTeam === homeTeamName).length; // ili proveri po cornerTaker timu ako imaš
+        const awayCorners     = events.filter(e => e.eventType === "CornerEvent" && e.cornerTeam === awayTeamName).length;
+
+        const homeYellows     = events.filter(e => e.eventType === "YellowCardEvent" && e.yellowCardTeam === homeTeamName).length;
+        const awayYellows     = events.filter(e => e.eventType === "YellowCardEvent" && e.yellowCardTeam === awayTeamName).length;
+
+        const homeReds        = events.filter(e => e.eventType === "RedCardEvent" && e.redCardTeam === homeTeamName).length;
+        const awayReds        = events.filter(e => e.eventType === "RedCardEvent" && e.redCardTeam === awayTeamName).length;
+
+        const homePenalties   = events.filter(e => e.eventType === "PenaltyEvent" && e.penaltyTeam === homeTeamName).length;
+        const awayPenalties   = events.filter(e => e.eventType === "PenaltyEvent" && e.penaltyTeam === awayTeamName).length;
+
+        // Possession – možeš računati iz ChanceEvent-a
+        const homePossession  = events.filter(e => e.eventType === "ChanceEvent" && e.possessionTeam === homeTeamName).length;
+        const awayPossession  = events.filter(e => e.eventType === "ChanceEvent" && e.possessionTeam === awayTeamName).length;
+        const totalPoss       = homePossession + awayPossession;
+        const homePossPct     = totalPoss > 0 ? Math.round((homePossession / totalPoss) * 100) : 50;
+        const awayPossPct     = 100 - homePossPct;
+    let html = `<h3 style="text-align:center; margin:0 0 15px 0; color:#2a8c4a;">Match Statistics</h3>`;
+
+    html += `
+    <table style="width:100%; border-collapse:collapse; font-size:0.95em; color:#ddd;">
+        <thead>
+            <tr style="background:rgba(42,140,74,0.15);">
+                <th style="padding:10px; text-align:left; border-bottom:1px solid #444;">Stat</th>
+                <th style="padding:10px; text-align:center; border-bottom:1px solid #444;">${homeTeamName}</th>
+                <th style="padding:10px; text-align:center; border-bottom:1px solid #444;">${awayTeamName}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="background:rgba(255,255,255,0.03);">
+                <td style="padding:10px; border-bottom:1px solid #333;">Possession</td>
+                <td style="text-align:center; font-weight:bold; color:#2a8c4a;">${homePossPct}%</td>
+                <td style="text-align:center; font-weight:bold; color:#2a8c4a;">${awayPossPct}%</td>
+            </tr>
+            <tr>
+                <td style="padding:10px; border-bottom:1px solid #333;">Shots</td>
+                <td style="text-align:center;">${homeTotalShots}</td>
+                <td style="text-align:center;">${awayTotalShots}</td>
+            </tr>
+            <tr style="background:rgba(255,255,255,0.03);">
+                <td style="padding:10px; border-bottom:1px solid #333;">Shots on Target</td>
+                <td style="text-align:center;">${homeShotsOn}</td>
+                <td style="text-align:center;">${awayShotsOn}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px; border-bottom:1px solid #333;">Shots off Target</td>
+                <td style="text-align:center;">${homeShotsOff}</td>
+                <td style="text-align:center;">${awayShotsOff}</td>
+            </tr>
+            <tr style="background:rgba(255,255,255,0.03);">
+                <td style="padding:10px; border-bottom:1px solid #333;">Corners</td>
+                <td style="text-align:center;">${homeCorners}</td>
+                <td style="text-align:center;">${awayCorners}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px; border-bottom:1px solid #333;">Yellow Cards</td>
+                <td style="text-align:center; color:#ff9800;">${homeYellows}</td>
+                <td style="text-align:center; color:#ff9800;">${awayYellows}</td>
+            </tr>
+            <tr style="background:rgba(255,255,255,0.03);">
+                <td style="padding:10px; border-bottom:1px solid #333;">Red Cards</td>
+                <td style="text-align:center; color:#f44336;">${homeReds}</td>
+                <td style="text-align:center; color:#f44336;">${awayReds}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px;">Penalties</td>
+                <td style="text-align:center;">${homePenalties}</td>
+                <td style="text-align:center;">${awayPenalties}</td>
+            </tr>
+        </tbody>
+    </table>`;
+
+    console.log("Generisani HTML za stats:", html);  // ← debug da vidiš da li HTML postoji
+    infoDiv.innerHTML = html;  // ovo setuje tabelu
+});
+
+    // All Events (timeline)
     document.getElementById("view-events").addEventListener("click", () => {
-        if (!match.allEvents || match.allEvents.length === 0) {
-            infoDiv.innerHTML = "<p>No events recorded for this match.</p>";
+        if (events.length === 0) {
+            infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:20px;">No events recorded for this match.</p>`;
             return;
         }
 
-        let html = `<h3>All Events:</h3>
-            <div style="margin-bottom:10px;">
-                <label>Filter by Type:
-                    <select id="event-type-filter">
-                        <option value="">All</option>
-                        ${[...new Set(match.allEvents.map(e => e.type))].map(t => `<option value="${t}">${t}</option>`).join("")}
-                    </select>
-                </label>
-                <label>After Minute: <input type="number" id="event-minute-filter" min="0" style="width:60px;"></label>
-                <button id="apply-event-filter">Apply</button>
-            </div>
-            <ul id="all-events-list"></ul>`;
+        let html = `
+        <h3 style="text-align:center; margin:0 0 15px 0; color:#2a8c4a;">All Match Events</h3>
+        <div style="text-align:center; margin-bottom:15px;">
+            <label style="color:#ccc; margin-right:10px;">Filter by Type:
+                <select id="event-type-filter" style="background:#222; color:#eee; border:1px solid #444; padding:6px; border-radius:6px;">
+                    <option value="">All</option>
+                    ${[...new Set(events.map(e => e.eventType))].sort().map(t => `<option value="${t}">${t}</option>`).join("")}
+                </select>
+            </label>
+            <label style="color:#ccc;">After minute:
+                <input type="number" id="event-minute-filter" min="0" max="90" style="width:70px; background:#222; color:#eee; border:1px solid #444; padding:6px; border-radius:6px;">
+            </label>
+            <button id="apply-event-filter" style="margin-left:10px; padding:6px 14px; background:#2a8c4a; color:white; border:none; border-radius:6px; cursor:pointer;">Apply</button>
+        </div>
+        <ul id="all-events-list" style="list-style:none; padding:0; margin:0;"></ul>`;
 
         infoDiv.innerHTML = html;
 
-        const renderEvents = (events) => {
+        const renderEvents = (evts) => {
             const list = document.getElementById("all-events-list");
             list.innerHTML = "";
-            events.forEach(e => {
-                let line = `${e.minute}' [${e.type}] - Team: ${e.team}`;
-                if (e.type === "GoalEvent") line += ` - ${e.scorerName}${e.assistantName ? ` (assist: ${e.assistantName})` : ''}`;
-                if (e.type === "ChanceEvent") line += ` - Player: ${e.playerName} - Dangerous: ${e.dangerous}`;
-                if (e.type === "YellowCardEvent" || e.type === "RedCardEvent") line += ` - Player: ${e.playerName}`;
-                if (e.type === "SubstitutionEvent") line += ` - ${e.playerOutName} → ${e.playerInName}`;
-                list.innerHTML += `<li>${line}</li>`;
+
+            evts.forEach(e => {
+                let details = "";
+                switch (e.eventType) {
+                    case "GoalEvent":
+                        details = `<strong style="color:#fff;">${e.scorer || "?"}</strong> ${e.assistant ? `<span style="color:#aaa;">(assist: ${e.assistant})</span>` : ""} ${e.scoreAfterGoal ? `→ ${e.scoreAfterGoal}` : ""}`;
+                        break;
+                    case "YellowCardEvent":
+                        details = `🟨 ${e.yellowCardPlayer || "?"}`;
+                        break;
+                    case "RedCardEvent":
+                        details = `🔴 ${e.redCardPlayer || "?"}`;
+                        break;
+                    case "PenaltyEvent":
+                        details = `Penalty: ${e.penaltyTaker || "?"} ${e.penaltyScored ? "✅ scored" : "❌ missed"}`;
+                        break;
+                    case "ShotOnTargetEvent":
+                        details = `Shot on: ${e.shotOnTargetPlayer || "?"} (${e.shotOnTargetTeam || "?"})`;
+                        break;
+                    case "ShotOffTargetEvent":
+                        details = `Shot off: ${e.shotOffTargetPlayer || "?"} (${e.shotOffTargetTeam || "?"})`;
+                        break;
+                    case "CornerEvent":
+                        details = `Corner taken by: ${e.cornerTaker || "?"}`;
+                        break;
+                    case "FreeKickEvent":
+                        details = `Free kick: ${e.freeKickTaker || "?"}`;
+                        break;
+                    case "ChanceEvent":
+                        details = `Possession → ${e.possessionTeam || "?"}`;
+                        break;
+                    default:
+                        details = "";
+                }
+
+                const line = `
+                    <span style="color:#aaa; min-width:50px; display:inline-block;">${e.matchMinute || "?"}'</span>
+                    <strong style="color:#2a8c4a;">[${e.eventType}]</strong>
+                    ${details ? " – " + details : ""}`;
+
+                list.innerHTML += `
+                    <li style="padding:10px 15px; margin:6px 0; background:rgba(255,255,255,0.04); border-radius:8px; border-left:4px solid ${getEventColor(e.eventType)};">
+                        ${line}
+                    </li>`;
             });
         };
 
-        renderEvents(match.allEvents);
+        function getEventColor(type) {
+            if (type === "GoalEvent") return "#4CAF50";
+            if (type.includes("Yellow")) return "#ff9800";
+            if (type.includes("Red")) return "#f44336";
+            if (type.includes("Shot")) return "#2196F3";
+            if (type.includes("Corner")) return "#9C27B0";
+            if (type.includes("Penalty")) return "#FF5722";
+            return "#555";
+        }
+
+        const sorted = [...events].sort((a, b) => (a.matchMinute || 0) - (b.matchMinute || 0));
+        renderEvents(sorted);
 
         document.getElementById("apply-event-filter").addEventListener("click", () => {
             const type = document.getElementById("event-type-filter").value;
             const minMinute = parseInt(document.getElementById("event-minute-filter").value) || 0;
-            const filtered = match.allEvents.filter(e => (!type || e.type === type) && e.minute >= minMinute);
+
+            const filtered = sorted.filter(e =>
+                (!type || e.eventType === type) && (e.matchMinute || 0) >= minMinute
+            );
+
             renderEvents(filtered);
         });
     });
+    } catch (err) {
+            console.error("Fetch error:", err);
+            mainContent.innerHTML = `<div class="team-card"><p>Error loading match: ${err.message}</p><button onclick="loadPage('results')">⬅ Back</button></div>`;
+        }
 }
 async function loadFirstTeam() {
     const response = await fetch("/teams/1/players");
     const players = await response.json();
     renderPlayers(players, "First Team");
 }
-
 async function loadResults() {
     const response = await fetch("/teams/1/matches");
     const matches = await response.json();
     renderMatches(matches, "Results");
 }
 
-
-// ovo gore su dobre rute i imamo ih samo donje idu na demo
-
 async function loadJuniors() {
     const response = await fetch("/demo/teams/1/juniors");
     const players = await response.json();
     renderPlayers(players, "Juniors");
 }
-
 async function loadFormations() {
     const response = await fetch("/demo/teams/1/formations");
     const formations = await response.json();
@@ -315,7 +465,6 @@ async function loadFormations() {
     html += `</div></div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadCoaches() {
     const response = await fetch("/demo/teams/1/coaches");
     const coaches = await response.json();
@@ -338,7 +487,6 @@ async function loadCoaches() {
     html += `</div></div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadTrainingReports() {
     const response = await fetch("/demo/trainings/1/reports");
     const reports = await response.json();
@@ -360,7 +508,6 @@ async function loadTrainingReports() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadClubProfile() {
     const response = await fetch("/demo/teams/1/profile");
     const profile = await response.json();
@@ -388,44 +535,36 @@ async function loadClubProfile() {
         </div>
     </div>`;
 }
-
-
 async function loadUpcomingMatches() {
     const response = await fetch("/demo/matches/teams/1/upcoming");
     const matches = await response.json();
     renderMatches(matches, "Upcoming Matches");
 }
-
 async function loadFixtures() {
     const response = await fetch("/demo/matches/teams/1/fixtures");
     const matches = await response.json();
     renderMatches(matches, "Fixtures");
 }
-
 async function loadFriendlies() {
     const response = await fetch("/demo/matches/teams/1/friendlies");
     const matches = await response.json();
     renderMatches(matches, "Friendlies");
 }
-
 async function loadLeagueTable() {
     const response = await fetch("/demo/leagues/1/table");
     const table = await response.json();
     renderTable(table);
 }
-
 async function loadCup() {
     const response = await fetch("/demo/cups/1");
     const matches = await response.json();
     renderMatches(matches, "Cup");
 }
-
 async function loadInternational() {
     const response = await fetch("/demo/internationals/1");
     const matches = await response.json();
     renderMatches(matches, "International Matches");
 }
-
 async function loadForum() {
     const response = await fetch("/demo/forum/teams/1");
     const posts = await response.json();
@@ -446,7 +585,6 @@ async function loadForum() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadChat() {
     const response = await fetch("/demo/chat/teams/1");
     const messages = await response.json();
@@ -466,7 +604,6 @@ async function loadChat() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadEvents() {
     const response = await fetch("/demo/events/teams/1");
     const events = await response.json();
@@ -486,13 +623,11 @@ async function loadEvents() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadPlayerStats() {
     const response = await fetch("/demo/stats/teams/1/players");
     const players = await response.json();
     renderPlayers(players, "Player Stats");
 }
-
 async function loadTeamStats() {
     const response = await fetch("/demo/stats/teams/1");
     const stats = await response.json();
@@ -508,7 +643,6 @@ async function loadTeamStats() {
         <p>Shots per game: ${stats.shots}</p>
     </div>`;
 }
-
 async function loadTopScorers() {
     const response = await fetch("/demo/stats/leagues/1/topscorers");
     const scorers = await response.json();
@@ -528,7 +662,6 @@ async function loadTopScorers() {
     html += `</div>`;
     mainContent.innerHTML = html;
 }
-
 async function loadAnalytics() {
     const response = await fetch("/demo/analytics/teams/1");
     const data = await response.json();
@@ -544,7 +677,6 @@ async function loadAnalytics() {
         <p>Form Rating: ${data.form}</p>
     </div>`;
 }
-
 function renderPlayers(players, title) {
     const mainContent = document.getElementById("main-content");
 
@@ -574,9 +706,7 @@ function renderPlayers(players, title) {
                      </div>`;
     mainContent.innerHTML = html;
 }
-
 function renderMatches(matches, title) {
-
     const mainContent = document.getElementById("main-content");
 
     let html = `
@@ -585,23 +715,24 @@ function renderMatches(matches, title) {
         <div class="match-list">`;
 
     matches.forEach(match => {
-
+        // Datum ispred reda (možeš staviti i iznad timova)
         html += `
         <div class="match-row" onclick="loadMatch(${match.id})">
+            <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
+                🗓 ${match.matchDate || "N/A"}
+            </div>
             <span class="team-home">${match.homeTeam}</span>
             <span class="score">${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}</span>
             <span class="team-away">${match.awayTeam}</span>
         </div>`;
     });
 
-            html += `</div>
-
-                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                     </div>`;
+    html += `</div>
+             <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
+             </div>`;
 
     mainContent.innerHTML = html;
 }
-
 function renderTable(table) {
 
     const mainContent = document.getElementById("main-content");
