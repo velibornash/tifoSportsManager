@@ -80,7 +80,9 @@ async function loadRecentMatches() {
         const matches = await response.json();
 
         // Pretpostavljamo da su mečevi sortirani od najnovijeg (ako nisu, možeš sortirati)
-        const recent = matches.slice(0, 3); // poslednja 3
+       const recent = matches
+       .sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate))
+       .slice(0, 3);
 
         const list = document.getElementById("recent-matches-list");
         if (!list) return;
