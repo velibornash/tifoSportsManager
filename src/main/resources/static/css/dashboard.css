@@ -794,7 +794,7 @@ recent-match:hover .result-badge {
     }
 
     .player-detail-image img {
-        max-width: 200px !important;     /* smanjena slika */
+        max-width: 120px !important;     /* smanjena slika */
         height: auto !important;
         object-fit: cover;
         border-radius: 16px;
@@ -803,7 +803,7 @@ recent-match:hover .result-badge {
     .player-detail-stats {
         grid-template-columns: 1fr 1fr !important;
         gap: 8px !important;
-        font-size: 0.85em !important;    /* manji font za skillove */
+        font-size: 0.70em !important;    /* manji font za skillove */
         line-height: 1.3;
     }
 
