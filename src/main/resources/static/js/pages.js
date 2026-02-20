@@ -687,6 +687,7 @@ function renderPlayers(players, title) {
 
     let html = `
     <div class="manager-card">
+        <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
         <h2>${title}</h2>
         <div class="manager-grid">`;
 
@@ -701,9 +702,7 @@ function renderPlayers(players, title) {
         </div>`;
     });
 
-            html += `</div>
-                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                     </div>`;
+    html += `</div></div>`;
     mainContent.innerHTML = html;
 }
 function renderMatches(matches, title) {
@@ -711,11 +710,11 @@ function renderMatches(matches, title) {
 
     let html = `
     <div class="manager-card">
+        <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
         <h2>${title}</h2>
         <div class="match-list">`;
 
     matches.forEach(match => {
-        // Datum ispred reda (možeš staviti i iznad timova)
         html += `
         <div class="match-row" onclick="loadMatch(${match.id})">
             <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
@@ -727,18 +726,15 @@ function renderMatches(matches, title) {
         </div>`;
     });
 
-    html += `</div>
-             <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-             </div>`;
-
+    html += `</div></div>`;
     mainContent.innerHTML = html;
 }
 function renderTable(table) {
-
     const mainContent = document.getElementById("main-content");
 
     let html = `
     <div class="manager-card">
+        <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
         <h2>League Table</h2>
         <table class="league-table">
             <tr>
@@ -758,9 +754,6 @@ function renderTable(table) {
         </tr>`;
     });
 
-            html += `</div>
-                     <button onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                     </div>`;
-
+    html += `</table></div>`;
     mainContent.innerHTML = html;
 }
