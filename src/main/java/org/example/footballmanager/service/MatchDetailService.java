@@ -68,7 +68,7 @@ public class MatchDetailService {
         left join lineup hle on m.home_lineup_id=hle.id
         left join lineup ale on m.away_lineup_id=ale.id
         left join player scorer on scorer.id=ge.scorer_id
-        left join player assistant on assistant.id=ge.scorer_id
+        left join player assistant on assistant.id=ge.assistant_id
         left join team scoreTeam on scoreTeam.id=ge.team_id
         left join team possesionTeam on possesionTeam.id=che.team_id
         left join team yellowCardTeam on yellowCardTeam.id=ye.team_id

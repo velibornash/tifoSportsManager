@@ -160,16 +160,6 @@
     background: #2a8c4a;
 }
 
-/* ACCORDION */
-.accordion-content {
-    display: none;
-    padding-left: 15px;
-    flex-direction: column;
-}
-
-.accordion.open .accordion-content {
-    display: flex;
-}
 /* Desktop only / mobile only */
 .desktop-only { display: inline-flex; }
 .mobile-only { display: none; }
@@ -179,33 +169,7 @@
     .mobile-only { display: inline-flex; }
 }
 
-/* Mobile sidebar */
-#mobileSidebar {
-    position: fixed;
-    top: 0;
-    left: -260px;
-    width: 250px;
-    height: 100%;
-    background: rgba(20,20,20,0.98);
-    box-shadow: 4px 0 12px rgba(0,0,0,0.6);
-    transition: left 0.3s ease;
-    z-index: 50;
-}
 
-#mobileSidebar.active {
-    left: 0;
-}
-.mobile-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 40;
-    display: none;
-}
-
-.mobile-overlay.active {
-    display: block;
-}
 /* Lista igrača */
 .player-card {
     width: 180px;
@@ -744,4 +708,109 @@ recent-match:hover .result-badge {
 .stadium-overlay .stat-label {
     font-size: 1rem;
     opacity: 0.9;
+}
+.mobile-accordion {
+    margin-bottom: 8px;
+}
+
+.accordion-header {
+    background: #222;
+    padding: 16px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.accordion-header:hover {
+    background: #2a8c4a;
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background: #1a1a1a;
+    border-radius: 0 0 8px 8px;
+}
+
+.accordion-content div {
+    padding: 14px 20px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+}
+
+.accordion-content div:last-child {
+    border-bottom: none;
+}
+
+.accordion-content div:hover {
+    background: rgba(42,140,74,0.2);
+}
+/* MOBILE SIDEBAR – popravke za skrol i accordion */
+#mobileSidebar {
+    position: fixed;
+    top: 0;
+    left: -260px;
+    width: 260px;
+    height: 100vh;               /* puna visina ekrana */
+    background: rgba(20,20,20,0.98);
+    box-shadow: 4px 0 12px rgba(0,0,0,0.6);
+    transition: left 0.3s ease;
+    z-index: 50;
+    overflow-y: auto;            /* ← omogućava skrol unutar menija */
+    -webkit-overflow-scrolling: touch; /* glatko skrolovanje na iOS */
+}
+
+#mobileSidebar.active {
+    left: 0;
+}
+
+/* Overlay blokira pozadinu */
+.mobile-overlay.active {
+    display: block;
+}
+
+/* Accordion */
+.mobile-accordion {
+    margin: 8px 0;
+}
+
+.accordion-header {
+    background: #222;
+    padding: 16px 20px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.25s;
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: #2a8c4a;
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease-out;
+    background: #1a1a1a;
+    border-radius: 0 0 8px 8px;
+}
+
+.accordion-content div {
+    padding: 14px 28px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.accordion-content div:hover {
+    background: rgba(42,140,74,0.15);
+}
+
+.accordion-content div:last-child {
+    border-bottom: none;
 }

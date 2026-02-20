@@ -23,26 +23,68 @@
 <div id="mobileSidebar" class="sidebar mobile-only">
     <div class="sidebar-content">
         <h3>Menu</h3>
-        <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
-        <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
-        <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
-        <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
-        <div onclick="loadPage('training'); closeMobileMenu()">Training Reports</div>
-        <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
-        <div onclick="loadPage('upcoming'); closeMobileMenu()">Upcoming Matches</div>
-        <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
-        <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
-        <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
-        <div onclick="loadPage('cup'); closeMobileMenu()">Cup</div>
-        <div onclick="loadPage('international'); closeMobileMenu()">International</div>
-        <div onclick="loadPage('friendlies'); closeMobileMenu()">Friendlies</div>
-        <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
-        <div onclick="loadPage('chat'); closeMobileMenu()">Chat</div>
-        <div onclick="loadPage('events'); closeMobileMenu()">Events</div>
-        <div onclick="loadPage('playerStats'); closeMobileMenu()">Player Stats</div>
-        <div onclick="loadPage('teamStats'); closeMobileMenu()">Team Stats</div>
-        <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
-        <div onclick="loadPage('analytics'); closeMobileMenu()">Analytics</div>
+
+        <!-- Glavne kategorije sa accordion-om -->
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                🏟️ Club
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
+                <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
+                <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
+                <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
+                <div onclick="loadPage('training'); closeMobileMenu()">Training Reports</div>
+                <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                ⚽ Matches
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('upcoming'); closeMobileMenu()">Upcoming</div>
+                <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
+                <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
+                <div onclick="startDemoTest(); closeMobileMenu()">Simulation / Demo</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                🏆 Competitions
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
+                <div onclick="loadPage('cup'); closeMobileMenu()">Cup</div>
+                <div onclick="loadPage('international'); closeMobileMenu()">International</div>
+                <div onclick="loadPage('friendlies'); closeMobileMenu()">Friendlies</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                💬 Community
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
+                <div onclick="loadPage('chat'); closeMobileMenu()">Chat</div>
+                <div onclick="loadPage('events'); closeMobileMenu()">Events</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                📊 Stats
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('playerStats'); closeMobileMenu()">Player Stats</div>
+                <div onclick="loadPage('teamStats'); closeMobileMenu()">Team Stats</div>
+                <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
+                <div onclick="loadPage('analytics'); closeMobileMenu()">Analytics</div>
+            </div>
+        </div>
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
