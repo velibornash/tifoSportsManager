@@ -785,58 +785,52 @@ recent-match:hover .result-badge {
     display: block;
 }
 /* FORCED MOBILE FIX – radi na Railway-u */
+/* MOBILNI – detalj igrača: slika gore, stats dole u jednoj koloni */
 @media (max-width: 768px) {
-    /* Spreči horizontalni overflow */
-    body, html {
-        overflow-x: hidden !important;
-        width: 100vw;
+    .player-detail-card {
+        flex-direction: column !important;       /* slika iznad, info ispod */
+        gap: 20px;
+        padding: 15px !important;
     }
 
-    .dashboard-content,
-    .manager-card,
-    .player-detail-card,
-    .club-profile-card {
-        padding: 0 10px !important;
-        box-sizing: border-box;
+    .player-detail-image {
         width: 100%;
-        max-width: 100% !important;
+        text-align: center;
     }
 
-    /* Slike – ne smeju biti prevelike */
-    .manager-player-card img,
     .player-detail-image img {
-        width: 100% !important;
-        max-height: 220px !important; /* ograniči visinu da ne "beži" gore-dole */
-        object-fit: cover !important;
-        object-position: center;
-        border-radius: 12px;
+        max-width: 280px !important;             /* ne prevelika slika */
+        height: auto !important;
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
 
-    /* Grid – 2 kolone kad može, 1 kad je mali ekran */
-    .manager-grid {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
-        gap: 12px !important;
-    }
-
-    /* Tekst ne beži van */
-    .player-detail-info,
-    .player-detail-stats {
+    .player-detail-info {
         padding: 0 10px;
-        overflow-wrap: break-word;
-        word-wrap: break-word;
-        hyphens: auto;
+    }
+
+    .player-detail-stats {
+        display: flex !important;
+        flex-direction: column !important;       /* stats u jednoj koloni */
+        gap: 12px;
     }
 
     .player-detail-stats div {
-        white-space: normal !important;
+        background: rgba(40,40,40,0.7);
+        padding: 12px;
+        border-radius: 10px;
+        text-align: left;
+        font-size: 1em;                          /* malo manji font ako treba */
+        white-space: nowrap;                     /* spreči prelom u dva reda */
+        overflow: hidden;
+        text-overflow: ellipsis;                 /* ako je predugačko, tri tačke */
     }
 
-    /* Back dugme – centrirano i vidljivo */
-    .back-to-dashboard,
-    .back-to-dashboard-profile {
-        width: 100%;
+    /* Naziv igrača – centriran i veći */
+    .player-detail-info h2 {
         text-align: center;
-        margin: 15px 0;
+        font-size: 1.6em;
+        margin: 10px 0;
     }
 }
 
