@@ -1,70 +1,124 @@
 function loadDashboard() {
+    const mainContent = document.getElementById("main-content");
 
-    document.getElementById("main-content").innerHTML = `
-        <div class="team-card">
-
-            <div class="team-header">
-                <img src="/images/omladinac.png" class="team-logo">
-                <div class="team-name-wrapper">
-                    <h1>OFK Omladinac</h1>
-                    <p class="team-subtitle">Serbian League Division 2 • Season 2025/26</p>
-                </div>
+    // Prvo prikaži osnovni skeleton, pa učitaj mečeve
+    mainContent.innerHTML = `
+    <div class="team-card">
+        <div class="team-header">
+            <img src="/images/omladinac.png" class="team-logo">
+            <div class="team-name-wrapper">
+                <h1>OFK Omladinac</h1>
+                <p class="team-subtitle">Serbian League Division 2 • Season 2025/26</p>
             </div>
-
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-value">1</div>
-                    <div class="stat-label">Position</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">34</div>
-                    <div class="stat-label">Points</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">10-4-5</div>
-                    <div class="stat-label">W-D-L</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">+12</div>
-                    <div class="stat-label">Goal Diff</div>
-                </div>
-            </div>
-
-            <div class="next-match">
-                <h3>Next Match</h3>
-
-                <div class="match-info">
-                    <div class="team-away-home">
-                        <img src="/images/sremac.jpg" class="match-team-logo small">
-                        <span>Sremac Berkasovo</span>
-                    </div>
-
-                    <span class="vs">VS</span>
-
-                    <div class="team-away-home">
-                        <img src="/images/omladinac.png" class="match-team-logo small">
-                        <span>OFK Omladinac</span>
-                    </div>
-                </div>
-
-                <div class="match-date">
-                    15.03.2026 • 17:00 • Stadion Livadice
-                </div>
-            </div>
-
-            <div class="quick-stats">
-                <div>Form: <span class="form-good">W W D L W</span></div>
-                <div>Top Scorer: LJ. Ozegovic — 11 goals</div>
-            </div>
-
-            <div class="dashboard-actions">
-                <button onclick="startDemoTest()">Start Demo Test</button>
-            </div>
-
         </div>
-    `;
+
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">1</div>
+                <div class="stat-label">Position</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">34</div>
+                <div class="stat-label">Points</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">10-4-5</div>
+                <div class="stat-label">W-D-L</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">+12</div>
+                <div class="stat-label">Goal Diff</div>
+            </div>
+        </div>
+
+        <div class="next-match">
+            <h3>Next Match</h3>
+            <div class="match-info clickable" onclick="loadFixture(1)">  <!-- ← dodaj onclick -->
+                <div class="team-away-home">
+                    <img src="/images/sremac.jpg" class="match-team-logo small">
+                    <span>Sremac Berkasovo</span>
+                </div>
+                <span class="vs">VS</span>
+                <div class="team-away-home">
+                    <img src="/images/omladinac.png" class="match-team-logo small">
+                    <span>OFK Omladinac</span>
+                </div>
+            </div>
+            <div class="match-date">
+                🗓 15.03.2026 • 17:00<br>
+                🏟️ Stadion Livadice
+            </div>
+        </div>
+
+                <!-- Novi deo: Recent Matches -->
+                <div class="recent-matches-section">
+                    <h3>Recent Matches</h3>
+                    <div id="recent-matches-list" class="match-list">
+                        <!-- Mečevi će biti ubačeni ovde JS-om -->
+                        <div class="loading">Učitavanje poslednjih mečeva...</div>
+                    </div>
+                </div>
+
+        <div class="quick-stats">
+            <div>Form: <span class="form-good">W W D L W</span></div>
+            <div>Top Scorer: LJ. Ozegovic — 11 goals</div>
+        </div>
+
+        <div class="dashboard-actions">
+            <button onclick="startDemoTest()">Start Demo Test</button>
+        </div>
+    </div>`;
+
+    // Učitaj poslednja 3 meča
+    loadRecentMatches();
 }
-// Desktop toggle: zatvara sve ostale sidebarove
+async function loadRecentMatches() {
+    try {
+        const response = await fetch("/teams/1/matches");
+        if (!response.ok) throw new Error("Greška pri učitavanju mečeva");
+
+        const matches = await response.json();
+
+        // Pretpostavljamo da su mečevi sortirani od najnovijeg (ako nisu, možeš sortirati)
+        const recent = matches.slice(0, 3); // poslednja 3
+
+        const list = document.getElementById("recent-matches-list");
+        if (!list) return;
+
+        if (recent.length === 0) {
+            list.innerHTML = `<p style="text-align:center; color:#aaa;">No recent matches yet.</p>`;
+            return;
+        }
+
+        let html = "";
+        recent.forEach(match => {
+            const isWin  = match.homeGoals > match.awayGoals ? "win" : "";
+            const isDraw = match.homeGoals === match.awayGoals ? "draw" : "";
+            const isLoss = match.homeGoals < match.awayGoals ? "loss" : "";
+
+        html += `
+        <div class="match-row recent-match" onclick="loadMatch(${match.id})">
+            <div class="match-date-small">${match.matchDate || "N/A"}</div>
+            <div class="match-teams">
+                <span class="team-home">${match.homeTeam}</span>
+                <span class="score">
+                    ${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}
+                </span>
+                <span class="result-badge ${isWin ? 'win' : isDraw ? 'draw' : 'loss'}">
+                    ${isWin ? 'W' : isDraw ? 'D' : 'L'}
+                </span>
+                <span class="team-away">${match.awayTeam}</span>
+            </div>
+        </div>`;
+        });
+
+        list.innerHTML = html;
+    } catch (err) {
+        console.error("Greška pri učitavanju recent matches:", err);
+        document.getElementById("recent-matches-list").innerHTML =
+            `<p style="text-align:center; color:#f44336;">Greška pri učitavanju mečeva</p>`;
+    }
+}
 window.toggleSidebar = function(id) {
     const sidebars = document.querySelectorAll('.sidebar');
     sidebars.forEach(sb => {

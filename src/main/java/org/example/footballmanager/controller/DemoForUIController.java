@@ -1,9 +1,9 @@
 package org.example.footballmanager.controller;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.Setter;
+import lombok.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -54,7 +54,7 @@ public class DemoForUIController {
 
     @GetMapping("/teams/1/profile")
     public TeamProfileDto getTeamProfile() {
-        return new TeamProfileDto("Omladinac FC", 1954, "Omladinac Stadium", 1200000, "High");
+        return new TeamProfileDto("Omladinac FC", 1954, "Dunjareal", 1200000, "High");
     }
 
     // ==========================
@@ -86,19 +86,35 @@ public class DemoForUIController {
     }
 
     @GetMapping("/matches/teams/1/upcoming")
-    public List<CupMatchDto> getUpcoming() {
-        List<CupMatchDto> list = new ArrayList<>();
-        list.add(new CupMatchDto("Omladinac FC", "Partizan FC", 3, 2));
+    public List<UpcomingMatchDto> getUpcoming() {
+        List<UpcomingMatchDto> list = new ArrayList<>();
+        list.add(new UpcomingMatchDto(1L,"Sremac FC", "Omladinac FC", "15.03.2026","17:00","Stadion Livadice"));
         return list;
     }
 
     @GetMapping("/matches/teams/1/fixtures")
-    public List<CupMatchDto> getFixtures() {
-        List<CupMatchDto> list = new ArrayList<>();
-        list.add(new CupMatchDto("Omladinac FC", "Fixtures FC", 3, 2));
+    public List<UpcomingMatchDto> getFixtures() {
+        List<UpcomingMatchDto> list = new ArrayList<>();
+        list.add(new UpcomingMatchDto(1L, "Sremac FC", "Omladinac FC", "15.03.2026", "17:00", "Stadion Livadice"));
+        list.add(new UpcomingMatchDto(2L, "Omladinac FC", "Partizan FC", "22.03.2026", "19:00", "Stadion Livadice"));
+        list.add(new UpcomingMatchDto(3L, "Celik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje"));
         return list;
     }
 
+    @GetMapping("/matches/teams/1/fixtures/{fixtureId}")
+    public UpcomingMatchDto getFixture(@PathVariable Long fixtureId) {
+        // Dummy logika – u realnom slučaju bi išlo iz baze
+        switch (fixtureId.intValue()) {
+            case 1:
+                return new UpcomingMatchDto(1L, "Sremac FC", "Omladinac FC", "15.03.2026", "17:00", "Stadion Livadice");
+            case 2:
+                return new UpcomingMatchDto(2L, "Omladinac FC", "Partizan FC", "22.03.2026", "19:00", "Dunjareal");
+            case 3:
+                return new UpcomingMatchDto(3L, "Celik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje");
+            default:
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Fixture not found");
+        }
+    }
     @GetMapping("/matches/teams/1/friendlies")
     public List<CupMatchDto> getFriendlies() {
         List<CupMatchDto> list = new ArrayList<>();
@@ -209,6 +225,18 @@ public class DemoForUIController {
         private final String awayTeam;
         private final int homeGoals;
         private final int awayGoals;
+    }
+
+    @Data
+    @NoArgsConstructor(force = true)
+    @AllArgsConstructor
+    public static class UpcomingMatchDto {
+        private Long id;
+        private final String homeTeam;
+        private final String awayTeam;
+        private final String matchDate;
+        private final String matchTime;
+        private final String stadiumName;
     }
 
     @Getter @Setter @RequiredArgsConstructor
