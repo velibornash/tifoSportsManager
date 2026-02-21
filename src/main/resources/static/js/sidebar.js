@@ -16,15 +16,10 @@ function toggleAccordion(header) {
         content.style.maxHeight = '0px';
     }
 }
-
 // Koristi istu funkciju i za mobilni (možeš preimenovati ili zadržati alias)
 const toggleMobileAccordion = toggleAccordion;
-
 // Zatvori sidebar
-function closeSidebar(sidebarId) {
-    document.getElementById(sidebarId)?.classList.remove('active');
-}
-
+function closeSidebar(sidebarId) {document.getElementById(sidebarId)?.classList.remove('active');}
 // Generalni handler za klik na linkove unutar sidebar-a
 function handleSidebarLinkClick(e, sidebarId) {
     e.stopPropagation();
@@ -39,10 +34,8 @@ function handleSidebarLinkClick(e, sidebarId) {
         closeSidebar(sidebarId);
     }
 }
-
 // Dodaj listener-e za SVAKI sidebar
 const sidebars = ['clubSidebar', 'matchesSidebar', 'competitionsSidebar', 'communitySidebar', 'statsSidebar'];
-
 sidebars.forEach(id => {
     const sidebar = document.getElementById(id);
     if (!sidebar) return;
@@ -90,23 +83,25 @@ function enableBodyScroll() {
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
 }
-
-// Ažuriraj toggleMobileMenu da blokira skrol
 function toggleMobileMenu() {
     const sidebar = document.getElementById('mobileSidebar');
     const overlay = document.getElementById('mobileOverlay');
 
-    const isActive = sidebar.classList.toggle('active');
-    overlay.classList.toggle('active');
+    // Proveri trenutno stanje
+    const isOpen = sidebar.classList.contains('active');
 
-    if (isActive) {
-        disableBodyScroll();
-    } else {
+    if (isOpen) {
+        // Ako je otvoren → zatvori
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
         enableBodyScroll();
+    } else {
+        // Ako je zatvoren → otvori
+        sidebar.classList.add('active');
+        overlay.classList.add('active');
+        disableBodyScroll();
     }
 }
-
-// Zatvaranje preko overlay-a
 function closeMobileMenu() {
     document.getElementById('mobileSidebar').classList.remove('active');
     document.getElementById('mobileOverlay').classList.remove('active');
