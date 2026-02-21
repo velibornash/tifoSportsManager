@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "match_tick_states")
@@ -29,9 +31,11 @@ public class MatchTickState {
     private int minute;  // opciono, za lakše pretrage po minutu
 
     @Column(name = "player_positions_json", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)                  // ← OVO JE KLJUČNO
     private String playerPositionsJson;  // JSON niz PlayerPositionDTO
 
     @Column(name = "ball_position_json", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)                  // ← OVO JE KLJUČNO
     private String ballPositionJson;     // JSON objekat BallPositionDTO
 
     @Column(name = "current_carrier_id")

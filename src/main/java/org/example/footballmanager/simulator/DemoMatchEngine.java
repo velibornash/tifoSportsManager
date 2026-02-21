@@ -28,7 +28,7 @@ public class DemoMatchEngine {
     private final Random random = new Random();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
-
+    private final MatchPlaybackEngine matchPlaybackEngine;
     public Match loadAndValidateMatch(long matchId) {return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));}
     public boolean startSimulationOnlyIfNotRunning(long matchId) {
         if (!runningMatches.add(matchId)) {
@@ -60,6 +60,7 @@ public class DemoMatchEngine {
     public DemoMatchRuntime simulateFullMatch(Match match) {
 
         DemoMatchRuntime rt = new DemoMatchRuntime();
+        rt=matchPlaybackEngine.initializeRuntimeAndPositions(rt);
         rt.homePlayers = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
         rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
 

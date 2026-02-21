@@ -30,7 +30,6 @@ public class DemoSimulationServiceNew {
         // 2️⃣ Snimanje u bazu
         Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
         // 3️⃣ Playback (animacija + eventi zajedno)
-        runtime = playbackEngine.initializeRuntimeAndPositions(runtime);
         playbackEngine.start(matchId, runtime);
 
         return CompletableFuture.completedFuture(saved);

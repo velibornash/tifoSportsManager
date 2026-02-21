@@ -8,5 +8,6 @@ public enum SeasonPhase {
     CUP_MATCHDAY,
     INTERNATIONAL_MATCHDAY,
     SEASON_END,
-    OFF_SEASON
+    OFF_SEASON,
+    SEASON_IN_PROGRESS
 }

@@ -3,10 +3,7 @@ package org.example.footballmanager.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.model.Lineup;
-import org.example.footballmanager.model.Match;
-import org.example.footballmanager.model.Player;
-import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.DemoSimulationService;
 import org.example.footballmanager.service.DemoSimulationServiceNew;
@@ -17,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +29,7 @@ public class DemoSimulationController {
     private final PlayerRepository playerRepository;
     private final DemoSimulationService demoService;
     private final DemoSimulationServiceNew demoSimulationService;
-
+    private final GameClockRepository gameClockRepository;
     /**
      * Kreira lineup za dati tim sa listom igrača i formacijom.
      * KLJUČNO: ponovo učitaj igrače iz baze da budu managed entity.
@@ -58,9 +56,33 @@ public class DemoSimulationController {
         // match se ne setuje ovde – postavlja se kasnije u Match entitetu
         return lineupRepository.save(lineup);
     }
+    // Pomoćna metoda za fazu (prilagođeno tvojoj JS logici)
+    private SeasonPhase determinePhase(int month) {
+        if (month >= 7 && month <= 8) return SeasonPhase.PRE_SEASON;
+        else if (month >= 9 || month <= 5) return SeasonPhase.SEASON_IN_PROGRESS;
+        else return SeasonPhase.OFF_SEASON;
+    }
+    private long createMatchAndReturnId(){
 
-    private long createMatchAndReturnId()
-    {
+// Dohvati ili inicijalizuj GameClock
+        GameClock clock = gameClockRepository.findById(1L)
+                .orElseGet(() -> {
+                    GameClock newClock = new GameClock();
+                    newClock.setId(1L);
+                    return newClock;
+                });
+
+        // Ažuriraj clock sa trenutnim CET vremenom
+        ZoneId zone = ZoneId.of("Europe/Belgrade");
+        LocalDateTime currentCET = LocalDateTime.now(zone);
+        clock.setCurrentDate(currentCET);
+        // Opcionalno: ažuriraj season i phase na osnovu currentDate
+        int year = currentCET.getYear();
+        int month = currentCET.getMonthValue();
+        clock.setCurrentSeason(month >= 7 ? year : year - 1);
+        clock.setCurrentPhase(determinePhase(month));  // dodaj metodu dole
+
+        gameClockRepository.save(clock);
         // 1. Dohvati postojeće timove ili napravi
         Team homeTeam = teamFactory.findOrCreate("Omladinac");
         Team awayTeam = teamFactory.findOrCreate("Sremac");
@@ -88,7 +110,7 @@ public class DemoSimulationController {
         match.setAwayTeam(awayTeam);
         match.setHomeLineup(homeLineup);
         match.setAwayLineup(awayLineup);
-        match.setMatchDate(LocalDateTime.now());
+        match.setMatchDate(clock.getCurrentDate());
         matchRepository.save(match);
 
         Long matchId = match.getId();
