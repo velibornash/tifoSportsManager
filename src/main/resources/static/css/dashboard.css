@@ -855,3 +855,82 @@ recent-match:hover .result-badge {
         object-fit: cover !important;
     }
 }
+@media (max-width: 480px) {
+    /* Osnovni kontejner – spreči bekstvo */
+    .player-detail-card,
+    .dashboard-content,
+    .manager-card,
+    .club-profile-card {
+        max-width: 100% !important;
+        padding: 8px !important;
+        box-sizing: border-box;
+        overflow-x: hidden;
+    }
+
+    /* Detalj igrača – slika levo, info desno, ali manje */
+    .player-detail-card {
+        flex-direction: row !important;
+        gap: 12px !important;
+        padding: 8px !important;
+    }
+
+    .player-detail-image img {
+        max-width: 110px !important;     /* još manje za S23 */
+        height: auto !important;
+        object-fit: cover;
+        border-radius: 12px;
+    }
+
+    .player-detail-info h2 {
+        font-size: 1.3em !important;     /* manji naslov */
+        margin: 0 0 8px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .player-detail-stats {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+        font-size: 0.65em !important;    /* jako mali font za skillove */
+        line-height: 1.25;
+    }
+
+    .player-detail-stats div {
+        padding: 6px 8px !important;
+        background: rgba(40,40,40,0.8);
+        border-radius: 6px;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        word-wrap: break-word !important;
+        hyphens: auto;
+        font-size: 0.9em;                /* još malo manje ako treba */
+    }
+
+    /* Lista igrača – još manje kartice za male ekrane */
+    .manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+        gap: 10px !important;
+    }
+
+    .manager-player-card img {
+        height: 160px !important;        /* manje slike */
+        object-fit: cover !important;
+    }
+
+    .manager-player-card {
+        padding: 8px !important;
+    }
+
+    /* Dodatno – spreči bekstvo teksta svuda */
+    * {
+        box-sizing: border-box;
+        max-width: 100%;
+    }
+
+    p, div, span, h1, h2, h3 {
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        hyphens: auto;
+    }
+}

@@ -213,12 +213,34 @@ async function loadMatch(matchId) {
             </div>
             <div style="text-align:center; color:#666; margin-bottom:20px;">🗓 ${formattedDate}</div>
 
-            <div style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
-                <button id="view-stats" style="padding:8px 16px; font-weight:bold;">View Stats</button>
-                <button id="view-goals" style="padding:8px 16px; font-weight:bold;">View Goals</button>
-                <button id="view-events" style="padding:8px 16px; font-weight:bold;">All Events</button>
-            </div>
+        <style>
+            /* Samo za taj blok sa tri dugmeta – ne dira ništa drugo */
+            @media (max-width: 480px) {
+                #match-buttons-container {
+                    gap: 8px !important;
+                    margin-bottom: 16px !important;
+                    padding: 0 4px !important;
+                    flex-wrap: wrap !important;
+                    justify-content: center !important;
+                }
 
+                #match-buttons-container button {
+                    padding: 6px 12px !important;
+                    font-size: 0.85em !important;
+                    min-width: 90px !important;
+                    white-space: nowrap !important;
+                    flex: 1 1 auto !important;
+                    max-width: 45% !important;
+                    box-sizing: border-box !important;
+                }
+            }
+        </style>
+
+        <div id="match-buttons-container" style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
+            <button id="view-stats" style="padding:8px 16px; font-weight:bold;">View Stats</button>
+            <button id="view-goals" style="padding:8px 16px; font-weight:bold;">View Goals</button>
+            <button id="view-events" style="padding:8px 16px; font-weight:bold;">All Events</button>
+        </div>
             <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
 
             <button onclick="loadPage('results')" style="margin-top:20px; padding:8px 16px;">⬅ Back to Results</button>
@@ -676,8 +698,8 @@ async function loadFixture(fixtureId) {
         <div style="text-align:center; margin:20px 0;">
                 <img src="${stadiumImage}"
                      alt="${venue}"
-                     style="max-width: 360px; height: auto; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 2px solid #333;">
-                <p style="margin-top: 12px; color: #aaa; font-style: italic; font-size: 1em;">
+                     style="max-width: 280px; height: auto; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 2px solid #333;">
+                <p style="margin-top: 10px; color: #aaa; font-style: italic; font-size: 1em;">
                     ${venue}
                 </p>
         </div>
@@ -686,7 +708,7 @@ async function loadFixture(fixtureId) {
                 <div style="text-align:center;">
                     ${homeTeamName}
                 </div>
-                <div style="align-self:center; font-size:1.8em; color:#2a8c4a;">VS</div>
+                <div style="align-self:center; font-size:1.2em; color:#2a8c4a;">VS</div>
                 <div style="text-align:center;">
                     ${awayTeamName}
                 </div>
