@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,12 +18,14 @@ public class APIController {
 
     @GetMapping("/server-time")
     public ResponseEntity<Map<String, String>> getServerTime() {
-        LocalDateTime now = LocalDateTime.now();
-        
+        ZoneId zone = ZoneId.of("Europe/Belgrade");  // CET za Srbiju
+        ZonedDateTime nowZoned = ZonedDateTime.now(zone);  // trenutno vreme u CET
+        LocalDateTime now = nowZoned.toLocalDateTime();
+
         Map<String, String> response = new HashMap<>();
-        response.put("iso", now.toString());                    // pun ISO format za JS parsiranje
-        response.put("timestamp", String.valueOf(System.currentTimeMillis())); // milisekunde za precizan offset
-        response.put("formatted", now.format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss"))); // opciono za debug
+        response.put("iso", nowZoned.toString());  // ISO sa zonom, npr. "2026-02-21T20:02:00+01:00"
+        response.put("timestamp", String.valueOf(nowZoned.toInstant().toEpochMilli()));  // UTC ms za offset
+        response.put("formatted", now.format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")));  // lokalni format
 
         return ResponseEntity.ok(response);
     }

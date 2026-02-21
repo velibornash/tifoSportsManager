@@ -18,50 +18,52 @@ async function syncWithServerTime() {
     }
 }
 
-// Glavna funkcija za ažuriranje sata
-function updateLiveClock() {
-    const nowMs = Date.now() - serverOffsetMs;
-    const now = new Date(nowMs);
+    function updateLiveClock() {
+        const nowMs = Date.now() - serverOffsetMs;
+        const now = new Date(nowMs);
 
-    // Vreme sa sekundama
-    const timeStr = now.toLocaleTimeString('sr-RS', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
+        // Vreme u CET
+        const timeStr = now.toLocaleTimeString('sr-RS', {
+            timeZone: 'Europe/Belgrade',  // ← dodaj ovo
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
 
-    // Datum
-    const dateStr = now.toLocaleDateString('sr-RS', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    });
+        // Datum u CET
+        const dateStr = now.toLocaleDateString('sr-RS', {
+            timeZone: 'Europe/Belgrade',  // ← dodaj ovo
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
 
-    // Sezona i faza (prilagođeno tvojoj logici)
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    let season = month >= 7 ? year : year - 1;
-    let phase = '';
-    if (month >= 7 && month <= 8) phase = 'Predsezona';
-    else if (month >= 9 || month <= 5) phase = 'Sezona u toku';
-    else phase = 'Letnja pauza';
+        // Sezona i faza – koristi CET month/year
+        const cetDate = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Belgrade' }));
+        const year = cetDate.getFullYear();
+        const month = cetDate.getMonth() + 1;
+        let season = month >= 7 ? year : year - 1;
+        let phase = '';
+        if (month >= 7 && month <= 8) phase = 'PRE SEASON';
+        else if (month >= 9 || month <= 5) phase = 'Season in progress';
+        else phase = 'OFF SEASON';
 
-    // Ažuriraj desktop sat
-    const timeEl = document.getElementById('clock-time');
-    const dateEl = document.getElementById('clock-date');
-    const phaseEl = document.getElementById('clock-phase');
+        // Ažuriraj desktop sat
+        const timeEl = document.getElementById('clock-time');
+        const dateEl = document.getElementById('clock-date');
+        const phaseEl = document.getElementById('clock-phase');
 
-    if (timeEl) timeEl.textContent = timeStr;
-    if (dateEl) dateEl.textContent = dateStr + ' • Sezona ' + season;
-    if (phaseEl) phaseEl.textContent = phase;
+        if (timeEl) timeEl.textContent = timeStr;
+        if (dateEl) dateEl.textContent = dateStr + ' • Sezona ' + season;
+        if (phaseEl) phaseEl.textContent = phase;
 
-    // Ažuriraj mobilni sat (ako postoji)
-    const timeMobile = document.getElementById('clock-time-m');
-    const dateMobile = document.getElementById('clock-date-m');
-    if (timeMobile) timeMobile.textContent = timeStr;
-    if (dateMobile) dateMobile.textContent = dateStr + ' • ' + phase;
-}
+        // Ažuriraj mobilni sat (ako postoji)
+        const timeMobile = document.getElementById('clock-time-m');
+        const dateMobile = document.getElementById('clock-date-m');
+        if (timeMobile) timeMobile.textContent = timeStr;
+        if (dateMobile) dateMobile.textContent = dateStr + ' • ' + phase;
+    }
 
 // Pokreni sinhronizaciju i ažuriranje
 syncWithServerTime();
