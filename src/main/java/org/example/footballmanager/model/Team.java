@@ -26,7 +26,7 @@ public class Team {
     @Enumerated(EnumType.STRING)
     private CompetitionTeamType type; // CLUB ili NATIONAL
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     private Country country;
 
     @OneToOne(cascade = CascadeType.ALL)

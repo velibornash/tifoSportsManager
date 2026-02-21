@@ -160,7 +160,15 @@
     background: #2a8c4a;
 }
 
+/* MOBILE-ONLY elementi – po defaultu skriveni */
+.mobile-only {
+    display: none;
+}
 
+/* DESKTOP-ONLY elementi – po defaultu vidljivi (možeš i ovo eksplicitno staviti) */
+.desktop-only {
+    display: inline-flex;   /* ili flex, block... zavisi šta ti treba */
+}
 
 @media (max-width: 768px) {
     .desktop-only { display: none; }

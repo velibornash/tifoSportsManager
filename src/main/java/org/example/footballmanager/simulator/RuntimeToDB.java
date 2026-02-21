@@ -1,14 +1,21 @@
 package org.example.footballmanager.simulator;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.dto.BallPositionDTO;
+import org.example.footballmanager.dto.PlayerPositionDTO;
 import org.example.footballmanager.model.Match;
+import org.example.footballmanager.model.MatchTickState;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.event.RedCardEvent;
 import org.example.footballmanager.model.event.YellowCardEvent;
 import org.example.footballmanager.repository.MatchRepository;
+import org.example.footballmanager.repository.MatchTickStateRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.service.DemoMatchRuntime;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +32,11 @@ public class RuntimeToDB {
 
     @Autowired
     private EntityManager em;
+    @Autowired
+    private MatchTickStateRepository tickRepository;
+    @Autowired
 
+    private ObjectMapper objectMapper;
     public RuntimeToDB(PlayerRepository playerRepository, MatchStatisticHandling matchStatisticHandling, MatchRepository matchRepository) {
         this.playerRepository = playerRepository;
         this.matchStatisticHandling = matchStatisticHandling;
@@ -154,9 +165,42 @@ public class RuntimeToDB {
                         .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
         );
 
+        // NOVO: snimi tick pozicije u bazu (samo jednom, na kraju)
+        batchSaveTickPositions(match, rt);
         // --- za report odmah koristimo runtimeGoalove + runtimeEvente ---
         System.out.println(matchStatisticHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
 
         return match;
+    }
+
+    private void batchSaveTickPositions(Match match, DemoMatchRuntime rt) {
+        int batchSize = 50;
+        int i = 0;
+
+        for (DemoMatchRuntime.TickPositionSnapshot snapshot : rt.positionHistory) {
+            MatchTickState state = new MatchTickState();
+            state.setMatch(match);
+            state.setTick(snapshot.tick);
+            state.setMinute(snapshot.tick / 10);
+
+            try {
+                state.setPlayerPositionsJson(objectMapper.writeValueAsString(snapshot.players));
+                state.setBallPositionJson(objectMapper.writeValueAsString(rt.ballHistory.get(i))); // sinhronizuj sa indeksom
+                state.setCurrentCarrierId(rt.currentCarrier != null ? rt.currentCarrier.getId() : null);
+
+                em.persist(state);
+
+                if (++i % batchSize == 0) {
+                    em.flush();
+                    em.clear();
+                }
+            } catch (JsonProcessingException e) {
+                log.error("Greška pri serijalizaciji tick stanja za meč {} tick {}", match.getId(), snapshot.tick, e);
+            }
+        }
+
+        em.flush();
+        em.clear();
+        log.info("Snimljeno {} tick stanja za meč {}", rt.positionHistory.size(), match.getId());
     }
 }

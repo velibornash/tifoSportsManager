@@ -45,7 +45,18 @@ public class DemoMatchRuntime {
     public Referee referee = new Referee();
     public Team homeTeam = new Team();
     public Team awayTeam =  new Team();
-
-    // tick counter
     public int tick = 0;
+    public List<TickPositionSnapshot> positionHistory = new ArrayList<>();
+    public List<BallPositionDTO> ballHistory = new ArrayList<>();
+
+    public static class TickPositionSnapshot {
+        public final int tick;
+        public final List<PlayerPositionDTO> players; // kopija liste u tom trenutku
+        public TickPositionSnapshot(int tick, List<PlayerPositionDTO> players) {
+            this.tick = tick;
+            this.players = players.stream()
+                    .map(p -> new PlayerPositionDTO(p.getId(), p.getTeam(), p.getX(), p.getY(), 0))
+                    .toList();
+        }
+    }
 }

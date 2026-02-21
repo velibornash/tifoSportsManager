@@ -1,6 +1,7 @@
 package org.example.footballmanager.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,8 +11,13 @@ public class AppConfig {
 
     @Bean
     public ObjectMapper objectMapper() {
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        return objectMapper;
+        ObjectMapper mapper = new ObjectMapper();
+        // Podrška za Java 8/17 date/time tipove (LocalDateTime, itd.)
+        mapper.registerModule(new JavaTimeModule());
+        // Ne serijalizuje datume kao timestamp, već kao ISO string
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // Lepši format (opciono)
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        return mapper;
     }
 }

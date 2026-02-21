@@ -84,6 +84,11 @@ public class DemoMatchEngine {
 
                     processSpecialEvents(event, rt, match);if (event instanceof org.example.footballmanager.model.event.GoalEvent goal) {rt.runtimeGoals.add(goal);}
                 }
+
+            // SNIMANJE POZICIJA – na kraju svake minute (ili češće ako želiš finiji replay)
+            // Koristiš duboku kopiju da se ne menja kasnije
+            rt.positionHistory.add(new DemoMatchRuntime.TickPositionSnapshot(minute * 10, rt.players)); // npr. tick = minute * 10
+            rt.ballHistory.add(new BallPositionDTO(rt.ball.getX(), rt.ball.getY())); // kopija lopte
         }
 
         log.info("Engine završio generisanje meča. Eventa: {}", rt.runtimeEvents.size());
