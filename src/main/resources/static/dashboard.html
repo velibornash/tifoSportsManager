@@ -30,11 +30,7 @@
     <small id="clock-phase"></small>
 </div>
 
-<!-- Mobilni varijanta – možeš staviti u sidebar ili gore -->
-<div id="live-clock-mobile" class="mobile-only" style="padding:12px; background:#1e2e1e; border-radius:8px; text-align:center; margin:10px 0;">
-    <strong id="clock-time-m">Učitavanje...</strong><br>
-    <small id="clock-date-m"></small>
-</div>
+
     <!-- Mobile hamburger -->
     <div class="menu-button mobile-only" onclick="toggleMobileMenu()">☰ Menu</div>
 </div>
@@ -102,6 +98,13 @@
                 <div onclick="loadPage('analytics'); closeMobileMenu()">Analytics</div>
             </div>
         </div>
+        <div class="mobile-accordion">
+            <!-- Mobilni varijanta – možeš staviti u sidebar ili gore -->
+          <div id="live-clock-mobile" class="mobile-only" style="padding:12px; background:#1e2e1e; border-radius:8px; text-align:center; margin:10px 0;">
+           <strong id="clock-time-m">Učitavanje...</strong><br>
+            <small id="clock-date-m"></small>
+        </div>
+</div>
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
