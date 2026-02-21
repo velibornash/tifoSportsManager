@@ -1,4 +1,4 @@
-<script>
+
     function updateLiveClock() {
         const now = new Date();
 
@@ -41,4 +41,3 @@
     // Pokreni odmah i ažuriraj svake sekunde
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
-</script>
