@@ -792,3 +792,45 @@ recent-match:hover .result-badge {
 .mobile-overlay.active {
     display: block;
 }
+
+@media (max-width: 768px) {
+    .player-detail-card {
+        display: flex !important;
+        flex-direction: row !important;  /* slika levo, info desno */
+        gap: 16px;
+        padding: 10px !important;
+    }
+
+    .player-detail-image img {
+        max-width: 120px !important;     /* smanjena slika */
+        height: auto !important;
+        object-fit: cover;
+        border-radius: 16px;
+    }
+
+    .player-detail-stats {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+        font-size: 0.70em !important;    /* manji font za skillove */
+        line-height: 1.3;
+    }
+
+    .player-detail-stats div {
+        padding: 8px 10px;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        hyphens: auto;
+    }
+
+    /* Lista igrača – vrati na staro, 2 kolone */
+    .manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+        gap: 12px !important;
+    }
+
+    .manager-player-card img {
+        height: 180px !important;        /* originalna visina, proporcionalno */
+        object-fit: cover !important;
+    }
+}

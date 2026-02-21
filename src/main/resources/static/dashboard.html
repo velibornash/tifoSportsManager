@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard - OFK Omladinac</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Ovo je ključno za Railway + mobilne pregledače -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- Sprečava horizontalni skrol i zoom probleme -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+
     <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
@@ -15,9 +23,18 @@
     <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
-    </div>
-<!-- Mobile hamburger -->
-<div class="menu-button mobile-only" onclick="toggleMobileMenu()">☰ Menu</div>
+<!-- Živi sat – početna vrednost dolazi sa servera -->
+<div id="live-clock" class="menu-button desktop-only" style="background:#1a3c1a; cursor:default; min-width:220px; text-align:center; padding:8px 12px; border-radius:8px;">
+    <strong id="clock-time">Učitavanje...</strong><br>
+    <small id="clock-date"></small>
+    <small id="clock-phase"></small>
+</div>
+
+
+    <!-- Mobile hamburger -->
+    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">☰ Menu</div>
+</div>
+
 <div id="mobileSidebar" class="sidebar mobile-only">
     <div class="sidebar-content">
         <h3>Menu</h3>
@@ -84,7 +101,6 @@
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
-
 <div id="clubSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Club</h3>
