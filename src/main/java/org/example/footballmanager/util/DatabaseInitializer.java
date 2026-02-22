@@ -28,7 +28,7 @@ public class DatabaseInitializer {
     private final TeamFactory teamFactory;
     private final Random random = new Random();
 
-    @PostConstruct
+    
     public void init() {
         log.info("Počinje inicijalizacija strukture za Srbiju...");
         initSerbianFootballStructure();
