@@ -8,6 +8,7 @@ import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
+import org.example.footballmanager.model.event.MatchStartEvent;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.MatchRepository;
@@ -71,6 +72,12 @@ public class DemoMatchEngine {
         rt.awayTactics = createAwayTactics(match);
         MatchEventFactory factory = new MatchEventFactory();
         MatchContext context = new MatchContext(match, rt.crowd, rt.referee, rt.homeTactics, rt.awayTactics);
+        MatchStartEvent matchStartEvent = new MatchStartEvent();
+        matchStartEvent.setMinute(1);
+        matchStartEvent.setMatch(match);
+        matchStartEvent.setHomeTeamName(match.getHomeTeam().getName());
+        matchStartEvent.setAwayTeamName(match.getAwayTeam().getName());
+        rt.runtimeEvents.add(matchStartEvent);
         // generišemo sve minute unapred
         for (int minute = 1; minute <= 90; minute++) {
             context.setCurrentMinute(minute);

@@ -1,5 +1,7 @@
 package org.example.footballmanager.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,29 +13,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ResetService {
 
-    private final PromotionRuleRepository promotionRuleRepository;
-    private final CompetitionEntryRepository competitionEntryRepository;
-    private final SeasonCompetitionRepository seasonCompetitionRepository;
-    private final PlayerRepository playerRepository;
-    private final TeamRepository teamRepository;
-    private final CompetitionRepository competitionRepository;
-    private final SeasonRepository seasonRepository;
-    private final CountryRepository countryRepository;
+@PersistenceContext
+private final EntityManager entityManager;
 
     @Transactional
     public void resetDatabase() {
-
-        log.warn("⚠ RESET DATABASE STARTED");
-
-        promotionRuleRepository.deleteAll();
-        competitionEntryRepository.deleteAll();
-        seasonCompetitionRepository.deleteAll();
-        playerRepository.deleteAll();
-        teamRepository.deleteAll();
-        competitionRepository.deleteAll();
-        seasonRepository.deleteAll();
-        countryRepository.deleteAll();
-
-        log.warn("⚠ RESET DATABASE FINISHED");
+        log.warn("⚠ RESET DATABASE STARTED – TRUNCATE sa CASCADE");
+        entityManager.createNativeQuery("TRUNCATE TABLE promotion_rule, competition_entry, season_competition, match, lineup, lineup_starting_players, lineup_substitutes, player, team, competition, season, country RESTART IDENTITY CASCADE").executeUpdate();
+        log.warn("⚠ RESET DATABASE FINISHED – sve obrisano, identiteti resetovani");
     }
 }

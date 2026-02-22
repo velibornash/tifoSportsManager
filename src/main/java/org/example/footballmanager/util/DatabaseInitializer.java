@@ -205,6 +205,9 @@ public class DatabaseInitializer {
         entry.setGoalsScored(0);
         entry.setGoalsConceded(0);
         entry.setPosition(0);
+        entry.setWins(0);
+        entry.setDraws(0);
+        entry.setLosses(0);
         competitionEntryRepository.save(entry);
 
         // Kreiraj igrače ako ih nema

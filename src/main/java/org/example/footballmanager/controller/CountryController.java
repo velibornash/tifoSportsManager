@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -60,31 +61,38 @@ public class CountryController {
                 .toList();
     }
 
-    // Dodaj u CountryController ili napravi LeagueController
     @GetMapping("/leagues/{leagueId}/table")
     public ResponseEntity<List<LeagueTableDto>> getLeagueTable(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
 
-        // Dohvati sve CompetitionEntry za ovu ligu (preko trenutne sezone)
-        // Za sada uzimamo poslednju sezonu – kasnije možeš dodati filter po sezoni
         SeasonCompetition currentSeasonComp = seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(league, 2025) // ili dinamički iz GameClock
+                .findByCompetitionAndSeasonYear(league, 2025)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sezona nije pronađena"));
 
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(currentSeasonComp);
 
-        // Sortiraj po bodovima descending, pa goal difference descending
-        List<LeagueTableDto> table = entries.stream()
+        // Sortiraj
+        List<CompetitionEntry> sortedEntries = entries.stream()
                 .sorted(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
-                        .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder())
-                        .thenComparing(entry -> entry.getGoalsScored() - entry.getGoalsConceded(), Comparator.reverseOrder()))
-                .map(entry -> new LeagueTableDto(
-                        entry.getTeam().getName(),
-                        entry.getPoints(),
-                        entry.getGoalsScored() - entry.getGoalsConceded()
-                ))
-                .collect(Collectors.toList());
+                        .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
+                        .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()))
+                .toList();
+
+        // Mapiraj na DTO sa position iz sortiranja
+        List<LeagueTableDto> table = new ArrayList<>();
+        for (int i = 0; i < sortedEntries.size(); i++) {
+            CompetitionEntry e = sortedEntries.get(i);
+            table.add(new LeagueTableDto(
+                    e.getTeam().getName(),
+                    e.getPoints(),
+                    e.getGoalsScored() - e.getGoalsConceded(),
+                    e.getWins() != null ? e.getWins() : 0,
+                    e.getDraws() != null ? e.getDraws() : 0,
+                    e.getLosses() != null ? e.getLosses() : 0,
+                    i + 1  // ← position iz sortiranja
+            ));
+        }
 
         return ResponseEntity.ok(table);
     }
@@ -115,7 +123,9 @@ public class CountryController {
                         m.getAwayTeam().getName(),
                         m.getHomeGoals(),
                         m.getAwayGoals(),
-                        m.getMatchDate() != null ? m.getMatchDate().toString() : null
+                        m.getMatchDate() != null
+                                ? m.getMatchDate().toString().substring(0, 16).replace("T", " ")  // npr. "2026-02-20 12:00"
+                                : "N/A"
                 ))
                 .collect(Collectors.toList());
     }

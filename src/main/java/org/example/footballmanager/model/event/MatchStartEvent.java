@@ -8,6 +8,8 @@ import lombok.Setter;
 @Entity
 public class MatchStartEvent extends MatchEvent{
 
+    private String homeTeamName;
+    private String awayTeamName;
     @Override
     public void apply() {
 

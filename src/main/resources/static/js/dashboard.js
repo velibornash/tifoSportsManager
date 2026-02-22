@@ -17,15 +17,15 @@ function loadDashboard() {
                 <div class="stat-label">Position</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">34</div>
+                <div class="stat-value">0</div>
                 <div class="stat-label">Points</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">10-4-5</div>
+                <div class="stat-value">0-0-0</div>
                 <div class="stat-label">W-D-L</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">+12</div>
+                <div class="stat-value">0</div>
                 <div class="stat-label">Goal Diff</div>
             </div>
         </div>
@@ -71,17 +71,16 @@ function loadDashboard() {
         </div>
 
         <div class="dashboard-actions">
-    <button onclick="startDemoTest()">Start Demo Test</button>
-    <button onclick="initializeDatabase()">Initialize DB</button>
-    <button onclick="resetDatabase()" style="background:#b71c1c;">
-    Reset DB
-</button>
+    <button onclick="startDemoTest()">Pokreni odigravanje narednog kola</button>
+    <button onclick="initializeDatabase()">Popuni bazu timovima</button>
+    <button onclick="resetDatabase()" style="background:#b71c1c;">Obriši sve iz baze</button>
 </div>
     </div>`;
 
     // Učitaj obe liste
     loadRecentMatches();                // klub
     loadRecentLeagueMatches();          // liga
+    loadHomeTeamStats();                    // ← NOVO: učitaj poziciju, bodove, itd.
 }
 
 async function resetDatabase() {
@@ -98,6 +97,7 @@ async function resetDatabase() {
 
         const message = await response.text();
         alert(message);
+        window.location.reload();
 
     } catch (err) {
         console.error("Reset error:", err);
@@ -106,21 +106,66 @@ async function resetDatabase() {
 }
 
 async function initializeDatabase() {
-    const confirmInit = confirm("Are you sure you want to initialize the database?");
+    const confirmInit = confirm("Da li želite da inicijalizujete bazu podataka?\n\nOvo može potrajati nekoliko sekundi.");
     if (!confirmInit) return;
+
+    // 1. Prikazujemo loading popup
+    const loadingPopup = document.createElement("div");
+    loadingPopup.id = "loading-popup";
+    loadingPopup.style.position = "fixed";
+    loadingPopup.style.top = "0";
+    loadingPopup.style.left = "0";
+    loadingPopup.style.width = "100%";
+    loadingPopup.style.height = "100%";
+    loadingPopup.style.background = "rgba(0,0,0,0.6)";
+    loadingPopup.style.display = "flex";
+    loadingPopup.style.alignItems = "center";
+    loadingPopup.style.justifyContent = "center";
+    loadingPopup.style.zIndex = "9999";
+
+    loadingPopup.innerHTML = `
+        <div style="
+            background: white;
+            padding: 30px 50px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            text-align: center;
+            font-family: Arial, sans-serif;
+        ">
+            <h2 style="margin: 0 0 15px 0; color: #2c3e50;">Inicijalizacija baze u toku...</h2>
+            <div style="font-size: 1.1em; color: #7f8c8d;">Molimo sačekajte, ne zatvarajte stranicu.</div>
+            <div style="margin-top: 20px; font-size: 2em;">⏳</div>
+        </div>
+    `;
+
+    document.body.appendChild(loadingPopup);
 
     try {
         const response = await fetch("/admin/initialize-db", {
             method: "POST"
         });
 
-        if (!response.ok) throw new Error("Initialization failed");
+        // Skidamo loading popup čim dobijemo odgovor (uspešan ili ne)
+        document.body.removeChild(loadingPopup);
+
+        if (!response.ok) {
+            throw new Error(`Greška: ${response.status} ${response.statusText}`);
+        }
 
         const message = await response.text();
-        alert(message);
+
+        // Uspešan alert + refresh nakon OK
+        alert(message + "\n\nStranica će se sada osvežiti.");
+        window.location.reload();  // ← automatski refresh
+
     } catch (err) {
+        // Uklanjamo loading i prikazujemo grešku
+        if (document.body.contains(loadingPopup)) {
+            document.body.removeChild(loadingPopup);
+        }
+
         console.error("DB Init error:", err);
-        alert("Database initialization failed.");
+        alert("Inicijalizacija baze nije uspela.\n\nGreška: " + err.message);
     }
 }
 
@@ -206,13 +251,13 @@ async function loadRecentLeagueMatches() {
             if (match.homeGoals !== null && match.awayGoals !== null) {
                 if (match.homeGoals > match.awayGoals) {
                     badgeClass = "win";
-                    badgeText = "W";
+                    badgeText = "1";
                 } else if (match.homeGoals < match.awayGoals) {
                     badgeClass = "loss";
-                    badgeText = "L";
+                    badgeText = "2";
                 } else {
                     badgeClass = "draw";
-                    badgeText = "D";
+                    badgeText = "X";
                 }
             }
 
@@ -234,9 +279,40 @@ async function loadRecentLeagueMatches() {
     } catch (err) {
         console.error("Greška pri učitavanju recent league matches:", err);
         document.getElementById("recent-league-matches-list").innerHTML =
-            `<p style="text-align:center; color:#f44336;">Greška pri učitavanju mečeva lige</p>`;
+            `<p style="text-align:center; color:#f44336;">Još nema mečeva u ligi./p>`;
     }
 }
+async function loadHomeTeamStats() {
+    try {
+
+        const leagueId = 1;
+        const response = await fetch(`/countries/leagues/${leagueId}/table`);
+        if (!response.ok) throw new Error("Greška pri učitavanju tabele lige");
+
+        const table = await response.json();
+
+        const omladinacEntry = table.find(t => t.name === "OFK Omladinac");
+        if (!omladinacEntry) {
+            console.warn("Omladinac nije pronađen u tabeli lige");
+            return;
+        }
+        console.log("Omladinac entry iz tabele:", omladinacEntry);
+        document.querySelector(".team-name-wrapper h1").textContent = omladinacEntry.name;
+        document.querySelector(".team-subtitle").textContent = "Superliga Srbije • Season 2025/26";
+
+        const statValues = document.querySelectorAll(".stat-value");
+        statValues[0].textContent = omladinacEntry.position || "?";
+        statValues[1].textContent = omladinacEntry.points || "0";
+        statValues[2].textContent = `${omladinacEntry.wins || 0}-${omladinacEntry.draws || 0}-${omladinacEntry.losses || 0}`;
+        statValues[3].textContent = omladinacEntry.goalDifference || "+0";
+
+    } catch (err) {
+        console.error("Greška pri učitavanju stats tima:", err);
+    }
+}
+
+// U loadDashboard() – pozovi je
+loadHomeTeamStats();  // dodaj posle loadRecentLeagueMatches()
 window.toggleSidebar = function(id) {
     const sidebars = document.querySelectorAll('.sidebar');
     sidebars.forEach(sb => {

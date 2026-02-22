@@ -7,13 +7,12 @@ import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.DemoSimulationService;
 import org.example.footballmanager.service.DemoSimulationServiceNew;
-import org.example.footballmanager.service.MatchService;
-import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.PlayerFactory;
 import org.example.footballmanager.util.TeamFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -37,22 +36,17 @@ public class DemoSimulationController {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final Random random = new Random(System.currentTimeMillis());
-    /**
-     * Kreira lineup za dati tim sa listom igrača i formacijom.
-     * KLJUČNO: ponovo učitaj igrače iz baze da budu managed entity.
-     */
+
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
         Lineup lineup = new Lineup();
         lineup.setTeam(team);
         lineup.setFormation(formationName);
 
-        // Početna postava (11 igrača)
         List<Player> managedStarting = players.subList(0, Math.min(11, players.size()))
                 .stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
-        // Rezervni igrači (do 4)
         List<Player> managedSubs = players.size() > 11 ? players.subList(11, Math.min(15, players.size()))
                 .stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
@@ -60,17 +54,10 @@ public class DemoSimulationController {
 
         lineup.setStartingPlayers(managedStarting);
         lineup.setSubstitutes(managedSubs);
-        // match se ne setuje ovde – postavlja se kasnije u Match entitetu
         return lineupRepository.save(lineup);
     }
-    // Pomoćna metoda za fazu (prilagođeno tvojoj JS logici)
-    private SeasonPhase determinePhase(int month) {
-        if (month >= 7 && month <= 8) return SeasonPhase.PRE_SEASON;
-        else if (month >= 9 || month <= 5) return SeasonPhase.SEASON_IN_PROGRESS;
-        else return SeasonPhase.OFF_SEASON;
-    }
+
     private long createMatchAndReturnId() {
-        // 1. GameClock (ostaje isto)
         GameClock clock = gameClockRepository.findById(1L).orElseGet(() -> {
             GameClock newClock = new GameClock();
             newClock.setId(1L);
@@ -83,11 +70,9 @@ public class DemoSimulationController {
         clock.setCurrentSeason(currentCET.getMonthValue() >= 7 ? currentCET.getYear() : currentCET.getYear() - 1);
         gameClockRepository.save(clock);
 
-// 1. Dohvati Superligu (pretpostavljamo da je ID 1)
         Competition superLiga = competitionRepository.findById(1L)
                 .orElseThrow(() -> new RuntimeException("Superliga nije pronađena"));
 
-        // 2. Dohvati tekuću sezonu (hardkodovano 2025 za sada)
         Season currentSeason = seasonRepository.findBySeasonYear(2025)
                 .orElseThrow(() -> new RuntimeException("Sezona 2025 nije pronađena"));
 
@@ -95,7 +80,6 @@ public class DemoSimulationController {
                 .findByCompetitionAndSeasonYear(superLiga, 2025)
                 .orElseThrow(() -> new RuntimeException("SeasonCompetition nije pronađen"));
 
-        // 3. Dohvati sve timove iz Superlige
         List<CompetitionEntry> leagueEntries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Team> allTeamsInLeague = leagueEntries.stream()
                 .map(CompetitionEntry::getTeam)
@@ -106,13 +90,11 @@ public class DemoSimulationController {
             throw new RuntimeException("Nema dovoljno timova u Superligi za demo meč");
         }
 
-        // 4. Home tim = Omladinac (fiksno)
         Team homeTeam = allTeamsInLeague.stream()
                 .filter(t -> "OFK Omladinac".equals(t.getName()))
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Omladinac nije u Superligi"));
 
-        // 5. Away tim = random iz lige, različit od home
         List<Team> possibleAway = allTeamsInLeague.stream()
                 .filter(t -> !t.getId().equals(homeTeam.getId()))
                 .toList();
@@ -124,13 +106,11 @@ public class DemoSimulationController {
 
         log.info("Demo meč: {} vs {} (random iz Superlige)", homeTeam.getName(), awayTeam.getName());
 
-        // 3. Dohvati igrače – uzmi iz baze (ne iz runtime liste)
         List<Player> homePlayers = playerRepository.findByTeam(homeTeam);
         List<Player> awayPlayers = playerRepository.findByTeam(awayTeam);
 
         if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
-            log.warn("Nema igrača za tim – možda seed nije popunio igrače?");
-            // Opcionalno: pozovi factory da popuni igrače
+            log.warn("Nema igrača za tim – popunjavam...");
             if (homePlayers.isEmpty()) {
                 playerFactory.createOmladinacPlayers(homeTeam);
                 homePlayers = playerRepository.findByTeam(homeTeam);
@@ -141,11 +121,9 @@ public class DemoSimulationController {
             }
         }
 
-        // 4. Kreiraj lineup-e
         Lineup homeLineup = createLineupForMatch(homeTeam, homePlayers, "4-4-2");
         Lineup awayLineup = createLineupForMatch(awayTeam, awayPlayers, "4-2-3-1");
 
-        // 5. Kreiraj i snimi meč
         Match match = new Match();
         match.setHomeTeam(homeTeam);
         match.setAwayTeam(awayTeam);
@@ -153,12 +131,11 @@ public class DemoSimulationController {
         match.setAwayLineup(awayLineup);
         match.setMatchDate(clock.getCurrentDate());
 
-        match = matchRepository.save(match);  // ovo mora da vrati entitet sa generisanim ID-om
+        match = matchRepository.save(match);
 
         log.info("Kreiran demo meč ID: {}, Home: {}, Away: {}",
                 match.getId(), match.getHomeTeam().getName(), match.getAwayTeam().getName());
 
-        simulateRestOfMatchday(superLiga, currentSeason, homeTeam, awayTeam);
         return match.getId();
     }
 
@@ -166,117 +143,122 @@ public class DemoSimulationController {
         SeasonCompetition sc = seasonCompetitionRepository
                 .findByCompetitionAndSeasonYear(league, season.getSeasonYear())
                 .orElseThrow();
-        // 1. GameClock (ostaje isto)
-        GameClock clock = gameClockRepository.findById(1L).orElseGet(() -> {
-            GameClock newClock = new GameClock();
-            newClock.setId(1L);
-            return newClock;
-        });
+
+        GameClock clock = gameClockRepository.findById(1L).orElseThrow();
+
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Team> teams = entries.stream().map(CompetitionEntry::getTeam).toList();
 
-        // Izuzmi već odigrani par
         List<Team> remainingTeams = teams.stream()
-                .filter(t -> !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId()))
+                .filter(t -> {
+                    if (alreadyPlayedHome == null || alreadyPlayedAway == null) return true;
+                    return !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId());
+                })
                 .collect(Collectors.toList());
 
-        // Nasumično spari preostalih 8 timova u 4 para
-        Collections.shuffle(remainingTeams);
-        for (int i = 0; i < remainingTeams.size(); i += 2) {
-            if (i + 1 >= remainingTeams.size()) break; // neparan broj timova (malo verovatno)
+        if (remainingTeams.size() % 2 != 0) {
+            log.warn("Neparan broj timova za simulaciju: {}", remainingTeams.size());
+        }
 
+        Collections.shuffle(remainingTeams);
+
+        for (int i = 0; i + 1 < remainingTeams.size(); i += 2) {
             Team home = remainingTeams.get(i);
             Team away = remainingTeams.get(i + 1);
 
-            // Generiši random rezultat (0-5 golova po timu)
             int homeGoals = random.nextInt(6);
             int awayGoals = random.nextInt(6);
 
-            // Kreiraj i snimi meč
             Match simulatedMatch = new Match();
             simulatedMatch.setHomeTeam(home);
             simulatedMatch.setAwayTeam(away);
             simulatedMatch.setHomeGoals(homeGoals);
             simulatedMatch.setAwayGoals(awayGoals);
-            simulatedMatch.setMatchDate(clock.getCurrentDate()); // isti dan
+            simulatedMatch.setMatchDate(clock.getCurrentDate());
             matchRepository.save(simulatedMatch);
 
-            // Ažuriraj tabelu (CompetitionEntry)
-            CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home).orElseThrow();
+            CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
+                    .stream().findFirst()
+                    .orElseThrow(() -> new RuntimeException("Tim " + home.getName() + " nije u ligi"));
+
+            CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
+                    .stream().findFirst()
+                    .orElseThrow(() -> new RuntimeException("Tim " + away.getName() + " nije u ligi"));
+
             homeEntry.setPoints(homeEntry.getPoints() + (homeGoals > awayGoals ? 3 : homeGoals == awayGoals ? 1 : 0));
             homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeGoals);
             homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayGoals);
 
-            CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
-                    .stream()
-                    .findFirst()  // uzmi prvi ako ih ima više (posle čišćenja baze neće biti)
-                    .orElseThrow(() -> new RuntimeException("Tim " + away.getName() + " nije u ligi"));            awayEntry.setPoints(awayEntry.getPoints() + (awayGoals > homeGoals ? 3 : awayGoals == homeGoals ? 1 : 0));
+            awayEntry.setPoints(awayEntry.getPoints() + (awayGoals > homeGoals ? 3 : awayGoals == homeGoals ? 1 : 0));
             awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
             awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
+
+           homeEntry.setWins((homeEntry.getWins() != null ? homeEntry.getWins() : 0) + (homeGoals > awayGoals ? 1 : 0));
+            homeEntry.setDraws((homeEntry.getDraws() != null ? homeEntry.getDraws() : 0) + (homeGoals == awayGoals ? 1 : 0));
+            homeEntry.setLosses((homeEntry.getLosses() != null ? homeEntry.getLosses() : 0) + (homeGoals < awayGoals ? 1 : 0));
+
+            awayEntry.setWins((awayEntry.getWins() != null ? awayEntry.getWins() : 0) + (awayGoals > homeGoals ? 1 : 0));
+            awayEntry.setDraws((awayEntry.getDraws() != null ? awayEntry.getDraws() : 0) + (awayGoals == homeGoals ? 1 : 0));
+            awayEntry.setLosses((awayEntry.getLosses() != null ? awayEntry.getLosses() : 0) + (awayGoals < homeGoals ? 1 : 0));
 
             competitionEntryRepository.save(homeEntry);
             competitionEntryRepository.save(awayEntry);
 
-            // Na kraju metode, posle svih ažuriranja
-            List<CompetitionEntry> updatedEntries = competitionEntryRepository.findBySeasonCompetition(sc);
-            updatedEntries.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
-                    .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
-                    .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
-
-            for (int pos = 0; pos < updatedEntries.size(); pos++) {
-                CompetitionEntry entry = updatedEntries.get(pos);
-                entry.setPosition(pos + 1);
-                competitionEntryRepository.save(entry);
-            }
-
-            log.info("Simuliran meč: {} {}:{} {} (ažurirana tabela)",
-                    home.getName(), homeGoals, awayGoals, away.getName());
+            log.info("Simuliran meč: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
+                    home.getName(), homeGoals, awayGoals, away.getName(),
+                    homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
+                    awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
         }
-    }
-    /**
-     * Endpoint koji startuje demo simulaciju: kreira timove, lineup, match i pokreće WS evente.
-     */
-    @SneakyThrows
-    @GetMapping("/start-demo-old")
-    public ResponseEntity<Map<String, String>> startDemo() {
-        Thread.sleep(800); // mali delay da frontend dobije signal
 
-        Long matchId = createMatchAndReturnId();
-        System.out.println("Match ID: " + matchId);
-        Thread.sleep(2000); // da se match sačuva pre starta simulacije
-                demoService.startDemoSimulation(matchId)
-                .thenAccept(played -> {
-                    log.info("Simulacija završena za meč {}", matchId);
+        // Sortiraj i ažuriraj pozicije
+/*        List<CompetitionEntry> updatedEntries = competitionEntryRepository.findBySeasonCompetition(sc);
+        updatedEntries.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
+                .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
+                .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
 
-                })
-                .exceptionally(throwable -> {
-                    log.error("Greška u simulaciji meča {}", matchId, throwable);
-                    return null;
-                });
+        for (int pos = 0; pos < updatedEntries.size(); pos++) {
+            CompetitionEntry entry = updatedEntries.get(pos);
+            entry.setPosition(pos + 1);
+            competitionEntryRepository.save(entry);
+        }*/
 
-        return ResponseEntity.ok(Map.of(
-                "status", "prepared",
-                "message", "Simulacija pokrenuta – podaci bi trebalo da stižu",
-                "position_socket", "/demo-position-updates",
-                "event_socket", "/demo-match-events",
-                "matchId", matchId.toString()
-        ));
+        log.info("Kolo završeno – pozicije ažurirane za ligu {}", league.getName());
     }
 
     @SneakyThrows
     @GetMapping("/start-demo")
     public ResponseEntity<Map<String, String>> startDemoNew() {
-        Thread.sleep(800); // mali delay da frontend dobije signal
+        Thread.sleep(800);
 
         Long matchId = createMatchAndReturnId();
-        System.out.println("Match ID: " + matchId);
-        demoSimulationService.startDemoSimulation(matchId)
-                        .thenAccept(played -> {
-            log.info("Simulacija završena za meč {}", matchId);
+        log.info("Kreiran demo meč sa ID: {}", matchId);
 
-        })
+        Competition superLiga = competitionRepository.findById(1L).orElse(null);
+        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElse(null);
+
+        if (superLiga == null || currentSeason == null) {
+            log.error("Ne mogu da pronađem ligu ili sezonu!");
+            return ResponseEntity.badRequest().body(Map.of("error", "Liga ili sezona nije pronađena"));
+        }
+
+        // 1. Dohvati demo timove (da ih isključimo iz simulacije)
+        Match demoMatch = matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Demo meč nije kreiran"));
+        Team omladinac = demoMatch.getHomeTeam();
+        Team protivnik = demoMatch.getAwayTeam();
+
+        // 2. Prvo simuliraj 4 random meča (isključujući Omladinac par)
+        simulateRestOfMatchday(superLiga, currentSeason, omladinac, protivnik);
+
+        // 3. Zatim odigraj demo meč (Omladinac vs random)
+        demoSimulationService.startDemoSimulation(matchId)
+                .thenAccept(played -> {
+                    log.info("Demo simulacija završena za meč ID: {}", matchId);
+
+                    // 4. Ažuriraj tabelu za ceo dan (svih 5 mečeva)
+                    updateLeagueTableForMatchday(superLiga, currentSeason);
+                })
                 .exceptionally(throwable -> {
-                    log.error("Greška u simulaciji meča {}", matchId, throwable);
+                    log.error("Greška u demo simulaciji meča {}", matchId, throwable);
                     return null;
                 });
 
@@ -288,4 +270,100 @@ public class DemoSimulationController {
                 "matchId", matchId.toString()
         ));
     }
-}
+
+    private void updateLeagueTableForMatchday(Competition league, Season season) {
+// U metodi updateLeagueTableForMatchday ili gde god treba
+
+        SeasonCompetition sc = seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(league, season.getSeasonYear())
+                .orElseThrow(() -> new RuntimeException("Sezona nije pronađena za ligu"));
+
+// Dohvati SVE CompetitionEntry za tu sezonu lige
+        List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
+
+// Izvuci ID-ove timova
+        List<Long> teamIds = entries.stream()
+                .map(entry -> entry.getTeam().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+// Sad koristi teamIds za pretragu mečeva
+        List<Match> allLeagueMatches = matchRepository.findByHomeTeamIdInAndAwayTeamIdIn(teamIds, teamIds);
+
+        log.info("Ukupno pronađeno {} mečeva u ligi {}", allLeagueMatches.size(), league.getName());
+
+        if (allLeagueMatches.isEmpty()) {
+            log.warn("Nema mečeva u ligi za ažuriranje tabele!");
+            return;
+        }
+
+        // 2. Sortiraj OPADAJUĆE po datumu (najnoviji prvi)
+        allLeagueMatches.sort(Comparator.comparing(Match::getMatchDate, Comparator.reverseOrder()));
+
+        // 3. Uzmi samo poslednjih 5 (poslednje kolo)
+        List<Match> lastMatches = allLeagueMatches.stream()
+                .limit(5)
+                .toList();
+
+        log.info("Ažuriranje tabele na osnovu poslednjih {} mečeva (poslednje kolo)", lastMatches.size());
+
+        // 5. Ažuriraj samo za poslednjih 5 mečeva
+        for (Match match : lastMatches) {
+ /*           if (match.getHomeGoals() == null || match.getAwayGoals() == null) {
+                log.debug("Preskačem neodigran meč: {} vs {}", match.getHomeTeam().getName(), match.getAwayTeam().getName());
+                continue;
+            }*/
+
+            Team home = match.getHomeTeam();
+            Team away = match.getAwayTeam();
+
+            CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
+                    .stream().findFirst().orElse(null);
+            CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
+                    .stream().findFirst().orElse(null);
+
+            if (homeEntry == null || awayEntry == null) {
+                log.warn("Nema entry-ja za timove u meču {} vs {}", home.getName(), away.getName());
+                continue;
+            }
+
+            int homeG = match.getHomeGoals();
+            int awayG = match.getAwayGoals();
+
+/*            homeEntry.setPoints(homeEntry.getPoints() + (homeG > awayG ? 3 : homeG == awayG ? 1 : 0));
+            homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeG);
+            homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayG);*/
+            homeEntry.setWins(homeEntry.getWins() + (homeG > awayG ? 1 : 0));
+            homeEntry.setDraws(homeEntry.getDraws() + (homeG == awayG ? 1 : 0));
+            homeEntry.setLosses(homeEntry.getLosses() + (homeG < awayG ? 1 : 0));
+
+/*            awayEntry.setPoints(awayEntry.getPoints() + (awayG > homeG ? 3 : awayG == homeG ? 1 : 0));
+            awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayG);
+            awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeG);*/
+            awayEntry.setWins(awayEntry.getWins() + (awayG > homeG ? 1 : 0));
+            awayEntry.setDraws(awayEntry.getDraws() + (awayG == homeG ? 1 : 0));
+            awayEntry.setLosses(awayEntry.getLosses() + (awayG < homeG ? 1 : 0));
+
+            competitionEntryRepository.save(homeEntry);
+            competitionEntryRepository.save(awayEntry);
+
+            log.info("Ažuriran meč {} {}:{} {} → Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
+                    home.getName(), homeG, awayG, away.getName(),
+                    homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
+                    awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
+        }
+
+        // 6. Sortiraj i postavi pozicije
+        List<CompetitionEntry> updatedEntries = competitionEntryRepository.findBySeasonCompetition(sc);
+        updatedEntries.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
+                .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
+                .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
+
+        for (int pos = 0; pos < updatedEntries.size(); pos++) {
+            CompetitionEntry entry = updatedEntries.get(pos);
+            entry.setPosition(pos + 1);
+            competitionEntryRepository.save(entry);
+        }
+
+        log.info("Tabela lige ažurirana na osnovu poslednjih {} mečeva (poslednje kolo)", lastMatches.size());
+    }}

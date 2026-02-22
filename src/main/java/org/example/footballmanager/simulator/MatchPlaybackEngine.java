@@ -123,7 +123,7 @@ public class MatchPlaybackEngine {
 
         positionWs.broadcast(matchId, state);
     }
-    private void broadcastMinuteEvents(long matchId, DemoMatchRuntime rt, int minute) {
+    public void broadcastMinuteEvents(long matchId, DemoMatchRuntime rt, int minute) {
         rt.runtimeEvents.stream()
                 .filter(e -> e.getMinute() == minute)
                 .forEach(e -> {

@@ -23,4 +23,7 @@ public class CompetitionEntry {
     private Integer goalsScored;
     private Integer goalsConceded;
     private Integer position;
+    private Integer wins = 0;
+    private Integer draws = 0;
+    private Integer losses = 0;
 }
