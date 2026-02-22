@@ -53,6 +53,10 @@ async function loadPage(page) {
                 await loadLeagueTable();
                 break;
 
+            case "leagueMatches":
+                await loadLeagueMatches();
+                break;
+
             case "cup":
                 await loadCup();
                 break;
@@ -580,7 +584,7 @@ async function loadClubProfile() {
             </div>
             <div class="club-title">
                 <h1>${profile.name}</h1>
-                <p class="club-subtitle">Serbian League Division 2 • Season 2025/26</p>
+                <p class="club-subtitle">Serbian Super League • Season 2025/26</p>
             </div>
         </div>
 
@@ -760,6 +764,73 @@ async function loadLeagueTable() {
                 <p>Ne mogu da učitam tabelu lige. Proveri konzolu.</p>
             </div>`;
     }
+}
+async function loadLeagueMatches() {
+    const leagueId = 1; // Superliga – kasnije možeš proslediti parametar
+    try {
+        const response = await fetch(`/countries/leagues/${leagueId}/matches`);
+        if (!response.ok) throw new Error("Greška pri učitavanju mečeva lige");
+        const matches = await response.json();
+
+        renderLeagueMatches(matches);
+    } catch (err) {
+        console.error(err);
+        document.getElementById("main-content").innerHTML = `
+            <div class="manager-card">
+                <button onclick="loadDashboard()">⬅ Back</button>
+                <h2>Greška</h2>
+                <p>Ne mogu da učitam mečeve lige.</p>
+            </div>`;
+    }
+}
+
+function renderLeagueMatches(matches) {
+    const mainContent = document.getElementById("main-content");
+    const sortedMatches = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
+    let html = `
+    <div class="manager-card">
+        <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+        <h2>Superliga Matches</h2>
+        <div class="match-list">`;
+
+    if (matches.length === 0) {
+        html += `<p style="text-align:center; color:#aaa;">Još nema mečeva u ovoj ligi.</p>`;
+    } else {
+        matches.forEach(m => {
+            let badgeClass = "";
+            let badgeText = "";
+
+            // Ako meč ima rezultat (nije budući)
+            if (m.homeGoals !== null && m.awayGoals !== null) {
+                if (m.homeGoals > m.awayGoals) {
+                    badgeClass = "win";     // domaćin pobedio
+                    badgeText = "W";
+                } else if (m.homeGoals < m.awayGoals) {
+                    badgeClass = "loss";    // gost pobedio
+                    badgeText = "L";
+                } else {
+                    badgeClass = "draw";    // remi
+                    badgeText = "D";
+                }
+            }
+
+            html += `
+            <div class="match-row" onclick="loadMatch(${m.id})">
+                <div style="font-size:0.9em; color:#aaa;">${m.matchDate || "N/A"}</div>
+                <div class="match-teams">
+                    <span class="team-home">${m.homeTeam}</span>
+                    <span class="score">
+                        ${m.homeGoals ?? "-"} : ${m.awayGoals ?? "-"}
+                    </span>
+                    <span class="team-away">${m.awayTeam}</span>
+                </div>
+                ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
+            </div>`;
+        });
+    }
+
+    html += `</div></div>`;
+    mainContent.innerHTML = html;
 }
 async function loadCup() {
     const response = await fetch("/demo/cups/1");

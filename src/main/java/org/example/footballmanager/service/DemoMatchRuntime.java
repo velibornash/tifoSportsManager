@@ -35,6 +35,8 @@ public class DemoMatchRuntime {
     public List<GoalEvent> runtimeGoals = new ArrayList<>();
     public int homeGoals;
     public int awayGoals;
+    public int homePoints;
+    public int awayPoints;
     public List<Player> home = new ArrayList<>();
     public List<Player> away = new ArrayList<>();
     public List<Player> homePlayers = new ArrayList<>();

@@ -1,6 +1,7 @@
 package org.example.footballmanager.controller;
 
 import org.example.footballmanager.dto.LeagueTableDto;
+import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.springframework.http.HttpStatus;
@@ -24,13 +25,17 @@ public class CountryController {
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PlayerRepository playerRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
+    private final MatchRepository matchRepository;
+    private final SeasonRepository seasonRepository;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository) {
+    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, SeasonRepository seasonRepository) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
         this.playerRepository = playerRepository;
         this.seasonCompetitionRepository = seasonCompetitionRepository;
+        this.matchRepository = matchRepository;
+        this.seasonRepository = seasonRepository;
     }
 
     @GetMapping
@@ -82,6 +87,37 @@ public class CountryController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(table);
+    }
+
+    @GetMapping("/leagues/{leagueId}/matches")
+    public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId) {
+        Competition league = competitionRepository.findById(leagueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
+
+        // Pronađi tekuću sezonu
+        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElseThrow();
+        SeasonCompetition sc = seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(league, 2025)
+                .orElseThrow();
+
+        // Dohvati sve timove u ligi
+        List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
+        List<Long> teamIds = entries.stream().map(e -> e.getTeam().getId()).toList();
+
+        // Dohvati mečeve gde su oba tima iz ove lige
+        List<Match> matches = matchRepository.findByHomeTeamIdInAndAwayTeamIdIn(teamIds, teamIds);
+
+        // Mapiraj u DTO
+        return matches.stream()
+                .map(m -> new MatchDTO(
+                        m.getId(),
+                        m.getHomeTeam().getName(),
+                        m.getAwayTeam().getName(),
+                        m.getHomeGoals(),
+                        m.getAwayGoals(),
+                        m.getMatchDate() != null ? m.getMatchDate().toString() : null
+                ))
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/teams/{teamId}/players")

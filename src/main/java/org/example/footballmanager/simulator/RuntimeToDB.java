@@ -7,16 +7,12 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
-import org.example.footballmanager.model.Match;
-import org.example.footballmanager.model.MatchTickState;
-import org.example.footballmanager.model.Player;
+import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.event.RedCardEvent;
 import org.example.footballmanager.model.event.YellowCardEvent;
-import org.example.footballmanager.repository.MatchRepository;
-import org.example.footballmanager.repository.MatchTickStateRepository;
-import org.example.footballmanager.repository.PlayerRepository;
+import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.DemoMatchRuntime;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -29,7 +25,10 @@ public class RuntimeToDB {
     private final PlayerRepository playerRepository;
     private final MatchStatisticHandling  matchStatisticHandling;
     private final MatchRepository matchRepository;
-
+    private final CompetitionRepository competitionRepository;
+    private final SeasonRepository seasonRepository;
+    private final SeasonCompetitionRepository seasonCompetitionRepository;
+    private final CompetitionEntryRepository competitionEntryRepository;
     @Autowired
     private EntityManager em;
     @Autowired
@@ -37,10 +36,14 @@ public class RuntimeToDB {
     @Autowired
 
     private ObjectMapper objectMapper;
-    public RuntimeToDB(PlayerRepository playerRepository, MatchStatisticHandling matchStatisticHandling, MatchRepository matchRepository) {
+    public RuntimeToDB(PlayerRepository playerRepository, MatchStatisticHandling matchStatisticHandling, MatchRepository matchRepository, CompetitionRepository competitionRepository, SeasonRepository seasonRepository, SeasonCompetitionRepository seasonCompetitionRepository, CompetitionEntryRepository competitionEntryRepository) {
         this.playerRepository = playerRepository;
         this.matchStatisticHandling = matchStatisticHandling;
         this.matchRepository = matchRepository;
+        this.competitionRepository = competitionRepository;
+        this.seasonRepository = seasonRepository;
+        this.seasonCompetitionRepository = seasonCompetitionRepository;
+        this.competitionEntryRepository = competitionEntryRepository;
     }
 
     private void batchSaveMatchEvents(Match match, List<MatchEvent> events, List<Player> homePlayers, List<Player> awayPlayers) {
@@ -170,10 +173,46 @@ public class RuntimeToDB {
         batchSaveTickPositions(match, rt);
         // --- za report odmah koristimo runtimeGoalove + runtimeEvente ---
         System.out.println(matchStatisticHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
-
+        updateLeagueTable(match, rt);
         return match;
     }
+    // Na kraju finalizeMatchResult
+    private void updateLeagueTable(Match match, DemoMatchRuntime rt) {
 
+        // Pretpostavimo da su timovi u Superligi (id=1) – kasnije možeš naći pravu ligu
+        Competition superLiga = competitionRepository.findByNameAndCountryIsoCode("Superliga Srbije", "SRB").orElse(null);
+        if (superLiga == null) return;
+
+        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElse(null);
+        if (currentSeason == null) return;
+
+        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, 2025).orElse(null);
+        if (sc == null) return;
+
+        // Ažuriraj home tim
+        CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getHomeTeam()).orElse(null);
+        if (homeEntry != null) {
+            int points = 0;
+            if (rt.homeGoals > rt.awayGoals) {points = 3;}
+            else if (rt.awayGoals == rt.homeGoals) {points = 1;}
+            homeEntry.setPoints(homeEntry.getPoints() + points); // npr. 3 za pobedu, 1 za remi
+            homeEntry.setGoalsScored(homeEntry.getGoalsScored() + rt.homeGoals);
+            homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + rt.awayGoals);
+            competitionEntryRepository.save(homeEntry);
+        }
+
+        // Ažuriraj away tim (isto)
+        CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getAwayTeam()).orElse(null);
+        if (awayEntry != null) {
+            int points = 0;
+            if (rt.homeGoals < rt.awayGoals) {points = 3;}
+            else if (rt.awayGoals == rt.homeGoals) {points = 1;}
+            awayEntry.setPoints(awayEntry.getPoints() + points);
+            awayEntry.setGoalsScored(awayEntry.getGoalsScored() + rt.awayGoals);
+            awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + rt.homeGoals);
+            competitionEntryRepository.save(awayEntry);
+        }
+    }
     private void batchSaveTickPositions(Match match, DemoMatchRuntime rt) {
         int batchSize = 50;
         int i = 0;

@@ -9,6 +9,7 @@ import org.example.footballmanager.repository.*;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -140,28 +141,62 @@ public class DatabaseInitializer {
     }
 
     private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac, Season season) {
-        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear()).orElseThrow();
+        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear())
+                .orElseThrow(() -> new RuntimeException("Sezona za ligu nije pronađena"));
 
         long currentTeams = competitionEntryRepository.countBySeasonCompetition(sc);
         int toCreate = teamCount - (int) currentTeams;
 
         if (toCreate <= 0) {
+            log.info("Liga {} već ima {} timova → preskačem", league.getName(), currentTeams);
             return;
         }
 
-        if (includeOmladinac) {
+        Set<String> usedNamesInLeague = competitionEntryRepository.findBySeasonCompetition(sc)
+                .stream()
+                .map(entry -> entry.getTeam().getName())
+                .collect(Collectors.toSet());
+
+        int attempts = 0;
+        final int maxAttempts = 100; // sigurnosna granica da ne ide u beskonačnu petlju
+
+        // 1. Dodaj Omladinac ako treba i ako ga nema
+        if (includeOmladinac && !usedNamesInLeague.contains("OFK Omladinac")) {
             Team omladinac = teamFactory.findOrCreate("OFK Omladinac");
             addTeamToLeague(omladinac, sc);
+            usedNamesInLeague.add("OFK Omladinac");
             toCreate--;
+            log.info("Dodat Omladinac u ligu: {}", league.getName());
         }
 
-        for (int i = 0; i < toCreate; i++) {
-            String name = getRandomTeamName();
-            Team team = teamFactory.findOrCreate(name);
-            addTeamToLeague(team, sc);
+        // 2. Dodaj preostale timove dok ne popuniš kvotu
+        while (toCreate > 0 && attempts < maxAttempts) {
+            String candidateName = getRandomTeamName();
+
+            // Ako ime već postoji u ovoj ligi → preskoči i probaj novo
+            if (usedNamesInLeague.contains(candidateName)) {
+                attempts++;
+                continue;
+            }
+
+            Team team = teamFactory.findOrCreate(candidateName);
+
+            // Dodatna provera da tim nije već u ligi (po ID-u, ne samo po imenu)
+            if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
+                addTeamToLeague(team, sc);
+                usedNamesInLeague.add(candidateName);
+                toCreate--;
+                log.info("Dodat tim {} u ligu {}", candidateName, league.getName());
+            }
+
+            attempts++;
+        }
+
+        if (toCreate > 0) {
+            log.warn("Nisam uspeo da popunim ligu {} sa {} timova – ostalo je {} da se doda (mogući duplikati imena)",
+                    league.getName(), teamCount, toCreate);
         }
     }
-
     private void addTeamToLeague(Team team, SeasonCompetition sc) {
         CompetitionEntry entry = new CompetitionEntry();
         entry.setSeasonCompetition(sc);
@@ -185,9 +220,19 @@ public class DatabaseInitializer {
     }
 
     private String getRandomTeamName() {
-        String[] prefixes = {"FK", "OFK", "RFK", "SK", "TSK", "Partizan", "Radnik", "Radnički","Sloga","Sloboda", "Proleter", "Železničar", "Crvena Zvezda"};
-        String[] suffixes = {"Beograd", "Novi Sad", "Niš", "Kragujevac", "Subotica", "Zrenjanin", "Surdulica", "Bečej", "Jagodina", "Svilajnac"};
-        return prefixes[random.nextInt(prefixes.length)] + " " + suffixes[random.nextInt(suffixes.length)];
+        String[] prefixes = {"FK", "OFK", "RFK", "SK", "TSK", "NK",};
+        String[] suffixes = {
+                "Beograd", "Novi Sad", "Niš", "Kragujevac", "Subotica", "Zrenjanin", "Čačak", "Kraljevo",
+                "Smederevo", "Leskovac", "Užice", "Valjevo", "Vranje", "Šabac", "Zaječar", "Pančevo",
+                "Požarevac", "Surdulica", "Loznica", "Bor", "Prokuplje", "Gornji Milanovac"
+        };
+        String[] extras = {"United", "City", "1893", "1919", "Sport", "Metalac", "Radnički", "Sloga"};
+
+        String base = prefixes[random.nextInt(prefixes.length)] + " " + suffixes[random.nextInt(suffixes.length)];
+        if (random.nextBoolean()) {
+            base += " " + extras[random.nextInt(extras.length)];
+        }
+        return base;
     }
 
     private void addPromotionRulesForLeagues(Season season) {
