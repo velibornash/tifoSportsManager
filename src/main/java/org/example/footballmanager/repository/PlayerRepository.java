@@ -11,4 +11,8 @@ import java.util.Optional;
 public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAndSortingRepository<Player, Long> {
     List<Player> findByTeamId(Long teamId);
     Optional<Player> findByNameAndTeam(String name, Team team);
+
+    int countByTeam(Team team);
+
+    List<Player> findByTeam(Team homeTeam);
 }

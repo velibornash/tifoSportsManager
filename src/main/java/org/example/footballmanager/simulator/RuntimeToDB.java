@@ -89,6 +89,7 @@ public class RuntimeToDB {
 
         em.flush();
         em.clear();
+
     }
     private void batchSaveGoalEvents(Match match, List<GoalEvent> goals, List<Player> homePlayers, List<Player> awayPlayers) {
         int batchSize = 50; // PostgreSQL safe

@@ -29,7 +29,8 @@ public class DemoMatchEngine {
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
     private final MatchPlaybackEngine matchPlaybackEngine;
-    public Match loadAndValidateMatch(long matchId) {return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));}
+    public Match loadAndValidateMatch(long matchId)
+    {return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));}
     public boolean startSimulationOnlyIfNotRunning(long matchId) {
         if (!runningMatches.add(matchId)) {
             log.info("Match {} već se simulira!", matchId);

@@ -741,9 +741,25 @@ async function loadFriendlies() {
     renderMatches(matches, "Friendlies");
 }
 async function loadLeagueTable() {
-    const response = await fetch("/demo/leagues/1/table");
-    const table = await response.json();
-    renderTable(table);
+    // Za sada hardkodujemo ID lige 1 (Superliga) – kasnije možeš dodati izbor
+    const leagueId = 1; // ili prosledi parametar iz URL-a ili dropdown-a
+
+    try {
+        const response = await fetch(`/countries/leagues/${leagueId}/table`);
+        if (!response.ok) {
+            throw new Error(`Greška: ${response.status}`);
+        }
+        const table = await response.json();
+        renderTable(table);
+    } catch (err) {
+        console.error("Greška pri učitavanju tabele:", err);
+        document.getElementById("main-content").innerHTML = `
+            <div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back</button>
+                <h2>Greška</h2>
+                <p>Ne mogu da učitam tabelu lige. Proveri konzolu.</p>
+            </div>`;
+    }
 }
 async function loadCup() {
     const response = await fetch("/demo/cups/1");

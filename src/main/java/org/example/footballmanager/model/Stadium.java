@@ -1,5 +1,6 @@
 package org.example.footballmanager.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -14,8 +15,9 @@ public class Stadium {
     private String name;
     private Integer capacity;
     private String location;
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @EqualsAndHashCode.Exclude
+    @JsonManagedReference
     private Team owner; // opcionalno
 
     private Double ticketPrice;
@@ -25,6 +27,7 @@ public class Stadium {
 
     @OneToOne(mappedBy = "stadium")
     @EqualsAndHashCode.Exclude
+    @JsonManagedReference
     private Team team;
 
 }

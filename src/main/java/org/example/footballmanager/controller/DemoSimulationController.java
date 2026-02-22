@@ -26,6 +26,7 @@ public class DemoSimulationController {
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
     private final TeamFactory teamFactory;
+    private final PlayerFactory playerFactory;
     private final PlayerRepository playerRepository;
     private final DemoSimulationService demoService;
     private final DemoSimulationServiceNew demoSimulationService;
@@ -62,60 +63,68 @@ public class DemoSimulationController {
         else if (month >= 9 || month <= 5) return SeasonPhase.SEASON_IN_PROGRESS;
         else return SeasonPhase.OFF_SEASON;
     }
-    private long createMatchAndReturnId(){
+    private long createMatchAndReturnId() {
+        // 1. GameClock (ostaje isto)
+        GameClock clock = gameClockRepository.findById(1L).orElseGet(() -> {
+            GameClock newClock = new GameClock();
+            newClock.setId(1L);
+            return newClock;
+        });
 
-// Dohvati ili inicijalizuj GameClock
-        GameClock clock = gameClockRepository.findById(1L)
-                .orElseGet(() -> {
-                    GameClock newClock = new GameClock();
-                    newClock.setId(1L);
-                    return newClock;
-                });
-
-        // Ažuriraj clock sa trenutnim CET vremenom
         ZoneId zone = ZoneId.of("Europe/Belgrade");
         LocalDateTime currentCET = LocalDateTime.now(zone);
         clock.setCurrentDate(currentCET);
-        // Opcionalno: ažuriraj season i phase na osnovu currentDate
-        int year = currentCET.getYear();
-        int month = currentCET.getMonthValue();
-        clock.setCurrentSeason(month >= 7 ? year : year - 1);
-        clock.setCurrentPhase(determinePhase(month));  // dodaj metodu dole
-
+        clock.setCurrentSeason(currentCET.getMonthValue() >= 7 ? currentCET.getYear() : currentCET.getYear() - 1);
         gameClockRepository.save(clock);
-        // 1. Dohvati postojeće timove ili napravi
-        Team homeTeam = teamFactory.findOrCreate("Omladinac");
-        Team awayTeam = teamFactory.findOrCreate("Sremac");
 
+        // 2. Dohvati ili kreiraj timove – koristi factory koji već radi find-or-create
+        Team homeTeam = teamFactory.findOrCreate("OFK Omladinac");
+        Team awayTeam = teamFactory.findOrCreate("Sremac Berkasovo");  // koristi puno ime ako postoji u seed-u
 
-        // 2. Dohvati igrače preko PlayerFactory
-        PlayerFactory playerFactory = new PlayerFactory(playerRepository);
-        List<Player> homePlayers = playerFactory.createOmladinacPlayers(homeTeam)
-                .stream()
-                .map(p -> playerRepository.getReferenceById(p.getId()))
-                .toList();
+        // Sigurnosno: proveri da li su timovi zaista u bazi posle factory-ja
+        if (homeTeam.getId() == null || awayTeam.getId() == null) {
+            log.error("Tim nije sačuvan u bazi nakon findOrCreate!");
+            throw new RuntimeException("Greška pri kreiranju timova za demo meč");
+        }
 
-        List<Player> awayPlayers = playerFactory.createRandomTeamPlayers("Sremac", awayTeam)
-                .stream()
-                .map(p -> playerRepository.getReferenceById(p.getId()))
-                .toList();
+        log.info("Koristim timove za demo: {} (id={}) vs {} (id={})",
+                homeTeam.getName(), homeTeam.getId(), awayTeam.getName(), awayTeam.getId());
 
-        // 3. Kreiraj lineup
+        // 3. Dohvati igrače – uzmi iz baze (ne iz runtime liste)
+        List<Player> homePlayers = playerRepository.findByTeam(homeTeam);
+        List<Player> awayPlayers = playerRepository.findByTeam(awayTeam);
+
+        if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
+            log.warn("Nema igrača za tim – možda seed nije popunio igrače?");
+            // Opcionalno: pozovi factory da popuni igrače
+            if (homePlayers.isEmpty()) {
+                playerFactory.createOmladinacPlayers(homeTeam);
+                homePlayers = playerRepository.findByTeam(homeTeam);
+            }
+            if (awayPlayers.isEmpty()) {
+                playerFactory.createRandomTeamPlayers(awayTeam.getName(), awayTeam);
+                awayPlayers = playerRepository.findByTeam(awayTeam);
+            }
+        }
+
+        // 4. Kreiraj lineup-e
         Lineup homeLineup = createLineupForMatch(homeTeam, homePlayers, "4-4-2");
         Lineup awayLineup = createLineupForMatch(awayTeam, awayPlayers, "4-2-3-1");
 
-        // 4. Kreiraj match
+        // 5. Kreiraj i snimi meč
         Match match = new Match();
         match.setHomeTeam(homeTeam);
         match.setAwayTeam(awayTeam);
         match.setHomeLineup(homeLineup);
         match.setAwayLineup(awayLineup);
         match.setMatchDate(clock.getCurrentDate());
-        matchRepository.save(match);
 
-        Long matchId = match.getId();
-        System.out.println("Match ID: " + matchId);
-        return matchId;
+        match = matchRepository.save(match);  // ovo mora da vrati entitet sa generisanim ID-om
+
+        log.info("Kreiran demo meč ID: {}, Home: {}, Away: {}",
+                match.getId(), match.getHomeTeam().getName(), match.getAwayTeam().getName());
+
+        return match.getId();
     }
     /**
      * Endpoint koji startuje demo simulaciju: kreira timove, lineup, match i pokreće WS evente.

@@ -97,7 +97,7 @@ public class DemoForUIController {
         List<UpcomingMatchDto> list = new ArrayList<>();
         list.add(new UpcomingMatchDto(1L, "Sremac FC", "Omladinac FC", "15.03.2026", "17:00", "Stadion Livadice"));
         list.add(new UpcomingMatchDto(2L, "Omladinac FC", "Partizan FC", "22.03.2026", "19:00", "Stadion Livadice"));
-        list.add(new UpcomingMatchDto(3L, "Celik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje"));
+        list.add(new UpcomingMatchDto(3L, "Čelik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje"));
         return list;
     }
 
@@ -110,7 +110,7 @@ public class DemoForUIController {
             case 2:
                 return new UpcomingMatchDto(2L, "Omladinac FC", "Partizan FC", "22.03.2026", "19:00", "Dunjareal");
             case 3:
-                return new UpcomingMatchDto(3L, "Celik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje");
+                return new UpcomingMatchDto(3L, "Čelik Zenica", "Omladinac FC", "29.03.2026", "18:30", "Bilino Polje");
             default:
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Fixture not found");
         }
@@ -169,7 +169,7 @@ public class DemoForUIController {
     @GetMapping("/stats/teams/1/players")
     public List<TopScorerDto> getPlayerStats() {
         List<TopScorerDto> list = new ArrayList<>();
-        list.add(new TopScorerDto("Šumenki Dabić", 12));
+        list.add(new TopScorerDto("Šumenko Dabić", 12));
         list.add(new TopScorerDto("Žika Veljković", 10));
         list.add(new TopScorerDto("Borislav Negovanović", 8));
         return list;

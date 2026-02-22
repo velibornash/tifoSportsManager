@@ -1,18 +1,22 @@
 package org.example.footballmanager.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
+@Getter
+@Setter
 public class CompetitionEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     private SeasonCompetition seasonCompetition;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     private Team team;
 
     private Integer points;
