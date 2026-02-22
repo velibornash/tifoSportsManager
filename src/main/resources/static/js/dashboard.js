@@ -73,12 +73,36 @@ function loadDashboard() {
         <div class="dashboard-actions">
     <button onclick="startDemoTest()">Start Demo Test</button>
     <button onclick="initializeDatabase()">Initialize DB</button>
+    <button onclick="resetDatabase()" style="background:#b71c1c;">
+    Reset DB
+</button>
 </div>
     </div>`;
 
     // Učitaj obe liste
     loadRecentMatches();                // klub
     loadRecentLeagueMatches();          // liga
+}
+
+async function resetDatabase() {
+
+    const confirmReset = confirm("⚠ This will DELETE entire database. Continue?");
+    if (!confirmReset) return;
+
+    try {
+        const response = await fetch("/admin/reset-db", {
+            method: "POST"
+        });
+
+        if (!response.ok) throw new Error("Reset failed");
+
+        const message = await response.text();
+        alert(message);
+
+    } catch (err) {
+        console.error("Reset error:", err);
+        alert("Database reset failed.");
+    }
 }
 
 async function initializeDatabase() {
