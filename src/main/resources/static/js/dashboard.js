@@ -71,14 +71,35 @@ function loadDashboard() {
         </div>
 
         <div class="dashboard-actions">
-            <button onclick="startDemoTest()">Start Demo Test</button>
-        </div>
+    <button onclick="startDemoTest()">Start Demo Test</button>
+    <button onclick="initializeDatabase()">Initialize DB</button>
+</div>
     </div>`;
 
     // Učitaj obe liste
     loadRecentMatches();                // klub
     loadRecentLeagueMatches();          // liga
 }
+
+async function initializeDatabase() {
+    const confirmInit = confirm("Are you sure you want to initialize the database?");
+    if (!confirmInit) return;
+
+    try {
+        const response = await fetch("/admin/initialize-db", {
+            method: "POST"
+        });
+
+        if (!response.ok) throw new Error("Initialization failed");
+
+        const message = await response.text();
+        alert(message);
+    } catch (err) {
+        console.error("DB Init error:", err);
+        alert("Database initialization failed.");
+    }
+}
+
 async function loadRecentMatches() {
     try {
         const response = await fetch("/teams/1/matches");
