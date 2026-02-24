@@ -1,4 +1,4 @@
-package org.example.footballmanager.service.old;
+package org.example.footballmanager.old.oldService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -6,7 +6,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.simulator.old.DemoSimulator;
+import org.example.footballmanager.old.oldSimulator.DemoSimulator;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 

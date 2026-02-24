@@ -13,7 +13,7 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.MatchDetailService;
-import org.example.footballmanager.service.old.MatchService;
+import org.example.footballmanager.old.oldService.MatchService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

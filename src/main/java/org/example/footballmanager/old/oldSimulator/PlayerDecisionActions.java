@@ -1,10 +1,10 @@
-package org.example.footballmanager.simulator.old;
+package org.example.footballmanager.old.oldSimulator;
 
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
-import org.example.footballmanager.service.old.DemoMatchRuntime;
+import org.example.footballmanager.old.oldService.DemoMatchRuntime;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;

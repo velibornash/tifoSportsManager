@@ -1,4 +1,4 @@
-package org.example.footballmanager.controller.old;
+package org.example.footballmanager.old.oldController;
 
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -6,7 +6,7 @@ import org.example.footballmanager.dto.*;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.MatchDetailService;
-import org.example.footballmanager.service.old.MatchService;
+import org.example.footballmanager.old.oldService.MatchService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

@@ -1,4 +1,4 @@
-package org.example.footballmanager.simulator.old;
+package org.example.footballmanager.old.oldSimulator;
 
 import jakarta.persistence.EntityManager;
 import lombok.SneakyThrows;
@@ -12,7 +12,7 @@ import org.example.footballmanager.repository.MatchEventRepository;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
-import org.example.footballmanager.service.old.DemoMatchRuntime;
+import org.example.footballmanager.old.oldService.DemoMatchRuntime;
 import org.example.footballmanager.util.match.MatchContext;
 import org.example.footballmanager.util.events.MatchEventFactory;
 import org.example.footballmanager.util.events.MatchEventMapper;

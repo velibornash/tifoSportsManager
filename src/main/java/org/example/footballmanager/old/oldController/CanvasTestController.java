@@ -1,7 +1,7 @@
-package org.example.footballmanager.controller.old;
+package org.example.footballmanager.old.oldController;
 
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.service.old.CanvasSimulationService;
+import org.example.footballmanager.old.oldService.CanvasSimulationService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 

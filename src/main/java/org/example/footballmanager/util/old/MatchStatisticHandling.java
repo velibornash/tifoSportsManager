@@ -9,7 +9,7 @@ import org.example.footballmanager.model.event.InjuryEvent;
 import org.example.footballmanager.model.event.RedCardEvent;
 import org.example.footballmanager.model.event.YellowCardEvent;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
-import org.example.footballmanager.service.old.DemoMatchRuntime;
+import org.example.footballmanager.old.oldService.DemoMatchRuntime;
 import org.example.footballmanager.util.match.MatchRatingCalculator;
 import org.springframework.stereotype.Component;
 import java.util.HashSet;

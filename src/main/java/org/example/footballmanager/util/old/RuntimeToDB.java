@@ -10,7 +10,7 @@ import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.event.RedCardEvent;
 import org.example.footballmanager.model.event.YellowCardEvent;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.old.DemoMatchRuntime;
+import org.example.footballmanager.old.oldService.DemoMatchRuntime;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 

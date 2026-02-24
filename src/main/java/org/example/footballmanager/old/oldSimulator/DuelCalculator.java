@@ -1,4 +1,4 @@
-package org.example.footballmanager.simulator.old;
+package org.example.footballmanager.old.oldSimulator;
 
 import lombok.Getter;
 import lombok.Setter;

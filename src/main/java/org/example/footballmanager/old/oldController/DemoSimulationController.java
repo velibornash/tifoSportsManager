@@ -1,12 +1,12 @@
-package org.example.footballmanager.controller.old;
+package org.example.footballmanager.old.oldController;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.old.DemoSimulationService;
-import org.example.footballmanager.service.old.DemoSimulationServiceNew;
+import org.example.footballmanager.old.oldService.DemoSimulationService;
+import org.example.footballmanager.old.oldService.DemoSimulationServiceNew;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.teams.TeamFactory;
 import org.springframework.http.ResponseEntity;

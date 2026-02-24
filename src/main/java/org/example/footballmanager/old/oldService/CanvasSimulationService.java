@@ -1,4 +1,4 @@
-package org.example.footballmanager.service.old;
+package org.example.footballmanager.old.oldService;
 
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.dto.*;

@@ -1,11 +1,11 @@
-package org.example.footballmanager.service.old;
+package org.example.footballmanager.old.oldService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.Match;
-import org.example.footballmanager.simulator.old.DemoMatchEngine;
-import org.example.footballmanager.simulator.old.MatchPlaybackEngine;
+import org.example.footballmanager.old.oldSimulator.DemoMatchEngine;
+import org.example.footballmanager.old.oldSimulator.MatchPlaybackEngine;
 import org.example.footballmanager.util.old.RuntimeToDB;
 import org.springframework.stereotype.Service;
 

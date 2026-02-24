@@ -11,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/demo")
-public class DemoForUIController {
+public class DummyDataController {
 
     // ==========================
     // TEAM
