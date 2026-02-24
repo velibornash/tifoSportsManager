@@ -2,20 +2,10 @@ package org.example.footballmanager;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.model.*;
-import org.example.footballmanager.model.tactics.Tactics;
-import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.MatchService;
-import org.example.footballmanager.util.PlayerFactory;
+import org.example.footballmanager.service.old.MatchService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-
-import java.awt.Desktop;
-import java.net.URI;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Component
 @RequiredArgsConstructor

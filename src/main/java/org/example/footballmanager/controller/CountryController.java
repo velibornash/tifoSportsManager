@@ -48,7 +48,6 @@ public class CountryController {
     public List<Competition> getLeagues(@PathVariable String isoCode) {
         return competitionRepository.findByCountryIsoCodeAndType(isoCode, CompetitionType.LEAGUE);
     }
-
     @GetMapping("/leagues/{leagueId}/teams")
     public List<Team> getTeams(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)
@@ -60,7 +59,6 @@ public class CountryController {
                 .filter(team -> team != null)  // sigurnosno, ako postoji null
                 .toList();
     }
-
     @GetMapping("/leagues/{leagueId}/table")
     public ResponseEntity<List<LeagueTableDto>> getLeagueTable(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)
@@ -96,7 +94,6 @@ public class CountryController {
 
         return ResponseEntity.ok(table);
     }
-
     @GetMapping("/leagues/{leagueId}/matches")
     public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)

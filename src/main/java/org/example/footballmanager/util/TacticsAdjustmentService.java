@@ -2,7 +2,7 @@ package org.example.footballmanager.util;
 
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.tactics.Tactics;
-import org.example.footballmanager.simulator.MatchContext;
+import org.example.footballmanager.util.match.MatchContext;
 import org.springframework.stereotype.Service;
 
 @Service

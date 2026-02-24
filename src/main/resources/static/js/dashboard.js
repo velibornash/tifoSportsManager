@@ -11,7 +11,7 @@ function loadDashboard() {
             </div>
         </div>
 
-        <div class="stats-grid">
+        <div class="stats-grid clickable" onclick="loadLeagueTable()">
             <div class="stat-item">
                 <div class="stat-value">1</div>
                 <div class="stat-label">Position</div>
@@ -196,7 +196,7 @@ async function loadRecentMatches() {
             const isLoss = match.homeGoals < match.awayGoals ? "loss" : "";
 
         html += `
-        <div class="match-row recent-match" onclick="loadMatch(${match.id})">
+        <div class="match-row recent-match" onclick="loadMatch(${match.id}, 'match')">
             <div class="match-date-small">${match.matchDate || "N/A"}</div>
             <div class="match-teams">
                 <span class="team-home">${match.homeTeam}</span>
@@ -262,7 +262,7 @@ async function loadRecentLeagueMatches() {
             }
 
             html += `
-            <div class="match-row recent-match" onclick="loadMatch(${match.id})">
+            <div class="match-row recent-match" onclick="loadMatch(${match.id}, 'leagueMatches')">
                 <div class="match-date-small">${match.matchDate || "N/A"}</div>
                 <div class="match-teams">
                     <span class="team-home">${match.homeTeam}</span>

@@ -41,18 +41,13 @@ public class PlayerController {
                 .orElseThrow(() -> new RuntimeException("Player not found"));
     }
 
-    @PostMapping
+    @PostMapping("/create")
     public Player createPlayer(@RequestBody Player player) {
         return playerRepository.save(player);
     }
 
     @GetMapping("/paged")
-    public Page<Player> getPlayersPaged(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "playerValue") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction
-    ) {
+    public Page<Player> getPlayersPaged(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size, @RequestParam(defaultValue = "playerValue") String sortBy, @RequestParam(defaultValue = "desc") String direction) {
         Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
         return playerRepository.findAll(pageable);

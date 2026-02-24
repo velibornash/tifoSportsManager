@@ -33,7 +33,7 @@ public class TeamController {
         return teamRepository.findAll();
     }
 
-    @PostMapping
+    @PostMapping("/create")
     public Team createTeam(@RequestBody Team team) {
         return teamRepository.save(team);
     }
@@ -47,7 +47,6 @@ public class TeamController {
                 .toList();
         return ResponseEntity.ok(players);
     }
-
 
     // Detalji jednog igrača
     @GetMapping("/{teamId}/players/{playerId}")
@@ -67,5 +66,4 @@ public class TeamController {
                 .toList();
         return ResponseEntity.ok(matches);
     }
-
 }

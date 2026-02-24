@@ -1,0 +1,19 @@
+package org.example.footballmanager.controller.old;
+
+import lombok.RequiredArgsConstructor;
+import org.example.footballmanager.service.old.CanvasSimulationService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+public class CanvasTestController {
+
+    private final CanvasSimulationService simulationService;
+
+    @GetMapping("/start-canvas-test")
+    public String start() {
+        simulationService.startCanvasTestSimulation();
+        return "Canvas simulation started!";
+    }
+}

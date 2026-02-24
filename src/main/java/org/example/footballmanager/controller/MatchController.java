@@ -2,16 +2,19 @@ package org.example.footballmanager.controller;
 
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.dto.*;
-import org.example.footballmanager.model.*;
-import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.DemoMatchRuntime;
-import org.example.footballmanager.service.DemoSimulationServiceNew;
+import org.example.footballmanager.dto.MatchDTO;
+import org.example.footballmanager.dto.MatchEventFlatDTO;
+import org.example.footballmanager.model.Lineup;
+import org.example.footballmanager.model.Match;
+import org.example.footballmanager.model.Player;
+import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.LineupRepository;
+import org.example.footballmanager.repository.MatchRepository;
+import org.example.footballmanager.repository.PlayerRepository;
+import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.MatchDetailService;
-import org.example.footballmanager.service.MatchService;
-import org.example.footballmanager.simulator.DemoMatchEngine;
-import org.example.footballmanager.simulator.MatchStatisticHandling;
-import org.example.footballmanager.util.PlayerFactory;
+import org.example.footballmanager.service.old.MatchService;
+import org.example.footballmanager.util.players.PlayerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @RestController

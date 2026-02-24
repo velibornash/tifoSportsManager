@@ -1,11 +1,12 @@
 package org.example.footballmanager.util;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.util.players.PlayerFactory;
+import org.example.footballmanager.util.teams.TeamFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;

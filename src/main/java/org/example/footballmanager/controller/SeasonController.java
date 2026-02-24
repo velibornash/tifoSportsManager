@@ -23,7 +23,7 @@ public class SeasonController {
         return seasonRepository.findAll();
     }
 
-    @PostMapping
+    @PostMapping("/create")
     public Season createSeason(@RequestBody Season season) {
         return seasonRepository.save(season);
     }
