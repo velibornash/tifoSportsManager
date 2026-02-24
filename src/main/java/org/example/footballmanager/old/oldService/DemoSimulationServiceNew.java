@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.old.oldSimulator.DemoMatchEngine;
-import org.example.footballmanager.old.oldSimulator.MatchPlaybackEngine;
+import org.example.footballmanager.old.oldSimulator.MatchPlaybackEngineOld;
 import org.example.footballmanager.util.old.RuntimeToDB;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 public class DemoSimulationServiceNew {
 
     private final DemoMatchEngine matchEngine;
-    private final MatchPlaybackEngine playbackEngine;
+    private final MatchPlaybackEngineOld playbackEngine;
     private final RuntimeToDB runtimeToDB;
 
     @Transactional

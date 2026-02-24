@@ -4,9 +4,9 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.Match;
-import org.example.footballmanager.simulator.MatchEngine;
-import org.example.footballmanager.simulator.MatchPlayback;
-import org.example.footballmanager.util.MatchRuntime;
+import org.example.footballmanager.engines.MatchEngine;
+import org.example.footballmanager.engines.MatchPlaybackEngine;
+import org.example.footballmanager.model.MatchRuntime;
 import org.example.footballmanager.util.RuntimeSaveToDB;
 import org.springframework.stereotype.Service;
 import java.util.concurrent.CompletableFuture;
@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 public class SimulationService {
 
     private final MatchEngine matchEngine;
-    private final MatchPlayback playbackEngine;
+    private final MatchPlaybackEngine playbackEngine;
     private final RuntimeSaveToDB runtimeToDB;
 
     @Transactional

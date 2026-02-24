@@ -1,11 +1,7 @@
-package org.example.footballmanager.util;
+package org.example.footballmanager.model;
 
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
-import org.example.footballmanager.model.Crowd;
-import org.example.footballmanager.model.Player;
-import org.example.footballmanager.model.Referee;
-import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.tactics.Tactics;

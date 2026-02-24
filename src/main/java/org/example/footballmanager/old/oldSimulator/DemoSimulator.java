@@ -20,7 +20,7 @@ import org.example.footballmanager.util.teams.TeamStrengthCalculator;
 import org.example.footballmanager.util.websocket.MatchEventWSHandler;
 import org.example.footballmanager.util.websocket.PositionWSHandler;
 import org.example.footballmanager.util.match.MatchRatingCalculator;
-import org.example.footballmanager.util.TacticsAdjustmentService;
+import org.example.footballmanager.service.TacticsAdjustmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.util.*;

@@ -1,4 +1,4 @@
-package org.example.footballmanager.util;
+package org.example.footballmanager.service;
 
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.tactics.Tactics;

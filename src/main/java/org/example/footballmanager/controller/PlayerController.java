@@ -3,7 +3,7 @@ package org.example.footballmanager.controller;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.repository.PlayerRepository;
-import org.example.footballmanager.service.PlayerMapper;
+import org.example.footballmanager.util.players.PlayerMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;

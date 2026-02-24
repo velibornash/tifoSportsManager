@@ -3,7 +3,7 @@ package org.example.footballmanager.service;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
-import org.example.footballmanager.util.MatchRuntime;
+import org.example.footballmanager.model.MatchRuntime;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;

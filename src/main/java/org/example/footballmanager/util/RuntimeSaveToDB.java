@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.engines.MatchStatisticEngine;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
@@ -19,7 +20,7 @@ import java.util.List;
 @Component
 public class RuntimeSaveToDB {
     private final PlayerRepository playerRepository;
-    private final MatchStatistic matchStatisticHandling;
+    private final MatchStatisticEngine matchStatisticEngineHandling;
     private final MatchRepository matchRepository;
     private final CompetitionRepository competitionRepository;
     private final SeasonRepository seasonRepository;
@@ -32,9 +33,9 @@ public class RuntimeSaveToDB {
     @Autowired
 
     private ObjectMapper objectMapper;
-    public RuntimeSaveToDB(PlayerRepository playerRepository, MatchStatistic matchStatisticHandling, MatchRepository matchRepository, CompetitionRepository competitionRepository, SeasonRepository seasonRepository, SeasonCompetitionRepository seasonCompetitionRepository, CompetitionEntryRepository competitionEntryRepository) {
+    public RuntimeSaveToDB(PlayerRepository playerRepository, MatchStatisticEngine matchStatisticEngineHandling, MatchRepository matchRepository, CompetitionRepository competitionRepository, SeasonRepository seasonRepository, SeasonCompetitionRepository seasonCompetitionRepository, CompetitionEntryRepository competitionEntryRepository) {
         this.playerRepository = playerRepository;
-        this.matchStatisticHandling = matchStatisticHandling;
+        this.matchStatisticEngineHandling = matchStatisticEngineHandling;
         this.matchRepository = matchRepository;
         this.competitionRepository = competitionRepository;
         this.seasonRepository = seasonRepository;
@@ -146,20 +147,20 @@ public class RuntimeSaveToDB {
         matchRepository.save(match); // 🔹 sigurni save
 
         // --- simulacija kartona/povreda ---
-        matchStatisticHandling.simulateInjuriesAndCards(homePlayers, match);
-        matchStatisticHandling.simulateInjuriesAndCards(awayPlayers, match);
+        matchStatisticEngineHandling.simulateInjuriesAndCards(homePlayers, match);
+        matchStatisticEngineHandling.simulateInjuriesAndCards(awayPlayers, match);
 
         // --- ocene igrača i stats ---
-        homePlayers = matchStatisticHandling.assignRatings(homePlayers, rt.runtimeGoals); // koristimo runtime, ne bazu
-        awayPlayers = matchStatisticHandling.assignRatings(awayPlayers, rt.runtimeGoals);
+        homePlayers = matchStatisticEngineHandling.assignRatings(homePlayers, rt.runtimeGoals); // koristimo runtime, ne bazu
+        awayPlayers = matchStatisticEngineHandling.assignRatings(awayPlayers, rt.runtimeGoals);
 
-        matchStatisticHandling.savePlayerStats(match, homePlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
+        matchStatisticEngineHandling.savePlayerStats(match, homePlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
                         .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
                 rt.runtimeEvents.stream()
                         .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
         );
 
-        matchStatisticHandling.savePlayerStats(match, awayPlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
+        matchStatisticEngineHandling.savePlayerStats(match, awayPlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
                         .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
                 rt.runtimeEvents.stream()
                         .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
@@ -168,7 +169,7 @@ public class RuntimeSaveToDB {
         // NOVO: snimi tick pozicije u bazu (samo jednom, na kraju)
         batchSaveTickPositions(match, rt);
         // --- za report odmah koristimo runtimeGoalove + runtimeEvente ---
-        System.out.println(matchStatisticHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
+        System.out.println(matchStatisticEngineHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
         updateLeagueTable(match, rt);
         return match;
     }

@@ -1,11 +1,11 @@
-package org.example.footballmanager.simulator;
+package org.example.footballmanager.engines;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
 import org.example.footballmanager.service.PlayerMovementDecisionService;
-import org.example.footballmanager.util.MatchRuntime;
+import org.example.footballmanager.model.MatchRuntime;
 import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.Random;
@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 @Component
 @Slf4j
 @RequiredArgsConstructor
-public class MatchPlayback {
+public class MatchPlaybackEngine {
 
     private static final int TICK_MS = 300;
 

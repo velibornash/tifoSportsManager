@@ -1,14 +1,10 @@
-package org.example.footballmanager.service;
+package org.example.footballmanager.util.players;
 
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
-import org.example.footballmanager.model.Training;
-import org.example.footballmanager.model.Transfer;
 import org.example.footballmanager.repository.TrainingRepository;
 import org.example.footballmanager.repository.TransferRepository;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
 
 @Service
 public class PlayerMapper {

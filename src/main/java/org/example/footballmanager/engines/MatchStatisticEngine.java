@@ -1,4 +1,4 @@
-package org.example.footballmanager.util;
+package org.example.footballmanager.engines;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class MatchStatistic {
+public class MatchStatisticEngine {
     private final Random random = new Random();
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final MatchRepository matchRepository;

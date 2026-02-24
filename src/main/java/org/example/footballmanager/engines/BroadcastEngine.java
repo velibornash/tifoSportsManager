@@ -1,9 +1,9 @@
-package org.example.footballmanager.simulator;
+package org.example.footballmanager.engines;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.GameStateDTO;
-import org.example.footballmanager.util.MatchRuntime;
+import org.example.footballmanager.model.MatchRuntime;
 import org.example.footballmanager.util.events.MatchEventMapper;
 import org.springframework.stereotype.Component;
 import java.util.ArrayList;

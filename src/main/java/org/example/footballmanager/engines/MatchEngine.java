@@ -1,4 +1,4 @@
-package org.example.footballmanager.simulator;
+package org.example.footballmanager.engines;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +10,7 @@ import org.example.footballmanager.model.event.MatchStartEvent;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.util.*;
+import org.example.footballmanager.service.TacticsAdjustmentService;
 import org.example.footballmanager.util.events.MatchEventFactory;
 import org.example.footballmanager.util.match.MatchContext;
 import org.example.footballmanager.util.players.PlayerFactory;
@@ -31,7 +31,7 @@ public class MatchEngine {
     private final MatchRepository matchRepository;
     private final Random random = new Random();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
-    private final MatchPlayback matchPlayback;
+    private final MatchPlaybackEngine matchPlaybackEngine;
     private final GameClockRepository gameClockRepository;
     private final CompetitionRepository competitionRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -172,7 +172,7 @@ public class MatchEngine {
     public MatchRuntime simulateFullMatch(Match match) {
 
         MatchRuntime rt = new MatchRuntime();
-        rt= matchPlayback.initializeRuntimeAndPositions(rt);
+        rt= matchPlaybackEngine.initializeRuntimeAndPositions(rt);
         rt.homePlayers = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
         rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
 

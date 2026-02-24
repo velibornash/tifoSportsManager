@@ -15,7 +15,7 @@ import org.example.footballmanager.old.oldService.DemoMatchRuntime;
 import org.example.footballmanager.util.match.MatchContext;
 import org.example.footballmanager.util.events.MatchEventFactory;
 import org.example.footballmanager.util.teams.TeamStrengthCalculator;
-import org.example.footballmanager.util.TacticsAdjustmentService;
+import org.example.footballmanager.service.TacticsAdjustmentService;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -31,7 +31,7 @@ public class DemoMatchEngine {
     private final Random random = new Random();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final Map<Long, DemoMatchRuntime> runtimes = new ConcurrentHashMap<>();
-    private final MatchPlaybackEngine matchPlaybackEngine;
+    private final MatchPlaybackEngineOld matchPlaybackEngineOld;
     public Match loadAndValidateMatch(long matchId)
     {return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));}
     public boolean startSimulationOnlyIfNotRunning(long matchId) {
@@ -64,7 +64,7 @@ public class DemoMatchEngine {
     public DemoMatchRuntime simulateFullMatch(Match match) {
 
         DemoMatchRuntime rt = new DemoMatchRuntime();
-        rt=matchPlaybackEngine.initializeRuntimeAndPositions(rt);
+        rt= matchPlaybackEngineOld.initializeRuntimeAndPositions(rt);
         rt.homePlayers = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
         rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
 

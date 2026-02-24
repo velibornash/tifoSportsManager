@@ -145,6 +145,7 @@
         const player = await response.json();
         const filename = getImageFilename(player.name);
         mainContent.innerHTML = `
+                    <button class="back-to-dashboard" onclick="loadPage('firstTeam')">⬅ Back to Team</button>
             <div class="player-detail-card">
                 <div class="player-detail-image">
                     <img src="/images/${filename}.jpg"
@@ -166,7 +167,6 @@
                 <div><span>Overall:</span> ${player.overall}</div>
                 <div><span>Total Goals:</span> ${player.totalGoals}</div>
             </div>
-            <button onclick="loadPage('firstTeam')">⬅ Back to Team</button>
         </div>
     </div>`;
 
@@ -568,7 +568,7 @@
             if (!response.ok) {
                 const text = await response.text();
                 console.error(`Greška ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button onclick="loadPage('fixtures')">⬅ Back to Fixtures</button></div>`;
+                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" onclick="loadPage('fixtures')">⬅ Back to Fixtures</button></div>`;
                 return;
             }
 
@@ -613,7 +613,7 @@
                 </div>
 
                 <div style="text-align:center;">
-                    <button onclick="loadPage('fixtures')" style="padding:12px 28px; background:#2a8c4a; color:white; border:none; border-radius:10px; font-weight:bold; font-size:1.1em; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                    <button class="back-to-dashboard" onclick="loadPage('fixtures')">
                         ← Back to Fixtures
                     </button>
                 </div>

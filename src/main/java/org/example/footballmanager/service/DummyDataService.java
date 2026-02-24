@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class DemoForUIService {
+public class DummyDataService {
 
     // --- FORMATIONS ---
     public List<FormationDto> getFormations() {

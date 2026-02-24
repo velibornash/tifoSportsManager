@@ -6,14 +6,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.SimulationService;
-import org.example.footballmanager.simulator.MatchEngine;
-import org.example.footballmanager.util.MatchStatistic;
+import org.example.footballmanager.engines.MatchEngine;
+import org.example.footballmanager.engines.MatchStatisticEngine;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -24,7 +23,7 @@ public class SimulationController {
     private final SeasonRepository seasonRepository;
     private final SimulationService simulationService;
     private final MatchEngine matchEngine;
-    private final MatchStatistic matchStatistic;
+    private final MatchStatisticEngine matchStatisticEngine;
 
     @SneakyThrows
     @GetMapping("/start-demo")
@@ -52,7 +51,7 @@ public class SimulationController {
                     log.info("Demo simulacija završena za meč ID: {}", demoMatch.getId());
 
                     // 4. Ažuriraj tabelu za ceo dan (svih 5 mečeva)
-                    matchStatistic.updateLeagueTableForMatchDay(superLiga, currentSeason);
+                    matchStatisticEngine.updateLeagueTableForMatchDay(superLiga, currentSeason);
                 })
                 .exceptionally(throwable -> {
                     log.error("Greška u demo simulaciji meča {}", demoMatch.getId(), throwable);
