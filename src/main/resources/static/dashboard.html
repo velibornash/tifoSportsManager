@@ -24,9 +24,12 @@
     <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
     <div id="live-clock" class="desktop-only live-clock">
-        <strong id="clock-time">Učitavanje...</strong>
+        <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>
         <small id="clock-phase"></small>
+    </div>
+    <div class="desktop-only logo-corner">
+        <img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo">
     </div>
 
         <!-- Mobile hamburger -->
@@ -97,10 +100,13 @@
             </div>
         </div>
 
-        <!-- Mobilni varijanta – možeš staviti u sidebar ili gore -->
         <div id="live-clock-mobile" class="mobile-accordion" style="padding:12px; background:#1e2e1e; border-radius:8px; text-align:center; margin:10px 0;">
-            <strong id="clock-time-m">Učitavanje...</strong><br>
+            <strong id="clock-time-m">Loading...</strong><br>
             <small id="clock-date-m"></small>
+        </div>
+
+        <div class="mobile-accordion">
+            <img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo">
         </div>
     </div>
 </div>

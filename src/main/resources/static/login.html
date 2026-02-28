@@ -2,26 +2,47 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login - Omladinac Manager</title>
+    <title>Login - Tifo Football Manager</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/css/login.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<div class="background"></div>
+<div class="background">
+</div>
+
+<div class="logo-corner">
+    <img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo">
+</div>
 
 <div class="login-wrapper">
-    <div class="login-card">
-        <img src="/images/omladinac.png" alt="Logo" class="login-logo">
+    <div class="login-card glass">
+        <h1 class="title">Tifo Football Manager</h1>
 
-        <h1>Omladinac Manager</h1>
-        <p class="subtitle">Sign in to your club</p>
+        <p class="invite">
+            Welcome to the place where tactics are<br>
+            made in tavern with beer in your hand.<br>
+            <strong>Are you that coach?</strong><br>
+        </p>
 
         <form id="loginForm">
-            <input type="email" placeholder="Email" name="email" required value="test@primer.rs">
-            <input type="password" placeholder="Password" name="password" required value="A12345!">
-            <button id="loginBtn" type="submit">Login</button>
+            <div class="input-group">
+                <input type="email" placeholder="Email" name="email" required value="test@primer.rs">
+                <label>Email</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder="Password" name="password" required value="A12345!">
+                <label>Password</label>
+            </div>
+            <button id="loginBtn" type="submit">Enter Tifo</button>
         </form>
+<!--
+        <p class="register-link">
+            Nemaš klub? <a href="/register">Osnuj ga ovde</a> – bićeš prvi u istoriji.
+        </p>-->
     </div>
 </div>
 
