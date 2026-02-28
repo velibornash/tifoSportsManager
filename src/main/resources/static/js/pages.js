@@ -145,29 +145,33 @@
         const player = await response.json();
         const filename = getImageFilename(player.name);
         mainContent.innerHTML = `
-                    <button class="back-to-dashboard" onclick="loadPage('firstTeam')">⬅ Back to Team</button>
-            <div class="player-detail-card">
-                <div class="player-detail-image">
-                    <img src="/images/${filename}.jpg"
-                         onerror="this.onerror=null;this.src='/images/player.jpg'">
+
+                <div class="player-card-wrapper">
+                    <div class="player-card">
+                    <button onclick="loadPage('firstTeam')">⬅ Back to Team</button>
+                        <div class="card-header">
+                            <div class="overall-rating">${player.overall}</div>
+                            <div class="position">${player.position}</div>
+                        </div>
+                        <div class="player-image">
+                            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'" alt="${player.name}">
+                        </div>
+                        <div class="player-name">${player.name}</div>
+                        <div class="player-stats">
+                            <div class="stat"><span>Age</span><span>${player.age}</span></div>
+                            <div class="stat"><span>Stamina</span><span>${player.stamina}</span></div>
+                            <div class="stat"><span>Goalkeeper</span><span>${player.goalkeeper}</span></div>
+                            <div class="stat"><span>Pace</span><span>${player.pace}</span></div>
+                            <div class="stat"><span>Defending</span><span>${player.defending}</span></div>
+                            <div class="stat"><span>Technique</span><span>${player.technique}</span></div>
+                            <div class="stat"><span>Playmaker</span><span>${player.playmaker}</span></div>
+                            <div class="stat"><span>Passing</span><span>${player.passing}</span></div>
+                            <div class="stat"><span>Shooting</span><span>${player.shooting}</span></div>
+                            <div class="stat"><span>Total Goals</span><span>${player.totalGoals}</span></div>
+                        </div>
+                    </div>
                 </div>
-        <div class="player-detail-info">
-            <h2>${player.name}</h2>
-            <div class="player-detail-stats">
-                <div><span>Age:</span> ${player.age}</div>
-                <div><span>Position:</span> ${player.position}</div>
-                <div><span>Stamina:</span> ${player.stamina}</div>
-                <div><span>Goalkeeper:</span> ${player.goalkeeper}</div>
-                <div><span>Pace:</span> ${player.pace}</div>
-                <div><span>Defending:</span> ${player.defending}</div>
-                <div><span>Technique:</span> ${player.technique}</div>
-                <div><span>Playmaker:</span> ${player.playmaker}</div>
-                <div><span>Passing:</span> ${player.passing}</div>
-                <div><span>Shooting:</span> ${player.shooting}</div>
-                <div><span>Overall:</span> ${player.overall}</div>
-                <div><span>Total Goals:</span> ${player.totalGoals}</div>
-            </div>
-        </div>
+
     </div>`;
 
     }
