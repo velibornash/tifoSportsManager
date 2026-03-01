@@ -1,16 +1,42 @@
 // canvasRenderer.js
 let canvas, ctx;
+let animationFrameId = null; // globalno za cleanup
 const FIELD = { offsetX: 50, offsetY: 50, width: 800, height: 400 };
 const MOVE_DURATION = 320;
 
 let players = {};
 let ball = { x:50,y:50,startX:50,startY:50,targetX:50,targetY:50,moveStartTime:performance.now() };
+let currentMinute = 0;
 
 export function initCanvas() {
     canvas = document.getElementById('pitch');
+    if (!canvas) {
+        console.error("Canvas #pitch nije pronađen!");
+        return;
+    }
     ctx = canvas.getContext('2d');
-    requestAnimationFrame(loop);
+    console.log("Canvas inicijalizovan – pokrećem loop");
+    loop(); // START ANIMACIJE ODMAH
 }
+
+function loop(){
+    updatePositions();
+    drawField();
+    drawPlayers();
+    drawBall();
+    drawClock(currentMinute);
+    animationFrameId = requestAnimationFrame(loop);
+}
+
+export function stopCanvasLoop() {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+        console.log("Canvas loop zaustavljen");
+    }
+}
+
+export function setCurrentMinute(min) { currentMinute = min; }
 
 export function updatePositionsData(data) {
     (data.players || []).forEach(p => {
@@ -112,14 +138,6 @@ function drawClock(currentMinute){
     ctx.fillText(`Minute: ${currentMinute}`, 20, 35);
 }
 
-let currentMinute = 0;
-export function setCurrentMinute(min){ currentMinute = min; }
 
-function loop(){
-    updatePositions();
-    drawField();
-    drawPlayers();
-    drawBall();
-    drawClock(currentMinute);
-    requestAnimationFrame(loop);
-}
+
+

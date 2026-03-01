@@ -65,11 +65,6 @@ function loadDashboard() {
             </div>
         </div>
 
-        <div class="quick-stats">
-            <div>Form: <span class="form-good">W W D L W</span></div>
-            <div>Top Scorer: LJ. Ozegovic — 11 goals</div>
-        </div>
-
         <div class="dashboard-actions">
     <button onclick="startDemoTest()">Pokreni odigravanje narednog kola</button>
     <button onclick="initializeDatabase()">Popuni bazu timovima</button>

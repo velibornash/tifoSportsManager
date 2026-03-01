@@ -1,20 +1,23 @@
 package org.example.footballmanager.util.events;
 
+import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.*;
+import org.example.footballmanager.repository.PlayerRepository;
 import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 
 @Component
+@RequiredArgsConstructor
 public class EventCreator {
 
     private static final Random random = new Random();
-
+    private final PlayerRepository playerRepository;
     public static MatchEvent createEventByRoll(double roll, org.example.footballmanager.model.Match match, Team team, List<Player> players, int minute) {
 
         if (roll < 0.09) { // 9% šansa za gol
@@ -153,7 +156,7 @@ public class EventCreator {
         }
     }
 
-    public GoalEvent createRandomGoalEvent(Match match, Team scoringTeam, List<Player> scoringPlayers, List<Player> opponentPlayers, Random rnd) {
+    public GoalEvent createRandomGoalEventForSimulateMatch(Match match, Team scoringTeam, List<Player> scoringPlayers, List<Player> opponentPlayers, Random rnd) {
         // Izaberi strelca (favorizuj napadače)
         List<Player> attackers = scoringPlayers.stream()
                 .filter(p -> p.getPosition() == Position.ATT || p.getPosition() == Position.MID || p.getPosition() == Position.WNG)
@@ -168,6 +171,8 @@ public class EventCreator {
         goal.setTeam(scoringTeam);
         goal.setScorer(scorer);
         goal.setMinute(rnd.nextInt(90) + 1);
+        scorer.setTotalGoals(scorer.getTotalGoals() + 1);
+        playerRepository.save(scorer);
 
         // 60% šanse da postoji asistent
         if (rnd.nextDouble() < 0.6) {
@@ -178,10 +183,11 @@ public class EventCreator {
             if (!possibleAssistants.isEmpty()) {
                 Player assistant = possibleAssistants.get(rnd.nextInt(possibleAssistants.size()));
                 goal.setAssistant(assistant);
+                assistant.setTotalAssists(assistant.getTotalAssists() + 1);
+                playerRepository.save(assistant);
             }
         }
 
         return goal;
     }
-
 }

@@ -101,7 +101,7 @@
                     break;
 
                 case "topScorers":
-                    await loadTopScorers();
+                    await loadTopScorersAndAssists();
                     break;
 
                 case "analytics":
@@ -633,8 +633,7 @@
         renderMatches(matches, "Friendlies");
     }
     async function loadLeagueTable() {
-        // Za sada hardkodujemo ID lige 1 (Superliga) – kasnije možeš dodati izbor
-        const leagueId = 1; // ili prosledi parametar iz URL-a ili dropdown-a
+        const leagueId = 1; // Superliga – kasnije možeš proslediti iz URL-a ili dropdown-a
 
         try {
             const response = await fetch(`/countries/leagues/${leagueId}/table`);
@@ -644,7 +643,7 @@
             const table = await response.json();
             renderTable(table);
         } catch (err) {
-            console.error("Greška pri učitavanju tabele:", err);
+            console.error("Greška pri učitavanju tabele lige:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
                     <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back</button>
@@ -831,45 +830,110 @@
         </div>`;
         mainContent.innerHTML = html;
     }
-    async function loadTopScorers() {
-        const response = await fetch("/demo/stats/leagues/1/topscorers");
-        const scorers = await response.json();
+    async function loadTopScorersAndAssists() {
+        try {
+            const scorersRes = await fetch('/stats/leagues/1/topscorers');
+            const scorers = await scorersRes.json();
 
-        const mainContent = document.getElementById("main-content");
+            const assistsRes = await fetch('/stats/leagues/1/topassists');
+            const assists = await assistsRes.json();
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Top Scorers</h2>`;
+            const mainContent = document.getElementById("main-content");
 
-        scorers.forEach((s, i) => {
-            html += `
-                <div class="match-row">
-                    <span>${i+1}. ${s.name}</span>
-                    <span class="score">${s.goals}</span>
+            let html = `
+            <div class="manager-card" style="padding: 25px;">
+                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Statistika lige – Top liste</h2>
+
+                <div class="top-lists" style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
+
+                    <!-- Top Strelci -->
+                    <div class="top-scorers" style="min-width: 340px; flex: 1;">
+                        <h3 style="text-align: center; color: #ffd700; margin-bottom: 15px;">⚽ Top Strelci</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">`;
+
+            scorers.forEach((s, i) => {
+                const rankColor = i < 3 ? '#ffd700' : '#aaa'; // zlatno za top 3
+                const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)'; // zebra
+                html += `
+                    <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
+                               transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
+                        <span style="flex: 1; text-align: left; padding-left: 10px;">
+                            ${s.playerName} <small style="color: #888;">(${s.teamName})</small>
+                        </span>
+                        <span style="font-weight: bold; color: #ff7582; min-width: 60px; text-align: right;">
+                            ${s.goals} ⚽
+                        </span>
+                    </li>`;
+            });
+
+            html += `</ul></div>
+
+                    <!-- Top Asistenti -->
+                    <div class="top-assists" style="min-width: 340px; flex: 1;">
+                        <h3 style="text-align: center; color: #9d4edd; margin-bottom: 15px;">🅰 Top Asistenti</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">`;
+
+            assists.forEach((a, i) => {
+                const rankColor = i < 3 ? '#9d4edd' : '#aaa';
+                const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
+                html += `
+                    <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
+                               transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
+                        <span style="flex: 1; text-align: left; padding-left: 10px;">
+                            ${a.playerName} <small style="color: #888;">(${a.teamName})</small>
+                        </span>
+                        <span style="font-weight: bold; color: #4fc3f7; min-width: 60px; text-align: right;">
+                            ${a.assists} 🅰
+                        </span>
+                    </li>`;
+            });
+
+            html += `</ul></div></div></div>`;
+
+            mainContent.innerHTML = html;
+
+            // Dodatni hover efekat (možeš i CSS-om, ali ovde inline za brzinu)
+            document.querySelectorAll('.top-lists li').forEach(li => {
+                li.addEventListener('mouseenter', () => {
+                    li.style.background = 'rgba(157, 78, 221, 0.15)'; // ljubičasto hover
+                    li.style.transform = 'translateX(5px)';
+                });
+                li.addEventListener('mouseleave', () => {
+                    li.style.background = li.style.background.includes('0.05') ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
+                    li.style.transform = 'translateX(0)';
+                });
+            });
+
+        } catch (err) {
+            console.error("Greška pri učitavanju top lista:", err);
+            document.getElementById("main-content").innerHTML = `
+                <div class="manager-card">
+                    <button onclick="loadDashboard()">⬅ Back</button>
+                    <h2>Greška</h2>
+                    <p>Ne mogu da učitam top liste. Proveri konekciju ili backend.</p>
                 </div>`;
-        });
-
-        html += `</div>`;
-        mainContent.innerHTML = html;
+        }
     }
     async function loadAnalytics() {
-        const response = await fetch("/demo/analytics/teams/1");
-        const data = await response.json();
+            const response = await fetch("/demo/analytics/teams/1");
+            const data = await response.json();
 
-        const mainContent = document.getElementById("main-content");
+            const mainContent = document.getElementById("main-content");
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Analytics</h2>
-            <p>xG: ${data.xg}</p>
-            <p>xGA: ${data.xga}</p>
-            <p>Pressing Index: ${data.pressing}</p>
-            <p>Form Rating: ${data.form}</p>
-        </div>`;
-        mainContent.innerHTML = html;
-    }
+            let html = `
+            <div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <h2>Analytics</h2>
+                <p>xG: ${data.xg}</p>
+                <p>xGA: ${data.xga}</p>
+                <p>Pressing Index: ${data.pressing}</p>
+                <p>Form Rating: ${data.form}</p>
+            </div>`;
+            mainContent.innerHTML = html;
+        }
     function renderPlayers(players, title) {
         const mainContent = document.getElementById("main-content");
 
@@ -950,33 +1014,83 @@
         const mainContent = document.getElementById("main-content");
 
         let html = `
-        <div class="manager-card">
+        <div class="manager-card" style="padding: 25px;">
             <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>League Table</h2>
-            <table class="league-table">
-                <tr>
-                    <th>#</th>
-                    <th>Team</th>
-                    <th>Pts</th>
-                    <th>GS</th>
-                    <th>GC</th>
-                    <th>GD</th>
-                </tr>`;
+            <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Superliga – Tabela</h2>
 
-        table.forEach((team, index) => {
+            <div style="overflow-x: auto;">
+                <table class="league-table" style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+                    <thead>
+                        <tr style="background: rgba(157, 78, 221, 0.25); color: #fff;">
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">#</th>
+                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #555;">Tim</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">Pts</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GS</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GC</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GD</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        table.forEach((team, i) => {
+            const rank = i + 1;
+            let rankStyle = '';
+            let rankIcon = '';
+
+            if (rank === 1) {
+                rankStyle = 'color: #ffd700; font-weight: bold;';
+                rankIcon = '🏆 ';
+            } else if (rank === 2) {
+                rankStyle = 'color: #c0c0c0; font-weight: bold;';
+                rankIcon = '🥈 ';
+            } else if (rank === 3) {
+                rankStyle = 'color: #cd7f32; font-weight: bold;';
+                rankIcon = '🥉 ';
+            } else {
+                rankStyle = 'color: #aaa;';
+            }
+
+            const rowBg = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.08)';
+            const gdColor = team.goalDifference > 0 ? '#4caf50' : team.goalDifference < 0 ? '#f44336' : '#aaa';
+
             html += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${team.name}</td>
-                <td>${team.points}</td>
-                <td>${team.goalsScored}</td>
-                <td>${team.goalsConceded}</td>
-                <td>${team.goalDifference}</td>
-            </tr>`;
+                <tr style="background: ${rowBg}; transition: all 0.2s;">
+                    <td style="padding: 12px; text-align: center; ${rankStyle}">${rankIcon}${rank}</td>
+                    <td style="padding: 12px; font-weight: 600;">${team.name}</td>
+                    <td style="padding: 12px; text-align: center; font-weight: bold; color: #ffd700;">${team.points}</td>
+                    <td style="padding: 12px; text-align: center;">${team.goalsScored}</td>
+                    <td style="padding: 12px; text-align: center;">${team.goalsConceded}</td>
+                    <td style="padding: 12px; text-align: center; color: ${gdColor}; font-weight: bold;">
+                        ${team.goalDifference > 0 ? '+' : ''}${team.goalDifference}
+                    </td>
+                </tr>`;
         });
 
-        html += `</table></div>`;
+        html += `
+                    </tbody>
+                </table>
+            </div>
+
+            <p style="text-align: center; color: #888; margin-top: 20px; font-size: 0.9rem;">
+                Poslednje ažuriranje: ${new Date().toLocaleString('sr-RS')}
+            </p>
+        </div>`;
+
         mainContent.innerHTML = html;
+
+        // Hover efekat na redovima
+        document.querySelectorAll('.league-table tr').forEach(row => {
+            if (!row.querySelector('th')) { // preskoči header
+                row.addEventListener('mouseenter', () => {
+                    row.style.background = 'rgba(157, 78, 221, 0.15) !important';
+                    row.style.transform = 'scale(1.01)';
+                });
+                row.addEventListener('mouseleave', () => {
+                    row.style.background = row.style.background.includes('0.03') ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.08)';
+                    row.style.transform = 'scale(1)';
+                });
+            }
+        });
     }
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu

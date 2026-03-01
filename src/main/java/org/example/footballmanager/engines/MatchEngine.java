@@ -291,7 +291,6 @@ public class MatchEngine {
 
         log.info("Kolo završeno – pozicije ažurirane za ligu {}", league.getName());
     }
-
     private void processSpecialEvents(MatchEvent event, MatchRuntime rt, Match match) {
 
         if (event instanceof GoalEvent goal) {
@@ -337,7 +336,6 @@ public class MatchEngine {
         Team home = simulatedMatch.getHomeTeam();
         Team away = simulatedMatch.getAwayTeam();
 
-        // Dohvati igrače (pretpostavljam da imaš metode ili da ih učitaš)
         List<Player> homePlayers = playerRepository.findByTeam(home);
         List<Player> awayPlayers = playerRepository.findByTeam(away);
 
@@ -345,9 +343,7 @@ public class MatchEngine {
             log.warn("Nema igrača za generisanje eventa – tim: {}", home.getName());
             return;
         }
-
         Random rnd = new Random();
-
         int remainingHomeGoals = homeGoals;
         int remainingAwayGoals = awayGoals;
         int lastMinute = 0;
@@ -366,7 +362,7 @@ public class MatchEngine {
             List<Player> scoringPlayers = isHomeGoal ? homePlayers : awayPlayers;
             List<Player> opponentPlayers = isHomeGoal ? awayPlayers : homePlayers;
 
-            GoalEvent goal = eventCreator.createRandomGoalEvent(simulatedMatch, scoringTeam, scoringPlayers, opponentPlayers, rnd);
+            GoalEvent goal = eventCreator.createRandomGoalEventForSimulateMatch(simulatedMatch, scoringTeam, scoringPlayers, opponentPlayers, rnd);
 
             if (goal != null) {
                 int remainingGoals = remainingHomeGoals + remainingAwayGoals - 1; // -1 jer ovaj gol već ide
@@ -378,7 +374,6 @@ public class MatchEngine {
 
                 int minute = rnd.nextInt(minMinute, maxMinute + 1); // bound exclusive → +1
                 goal.setMinute(minute);
-
                 goal.setMatch(simulatedMatch);
                 // Smanji brojač preostalih golova
                 if (isHomeGoal) {

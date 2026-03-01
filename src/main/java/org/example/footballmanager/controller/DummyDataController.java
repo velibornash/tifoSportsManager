@@ -1,10 +1,10 @@
 package org.example.footballmanager.controller;
 
 import lombok.*;
+import org.example.footballmanager.dto.TopScorerDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -157,21 +157,12 @@ public class DummyDataController {
         return new TeamStatsDto(30, 12, 57, 15);
     }
 
-    @GetMapping("/stats/leagues/1/topscorers")
-    public List<TopScorerDto> getTopScorers() {
-        List<TopScorerDto> list = new ArrayList<>();
-        list.add(new TopScorerDto("Ljupče Ožegović", 11));
-        list.add(new TopScorerDto("Žika Veljković", 10));
-        list.add(new TopScorerDto("Borislav Negovanović", 8));
-        return list;
-    }
-
     @GetMapping("/stats/teams/1/players")
-    public List<TopScorerDto> getPlayerStats() {
-        List<TopScorerDto> list = new ArrayList<>();
-        list.add(new TopScorerDto("Šumenko Dabić", 12));
-        list.add(new TopScorerDto("Žika Veljković", 10));
-        list.add(new TopScorerDto("Borislav Negovanović", 8));
+    public List<TopScorerDTO> getPlayerStats() {
+        List<TopScorerDTO> list = new ArrayList<>();
+        list.add(new TopScorerDTO("Šumenko Dabić", 12, "Omladinac"));
+        list.add(new TopScorerDTO("Žika Veljković", 10, "Omladinac"));
+        list.add(new TopScorerDTO("Borislav Negovanović", 8,"Omladinac"));
         return list;
     }
 
@@ -268,12 +259,6 @@ public class DummyDataController {
         private final int conceded;
         private final int possession;
         private final int shots;
-    }
-
-    @Getter @Setter @RequiredArgsConstructor
-    public static class TopScorerDto {
-        private final String name;
-        private final int goals;
     }
 
     @Getter @Setter @RequiredArgsConstructor

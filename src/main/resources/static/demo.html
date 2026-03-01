@@ -20,20 +20,29 @@
     </div>
 </div>
 
-<button onclick="window.location.href='/dashboard.html'">⏪ Nazad</button>
+<button onclick="cleanupAndGoBack()">⏪ Nazad</button>
 
 <script type="module">
     import { initCanvas } from './js/demo/canvasRenderer.js';
     import { initSockets } from './js/demo/sockets.js';
     import { initEventProcessor } from './js/demo/eventProcessor.js';
     import { initScoreboard } from './js/demo/scoreboard.js';
+    import { cleanupDemo } from './js/demo/demoCleanup.js'; // ← dodaj import
 
     document.addEventListener("DOMContentLoaded", ()=>{
-        initCanvas();
+        initCanvas();         // ovo POKREĆE loop
         initScoreboard();
         initEventProcessor();
-        initSockets();
+        initSockets();        // ovo otvara WS-ove
     });
+
+    window.cleanupAndGoBack = function() {
+        cleanupDemo();
+        window.location.href = '/dashboard.html';
+    };
+
+    // Dodatna sigurnost: cleanup na zatvaranje taba/refresh
+    window.addEventListener('beforeunload', cleanupDemo);
 </script>
 
 </body>

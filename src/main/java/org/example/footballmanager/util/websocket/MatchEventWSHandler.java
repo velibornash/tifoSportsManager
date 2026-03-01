@@ -17,29 +17,50 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
 public class MatchEventWSHandler extends TextWebSocketHandler {
+
     private final Map<Long, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
     public MatchEventWSHandler(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
-    @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
-        Long matchId = getMatchId(session);
-        sessions
-                .computeIfAbsent(matchId, id -> ConcurrentHashMap.newKeySet())
-                .add(session);
 
-        log.info("Nova WS sesija {} za match {}", session.getId(), matchId);
-    }
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.values().forEach(set -> set.remove(session));
-        log.info("Sesija zatvorena: {}", session.getId());
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        Long matchId = getMatchId(session);
+        if (matchId == null || matchId <= 0) {
+            log.warn("Nevalidan matchId u URL-u – zatvaram sesiju {}", session.getId());
+            session.close(CloseStatus.BAD_DATA);
+            return;
+        }
+
+        sessions.computeIfAbsent(matchId, id -> ConcurrentHashMap.newKeySet()).add(session);
+        log.info("Nova WS sesija {} za match {} – aktivnih sesija: {}",
+                session.getId(), matchId, sessions.get(matchId).size());
     }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        Long matchId = getMatchId(session);
+        if (matchId != null) {
+            Set<WebSocketSession> matchSessions = sessions.get(matchId);
+            if (matchSessions != null) {
+                matchSessions.remove(session);
+                if (matchSessions.isEmpty()) {
+                    sessions.remove(matchId);
+                    log.info("Poslednja sesija zatvorena za match {} – mapa uklonjena", matchId);
+                }
+            }
+        }
+        log.info("Sesija zatvorena: {} (status: {})", session.getId(), status);
+    }
+
     public void broadcast(Long matchId, Object event) {
         Set<WebSocketSession> matchSessions = sessions.get(matchId);
-        if (matchSessions == null) return;
+        if (matchSessions == null || matchSessions.isEmpty()) {
+            // log.debug("Nema aktivnih sesija za match {} – preskačem broadcast eventa", matchId);
+            return;
+        }
 
         try {
             String json = objectMapper.writeValueAsString(event);
@@ -55,24 +76,38 @@ public class MatchEventWSHandler extends TextWebSocketHandler {
                         iterator.remove();
                     }
                 } catch (IOException e) {
-                    log.warn("Uklanjam neaktivnu sesiju {}", s.getId());
+                    log.warn("Uklanjam neaktivnu sesiju {} za match {}", s.getId(), matchId);
                     iterator.remove();
                 }
             }
 
+            if (matchSessions.isEmpty()) {
+                sessions.remove(matchId);
+            }
+
         } catch (Exception e) {
-            log.error("Broadcast error", e);
+            log.error("Broadcast error za match {}", matchId, e);
         }
     }
+
+    public boolean hasActiveSessions(Long matchId) {
+        Set<WebSocketSession> matchSessions = sessions.get(matchId);
+        return matchSessions != null && !matchSessions.isEmpty();
+    }
+
     private Long getMatchId(WebSocketSession session) {
-        String query = session.getUri().getQuery(); // matchId=5
-        if (query == null) return -1L;
+        String query = session.getUri() != null ? session.getUri().getQuery() : null;
+        if (query == null) return null;
 
         for (String param : query.split("&")) {
             if (param.startsWith("matchId=")) {
-                return Long.parseLong(param.split("=")[1]);
+                try {
+                    return Long.parseLong(param.split("=")[1]);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
             }
         }
-        return -1L;
+        return null;
     }
 }

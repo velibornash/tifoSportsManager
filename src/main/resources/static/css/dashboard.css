@@ -1118,3 +1118,22 @@ recent-match:hover .result-badge {
         border-width: 2px;
     }
 }
+.league-table tr {
+    transition: all 0.2s ease;
+}
+
+.league-table tr:hover {
+    background: rgba(157, 78, 221, 0.15) !important;
+    transform: scale(1.01);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.league-table th {
+    background: rgba(157, 78, 221, 0.25);
+    color: #fff;
+    font-weight: bold;
+}
+
+.league-table td {
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}

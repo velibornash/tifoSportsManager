@@ -38,6 +38,10 @@ export function enqueueEvent(ev){
 }
 
 function processNext(){
+    if (!document.getElementById('pitch')) { // stranica više nije aktivna
+            console.log("Stranica zatvorena – prekidam event processing");
+            return;
+        }
     if(isProcessing || eventQueue.length===0) return;
     isProcessing=true;
 

@@ -38,6 +38,12 @@ public class MatchPlaybackEngine {
         return runtime;
     }
     public void startPlayback(long matchId, MatchRuntime rt) {
+        // Proveri da li ima ikoga pre pokretanja
+/*        if (!broadcastEngine.positionWsHandler.hasActiveSessions(matchId) &&
+                !broadcastEngine.eventWsHandler.hasActiveSessions(matchId)) {
+            log.info("Nema gledalaca za match {} – ne pokrećem playback", matchId);
+            return;
+        }*/
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
         scheduler.scheduleAtFixedRate(() -> {
