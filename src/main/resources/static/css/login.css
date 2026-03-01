@@ -171,3 +171,64 @@ button:hover {
     text-decoration: underline;
     color: #e94560;
 }
+
+@media (max-width: 767px) {
+    .logo-corner {
+        top: 16px;
+        left: 16px;
+        right: auto;
+    }
+
+    .corner-logo {
+        width: 80px;
+        border-width: 3px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+    }
+
+    .corner-logo:hover {
+        transform: scale(1.08) rotate(6deg);
+        box-shadow: 0 14px 40px rgba(138, 43, 226, 0.35);
+    }
+
+     .login-card {
+        padding: 32px 20px;
+     }
+}
+
+   ────────────────────────────────────────────── */
+@media (max-width: 400px) {
+    .corner-logo {
+        width: 56px;
+    }
+
+    .login-card {
+        padding: 42px 24px;
+    }
+
+    .title {
+        font-size: 2.7rem;
+    }
+}
+
+@media (min-width: 400px) and (max-width: 767px) {
+    .corner-logo {
+        width: 100px;
+        border-width: 4px;
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.7);
+    }
+
+    .logo-corner {
+        top: 24px;
+        left: 24px;
+    }
+
+    .login-wrapper {
+       padding-top: 40px;
+    }
+    .title {
+       font-size: 3.1rem;
+    }
+    .login-card {
+       padding: 42px 24px;
+    }
+}

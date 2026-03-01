@@ -1051,3 +1051,70 @@ recent-match:hover .result-badge {
     transform: scale(1.12) rotate(8deg);
     box-shadow: 0 20px 60px rgba(138, 43, 226, 0.4);
 }
+.menu-button.mobile-only {
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 8px;
+}
+
+.mobile-logo-wrapper {
+    margin-left: auto;
+}
+
+.mobile-logo-wrapper .corner-logo {
+    width: 64px;
+    height: auto;
+    border-radius: 50%;
+    border: 2px solid rgba(138, 43, 226, 0.7);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    transition: transform 0.3s ease;
+}
+
+.mobile-logo-wrapper .corner-logo:active {
+    transform: scale(1.15) rotate(10deg);
+}
+
+
+.logo-corner {
+    display: none;
+}
+
+
+@media (min-width: 769px) {
+    .logo-corner {
+        display: block;
+        position: fixed;
+        top: 12px;
+        right: 20px;
+        z-index: 10;
+    }
+
+    .corner-logo {
+        width: 146px;
+        border: 4px solid rgba(138, 43, 226, 0.6);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    }
+
+    .corner-logo:hover {
+        transform: scale(1.12) rotate(8deg);
+        box-shadow: 0 20px 60px rgba(138, 43, 226, 0.4);
+    }
+
+
+    .mobile-logo-wrapper {
+        display: none;
+    }
+
+
+    .menu-button.mobile-only {
+        display: none;
+    }
+}
+
+
+@media (max-width: 360px) {
+    .mobile-logo-wrapper .corner-logo {
+        width: 36px;
+        border-width: 2px;
+    }
+}
