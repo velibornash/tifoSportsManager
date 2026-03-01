@@ -3,10 +3,7 @@ package org.example.footballmanager.engines;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
-import org.example.footballmanager.model.event.GoalEvent;
-import org.example.footballmanager.model.event.InjuryEvent;
-import org.example.footballmanager.model.event.RedCardEvent;
-import org.example.footballmanager.model.event.YellowCardEvent;
+import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.util.match.MatchRatingCalculator;
 import org.springframework.stereotype.Component;
@@ -20,6 +17,7 @@ public class MatchStatisticEngine {
     private final Random random = new Random();
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final MatchRepository matchRepository;
+    private final MatchEventRepository matchEventRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
 
@@ -205,5 +203,195 @@ public class MatchStatisticEngine {
         }
 
         log.info("Tabela lige ažurirana na osnovu poslednjih {} mečeva (poslednje kolo)", lastMatches.size());
+    }
+
+    public void generateFakeAdditionalStats(Match match, List<Player> homePlayers, List<Player> awayPlayers, int homeGoals, int awayGoals, Random rnd) {
+
+        Team home = match.getHomeTeam();
+        Team away = match.getAwayTeam();
+
+        // 1. Realistični brojevi statistike
+        // Šutevi: pobednik / bolji tim ima više
+        int homeShotsTotal     = homeGoals + rnd.nextInt(6) + 4;           // 4–9 + golovi
+        int awayShotsTotal     = awayGoals + rnd.nextInt(6) + 4;
+
+        // Šutevi u okvir: ~35–55% od ukupnih šuteva
+        int homeShotsOnTarget  = Math.min(homeGoals + rnd.nextInt(5), (int)(homeShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
+        int awayShotsOnTarget  = Math.min(awayGoals + rnd.nextInt(5), (int)(awayShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
+
+        int homeShotsOffTarget = homeShotsTotal-homeShotsOnTarget;
+        int awayShotsOffTarget = awayShotsTotal-awayShotsOnTarget;
+
+        // Korneri: 2–12 po timu, više kod boljeg tima
+        int homeCorners        = rnd.nextInt(11) + 2 + (homeGoals > awayGoals ? 2 : 0);
+        int awayCorners        = rnd.nextInt(11) + 2 + (awayGoals > homeGoals ? 2 : 0);
+
+        // Faulovi: 8–25 po timu
+        int homeFouls          = rnd.nextInt(18) + 8;
+        int awayFouls          = rnd.nextInt(18) + 8;
+
+        // Ofsajdi: 0–8
+        int homeOffsides       = rnd.nextInt(9);
+        int awayOffsides       = rnd.nextInt(9);
+
+        // Penali: 0–2 po meču, veća šansa ako je mnogo faulova u šesnaestercu
+        int totalPenalties     = rnd.nextInt(3); // 0–2
+        boolean homePenalty    = totalPenalties > 0 && rnd.nextBoolean();
+        boolean awayPenalty    = totalPenalties > 1 || (totalPenalties == 1 && !homePenalty);
+
+        // Kartoni
+        int homeYellows        = rnd.nextInt(5) + (homeFouls > 18 ? 1 : 0); // više faulova → više kartona
+        int awayYellows        = rnd.nextInt(5) + (awayFouls > 18 ? 1 : 0);
+        int homeReds           = rnd.nextInt(2);
+        int awayReds           = rnd.nextInt(2);
+
+        // 2. Snimanje događaja u bazu (samo deo, da ne zatrpamo bazu)
+
+        // Korneri – snimamo ~40–60% da izgleda realno
+        int homeCornersToSave  = (int)(homeCorners * (0.4 + rnd.nextDouble() * 0.2));
+        int awayCornersToSave  = (int)(awayCorners * (0.4 + rnd.nextDouble() * 0.2));
+
+        for (int i = 0; i < homeCornersToSave; i++) {
+            CornerEvent c = new CornerEvent();
+            c.setMatch(match);
+            c.setTeam(home);
+            c.setMinute(rnd.nextInt(90) + 1);
+            c.setPlayer(getRandomPlayerByPosition(homePlayers, List.of(Position.WNG, Position.MID, Position.ATT), rnd));
+            matchEventRepository.save(c);
+        }
+
+        for (int i = 0; i < awayCornersToSave; i++) {
+            CornerEvent c = new CornerEvent();
+            c.setMatch(match);
+            c.setTeam(away);
+            c.setMinute(rnd.nextInt(90) + 1);
+            c.setPlayer(getRandomPlayerByPosition(awayPlayers, List.of(Position.WNG, Position.MID, Position.ATT), rnd));
+            matchEventRepository.save(c);
+        }
+
+        // Šutevi na gol – snimamo deo šuteva u okvir
+        for (int i = 0; i < homeShotsOnTarget; i++) {
+            ShotOnTargetEvent s = new ShotOnTargetEvent();
+            s.setMatch(match);
+            s.setTeam(home);
+            s.setMinute(rnd.nextInt(90) + 1);
+            s.setShooter(getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
+            matchEventRepository.save(s);
+        }
+
+        for (int i = 0; i < awayShotsOnTarget; i++) {
+            ShotOnTargetEvent s = new ShotOnTargetEvent();
+            s.setMatch(match);
+            s.setTeam(away);
+            s.setMinute(rnd.nextInt(90) + 1);
+            s.setShooter(getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
+            matchEventRepository.save(s);
+        }
+
+        // Šutevi na gol – snimamo deo šuteva van okvira
+        for (int i = 0; i < homeShotsOffTarget; i++) {
+            ShotOffTargetEvent s = new ShotOffTargetEvent();
+            s.setMatch(match);
+            s.setTeam(home);
+            s.setMinute(rnd.nextInt(90) + 1);
+            s.setShooter(getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
+            matchEventRepository.save(s);
+        }
+
+        for (int i = 0; i < awayShotsOffTarget; i++) {
+            ShotOffTargetEvent s = new ShotOffTargetEvent();
+            s.setMatch(match);
+            s.setTeam(away);
+            s.setMinute(rnd.nextInt(90) + 1);
+            s.setShooter(getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
+            matchEventRepository.save(s);
+        }
+
+        // Penali (ako ih ima)
+        if (homePenalty) {
+            PenaltyEvent p = new PenaltyEvent();
+            p.setMatch(match);
+            p.setTeam(home);
+            p.setMinute(rnd.nextInt(90) + 1);
+            p.setTaker(getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID), rnd));
+            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspešnosti penala
+            matchEventRepository.save(p);
+        }
+
+        if (awayPenalty) {
+            PenaltyEvent p = new PenaltyEvent();
+            p.setMatch(match);
+            p.setTeam(away);
+            p.setMinute(rnd.nextInt(90) + 1);
+            p.setTaker(getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID), rnd));
+            p.setScored(rnd.nextDouble() < 0.75);
+            matchEventRepository.save(p);
+        }
+
+        // Žuti kartoni – snimamo ~60% da ne bude previše
+        int homeYellowsToSave = (int)(homeYellows * 0.6);
+        for (int i = 0; i < homeYellowsToSave; i++) {
+            Player offender = getRandomPlayerByPosition(homePlayers, null, rnd); // bilo ko
+            YellowCardEvent yc = new YellowCardEvent();
+            yc.setMatch(match);
+            yc.setTeam(home);
+            yc.setPlayer(offender);
+            yc.setMinute(rnd.nextInt(90) + 1);
+            matchEventRepository.save(yc);
+        }
+
+        // Isto za goste...
+        int awayYellowsToSave = (int)(awayYellows * 0.6);
+        for (int i = 0; i < awayYellowsToSave; i++) {
+            Player offender = getRandomPlayerByPosition(awayPlayers, null, rnd);
+            YellowCardEvent yc = new YellowCardEvent();
+            yc.setMatch(match);
+            yc.setTeam(away);
+            yc.setPlayer(offender);
+            yc.setMinute(rnd.nextInt(90) + 1);
+            matchEventRepository.save(yc);
+        }
+
+        // Crveni kartoni – retki, snimamo sve
+        for (int i = 0; i < homeReds; i++) {
+            Player offender = getRandomPlayerByPosition(homePlayers, null, rnd);
+            RedCardEvent rc = new RedCardEvent();
+            rc.setMatch(match);
+            rc.setTeam(home);
+            rc.setPlayer(offender);
+            rc.setMinute(rnd.nextInt(90) + 1);
+            matchEventRepository.save(rc);
+        }
+
+        // Isto za goste
+        for (int i = 0; i < awayReds; i++) {
+            Player offender = getRandomPlayerByPosition(awayPlayers, null, rnd);
+            RedCardEvent rc = new RedCardEvent();
+            rc.setMatch(match);
+            rc.setTeam(away);
+            rc.setPlayer(offender);
+            rc.setMinute(rnd.nextInt(90) + 1);
+            matchEventRepository.save(rc);
+        }
+
+        log.info("Generisana fake statistika za simulirani meč {}:{} {} vs {} – šutevi {}/{}, korneri {}/{}, kartoni {}/{}",
+                home.getName(), homeGoals, awayGoals, away.getName(),
+                homeShotsTotal, awayShotsTotal, homeCorners, awayCorners, homeYellows, awayYellows);
+    }
+
+    private Player getRandomPlayerByPosition(List<Player> players, List<Position> preferredPositions, Random rnd) {
+        if (preferredPositions == null || preferredPositions.isEmpty()) {
+            return players.get(rnd.nextInt(players.size()));
+        }
+
+        List<Player> candidates = players.stream()
+                .filter(p -> preferredPositions.contains(p.getPosition()))
+                .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            return players.get(rnd.nextInt(players.size())); // fallback
+        }
+
+        return candidates.get(rnd.nextInt(candidates.size()));
     }
 }

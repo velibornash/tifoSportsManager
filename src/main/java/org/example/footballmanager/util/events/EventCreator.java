@@ -1,13 +1,16 @@
 package org.example.footballmanager.util.events;
 
+import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.*;
-
+import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
+@Component
 public class EventCreator {
 
     private static final Random random = new Random();
@@ -149,4 +152,36 @@ public class EventCreator {
             return ch;
         }
     }
+
+    public GoalEvent createRandomGoalEvent(Match match, Team scoringTeam, List<Player> scoringPlayers, List<Player> opponentPlayers, Random rnd) {
+        // Izaberi strelca (favorizuj napadače)
+        List<Player> attackers = scoringPlayers.stream()
+                .filter(p -> p.getPosition() == Position.ATT || p.getPosition() == Position.MID || p.getPosition() == Position.WNG)
+                .collect(Collectors.toList());
+
+        if (attackers.isEmpty()) attackers = scoringPlayers; // fallback
+
+        Player scorer = attackers.get(rnd.nextInt(attackers.size()));
+
+        GoalEvent goal = new GoalEvent();
+        goal.setMatch(match);
+        goal.setTeam(scoringTeam);
+        goal.setScorer(scorer);
+        goal.setMinute(rnd.nextInt(90) + 1);
+
+        // 60% šanse da postoji asistent
+        if (rnd.nextDouble() < 0.6) {
+            List<Player> possibleAssistants = scoringPlayers.stream()
+                    .filter(p -> !p.getId().equals(scorer.getId()))
+                    .toList();
+
+            if (!possibleAssistants.isEmpty()) {
+                Player assistant = possibleAssistants.get(rnd.nextInt(possibleAssistants.size()));
+                goal.setAssistant(assistant);
+            }
+        }
+
+        return goal;
+    }
+
 }

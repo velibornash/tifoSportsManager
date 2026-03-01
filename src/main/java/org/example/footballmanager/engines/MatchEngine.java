@@ -11,6 +11,7 @@ import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.TacticsAdjustmentService;
+import org.example.footballmanager.util.events.EventCreator;
 import org.example.footballmanager.util.events.MatchEventFactory;
 import org.example.footballmanager.util.match.MatchContext;
 import org.example.footballmanager.util.players.PlayerFactory;
@@ -29,6 +30,7 @@ public class MatchEngine {
 
     private final TacticsAdjustmentService tacticsAdjustmentService;
     private final MatchRepository matchRepository;
+    private final MatchEventRepository matchEventRepository;
     private final Random random = new Random();
     private final Set<Long> runningMatches = ConcurrentHashMap.newKeySet();
     private final MatchPlaybackEngine matchPlaybackEngine;
@@ -39,7 +41,8 @@ public class MatchEngine {
     private final PlayerFactory playerFactory;
     private final PlayerRepository playerRepository;
     private final LineupRepository lineupRepository;
-
+    private final EventCreator eventCreator;
+    private final MatchStatisticEngine matchStatisticEngine;
 
     public Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
@@ -251,6 +254,8 @@ public class MatchEngine {
             simulatedMatch.setMatchDate(clock.getCurrentDate());
             matchRepository.save(simulatedMatch);
 
+            generateSimulatedMatchEvents(simulatedMatch, homeGoals, awayGoals);
+
             CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
                     .stream().findFirst()
                     .orElseThrow(() -> new RuntimeException("Tim " + home.getName() + " nije u ligi"));
@@ -327,5 +332,71 @@ public class MatchEngine {
         } else {
             context.setPossessionTeam(context.getMatch().getAwayTeam());
         }
+    }
+    private void generateSimulatedMatchEvents(Match simulatedMatch, int homeGoals, int awayGoals) {
+        Team home = simulatedMatch.getHomeTeam();
+        Team away = simulatedMatch.getAwayTeam();
+
+        // Dohvati igrače (pretpostavljam da imaš metode ili da ih učitaš)
+        List<Player> homePlayers = playerRepository.findByTeam(home);
+        List<Player> awayPlayers = playerRepository.findByTeam(away);
+
+        if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
+            log.warn("Nema igrača za generisanje eventa – tim: {}", home.getName());
+            return;
+        }
+
+        Random rnd = new Random();
+
+        int remainingHomeGoals = homeGoals;
+        int remainingAwayGoals = awayGoals;
+        int lastMinute = 0;
+        while (remainingHomeGoals > 0 || remainingAwayGoals > 0) {
+            boolean isHomeGoal;
+            if (remainingHomeGoals == 0) {
+                isHomeGoal = false;
+            } else if (remainingAwayGoals == 0) {
+                isHomeGoal = true;
+            } else {
+                double homeChance = (double) remainingHomeGoals / (remainingHomeGoals + remainingAwayGoals);
+                isHomeGoal = rnd.nextDouble() < (homeChance + 0.1); // +10% bias ka domu ako su izjednačeni
+            }
+
+            Team scoringTeam = isHomeGoal ? home : away;
+            List<Player> scoringPlayers = isHomeGoal ? homePlayers : awayPlayers;
+            List<Player> opponentPlayers = isHomeGoal ? awayPlayers : homePlayers;
+
+            GoalEvent goal = eventCreator.createRandomGoalEvent(simulatedMatch, scoringTeam, scoringPlayers, opponentPlayers, rnd);
+
+            if (goal != null) {
+                int remainingGoals = remainingHomeGoals + remainingAwayGoals - 1; // -1 jer ovaj gol već ide
+                int minMinute = lastMinute + 1;
+                int maxMinute = 90 - remainingGoals * 3; // ostavi bar 3 minuta po preostalom golu
+
+                if (maxMinute < minMinute) maxMinute = minMinute;
+                if (maxMinute > 90) maxMinute = 90;
+
+                int minute = rnd.nextInt(minMinute, maxMinute + 1); // bound exclusive → +1
+                goal.setMinute(minute);
+
+                goal.setMatch(simulatedMatch);
+                // Smanji brojač preostalih golova
+                if (isHomeGoal) {
+                    remainingHomeGoals--;
+                } else {
+                    remainingAwayGoals--;
+                }
+                if(isHomeGoal) {goal.setScoreAfterGoal((homeGoals-remainingHomeGoals) + ":" + (awayGoals-remainingAwayGoals));}
+                else{goal.setScoreAfterGoal((homeGoals-remainingHomeGoals) + ":" + (awayGoals-remainingAwayGoals));}
+
+                // Snimi event u bazu
+                matchEventRepository.save(goal);
+                lastMinute = minute;
+
+            }
+        }
+
+        // 3. Dodaj fake statistiku (šutevi, korneri, kartoni...)
+        matchStatisticEngine.generateFakeAdditionalStats(simulatedMatch, homePlayers, awayPlayers, homeGoals, awayGoals, rnd);
     }
 }

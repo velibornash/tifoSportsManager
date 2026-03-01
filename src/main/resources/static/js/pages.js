@@ -659,8 +659,8 @@
             const response = await fetch(`/countries/leagues/${leagueId}/matches`);
             if (!response.ok) throw new Error("Greška pri učitavanju mečeva lige");
             const matches = await response.json();
-
-            renderLeagueMatches(matches);
+            const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
+            renderLeagueMatches(results);
         } catch (err) {
             console.error(err);
             document.getElementById("main-content").innerHTML = `
@@ -958,6 +958,8 @@
                     <th>#</th>
                     <th>Team</th>
                     <th>Pts</th>
+                    <th>GS</th>
+                    <th>GC</th>
                     <th>GD</th>
                 </tr>`;
 
@@ -967,6 +969,8 @@
                 <td>${index + 1}</td>
                 <td>${team.name}</td>
                 <td>${team.points}</td>
+                <td>${team.goalsScored}</td>
+                <td>${team.goalsConceded}</td>
                 <td>${team.goalDifference}</td>
             </tr>`;
         });

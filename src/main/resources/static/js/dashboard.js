@@ -235,7 +235,7 @@ async function loadRecentLeagueMatches() {
         if (!list) return;
 
         if (recent.length === 0) {
-            list.innerHTML = `<p style="text-align:center; color:#aaa;">Još nema mečeva u ligi.</p>`;
+            list.innerHTML = `<p style="text-align:center; color:#aaa;">No recent league matches yet.</p>`;
             return;
         }
 
@@ -279,7 +279,7 @@ async function loadRecentLeagueMatches() {
     } catch (err) {
         console.error("Greška pri učitavanju recent league matches:", err);
         document.getElementById("recent-league-matches-list").innerHTML =
-            `<p style="text-align:center; color:#f44336;">Još nema mečeva u ligi./p>`;
+            `<p style="text-align:center; color:#aaa;">No recent league matches yet.</p>`;
     }
 }
 async function loadHomeTeamStats() {

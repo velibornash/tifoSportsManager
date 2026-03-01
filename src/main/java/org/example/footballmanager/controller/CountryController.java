@@ -84,6 +84,8 @@ public class CountryController {
             table.add(new LeagueTableDto(
                     e.getTeam().getName(),
                     e.getPoints(),
+                    e.getGoalsScored(),
+                    e.getGoalsConceded(),
                     e.getGoalsScored() - e.getGoalsConceded(),
                     e.getWins() != null ? e.getWins() : 0,
                     e.getDraws() != null ? e.getDraws() : 0,

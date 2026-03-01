@@ -57,6 +57,8 @@ public class Skills implements SkillSet {
             case DEF -> pace * 1.5 + defender * 1.5 + playmaker * 1.0 + passing * 1.0 + technique * 0.8;
             case MID -> pace * 1.0 + technique * 1.2 + playmaker * 2.0 + passing * 1.5 + defender * 0.7;
             case ATT -> pace * 2.0 + technique * 1.5 + striker * 2.0 + defender * 0.5;
+            case WNG -> pace * 2.0 + technique * 1.5 + passing * 2.0;
+
         };
     }
 

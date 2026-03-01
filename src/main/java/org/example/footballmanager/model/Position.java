@@ -1,5 +1,5 @@
 package org.example.footballmanager.model;
 
 public enum Position {
-    GK, DEF, MID, ATT;
+    GK, DEF, MID, ATT, WNG;
 }
