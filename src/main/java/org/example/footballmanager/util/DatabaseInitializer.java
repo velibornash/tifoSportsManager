@@ -35,7 +35,6 @@ public class DatabaseInitializer {
     private final Random random = new Random();
     private final ResetService resetService;
 
-    @PostConstruct
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
