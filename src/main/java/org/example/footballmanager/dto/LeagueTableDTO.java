@@ -1,6 +1,6 @@
 package org.example.footballmanager.dto;
 
-public record LeagueTableDto(
+public record LeagueTableDTO(
         String name,
         Integer points,
         Integer goalsScored,

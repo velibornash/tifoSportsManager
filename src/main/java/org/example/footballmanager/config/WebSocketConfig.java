@@ -1,5 +1,6 @@
 package org.example.footballmanager.config;
 
+import org.example.footballmanager.util.websocket.JwtHandshakeInterceptor;
 import org.example.footballmanager.util.websocket.MatchEventWSHandler;
 import org.example.footballmanager.util.websocket.PositionWSHandler;
 import org.example.footballmanager.util.old.MatchEventWebSocketHandler;
@@ -18,20 +19,23 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final MatchEventWebSocketHandler matchEventHandler;
     private final PositionWSHandler demoPositionHandler;
     private final MatchEventWSHandler demoEventHandler;
+    private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
+
 
     public WebSocketConfig(
             MatchEventWebSocketHandler matchEventHandler,
             @Lazy PositionWSHandler demoPositionHandler,
-            @Lazy MatchEventWSHandler demoEventHandler) {
+            @Lazy MatchEventWSHandler demoEventHandler, JwtHandshakeInterceptor jwtHandshakeInterceptor) {
         this.matchEventHandler = matchEventHandler;
         this.demoPositionHandler = demoPositionHandler;
         this.demoEventHandler = demoEventHandler;
+        this.jwtHandshakeInterceptor = jwtHandshakeInterceptor;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(matchEventHandler, "/match-events").setAllowedOriginPatterns("*");
-        registry.addHandler(demoPositionHandler, "/demo-position-updates").setAllowedOrigins("*");
-        registry.addHandler(demoEventHandler, "/demo-match-events").setAllowedOrigins("*");
+        registry.addHandler(matchEventHandler, "/match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOriginPatterns("*");
+        registry.addHandler(demoPositionHandler, "/demo-position-updates").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
+        registry.addHandler(demoEventHandler, "/demo-match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
     }
 }

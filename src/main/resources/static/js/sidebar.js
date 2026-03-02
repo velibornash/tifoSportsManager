@@ -1,4 +1,4 @@
-// Toggle accordion
+// sidebar.js
 // Univerzalna funkcija za sve accordione (desktop + mobilni)
 function toggleAccordion(header) {
     const content = header.nextElementSibling;
@@ -78,7 +78,6 @@ function disableBodyScroll() {
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
 }
-
 function enableBodyScroll() {
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
@@ -107,3 +106,13 @@ function closeMobileMenu() {
     document.getElementById('mobileOverlay').classList.remove('active');
     enableBodyScroll();
 }
+
+
+window.toggleAccordion = toggleAccordion;
+window.toggleMobileAccordion = toggleMobileAccordion;
+window.closeMobileMenu = closeMobileMenu;
+window.toggleMobileMenu = toggleMobileMenu;
+window.closeSidebar = closeSidebar;
+window.handleSidebarLinkClick = handleSidebarLinkClick;
+window.disableBodyScroll = disableBodyScroll;
+window.enableBodyScroll = enableBodyScroll;

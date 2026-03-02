@@ -1,12 +1,32 @@
-   // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
-   document.addEventListener('click', function(e) {
-       if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
-           const button = e.target.closest('#back-button');
-           const target = button.dataset.target || 'results';
-           console.log(`Back kliknut → učitavam: ${target}`);
-           loadPage(target);
-       }
-   });
+// pages.js
+import { authFetch } from './auth.js';
+    let currentUserTeamId = null;
+
+    async function loadUserTeamId() {
+        try {
+            const res = await authFetch('/auth/me');
+            const user = await res.json();
+            currentUserTeamId = user.teamId;
+            //console.log("Team ID učitan:", currentUserTeamId);
+            return currentUserTeamId;
+        } catch (err) {
+            console.error("Greška /auth/me:", err);
+            //localStorage.removeItem('token');
+            //window.location.href = '/login.html';
+            return null;
+        }
+    }
+
+       // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
+       document.addEventListener('click', function(e) {
+           if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
+               const button = e.target.closest('#back-button');
+               const target = button.dataset.target || 'results';
+               console.log(`Back kliknut → učitavam: ${target}`);
+               loadPage(target);
+           }
+       });
+
     function buildEmptyState(message) {
         return `<div class="manager-card" style="text-align:center; padding:40px;">
                     <h2>${message}</h2>
@@ -14,7 +34,10 @@
     }
     async function loadPage(page) {
         const mainContent = document.getElementById("main-content");
-
+    if (!currentUserTeamId) {
+            await loadUserTeamId();
+            if (!currentUserTeamId) return;
+        }
         try {
 
             switch(page) {
@@ -136,7 +159,9 @@
     }
     async function loadPlayer(playerId) {
         const mainContent = document.getElementById("main-content");
-        const response = await fetch(`/teams/1/players/${playerId}`);
+        console.log(`Ucitavam load player za tim ${currentUserTeamId} i igraca ${playerId}`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/players/${playerId}`);
+        console.log(`Status odgovora: ${response.status}`);
         if(!response.ok) {
             mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('firstTeam')">⬅ Back</button></div>`;
             return;
@@ -148,7 +173,7 @@
 
                 <div class="player-card-wrapper">
                     <div class="player-card">
-                    <button onclick="loadPage('firstTeam')">⬅ Back to Team</button>
+                    <button class="back-to-dashboard" onclick="loadPage('firstTeam')">⬅ Back to Team</button>
                         <div class="card-header">
                             <div class="overall-rating">${player.overall}</div>
                             <div class="position">${player.position}</div>
@@ -178,9 +203,13 @@
     async function loadMatch(matchId, caller) {
         const mainContent = document.getElementById("main-content");
         console.log(`Učitavam meč ID: ${matchId}, caller: ${caller}`);
-
+        if(caller==="undefined"){
+           console.log(`Meč nije pronađen.`);
+           mainContent.innerHTML = `<div class="team-card"><p>Meč nije pronađen.</p></div>`;
+           return;
+        }
         try {
-            const response = await fetch(`/matches/${matchId}/detail`);
+            const response = await authFetch(`/matches/${matchId}/detail`);
             console.log(`Status: ${response.status}`);
 
             if (!response.ok) {
@@ -373,23 +402,31 @@
         }
     }
     async function loadFirstTeam() {
-            const response = await fetch("/teams/1/players");
+            console.log(`ucitavam prvi tim za ${currentUserTeamId}`);
+            const response = await authFetch(`/teams/${currentUserTeamId}/players`);
+            console.log(`Status odgovora: ${response.status}`);
             const players = await response.json();
             renderPlayers(players, "First Team");
         }
     async function loadResults() {
-        const response = await fetch("/teams/1/matches");
+        console.log(`Ucitavam rezultate za ${currentUserTeamId}`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
+        console.log(`Status odgovora: ${response.status}`);
         const matches = await response.json()
         const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
         renderMatches(results, "Results");
     }
     async function loadJuniors() {
-        const response = await fetch("/demo/teams/1/juniors");
+        console.log(`Ucitavam juniore za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/teams/${currentUserTeamId}/juniors`);
+        console.log(`Status odgovora: ${response.status}`);
         const players = await response.json();
         renderPlayers(players, "Juniors");
     }
     async function loadFormations() {
-        const response = await fetch("/demo/teams/1/formations");
+        console.log(`Ucitavam formacije za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/teams/${currentUserTeamId}/formations`);
+        console.log(`Status odgovora: ${response.status}`);
         const formations = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -411,7 +448,9 @@
         mainContent.innerHTML = html;
     }
     async function loadCoaches() {
-        const response = await fetch("/demo/teams/1/coaches");
+        console.log(`Ucitavam load coaches za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/teams/${currentUserTeamId}/coaches`);
+        console.log(`Status odgovora: ${response.status}`);
         const coaches = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -434,7 +473,9 @@
         mainContent.innerHTML = html;
     }
     async function loadTrainingReports() {
-        const response = await fetch("/demo/trainings/1/reports");
+        console.log(`Ucitavam training reports za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/trainings/${currentUserTeamId}/reports`);
+        console.log(`Status odgovora: ${response.status}`);
         const reports = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -456,7 +497,9 @@
         mainContent.innerHTML = html;
     }
     async function loadClubProfile() {
-        const response = await fetch("/demo/teams/1/profile");
+        console.log(`Ucitavam club profile za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/teams/${currentUserTeamId}/profile`);
+        console.log(`Status odgovora: ${response.status}`);
         const profile = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -514,12 +557,16 @@
         </div>`;
     }
     async function loadUpcomingMatches() {
-        const response = await fetch("/demo/matches/teams/1/upcoming");
+        console.log(`ucitavam upcoming matches za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/upcoming`);
+        console.log(`Status odgovora: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Upcoming Matches");
     }
     async function loadFixtures() {
-        const response = await fetch("/demo/matches/teams/1/fixtures");
+        console.log(`Ucitavam load fixtures za : ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures`);
+        console.log(`Status odgovora: ${response.status}`);
         const fixtures = await response.json();
         renderFixtures(fixtures, "Fixtures");
     }
@@ -555,10 +602,10 @@
     }
     async function loadFixture(fixtureId) {
         const mainContent = document.getElementById("main-content");
-        console.log(`Učitavam fiksturu ID: ${fixtureId}`);
+        console.log(`Učitavam fixture ID: ${fixtureId}`);
 
         try {
-            const response = await fetch(`/demo/matches/teams/1/fixtures/${fixtureId}`);
+            const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures/${fixtureId}`);
             console.log(`Status odgovora: ${response.status}`);
         // Mapiranje ID → slika stadiona (možeš proširiti)
             let stadiumImage = "/images/default-stadium.png"; // fallback
@@ -628,7 +675,9 @@
         }
     }
     async function loadFriendlies() {
-        const response = await fetch("/demo/matches/teams/1/friendlies");
+        console.log(`Ucitavam load friendlies za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/friendlies`);
+        console.log(`Status odgovora: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Friendlies");
     }
@@ -636,7 +685,9 @@
         const leagueId = 1; // Superliga – kasnije možeš proslediti iz URL-a ili dropdown-a
 
         try {
-            const response = await fetch(`/countries/leagues/${leagueId}/table`);
+            console.log(`Ucitavam legaue friendlies...`);
+            const response = await authFetch(`/countries/leagues/${leagueId}/table`);
+            console.log(`Status odgovora: ${response.status}`);
             if (!response.ok) {
                 throw new Error(`Greška: ${response.status}`);
             }
@@ -655,7 +706,9 @@
     async function loadLeagueMatches() {
         const leagueId = 1; // Superliga – kasnije možeš proslediti parametar
         try {
-            const response = await fetch(`/countries/leagues/${leagueId}/matches`);
+            console.log(`Ucitavam league matches...`);
+            const response = await authFetch(`/countries/leagues/${leagueId}/matches`);
+            console.log(`Status odgovora: ${response.status}`);
             if (!response.ok) throw new Error("Greška pri učitavanju mečeva lige");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
@@ -732,17 +785,23 @@
         });
     }
     async function loadCup() {
-        const response = await fetch("/demo/cups/1");
+        console.log(`Ucitavam load cup za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/cups/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Cup");
     }
     async function loadInternational() {
-        const response = await fetch("/demo/internationals/1");
+        console.log(`Ucitavam load international za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/internationals/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "International Matches");
     }
     async function loadForum() {
-        const response = await fetch("/demo/forum/teams/1");
+        console.log(`Ucitavam load forum za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/forum/teams/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const posts = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -765,7 +824,9 @@
         mainContent.innerHTML = html;
     }
     async function loadChat() {
-        const response = await fetch("/demo/chat/teams/1");
+        console.log(`ucitavam load chat za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/chat/teams/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const messages = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -787,7 +848,9 @@
         mainContent.innerHTML = html;
     }
     async function loadEvents() {
-        const response = await fetch("/demo/events/teams/1");
+        console.log(`ucitavam load events za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/events/teams/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const events = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -809,12 +872,16 @@
         mainContent.innerHTML = html;
     }
     async function loadPlayerStats() {
-        const response = await fetch("/demo/stats/teams/1/players");
+        console.log(`ucitavam load player stats za userTeamId ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/stats/teams/${currentUserTeamId}/players`);
+        console.log(`Status odgovora: ${response.status}`);
         const players = await response.json();
         renderPlayers(players, "Player Stats");
     }
     async function loadTeamStats() {
-        const response = await fetch("/demo/stats/teams/1");
+        console.log(`Ucitavam laod team stats. za ${currentUserTeamId}`);
+        const response = await authFetch(`/demo/stats/teams/${currentUserTeamId}`);
+        console.log(`Status odgovora: ${response.status}`);
         const stats = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -832,10 +899,14 @@
     }
     async function loadTopScorersAndAssists() {
         try {
-            const scorersRes = await fetch('/stats/leagues/1/topscorers');
+            console.log(`Ucitavam top scorers za ${currentUserTeamId}`);
+            const scorersRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topscorers`);
+            console.log(`Status odgovora: ${scorersRes.status}`);
             const scorers = await scorersRes.json();
 
-            const assistsRes = await fetch('/stats/leagues/1/topassists');
+            console.log(`Ucitavam za asistente za ${currentUserTeamId}`);
+            const assistsRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topassists`);
+            console.log(`Status odgovora: ${assistsRes.status}`);
             const assists = await assistsRes.json();
 
             const mainContent = document.getElementById("main-content");
@@ -918,7 +989,9 @@
         }
     }
     async function loadAnalytics() {
-            const response = await fetch("/demo/analytics/teams/1");
+            console.log(`Ucitavam load analytics za ${currentUserTeamId}`);
+            const response = await authFetch(`/demo/analytics/teams/${currentUserTeamId}`);
+            console.log(`Status odgovora: ${response.status}`);
             const data = await response.json();
 
             const mainContent = document.getElementById("main-content");
@@ -963,6 +1036,12 @@
 
         html += `</div></div>`;
         mainContent.innerHTML = html;
+        // Dodaj klik za otvaranje igrača
+            mainContent.querySelectorAll('.player-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    loadPlayer(card.dataset.playerId);
+                });
+            });
     }
     function renderMatches(matches, title) {
         const mainContent = document.getElementById("main-content");
@@ -1128,3 +1207,38 @@
         };
         document.body.appendChild(modal);
     }
+
+    window.loadPage = loadPage;
+    window.parseMatchDate = parseMatchDate;
+    window.getImageFilename = getImageFilename;
+    window.loadPlayer = loadPlayer;
+    window.loadMatch = loadMatch;
+    window.loadFirstTeam = loadFirstTeam;
+    window.loadResults = loadResults;
+    window.loadJuniors = loadJuniors;
+    window.loadFormations = loadFormations;
+    window.loadCoaches = loadCoaches;
+    window.loadTrainingReports = loadTrainingReports;
+    window.loadClubProfile = loadClubProfile;
+    window.loadUpcomingMatches = loadUpcomingMatches;
+    window.loadFixtures = loadFixtures;
+    window.renderFixtures = renderFixtures;
+    window.loadFixture = loadFixture;
+    window.loadFriendlies = loadFriendlies;
+    window.loadLeagueTable = loadLeagueTable;
+    window.loadLeagueMatches = loadLeagueMatches;
+    window.renderLeagueMatches = renderLeagueMatches;
+    window.loadCup = loadCup;
+    window.loadInternational = loadInternational;
+    window.loadForum = loadForum;
+    window.loadChat = loadChat;
+    window.loadEvents = loadEvents;
+    window.loadPlayerStats = loadPlayerStats;
+    window.loadTeamStats = loadTeamStats;
+    window.loadTopScorersAndAssists = loadTopScorersAndAssists;
+    window.loadAnalytics = loadAnalytics;
+    window.renderPlayers = renderPlayers;
+    window.renderMatches = renderMatches;
+    window.renderTable = renderTable;
+    window.openStadiumImage = openStadiumImage;
+    window.showStadiumModal = showStadiumModal;

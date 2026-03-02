@@ -1,4 +1,5 @@
 // sockets.js
+
 import { registerSockets } from './demoCleanup.js';
 import { updatePositionsData } from './canvasRenderer.js';      // ← ovo je falilo za pozicije
 import { enqueueEvent } from './eventProcessor.js';             // ← ovo je falilo za evente
@@ -8,8 +9,13 @@ export function initSockets(){
     const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
     const base = `${wsProtocol}://${location.host}`;
     const matchId = getQueryParam('matchId');
-
-    const positionSocket = new WebSocket(`${base}/demo-position-updates?matchId=${matchId}`);
+    const token = localStorage.getItem("token");
+    const positionSocket = new WebSocket(
+        `${base}/demo-position-updates?matchId=${matchId}&token=${token}`
+    );
+    const eventSocket = new WebSocket(
+        `${base}/demo-match-events?matchId=${matchId}&token=${token}`
+    );
     positionSocket.onopen = () => console.log('✅ Position socket connected');
     positionSocket.onmessage = e => {
         try {
@@ -22,7 +28,6 @@ export function initSockets(){
     positionSocket.onclose = () => console.log('Position socket closed');
     positionSocket.onerror = err => console.error('Position socket error:', err);
 
-    const eventSocket = new WebSocket(`${base}/demo-match-events?matchId=${matchId}`);
     eventSocket.onopen = () => {
         console.log('✅ Event socket connected');
         const lastEventBox = document.getElementById('lastEventBox');
@@ -41,3 +46,5 @@ export function initSockets(){
 
     registerSockets(positionSocket, eventSocket);
 }
+
+window.initSockets = initSockets;

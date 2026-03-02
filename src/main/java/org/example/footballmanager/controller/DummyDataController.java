@@ -73,15 +73,15 @@ public class DummyDataController {
     @GetMapping("/cups/1")
     public List<CupMatchDto> getCupMatches() {
         List<CupMatchDto> list = new ArrayList<>();
-        list.add(new CupMatchDto("Omladinac FC", "Rivals United", 2, 1));
-        list.add(new CupMatchDto("City Stars", "Town FC", 0, 0));
+        list.add(new CupMatchDto("Omladinac FC", "Rivals United", "2025-01-25", "14:00","Dunjareal"));
+        list.add(new CupMatchDto("City Stars", "Town FC", "2025-01-24", "18:00","Wembley"));
         return list;
     }
 
     @GetMapping("/internationals/1")
     public List<CupMatchDto> getInternationalMatches() {
         List<CupMatchDto> list = new ArrayList<>();
-        list.add(new CupMatchDto("Omladinac FC", "International FC", 1, 1));
+        list.add(new CupMatchDto("Omladinac FC", "International FC", "2025-01-19", "21:00","Dunjareal"));
         return list;
     }
 
@@ -118,7 +118,8 @@ public class DummyDataController {
     @GetMapping("/matches/teams/1/friendlies")
     public List<CupMatchDto> getFriendlies() {
         List<CupMatchDto> list = new ArrayList<>();
-        list.add(new CupMatchDto("Omladinac FC", "Friendly FC", 3, 2));
+        list.add(new CupMatchDto("Omladinac FC", "Friendly FC", "2025-02-25", "16:00","Dunjareal"));
+        System.out.println("lista:"+ list);
         return list;
     }
 
@@ -214,8 +215,9 @@ public class DummyDataController {
     public static class CupMatchDto {
         private final String homeTeam;
         private final String awayTeam;
-        private final int homeGoals;
-        private final int awayGoals;
+        private final String matchDate;
+        private final String matchTime;
+        private final String stadiumName;
     }
 
     @Data

@@ -1,4 +1,36 @@
+//dashboard.js
+import { authFetch } from './auth.js';
+
+let currentUserTeamId = null;
+
+window.addEventListener('load', async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        console.warn("No token on load - redirecting");
+        //window.location.href = '/login.html';
+        return;
+    }
+
+    try {
+        const res = await authFetch('/auth/me');
+        const user = await res.json();
+
+        currentUserTeamId = user.teamId;
+        console.log("Ulogovan korisnik:", user.username, "Team ID:", currentUserTeamId);
+
+        loadDashboard();
+    } catch (err) {
+        console.error("Greška pri učitavanju /auth/me:", err);
+        //localStorage.removeItem('token');
+        //window.location.href = '/login.html';
+    }
+});
+
 function loadDashboard() {
+    if (!currentUserTeamId) {
+        console.warn("Team ID nije učitan - čekam /auth/me");
+        return;
+    }
     const mainContent = document.getElementById("main-content");
 
     mainContent.innerHTML = `
@@ -306,8 +338,6 @@ async function loadHomeTeamStats() {
     }
 }
 
-// U loadDashboard() – pozovi je
-loadHomeTeamStats();  // dodaj posle loadRecentLeagueMatches()
 window.toggleSidebar = function(id) {
     const sidebars = document.querySelectorAll('.sidebar');
     sidebars.forEach(sb => {
@@ -332,4 +362,14 @@ function closeMobileMenu() {
     document.getElementById('mobileSidebar').classList.remove('active');
     document.getElementById('mobileOverlay').classList.remove('active');
 }
+
+window.loadDashboard = loadDashboard;
+window.resetDatabase = resetDatabase;
+window.initializeDatabase = initializeDatabase;
+window.loadRecentMatches = loadRecentMatches;
+window.loadRecentLeagueMatches =loadRecentLeagueMatches;
+window.loadHomeTeamStats = loadHomeTeamStats;
+window.toggleMobileMenu = toggleMobileMenu;
+window.closeMobileMenu = closeMobileMenu;
+
 

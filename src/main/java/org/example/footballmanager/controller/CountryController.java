@@ -1,6 +1,6 @@
 package org.example.footballmanager.controller;
 
-import org.example.footballmanager.dto.LeagueTableDto;
+import org.example.footballmanager.dto.LeagueTableDTO;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
@@ -60,7 +60,7 @@ public class CountryController {
                 .toList();
     }
     @GetMapping("/leagues/{leagueId}/table")
-    public ResponseEntity<List<LeagueTableDto>> getLeagueTable(@PathVariable Long leagueId) {
+    public ResponseEntity<List<LeagueTableDTO>> getLeagueTable(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
 
@@ -78,10 +78,10 @@ public class CountryController {
                 .toList();
 
         // Mapiraj na DTO sa position iz sortiranja
-        List<LeagueTableDto> table = new ArrayList<>();
+        List<LeagueTableDTO> table = new ArrayList<>();
         for (int i = 0; i < sortedEntries.size(); i++) {
             CompetitionEntry e = sortedEntries.get(i);
-            table.add(new LeagueTableDto(
+            table.add(new LeagueTableDTO(
                     e.getTeam().getName(),
                     e.getPoints(),
                     e.getGoalsScored(),

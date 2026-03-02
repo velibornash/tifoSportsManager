@@ -1,22 +1,45 @@
-let serverOffsetMs = 0;
+    async function authFetch(url, options = {}) {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error("No token found - redirecting to login");
+        }
 
-// Sinhronizuj sa serverom pri učitavanju i svakih 5 minuta
-async function syncWithServerTime() {
-    try {
-        const response = await fetch('/api/server-time');
-        if (!response.ok) throw new Error('Greška pri sinhronizaciji');
+        options.headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
 
-        const data = await response.json();
-        const serverTimestamp = parseInt(data.timestamp);
-        serverOffsetMs = Date.now() - serverTimestamp;
-
-        console.log("Sinhronizovano sa server vremenom. Offset (ms):", serverOffsetMs);
-    } catch (err) {
-        console.warn("Ne može sinhronizovati vreme sa serverom:", err);
-        // fallback – koristi lokalno vreme ako server nije dostupan
-        serverOffsetMs = 0;
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            if (response.status === 403 || response.status === 401) {
+                //localStorage.removeItem('token');
+                //window.location.href = '/login.html';
+            }
+            throw new Error(`Greška ${response.status}: ${await response.text()}`);
+        }
+        return response;
     }
-}
+
+    let serverOffsetMs = 0;
+
+    // Sinhronizuj sa serverom pri učitavanju i svakih 5 minuta
+    async function syncWithServerTime() {
+        try {
+            const response = await authFetch('/api/server-time');
+            if (!response.ok) throw new Error('Greška pri sinhronizaciji');
+
+            const data = await response.json();
+            const serverTimestamp = parseInt(data.timestamp);
+            serverOffsetMs = Date.now() - serverTimestamp;
+
+            console.log("Sinhronizovano sa server vremenom. Offset (ms):", serverOffsetMs);
+        } catch (err) {
+            console.warn("Ne može sinhronizovati vreme sa serverom:", err);
+            // fallback – koristi lokalno vreme ako server nije dostupan
+            serverOffsetMs = 0;
+        }
+    }
 
     function updateLiveClock() {
         const nowMs = Date.now() - serverOffsetMs;
@@ -66,8 +89,8 @@ async function syncWithServerTime() {
     }
 
 // Pokreni sinhronizaciju i ažuriranje
-syncWithServerTime();
-setInterval(syncWithServerTime, 5 * 60 * 1000); // sinhronizuj svakih 5 minuta
+    syncWithServerTime();
+    setInterval(syncWithServerTime, 5 * 60 * 1000); // sinhronizuj svakih 5 minuta
 
-updateLiveClock();
-setInterval(updateLiveClock, 1000); // ažuriraj svake sekunde
+    updateLiveClock();
+    setInterval(updateLiveClock, 1000); // ažuriraj svake sekunde
