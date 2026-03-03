@@ -914,7 +914,7 @@ recent-match:hover .result-badge {
         white-space: normal !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
-        hyphens: auto;
+        hyphens: none;
     }
 
     /* Lista igrača – vrati na staro, 2 kolone */
@@ -957,7 +957,7 @@ recent-match:hover .result-badge {
     .player-detail-info h2 {
         font-size: 1.3em !important;     /* manji naslov */
         margin: 0 0 8px 0;
-        white-space: nowrap;
+        white-space: normal;
         overflow: hidden;
         text-overflow: ellipsis;
     }
@@ -976,7 +976,7 @@ recent-match:hover .result-badge {
         white-space: normal !important;
         overflow-wrap: break-word !important;
         word-wrap: break-word !important;
-        hyphens: auto;
+        hyphens: none;
         font-size: 0.9em;                /* još malo manje ako treba */
     }
 
@@ -1004,7 +1004,7 @@ recent-match:hover .result-badge {
     p, div, span, h1, h2, h3 {
         overflow-wrap: break-word;
         word-wrap: break-word;
-        hyphens: auto;
+        hyphens: none;
     }
 }
 #loading-popup {
