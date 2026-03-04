@@ -379,7 +379,7 @@ public class MatchStatisticEngine {
                 homeShotsTotal, awayShotsTotal, homeCorners, awayCorners, homeYellows, awayYellows);
     }
 
-    private Player getRandomPlayerByPosition(List<Player> players, List<Position> preferredPositions, Random rnd) {
+    public Player getRandomPlayerByPosition(List<Player> players, List<Position> preferredPositions, Random rnd) {
         if (preferredPositions == null || preferredPositions.isEmpty()) {
             return players.get(rnd.nextInt(players.size()));
         }

@@ -44,9 +44,7 @@ public class MatchEngine {
     private final EventCreator eventCreator;
     private final MatchStatisticEngine matchStatisticEngine;
 
-    public Match loadAndValidateMatch(long matchId) {
-        return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
-    }
+    public Match loadAndValidateMatch(long matchId) {return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));}
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
         Lineup lineup = new Lineup();
         lineup.setTeam(team);
@@ -171,7 +169,6 @@ public class MatchEngine {
         tactics.setFormation(formation);
         return tactics;
     }
-
     public MatchRuntime simulateFullMatch(Match match) {
 
         MatchRuntime rt = new MatchRuntime();
@@ -229,16 +226,13 @@ public class MatchEngine {
         List<Team> remainingTeams = teams.stream()
                 .filter(t -> {
                     if (alreadyPlayedHome == null || alreadyPlayedAway == null) return true;
-                    return !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId());
-                })
-                .collect(Collectors.toList());
+                    return !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId());}).collect(Collectors.toList());
 
         if (remainingTeams.size() % 2 != 0) {
             log.warn("Neparan broj timova za simulaciju: {}", remainingTeams.size());
         }
 
         Collections.shuffle(remainingTeams);
-
         for (int i = 0; i + 1 < remainingTeams.size(); i += 2) {
             Team home = remainingTeams.get(i);
             Team away = remainingTeams.get(i + 1);
@@ -288,7 +282,6 @@ public class MatchEngine {
                     homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
                     awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
         }
-
         log.info("Kolo završeno – pozicije ažurirane za ligu {}", league.getName());
     }
     private void processSpecialEvents(MatchEvent event, MatchRuntime rt, Match match) {
@@ -332,7 +325,59 @@ public class MatchEngine {
             context.setPossessionTeam(context.getMatch().getAwayTeam());
         }
     }
-    private void generateSimulatedMatchEvents(Match simulatedMatch, int homeGoals, int awayGoals) {
+    public void simulateSingleMatch(Team home, Team away, SeasonCompetition sc, GameClock clock) {
+
+        Match match = new Match();
+        match.setHomeTeam(home);
+        match.setAwayTeam(away);
+        match.setMatchDate(clock.getCurrentDate());
+
+        Random rnd = new Random();
+        int homeGoals = rnd.nextInt(6);
+        int awayGoals = rnd.nextInt(6);
+
+        match.setHomeGoals(homeGoals);
+        match.setAwayGoals(awayGoals);
+
+        matchRepository.save(match);
+        generateSimulatedMatchEvents(match, homeGoals, awayGoals);
+
+        CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
+                .orElseThrow(() -> new RuntimeException("Home team is not in league: " + home.getName()));
+
+        CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
+                .orElseThrow(() -> new RuntimeException("Away team not in a league: " + away.getName()));
+
+        if (homeGoals > awayGoals) {
+            homeEntry.setPoints(homeEntry.getPoints() + 3);
+            homeEntry.setWins(homeEntry.getWins() + 1);
+        } else if (homeGoals == awayGoals) {
+            homeEntry.setPoints(homeEntry.getPoints() + 1);
+            awayEntry.setPoints(awayEntry.getPoints() + 1);
+            homeEntry.setDraws(homeEntry.getDraws() + 1);
+            awayEntry.setDraws(awayEntry.getDraws() + 1);
+        } else {
+            awayEntry.setPoints(awayEntry.getPoints() + 3);
+            awayEntry.setWins(awayEntry.getWins() + 1);
+        }
+
+        homeEntry.setLosses(homeEntry.getLosses() + (homeGoals < awayGoals ? 1 : 0));
+        awayEntry.setLosses(awayEntry.getLosses() + (awayGoals < homeGoals ? 1 : 0));
+
+        homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeGoals);
+        homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayGoals);
+        awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
+        awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
+
+        competitionEntryRepository.save(homeEntry);
+        competitionEntryRepository.save(awayEntry);
+
+        log.info("Simulated match: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
+                home.getName(), homeGoals, awayGoals, away.getName(),
+                homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
+                awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
+    }
+    public void generateSimulatedMatchEvents(Match simulatedMatch, int homeGoals, int awayGoals) {
         Team home = simulatedMatch.getHomeTeam();
         Team away = simulatedMatch.getAwayTeam();
 

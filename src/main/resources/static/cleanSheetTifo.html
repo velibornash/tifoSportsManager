@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TIFO Clean Sheet - Text Mode</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+<div class="background"></div>
+
+<div class="top-menu">
+    <!-- Desktop – samo kategorije + Next Match, bez sidebara i sata -->
+    <div class="menu-button desktop-only" onclick="loadCleanPage('inbox')">📬 Inbox</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('players')">👥 First Team</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('juniors')">🌱 Juniors</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('tactics')">⚽ Tactics</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('leagueTable')">🏆 League Table</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('transfers')">💰 Transfers & Budget</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('clubInfo')">🏟️ Club Info</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('matches')">📅 Matches</div>
+    <div class="menu-button desktop-only">
+        <button id="nextMatchBtn" class="big-button">Next Match →</button>
+    </div>
+
+    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
+
+    <!-- Mobile hamburger -->
+    <div class="menu-button mobile-only" id="mobileMenuBtn">☰ Clean Sheet</div>
+    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
+</div>
+
+<!-- Mobile Sidebar – ravne kategorije + Next Match -->
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3 id="closeMobileMenu">Clean Sheet</h3>
+
+        <div onclick="loadCleanPage('inbox'); closeMobileMenu()">📬 Inbox</div>
+        <div onclick="loadCleanPage('players'); closeMobileMenu()">👥 First Team</div>
+        <div onclick="loadCleanPage('juniors'); closeMobileMenu()">🌱 Juniors</div>
+        <div onclick="loadCleanPage('tactics'); closeMobileMenu()">⚽ Tactics</div>
+        <div onclick="loadCleanPage('leagueTable'); closeMobileMenu()">🏆 League Table</div>
+        <div onclick="loadCleanPage('transfers'); closeMobileMenu()">💰 Transfers & Budget</div>
+        <div onclick="loadCleanPage('clubInfo'); closeMobileMenu()">🏟️ Club Info</div>
+        <div onclick="loadCleanPage('matches'); closeMobileMenu()">📅 Matches</div>
+
+        <!-- Next Match u mobile sidebar-u -->
+        <div style="padding: 25px 15px; text-align: center; margin-top: 30px;">
+            <button id="nextMatchBtnMobile" class="big-button">Next Match →</button>
+        </div>
+    </div>
+</div>
+
+<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
+
+<!-- Desktop sidebari – ostavljeni, ali se NE koriste (klikovi idu direktno) -->
+<div id="inboxSidebar" class="sidebar"><div class="sidebar-content"><h3>Inbox</h3><div onclick="loadCleanPage('inbox')">Messages</div></div></div>
+<div id="playersSidebar" class="sidebar"><div class="sidebar-content"><h3>First Team</h3><div onclick="loadCleanPage('players')">Squad</div></div></div>
+<div id="juniorsSidebar" class="sidebar"><div class="sidebar-content"><h3>Juniors</h3><div onclick="loadCleanPage('juniors')">Youth</div></div></div>
+<div id="tacticsSidebar" class="sidebar"><div class="sidebar-content"><h3>Tactics</h3><div onclick="loadCleanPage('tactics')">Formation & Style</div></div></div>
+<div id="leagueSidebar" class="sidebar"><div class="sidebar-content"><h3>League Table</h3><div onclick="loadCleanPage('leagueTable')">Standings</div></div></div>
+<div id="transfersSidebar" class="sidebar"><div class="sidebar-content"><h3>Transfers & Budget</h3><div onclick="loadCleanPage('transfers')">Market & Finances</div></div></div>
+<div id="clubInfoSidebar" class="sidebar"><div class="sidebar-content"><h3>Club Info</h3><div onclick="loadCleanPage('clubInfo')">Details</div></div></div>
+<div id="matchesSidebar" class="sidebar"><div class="sidebar-content"><h3>Matches</h3><div onclick="loadCleanPage('matches')">Fixtures & Results</div></div></div>
+
+<!-- MAIN CONTENT -->
+<div class="dashboard-content">
+    <div id="main-content"></div>
+    <div id="log-container" class="manager-card" style="margin-top:30px; max-height:200px; overflow-y:auto; font-size:0.9em; background:rgba(0,0,0,0.4);">
+        <h3 style="margin:0 0 10px;">Logs</h3>
+        <div id="logs"></div>
+    </div>
+</div>
+
+<script type="module" src="/js/auth.js"></script>
+<script type="module" src="/js/cleanSheet.js"></script>
+<script type="module" src="/js/sidebar.js"></script>
+</body>
+</html>

@@ -13,8 +13,8 @@
         const response = await fetch(url, options);
         if (!response.ok) {
             if (response.status === 403 || response.status === 401) {
-                //localStorage.removeItem('token');
-                //window.location.href = '/login.html';
+                localStorage.removeItem('token');
+                window.location.href = '/login.html';
             }
             throw new Error(`Greška ${response.status}: ${await response.text()}`);
         }

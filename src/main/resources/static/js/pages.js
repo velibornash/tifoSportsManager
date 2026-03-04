@@ -7,18 +7,18 @@ import { authFetch } from './auth.js';
             const res = await authFetch('/auth/me');
             const user = await res.json();
             currentUserTeamId = user.teamId;
-            //console.log("Team ID učitan:", currentUserTeamId);
+            console.log("Team ID učitan:", currentUserTeamId);
             return currentUserTeamId;
         } catch (err) {
             console.error("Greška /auth/me:", err);
-            //localStorage.removeItem('token');
-            //window.location.href = '/login.html';
+            localStorage.removeItem('token');
+            window.location.href = '/login.html';
             return null;
         }
     }
 
-       // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
-       document.addEventListener('click', function(e) {
+    // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
+    document.addEventListener('click', function(e) {
            if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
                const button = e.target.closest('#back-button');
                const target = button.dataset.target || 'results';
@@ -570,36 +570,6 @@ import { authFetch } from './auth.js';
         const fixtures = await response.json();
         renderFixtures(fixtures, "Fixtures");
     }
-    function renderFixtures(fixtures, title) {
-        const mainContent = document.getElementById("main-content");
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>${title}</h2>
-            <div class="match-list">`;
-
-        fixtures.forEach(fixture => {
-            // Koristi fixture.id ako postoji, ili fallback na index
-            const fixtureId = fixture.id || fixtures.indexOf(fixture);
-
-            html += `
-            <div class="match-row upcoming-match" onclick="loadFixture(${fixtureId})">
-                <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
-                    🗓 ${fixture.matchDate || "N/A"} • ${fixture.matchTime || ""}
-                </div>
-                <span class="team-home">${fixture.homeTeam}</span>
-                <span class="score">VS</span>
-                <span class="team-away">${fixture.awayTeam}</span>
-                <div style="font-size:0.85em; color:#888; margin-top:6px;">
-                    🏟️ ${fixture.stadiumName || "N/A"}
-                </div>
-            </div>`;
-        });
-
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
-    }
     async function loadFixture(fixtureId) {
         const mainContent = document.getElementById("main-content");
         console.log(`Učitavam fixture ID: ${fixtureId}`);
@@ -722,67 +692,6 @@ import { authFetch } from './auth.js';
                     <p>Ne mogu da učitam mečeve lige.</p>
                 </div>`;
         }
-    }
-    function renderLeagueMatches(matches) {
-        const mainContent = document.getElementById("main-content");
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Superliga Matches</h2>
-            <div class="match-list">`;
-
-        if (!Array.isArray(matches) || matches.length === 0) {
-            html += `<p style="text-align:center; color:#aaa;">Još nema mečeva u ovoj ligi.</p>`;
-        } else {
-            matches.forEach(match => {  // ← match, ne m!
-                let badgeClass = "";
-                let badgeText = "";
-
-                if (match.homeGoals !== null && match.awayGoals !== null) {
-                    if (match.homeGoals > match.awayGoals) {
-                        badgeClass = "win";
-                        badgeText = "1";
-                    } else if (match.homeGoals < match.awayGoals) {
-                        badgeClass = "loss";
-                        badgeText = "2";
-                    } else {
-                        badgeClass = "draw";
-                        badgeText = "X";
-                    }
-                }
-
-                html += `
-                <div class="match-row"
-                     data-match-id="${match.id}"
-                     data-caller="leagueMatches">
-                    <div style="font-size:0.9em; color:#aaa;">${match.matchDate || "N/A"}</div>
-                    <div class="match-teams">
-                        <span class="team-home">${match.homeTeam}</span>
-                        <span class="score">
-                            ${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}
-                        </span>
-                        <span class="team-away">${match.awayTeam}</span>
-                    </div>
-                    ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
-                </div>`;
-            });
-        }
-
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
-
-        // Event delegation – radi za sve .match-row u #main-content
-        document.getElementById("main-content").addEventListener('click', function(e) {
-            const row = e.target.closest('.match-row');
-            if (row) {
-                const matchId = row.dataset.matchId;
-                const caller  = row.dataset.caller || 'leagueMatches';
-                if (matchId) {
-                    loadMatch(matchId, caller);
-                }
-            }
-        });
     }
     async function loadCup() {
         console.log(`Ucitavam load cup za ${currentUserTeamId}`);
@@ -1171,6 +1080,97 @@ import { authFetch } from './auth.js';
             }
         });
     }
+    function renderFixtures(fixtures, title) {
+            const mainContent = document.getElementById("main-content");
+
+            let html = `
+            <div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <h2>${title}</h2>
+                <div class="match-list">`;
+
+            fixtures.forEach(fixture => {
+                // Koristi fixture.id ako postoji, ili fallback na index
+                const fixtureId = fixture.id || fixtures.indexOf(fixture);
+
+                html += `
+                <div class="match-row upcoming-match" onclick="loadFixture(${fixtureId})">
+                    <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
+                        🗓 ${fixture.matchDate || "N/A"} • ${fixture.matchTime || ""}
+                    </div>
+                    <span class="team-home">${fixture.homeTeam}</span>
+                    <span class="score">VS</span>
+                    <span class="team-away">${fixture.awayTeam}</span>
+                    <div style="font-size:0.85em; color:#888; margin-top:6px;">
+                        🏟️ ${fixture.stadiumName || "N/A"}
+                    </div>
+                </div>`;
+            });
+
+            html += `</div></div>`;
+            mainContent.innerHTML = html;
+        }
+    function renderLeagueMatches(matches) {
+                const mainContent = document.getElementById("main-content");
+
+                let html = `
+                <div class="manager-card">
+                    <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                    <h2>Superliga Matches</h2>
+                    <div class="match-list">`;
+
+                if (!Array.isArray(matches) || matches.length === 0) {
+                    html += `<p style="text-align:center; color:#aaa;">Još nema mečeva u ovoj ligi.</p>`;
+                } else {
+                    matches.forEach(match => {  // ← match, ne m!
+                        let badgeClass = "";
+                        let badgeText = "";
+
+                        if (match.homeGoals !== null && match.awayGoals !== null) {
+                            if (match.homeGoals > match.awayGoals) {
+                                badgeClass = "win";
+                                badgeText = "1";
+                            } else if (match.homeGoals < match.awayGoals) {
+                                badgeClass = "loss";
+                                badgeText = "2";
+                            } else {
+                                badgeClass = "draw";
+                                badgeText = "X";
+                            }
+                        }
+
+                        html += `
+                        <div class="match-row"
+                             data-match-id="${match.id}"
+                             data-caller="leagueMatches">
+                            <div style="font-size:0.9em; color:#aaa;">${match.matchDate || "N/A"}</div>
+                            <div class="match-teams">
+                                <span class="team-home">${match.homeTeam}</span>
+                                <span class="score">
+                                    ${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}
+                                </span>
+                                <span class="team-away">${match.awayTeam}</span>
+                            </div>
+                            ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
+                        </div>`;
+                    });
+                }
+
+                html += `</div></div>`;
+                mainContent.innerHTML = html;
+
+                // Event delegation – radi za sve .match-row u #main-content
+                document.getElementById("main-content").addEventListener('click', function(e) {
+                    const row = e.target.closest('.match-row');
+                    if (row) {
+                        const matchId = row.dataset.matchId;
+                        const caller  = row.dataset.caller || 'leagueMatches';
+                        if (matchId) {
+                            loadMatch(matchId, caller);
+                        }
+                    }
+                });
+            }
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu
         window.open(imageUrl, '_blank');

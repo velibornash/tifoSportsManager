@@ -7,7 +7,7 @@ window.addEventListener('load', async () => {
     const token = localStorage.getItem('token');
     if (!token) {
         console.warn("No token on load - redirecting");
-        //window.location.href = '/login.html';
+        window.location.href = '/login.html';
         return;
     }
 
@@ -21,8 +21,8 @@ window.addEventListener('load', async () => {
         loadDashboard();
     } catch (err) {
         console.error("Greška pri učitavanju /auth/me:", err);
-        //localStorage.removeItem('token');
-        //window.location.href = '/login.html';
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
     }
 });
 

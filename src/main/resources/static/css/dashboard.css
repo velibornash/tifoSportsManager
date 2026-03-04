@@ -1137,3 +1137,13 @@ recent-match:hover .result-badge {
 .league-table td {
     border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+.clean-sheet-btn {
+    background: linear-gradient(45deg, #4CAF50, #8BC34A);
+    color: white;
+    font-weight: bold;
+}
+.clean-sheet-mobile .accordion-header {
+    background: #1e3a1e;
+    color: #aaffaa;
+    font-weight: bold;
+}
