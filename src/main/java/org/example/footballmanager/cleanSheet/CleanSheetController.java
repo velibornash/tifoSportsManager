@@ -1,52 +1,119 @@
 package org.example.footballmanager.cleanSheet;
 
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.cleanSheet.dto.SimulatedMatchResult;
-import org.example.footballmanager.engines.MatchEngine;
-import org.example.footballmanager.model.*;
-import org.example.footballmanager.repository.*;
+import org.example.footballmanager.cleanSheet.model.*;
+import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
+import org.example.footballmanager.model.User;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api/clean-sheet")
+@RequestMapping("/api/cs")
 @RequiredArgsConstructor
 public class CleanSheetController {
 
     private final CleanSheetService cleanSheetService;
-    private final TeamRepository teamRepository;
-    private final SeasonCompetitionRepository scRepo;
-    private final GameClockRepository clockRepo;
-    private final CompetitionRepository competitionRepository;
-    private final SeasonRepository seasonRepository;
 
-    // Endpoint za jedan meč – vraća runtime rezultat (JSON)
-    @PostMapping("/simulate-single")
-    public ResponseEntity<SimulatedMatchResult> simulateSingle(@RequestParam Long homeId, @RequestParam Long awayId) {
-        Competition superLiga = competitionRepository.findById(1L).orElse(null);
-        Team home = teamRepository.findById(homeId).orElseThrow();
-        Team away = teamRepository.findById(awayId).orElseThrow();
-        SeasonCompetition sc = scRepo.findByCompetitionAndSeasonYear(superLiga,2025).orElseThrow();
-        GameClock clock = clockRepo.findById(1L).orElseThrow();
-        SimulatedMatchResult result = cleanSheetService.simulateSingleMatch(home, away, sc, clock);
-
-        return ResponseEntity.ok(result);
+    @PostMapping("/start")
+    public ResponseEntity<?> startGame(@AuthenticationPrincipal User user) {
+        if (user == null || user.getTeam() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
+        }
+        CleanSheetGameState state = cleanSheetService.startNewGame(user.getId(), user.getTeam());
+        return ResponseEntity.ok(buildStateResponse(state));
     }
 
-    @PostMapping("/simulate-matchday")
-    public ResponseEntity<List<SimulatedMatchResult>> simulateMatchDay(
-            @RequestParam Long leagueId,
-            @RequestParam Integer seasonYear) {
+    @GetMapping("/state")
+    public ResponseEntity<?> getState(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        CleanSheetGameState state = cleanSheetService.getState(user.getId());
+        if (state == null) {
+            return ResponseEntity.ok(Map.of("active", false));
+        }
+        return ResponseEntity.ok(buildStateResponse(state));
+    }
 
-        Competition league = competitionRepository.findById(leagueId).orElseThrow();
-        Season currentSeason = seasonRepository.findBySeasonYear(seasonYear).orElseThrow();
+    @PostMapping("/next-round")
+    public ResponseEntity<?> nextRound(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        try {
+            Map<String, Object> result = cleanSheetService.advanceRound(user.getId());
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
-        List<SimulatedMatchResult> results = cleanSheetService.simulateMatchDay(league, currentSeason, null, null);
-        return ResponseEntity.ok(results);
+    @GetMapping("/table")
+    public ResponseEntity<List<CSTableEntry>> getTable(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getTable(user.getId()));
+    }
+
+    @GetMapping("/players")
+    public ResponseEntity<List<CSPlayer>> getPlayers(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getPlayers(user.getId()));
+    }
+
+    @GetMapping("/schedule")
+    public ResponseEntity<List<CSFixture>> getSchedule(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getSchedule(user.getId()));
+    }
+
+    @GetMapping("/inbox")
+    public ResponseEntity<List<CSInboxMessage>> getInbox(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getInbox(user.getId()));
+    }
+
+    @PutMapping("/tactics")
+    public ResponseEntity<CSTactics> changeTactics(@AuthenticationPrincipal User user,
+                                                    @RequestParam(required = false) String formation,
+                                                    @RequestParam(required = false) String style) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.changeTactics(user.getId(), formation, style));
+    }
+
+    @GetMapping("/team/{teamId}")
+    public ResponseEntity<?> getTeamInfo(@AuthenticationPrincipal User user,
+                                         @PathVariable Long teamId) {
+        if (user == null) return ResponseEntity.status(401).build();
+        try {
+            return ResponseEntity.ok(cleanSheetService.getTeamInfo(user.getId(), teamId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/top-scorers")
+    public ResponseEntity<?> getTopScorers(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getTopScorers(user.getId()));
+    }
+
+    @GetMapping("/top-assists")
+    public ResponseEntity<?> getTopAssists(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getTopAssists(user.getId()));
+    }
+
+    private Map<String, Object> buildStateResponse(CleanSheetGameState state) {
+        return Map.of(
+                "active", true,
+                "userTeam", state.getUserTeam(),
+                "roster", state.getRoster(),
+                "leagueTable", state.getLeagueTable(),
+                "tactics", state.getTactics(),
+                "currentRound", state.getCurrentRound(),
+                "totalRounds", state.getTotalRounds(),
+                "seasonYear", state.getSeasonYear(),
+                "inbox", state.getInbox()
+        );
     }
 }

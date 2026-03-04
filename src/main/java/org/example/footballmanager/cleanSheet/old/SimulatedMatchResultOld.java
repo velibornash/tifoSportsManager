@@ -1,4 +1,4 @@
-package org.example.footballmanager.cleanSheet.dto;
+package org.example.footballmanager.cleanSheet.old;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -10,7 +10,7 @@ import java.util.List;
 
 @Getter
 @Builder
-public class SimulatedMatchResult {
+public class SimulatedMatchResultOld {
     private final Match match;
     private final List<MatchEvent> events;
     private final CompetitionEntry homeEntryUpdate;

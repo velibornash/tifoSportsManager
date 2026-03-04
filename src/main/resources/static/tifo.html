@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TIFO – Clean Sheet Text Mode</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/tifo.css">
+</head>
+<body>
+<div class="background"></div>
+
+<div class="top-menu">
+    <!-- Desktop ribbon -->
+    <div class="menu-button desktop-only" onclick="tifoNav('inbox')">📬 Inbox</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('players')">👥 First Team</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('tactics')">⚽ Tactics</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('leagueTable')">🏆 League Table</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('schedule')">📅 Schedule</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('matches')">📊 Results</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('topScorers')">🏅 Scorers</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('topAssists')">🅰️ Assists</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('transfers')">🔄 Transfers</div>
+    <div class="menu-button desktop-only" onclick="tifoNav('clubInfo')">🏟️ Club Info</div>
+    <div class="menu-button desktop-only">
+        <button id="nextRoundBtn" class="big-button" onclick="tifoNextRound()">Next Round →</button>
+    </div>
+    <div class="desktop-only" id="roundInfo" style="color:#aaa; padding:10px; font-size:0.85em;"></div>
+    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
+
+    <!-- Mobile hamburger -->
+    <div class="menu-button mobile-only" id="mobileMenuBtn" onclick="toggleMobileMenu()">☰ TIFO</div>
+    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
+</div>
+
+<!-- Mobile Sidebar -->
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3 onclick="toggleMobileMenu()">TIFO – Clean Sheet</h3>
+        <div onclick="tifoNav('inbox'); toggleMobileMenu()">📬 Inbox</div>
+        <div onclick="tifoNav('players'); toggleMobileMenu()">👥 First Team</div>
+        <div onclick="tifoNav('tactics'); toggleMobileMenu()">⚽ Tactics</div>
+        <div onclick="tifoNav('leagueTable'); toggleMobileMenu()">🏆 League Table</div>
+        <div onclick="tifoNav('schedule'); toggleMobileMenu()">📅 Schedule</div>
+        <div onclick="tifoNav('matches'); toggleMobileMenu()">📊 Results</div>
+        <div onclick="tifoNav('topScorers'); toggleMobileMenu()">🏅 Top Scorers</div>
+        <div onclick="tifoNav('topAssists'); toggleMobileMenu()">🅰️ Top Assists</div>
+        <div onclick="tifoNav('transfers'); toggleMobileMenu()">🔄 Transfers</div>
+        <div onclick="tifoNav('clubInfo'); toggleMobileMenu()">🏟️ Club Info</div>
+        <div style="padding:25px 15px; text-align:center; margin-top:30px;">
+            <button class="big-button" onclick="tifoNextRound(); toggleMobileMenu()">Next Round →</button>
+        </div>
+    </div>
+</div>
+<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="toggleMobileMenu()"></div>
+
+<!-- MAIN CONTENT -->
+<div class="dashboard-content">
+    <div id="main-content">
+        <div class="manager-card" style="text-align:center; padding:40px;">
+            <h2>Loading...</h2>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="/js/tifo.js"></script>
+</body>
+</html>

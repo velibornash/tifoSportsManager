@@ -1,379 +1,317 @@
 package org.example.footballmanager.cleanSheet;
 
-import io.micrometer.common.lang.Nullable;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.cleanSheet.dto.SimulatedMatchResult;
-import org.example.footballmanager.engines.MatchEngine;
-import org.example.footballmanager.engines.MatchStatisticEngine;
+import org.example.footballmanager.cleanSheet.engine.CSLeagueManager;
+import org.example.footballmanager.cleanSheet.engine.CSMatchSimulator;
+import org.example.footballmanager.cleanSheet.model.*;
+import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
 import org.example.footballmanager.model.*;
-import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.repository.*;
-import org.example.footballmanager.util.events.EventCreator;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
-import java.util.stream.Collectors;
 
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CleanSheetService {
 
-    @Autowired private CompetitionEntryRepository competitionEntryRepository;
-    @Autowired private SeasonCompetitionRepository  seasonCompetitionRepository;
-    @Autowired private GameClockRepository gameClockRepository;
-    @Autowired private PlayerRepository playerRepository;
-    @Autowired private EventCreator eventCreator;
-    @Autowired private MatchStatisticEngine matchStatisticEngine;
-    @Autowired private TeamRepository teamRepository;
+    private final CompetitionRepository competitionRepository;
+    private final SeasonCompetitionRepository seasonCompetitionRepository;
+    private final CompetitionEntryRepository competitionEntryRepository;
+    private final PlayerRepository playerRepository;
 
-    @Transactional
-    public List<SimulatedMatchResult> simulateMatchDay(Competition league, Season season, @Nullable Team alreadyPlayedHome, @Nullable Team alreadyPlayedAway) {
-        List<SimulatedMatchResult> simulatedMatchResults = new ArrayList<>();
-        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear()).orElseThrow();
-        GameClock clock = gameClockRepository.findById(1L).orElseThrow();
+    private final Map<Long, CleanSheetGameState> activeGames = new ConcurrentHashMap<>();
+    private final CSMatchSimulator matchSimulator = new CSMatchSimulator();
+    private final CSLeagueManager leagueManager = new CSLeagueManager();
+
+    /**
+     * Pokrece novu igru — cita iz baze JEDNOM, mapira u CS objekte,
+     * generise raspored, i cuva u memoriji.
+     */
+    public CleanSheetGameState startNewGame(Long userId, Team userTeamEntity) {
+        log.info("Starting new Clean Sheet game for user {} with team {}", userId, userTeamEntity.getName());
+
+        // 1. Nadji ligu u kojoj je korisnikov tim
+        Competition league = userTeamEntity.getCompetition();
+        if (league == null) {
+            league = competitionRepository.findById(1L)
+                    .orElseThrow(() -> new RuntimeException("League not found"));
+        }
+
+        int seasonYear = Calendar.getInstance().get(Calendar.YEAR);
+        Competition finalLeague = league;
+        SeasonCompetition sc = seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(league, seasonYear)
+                .orElseGet(() -> seasonCompetitionRepository
+                        .findByCompetitionAndSeasonYear(finalLeague, seasonYear - 1)
+                        .orElseThrow(() -> new RuntimeException("SeasonCompetition not found")));
+
+        // 2. Ucitaj sve timove u ligi
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
-        List<Team> teams = entries.stream().map(CompetitionEntry::getTeam).toList();
-        List<Team> remainingTeams = teams.stream().filter(t -> {if (alreadyPlayedHome == null || alreadyPlayedAway == null) return true;
-                    return !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId());}).collect(Collectors.toList());
+        List<Team> teamsInLeague = entries.stream()
+                .map(CompetitionEntry::getTeam)
+                .filter(Objects::nonNull)
+                .toList();
 
-        if (remainingTeams.size() % 2 != 0) {
-            log.warn("Neparan broj timova za simulaciju: {}", remainingTeams.size());
-        }
-        Collections.shuffle(remainingTeams);
-        for (int i = 0; i + 1 < remainingTeams.size(); i += 2) {
-            Team home = remainingTeams.get(i);
-            Team away = remainingTeams.get(i + 1);
-            simulatedMatchResults.add(simulateSingleMatch(home, away, sc, clock));
+        // 3. Mapiraj timove
+        List<CSTeam> csTeams = teamsInLeague.stream()
+                .map(CSMapper::toCSTeam)
+                .toList();
+
+        CSTeam userTeam = csTeams.stream()
+                .filter(t -> t.getId().equals(userTeamEntity.getId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("User team not found in league"));
+
+        // 4. Mapiraj igrace svih timova
+        Map<Long, List<CSPlayer>> allRosters = new HashMap<>();
+        for (Team team : teamsInLeague) {
+            List<Player> players = playerRepository.findByTeam(team);
+            allRosters.put(team.getId(), CSMapper.toCSPlayers(players));
         }
 
-        log.info("Round ended – positions updated for league  {}", league.getName());
-        return simulatedMatchResults;
+        List<CSPlayer> userRoster = allRosters.getOrDefault(userTeam.getId(), new ArrayList<>());
+
+        // 5. Kreiraj GameState
+        CleanSheetGameState state = new CleanSheetGameState();
+        state.setUserId(userId);
+        state.setSeasonYear(sc.getSeasonYear());
+        state.setCurrentRound(1);
+        state.setUserTeam(userTeam);
+        state.setRoster(userRoster);
+        state.setAllTeams(new ArrayList<>(csTeams));
+        state.setAllTeamRosters(allRosters);
+        state.setTactics(CSTactics.builder().build());
+
+        // 6. Inicijalizuj tabelu (sve na nuli — nova sezona)
+        state.setLeagueTable(leagueManager.initializeTable(csTeams));
+
+        // 7. Generisi raspored
+        state.setSchedule(leagueManager.generateSchedule(csTeams));
+
+        // 8. Welcome poruka
+        state.addInboxMessage("welcome",
+                "Dobrodosao u Clean Sheet! Upravljas timom " + userTeam.getName() +
+                ". Sezona " + sc.getSeasonYear() + "/" + (sc.getSeasonYear() + 1) +
+                ". Liga ima " + csTeams.size() + " timova, " + state.getTotalRounds() + " kola. Srecno!");
+
+        // 9. Sacuvaj
+        activeGames.put(userId, state);
+        log.info("Clean Sheet game started: {} teams, {} rounds, {} players for user team",
+                csTeams.size(), state.getTotalRounds(), userRoster.size());
+
+        return state;
     }
-    public SimulatedMatchResult simulateSingleMatch(Team home, Team away, SeasonCompetition sc, GameClock clock) {
-        Random rnd = new Random();
 
-        // Kreiraj Match (još ga ne snimamo)
-        Match match = new Match();
-        match.setHomeTeam(home);
-        match.setAwayTeam(away);
-        match.setMatchDate(clock.getCurrentDate());
+    /**
+     * Odigraj sledece kolo — simulira korisnikov mec (puna simulacija)
+     * i sve ostale meceve u kolu (brza simulacija).
+     */
+    public Map<String, Object> advanceRound(Long userId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
 
-        int homeGoals = rnd.nextInt(6);
-        int awayGoals = rnd.nextInt(6);
-
-        match.setHomeGoals(homeGoals);
-        match.setAwayGoals(awayGoals);
-
-        // Generiši eventi (golovi + fake stats) – ovo ne snima, samo kreira objekte
-        List<MatchEvent> events = generateSimulatedMatchEvents(match, homeGoals, awayGoals);
-
-        // Kreiraj ažurirane CompetitionEntry (Runtime izmene)
-        CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
-                .orElseThrow(() -> new RuntimeException("Home team not found"));
-
-        CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
-                .orElseThrow(() -> new RuntimeException("Away team not found"));
-
-        // Napravi kopije za ažuriranje (da original ne menjamo)
-        CompetitionEntry homeUpdate = copyEntry(homeEntry);
-        CompetitionEntry awayUpdate = copyEntry(awayEntry);
-
-        // Ažuriraj bodove, golove, W/D/L
-        if (homeGoals > awayGoals) {
-            homeUpdate.setPoints(homeUpdate.getPoints() + 3);
-            homeUpdate.setWins(homeUpdate.getWins() + 1);
-        } else if (homeGoals == awayGoals) {
-            homeUpdate.setPoints(homeUpdate.getPoints() + 1);
-            awayUpdate.setPoints(awayUpdate.getPoints() + 1);
-            homeUpdate.setDraws(homeUpdate.getDraws() + 1);
-            awayUpdate.setDraws(awayUpdate.getDraws() + 1);
-        } else {
-            awayUpdate.setPoints(awayUpdate.getPoints() + 3);
-            awayUpdate.setWins(awayUpdate.getWins() + 1);
+        if (state.isSeasonOver()) {
+            throw new RuntimeException("Sezona je zavrsena!");
         }
 
-        homeUpdate.setLosses(homeUpdate.getLosses() + (homeGoals < awayGoals ? 1 : 0));
-        awayUpdate.setLosses(awayUpdate.getLosses() + (awayGoals < homeGoals ? 1 : 0));
+        int round = state.getCurrentRound();
 
-        homeUpdate.setGoalsScored(homeUpdate.getGoalsScored() + homeGoals);
-        homeUpdate.setGoalsConceded(homeUpdate.getGoalsConceded() + awayGoals);
-        awayUpdate.setGoalsScored(awayUpdate.getGoalsScored() + awayGoals);
-        awayUpdate.setGoalsConceded(awayUpdate.getGoalsConceded() + homeGoals);
+        // Nadji korisnikov mec u ovom kolu
+        CSFixture userFixture = state.getSchedule().stream()
+                .filter(f -> f.getRound() == round)
+                .filter(f -> f.getHomeTeamId().equals(state.getUserTeam().getId())
+                        || f.getAwayTeamId().equals(state.getUserTeam().getId()))
+                .findFirst()
+                .orElse(null);
 
-        // Vrati rezultat – ništa nije snimljeno u bazi
-        return SimulatedMatchResult.builder()
-                .match(match)
-                .events(events)
-                .homeEntryUpdate(homeUpdate)
-                .awayEntryUpdate(awayUpdate)
-                .summary(home.getName() + " " + homeGoals + ":" + awayGoals + " " + away.getName())
-                .homeGoals(homeGoals)
-                .awayGoals(awayGoals)
-                .build();
-    }
-    private CompetitionEntry copyEntry(CompetitionEntry original) {
-        CompetitionEntry copy = new CompetitionEntry();
-        copy.setId(original.getId()); // ako treba
-        copy.setTeam(original.getTeam());
-        copy.setSeasonCompetition(original.getSeasonCompetition());
-        copy.setPoints(original.getPoints());
-        copy.setGoalsScored(original.getGoalsScored());
-        copy.setGoalsConceded(original.getGoalsConceded());
-        copy.setWins(original.getWins());
-        copy.setDraws(original.getDraws());
-        copy.setLosses(original.getLosses());
-        copy.setPosition(original.getPosition());
-        return copy;
-    }
-    public List<MatchEvent> generateSimulatedMatchEvents(Match simulatedMatch, int homeGoals, int awayGoals) {
-        List<MatchEvent> events = new ArrayList<>();
+        CSMatchResult userResult = null;
+        if (userFixture != null && !userFixture.isPlayed()) {
+            CSTeam home = findTeam(state, userFixture.getHomeTeamId());
+            CSTeam away = findTeam(state, userFixture.getAwayTeamId());
 
-        Team home = simulatedMatch.getHomeTeam();
-        Team away = simulatedMatch.getAwayTeam();
+            List<CSPlayer> homePlayers = state.getAllTeamRosters()
+                    .getOrDefault(home.getId(), List.of());
+            List<CSPlayer> awayPlayers = state.getAllTeamRosters()
+                    .getOrDefault(away.getId(), List.of());
 
-        List<Player> homePlayers = playerRepository.findByTeam(home);
-        List<Player> awayPlayers = playerRepository.findByTeam(away);
+            // Korisnikova taktika se koristi za njegov tim
+            CSTactics homeTactics = home.getId().equals(state.getUserTeam().getId())
+                    ? state.getTactics() : CSTactics.builder().build();
+            CSTactics awayTactics = away.getId().equals(state.getUserTeam().getId())
+                    ? state.getTactics() : CSTactics.builder().build();
 
-        if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
-            log.warn("Nema igrača za generisanje eventa – tim: {}", home.getName());
-            return null;
+            userResult = matchSimulator.simulate(home, homePlayers, away, awayPlayers,
+                    homeTactics, awayTactics, round);
+
+            userFixture.setPlayed(true);
+            userFixture.setResult(userResult);
+
+            state.getMatchHistory().add(userResult);
+            state.addInboxMessage("match", "Kolo " + round + ": " + userResult.getSummary());
         }
-        Random rnd = new Random();
-        int remainingHomeGoals = homeGoals;
-        int remainingAwayGoals = awayGoals;
-        int lastMinute = 0;
-        while (remainingHomeGoals > 0 || remainingAwayGoals > 0) {
-            boolean isHomeGoal;
-            if (remainingHomeGoals == 0) {
-                isHomeGoal = false;
-            } else if (remainingAwayGoals == 0) {
-                isHomeGoal = true;
-            } else {
-                double homeChance = (double) remainingHomeGoals / (remainingHomeGoals + remainingAwayGoals);
-                isHomeGoal = rnd.nextDouble() < (homeChance + 0.1); // +10% bias ka domu ako su izjednačeni
+
+        // Simuliraj ostale meceve
+        List<CSMatchResult> allResults = leagueManager.simulateRound(state, round, userResult);
+
+        // Oporavi fatigue izmedju kola
+        recoverFatigueBetweenRounds(state);
+
+        state.setCurrentRound(round + 1);
+
+        // Ako je sezona gotova
+        if (state.isSeasonOver()) {
+            CSTableEntry champion = state.getLeagueTable().get(0);
+            state.addInboxMessage("info",
+                    "Sezona je zavrsena! Prvak: " + champion.getTeamName() +
+                    " sa " + champion.getPoints() + " bodova.");
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("userMatch", userResult);
+        response.put("allResults", allResults);
+        response.put("round", round);
+        response.put("table", state.getLeagueTable());
+        response.put("seasonOver", state.isSeasonOver());
+        // Return updated roster so frontend can refresh goals/assists
+        response.put("roster", state.getRoster());
+        return response;
+    }
+
+    public CleanSheetGameState getState(Long userId) {
+        return activeGames.get(userId);
+    }
+
+    public List<CSTableEntry> getTable(Long userId) {
+        return getStateOrThrow(userId).getLeagueTable();
+    }
+
+    public List<CSPlayer> getPlayers(Long userId) {
+        return getStateOrThrow(userId).getRoster();
+    }
+
+    public List<CSFixture> getSchedule(Long userId) {
+        return getStateOrThrow(userId).getSchedule();
+    }
+
+    public List<CSInboxMessage> getInbox(Long userId) {
+        return getStateOrThrow(userId).getInbox();
+    }
+
+    public CSTactics changeTactics(Long userId, String formation, String style) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTactics tactics = state.getTactics();
+
+        if (formation != null && !formation.isBlank()) {
+            tactics.setFormation(formation);
+        }
+        if (style != null && !style.isBlank()) {
+            try {
+                tactics.setStyle(CSPlayStyle.valueOf(style.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown play style: {}", style);
             }
+        }
+        state.addInboxMessage("info",
+                "Taktika promenjena: " + tactics.getFormation() + " / " + tactics.getStyle());
+        return tactics;
+    }
 
-            Team scoringTeam = isHomeGoal ? home : away;
-            List<Player> scoringPlayers = isHomeGoal ? homePlayers : awayPlayers;
-            List<Player> opponentPlayers = isHomeGoal ? awayPlayers : homePlayers;
+    public boolean hasActiveGame(Long userId) {
+        return activeGames.containsKey(userId);
+    }
 
-            GoalEvent goal = eventCreator.createRandomGoalEventForSimulateMatch(simulatedMatch, scoringTeam, scoringPlayers, opponentPlayers, rnd);
+    private CleanSheetGameState getStateOrThrow(Long userId) {
+        CleanSheetGameState state = activeGames.get(userId);
+        if (state == null) {
+            throw new RuntimeException("No active Clean Sheet game for user " + userId);
+        }
+        return state;
+    }
 
-            if (goal != null) {
-                int remainingGoals = remainingHomeGoals + remainingAwayGoals - 1; // -1 jer ovaj gol već ide
-                int minMinute = lastMinute + 1;
-                int maxMinute = 90 - remainingGoals * 3; // ostavi bar 3 minuta po preostalom golu
+    private CSTeam findTeam(CleanSheetGameState state, Long teamId) {
+        return state.getAllTeams().stream()
+                .filter(t -> t.getId().equals(teamId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Team not found: " + teamId));
+    }
 
-                if (maxMinute < minMinute) maxMinute = minMinute;
-                if (maxMinute > 90) maxMinute = 90;
+    public Map<String, Object> getTeamInfo(Long userId, Long teamId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTeam team = state.getAllTeams().stream()
+                .filter(t -> t.getId().equals(teamId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Team not found: " + teamId));
+        List<CSPlayer> roster = state.getAllTeamRosters()
+                .getOrDefault(teamId, List.of());
+        Map<String, Object> result = new HashMap<>();
+        result.put("team", team);
+        result.put("roster", roster);
+        return result;
+    }
 
-                int minute = rnd.nextInt(minMinute, maxMinute + 1); // bound exclusive → +1
-                goal.setMinute(minute);
-                goal.setMatch(simulatedMatch);
-                if (isHomeGoal) {
-                    remainingHomeGoals--;
-                } else {
-                    remainingAwayGoals--;
+    public List<Map<String, Object>> getTopScorers(Long userId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        return state.getAllTeamRosters().values().stream()
+                .flatMap(List::stream)
+                .filter(p -> p.getGoals() > 0)
+                .sorted(Comparator.comparingInt(CSPlayer::getGoals).reversed())
+                .limit(20)
+                .map(p -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("name", p.getName());
+                    m.put("goals", p.getGoals());
+                    m.put("position", p.getPosition());
+                    m.put("playerId", p.getId());
+                    // find team name
+                    m.put("teamName", findTeamNameForPlayer(state, p.getId()));
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    public List<Map<String, Object>> getTopAssists(Long userId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        return state.getAllTeamRosters().values().stream()
+                .flatMap(List::stream)
+                .filter(p -> p.getAssists() > 0)
+                .sorted(Comparator.comparingInt(CSPlayer::getAssists).reversed())
+                .limit(20)
+                .map(p -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("name", p.getName());
+                    m.put("assists", p.getAssists());
+                    m.put("position", p.getPosition());
+                    m.put("playerId", p.getId());
+                    m.put("teamName", findTeamNameForPlayer(state, p.getId()));
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private String findTeamNameForPlayer(CleanSheetGameState state, Long playerId) {
+        for (var entry : state.getAllTeamRosters().entrySet()) {
+            for (CSPlayer p : entry.getValue()) {
+                if (p.getId().equals(playerId)) {
+                    return state.getAllTeams().stream()
+                            .filter(t -> t.getId().equals(entry.getKey()))
+                            .map(CSTeam::getName)
+                            .findFirst().orElse("?");
                 }
-                if(isHomeGoal) {goal.setScoreAfterGoal((homeGoals-remainingHomeGoals) + ":" + (awayGoals-remainingAwayGoals));}
-                else{goal.setScoreAfterGoal((homeGoals-remainingHomeGoals) + ":" + (awayGoals-remainingAwayGoals));}
-
-                events.add(goal);
-                lastMinute = minute;
-
             }
         }
-
-        // 3. Dodaj fake statistiku (šutevi, korneri, kartoni...)
-        events = generateFakeAdditionalStats(simulatedMatch, homePlayers, awayPlayers, homeGoals, awayGoals, rnd, events);
-
-        return events;
+        return "?";
     }
-    public List<MatchEvent>  generateFakeAdditionalStats(Match match, List<Player> homePlayers, List<Player> awayPlayers, int homeGoals, int awayGoals, Random rnd, List<MatchEvent> events) {
 
-        Team home = match.getHomeTeam();
-        Team away = match.getAwayTeam();
-
-        // 1. Realistični brojevi statistike
-        // Šutevi: pobednik / bolji tim ima više
-        int homeShotsTotal     = homeGoals + rnd.nextInt(6) + 4;           // 4–9 + golovi
-        int awayShotsTotal     = awayGoals + rnd.nextInt(6) + 4;
-
-        // Šutevi u okvir: ~35–55% od ukupnih šuteva
-        int homeShotsOnTarget  = Math.min(homeGoals + rnd.nextInt(5), (int)(homeShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
-        int awayShotsOnTarget  = Math.min(awayGoals + rnd.nextInt(5), (int)(awayShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
-
-        int homeShotsOffTarget = homeShotsTotal-homeShotsOnTarget;
-        int awayShotsOffTarget = awayShotsTotal-awayShotsOnTarget;
-
-        // Korneri: 2–12 po timu, više kod boljeg tima
-        int homeCorners        = rnd.nextInt(11) + 2 + (homeGoals > awayGoals ? 2 : 0);
-        int awayCorners        = rnd.nextInt(11) + 2 + (awayGoals > homeGoals ? 2 : 0);
-
-        // Faulovi: 8–25 po timu
-        int homeFouls          = rnd.nextInt(18) + 8;
-        int awayFouls          = rnd.nextInt(18) + 8;
-
-        // Ofsajdi: 0–8
-        int homeOffsides       = rnd.nextInt(9);
-        int awayOffsides       = rnd.nextInt(9);
-
-        // Penali: 0–2 po meču, veća šansa ako je mnogo faulova u šesnaestercu
-        int totalPenalties     = rnd.nextInt(3); // 0–2
-        boolean homePenalty    = totalPenalties > 0 && rnd.nextBoolean();
-        boolean awayPenalty    = totalPenalties > 1 || (totalPenalties == 1 && !homePenalty);
-
-        // Kartoni
-        int homeYellows        = rnd.nextInt(5) + (homeFouls > 18 ? 1 : 0); // više faulova → više kartona
-        int awayYellows        = rnd.nextInt(5) + (awayFouls > 18 ? 1 : 0);
-        int homeReds           = rnd.nextInt(2);
-        int awayReds           = rnd.nextInt(2);
-
-
-        // Korneri – snimamo ~40–60% da izgleda realno
-        int homeCornersToSave  = (int)(homeCorners * (0.4 + rnd.nextDouble() * 0.2));
-        int awayCornersToSave  = (int)(awayCorners * (0.4 + rnd.nextDouble() * 0.2));
-
-        for (int i = 0; i < homeCornersToSave; i++) {
-            CornerEvent c = new CornerEvent();
-            c.setMatch(match);
-            c.setTeam(home);
-            c.setMinute(rnd.nextInt(90) + 1);
-            c.setPlayer(matchStatisticEngine.getRandomPlayerByPosition(homePlayers, List.of(Position.WNG, Position.MID, Position.ATT), rnd));
-            events.add(c);
-
+    private void recoverFatigueBetweenRounds(CleanSheetGameState state) {
+        for (List<CSPlayer> roster : state.getAllTeamRosters().values()) {
+            for (CSPlayer p : roster) {
+                double recovery = 1.0 + new Random().nextDouble() * 1.5;
+                p.setFatigue(Math.max(0, p.getFatigue() - recovery));
+            }
         }
-
-        for (int i = 0; i < awayCornersToSave; i++) {
-            CornerEvent c = new CornerEvent();
-            c.setMatch(match);
-            c.setTeam(away);
-            c.setMinute(rnd.nextInt(90) + 1);
-            c.setPlayer(matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, List.of(Position.WNG, Position.MID, Position.ATT), rnd));
-            events.add(c);
-        }
-
-        // Šutevi na gol – snimamo deo šuteva u okvir
-        for (int i = 0; i < homeShotsOnTarget; i++) {
-            ShotOnTargetEvent s = new ShotOnTargetEvent();
-            s.setMatch(match);
-            s.setTeam(home);
-            s.setMinute(rnd.nextInt(90) + 1);
-            s.setShooter(matchStatisticEngine.getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
-            events.add(s);
-        }
-
-        for (int i = 0; i < awayShotsOnTarget; i++) {
-            ShotOnTargetEvent s = new ShotOnTargetEvent();
-            s.setMatch(match);
-            s.setTeam(away);
-            s.setMinute(rnd.nextInt(90) + 1);
-            s.setShooter(matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
-            events.add(s);
-        }
-
-        // Šutevi na gol – snimamo deo šuteva van okvira
-        for (int i = 0; i < homeShotsOffTarget; i++) {
-            ShotOffTargetEvent s = new ShotOffTargetEvent();
-            s.setMatch(match);
-            s.setTeam(home);
-            s.setMinute(rnd.nextInt(90) + 1);
-            s.setShooter(matchStatisticEngine.getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
-            events.add(s);
-        }
-
-        for (int i = 0; i < awayShotsOffTarget; i++) {
-            ShotOffTargetEvent s = new ShotOffTargetEvent();
-            s.setMatch(match);
-            s.setTeam(away);
-            s.setMinute(rnd.nextInt(90) + 1);
-            s.setShooter(matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID, Position.WNG), rnd));
-            events.add(s);
-        }
-
-        // Penali (ako ih ima)
-        if (homePenalty) {
-            PenaltyEvent p = new PenaltyEvent();
-            p.setMatch(match);
-            p.setTeam(home);
-            p.setMinute(rnd.nextInt(90) + 1);
-            p.setTaker(matchStatisticEngine.getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID), rnd));
-            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspešnosti penala
-            events.add(p);
-        }
-
-        if (awayPenalty) {
-            PenaltyEvent p = new PenaltyEvent();
-            p.setMatch(match);
-            p.setTeam(away);
-            p.setMinute(rnd.nextInt(90) + 1);
-            p.setTaker(matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, List.of(Position.ATT, Position.MID), rnd));
-            p.setScored(rnd.nextDouble() < 0.75);
-            events.add(p);
-        }
-
-        // Žuti kartoni – snimamo ~60% da ne bude previše
-        int homeYellowsToSave = (int)(homeYellows * 0.6);
-        for (int i = 0; i < homeYellowsToSave; i++) {
-            Player offender = matchStatisticEngine.getRandomPlayerByPosition(homePlayers, null, rnd); // bilo ko
-            YellowCardEvent yc = new YellowCardEvent();
-            yc.setMatch(match);
-            yc.setTeam(home);
-            yc.setPlayer(offender);
-            yc.setMinute(rnd.nextInt(90) + 1);
-            events.add(yc);
-        }
-
-        // Isto za goste...
-        int awayYellowsToSave = (int)(awayYellows * 0.6);
-        for (int i = 0; i < awayYellowsToSave; i++) {
-            Player offender = matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, null, rnd);
-            YellowCardEvent yc = new YellowCardEvent();
-            yc.setMatch(match);
-            yc.setTeam(away);
-            yc.setPlayer(offender);
-            yc.setMinute(rnd.nextInt(90) + 1);
-            events.add(yc);
-        }
-
-        // Crveni kartoni – retki, snimamo sve
-        for (int i = 0; i < homeReds; i++) {
-            Player offender = matchStatisticEngine.getRandomPlayerByPosition(homePlayers, null, rnd);
-            RedCardEvent rc = new RedCardEvent();
-            rc.setMatch(match);
-            rc.setTeam(home);
-            rc.setPlayer(offender);
-            rc.setMinute(rnd.nextInt(90) + 1);
-            events.add(rc);
-        }
-
-        // Isto za goste
-        for (int i = 0; i < awayReds; i++) {
-            Player offender = matchStatisticEngine.getRandomPlayerByPosition(awayPlayers, null, rnd);
-            RedCardEvent rc = new RedCardEvent();
-            rc.setMatch(match);
-            rc.setTeam(away);
-            rc.setPlayer(offender);
-            rc.setMinute(rnd.nextInt(90) + 1);
-            events.add(rc);
-        }
-
-        log.info("Generisana fake statistika za simulirani meč {}:{} {} vs {} – šutevi {}/{}, korneri {}/{}, kartoni {}/{}",
-                home.getName(), homeGoals, awayGoals, away.getName(),
-                homeShotsTotal, awayShotsTotal, homeCorners, awayCorners, homeYellows, awayYellows);
-
-        return events;
-    }
-    public List<Team> generateRandomLeagueTeams(int numberOfTeams) {
-        List<Team> allTeams = teamRepository.findAll();
-        Collections.shuffle(allTeams);
-        return allTeams.subList(0, Math.min(numberOfTeams, allTeams.size()));
     }
 }

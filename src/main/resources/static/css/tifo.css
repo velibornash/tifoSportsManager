@@ -1,0 +1,166 @@
+/* TIFO – Clean Sheet Text Mode extra styles */
+
+.big-button {
+    padding: 10px 22px;
+    background: linear-gradient(90deg, #2a8c4a, #36a85a);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    font-size: 1em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.big-button:hover { transform: scale(1.05); background: linear-gradient(90deg, #36a85a, #4caf50); }
+.big-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.corner-logo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.logo-corner { margin-left: auto; display: flex; align-items: center; }
+.mobile-logo-wrapper { margin-left: auto; display: flex; align-items: center; }
+.mobile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 15; display: none; }
+.mobile-overlay.active { display: block; }
+
+/* Club info stat grid */
+.cs-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-top: 16px; }
+.cs-stat-card {
+    background: rgba(255,255,255,0.06);
+    padding: 16px;
+    border-radius: 10px;
+    text-align: center;
+}
+.cs-stat-card .icon { font-size: 1.8em; margin-bottom: 6px; }
+.cs-stat-card .val { font-size: 1.3em; font-weight: bold; }
+.cs-stat-card .lbl { font-size: 0.8em; color: #aaa; margin-top: 4px; }
+
+/* League table */
+.cs-table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+.cs-table thead tr { background: rgba(42,140,74,0.25); color: #fff; }
+.cs-table th, .cs-table td { padding: 10px 12px; text-align: center; }
+.cs-table th:nth-child(2), .cs-table td:nth-child(2) { text-align: left; }
+.cs-table tbody tr { transition: background 0.15s; }
+.cs-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+.cs-table tbody tr:hover { background: rgba(42,140,74,0.12); }
+.cs-table .user-row { background: rgba(42,140,74,0.18) !important; font-weight: bold; }
+
+/* Player list */
+.cs-player-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 14px; border-radius: 8px;
+    cursor: pointer; transition: background 0.15s;
+}
+.cs-player-row:hover { background: rgba(255,255,255,0.06); }
+.cs-player-pos { width: 40px; text-align: center; font-weight: bold; color: #2a8c4a; }
+.cs-player-name { flex: 1; }
+.cs-player-stat { width: 50px; text-align: center; font-size: 0.9em; color: #ccc; }
+
+/* Match result card */
+.cs-match-card {
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.cs-match-teams { flex: 1; }
+.cs-match-score { font-size: 1.3em; font-weight: bold; min-width: 60px; text-align: center; }
+
+/* Fixture */
+.cs-fixture-round { margin-top: 20px; }
+.cs-fixture-round h4 { border-bottom: 1px solid #333; padding-bottom: 6px; color: #2a8c4a; }
+
+/* Tactics selector */
+.cs-tactics-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.cs-tactics-btn {
+    padding: 10px 20px;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    color: #eee;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.cs-tactics-btn:hover { border-color: #2a8c4a; }
+.cs-tactics-btn.active { border-color: #2a8c4a; background: rgba(42,140,74,0.2); }
+
+/* Inbox */
+.cs-inbox-item {
+    padding: 12px; margin: 6px 0; border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    cursor: pointer; transition: background 0.15s;
+}
+.cs-inbox-item:hover { background: rgba(255,255,255,0.08); }
+.cs-inbox-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 6px; }
+.cs-inbox-badge.welcome { background: #2a8c4a; color: #fff; }
+.cs-inbox-badge.match { background: #1976d2; color: #fff; }
+.cs-inbox-badge.info { background: #ff9800; color: #000; }
+.cs-inbox-badge.error { background: #f44336; color: #fff; }
+.cs-inbox-badge.transfer { background: #9c27b0; color: #fff; }
+
+/* Clickable rows */
+.cs-clickable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
+.cs-clickable:hover { background: rgba(42,140,74,0.15) !important; }
+.cs-table tbody tr.cs-clickable:hover { background: rgba(42,140,74,0.18) !important; }
+
+/* Match card clickable */
+.cs-match-card.cs-clickable:hover { background: rgba(42,140,74,0.12) !important; transform: translateX(2px); }
+
+/* Modal overlay */
+.cs-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+    z-index: 100; display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.15s ease;
+}
+.cs-modal {
+    background: #1e1e2e; border-radius: 14px; padding: 28px;
+    max-width: 540px; width: 90%; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.cs-modal h3 { margin-top: 0; color: #fff; }
+.cs-modal-close {
+    float: right; background: none; border: none; color: #aaa;
+    font-size: 1.4em; cursor: pointer; padding: 0 4px;
+}
+.cs-modal-close:hover { color: #fff; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Tab buttons */
+.cs-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #333; }
+.cs-tab-btn {
+    padding: 10px 20px; background: none; border: none;
+    color: #aaa; cursor: pointer; font-size: 0.95em;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all 0.15s;
+}
+.cs-tab-btn:hover { color: #fff; background: rgba(255,255,255,0.04); }
+.cs-tab-btn.active { color: #2a8c4a; border-bottom-color: #2a8c4a; font-weight: bold; }
+
+/* Top scorers/assists ranking */
+.cs-rank-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 8px;
+    cursor: pointer; transition: background 0.15s;
+}
+.cs-rank-row:hover { background: rgba(255,255,255,0.06); }
+.cs-rank-num { width: 30px; text-align: center; font-weight: bold; color: #2a8c4a; font-size: 1.1em; }
+.cs-rank-name { flex: 1; }
+.cs-rank-team { color: #888; font-size: 0.85em; }
+.cs-rank-val { font-weight: bold; font-size: 1.2em; min-width: 40px; text-align: center; }
+
+/* Lineup in match detail */
+.cs-lineup-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 6px;
+}
+.cs-lineup-row:nth-child(even) { background: rgba(255,255,255,0.03); }
+.cs-lineup-pos { width: 40px; text-align: center; font-weight: bold; color: #2a8c4a; font-size: 0.85em; }
+.cs-lineup-name { flex: 1; }
+.cs-lineup-stat { width: 45px; text-align: center; font-size: 0.9em; color: #ccc; }
+.cs-lineup-rating { width: 45px; text-align: center; font-weight: bold; }
+
+/* Transfers dummy */
+.cs-transfer-placeholder {
+    text-align: center; padding: 60px 20px; color: #666;
+}
+.cs-transfer-placeholder .icon { font-size: 3em; margin-bottom: 16px; }
