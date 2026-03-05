@@ -14,12 +14,25 @@ export function renderPlayersView(players, title, { loadPlayer, getImageFilename
 
     players.forEach(player => {
         const filename = getImageFilename(player.name);
+        const rating = Number(player.rating);
+        const form = Number(player.form);
+        const ratingColor = Number.isFinite(rating)
+            ? (rating >= 7.5 ? "#4caf50" : rating >= 6.5 ? "#ffd700" : rating >= 5.5 ? "#ff9800" : "#f44336")
+            : "#9aa0a6";
+        const formBadge = Number.isFinite(form)
+            ? (form >= 7.8
+                ? `<span class="form-badge hot">&#128293; ${form.toFixed(1)}</span>`
+                : form <= 5.8
+                    ? `<span class="form-badge cold">&#129482; ${form.toFixed(1)}</span>`
+                    : `<span class="form-badge neutral">${form.toFixed(1)}</span>`)
+            : `<span class="form-badge neutral">-</span>`;
         html += `
         <div class="manager-player-card" onclick="loadPlayer(${player.id})">
             <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
             <div class="player-name">${player.name}</div>
             <div class="player-meta">${player.position} - ${player.age}</div>
             <div class="player-rating">OVR ${player.overall}</div>
+            <div class="player-meta">Rating: <span style="color:${ratingColor}; font-weight:700;">${Number.isFinite(rating) ? rating.toFixed(1) : "-"}</span> | Form: ${formBadge}</div>
         </div>`;
     });
 

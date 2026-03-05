@@ -36,15 +36,64 @@ public class MatchPlaybackEngine {
 
     public MatchRuntime initializeRuntimeAndPositions(MatchRuntime runtime) {
         Random r = new Random();
-        for (int i = 1; i <= 11; i++) {
-            runtime.players.add(new PlayerPositionDTO(i, "HOME", 10 + r.nextDouble() * 35, 10 + r.nextDouble() * 80, 0, 0));
-        }
-        for (int i = 12; i <= 22; i++) {
-            runtime.players.add(new PlayerPositionDTO(i, "AWAY", 65 + r.nextDouble() * 30, 10 + r.nextDouble() * 80, 0, 0));
+        for (int i = 1; i <= 22; i++) {
+            boolean isHome = i <= 11;
+            double[] base = basePositionForId(i);
+            double jitterX = (r.nextDouble() - 0.5) * 2.5;
+            double jitterY = (r.nextDouble() - 0.5) * 3.5;
+            runtime.players.add(new PlayerPositionDTO(
+                    i,
+                    isHome ? "HOME" : "AWAY",
+                    Math.max(0, Math.min(100, base[0] + jitterX)),
+                    Math.max(0, Math.min(100, base[1] + jitterY)),
+                    0,
+                    0
+            ));
         }
         runtime.ball = new BallPositionDTO(50, 50);
-        runtime.currentCarrier = runtime.players.getFirst();
+        runtime.currentCarrier = runtime.players.stream()
+                .filter(p -> p.getId() == 9)
+                .findFirst()
+                .orElse(runtime.players.getFirst());
+        runtime.currentCarrier.setX(50);
+        runtime.currentCarrier.setY(50);
+
+        runtime.players.stream()
+                .filter(p -> p.getId() == 10)
+                .findFirst()
+                .ifPresent(p -> {
+                    p.setX(47.5);
+                    p.setY(50);
+                });
         return runtime;
+    }
+
+    private double[] basePositionForId(int id) {
+        return switch (id) {
+            case 1 -> new double[]{6, 50};    // HOME GK
+            case 2 -> new double[]{20, 22};   // RB
+            case 3 -> new double[]{20, 78};   // LB
+            case 4 -> new double[]{24, 43};   // RCB
+            case 5 -> new double[]{24, 57};   // LCB
+            case 6 -> new double[]{39, 43};   // CM
+            case 7 -> new double[]{43, 78};   // RW
+            case 8 -> new double[]{39, 57};   // CM
+            case 9 -> new double[]{48, 47};   // ST
+            case 10 -> new double[]{46, 53};  // ST
+            case 11 -> new double[]{43, 22};  // LW
+            case 12 -> new double[]{94, 50};  // AWAY GK
+            case 13 -> new double[]{80, 22};  // RB
+            case 16 -> new double[]{80, 78};  // LB
+            case 14 -> new double[]{76, 43};  // RCB
+            case 15 -> new double[]{76, 57};  // LCB
+            case 17 -> new double[]{61, 43};  // CM
+            case 19 -> new double[]{57, 78};  // RW
+            case 18 -> new double[]{61, 57};  // CM
+            case 21 -> new double[]{52, 47};  // ST
+            case 22 -> new double[]{54, 53};  // ST
+            case 20 -> new double[]{57, 22};  // LW
+            default -> new double[]{50, 50};
+        };
     }
 
     public void startPlayback(long matchId, MatchRuntime rt) {

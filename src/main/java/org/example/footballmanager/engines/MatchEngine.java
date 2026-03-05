@@ -2,6 +2,7 @@ package org.example.footballmanager.engines;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.dto.PlayerPositionDTO;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.model.tactics.Formation;
@@ -519,8 +520,8 @@ public class MatchEngine {
 
     private void checkTackleDuel(MatchRuntime rt, Match match, MatchContext context, int minute) {
         if (rt.currentCarrier == null || rt.activeStoppage != null || rt.isPassing) return;
-        // 25% chance of a duel occurring each minute
-        if (random.nextDouble() > 0.25) return;
+        // Keep minute-level tackle events only when pressure is actually close.
+        if (random.nextDouble() > 0.18) return;
 
         Player carrier = findPlayerByPositionId(rt, rt.currentCarrier.getId());
         boolean isHome = rt.currentCarrier.getTeam().equals("HOME");
@@ -532,7 +533,20 @@ public class MatchEngine {
                 .filter(p -> p.getPosition() != Position.GK)
                 .toList();
         if (defenders.isEmpty() || carrier == null) return;
-        Player defender = defenders.get(random.nextInt(defenders.size()));
+        PlayerPositionDTO nearestDefenderPos = rt.players.stream()
+                .filter(p -> !p.getTeam().equals(rt.currentCarrier.getTeam()))
+                .min(Comparator.comparingDouble(p ->
+                        Math.hypot(p.getX() - rt.currentCarrier.getX(), p.getY() - rt.currentCarrier.getY())))
+                .orElse(null);
+        if (nearestDefenderPos == null) return;
+        double defenderDistance = Math.hypot(nearestDefenderPos.getX() - rt.currentCarrier.getX(),
+                nearestDefenderPos.getY() - rt.currentCarrier.getY());
+        if (defenderDistance > 4.2) return;
+
+        Player defender = findPlayerByPositionId(rt, nearestDefenderPos.getId());
+        if (defender == null) {
+            defender = defenders.get(random.nextInt(defenders.size()));
+        }
 
         DuelCalculator.DuelResult result = DuelCalculator.resolveDuel(
                 carrier, defender, context, DuelCalculator.DuelType.TACKLE);

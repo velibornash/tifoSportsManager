@@ -17,6 +17,10 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             return null;
         }
     }
+    async function ensureUserTeamId() {
+        if (currentUserTeamId) return currentUserTeamId;
+        return await loadUserTeamId();
+    }
 
     // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
     document.addEventListener('click', function(e) {
@@ -177,6 +181,26 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const number = Number(value || 0);
         return `${number > 0 ? "+" : ""}${number}`;
     }
+    function getRatingColor(rating) {
+        const value = Number(rating);
+        if (!Number.isFinite(value)) return "#9aa0a6";
+        if (value >= 7.5) return "#4caf50";
+        if (value >= 6.5) return "#ffd700";
+        if (value >= 5.5) return "#ff9800";
+        return "#f44336";
+    }
+    function formatFormBadge(formValue) {
+        const value = Number(formValue);
+        if (!Number.isFinite(value)) return `<span class="form-badge neutral">-</span>`;
+        if (value >= 7.8) return `<span class="form-badge hot">&#128293; ${value.toFixed(1)}</span>`;
+        if (value <= 5.8) return `<span class="form-badge cold">&#129482; ${value.toFixed(1)}</span>`;
+        return `<span class="form-badge neutral">${value.toFixed(1)}</span>`;
+    }
+    function formatRatingBadge(ratingValue) {
+        const value = Number(ratingValue);
+        if (!Number.isFinite(value)) return `<span style="color:#9aa0a6;">-</span>`;
+        return `<span style="color:${getRatingColor(value)}; font-weight:700;">${value.toFixed(1)}</span>`;
+    }
     async function fetchPlayerRatingSummary(playerId) {
         try {
             const response = await authFetch(`/match-stats/player/${playerId}`);
@@ -214,7 +238,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <div class="cs-stat-card"><div class="icon">🎂</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
                     <div class="cs-stat-card"><div class="icon">⭐</div><div class="val">${player.overall ?? "-"}</div><div class="lbl">OVR</div></div>
                     <div class="cs-stat-card"><div class="icon">😮‍💨</div><div class="val">${player.fatigue != null ? Number(player.fatigue).toFixed(1) : "-"}</div><div class="lbl">Fatigue</div></div>
-                    <div class="cs-stat-card"><div class="icon">📈</div><div class="val">${ratingSummary.averageRating10 ?? "-"}</div><div class="lbl">Average Grade (1-10)</div></div>
+                    <div class="cs-stat-card"><div class="icon">📈</div><div class="val">${formatRatingBadge(ratingSummary.averageRating10)}</div><div class="lbl">Average Grade (1-10)</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128293;</div><div class="val">${formatFormBadge(player.form)}</div><div class="lbl">Form</div></div>
                     <div class="cs-stat-card"><div class="icon">⚽</div><div class="val">${player.totalGoals ?? 0}</div><div class="lbl">Goals</div></div>
                     <div class="cs-stat-card"><div class="icon">🅰️</div><div class="val">${player.totalAssists ?? 0}</div><div class="lbl">Assists</div></div>
                     <div class="cs-stat-card"><div class="icon">💰</div><div class="val">${player.value != null ? Math.round(player.value).toLocaleString() : "-"}</div><div class="lbl">Value</div></div>
@@ -419,11 +444,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                         </div>`;
                     sorted.forEach((p, i) => {
                         const rowBg = i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent";
+                        const gradeValue = Number(p.grade);
+                        const gradeText = Number.isFinite(gradeValue) ? gradeValue.toFixed(1) : "-";
+                        const gradeColor = getRatingColor(gradeValue);
                         html += `
                             <div style="display:flex; gap:10px; padding:8px 10px; border-radius:6px; background:${rowBg};">
                                 <div style="width:42px; text-align:center; color:#2a8c4a; font-weight:700;">${p.position}</div>
                                 <div style="flex:1;">${p.playerName}</div>
-                                <div style="width:56px; text-align:center; font-weight:700;">${Number(p.grade).toFixed(1)}</div>
+                                <div style="width:56px; text-align:center; font-weight:700; color:${gradeColor};">${gradeText}</div>
                                 <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
                                 <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
                             </div>`;
@@ -641,6 +669,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         </div>`;
     }
     async function loadUpcomingMatches() {
+        if (!await ensureUserTeamId()) return;
         console.log(`Loading upcoming matches for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/upcoming`);
         console.log(`Response status: ${response.status}`);
@@ -648,6 +677,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         renderMatches(matches, "Upcoming Matches");
     }
     async function loadFixtures() {
+        if (!await ensureUserTeamId()) return;
         console.log(`Loading fixtures for: ${currentUserTeamId}`);
         const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures`);
         console.log(`Response status: ${response.status}`);
@@ -656,6 +686,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     }
     async function loadFixture(fixtureId) {
         const mainContent = document.getElementById("main-content");
+        if (!await ensureUserTeamId()) return;
         console.log(`Loading fixture ID: ${fixtureId}`);
 
         try {
@@ -1046,7 +1077,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                         <div class="player-name">${escapeHtml(player.name)}</div>
                         <div class="player-meta">${escapeHtml(player.position)} - ${player.age}</div>
                         <div class="player-rating">OVR ${player.overall}</div>
-                        <div class="player-meta">Rating: ${player.rating ?? "-"} | Form: ${player.form != null ? Number(player.form).toFixed(1) : "-"}</div>
+                        <div class="player-meta">Rating: ${formatRatingBadge(player.rating)} | Form: ${formatFormBadge(player.form)}</div>
                         <div class="player-meta">Goals: ${player.totalGoals ?? 0} | Assists: ${player.totalAssists ?? 0}</div>
                     </div>`;
                 });
@@ -1075,8 +1106,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                                 data-team-name="${escapeHtml(teamName)}">
                                 <td style="padding:10px;">${escapeHtml(player.name)}</td>
                                 <td style="padding:10px; text-align:center;">${escapeHtml(player.position)}</td>
-                                <td style="padding:10px; text-align:center;">${player.rating ?? "-"}</td>
-                                <td style="padding:10px; text-align:center;">${player.form != null ? Number(player.form).toFixed(1) : "-"}</td>
+                                <td style="padding:10px; text-align:center;">${formatRatingBadge(player.rating)}</td>
+                                <td style="padding:10px; text-align:center;">${formatFormBadge(player.form)}</td>
                                 <td style="padding:10px; text-align:center;">${player.overall ?? 0}</td>
                                 <td style="padding:10px; text-align:center;">${player.totalGoals ?? 0}/${player.totalAssists ?? 0}</td>
                             </tr>`;
@@ -1145,9 +1176,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                             <div class="stat"><span>Passing</span><span>${player.passing}</span></div>
                             <div class="stat"><span>Shooting</span><span>${player.shooting}</span></div>
                             <div class="stat"><span>OVR</span><span>${player.overall ?? "-"}</span></div>
+                            <div class="stat"><span>Rating</span><span>${formatRatingBadge(player.rating)}</span></div>
+                            <div class="stat"><span>Form</span><span>${formatFormBadge(player.form)}</span></div>
                             <div class="stat"><span>Total Goals</span><span>${player.totalGoals ?? 0}</span></div>
                             <div class="stat"><span>Total Assists</span><span>${player.totalAssists ?? 0}</span></div>
-                            <div class="stat"><span>Average Grade (1-10)</span><span>${ratingSummary.averageRating10 ?? "-"}</span></div>
+                            <div class="stat"><span>Average Grade (1-10)</span><span>${formatRatingBadge(ratingSummary.averageRating10)}</span></div>
                         </div>
                     </div>
                 </div>`;
@@ -1159,11 +1192,12 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:18px;">
                         <div class="stat-item"><div class="stat-label">Position</div><div class="stat-value">${escapeHtml(player.position)}</div></div>
                         <div class="stat-item"><div class="stat-label">OVR</div><div class="stat-value">${player.overall ?? "-"}</div></div>
-                        <div class="stat-item"><div class="stat-label">OVR</div><div class="stat-value">${player.overall ?? "-"}</div></div>
+                        <div class="stat-item"><div class="stat-label">Rating</div><div class="stat-value">${formatRatingBadge(player.rating)}</div></div>
+                        <div class="stat-item"><div class="stat-label">Form</div><div class="stat-value">${formatFormBadge(player.form)}</div></div>
                         <div class="stat-item"><div class="stat-label">Age</div><div class="stat-value">${player.age ?? "-"}</div></div>
                         <div class="stat-item"><div class="stat-label">Goals</div><div class="stat-value">${player.totalGoals ?? 0}</div></div>
                         <div class="stat-item"><div class="stat-label">Assists</div><div class="stat-value">${player.totalAssists ?? 0}</div></div>
-                        <div class="stat-item"><div class="stat-label">Average Grade (1-10)</div><div class="stat-value">${ratingSummary.averageRating10 ?? "-"} (${ratingSummary.matchesPlayed} matches)</div></div>
+                        <div class="stat-item"><div class="stat-label">Average Grade (1-10)</div><div class="stat-value">${formatRatingBadge(ratingSummary.averageRating10)} (${ratingSummary.matchesPlayed} matches)</div></div>
                     </div>
                     <p style="margin-top:16px; color:#9aa0a6; text-align:center;">Detailed skills are hidden for players outside your team.</p>
                 </div>`;

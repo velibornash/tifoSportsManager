@@ -28,6 +28,9 @@ public class MatchRuntime {
     public int passTicks = 0;
     public int maxPassTicks = 3;
     public Integer pendingReceiverId = null;
+    public Integer pendingPasserId = null;
+    public String pendingPassTeam = null;
+    public double passQuality = 0.0;
     public int maxReboundTicks = 3;
     public int maxShotTicks = 4;
     public boolean attacksRightDuringShot;

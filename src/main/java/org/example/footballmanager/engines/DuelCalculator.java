@@ -15,8 +15,8 @@ public class DuelCalculator {
     private static final Random random = new Random();
 
     // Default thresholds for duel quality
-    private static final double CLEAN_THRESHOLD = 15.0;
-    private static final double PARTIAL_THRESHOLD = 5.0;
+    private static final double CLEAN_THRESHOLD = 2.8;
+    private static final double PARTIAL_THRESHOLD = 0.6;
 
     // Duel result
     @Getter
@@ -136,12 +136,11 @@ public class DuelCalculator {
         double defenseFinal = defenseBase * defenseMod;
 
         if (type == DuelType.SHOOTING) {
-            // Keep demo matches lively: slightly favor attacking outcomes in shooting duels.
-            double finishing = (attacker.getSkills().getStriker() * 0.6 + attacker.getSkills().getTechnique() * 0.4) / 100.0;
-            double goalkeeping = defender.getSkills().getGoalkeeper() / 100.0;
+            double finishing = normalize(attacker.getSkills().getStriker()) * 0.6 + normalize(attacker.getSkills().getTechnique()) * 0.4;
+            double goalkeeping = normalize(defender.getSkills().getGoalkeeper());
 
-            attackFinal *= 1.03 + (finishing - 0.5) * 0.20;
-            defenseFinal *= 0.98 + (goalkeeping - 0.5) * 0.08;
+            attackFinal *= 1.00 + (finishing - 0.5) * 0.30;
+            defenseFinal *= 1.00 + (goalkeeping - 0.5) * 0.28;
         }
 
         // 3. Random factor
@@ -169,14 +168,14 @@ public class DuelCalculator {
 
     private static double getCleanThreshold(DuelType type) {
         if (type == DuelType.SHOOTING) {
-            return 4.0;
+            return 0.55;
         }
         return CLEAN_THRESHOLD;
     }
 
     private static double getPartialThreshold(DuelType type) {
         if (type == DuelType.SHOOTING) {
-            return -2.0;
+            return -0.20;
         }
         return PARTIAL_THRESHOLD;
     }
@@ -208,7 +207,7 @@ public class DuelCalculator {
     /** Modifiers: stamina, form, fatigue */
     private static double calculateModifiers(Player player, MatchContext context) {
         double mod = 1.0;
-        mod *= 0.7 + 0.3 * (player.getSkills().getStamina() / 100.0);
+        mod *= 0.78 + 0.22 * normalize(player.getSkills().getStamina());
         mod *= context.getFatigueFactor();
         mod *= 0.85 + 0.25 * (player.getForm() / 10.0);
         return mod;
@@ -220,12 +219,19 @@ public class DuelCalculator {
         return 1.0 + (random.nextDouble() * 2 - 1) * instability;
     }
 
+    private static double normalize(int raw) {
+        if (raw <= 20) {
+            return Math.max(0.0, Math.min(1.0, raw / 20.0));
+        }
+        return Math.max(0.0, Math.min(1.0, raw / 100.0));
+    }
+
     /** Calculate foul probability */
     private static boolean calculateFoul(Player attacker, Player defender, double delta, DuelType type, MatchContext context) {
         double chance = 0.0;
-        if (Math.abs(delta) < PARTIAL_THRESHOLD) chance += 0.2;
-        if (defender.getSkills().getDefender() < 50) chance += 0.1;
-        if (type == DuelType.TACKLE) chance += 0.1;
+        if (Math.abs(delta) < PARTIAL_THRESHOLD) chance += 0.16;
+        if (normalize(defender.getSkills().getDefender()) < 0.42) chance += 0.08;
+        if (type == DuelType.TACKLE) chance += 0.08;
         return random.nextDouble() < chance;
     }
 

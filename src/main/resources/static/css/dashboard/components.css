@@ -307,6 +307,32 @@
 .draw { background: #ff9800; color: white; }
 .loss { background: #f44336; color: white; }
 
+.form-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.82em;
+    line-height: 1.2;
+}
+
+.form-badge.hot {
+    color: #ff7043;
+    background: rgba(255, 112, 67, 0.14);
+}
+
+.form-badge.cold {
+    color: #64b5f6;
+    background: rgba(100, 181, 246, 0.14);
+}
+
+.form-badge.neutral {
+    color: #cfd8dc;
+    background: rgba(207, 216, 220, 0.12);
+}
+
 recent-match:hover .result-badge {
     transform: scale(1.15);
 }
