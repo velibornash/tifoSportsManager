@@ -18,6 +18,7 @@ public class Junior {
     private double lastWeeklyDelta;
     private int arrivalSeasonNumber;
     private int arrivalWeekNumber;
+    private Boolean archived = false;
 
     @Enumerated(EnumType.STRING)
     private JuniorStatus status = JuniorStatus.ACTIVE;

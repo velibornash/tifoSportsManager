@@ -15,4 +15,5 @@ public class JuniorAcademyItemDTO {
     private int arrivalSeasonNumber;
     private int arrivalWeekNumber;
     private Long promotedPlayerId;
+    private boolean archived;
 }

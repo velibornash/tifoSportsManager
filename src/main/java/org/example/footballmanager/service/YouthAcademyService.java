@@ -38,6 +38,7 @@ public class YouthAcademyService {
             if (team.getId() == null) continue;
             long alreadyGenerated = juniorRepository.countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(team.getId(), seasonNumber, 2);
             if (alreadyGenerated > 0) continue;
+            archiveResolvedJuniorsBeforeSeason(team.getId(), seasonNumber);
 
             ensureCoachSkill(team);
             int intakeCount = rollIntakeCount();
@@ -54,6 +55,7 @@ public class YouthAcademyService {
                 j.setArrivalSeasonNumber(seasonNumber);
                 j.setArrivalWeekNumber(2);
                 j.setStatus(JuniorStatus.ACTIVE);
+                j.setArchived(false);
                 j.setTeam(team);
                 intake.add(j);
             }
@@ -67,6 +69,11 @@ public class YouthAcademyService {
         if (weekNumber <= 2) return;
         List<Junior> active = juniorRepository.findByStatus(JuniorStatus.ACTIVE);
         for (Junior junior : active) {
+            if (junior.getArrivalSeasonNumber() < seasonNumber) {
+                // Unresolved juniors from previous seasons remain in academy view but do not train anymore.
+                junior.setLastWeeklyDelta(0.0);
+                continue;
+            }
             Team team = junior.getTeam();
             if (team == null) continue;
             ensureCoachSkill(team);
@@ -92,7 +99,10 @@ public class YouthAcademyService {
         dto.setJuniorCoachSkill(team.getJuniorCoachSkill() == null ? 0 : team.getJuniorCoachSkill());
         dto.setDecisionsOpen(currentWeek == 1);
 
-        juniorRepository.findByTeamIdOrderByAcademySkillExactDesc(teamId).forEach(j -> dto.getJuniors().add(toDto(j)));
+        juniorRepository.findVisibleByTeamId(teamId)
+                .forEach(j -> dto.getJuniors().add(toDto(j)));
+        juniorRepository.findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(teamId)
+                .forEach(j -> dto.getArchive().add(toDto(j)));
         return dto;
     }
 
@@ -362,11 +372,28 @@ public class YouthAcademyService {
             j.setArrivalSeasonNumber(Math.max(0, seasonNumber - 1)); // eligible in current season week 1 as seed data
             j.setArrivalWeekNumber(2);
             j.setStatus(JuniorStatus.ACTIVE);
+            j.setArchived(false);
             j.setTeam(team);
             seed.add(j);
         }
         juniorRepository.saveAll(seed);
         log.info("Seeded {} initial juniors for team {}", seed.size(), team.getName());
+    }
+
+    private void archiveResolvedJuniorsBeforeSeason(Long teamId, int seasonNumber) {
+        List<Junior> all = juniorRepository.findByTeamIdOrderByAcademySkillExactDesc(teamId);
+        boolean changed = false;
+        for (Junior junior : all) {
+            if (junior.getArrivalSeasonNumber() < seasonNumber
+                    && junior.getStatus() != JuniorStatus.ACTIVE
+                    && !Boolean.TRUE.equals(junior.getArchived())) {
+                junior.setArchived(true);
+                changed = true;
+            }
+        }
+        if (changed) {
+            juniorRepository.saveAll(all);
+        }
     }
 
     private JuniorAcademyItemDTO toDto(Junior j) {
@@ -382,6 +409,7 @@ public class YouthAcademyService {
         dto.setArrivalSeasonNumber(j.getArrivalSeasonNumber());
         dto.setArrivalWeekNumber(j.getArrivalWeekNumber());
         dto.setPromotedPlayerId(j.getPromotedPlayer() != null ? j.getPromotedPlayer().getId() : null);
+        dto.setArchived(Boolean.TRUE.equals(j.getArchived()));
         return dto;
     }
 

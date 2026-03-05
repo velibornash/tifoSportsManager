@@ -14,4 +14,5 @@ public class JuniorAcademyStateDTO {
     private int juniorCoachSkill;
     private boolean decisionsOpen;
     private List<JuniorAcademyItemDTO> juniors = new ArrayList<>();
+    private List<JuniorAcademyItemDTO> archive = new ArrayList<>();
 }

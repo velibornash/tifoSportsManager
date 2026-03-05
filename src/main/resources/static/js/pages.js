@@ -2,6 +2,68 @@
 import { authFetch } from './auth.js';
 import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView } from './pages-renderers.js';
     let currentUserTeamId = null;
+    let currentPageId = 'dashboard';
+    let currentNavState = { type: 'dashboard' };
+    const navHistoryStack = [];
+    let navReplayMode = false;
+
+    function pushNavState(nextState) {
+        if (navReplayMode) return;
+        if (currentNavState) navHistoryStack.push(currentNavState);
+        currentNavState = nextState;
+    }
+    async function renderNavState(state) {
+        if (!state) return;
+        if (state.type === 'dashboard') {
+            currentPageId = 'dashboard';
+            currentNavState = { type: 'dashboard' };
+            if (typeof window.loadDashboard === 'function') window.loadDashboard();
+            return;
+        }
+        if (state.type === 'page') {
+            await loadPage(state.page, { pushHistory: false });
+            return;
+        }
+        if (state.type === 'player') {
+            await loadPlayer(state.playerId, state.callerPage, { pushHistory: false });
+            return;
+        }
+        if (state.type === 'match') {
+            await loadMatch(state.matchId, state.caller, { pushHistory: false });
+            return;
+        }
+        if (state.type === 'fixture') {
+            await loadFixture(state.fixtureId, { pushHistory: false });
+            return;
+        }
+        if (state.type === 'leagueTeam') {
+            await loadLeagueTeam(state.teamId, state.teamName, { pushHistory: false });
+            return;
+        }
+        if (state.type === 'leagueTeamPlayer') {
+            await loadLeagueTeamPlayer(state.playerId, state.teamId, state.teamName, { pushHistory: false });
+        }
+    }
+    async function goBackSmart(fallback = 'dashboard') {
+        if (navHistoryStack.length > 0) {
+            const previous = navHistoryStack.pop();
+            currentNavState = previous;
+            navReplayMode = true;
+            try {
+                await renderNavState(previous);
+            } finally {
+                navReplayMode = false;
+            }
+            return;
+        }
+        if (fallback === 'dashboard') {
+            currentPageId = 'dashboard';
+            currentNavState = { type: 'dashboard' };
+            if (typeof window.loadDashboard === 'function') window.loadDashboard();
+            return;
+        }
+        await loadPage(fallback, { pushHistory: false });
+    }
 
     async function loadUserTeamId() {
         try {
@@ -23,12 +85,12 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     }
 
     // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
-    document.addEventListener('click', function(e) {
+   document.addEventListener('click', function(e) {
            if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
                const button = e.target.closest('#back-button');
                const target = button.dataset.target || 'results';
                console.log(`Back clicked -> loading: ${target}`);
-               loadPage(target);
+               goBackSmart(target);
            }
        });
 
@@ -37,8 +99,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <h2>${message}</h2>
                 </div>`;
     }
-    async function loadPage(page) {
+    async function loadPage(page, options = {}) {
+        const pushHistory = options.pushHistory !== false;
         const mainContent = document.getElementById("main-content");
+        currentPageId = page;
+        if (pushHistory) pushNavState({ type: 'page', page });
     if (!currentUserTeamId) {
             await loadUserTeamId();
             if (!currentUserTeamId) return;
@@ -315,7 +380,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
         }
     }
-    async function loadPlayer(playerId) {
+    async function loadPlayer(playerId, callerPage = currentPageId, options = {}) {
+        const pushHistory = options.pushHistory !== false;
+        if (pushHistory) pushNavState({ type: 'player', playerId, callerPage });
         const mainContent = document.getElementById("main-content");
         console.log(`Loading player for team ${currentUserTeamId} and player ${playerId}`);
         const [response, ratingSummary] = await Promise.all([
@@ -324,7 +391,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         ]);
         console.log(`Response status: ${response.status}`);
         if (!response.ok) {
-            mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('firstTeam')">Back</button></div>`;
+            const backTarget = callerPage || "firstTeam";
+            mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('${backTarget}')">Back</button></div>`;
             return;
         }
 
@@ -336,9 +404,21 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
             return "-";
         };
+        const backMap = {
+            juniors: "Back to Youth Academy",
+            trainingReports: "Back to Training Reports",
+            trainingSetup: "Back to Training Setup",
+            firstTeam: "Back to Team",
+            leagueTable: "Back to League Table",
+            leagueMatches: "Back to League Results",
+            results: "Back to Results",
+            fixtures: "Back to Fixtures"
+        };
+        const backLabel = backMap[callerPage] || "Back";
+        const backTarget = callerPage || "firstTeam";
         mainContent.innerHTML = `
             <div class="manager-card">
-                <button class="big-button" onclick="loadPage('firstTeam')" style="margin-bottom:16px;">Back to Team</button>
+                <button id="player-back-button" class="big-button" style="margin-bottom:16px;">${backLabel}</button>
                 <h2>${escapeHtml(player.name)}</h2>
                 ${revealActive ? `
                 <div class="manager-card" style="margin:10px 0 16px; background:rgba(17,26,39,0.85); border:1px solid rgba(111,207,151,0.45);">
@@ -374,8 +454,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         if (revealActive) {
             await runJuniorRevealAnimation(revealPayload);
         }
+        const playerBackBtn = document.getElementById("player-back-button");
+        if (playerBackBtn) {
+            playerBackBtn.addEventListener("click", () => goBackSmart(backTarget));
+        }
     }
-    async function loadMatch(matchId, caller) {
+    async function loadMatch(matchId, caller, options = {}) {
+        const pushHistory = options.pushHistory !== false;
+        if (pushHistory) pushNavState({ type: 'match', matchId, caller });
         const mainContent = document.getElementById("main-content");
         console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if(caller==="undefined"){
@@ -690,7 +776,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
         const response = await authFetch(`/juniors/team/${currentUserTeamId}`);
         if (!response.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Youth Academy</h2><p>Could not load academy data.</p></div>`;
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Youth Academy</h2><p>Could not load academy data.</p></div>`;
             return;
         }
         const academy = await response.json();
@@ -708,10 +794,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
             <h2>Youth Academy</h2>
             <p class="training-note">Season ${academy.currentSeasonNumber} • Week ${academy.currentWeekNumber} • Junior Coach Skill: ${academy.juniorCoachSkill}/100</p>
             <p class="training-note">${canDecide ? "Decisions are open this week: Promote / Transfer list / Release." : "Decisions open only in week 1 of a new season for previous-season juniors."}</p>
+            <p class="training-note">Juniors from previous seasons who are still active stay here but no longer gain skill progression.</p>
             <div class="training-report-table-wrap">
                 <table class="training-report-table">
                     <thead>
@@ -757,6 +844,42 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     </tbody>
                 </table>
             </div>
+            <div style="margin-top:12px;">
+                <button id="toggle-junior-archive" class="big-button" style="background:#3d4c63;">Show Archive</button>
+            </div>
+            <div id="junior-archive-wrap" style="display:none; margin-top:10px;">
+                <h3 style="margin:8px 0;">Junior Archive</h3>
+                <div class="training-report-table-wrap">
+                    <table class="training-report-table">
+                        <thead>
+                            <tr>
+                                <th>Junior</th>
+                                <th>Age</th>
+                                <th>Talent</th>
+                                <th>Academy Skill</th>
+                                <th>Status</th>
+                                <th>Season In</th>
+                                <th>Open</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(Array.isArray(academy.archive) && academy.archive.length > 0)
+                                ? academy.archive.map(j => `
+                                    <tr>
+                                        <td>${escapeHtml(j.name)}</td>
+                                        <td>${j.age}</td>
+                                        <td>${Number(j.talent).toFixed(1)}</td>
+                                        <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
+                                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
+                                        <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>
+                                        <td>${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : "-"}</td>
+                                    </tr>`).join("")
+                                : `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">Archive is empty.</td></tr>`
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>`;
 
         mainContent.innerHTML = html;
@@ -779,7 +902,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     const payload = await res.json();
                     if (payload && payload.playerId) {
                         sessionStorage.setItem("junior_promotion_reveal", JSON.stringify(payload));
-                        await loadPlayer(Number(payload.playerId));
+                        await loadPlayer(Number(payload.playerId), "juniors");
                         return;
                     }
                 }
@@ -790,15 +913,24 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         mainContent.querySelectorAll("[data-open-player]").forEach(link => {
             link.addEventListener("click", async () => {
                 const playerId = Number(link.getAttribute("data-open-player"));
-                if (playerId) await loadPlayer(playerId);
+                if (playerId) await loadPlayer(playerId, "juniors");
             });
         });
+        const archiveBtn = document.getElementById("toggle-junior-archive");
+        const archiveWrap = document.getElementById("junior-archive-wrap");
+        if (archiveBtn && archiveWrap) {
+            archiveBtn.addEventListener("click", () => {
+                const isHidden = archiveWrap.style.display === "none";
+                archiveWrap.style.display = isHidden ? "block" : "none";
+                archiveBtn.textContent = isHidden ? "Hide Archive" : "Show Archive";
+            });
+        }
     }
     async function loadMedicalCenter() {
         const mainContent = document.getElementById("main-content");
         mainContent.innerHTML = `
             <div class="manager-card" style="text-align:center; min-height:320px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                <button class="back-to-dashboard" onclick="loadDashboard()" style="align-self:flex-start;">Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')" style="align-self:flex-start;">Back to Dashboard</button>
                 <div style="font-size:4rem; line-height:1;">⛑️</div>
                 <div style="font-size:2.7rem; line-height:1; margin:8px 0;">🩺</div>
                 <h2 style="margin:12px 0 6px;">Medical Center</h2>
@@ -825,7 +957,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         const render = (formation, style) => {
             let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
                 <h2>Tactics</h2>
                 <h3>Formation: <span id="currentFormation">${escapeHtml(formation)}</span></h3>
                 <div class="cs-tactics-grid">`;
@@ -873,7 +1005,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
 
         let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
             <h2>Coaches</h2>
             <div class="manager-grid">`;
 
@@ -893,7 +1025,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
             return;
         }
         const players = await playersRes.json();
@@ -1084,7 +1216,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         async function render() {
             let html = `
             <div class="manager-card training-setup-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
                 <h2>Training Setup</h2>
                 <p class="training-note">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
 
@@ -1270,7 +1402,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
             return;
         }
         const players = await playersRes.json();
@@ -1372,7 +1504,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             mainContent.innerHTML = `
                 <div class="manager-card training-setup-card">
-                    <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
                     <h2>Training Reports</h2>
                     <p class="training-note">Click week to open players report. Decimal values are shown for testing; color tracks integer up/down.</p>
                     <div class="training-grid">
@@ -1405,7 +1537,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     event.stopPropagation();
                     const playerId = Number(item.getAttribute("data-open-training-player"));
                     if (playerId) {
-                        await loadPlayer(playerId);
+                        await loadPlayer(playerId, "trainingReports");
                     }
                 });
             });
@@ -1468,7 +1600,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             </div>
 
             <!-- Back dugme -->
-            <button class="back-to-dashboard-profile" onclick="loadDashboard()">
+            <button class="back-to-dashboard-profile" onclick="goBackSmart('dashboard')">
                 ← Back to Dashboard
             </button>
         </div>`;
@@ -1489,7 +1621,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const fixtures = await response.json();
         renderFixtures(fixtures, "Fixtures");
     }
-    async function loadFixture(fixtureId) {
+    async function loadFixture(fixtureId, options = {}) {
+        const pushHistory = options.pushHistory !== false;
+        if (pushHistory) pushNavState({ type: 'fixture', fixtureId });
         const mainContent = document.getElementById("main-content");
         if (!await ensureUserTeamId()) return;
         console.log(`Loading fixture ID: ${fixtureId}`);
@@ -1509,7 +1643,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             if (!response.ok) {
                 const text = await response.text();
                 console.error(`Error ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" onclick="loadPage('fixtures')">⬅ Back to Fixtures</button></div>`;
+                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" onclick="goBackSmart('fixtures')">⬅ Back to Fixtures</button></div>`;
                 return;
             }
 
@@ -1554,14 +1688,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
 
                 <div style="text-align:center;">
-                    <button class="back-to-dashboard" onclick="loadPage('fixtures')">
+                    <button class="back-to-dashboard" onclick="goBackSmart('fixtures')">
                         ← Back to Fixtures
                     </button>
                 </div>
             </div>`;
         } catch (err) {
             console.error("Error loading fixture:", err);
-            mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button onclick="loadPage('fixtures')">⬅ Back</button></div>`;
+            mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button onclick="goBackSmart('fixtures')">⬅ Back</button></div>`;
         }
     }
     async function loadFriendlies() {
@@ -1598,7 +1732,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Failed to load league table:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="loadDashboard()">Back</button>
+                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league table.</p>
                 </div>`;
@@ -1620,7 +1754,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error(err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button onclick="loadDashboard()">⬅ Back</button>
+                    <button onclick="goBackSmart('dashboard')">⬅ Back</button>
                     <h2>Error</h2>
                     <p>Could not load league matches.</p>
                 </div>`;
@@ -1653,7 +1787,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
                 <h2>League Schedule ${selectedSeason ? `- Season ${selectedSeasonNumber}` : ""}</h2>
                 ${seasons.length ? `
                 <div style="margin:8px 0 14px;">
@@ -1708,7 +1842,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Failed to load league schedule:", err);
             mainContent.innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="loadDashboard()">Back</button>
+                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league schedule.</p>
                 </div>`;
@@ -1738,7 +1872,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
             <h2>Forum</h2>`;
 
         posts.forEach(p => {
@@ -1763,7 +1897,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
             <h2>Team Chat</h2>`;
 
         messages.forEach(m => {
@@ -1787,7 +1921,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
             <h2>Events</h2>`;
 
         events.forEach(e => {
@@ -1818,7 +1952,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
             <h2>Team Stats</h2>
             <p>Goals: ${stats.goals}</p>
             <p>Conceded: ${stats.conceded}</p>
@@ -1857,7 +1991,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card" style="padding: 25px;">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
                 <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Stats lige – Top liste</h2>
 
                 <div class="top-lists" style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
@@ -1932,7 +2066,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Error loading top lists:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button onclick="loadDashboard()">⬅ Back</button>
+                    <button onclick="goBackSmart('dashboard')">⬅ Back</button>
                     <h2>Error</h2>
                     <p>Could not load top lists. Check connection or backend.</p>
                 </div>`;
@@ -1948,7 +2082,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
                 <h2>Analytics</h2>
                 <p>xG: ${data.xg}</p>
                 <p>xGA: ${data.xga}</p>
@@ -1966,7 +2100,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     function renderTable(table) {
         renderTableView(table, { loadLeagueTeam, escapeHtml, formatGoalDiff });
     }
-    async function loadLeagueTeam(teamId, teamName) {
+    async function loadLeagueTeam(teamId, teamName, options = {}) {
+        const pushHistory = options.pushHistory !== false;
+        if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
             const response = await authFetch(`/teams/${teamId}/players`);
@@ -2055,7 +2191,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             </div>`;
         }
     }
-    async function loadLeagueTeamPlayer(playerId, teamId, teamName) {
+    async function loadLeagueTeamPlayer(playerId, teamId, teamName, options = {}) {
+        const pushHistory = options.pushHistory !== false;
+        if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
             const isUserTeam = Number(teamId) === Number(currentUserTeamId);
@@ -2225,6 +2363,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     window.openTeamByName = openTeamByName;
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
+    window.goBackSmart = goBackSmart;
+
 
 
 
