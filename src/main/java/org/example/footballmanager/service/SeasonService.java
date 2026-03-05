@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.model.JuniorStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,9 @@ public class SeasonService {
     private final CompetitionRepository competitionRepository;
     private final MatchFixtureRepository matchFixtureRepository;
     private final TeamRepository teamRepository;
+    private final PlayerRepository playerRepository;
+    private final JuniorRepository juniorRepository;
+    private final YouthAcademyService youthAcademyService;
     private final Random random = new Random();
 
     @Transactional
@@ -271,6 +275,13 @@ public class SeasonService {
             clock.setCurrentWeek(week + 1);
             clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
             gameClockRepository.save(clock);
+            int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+            int newWeek = clock.getCurrentWeek();
+            if (newWeek == 2) {
+                youthAcademyService.generateSeasonIntakeForWeek2(seasonNumber, newWeek);
+            } else {
+                youthAcademyService.progressActiveJuniorsWeekly(seasonNumber, newWeek);
+            }
             return;
         }
         performPromotionRelegationAndNewSeason(superLiga);
@@ -280,6 +291,7 @@ public class SeasonService {
     public void performPromotionRelegationAndNewSeason(Competition superLiga) {
         int endingSeasonYear = getActiveSeasonYear();
         applyPromotionRelegation(superLiga, endingSeasonYear);
+        agePlayersAndJuniorsOneYear();
 
         GameClock clock = getOrCreateClock();
         clock.setCurrentSeason(clock.getCurrentSeason() + 1);
@@ -294,6 +306,21 @@ public class SeasonService {
         resetCompetitionEntriesForSeason(superLiga, nextSeasonYear);
 
         log.info("Season rollover complete. New season year={}, week=1", nextSeasonYear);
+    }
+
+    @Transactional
+    protected void agePlayersAndJuniorsOneYear() {
+        List<Player> players = playerRepository.findAll();
+        for (Player p : players) {
+            p.setAge(Math.max(15, p.getAge() + 1));
+        }
+        playerRepository.saveAll(players);
+
+        List<Junior> activeJuniors = juniorRepository.findByStatus(JuniorStatus.ACTIVE);
+        for (Junior j : activeJuniors) {
+            j.setAge(Math.max(15, j.getAge() + 1));
+        }
+        juniorRepository.saveAll(activeJuniors);
     }
 
     @Transactional

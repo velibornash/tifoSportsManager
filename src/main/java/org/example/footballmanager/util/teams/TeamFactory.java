@@ -48,6 +48,7 @@ public class TeamFactory {
         newTeam.setName(name);
         newTeam.setBudget(0.0);
         newTeam.setReputation(50.0);
+        newTeam.setJuniorCoachSkill(35 + new java.util.Random().nextInt(51)); // 35-85
         newTeam.setCountry(country);
 
         // 🔹 Kreiraj stadion

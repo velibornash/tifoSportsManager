@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.ResetService;
+import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.YouthAcademyService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.teams.TeamFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,6 +36,8 @@ public class DatabaseInitializer {
     private final PasswordEncoder encoder;  // Spring Security BCrypt encoder
     private final Random random = new Random();
     private final ResetService resetService;
+    private final SeasonService seasonService;
+    private final YouthAcademyService youthAcademyService;
 
 
     public void init() {
@@ -48,17 +52,20 @@ public class DatabaseInitializer {
         }
 
         // 2. Kreiraj Owner korisnika ako ne postoji (sada baza ima strukturu, timovi postoje)
-        createOwnerUserIfNotExists();
+        Team ownerTeam = createOwnerUserIfNotExists();
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
 
         log.info("Inicijalizacija završena.");
     }
 
     @Transactional
     public void seedOwnerAfterReset() {
-        createOwnerUserIfNotExists();
+        Team ownerTeam = createOwnerUserIfNotExists();
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
     }
 
-    private void createOwnerUserIfNotExists() {
+    private Team createOwnerUserIfNotExists() {
+        Team ownerTeam;
         if (userRepository.findByUsername("velibor@example.com").isEmpty()) {
             User owner = new User();
             owner.setUsername("velibor@example.com");
@@ -80,11 +87,23 @@ public class DatabaseInitializer {
 
             owner.setTeam(omladinac);
             userRepository.save(owner);
+            ownerTeam = omladinac;
 
             log.info("Kreiran Owner korisnik 'velibor' sa timom OFK Omladinac (ID: {})", omladinac.getId());
         } else {
             log.info("Owner korisnik 'velibor' već postoji – preskačem kreiranje.");
+            ownerTeam = userRepository.findByUsername("velibor@example.com")
+                    .map(User::getTeam)
+                    .orElseGet(() -> teamRepository.findByName("OFK Omladinac")
+                            .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac")));
         }
+        return ownerTeam;
+    }
+
+    private void seedInitialJuniorsForOwnerIfMissing(Team ownerTeam) {
+        if (ownerTeam == null || ownerTeam.getId() == null) return;
+        int seasonNumber = seasonService.getOrCreateClock().getCurrentSeason();
+        youthAcademyService.seedInitialJuniorsForTeam(ownerTeam.getId(), seasonNumber);
     }
 
     @Transactional

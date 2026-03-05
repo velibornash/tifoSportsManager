@@ -55,6 +55,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 case "juniors":
                     await loadJuniors();
                     break;
+                case "medicalCenter":
+                    await loadMedicalCenter();
+                    break;
 
                 case "formations":
                     await loadFormations();
@@ -223,6 +226,81 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         if (!Number.isFinite(value)) return `<span style="color:#9aa0a6;">-</span>`;
         return `<span style="color:${getRatingColor(value)}; font-weight:700;">${value.toFixed(1)}</span>`;
     }
+    function getPendingJuniorReveal(playerId) {
+        try {
+            const raw = sessionStorage.getItem("junior_promotion_reveal");
+            if (!raw) return null;
+            const payload = JSON.parse(raw);
+            if (!payload || Number(payload.playerId) !== Number(playerId)) return null;
+            return payload;
+        } catch (e) {
+            return null;
+        }
+    }
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    async function runJuniorRevealAnimation(payload) {
+        if (!payload) return;
+        const allocated = payload.allocatedSkills || {};
+        const sequence = Array.isArray(payload.allocationSequence) ? payload.allocationSequence : [];
+        const remainingEl = document.getElementById("junior-reveal-remaining");
+        const statusEl = document.getElementById("junior-reveal-status");
+        const idByKey = {
+            stamina: "skill-stamina-val",
+            goalkeeper: "skill-goalkeeper-val",
+            defending: "skill-defending-val",
+            pace: "skill-pace-val",
+            technique: "skill-technique-val",
+            playmaker: "skill-playmaker-val",
+            passing: "skill-passing-val",
+            shooting: "skill-shooting-val"
+        };
+        const current = {
+            stamina: 0,
+            goalkeeper: 0,
+            defending: 0,
+            pace: 0,
+            technique: 0,
+            playmaker: 0,
+            passing: 0,
+            shooting: 0
+        };
+        let remaining = Number(payload.totalSkillBudget || 0);
+        if (remainingEl) remainingEl.textContent = String(remaining);
+        if (statusEl) statusEl.textContent = "Allocating 1 point every second...";
+
+        if (sequence.length > 0) {
+            for (const skillKey of sequence) {
+                await delay(1000);
+                if (Object.prototype.hasOwnProperty.call(current, skillKey)) {
+                    current[skillKey] += 1;
+                    const node = document.getElementById(idByKey[skillKey]);
+                    if (node) {
+                        node.textContent = `${current[skillKey].toFixed(2)}`;
+                        node.style.color = "#6fcf97";
+                    }
+                }
+                remaining = Math.max(0, remaining - 1);
+                if (remainingEl) remainingEl.textContent = String(remaining);
+            }
+        } else {
+            const order = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
+            for (const key of order) {
+                await delay(1000);
+                current[key] = Number(allocated[key] || 0);
+                const node = document.getElementById(idByKey[key]);
+                if (node) {
+                    node.textContent = `${current[key].toFixed(2)}`;
+                    node.style.color = "#6fcf97";
+                }
+            }
+            if (remainingEl) remainingEl.textContent = String(Math.max(0, Number(payload.remainingAfterFill || 0)));
+        }
+
+        if (statusEl) statusEl.textContent = "Promotion reveal completed.";
+        sessionStorage.removeItem("junior_promotion_reveal");
+    }
     async function fetchPlayerRatingSummary(playerId) {
         try {
             const response = await authFetch(`/match-stats/player/${playerId}`);
@@ -251,6 +329,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         }
 
         const player = await response.json();
+        const revealPayload = getPendingJuniorReveal(playerId);
+        const revealActive = !!revealPayload;
         const fmtSkill = (exact, visible) => {
             if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
             if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
@@ -260,6 +340,13 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             <div class="manager-card">
                 <button class="big-button" onclick="loadPage('firstTeam')" style="margin-bottom:16px;">Back to Team</button>
                 <h2>${escapeHtml(player.name)}</h2>
+                ${revealActive ? `
+                <div class="manager-card" style="margin:10px 0 16px; background:rgba(17,26,39,0.85); border:1px solid rgba(111,207,151,0.45);">
+                    <h3 style="margin:0 0 8px;">Junior Promotion Reveal</h3>
+                    <p class="training-note" style="margin:0 0 6px;">Skills are being generated from academy potential.</p>
+                    <p class="training-note" style="margin:0;">Remaining skill budget: <strong id="junior-reveal-remaining">${Number(revealPayload.totalSkillBudget || 0)}</strong></p>
+                    <p class="training-note" id="junior-reveal-status" style="margin:6px 0 0;">Allocating 1 point every second...</p>
+                </div>` : ""}
                 <div class="cs-stat-grid">
                     <div class="cs-stat-card"><div class="icon">📋</div><div class="val">${escapeHtml(player.position)}</div><div class="lbl">Position</div></div>
                     <div class="cs-stat-card"><div class="icon">🎂</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
@@ -274,16 +361,19 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
                 <h3 style="margin-top:20px;">Skills</h3>
                 <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val">${fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
-                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val">${fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
-                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val">${fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val">${fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val">${fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val">${fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
-                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val">${fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val">${fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
+                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val" id="skill-stamina-val">${revealActive ? "0.00" : fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
+                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val" id="skill-pace-val">${revealActive ? "0.00" : fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
+                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val" id="skill-defending-val">${revealActive ? "0.00" : fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val" id="skill-technique-val">${revealActive ? "0.00" : fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val" id="skill-playmaker-val">${revealActive ? "0.00" : fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val" id="skill-passing-val">${revealActive ? "0.00" : fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
+                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val" id="skill-shooting-val">${revealActive ? "0.00" : fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val" id="skill-goalkeeper-val">${revealActive ? "0.00" : fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
                 </div>
             </div>`;
+        if (revealActive) {
+            await runJuniorRevealAnimation(revealPayload);
+        }
     }
     async function loadMatch(matchId, caller) {
         const mainContent = document.getElementById("main-content");
@@ -597,11 +687,126 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         renderMatches(results, "Results");
     }
     async function loadJuniors() {
-        console.log(`Loading juniors for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/teams/${currentUserTeamId}/juniors`);
-        console.log(`Response status: ${response.status}`);
-        const players = await response.json();
-        renderPlayers(players, "Juniors");
+        const mainContent = document.getElementById("main-content");
+        const response = await authFetch(`/juniors/team/${currentUserTeamId}`);
+        if (!response.ok) {
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Youth Academy</h2><p>Could not load academy data.</p></div>`;
+            return;
+        }
+        const academy = await response.json();
+
+        const canDecide = academy.decisionsOpen === true;
+        const statusColor = (status) => {
+            if (status === "ACTIVE") return "#6fcf97";
+            if (status === "PROMOTED") return "#4ea1ff";
+            if (status === "TRANSFER_LISTED") return "#f5b041";
+            if (status === "RELEASED") return "#ff6b6b";
+            return "#b7bec9";
+        };
+        const actionButton = (label, juniorId, action, danger = false) =>
+            `<button class="mini-btn junior-action-btn" data-junior-id="${juniorId}" data-action="${action}" style="margin-right:6px;${danger ? "background:#8a2d2d;" : ""}">${label}</button>`;
+
+        let html = `
+        <div class="manager-card">
+            <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+            <h2>Youth Academy</h2>
+            <p class="training-note">Season ${academy.currentSeasonNumber} • Week ${academy.currentWeekNumber} • Junior Coach Skill: ${academy.juniorCoachSkill}/100</p>
+            <p class="training-note">${canDecide ? "Decisions are open this week: Promote / Transfer list / Release." : "Decisions open only in week 1 of a new season for previous-season juniors."}</p>
+            <div class="training-report-table-wrap">
+                <table class="training-report-table">
+                    <thead>
+                        <tr>
+                            <th>Junior</th>
+                            <th>Age</th>
+                            <th>Talent</th>
+                            <th>Academy Skill</th>
+                            <th>Last Week Delta</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        const juniors = Array.isArray(academy.juniors) ? academy.juniors : [];
+        if (juniors.length === 0) {
+            html += `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">No juniors in academy yet.</td></tr>`;
+        } else {
+            juniors.forEach(j => {
+                const delta = Number(j.lastWeeklyDelta || 0);
+                const deltaText = `${delta >= 0 ? "+ " : "- "}${Math.abs(delta).toFixed(2)}`;
+                const decisionEligible = canDecide && j.status === "ACTIVE" && Number(j.arrivalSeasonNumber || 0) < Number(academy.currentSeasonNumber || 0);
+                html += `
+                    <tr>
+                        <td>${escapeHtml(j.name)}</td>
+                        <td>${j.age}</td>
+                        <td>${Number(j.talent).toFixed(1)}</td>
+                        <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
+                        <td style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
+                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
+                        <td>
+                            ${decisionEligible ? actionButton("Promote", j.id, "promote-reveal") : ""}
+                            ${decisionEligible ? actionButton("Transfer List", j.id, "transfer-list") : ""}
+                            ${decisionEligible ? actionButton("Release", j.id, "release", true) : ""}
+                            ${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : ""}
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+
+        mainContent.innerHTML = html;
+
+        mainContent.querySelectorAll(".junior-action-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const juniorId = Number(btn.getAttribute("data-junior-id"));
+                const action = btn.getAttribute("data-action");
+                if (!juniorId || !action) return;
+                btn.disabled = true;
+                const res = await authFetch(`/juniors/${juniorId}/${action}`, { method: "POST" });
+                if (!res.ok) {
+                    let msg = "Action failed";
+                    try { msg = await res.text(); } catch (e) {}
+                    alert(msg);
+                    btn.disabled = false;
+                    return;
+                }
+                if (action === "promote-reveal") {
+                    const payload = await res.json();
+                    if (payload && payload.playerId) {
+                        sessionStorage.setItem("junior_promotion_reveal", JSON.stringify(payload));
+                        await loadPlayer(Number(payload.playerId));
+                        return;
+                    }
+                }
+                await loadJuniors();
+            });
+        });
+
+        mainContent.querySelectorAll("[data-open-player]").forEach(link => {
+            link.addEventListener("click", async () => {
+                const playerId = Number(link.getAttribute("data-open-player"));
+                if (playerId) await loadPlayer(playerId);
+            });
+        });
+    }
+    async function loadMedicalCenter() {
+        const mainContent = document.getElementById("main-content");
+        mainContent.innerHTML = `
+            <div class="manager-card" style="text-align:center; min-height:320px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <button class="back-to-dashboard" onclick="loadDashboard()" style="align-self:flex-start;">Back to Dashboard</button>
+                <div style="font-size:4rem; line-height:1;">⛑️</div>
+                <div style="font-size:2.7rem; line-height:1; margin:8px 0;">🩺</div>
+                <h2 style="margin:12px 0 6px;">Medical Center</h2>
+                <p style="color:#9aa0a6; max-width:520px;">
+                    Injury diagnosis, recovery plans, and medical staff management are coming soon.
+                </p>
+                <div style="margin-top:10px; color:#ff6b6b; font-weight:700;">Coming Soon</div>
+            </div>`;
     }
     async function loadFormations() {
         console.log(`Loading formations for ${currentUserTeamId}`);

@@ -37,6 +37,7 @@ public class ResetService {
                 "promotion_rule",
                 "competition_entry",
                 "season_competition",
+                "junior",
                 "player",
                 "team",
                 "competition",
