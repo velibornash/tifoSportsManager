@@ -12,6 +12,8 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     List<Junior> findByTeamIdOrderByAcademySkillExactDesc(Long teamId);
     @Query("SELECT j FROM Junior j WHERE j.team.id = :teamId AND (j.archived = false OR j.archived IS NULL) ORDER BY j.academySkillExact DESC")
     List<Junior> findVisibleByTeamId(@Param("teamId") Long teamId);
+    @Query("SELECT count(j) FROM Junior j WHERE j.team.id = :teamId AND j.status = :status AND (j.archived = false OR j.archived IS NULL)")
+    long countVisibleByTeamIdAndStatus(@Param("teamId") Long teamId, @Param("status") JuniorStatus status);
     List<Junior> findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(Long teamId);
     List<Junior> findByStatus(JuniorStatus status);
     long countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(Long teamId, int arrivalSeasonNumber, int arrivalWeekNumber);

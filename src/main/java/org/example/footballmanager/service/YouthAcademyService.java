@@ -41,7 +41,14 @@ public class YouthAcademyService {
             archiveResolvedJuniorsBeforeSeason(team.getId(), seasonNumber);
 
             ensureCoachSkill(team);
-            int intakeCount = rollIntakeCount();
+            long activeVisible = juniorRepository.countVisibleByTeamIdAndStatus(team.getId(), JuniorStatus.ACTIVE);
+            int freeSlots = Math.max(0, 10 - (int) activeVisible);
+            if (freeSlots <= 0) {
+                log.info("Youth intake skipped for team {} in season {}: academy already has {} active juniors (max 10).",
+                        team.getName(), seasonNumber, activeVisible);
+                continue;
+            }
+            int intakeCount = Math.min(rollIntakeCount(), freeSlots);
             List<Junior> intake = new ArrayList<>();
             for (int i = 0; i < intakeCount; i++) {
                 Junior j = new Junior();
@@ -91,16 +98,19 @@ public class YouthAcademyService {
     public JuniorAcademyStateDTO getAcademyState(Long teamId, int currentSeason, int currentWeek) {
         Team team = teamRepository.findById(teamId).orElseThrow(() -> new RuntimeException("Team not found"));
         ensureCoachSkill(team);
+        List<Junior> visible = juniorRepository.findVisibleByTeamId(teamId);
+
         JuniorAcademyStateDTO dto = new JuniorAcademyStateDTO();
         dto.setTeamId(team.getId());
         dto.setTeamName(team.getName());
         dto.setCurrentSeasonNumber(currentSeason);
         dto.setCurrentWeekNumber(currentWeek);
         dto.setJuniorCoachSkill(team.getJuniorCoachSkill() == null ? 0 : team.getJuniorCoachSkill());
-        dto.setDecisionsOpen(currentWeek == 1);
+        boolean hasCarryoverActive = visible.stream()
+                .anyMatch(j -> j.getStatus() == JuniorStatus.ACTIVE && j.getArrivalSeasonNumber() < currentSeason);
+        dto.setDecisionsOpen(hasCarryoverActive);
 
-        juniorRepository.findVisibleByTeamId(teamId)
-                .forEach(j -> dto.getJuniors().add(toDto(j)));
+        visible.forEach(j -> dto.getJuniors().add(toDto(j)));
         juniorRepository.findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(teamId)
                 .forEach(j -> dto.getArchive().add(toDto(j)));
         return dto;
@@ -163,11 +173,8 @@ public class YouthAcademyService {
         if (junior.getStatus() != JuniorStatus.ACTIVE) {
             throw new RuntimeException("Junior is not active in academy");
         }
-        if (currentWeek != 1) {
-            throw new RuntimeException("Junior decisions are available only in week 1");
-        }
         if (junior.getArrivalSeasonNumber() >= currentSeason) {
-            throw new RuntimeException("This junior is too new. Decisions open from next season week 1.");
+            throw new RuntimeException("This junior is too new. Decisions open from next season.");
         }
         return junior;
     }

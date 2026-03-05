@@ -1,4 +1,4 @@
-
+﻿
 .accordion-header:hover {
     background: #1a3c1a;
     transform: translateX(4px);
@@ -23,10 +23,10 @@
 }
 
 .accordion-content div:hover {
-    background: #1a3c1a; !important;   /* !important da pregazi bilo šta drugo */
+    background: #1a3c1a !important;   /* !important da pregazi bilo Å¡ta drugo */
     color: white;
     border-radius: 6px;           /* zaobljeno da izgleda kao poseban item */
-    margin: 2px 0;                /* mali razmak između stavki da se vidi granica */
+    margin: 2px 0;                /* mali razmak izmeÄ‘u stavki da se vidi granica */
 }
 
 .accordion-content div:last-child {
@@ -34,18 +34,18 @@
 }
 
 
-/* MOBILE SIDEBAR – popravke za skrol i accordion */
+/* MOBILE SIDEBAR â€“ popravke za skrol i accordion */
 #mobileSidebar {
     position: fixed;
     top: 0;
     left: -260px;
     width: 260px;
     height: 100vh;               /* puna visina ekrana */
-    background: #1a3c1a;;
+    background: #1a3c1a;
     box-shadow: 4px 0 12px rgba(0,0,0,0.6);
     transition: left 0.3s ease;
     z-index: 50;
-    overflow-y: auto;            /* ← omogućava skrol unutar menija */
+    overflow-y: auto;            /* â† omoguÄ‡ava skrol unutar menija */
     -webkit-overflow-scrolling: touch; /* glatko skrolovanje na iOS */
 }
 
@@ -88,7 +88,7 @@
         hyphens: none;
     }
 
-    /* Lista igrača – vrati na staro, 2 kolone */
+    /* Lista igraÄa â€“ vrati na staro, 2 kolone */
     .manager-grid {
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
         gap: 12px !important;
@@ -100,7 +100,7 @@
     }
 }
 @media (max-width: 480px) {
-    /* Osnovni kontejner – spreči bekstvo */
+    /* Osnovni kontejner â€“ spreÄi bekstvo */
     .player-detail-card,
     .dashboard-content,
     .manager-card,
@@ -111,7 +111,7 @@
         overflow-x: hidden;
     }
 
-    /* Detalj igrača – slika levo, info desno, ali manje */
+    /* Detalj igraÄa â€“ slika levo, info desno, ali manje */
     .player-detail-card {
         flex-direction: row !important;
         gap: 12px !important;
@@ -119,7 +119,7 @@
     }
 
     .player-detail-image img {
-        max-width: 110px !important;     /* još manje za S23 */
+        max-width: 110px !important;     /* joÅ¡ manje za S23 */
         height: auto !important;
         object-fit: cover;
         border-radius: 12px;
@@ -148,10 +148,10 @@
         overflow-wrap: break-word !important;
         word-wrap: break-word !important;
         hyphens: none;
-        font-size: 0.9em;                /* još malo manje ako treba */
+        font-size: 0.9em;                /* joÅ¡ malo manje ako treba */
     }
 
-    /* Lista igrača – još manje kartice za male ekrane */
+    /* Lista igraÄa â€“ joÅ¡ manje kartice za male ekrane */
     .manager-grid {
         grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
         gap: 10px !important;
@@ -164,15 +164,7 @@
 
     .manager-player-card {
         padding: 8px !important;
-    }
-
-    /* Dodatno – spreči bekstvo teksta svuda */
-    * {
-        box-sizing: border-box;
-        max-width: 100%;
-    }
-
-    p, div, span, h1, h2, h3 {
+    }    p, div, span, h1, h2, h3 {
         overflow-wrap: break-word;
         word-wrap: break-word;
         hyphens: none;
@@ -214,7 +206,7 @@
     height: auto;
     border-radius: 50%;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-    border: 4px solid rgba(138, 43, 226, 0.6); /* ljubičasto-bordo border za logo */
+    border: 4px solid rgba(138, 43, 226, 0.6); /* ljubiÄasto-bordo border za logo */
     transition: transform 0.4s ease, box-shadow 0.4s ease;
 }
 
@@ -409,3 +401,135 @@
     color: #aaa;
     margin-top: 4px;
 }
+
+
+/* Global mobile tightening */
+@media (max-width: 768px) {
+    html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .top-menu {
+        gap: 8px;
+        padding: 8px 10px;
+    }
+
+    .menu-button {
+        padding: 8px 10px;
+        font-size: 0.92rem;
+    }
+
+    .dashboard-content {
+        max-width: 100%;
+        margin: 12px auto;
+        padding: 0 8px;
+    }
+
+    .team-card,
+    .manager-card,
+    .club-profile-card {
+        padding: 12px !important;
+        margin: 10px auto !important;
+    }
+
+    .team-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .match-info {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .team-away-home {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+        flex-wrap: wrap;
+    }
+
+    .match-row {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .match-teams {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .dashboard-actions button {
+        width: 100%;
+        max-width: 340px;
+        margin: 6px auto;
+    }
+
+    .club-header {
+        justify-content: flex-start;
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+
+    .club-logo {
+        width: 120px;
+        height: 120px;
+    }
+
+    .club-title h1 {
+        font-size: 1.7rem;
+    }
+
+    .club-title .club-subtitle {
+        font-size: 0.95rem;
+    }
+
+    .club-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .stadium-button {
+        height: 150px;
+    }
+
+    .top-lists {
+        flex-direction: column !important;
+        gap: 14px !important;
+    }
+
+    .top-scorers,
+    .top-assists {
+        min-width: 0 !important;
+        width: 100% !important;
+    }
+
+    .cs-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .cs-stat-card {
+        padding: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid,
+    .cs-stat-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+

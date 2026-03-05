@@ -1,15 +1,27 @@
-// pages.js
+﻿// pages.js
 import { authFetch } from './auth.js';
 import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView } from './pages-renderers.js';
+import { createAcademyFeature } from './pages/features/academy.js';
+import { createTeamFeature } from './pages/features/team.js';
+import { createMatchesFeature } from './pages/features/matches.js';
     let currentUserTeamId = null;
     let currentPageId = 'dashboard';
     let currentNavState = { type: 'dashboard' };
     const navHistoryStack = [];
     let navReplayMode = false;
+    let navBusy = false;
+
+    function sameNavState(a, b) {
+        if (!a || !b) return false;
+        if (a.type !== b.type) return false;
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
 
     function pushNavState(nextState) {
         if (navReplayMode) return;
+        if (sameNavState(currentNavState, nextState)) return;
         if (currentNavState) navHistoryStack.push(currentNavState);
+        if (navHistoryStack.length > 50) navHistoryStack.shift();
         currentNavState = nextState;
     }
     async function renderNavState(state) {
@@ -45,6 +57,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         }
     }
     async function goBackSmart(fallback = 'dashboard') {
+        if (navBusy) return;
+        navBusy = true;
+        try {
         if (navHistoryStack.length > 0) {
             const previous = navHistoryStack.pop();
             currentNavState = previous;
@@ -63,6 +78,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             return;
         }
         await loadPage(fallback, { pushHistory: false });
+        } finally {
+            navBusy = false;
+        }
     }
 
     async function loadUserTeamId() {
@@ -86,6 +104,13 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
     // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
    document.addEventListener('click', function(e) {
+           const dataBackBtn = e.target.closest('[data-nav-back]');
+           if (dataBackBtn) {
+               e.preventDefault();
+               const target = dataBackBtn.dataset.navBack || 'dashboard';
+               goBackSmart(target);
+               return;
+           }
            if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
                const button = e.target.closest('#back-button');
                const target = button.dataset.target || 'results';
@@ -197,19 +222,23 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
                 // STATS
                 case "playerStats":
-                    await loadPlayerStats();
+                    await loadTopScorersAndAssists("scorers");
                     break;
 
                 case "teamStats":
-                    await loadTeamStats();
+                    await loadTopScorersAndAssists("assists");
                     break;
 
                 case "topScorers":
-                    await loadTopScorersAndAssists();
+                    await loadTopScorersAndAssists("scorers");
+                    break;
+
+                case "topAssists":
+                    await loadTopScorersAndAssists("assists");
                     break;
 
                 case "analytics":
-                    await loadAnalytics();
+                    await loadTopScorersAndAssists("scorers");
                     break;
 
                 default:
@@ -231,12 +260,12 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     }
     function getImageFilename(name) {
         return name
-            .normalize("NFD")                    // razdvaja dijakritike
-            .replace(/[\u0300-\u036f]/g, "")     // uklanja dijakritike (ć→c, č→c...)
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
             .replace(/đ/g, "dj")
             .replace(/Đ/g, "Dj")
-            .replace(/\s+/g, '_')                // razmak → _
-            .replace(/[^a-zA-Z0-9_-]/g, '');     // uklanja sve što nije slovo/broj/_/-
+            .replace(/\s+/g, '_')
+            .replace(/[^a-zA-Z0-9_-]/g, '');
     }
     function normalizeTeamKey(name) {
         return (name || "")
@@ -267,6 +296,24 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             .replace(/\"/g, "&quot;")
             .replace(/'/g, "&#39;");
     }
+    const academyFeature = createAcademyFeature({
+        authFetch,
+        getTeamId: () => currentUserTeamId,
+        escapeHtml,
+        loadPlayer: (...args) => loadPlayer(...args),
+        goBackSmart: (...args) => goBackSmart(...args),
+    });
+    const teamFeature = createTeamFeature({
+        authFetch,
+        getTeamId: () => currentUserTeamId,
+        renderPlayers: (...args) => renderPlayers(...args),
+    });
+    const matchesFeature = createMatchesFeature({
+        authFetch,
+        getTeamId: () => currentUserTeamId,
+        renderMatches: (...args) => renderMatches(...args),
+        renderFixtures: (...args) => renderFixtures(...args),
+    });
     function formatGoalDiff(value) {
         const number = Number(value || 0);
         return `${number > 0 ? "+" : ""}${number}`;
@@ -405,14 +452,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             return "-";
         };
         const backMap = {
-            juniors: "Back to Youth Academy",
-            trainingReports: "Back to Training Reports",
-            trainingSetup: "Back to Training Setup",
-            firstTeam: "Back to Team",
-            leagueTable: "Back to League Table",
-            leagueMatches: "Back to League Results",
-            results: "Back to Results",
-            fixtures: "Back to Fixtures"
+            juniors: "Back",
+            trainingReports: "Back",
+            trainingSetup: "Back",
+            firstTeam: "Back",
+            leagueTable: "Back",
+            leagueMatches: "Back",
+            results: "Back",
+            fixtures: "Back"
         };
         const backLabel = backMap[callerPage] || "Back";
         const backTarget = callerPage || "firstTeam";
@@ -428,27 +475,27 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <p class="training-note" id="junior-reveal-status" style="margin:6px 0 0;">Allocating 1 point every second...</p>
                 </div>` : ""}
                 <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">📋</div><div class="val">${escapeHtml(player.position)}</div><div class="lbl">Position</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎂</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
-                    <div class="cs-stat-card"><div class="icon">⭐</div><div class="val">${player.overall ?? "-"}</div><div class="lbl">OVR</div></div>
-                    <div class="cs-stat-card"><div class="icon">😮‍💨</div><div class="val">${player.fatigue != null ? Number(player.fatigue).toFixed(1) : "-"}</div><div class="lbl">Fatigue</div></div>
-                    <div class="cs-stat-card"><div class="icon">📈</div><div class="val">${formatRatingBadge(ratingSummary.averageRating10)}</div><div class="lbl">Average Grade (1-10)</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128203;</div><div class="val">${escapeHtml(player.position)}</div><div class="lbl">Position</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#127874;</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#11088;</div><div class="val">${player.overall ?? "-"}</div><div class="lbl">OVR</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128565;</div><div class="val">${player.fatigue != null ? Number(player.fatigue).toFixed(1) : "-"}</div><div class="lbl">Fatigue</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128200;</div><div class="val">${formatRatingBadge(ratingSummary.averageRating10)}</div><div class="lbl">Average Grade (1-10)</div></div>
                     <div class="cs-stat-card"><div class="icon">&#128293;</div><div class="val">${formatFormBadge(player.form)}</div><div class="lbl">Form</div></div>
-                    <div class="cs-stat-card"><div class="icon">⚽</div><div class="val">${player.totalGoals ?? 0}</div><div class="lbl">Goals</div></div>
-                    <div class="cs-stat-card"><div class="icon">🅰️</div><div class="val">${player.totalAssists ?? 0}</div><div class="lbl">Assists</div></div>
-                    <div class="cs-stat-card"><div class="icon">💰</div><div class="val">${player.value != null ? Math.round(player.value).toLocaleString() : "-"}</div><div class="lbl">Value</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#9917;</div><div class="val">${player.totalGoals ?? 0}</div><div class="lbl">Goals</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#127344;</div><div class="val">${player.totalAssists ?? 0}</div><div class="lbl">Assists</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128176;</div><div class="val">${player.value != null ? Math.round(player.value).toLocaleString() : "-"}</div><div class="lbl">Value</div></div>
                 </div>
 
                 <h3 style="margin-top:20px;">Skills</h3>
                 <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val" id="skill-stamina-val">${revealActive ? "0.00" : fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
-                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val" id="skill-pace-val">${revealActive ? "0.00" : fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
-                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val" id="skill-defending-val">${revealActive ? "0.00" : fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val" id="skill-technique-val">${revealActive ? "0.00" : fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val" id="skill-playmaker-val">${revealActive ? "0.00" : fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val" id="skill-passing-val">${revealActive ? "0.00" : fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
-                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val" id="skill-shooting-val">${revealActive ? "0.00" : fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val" id="skill-goalkeeper-val">${revealActive ? "0.00" : fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128267;</div><div class="val" id="skill-stamina-val">${revealActive ? "0.00" : fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128168;</div><div class="val" id="skill-pace-val">${revealActive ? "0.00" : fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#128737;</div><div class="val" id="skill-defending-val">${revealActive ? "0.00" : fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#9874;&#65039;</div><div class="val" id="skill-technique-val">${revealActive ? "0.00" : fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#129504;</div><div class="val" id="skill-playmaker-val">${revealActive ? "0.00" : fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#127873;</div><div class="val" id="skill-passing-val">${revealActive ? "0.00" : fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#127919;</div><div class="val" id="skill-shooting-val">${revealActive ? "0.00" : fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
+                    <div class="cs-stat-card"><div class="icon">&#129508;</div><div class="val" id="skill-goalkeeper-val">${revealActive ? "0.00" : fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
                 </div>
             </div>`;
         if (revealActive) {
@@ -494,7 +541,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 return;
             }
 
-            // Osnovni podaci meča
+            // Osnovni podaci meÄa
             const first = events[0];
             const homeTeamName = first.homeTeam || "Home";
             const awayTeamName = first.awayTeam || "Away";
@@ -509,7 +556,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 hour: '2-digit', minute: '2-digit'
             });
 
-            // HTML struktura – sa JEDNIM back dugmetom
+            // Match details layout with a single Back button
             mainContent.innerHTML = `
             <div class="team-card">
                 <h2 style="text-align:center;">Match Details</h2>
@@ -519,7 +566,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                         <div>${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${escapeHtml(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
                         <div>${homeGoals}</div>
                     </div>
-                    <div style="align-self:center; font-size:1.6em;">–</div>
+                    <div style="align-self:center; font-size:1.6em;">-</div>
                     <div style="text-align:center;">
                         <div>${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${escapeHtml(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
                         <div>${awayGoals}</div>
@@ -527,7 +574,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
 
                 <div style="text-align:center; color:#aaa; margin-bottom:25px;">
-                    🗓 ${formattedDate}
+                    &#128197; ${formattedDate}
                 </div>
 
                 <div id="match-buttons-container" style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
@@ -539,7 +586,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
 
-                <!-- Jedno zajedničko Back dugme -->
+                <!-- Jedno zajedniÄko Back dugme -->
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">
                         Back
@@ -547,18 +594,18 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
             </div>`;
 
-            // Postavi ponašanje Back dugmeta u zavisnosti od caller-a
+            // Postavi ponaÅ¡anje Back dugmeta u zavisnosti od caller-a
             const backButton = document.getElementById('back-button');
             let backTarget = 'results';
 
             if (caller === 'match') {
                 backTarget = 'results';
-                backButton.textContent = 'Back to Results';
+                backButton.textContent = 'Back';
             } else if (caller === 'leagueMatches') {
                 backTarget = 'leagueMatches';
-                backButton.textContent = 'Back to League Matches';
+                backButton.textContent = 'Back';
             } else {
-                console.warn(`Unknown caller: ${caller} → fallback na 'results'`);
+                console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
             }
 
             backButton.dataset.target = backTarget;
@@ -649,7 +696,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 infoDiv.innerHTML = html;
             }
 
-            // Automatski prikaži statistiku odmah
+            // Automatski prikaÅ¾i statistiku odmah
             showStats();
 
             // Listener-i za ostala dugmad
@@ -727,7 +774,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     const assistHtml = g.assistant ? ` <span style="color:#888;">(assist: ${assistLabel})</span>` : '';
                     html += `
                     <li style="padding:12px; margin:8px 0; background:rgba(255,255,255,0.05); border-radius:8px;">
-                        <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">⚽ ${scorerLabel} ${assistHtml}${verdict}</span>
+                        <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">&#9917; ${scorerLabel} ${assistHtml}${verdict}</span>
                         <span style="float:right; color:#aaa;">${g.scoreAfterGoal || ""}</span>
                     </li>`;
                 });
@@ -737,7 +784,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             });
 
             document.getElementById("view-events").addEventListener("click", () => {
-                // ... tvoj postojeći kod za prikaz svih eventa (možeš ga ostaviti isti ili malo očistiti) ...
+                // ... tvoj postojeÄ‡i kod za prikaz svih eventa (moÅ¾eÅ¡ ga ostaviti isti ili malo oÄistiti) ...
                 // Primer minimalne verzije:
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">All Events</h3>`;
                 html += `<ul style="list-style:none; padding:0;">`;
@@ -758,181 +805,23 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         }
     }
     async function loadFirstTeam() {
-            console.log(`Loading first team for ${currentUserTeamId}`);
-            const response = await authFetch(`/teams/${currentUserTeamId}/players`);
-            console.log(`Response status: ${response.status}`);
-            const players = await response.json();
-            renderPlayers(players, "First Team");
-        }
+        return teamFeature.loadFirstTeam();
+    }
     async function loadResults() {
-        console.log(`Loading results for ${currentUserTeamId}`);
-        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
-        console.log(`Response status: ${response.status}`);
-        const matches = await response.json()
-        const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
-        renderMatches(results, "Results");
+        return matchesFeature.loadResults();
     }
     async function loadJuniors() {
-        const mainContent = document.getElementById("main-content");
-        const response = await authFetch(`/juniors/team/${currentUserTeamId}`);
-        if (!response.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Youth Academy</h2><p>Could not load academy data.</p></div>`;
-            return;
-        }
-        const academy = await response.json();
-
-        const canDecide = academy.decisionsOpen === true;
-        const statusColor = (status) => {
-            if (status === "ACTIVE") return "#6fcf97";
-            if (status === "PROMOTED") return "#4ea1ff";
-            if (status === "TRANSFER_LISTED") return "#f5b041";
-            if (status === "RELEASED") return "#ff6b6b";
-            return "#b7bec9";
-        };
-        const actionButton = (label, juniorId, action, danger = false) =>
-            `<button class="mini-btn junior-action-btn" data-junior-id="${juniorId}" data-action="${action}" style="margin-right:6px;${danger ? "background:#8a2d2d;" : ""}">${label}</button>`;
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
-            <h2>Youth Academy</h2>
-            <p class="training-note">Season ${academy.currentSeasonNumber} • Week ${academy.currentWeekNumber} • Junior Coach Skill: ${academy.juniorCoachSkill}/100</p>
-            <p class="training-note">${canDecide ? "Decisions are open this week: Promote / Transfer list / Release." : "Decisions open only in week 1 of a new season for previous-season juniors."}</p>
-            <p class="training-note">Juniors from previous seasons who are still active stay here but no longer gain skill progression.</p>
-            <div class="training-report-table-wrap">
-                <table class="training-report-table">
-                    <thead>
-                        <tr>
-                            <th>Junior</th>
-                            <th>Age</th>
-                            <th>Talent</th>
-                            <th>Academy Skill</th>
-                            <th>Last Week Delta</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
-
-        const juniors = Array.isArray(academy.juniors) ? academy.juniors : [];
-        if (juniors.length === 0) {
-            html += `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">No juniors in academy yet.</td></tr>`;
-        } else {
-            juniors.forEach(j => {
-                const delta = Number(j.lastWeeklyDelta || 0);
-                const deltaText = `${delta >= 0 ? "+ " : "- "}${Math.abs(delta).toFixed(2)}`;
-                const decisionEligible = canDecide && j.status === "ACTIVE" && Number(j.arrivalSeasonNumber || 0) < Number(academy.currentSeasonNumber || 0);
-                html += `
-                    <tr>
-                        <td>${escapeHtml(j.name)}</td>
-                        <td>${j.age}</td>
-                        <td>${Number(j.talent).toFixed(1)}</td>
-                        <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
-                        <td style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
-                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
-                        <td>
-                            ${decisionEligible ? actionButton("Promote", j.id, "promote-reveal") : ""}
-                            ${decisionEligible ? actionButton("Transfer List", j.id, "transfer-list") : ""}
-                            ${decisionEligible ? actionButton("Release", j.id, "release", true) : ""}
-                            ${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : ""}
-                        </td>
-                    </tr>`;
-            });
-        }
-
-        html += `
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top:12px;">
-                <button id="toggle-junior-archive" class="big-button" style="background:#3d4c63;">Show Archive</button>
-            </div>
-            <div id="junior-archive-wrap" style="display:none; margin-top:10px;">
-                <h3 style="margin:8px 0;">Junior Archive</h3>
-                <div class="training-report-table-wrap">
-                    <table class="training-report-table">
-                        <thead>
-                            <tr>
-                                <th>Junior</th>
-                                <th>Age</th>
-                                <th>Talent</th>
-                                <th>Academy Skill</th>
-                                <th>Status</th>
-                                <th>Season In</th>
-                                <th>Open</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${(Array.isArray(academy.archive) && academy.archive.length > 0)
-                                ? academy.archive.map(j => `
-                                    <tr>
-                                        <td>${escapeHtml(j.name)}</td>
-                                        <td>${j.age}</td>
-                                        <td>${Number(j.talent).toFixed(1)}</td>
-                                        <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
-                                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
-                                        <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>
-                                        <td>${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : "-"}</td>
-                                    </tr>`).join("")
-                                : `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">Archive is empty.</td></tr>`
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>`;
-
-        mainContent.innerHTML = html;
-
-        mainContent.querySelectorAll(".junior-action-btn").forEach(btn => {
-            btn.addEventListener("click", async () => {
-                const juniorId = Number(btn.getAttribute("data-junior-id"));
-                const action = btn.getAttribute("data-action");
-                if (!juniorId || !action) return;
-                btn.disabled = true;
-                const res = await authFetch(`/juniors/${juniorId}/${action}`, { method: "POST" });
-                if (!res.ok) {
-                    let msg = "Action failed";
-                    try { msg = await res.text(); } catch (e) {}
-                    alert(msg);
-                    btn.disabled = false;
-                    return;
-                }
-                if (action === "promote-reveal") {
-                    const payload = await res.json();
-                    if (payload && payload.playerId) {
-                        sessionStorage.setItem("junior_promotion_reveal", JSON.stringify(payload));
-                        await loadPlayer(Number(payload.playerId), "juniors");
-                        return;
-                    }
-                }
-                await loadJuniors();
-            });
-        });
-
-        mainContent.querySelectorAll("[data-open-player]").forEach(link => {
-            link.addEventListener("click", async () => {
-                const playerId = Number(link.getAttribute("data-open-player"));
-                if (playerId) await loadPlayer(playerId, "juniors");
-            });
-        });
-        const archiveBtn = document.getElementById("toggle-junior-archive");
-        const archiveWrap = document.getElementById("junior-archive-wrap");
-        if (archiveBtn && archiveWrap) {
-            archiveBtn.addEventListener("click", () => {
-                const isHidden = archiveWrap.style.display === "none";
-                archiveWrap.style.display = isHidden ? "block" : "none";
-                archiveBtn.textContent = isHidden ? "Hide Archive" : "Show Archive";
-            });
-        }
+        return academyFeature.loadJuniors();
     }
     async function loadMedicalCenter() {
         const mainContent = document.getElementById("main-content");
         mainContent.innerHTML = `
-            <div class="manager-card" style="text-align:center; min-height:320px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')" style="align-self:flex-start;">Back to Dashboard</button>
-                <div style="font-size:4rem; line-height:1;">⛑️</div>
-                <div style="font-size:2.7rem; line-height:1; margin:8px 0;">🩺</div>
+            <div class="manager-card" style="text-align:center; min-height:320px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;">
+                <button class="back-to-dashboard" data-nav-back="dashboard" style="align-self:flex-start;">Back</button>
+                <div style="display:flex; gap:14px; align-items:center; justify-content:center; margin-top:4px;">
+                    <span style="font-size:3.4rem; color:#ff4d4d; filter: drop-shadow(0 2px 5px rgba(0,0,0,.35));">&#10010;</span>
+                    <span style="font-size:3.2rem; filter: drop-shadow(0 2px 5px rgba(0,0,0,.35));">&#129658;</span>
+                </div>
                 <h2 style="margin:12px 0 6px;">Medical Center</h2>
                 <p style="color:#9aa0a6; max-width:520px;">
                     Injury diagnosis, recovery plans, and medical staff management are coming soon.
@@ -957,7 +846,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         const render = (formation, style) => {
             let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>Tactics</h2>
                 <h3>Formation: <span id="currentFormation">${escapeHtml(formation)}</span></h3>
                 <div class="cs-tactics-grid">`;
@@ -1005,7 +894,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
 
         let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
             <h2>Coaches</h2>
             <div class="manager-grid">`;
 
@@ -1025,7 +914,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
             return;
         }
         const players = await playersRes.json();
@@ -1216,7 +1105,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         async function render() {
             let html = `
             <div class="manager-card training-setup-card">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>Training Setup</h2>
                 <p class="training-note">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
 
@@ -1402,7 +1291,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
             return;
         }
         const players = await playersRes.json();
@@ -1421,10 +1310,10 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 case "goalkeeper": return "🧤";
                 case "defending": return "🛡️";
                 case "pace": return "💨";
-                case "technique": return "🎯";
+                case "technique": return "⚒️";
                 case "playmaker": return "🧠";
                 case "passing": return "🎁";
-                case "shooting": return "🚀";
+                case "shooting": return "🎯";
                 case "stamina": return "🔋";
                 default: return "•";
             }
@@ -1504,7 +1393,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             mainContent.innerHTML = `
                 <div class="manager-card training-setup-card">
-                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                     <h2>Training Reports</h2>
                     <p class="training-note">Click week to open players report. Decimal values are shown for testing; color tracks integer up/down.</p>
                     <div class="training-grid">
@@ -1553,12 +1442,15 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         const mainContent = document.getElementById("main-content");
 
-        // Dodajemo sliku stadiona (pretpostavljamo da je u /images/stadion.jpg ili slično)
-        // Možeš promeniti putanju ili dodati logiku po imenu stadiona ako imaš više
+        // Dodajemo sliku stadiona (pretpostavljamo da je u /images/stadion.jpg ili sliÄno)
+        // MoÅ¾eÅ¡ promeniti putanju ili dodati logiku po imenu stadiona ako imaÅ¡ viÅ¡e
         const stadiumImage = "/images/dunjareal.png"; // default, ili po profil.stadium
 
         mainContent.innerHTML = `
         <div class="club-profile-card">
+            <div style="display:flex; justify-content:flex-start; margin:6px 0 10px 0; padding-left:4px;">
+                <button class="back-to-dashboard-profile" data-nav-back="dashboard" style="position:static; margin:0;">Back</button>
+            </div>
             <!-- Glavni header sa logom i imenom -->
             <div class="club-header">
                 <div class="club-logo-container">
@@ -1569,40 +1461,35 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
                 <div class="club-title">
                     <h1>${profile.name}</h1>
-                    <p class="club-subtitle">Serbian Super League • Season 2025/26</p>
+                    <p class="club-subtitle">Serbian Super League - Season 2025/26</p>
                 </div>
             </div>
 
             <!-- Statistike u lepim karticama -->
             <div class="club-stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon">📅</div>
+                    <div class="stat-icon">Year</div>
                     <div class="stat-value">${profile.founded || "N/A"}</div>
                     <div class="stat-label">Founded</div>
                 </div>
             <button class="stadium-button" onclick="showStadiumModal('${stadiumImage}', '${profile.stadium || 'Stadion'}')">
                     <div class="stadium-overlay">
-                        <div class="stat-icon">🏟️</div>
+                        <div class="stat-icon">Stadium</div>
                         <div class="stat-value">${profile.stadium || "N/A"}</div>
                         <div class="stat-label">Stadium (click to view)</div>
                     </div>
             </button>
                 <div class="stat-card">
-                    <div class="stat-icon">💰</div>
-                    <div class="stat-value">€${(profile.budget || 0).toLocaleString()}</div>
+                    <div class="stat-icon">Budget</div>
+                    <div class="stat-value">EUR ${(profile.budget || 0).toLocaleString()}</div>
                     <div class="stat-label">Budget</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon">⭐</div>
+                    <div class="stat-icon">Rep</div>
                     <div class="stat-value">${profile.reputation || "N/A"}</div>
                     <div class="stat-label">Reputation</div>
                 </div>
             </div>
-
-            <!-- Back dugme -->
-            <button class="back-to-dashboard-profile" onclick="goBackSmart('dashboard')">
-                ← Back to Dashboard
-            </button>
         </div>`;
     }
     async function loadUpcomingMatches() {
@@ -1615,11 +1502,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     }
     async function loadFixtures() {
         if (!await ensureUserTeamId()) return;
-        console.log(`Loading fixtures for: ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures`);
-        console.log(`Response status: ${response.status}`);
-        const fixtures = await response.json();
-        renderFixtures(fixtures, "Fixtures");
+        return matchesFeature.loadFixtures();
     }
     async function loadFixture(fixtureId, options = {}) {
         const pushHistory = options.pushHistory !== false;
@@ -1631,7 +1514,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         try {
             const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures/${fixtureId}`);
             console.log(`Response status: ${response.status}`);
-        // Mapiranje ID → slika stadiona (možeš proširiti)
+        // Fixture to stadium image mapping (extend as needed)
             let stadiumImage = "/images/default-stadium.png"; // fallback
             if (fixtureId == 1) {
                 stadiumImage = "/images/livadice.png";
@@ -1643,7 +1526,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             if (!response.ok) {
                 const text = await response.text();
                 console.error(`Error ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" onclick="goBackSmart('fixtures')">⬅ Back to Fixtures</button></div>`;
+                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" data-nav-back="fixtures">Back</button></div>`;
                 return;
             }
 
@@ -1651,7 +1534,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             const homeTeamName = fixture.homeTeam || "Home";
             const awayTeamName = fixture.awayTeam || "Away";
-            const matchDateTime = `${fixture.matchDate || "N/A"} • ${fixture.matchTime || "N/A"}`;
+            const matchDateTime = `${fixture.matchDate || "N/A"} - ${fixture.matchTime || "N/A"}`;
             const venue = fixture.stadiumName || "N/A";
 
             mainContent.innerHTML = `
@@ -1678,8 +1561,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
 
                 <div style="text-align:center; font-size:1.2em; color:#ccc; margin:25px 0;">
-                    🗓 ${matchDateTime}<br>
-                    🏟️ ${venue}
+                    &#128197; ${matchDateTime}<br>
+                    &#127967; ${venue}
                 </div>
 
                 <div style="text-align:center; margin:40px 0; color:#aaa; font-style:italic; font-size:1.1em;">
@@ -1688,14 +1571,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>
 
                 <div style="text-align:center;">
-                    <button class="back-to-dashboard" onclick="goBackSmart('fixtures')">
-                        ← Back to Fixtures
+                    <button class="back-to-dashboard" data-nav-back="fixtures">
+                        Back
                     </button>
                 </div>
             </div>`;
         } catch (err) {
             console.error("Error loading fixture:", err);
-            mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button onclick="goBackSmart('fixtures')">⬅ Back</button></div>`;
+            mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button data-nav-back="fixtures">Back</button></div>`;
         }
     }
     async function loadFriendlies() {
@@ -1732,14 +1615,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Failed to load league table:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back</button>
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league table.</p>
                 </div>`;
         }
     }
     async function loadLeagueMatches(seasonYear = null) {
-        const leagueId = 1; // Superliga – kasnije možeš proslediti parametar
+        const leagueId = 1; // Superliga, can be parameterized later
         try {
             console.log(`Loading league matches...`);
             const seasonParam = seasonYear ? `?seasonYear=${seasonYear}` : "";
@@ -1754,7 +1637,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error(err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button onclick="goBackSmart('dashboard')">⬅ Back</button>
+                    <button data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league matches.</p>
                 </div>`;
@@ -1787,7 +1670,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back to Dashboard</button>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>League Schedule ${selectedSeason ? `- Season ${selectedSeasonNumber}` : ""}</h2>
                 ${seasons.length ? `
                 <div style="margin:8px 0 14px;">
@@ -1842,7 +1725,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Failed to load league schedule:", err);
             mainContent.innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">Back</button>
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league schedule.</p>
                 </div>`;
@@ -1872,7 +1755,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
             <h2>Forum</h2>`;
 
         posts.forEach(p => {
@@ -1897,7 +1780,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
             <h2>Team Chat</h2>`;
 
         messages.forEach(m => {
@@ -1921,7 +1804,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
             <h2>Events</h2>`;
 
         events.forEach(e => {
@@ -1952,7 +1835,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
         let html = `
         <div class="manager-card">
-            <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
             <h2>Team Stats</h2>
             <p>Goals: ${stats.goals}</p>
             <p>Conceded: ${stats.conceded}</p>
@@ -1961,7 +1844,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         </div>`;
         mainContent.innerHTML = html;
     }
-    async function loadTopScorersAndAssists() {
+    async function loadTopScorersAndAssists(mode = "both") {
         try {
             console.log(`Loading top scorers for ${currentUserTeamId}`);
             const leagueId = 1;
@@ -1991,20 +1874,21 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card" style="padding: 25px;">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
-                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Stats lige – Top liste</h2>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">League Stats - Top Lists</h2>
 
                 <div class="top-lists" style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
 
-                    <!-- Top Strelci -->
+                    ${mode !== "assists" ? `
                     <div class="top-scorers" style="min-width: 340px; flex: 1;">
-                        <h3 style="text-align: center; color: #ffd700; margin-bottom: 15px;">⚽ Top Strelci</h3>
-                        <ul style="list-style: none; padding: 0; margin: 0;">`;
+                        <h3 style="text-align: center; color: #ffd700; margin-bottom: 15px;">Top Scorers</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">` : ""}`;
 
-            scorers.forEach((s, i) => {
-                const rankColor = i < 3 ? '#ffd700' : '#aaa'; // zlatno za top 3
-                const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)'; // zebra
-                html += `
+            if (mode !== "assists") {
+                scorers.forEach((s, i) => {
+                    const rankColor = i < 3 ? '#ffd700' : '#aaa';
+                    const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
+                    html += `
                     <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
                                transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
@@ -2015,22 +1899,27 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                             <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
                         <span style="font-weight: bold; color: #ff7582; min-width: 60px; text-align: right;">
-                            ${s.goals} ⚽
+                            ${s.goals} goals
                         </span>
                     </li>`;
-            });
+                });
+            }
 
-            html += `</ul></div>
+            if (mode !== "assists") {
+                html += `</ul></div>`;
+            }
 
-                    <!-- Top Asistenti -->
-                    <div class="top-assists" style="min-width: 340px; flex: 1;">
-                        <h3 style="text-align: center; color: #9d4edd; margin-bottom: 15px;">🅰 Top Asistenti</h3>
+            if (mode !== "scorers") {
+                html += `<div class="top-assists" style="min-width: 340px; flex: 1;">
+                        <h3 style="text-align: center; color: #9d4edd; margin-bottom: 15px;">Top Assists</h3>
                         <ul style="list-style: none; padding: 0; margin: 0;">`;
+            }
 
-            assists.forEach((a, i) => {
-                const rankColor = i < 3 ? '#9d4edd' : '#aaa';
-                const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
-                html += `
+            if (mode !== "scorers") {
+                assists.forEach((a, i) => {
+                    const rankColor = i < 3 ? '#9d4edd' : '#aaa';
+                    const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
+                    html += `
                     <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
                                transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
@@ -2041,19 +1930,23 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                             <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
                         <span style="font-weight: bold; color: #4fc3f7; min-width: 60px; text-align: right;">
-                            ${a.assists} 🅰
+                            ${a.assists} assists
                         </span>
                     </li>`;
-            });
+                });
+            }
 
-            html += `</ul></div></div></div>`;
+            if (mode !== "scorers") {
+                html += `</ul></div>`;
+            }
+            html += `</div></div>`;
 
             mainContent.innerHTML = html;
 
-            // Dodatni hover efekat (možeš i CSS-om, ali ovde inline za brzinu)
+            // Dodatni hover efekat (moÅ¾eÅ¡ i CSS-om, ali ovde inline za brzinu)
             document.querySelectorAll('.top-lists li').forEach(li => {
                 li.addEventListener('mouseenter', () => {
-                    li.style.background = 'rgba(157, 78, 221, 0.15)'; // ljubičasto hover
+                    li.style.background = 'rgba(157, 78, 221, 0.15)'; // ljubiÄasto hover
                     li.style.transform = 'translateX(5px)';
                 });
                 li.addEventListener('mouseleave', () => {
@@ -2066,7 +1959,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             console.error("Error loading top lists:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button onclick="goBackSmart('dashboard')">⬅ Back</button>
+                    <button data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
                     <p>Could not load top lists. Check connection or backend.</p>
                 </div>`;
@@ -2082,7 +1975,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="goBackSmart('dashboard')">⬅ Back to Dashboard</button>
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>Analytics</h2>
                 <p>xG: ${data.xg}</p>
                 <p>xGA: ${data.xga}</p>
@@ -2112,7 +2005,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back to League Table</button>
+                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
                 <h2>${escapeHtml(teamName)}</h2>
                 <p style="text-align:center; color:#9aa0a6; margin-top:-8px;">Click a player to open profile</p>`;
 
@@ -2215,7 +2108,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 mainContent.innerHTML = `
                 <div class="player-card-wrapper">
                     <div class="player-card">
-                        <button id="back-to-league-team" class="back-to-dashboard">Back to ${escapeHtml(teamName)}</button>
+                        <button id="back-to-league-team" class="back-to-dashboard">Back</button>
                         <div class="card-header">
                             <div class="overall-rating">${player.overall}</div>
                             <div class="position">${escapeHtml(player.position)}</div>
@@ -2246,7 +2139,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             } else {
                 mainContent.innerHTML = `
                 <div class="manager-card" style="max-width:720px; margin:0 auto;">
-                    <button id="back-to-league-team" class="back-to-dashboard">Back to ${escapeHtml(teamName)}</button>
+                    <button id="back-to-league-team" class="back-to-dashboard">Back</button>
                     <h2 style="text-align:center;">${escapeHtml(player.name)}</h2>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:18px;">
                         <div class="stat-item"><div class="stat-label">Position</div><div class="stat-value">${escapeHtml(player.position)}</div></div>
@@ -2289,7 +2182,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu
         window.open(imageUrl, '_blank');
-        // Alternativa: modal (ako želiš lepše)
+        // Alternativa: modal (ako Å¾eliÅ¡ lepÅ¡e)
          const modal = document.createElement('div');
          modal.innerHTML = `<img src="${imageUrl}" style="max-width:90vw; max-height:90vh;">`;
          modal.style.position = 'fixed'; modal.style.top='5%'; modal.style.left='5%'; etc.
@@ -2308,7 +2201,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             <div style="position: relative; max-width: 90vw; max-height: 90vh;">
                 <button onclick="this.parentElement.parentElement.remove()"
                         style="position: absolute; top: -40px; right: 0; background: #f44336; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 1.4em; cursor: pointer;">
-                    ×
+                    &times;
                 </button>
                 <img src="${imageUrl}" alt="${stadiumName}" style="max-width: 100%; max-height: 85vh; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.7);">
                 <p style="color: white; text-align: center; margin-top: 12px; font-size: 1.2em;">
@@ -2364,6 +2257,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
+
+
+
 
 
 

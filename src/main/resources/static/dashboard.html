@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -12,21 +12,19 @@
 <body>
 <div class="background"></div>
 <div class="top-menu">
-    <!-- Desktop menu buttons -->
-    <div class="menu-button desktop-only" onclick="toggleSidebar('clubSidebar')">🏟️ Club</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">🏋️ Training</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
-    <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">🤠 TIFO Old school</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('clubSidebar')">&#127967; Club</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">&#127947; Training</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">&#127942; Competitions</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">&#128172; Community</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">&#128202; Stats</div>
+    <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">&#129302; TIFO Old school</div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>
         <small id="clock-phase"></small>
     </div>
     <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo"></div>
-        <!-- Mobile hamburger -->
-    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">☰</div>
+    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">&#9776;</div>
     <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo"></div>
 </div>
 
@@ -34,10 +32,9 @@
     <div class="sidebar-content">
         <h3 onclick="closeMobileMenu()">Menu</h3>
 
-        <!-- Glavne kategorije sa accordion-om -->
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                🏟️ Club
+                &#127967; Club
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
@@ -51,7 +48,7 @@
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                🏋️ Training
+                &#127947; Training
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
@@ -61,7 +58,7 @@
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                🏆 Competitions
+                &#127942; Competitions
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
@@ -77,7 +74,7 @@
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                💬 Community
+                &#128172; Community
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
@@ -90,20 +87,17 @@
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                📊 Stats
+                &#128202; Stats
             </div>
             <div class="accordion-content">
-                <div onclick="loadPage('playerStats'); closeMobileMenu()">Player Stats</div>
-                <div onclick="loadPage('teamStats'); closeMobileMenu()">Team Stats</div>
-                <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers/Assistants</div>
-                <div onclick="loadPage('analytics'); closeMobileMenu()">Analytics</div>
+                <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
+                <div onclick="loadPage('topAssists'); closeMobileMenu()">Top Assists</div>
             </div>
         </div>
 
-        <!-- TIFO Old school -->
         <div class="mobile-accordion clean-sheet-mobile">
             <div class="accordion-header" onclick="window.location.href='/tifo.html'">
-                🤠 TIFO Old school
+                &#129302; TIFO Old school
             </div>
         </div>
 
@@ -115,6 +109,7 @@
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
+
 <div id="clubSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Club</h3>
@@ -129,7 +124,6 @@
             </div>
         </div>
 
-
         <div class="accordion">
             <div class="accordion-header" onclick="toggleAccordion(this)">
                 Tactics
@@ -141,10 +135,10 @@
             </div>
         </div>
 
-
         <div onclick="loadPage('profile')">Profile</div>
     </div>
 </div>
+
 <div id="trainingSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Training</h3>
@@ -152,6 +146,7 @@
         <div onclick="loadPage('trainingReports')">Training Reports</div>
     </div>
 </div>
+
 <div id="competitionsSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Competitions</h3>
@@ -165,6 +160,7 @@
         <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
     </div>
 </div>
+
 <div id="communitySidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Community</h3>
@@ -175,19 +171,19 @@
         <div onclick="resetDatabase()">Reset DB (Demo)</div>
     </div>
 </div>
+
 <div id="statsSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Stats</h3>
-        <div onclick="loadPage('playerStats')">Player Stats</div>
-        <div onclick="loadPage('teamStats')">Team Stats</div>
-        <div onclick="loadPage('topScorers')">Top Scorers/Assistants</div>
-        <div onclick="loadPage('analytics')">Analytics</div>
+        <div onclick="loadPage('topScorers')">Top Scorers</div>
+        <div onclick="loadPage('topAssists')">Top Assists</div>
     </div>
 </div>
-<!-- MAIN CONTENT -->
+
 <div class="dashboard-content">
     <div id="main-content" style="opacity:0.9"></div>
 </div>
+
 <script type="module" src="/js/auth.js"></script>
 <script type="module" src="/js/demo.js"></script>
 <script type="module" src="/js/sidebar.js"></script>

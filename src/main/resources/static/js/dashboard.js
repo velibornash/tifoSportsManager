@@ -114,8 +114,9 @@ async function resetDatabase() {
         const response = await authFetch('/admin/reset-db', { method: 'POST' });
 
         const message = await response.text();
-        alert(message);
-        window.location.reload();
+        localStorage.removeItem('token');
+        alert(`${message}\n\nPlease log in again.`);
+        window.location.href = '/login.html';
     } catch (err) {
         console.error('Reset error:', err);
         alert('Database reset failed.');
