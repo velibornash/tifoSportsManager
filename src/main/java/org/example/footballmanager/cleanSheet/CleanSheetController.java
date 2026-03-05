@@ -48,6 +48,13 @@ public class CleanSheetController {
         }
     }
 
+    @PostMapping("/reset")
+    public ResponseEntity<?> resetGame(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        cleanSheetService.resetGame(user.getId());
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
     @GetMapping("/table")
     public ResponseEntity<List<CSTableEntry>> getTable(@AuthenticationPrincipal User user) {
         if (user == null) return ResponseEntity.status(401).build();

@@ -25,7 +25,8 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 public class MatchPlaybackEngine {
 
-    private static final int TICK_MS = 480;
+    private static final int TICK_MS = 120;
+    private static final int SUBSTEPS_PER_TICK = 4;
 
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
     private final BroadcastEngine broadcastEngine;
@@ -116,16 +117,20 @@ public class MatchPlaybackEngine {
 
         final int ticksPerMinute = rt != null && rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
         final int[] frameIndex = {0};
+        final int[] substep = {0};
         final int[] lastBroadcastMinute = {-1};
 
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                if (frameIndex[0] >= frames.size()) {
+                if (frameIndex[0] >= frames.size() - 1 && substep[0] == 0) {
                     stopPlayback(matchId);
                     return;
                 }
 
-                MatchRuntime.TickState frame = frames.get(frameIndex[0]++);
+                MatchRuntime.TickState current = frames.get(frameIndex[0]);
+                MatchRuntime.TickState next = frames.get(Math.min(frameIndex[0] + 1, frames.size() - 1));
+                double alpha = substep[0] / (double) SUBSTEPS_PER_TICK;
+                MatchRuntime.TickState frame = alpha == 0.0 ? current : interpolateFrame(current, next, alpha);
                 int minute = Math.min(90, frame.tick / ticksPerMinute + 1);
 
                 GameStateDTO state = new GameStateDTO(minute, frame.players, frame.ball);
@@ -150,6 +155,12 @@ public class MatchPlaybackEngine {
                     }
                     lastBroadcastMinute[0] = minute;
                 }
+
+                substep[0]++;
+                if (substep[0] >= SUBSTEPS_PER_TICK) {
+                    substep[0] = 0;
+                    frameIndex[0]++;
+                }
             } catch (Exception e) {
                 log.error("Playback error for match {}", matchId, e);
                 stopPlayback(matchId);
@@ -157,6 +168,34 @@ public class MatchPlaybackEngine {
         }, 0, TICK_MS, TimeUnit.MILLISECONDS);
 
         log.info("Playback started for match {} with {} frames", matchId, frames.size());
+    }
+
+    private MatchRuntime.TickState interpolateFrame(MatchRuntime.TickState a, MatchRuntime.TickState b, double alpha) {
+        Map<Integer, PlayerPositionDTO> nextById = new HashMap<>();
+        for (PlayerPositionDTO p : b.players) {
+            nextById.put(p.getId(), p);
+        }
+
+        List<PlayerPositionDTO> interpolatedPlayers = new ArrayList<>(a.players.size());
+        for (PlayerPositionDTO ap : a.players) {
+            PlayerPositionDTO bp = nextById.get(ap.getId());
+            double nx = bp != null ? lerp(ap.getX(), bp.getX(), alpha) : ap.getX();
+            double ny = bp != null ? lerp(ap.getY(), bp.getY(), alpha) : ap.getY();
+            interpolatedPlayers.add(new PlayerPositionDTO(ap.getId(), ap.getTeam(), nx, ny, 0, 0));
+        }
+
+        BallPositionDTO ball = new BallPositionDTO(
+                lerp(a.ball.getX(), b.ball.getX(), alpha),
+                lerp(a.ball.getY(), b.ball.getY(), alpha)
+        );
+        int carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
+        int tick = (int) Math.round(lerp(a.tick, b.tick, alpha));
+
+        return new MatchRuntime.TickState(tick, interpolatedPlayers, ball, carrierId, null);
+    }
+
+    private double lerp(double from, double to, double alpha) {
+        return from + (to - from) * alpha;
     }
 
     public void startPlayback(long matchId) {

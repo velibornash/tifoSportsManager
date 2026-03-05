@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.cleanSheet.engine.CSLeagueManager;
 import org.example.footballmanager.cleanSheet.engine.CSMatchSimulator;
+import org.example.footballmanager.cleanSheet.engine.CSMatchReportGenerator;
 import org.example.footballmanager.cleanSheet.model.*;
 import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
 import org.example.footballmanager.model.*;
@@ -27,6 +28,7 @@ public class CleanSheetService {
     private final Map<Long, CleanSheetGameState> activeGames = new ConcurrentHashMap<>();
     private final CSMatchSimulator matchSimulator = new CSMatchSimulator();
     private final CSLeagueManager leagueManager = new CSLeagueManager();
+    private final CSMatchReportGenerator reportGenerator = new CSMatchReportGenerator();
 
     /**
      * Pokrece novu igru — cita iz baze JEDNOM, mapira u CS objekte,
@@ -115,7 +117,15 @@ public class CleanSheetService {
         CleanSheetGameState state = getStateOrThrow(userId);
 
         if (state.isSeasonOver()) {
-            throw new RuntimeException("Sezona je zavrsena!");
+            rolloverToNextSeason(state);
+            Map<String, Object> response = new HashMap<>();
+            response.put("seasonRestarted", true);
+            response.put("seasonOver", false);
+            response.put("round", 0);
+            response.put("table", state.getLeagueTable());
+            response.put("roster", state.getRoster());
+            response.put("seasonYear", state.getSeasonYear());
+            return response;
         }
 
         int round = state.getCurrentRound();
@@ -151,11 +161,13 @@ public class CleanSheetService {
             userFixture.setResult(userResult);
 
             state.getMatchHistory().add(userResult);
-            state.addInboxMessage("match", "Kolo " + round + ": " + userResult.getSummary());
+            state.addInboxMessage("match", "Round " + round + ": " + userResult.getSummary());
+            state.addInboxMessage("report", reportGenerator.buildDetailedReport(userResult));
         }
 
         // Simuliraj ostale meceve
         List<CSMatchResult> allResults = leagueManager.simulateRound(state, round, userResult);
+        state.addInboxMessage("round-report", reportGenerator.buildRoundReport(round, allResults, state.getUserTeam().getId()));
 
         // Oporavi fatigue izmedju kola
         recoverFatigueBetweenRounds(state);
@@ -166,8 +178,8 @@ public class CleanSheetService {
         if (state.isSeasonOver()) {
             CSTableEntry champion = state.getLeagueTable().get(0);
             state.addInboxMessage("info",
-                    "Sezona je zavrsena! Prvak: " + champion.getTeamName() +
-                    " sa " + champion.getPoints() + " bodova.");
+                    "Season finished! Champion: " + champion.getTeamName() +
+                    " with " + champion.getPoints() + " points. Click Next Round to start the next season.");
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -222,6 +234,10 @@ public class CleanSheetService {
 
     public boolean hasActiveGame(Long userId) {
         return activeGames.containsKey(userId);
+    }
+
+    public void resetGame(Long userId) {
+        activeGames.remove(userId);
     }
 
     private CleanSheetGameState getStateOrThrow(Long userId) {
@@ -313,5 +329,28 @@ public class CleanSheetService {
                 p.setFatigue(Math.max(0, p.getFatigue() - recovery));
             }
         }
+    }
+
+    private void rolloverToNextSeason(CleanSheetGameState state) {
+        state.setSeasonYear(state.getSeasonYear() + 1);
+        state.setCurrentRound(1);
+        state.setSchedule(leagueManager.generateSchedule(state.getAllTeams()));
+        state.setLeagueTable(leagueManager.initializeTable(state.getAllTeams()));
+        state.getMatchHistory().clear();
+
+        for (List<CSPlayer> roster : state.getAllTeamRosters().values()) {
+            for (CSPlayer p : roster) {
+                p.setGoals(0);
+                p.setAssists(0);
+                p.setForm(5.0);
+                p.setFatigue(Math.max(0.5, p.getFatigue() * 0.35));
+            }
+        }
+
+        state.addInboxMessage(
+                "info",
+                "New season started: " + state.getSeasonYear() + "/" + (state.getSeasonYear() + 1) +
+                        ". Table and schedule are reset."
+        );
     }
 }

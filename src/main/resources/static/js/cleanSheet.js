@@ -3,6 +3,17 @@ import { authFetch } from './auth.js';
 
 let gameState = null;
 let currentUserTeamId = null;
+let csSessionClosed = false;
+
+async function closeCsSession() {
+    if (csSessionClosed) return;
+    csSessionClosed = true;
+    try {
+        await authFetch('/api/cs/reset', { method: 'POST', keepalive: true });
+    } catch (e) {
+        console.warn('CS reset on exit failed:', e);
+    }
+}
 
 function logMessage(msg, type = 'info') {
     const prefix = `[CleanSheet ${type.toUpperCase()}]`;
@@ -49,6 +60,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('startGameBtn')?.addEventListener('click', initGame);
     document.getElementById('nextMatchBtn')?.addEventListener('click', nextMatch);
     document.getElementById('nextMatchBtnMobile')?.addEventListener('click', nextMatch);
+});
+
+window.addEventListener('pagehide', () => {
+    closeCsSession();
 });
 async function initGame() {
     logMessage("Starting new game...");

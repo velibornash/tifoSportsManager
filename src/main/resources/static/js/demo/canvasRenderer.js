@@ -2,15 +2,17 @@
 let canvas, ctx;
 let animationFrameId = null;
 const FIELD = { offsetX: 50, offsetY: 50, width: 800, height: 400 };
-const MOVE_DURATION = 560;
+const RENDER_DELAY_MS = 120;
+const POST_BLEND = 0.58;
 const GOAL_SHOT_DURATION = 1000;
 const GOAL_RESET_DURATION = 1100;
 
 let players = {};
-let ball = { x: 50, y: 50, startX: 50, startY: 50, targetX: 50, targetY: 50, moveStartTime: performance.now() };
+let ball = { x: 50, y: 50 };
 let currentMinute = 0;
 let scriptedBallAnimation = null;
 let suppressIncomingBallUntil = 0;
+let frameBuffer = [];
 
 export function initCanvas() {
     canvas = document.getElementById('pitch');
@@ -19,6 +21,9 @@ export function initCanvas() {
         return;
     }
     ctx = canvas.getContext('2d');
+    players = {};
+    ball = { x: 50, y: 50 };
+    frameBuffer = [];
     console.log('Canvas initialized - starting render loop');
     loop();
 }
@@ -45,25 +50,23 @@ export function setCurrentMinute(min) {
 }
 
 export function updatePositionsData(data) {
+    const now = performance.now();
+    const playerMap = {};
     (data.players || []).forEach(p => {
+        playerMap[p.id] = { id: p.id, team: p.team, x: p.x, y: p.y };
         if (!players[p.id]) {
-            players[p.id] = { ...p, startX: p.x, startY: p.y, targetX: p.x, targetY: p.y, moveStartTime: performance.now() };
-        } else {
-            const pl = players[p.id];
-            pl.startX = pl.x;
-            pl.startY = pl.y;
-            pl.targetX = p.x;
-            pl.targetY = p.y;
-            pl.moveStartTime = performance.now();
+            players[p.id] = { id: p.id, team: p.team, x: p.x, y: p.y };
         }
     });
 
-    if (data.ball && performance.now() >= suppressIncomingBallUntil) {
-        ball.startX = ball.x;
-        ball.startY = ball.y;
-        ball.targetX = data.ball.x;
-        ball.targetY = data.ball.y;
-        ball.moveStartTime = performance.now();
+    frameBuffer.push({
+        at: now,
+        players: playerMap,
+        ball: data.ball ? { x: data.ball.x, y: data.ball.y } : { x: ball.x, y: ball.y }
+    });
+
+    while (frameBuffer.length > 12) {
+        frameBuffer.shift();
     }
 }
 
@@ -77,12 +80,20 @@ function toCanvasY(y) {
 
 function updatePositions() {
     const now = performance.now();
-    Object.values(players).forEach(p => {
-        const progress = Math.min((now - p.moveStartTime) / MOVE_DURATION, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        p.x = p.startX + (p.targetX - p.startX) * eased;
-        p.y = p.startY + (p.targetY - p.startY) * eased;
-    });
+    const sampled = sampleState(now - RENDER_DELAY_MS);
+    if (sampled) {
+        Object.values(sampled.players).forEach(sp => {
+            if (!players[sp.id]) {
+                players[sp.id] = { id: sp.id, team: sp.team, x: sp.x, y: sp.y };
+                return;
+            }
+            const p = players[sp.id];
+            p.team = sp.team;
+            p.x += (sp.x - p.x) * POST_BLEND;
+            p.y += (sp.y - p.y) * POST_BLEND;
+        });
+    }
+
     if (scriptedBallAnimation) {
         const elapsed = now - scriptedBallAnimation.startTime;
         if (elapsed <= GOAL_SHOT_DURATION) {
@@ -99,12 +110,49 @@ function updatePositions() {
                 scriptedBallAnimation = null;
             }
         }
-    } else {
-        const bProg = Math.min((now - ball.moveStartTime) / MOVE_DURATION, 1);
-        const eased = 1 - Math.pow(1 - bProg, 3);
-        ball.x = ball.startX + (ball.targetX - ball.startX) * eased;
-        ball.y = ball.startY + (ball.targetY - ball.startY) * eased;
+    } else if (sampled && now >= suppressIncomingBallUntil) {
+        ball.x += (sampled.ball.x - ball.x) * POST_BLEND;
+        ball.y += (sampled.ball.y - ball.y) * POST_BLEND;
     }
+}
+
+function sampleState(renderAt) {
+    if (frameBuffer.length === 0) return null;
+    if (frameBuffer.length === 1) return frameBuffer[0];
+
+    while (frameBuffer.length > 2 && frameBuffer[1].at <= renderAt) {
+        frameBuffer.shift();
+    }
+
+    const a = frameBuffer[0];
+    const b = frameBuffer[Math.min(1, frameBuffer.length - 1)];
+    if (!b || b.at <= a.at || renderAt <= a.at) {
+        return a;
+    }
+    if (renderAt >= b.at) {
+        return b;
+    }
+
+    const alpha = Math.max(0, Math.min(1, (renderAt - a.at) / (b.at - a.at)));
+    const playersOut = {};
+
+    Object.keys(a.players).forEach(id => {
+        const ap = a.players[id];
+        const bp = b.players[id] || ap;
+        playersOut[id] = {
+            id: ap.id,
+            team: ap.team,
+            x: ap.x + (bp.x - ap.x) * alpha,
+            y: ap.y + (bp.y - ap.y) * alpha
+        };
+    });
+
+    const ballOut = {
+        x: a.ball.x + (b.ball.x - a.ball.x) * alpha,
+        y: a.ball.y + (b.ball.y - a.ball.y) * alpha
+    };
+
+    return { at: renderAt, players: playersOut, ball: ballOut };
 }
 
 function drawField() {

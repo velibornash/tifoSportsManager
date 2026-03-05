@@ -4,6 +4,10 @@ import { authFetch } from './auth.js';
 let gameState = null;
 // Store all round results (keyed by round) so schedule fixtures can link to any match
 let allRoundResults = {};
+let csSessionClosed = false;
+let csTeamNameToId = new Map();
+let csPlayerNameToEntries = new Map();
+let csPlayerIndexLoaded = false;
 
 // ─── Auth helper ───
 async function csApi(url, options = {}) {
@@ -26,6 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (data.active) {
         gameState = data;
+        rebuildTeamIndex();
+        ensurePlayerIndexLoaded();
         updateRoundInfo();
         renderPage('clubInfo');
     } else {
@@ -35,6 +41,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         gameState = await startRes.json();
+        rebuildTeamIndex();
+        ensurePlayerIndexLoaded();
         updateRoundInfo();
         renderPage('inbox');
     }
@@ -45,6 +53,49 @@ function updateRoundInfo() {
     if (el && gameState) {
         el.textContent = `Kolo ${gameState.currentRound} / ${gameState.totalRounds} | Sezona ${gameState.seasonYear}/${gameState.seasonYear + 1}`;
     }
+}
+
+function rebuildTeamIndex() {
+    csTeamNameToId = new Map();
+    (gameState?.leagueTable || []).forEach(t => {
+        if (t?.teamName && t?.teamId != null) {
+            csTeamNameToId.set(t.teamName, t.teamId);
+        }
+    });
+    if (gameState?.userTeam?.name && gameState?.userTeam?.id != null) {
+        csTeamNameToId.set(gameState.userTeam.name, gameState.userTeam.id);
+    }
+}
+
+async function ensurePlayerIndexLoaded(force = false) {
+    if (csPlayerIndexLoaded && !force) return;
+    csPlayerNameToEntries = new Map();
+    const teamIds = [...new Set((gameState?.leagueTable || []).map(t => t.teamId).filter(Boolean))];
+    if (!teamIds.length) {
+        csPlayerIndexLoaded = true;
+        return;
+    }
+
+    const results = await Promise.all(teamIds.map(async teamId => {
+        try {
+            const res = await csApi(`/api/cs/team/${teamId}`);
+            if (!res || !res.ok) return null;
+            return await res.json();
+        } catch {
+            return null;
+        }
+    }));
+
+    results.filter(Boolean).forEach(data => {
+        const teamId = data.team?.id;
+        (data.roster || []).forEach(p => {
+            if (!p?.name || !p?.id || !teamId) return;
+            if (!csPlayerNameToEntries.has(p.name)) csPlayerNameToEntries.set(p.name, []);
+            csPlayerNameToEntries.get(p.name).push({ playerId: p.id, teamId });
+        });
+    });
+
+    csPlayerIndexLoaded = true;
 }
 
 // ─── Navigation ───
@@ -131,12 +182,57 @@ function truncate(text, max) {
     return text.substring(0, max) + '...';
 }
 
-function openInboxMessage(index) {
+function escapeHtml(text) {
+    return (text || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function injectEntityLinks(rawText) {
+    let html = escapeHtml(rawText || '');
+
+    const teamNames = [...csTeamNameToId.keys()].sort((a, b) => b.length - a.length);
+    for (const teamName of teamNames) {
+        const teamId = csTeamNameToId.get(teamName);
+        const rx = new RegExp(`\\b${escapeRegExp(teamName)}\\b`, 'g');
+        html = html.replace(rx, `<a href="#" class="cs-inline-link" data-kind="team" data-id="${teamId}">${teamName}</a>`);
+    }
+
+    if (csPlayerIndexLoaded) {
+        const playerNames = [...csPlayerNameToEntries.keys()].sort((a, b) => b.length - a.length);
+        for (const playerName of playerNames) {
+            const first = csPlayerNameToEntries.get(playerName)?.[0];
+            if (!first) continue;
+            const rx = new RegExp(`\\b${escapeRegExp(playerName)}\\b`, 'g');
+            html = html.replace(
+                rx,
+                `<a href="#" class="cs-inline-link" data-kind="player" data-player-id="${first.playerId}" data-team-id="${first.teamId}">${playerName}</a>`
+            );
+        }
+    }
+
+    html = html.replace(/\b(Superliga|League Table)\b/g, `<a href="#" class="cs-inline-link" data-kind="league">$1</a>`);
+    return html.replaceAll('\n', '<br>');
+}
+
+async function openInboxMessage(index) {
     const msg = gameState?.inbox?.[index];
     if (!msg) return;
+    rebuildTeamIndex();
+    if (msg.type === 'report' || msg.type === 'round-report') {
+        await ensurePlayerIndexLoaded();
+    }
     const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>`;
+    const linkedText = injectEntityLinks(msg.text || '');
     showModal(badgeHtml + ' Poruka', `
-        <p style="line-height:1.6;">${msg.text}</p>
+        <p style="line-height:1.6;">${linkedText}</p>
         <div style="font-size:0.85em; color:#666; margin-top:12px;">${msg.timestamp || ''}</div>
     `);
 }
@@ -305,6 +401,15 @@ async function viewPlayerFromTeam(playerId, teamId) {
     renderAnyPlayerDetail(p, () => renderTeamDetail(teamId));
 }
 
+function openMatchPlayer(playerId, teamId) {
+    const ownTeamId = gameState?.userTeam?.id;
+    if (teamId === ownTeamId) {
+        renderPlayerDetail(playerId);
+        return;
+    }
+    viewPlayerFromTeam(playerId, teamId);
+}
+
 // ─── Schedule (clickable matches) ───
 async function renderSchedule(el) {
     let schedule = [];
@@ -436,10 +541,16 @@ function renderMatchDetailFull(match, backFn) {
     const main = document.getElementById('main-content');
     const homeName = match.homeTeamName;
     const awayName = match.awayTeamName;
+    const homeTeamId = match.homeTeamId;
+    const awayTeamId = match.awayTeamId;
 
     let html = `<div class="manager-card">
         <button class="big-button" onclick="window._tifoMatchBack()" style="margin-bottom:16px;">⬅ Nazad</button>
-        <h2 style="text-align:center;">${homeName} ${match.homeGoals} : ${match.awayGoals} ${awayName}</h2>
+        <h2 style="text-align:center;">
+            <span class="cs-clickable" onclick="tifoTeamDetail(${homeTeamId})">${homeName}</span>
+            ${match.homeGoals} : ${match.awayGoals}
+            <span class="cs-clickable" onclick="tifoTeamDetail(${awayTeamId})">${awayName}</span>
+        </h2>
         <p style="text-align:center;color:#aaa;">Kolo ${match.round}</p>
 
         <div class="cs-tabs">
@@ -478,7 +589,7 @@ function buildLineupsHtml(match) {
     const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
     let html = '';
 
-    const renderLineup = (title, playerStats) => {
+    const renderLineup = (title, playerStats, teamId) => {
         if (!playerStats || playerStats.length === 0) return `<h3>${title}</h3><p style="color:#aaa;">Nema podataka o postavi</p>`;
         const sorted = [...playerStats].sort((a, b) => (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5));
         let h = `<h3>${title}</h3>
@@ -493,7 +604,7 @@ function buildLineupsHtml(match) {
             const ratingColor = p.rating >= 7.5 ? '#4caf50' : p.rating >= 6.5 ? '#ffd700' : p.rating >= 5.5 ? '#ff9800' : '#f44336';
             h += `<div class="cs-lineup-row">
                 <div class="cs-lineup-pos">${p.position}</div>
-                <div class="cs-lineup-name">${p.playerName}</div>
+                <div class="cs-lineup-name cs-clickable" onclick="tifoOpenMatchPlayer(${p.playerId}, ${teamId})">${p.playerName}</div>
                 <div class="cs-lineup-rating" style="color:${ratingColor}">${p.rating?.toFixed(1) || '-'}</div>
                 <div class="cs-lineup-stat">${p.goals || ''}</div>
                 <div class="cs-lineup-stat">${p.assists || ''}</div>
@@ -502,9 +613,9 @@ function buildLineupsHtml(match) {
         return h;
     };
 
-    html += renderLineup(match.homeTeamName, match.homePlayerStats);
+    html += renderLineup(match.homeTeamName, match.homePlayerStats, match.homeTeamId);
     html += `<div style="margin-top:20px;"></div>`;
-    html += renderLineup(match.awayTeamName, match.awayPlayerStats);
+    html += renderLineup(match.awayTeamName, match.awayPlayerStats, match.awayTeamId);
     return html;
 }
 
@@ -514,13 +625,24 @@ function buildGoalsHtml(match) {
 
     let html = '';
     goals.sort((a, b) => a.minute - b.minute).forEach(g => {
+        const scorerId = findMatchPlayerIdByName(match, g.teamName, g.playerName);
+        const scorerTeamId = g.teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId;
+        const assistId = findMatchPlayerIdByName(match, g.teamName, g.assistName);
         html += `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-            <strong>${g.minute}'</strong> ⚽ ${g.playerName} <span style="color:#888;">(${g.teamName})</span>
-            ${g.assistName ? `<span style="color:#666;"> asist: ${g.assistName}</span>` : ''}
+            <strong>${g.minute}'</strong> ⚽ ${scorerId ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${scorerId}, ${scorerTeamId})">${g.playerName}</span>` : (g.playerName || '?')}
+            <span style="color:#888;">(<span class="cs-clickable" onclick="tifoTeamDetail(${scorerTeamId})">${g.teamName}</span>)</span>
+            ${g.assistName ? `<span style="color:#666;"> asist: ${assistId ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${assistId}, ${scorerTeamId})">${g.assistName}</span>` : g.assistName}</span>` : ''}
             <span style="float:right;color:#aaa;font-weight:bold;">${g.scoreAfterGoal || ''}</span>
         </div>`;
     });
     return html;
+}
+
+function findMatchPlayerIdByName(match, teamName, playerName) {
+    if (!playerName) return null;
+    const pool = teamName === match.homeTeamName ? (match.homePlayerStats || []) : (match.awayPlayerStats || []);
+    const player = pool.find(p => p.playerName === playerName);
+    return player?.playerId || null;
 }
 
 function buildStatsHtml(match) {
@@ -530,7 +652,7 @@ function buildStatsHtml(match) {
     const countFor = (type, team) => events.filter(e => e.eventType === type && e.teamName === team).length;
 
     return `<table class="cs-table">
-        <thead><tr><th>Stat</th><th>${homeName}</th><th>${awayName}</th></tr></thead>
+        <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${homeName}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${awayName}</span></th></tr></thead>
         <tbody>
             <tr><td>Sutevi u okvir</td><td>${countFor('SHOT_ON_TARGET', homeName)}</td><td>${countFor('SHOT_ON_TARGET', awayName)}</td></tr>
             <tr><td>Sutevi van okvira</td><td>${countFor('SHOT_OFF_TARGET', homeName)}</td><td>${countFor('SHOT_OFF_TARGET', awayName)}</td></tr>
@@ -646,6 +768,32 @@ async function nextRound() {
         }
         const data = await res.json();
 
+        if (data.seasonRestarted) {
+            if (data.table) gameState.leagueTable = data.table;
+            if (data.roster) gameState.roster = data.roster;
+            if (data.seasonYear) gameState.seasonYear = data.seasonYear;
+            gameState.currentRound = 1;
+            gameState.matchHistory = [];
+            allRoundResults = {};
+            const stateRes = await csApi('/api/cs/state');
+            if (stateRes && stateRes.ok) {
+                gameState = await stateRes.json();
+            }
+            rebuildTeamIndex();
+            csPlayerIndexLoaded = false;
+            ensurePlayerIndexLoaded();
+            updateRoundInfo();
+            showModal(
+                'New Season Started',
+                `<p>A new season has started.</p>
+                 <p>Season: <strong>${gameState.seasonYear}/${gameState.seasonYear + 1}</strong></p>
+                 <div style="text-align:center; margin-top:14px;">
+                    <button class="big-button" onclick="tifoCloseModal(); tifoNav('leagueTable')">Open Table</button>
+                 </div>`
+            );
+            return;
+        }
+
         // Update local state
         if (data.table) gameState.leagueTable = data.table;
         if (data.userMatch) {
@@ -667,11 +815,12 @@ async function nextRound() {
         const inboxRes = await csApi('/api/cs/inbox');
         if (inboxRes && inboxRes.ok) gameState.inbox = await inboxRes.json();
 
+        rebuildTeamIndex();
         updateRoundInfo();
 
         // Show user match result
         if (data.userMatch) {
-            renderMatchDetailFull(data.userMatch, () => renderPage('matches'));
+            showHalfTimeModal(data.userMatch, () => renderMatchDetailFull(data.userMatch, () => renderPage('matches')));
         } else if (data.seasonOver) {
             renderPage('leagueTable');
         } else {
@@ -698,6 +847,62 @@ function closeDesktopSidebars() {
         .forEach(el => el.classList.remove('active'));
 }
 
+function showHalfTimeModal(match, continueFn) {
+    const home = match.homeTeamName;
+    const away = match.awayTeamName;
+    const half = computeHalfTimeSnapshot(match);
+    const keyLines = half.events.length
+        ? half.events.slice(0, 6).map(e => `<li>${e.minute}' ${describeEventShort(e)}</li>`).join('')
+        : '<li>No major first-half incidents.</li>';
+
+    showModal(
+        'Half-time',
+        `<p style="text-align:center; font-size:1.1em;"><strong>${home} ${half.homeGoals}:${half.awayGoals} ${away}</strong></p>
+         <p style="text-align:center; color:#777;">Control estimate: ${home} ${half.homeShare}% - ${away} ${100 - half.homeShare}%</p>
+         <ul style="line-height:1.5; margin:12px 0 18px 18px;">${keyLines}</ul>
+         <div style="text-align:center;">
+            <button class="big-button" onclick="tifoContinueFromHalf()">Continue to Full Time</button>
+         </div>`
+    );
+
+    window._pendingFullTimeContinue = continueFn;
+}
+
+function computeHalfTimeSnapshot(match) {
+    const events = (match.events || []).filter(e => (e.minute || 0) <= 45);
+    let homeGoals = 0;
+    let awayGoals = 0;
+    let homeShotsOn = 0;
+    let awayShotsOn = 0;
+
+    events.forEach(e => {
+        if (e.eventType === 'GOAL') {
+            if (e.teamName === match.homeTeamName) homeGoals++;
+            if (e.teamName === match.awayTeamName) awayGoals++;
+        }
+        if (e.eventType === 'SHOT_ON_TARGET') {
+            if (e.teamName === match.homeTeamName) homeShotsOn++;
+            if (e.teamName === match.awayTeamName) awayShotsOn++;
+        }
+    });
+
+    const total = homeShotsOn + awayShotsOn;
+    const homeShare = total === 0 ? 50 : Math.round((homeShotsOn * 100) / total);
+    return { homeGoals, awayGoals, homeShare, events };
+}
+
+function describeEventShort(e) {
+    if (e.eventType === 'GOAL') {
+        return `GOAL ${e.playerName || '?'} (${e.teamName || '?'}) ${e.scoreAfterGoal ? '[' + e.scoreAfterGoal + ']' : ''}`;
+    }
+    if (e.eventType === 'SHOT_ON_TARGET') return `Shot on target by ${e.playerName || '?'}`;
+    if (e.eventType === 'SHOT_OFF_TARGET') return `Shot off target by ${e.playerName || '?'}`;
+    if (e.eventType === 'YELLOW_CARD') return `Yellow card: ${e.playerName || '?'}`;
+    if (e.eventType === 'RED_CARD') return `Red card: ${e.playerName || '?'}`;
+    if (e.eventType === 'CORNER') return `Corner for ${e.teamName || '?'}`;
+    return `${e.eventType} ${e.playerName ? '- ' + e.playerName : ''}`;
+}
+
 function toggleSidebar(id) {
     const sidebars = document.querySelectorAll('#tifoClubSidebar, #tifoCompetitionsSidebar, #tifoStatsSidebar');
     sidebars.forEach(sb => {
@@ -707,12 +912,59 @@ function toggleSidebar(id) {
 }
 
 document.addEventListener('click', (e) => {
+    const inline = e.target.closest('.cs-inline-link');
+    if (inline) {
+        e.preventDefault();
+        const kind = inline.dataset.kind;
+        if (kind === 'team') {
+            const teamId = Number(inline.dataset.id);
+            if (teamId) renderTeamDetail(teamId);
+            closeModal();
+            return;
+        }
+        if (kind === 'player') {
+            const playerId = Number(inline.dataset.playerId);
+            const teamId = Number(inline.dataset.teamId);
+            if (playerId && teamId) openMatchPlayer(playerId, teamId);
+            closeModal();
+            return;
+        }
+        if (kind === 'league') {
+            closeModal();
+            renderPage('leagueTable');
+            return;
+        }
+    }
+
     const clickedInTopMenu = e.target.closest('.top-menu');
     const clickedInSidebar = e.target.closest('#tifoClubSidebar, #tifoCompetitionsSidebar, #tifoStatsSidebar');
     if (!clickedInTopMenu && !clickedInSidebar) {
         closeDesktopSidebars();
     }
 });
+
+async function closeCsSession() {
+    if (csSessionClosed) return;
+    csSessionClosed = true;
+    try {
+        await authFetch('/api/cs/reset', { method: 'POST', keepalive: true });
+    } catch (e) {
+        console.warn('CS reset on exit failed:', e);
+    }
+}
+
+function setupSessionLifecycle() {
+    window.addEventListener('pagehide', () => {
+        closeCsSession();
+    });
+}
+
+setupSessionLifecycle();
+
+async function backToMainApp() {
+    await closeCsSession();
+    window.location.href = '/dashboard.html';
+}
 
 // ─── Expose to global scope (for onclick handlers in HTML) ───
 window.tifoNav = renderPage;
@@ -729,4 +981,13 @@ window.tifoFixtureDetail = fixtureDetail;
 window.tifoFixturePreview = fixturePreview;
 window.tifoMatchTab = (tab) => showMatchTab(tab);
 window.toggleSidebar = toggleSidebar;
+window.tifoOpenMatchPlayer = openMatchPlayer;
+window.tifoBackToMain = backToMainApp;
+window.tifoContinueFromHalf = () => {
+    closeModal();
+    if (window._pendingFullTimeContinue) {
+        window._pendingFullTimeContinue();
+        window._pendingFullTimeContinue = null;
+    }
+};
 
