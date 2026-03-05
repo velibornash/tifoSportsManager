@@ -16,4 +16,7 @@ public interface MatchRepository extends JpaRepository<Match, Long>, PagingAndSo
     List<Match> findByMatchDateBetween(LocalDateTime start, LocalDateTime end);
     @Query("SELECT m FROM Match m WHERE m.homeTeam.id IN :teamIds AND m.awayTeam.id IN :teamIds")
     List<Match> findByHomeTeamIdInAndAwayTeamIdIn(@Param("teamIds") Collection<Long> teamIds1, @Param("teamIds") Collection<Long> teamIds2);
+    List<Match> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);
+    List<Match> findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
+    List<Match> findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
 }

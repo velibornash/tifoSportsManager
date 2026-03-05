@@ -4,17 +4,22 @@ import org.example.footballmanager.dto.LeagueTableDTO;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.SeasonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 
@@ -28,8 +33,9 @@ public class CountryController {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final MatchRepository matchRepository;
     private final SeasonRepository seasonRepository;
+    private final SeasonService seasonService;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, SeasonRepository seasonRepository) {
+    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, SeasonRepository seasonRepository, SeasonService seasonService) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -37,6 +43,7 @@ public class CountryController {
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.matchRepository = matchRepository;
         this.seasonRepository = seasonRepository;
+        this.seasonService = seasonService;
     }
 
     @GetMapping
@@ -60,12 +67,15 @@ public class CountryController {
                 .toList();
     }
     @GetMapping("/leagues/{leagueId}/table")
-    public ResponseEntity<List<LeagueTableDTO>> getLeagueTable(@PathVariable Long leagueId) {
+    public ResponseEntity<List<LeagueTableDTO>> getLeagueTable(@PathVariable Long leagueId,
+                                                               @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+        seasonService.ensureEntriesForSeasonCompetition(league, activeSeasonYear);
 
         SeasonCompetition currentSeasonComp = seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(league, 2025)
+                .findByCompetitionAndSeasonYear(league, activeSeasonYear)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sezona nije pronađena"));
 
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(currentSeasonComp);
@@ -97,22 +107,30 @@ public class CountryController {
         return ResponseEntity.ok(table);
     }
     @GetMapping("/leagues/{leagueId}/matches")
-    public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId) {
+    public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId,
+                                           @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
-
-        // Pronađi tekuću sezonu
-        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElseThrow();
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+        seasonService.ensureEntriesForSeasonCompetition(league, activeSeasonYear);
         SeasonCompetition sc = seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(league, 2025)
-                .orElseThrow();
+                .findByCompetitionAndSeasonYear(league, activeSeasonYear)
+                .orElse(null);
+        if (sc == null) {
+            return List.of();
+        }
 
         // Dohvati sve timove u ligi
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Long> teamIds = entries.stream().map(e -> e.getTeam().getId()).toList();
 
-        // Dohvati mečeve gde su oba tima iz ove lige
-        List<Match> matches = matchRepository.findByHomeTeamIdInAndAwayTeamIdIn(teamIds, teamIds);
+        List<Match> matches = matchRepository
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(leagueId, activeSeasonYear)
+                .stream()
+                .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
+                .filter(m -> teamIds.contains(m.getHomeTeam().getId()) && teamIds.contains(m.getAwayTeam().getId()))
+                .filter(Match::isPlayed)
+                .toList();
 
         // Mapiraj u DTO
         return matches.stream()
@@ -127,6 +145,56 @@ public class CountryController {
                                 : "N/A"
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @GetMapping("/leagues/{leagueId}/schedule")
+    public List<Map<String, Object>> getLeagueSchedule(@PathVariable Long leagueId,
+                                                        @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+        Competition league = competitionRepository.findById(leagueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+
+        seasonService.ensureEntriesForSeasonCompetition(league, activeSeasonYear);
+        seasonService.ensureDoubleRoundRobinSchedule(league, activeSeasonYear);
+
+        return matchRepository.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(leagueId, activeSeasonYear)
+                .stream()
+                .map(m -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", m.getId());
+                    row.put("homeTeam", m.getHomeTeam().getName());
+                    row.put("awayTeam", m.getAwayTeam().getName());
+                    row.put("homeGoals", m.getHomeGoals());
+                    row.put("awayGoals", m.getAwayGoals());
+                    row.put("played", m.isPlayed());
+                    row.put("round", m.getRoundNumber() != null ? m.getRoundNumber() : 1);
+                    row.put("week", m.getWeekNumber() != null ? m.getWeekNumber() : m.getRoundNumber());
+                    row.put("matchDate", m.getMatchDate() != null ? m.getMatchDate().toString().substring(0, 16).replace("T", " ") : "N/A");
+                    return row;
+                })
+                .toList();
+    }
+
+    @GetMapping("/leagues/{leagueId}/seasons")
+    public List<Map<String, Object>> getLeagueSeasons(@PathVariable Long leagueId) {
+        Competition league = competitionRepository.findById(leagueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
+        List<Integer> years = seasonCompetitionRepository.findAll().stream()
+                .filter(sc -> sc.getCompetition() != null && Objects.equals(sc.getCompetition().getId(), league.getId()))
+                .map(SeasonCompetition::getSeasonYear)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int i = 0; i < years.size(); i++) {
+            Integer year = years.get(i);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("seasonYear", year);
+            row.put("seasonNumber", i + 1);
+            result.add(row);
+        }
+        return result;
     }
 
     @GetMapping("/teams/{teamId}/players")

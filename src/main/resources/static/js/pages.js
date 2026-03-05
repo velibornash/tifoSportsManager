@@ -90,6 +90,10 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     await loadLeagueTable();
                     break;
 
+                case "leagueSchedule":
+                    await loadLeagueSchedule();
+                    break;
+
                 case "leagueMatches":
                     await loadLeagueMatches();
                     break;
@@ -794,11 +798,12 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const matches = await response.json();
         renderMatches(matches, "Friendlies");
     }
-        async function loadLeagueTable() {
+    async function loadLeagueTable(seasonYear = null) {
         const leagueId = 1;
         try {
+            const seasonParam = seasonYear ? `?seasonYear=${seasonYear}` : "";
             const [tableResponse, teamsResponse] = await Promise.all([
-                authFetch(`/countries/leagues/${leagueId}/table`),
+                authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`),
                 authFetch(`/countries/leagues/${leagueId}/teams`)
             ]);
             if (!tableResponse.ok) throw new Error(`League table load failed: ${tableResponse.status}`);
@@ -826,16 +831,18 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 </div>`;
         }
     }
-    async function loadLeagueMatches() {
+    async function loadLeagueMatches(seasonYear = null) {
         const leagueId = 1; // Superliga – kasnije možeš proslediti parametar
         try {
             console.log(`Loading league matches...`);
-            const response = await authFetch(`/countries/leagues/${leagueId}/matches`);
+            const seasonParam = seasonYear ? `?seasonYear=${seasonYear}` : "";
+            const response = await authFetch(`/countries/leagues/${leagueId}/matches${seasonParam}`);
             console.log(`Response status: ${response.status}`);
             if (!response.ok) throw new Error("Failed to load league matches");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
-            renderLeagueMatches(results);
+            const seasonNumber = seasonYear ? Math.max(1, seasonYear - 2025 + 1) : null;
+            renderLeagueMatches(results, seasonNumber ? `League Results - Season ${seasonNumber}` : "League Results");
         } catch (err) {
             console.error(err);
             document.getElementById("main-content").innerHTML = `
@@ -843,6 +850,91 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <button onclick="loadDashboard()">⬅ Back</button>
                     <h2>Error</h2>
                     <p>Could not load league matches.</p>
+                </div>`;
+        }
+    }
+    async function loadLeagueSchedule(seasonYear = null) {
+        const mainContent = document.getElementById("main-content");
+        const leagueId = 1;
+        try {
+            const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
+            const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
+            const selectedSeason = seasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+            const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber || 1;
+            const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
+            const response = await authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`);
+            if (!response.ok) throw new Error(`Failed to load schedule: ${response.status}`);
+            const schedule = await response.json();
+
+            const byRound = new Map();
+            let currentRound = 1;
+            schedule.forEach(m => {
+                const round = Number(m.round || 1);
+                if (!byRound.has(round)) byRound.set(round, []);
+                byRound.get(round).push(m);
+                if (!m.played && round < currentRound) currentRound = round;
+            });
+            const rounds = [...byRound.keys()].sort((a, b) => a - b);
+            const firstUnplayed = rounds.find(r => byRound.get(r).some(m => !m.played));
+            if (firstUnplayed) currentRound = firstUnplayed;
+
+            let html = `
+            <div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <h2>League Schedule ${selectedSeason ? `- Season ${selectedSeasonNumber}` : ""}</h2>
+                ${seasons.length ? `
+                <div style="margin:8px 0 14px;">
+                    <label for="season-select">Season:</label>
+                    <select id="season-select" style="margin-left:8px;">
+                        ${seasons.map(s => `<option value="${s.seasonYear}" ${s.seasonYear === selectedSeason ? "selected" : ""}>Season ${s.seasonNumber}</option>`).join("")}
+                    </select>
+                </div>` : ""}
+                <div id="schedule-rounds">`;
+
+            rounds.forEach(round => {
+                const matches = byRound.get(round) || [];
+                const currentTag = round === currentRound ? `<span style="color:#4caf50; font-size:0.9em;">(Current)</span>` : "";
+                html += `<div id="round-${round}" style="margin:14px 0 18px;"><h3 style="margin-bottom:8px;">Round ${round} ${currentTag}</h3>`;
+                matches.forEach(match => {
+                    const score = match.played ? `${match.homeGoals} : ${match.awayGoals}` : "vs";
+                    const playedClass = match.played ? "" : "opacity:0.86;";
+                    html += `
+                        <div class="match-row" style="${playedClass}" data-match-id="${match.id}" data-caller="leagueMatches">
+                            <div style="font-size:0.88em; color:#aaa;">${match.matchDate || "N/A"}</div>
+                            <div class="match-teams">
+                                <span class="team-home">${escapeHtml(match.homeTeam)}</span>
+                                <span class="score">${score}</span>
+                                <span class="team-away">${escapeHtml(match.awayTeam)}</span>
+                            </div>
+                        </div>`;
+                });
+                html += `</div>`;
+            });
+
+            html += `</div></div>`;
+            mainContent.innerHTML = html;
+            mainContent.querySelectorAll('.match-row[data-match-id]').forEach(row => {
+                row.addEventListener('click', () => {
+                    const matchId = row.getAttribute('data-match-id');
+                    if (matchId) loadMatch(matchId, 'leagueMatches');
+                });
+            });
+            const seasonSelect = document.getElementById('season-select');
+            if (seasonSelect) {
+                seasonSelect.addEventListener('change', () => loadLeagueSchedule(Number(seasonSelect.value)));
+            }
+
+            setTimeout(() => {
+                const currentEl = document.getElementById(`round-${currentRound}`);
+                if (currentEl) currentEl.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 20);
+        } catch (err) {
+            console.error("Failed to load league schedule:", err);
+            mainContent.innerHTML = `
+                <div class="manager-card">
+                    <button class="back-to-dashboard" onclick="loadDashboard()">Back</button>
+                    <h2>Error</h2>
+                    <p>Could not load league schedule.</p>
                 </div>`;
         }
     }
@@ -920,7 +1012,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         let html = `
         <div class="manager-card">
             <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Events</h2>`;
+            <h2>Events</h2>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 6px 0 14px;">
+                <button class="big-button" onclick="initializeDatabase()">Initialize Database</button>
+                <button class="big-button" onclick="resetDatabase()" style="background:#912d2d;">Reset DB</button>
+            </div>`;
 
         events.forEach(e => {
             html += `
@@ -1252,8 +1348,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         function renderFixtures(fixtures, title) {
         renderFixturesView(fixtures, title);
     }
-    function renderLeagueMatches(matches) {
-        renderLeagueMatchesView(matches, { loadMatch });
+    function renderLeagueMatches(matches, title = "League Results") {
+        renderLeagueMatchesView(matches, title, { loadMatch });
     }
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu
@@ -1310,6 +1406,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     window.loadFixture = loadFixture;
     window.loadFriendlies = loadFriendlies;
     window.loadLeagueTable = loadLeagueTable;
+    window.loadLeagueSchedule = loadLeagueSchedule;
     window.loadLeagueMatches = loadLeagueMatches;
     window.renderLeagueMatches = renderLeagueMatches;
     window.loadCup = loadCup;

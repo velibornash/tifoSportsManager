@@ -89,7 +89,7 @@ function loadDashboard() {
         </div>
 
         <div class="recent-matches-section">
-            <h3>Recent Superliga Matches</h3>
+            <h3>Recent League Results</h3>
             <div id="recent-league-matches-list" class="match-list">
                 <div class="loading">Loading recent league matches...</div>
             </div>
@@ -98,8 +98,6 @@ function loadDashboard() {
         <div class="dashboard-actions">
             <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>
             <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>
-            <button onclick="initializeDatabase()">Initialize Database</button>
-            <button onclick="resetDatabase()" style="background:#b71c1c;">Reset Database</button>
         </div>
     </div>`;
 

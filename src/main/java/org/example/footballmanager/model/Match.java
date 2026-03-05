@@ -39,6 +39,11 @@ public class Match {
     private double possessionHome;
     private double possessionAway;
     private LocalDateTime matchDate;
+    private Integer seasonYear;
+    private Integer roundNumber;
+    private Integer weekNumber;
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Competition competition;
 
     @ManyToOne(fetch = FetchType.LAZY)
     private Stadium stadium;

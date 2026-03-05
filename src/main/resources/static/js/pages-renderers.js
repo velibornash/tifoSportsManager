@@ -109,13 +109,13 @@ export function renderFixturesView(fixtures, title) {
     mainContent.innerHTML = html;
 }
 
-export function renderLeagueMatchesView(matches, { loadMatch }) {
+export function renderLeagueMatchesView(matches, title = "League Results", { loadMatch }) {
     const mainContent = document.getElementById("main-content");
 
     let html = `
     <div class="manager-card">
         <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-        <h2>Superliga Matches</h2>
+        <h2>${title}</h2>
         <div class="match-list">`;
 
     if (!Array.isArray(matches) || matches.length === 0) {

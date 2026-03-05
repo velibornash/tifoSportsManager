@@ -11,6 +11,7 @@ import org.example.footballmanager.model.Season;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.repository.CompetitionRepository;
 import org.example.footballmanager.repository.SeasonRepository;
+import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.SimulationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,6 +29,7 @@ public class SimulationController {
     private final SimulationService simulationService;
     private final MatchEngine matchEngine;
     private final MatchStatisticEngine matchStatisticEngine;
+    private final SeasonService seasonService;
 
     @SneakyThrows
     @GetMapping("/start-demo")
@@ -42,15 +44,18 @@ public class SimulationController {
     }
 
     private ResponseEntity<Map<String, String>> startDemoInternal() {
-        Match demoMatch = matchEngine.createMatch();
-
         Competition superLiga = competitionRepository.findById(1L).orElse(null);
-        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElse(null);
-
-        if (superLiga == null || currentSeason == null) {
-            log.error("Cannot find league or season");
-            return ResponseEntity.badRequest().body(Map.of("error", "League or season not found"));
+        if (superLiga == null) {
+            log.error("Cannot find league");
+            return ResponseEntity.badRequest().body(Map.of("error", "League not found"));
         }
+        int activeSeasonYear = seasonService.getActiveSeasonYear();
+        Season currentSeason = seasonRepository.findBySeasonYear(activeSeasonYear)
+                .orElseGet(seasonService::ensureActiveSeasonEntity);
+
+        seasonService.ensureEntriesForSeasonCompetition(superLiga, activeSeasonYear);
+        seasonService.ensureDoubleRoundRobinSchedule(superLiga, activeSeasonYear);
+        Match demoMatch = matchEngine.createMatch();
 
         Team omladinac = demoMatch.getHomeTeam();
         Team opponent = demoMatch.getAwayTeam();
@@ -61,6 +66,7 @@ public class SimulationController {
                 .thenAccept(played -> {
                     log.info("Demo simulation completed for match ID: {}", demoMatch.getId());
                     matchStatisticEngine.updateLeagueTableForMatchDay(superLiga, currentSeason);
+                    seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
                 })
                 .exceptionally(throwable -> {
                     log.error("Error while running demo simulation for match {}", demoMatch.getId(), throwable);

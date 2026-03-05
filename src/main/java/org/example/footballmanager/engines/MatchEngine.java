@@ -9,6 +9,7 @@ import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.PlayerMovementDecisionService;
+import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.TacticsAdjustmentService;
 import org.example.footballmanager.util.events.EventCreator;
 import org.example.footballmanager.util.match.MatchContext;
@@ -42,6 +43,7 @@ public class MatchEngine {
     private final LineupRepository lineupRepository;
     private final EventCreator eventCreator;
     private final MatchStatisticEngine matchStatisticEngine;
+    private final SeasonService seasonService;
 
     public Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
@@ -66,24 +68,23 @@ public class MatchEngine {
         return lineupRepository.save(lineup);
     }
     public Match createMatch() {
-        GameClock clock = gameClockRepository.findById(1L).orElseGet(() -> {
-            GameClock newClock = new GameClock();
-            newClock.setId(1L);
-            return newClock;
-        });
-
-        ZoneId zone = ZoneId.of("Europe/Belgrade");
-        LocalDateTime currentCET = LocalDateTime.now(zone);
-        clock.setCurrentDate(currentCET);
-        clock.setCurrentSeason(currentCET.getMonthValue() >= 7 ? currentCET.getYear() : currentCET.getYear() - 1);
-        gameClockRepository.save(clock);
+        GameClock clock = seasonService.getOrCreateClock();
+        int seasonYear = seasonService.getActiveSeasonYear();
+        int week = seasonService.getCurrentWeek();
 
         Competition superLiga = competitionRepository.findById(1L)
                 .orElseThrow(() -> new RuntimeException("Superliga not found"));
 
         SeasonCompetition sc = seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(superLiga, 2025)
+                .findByCompetitionAndSeasonYear(superLiga, seasonYear)
                 .orElseThrow(() -> new RuntimeException("SeasonCompetition not found"));
+        seasonService.ensureEntriesForSeasonCompetition(superLiga, seasonYear);
+        seasonService.ensureDoubleRoundRobinSchedule(superLiga, seasonYear);
+        if (week == SeasonService.PLAYOFF_WEEK) {
+            seasonService.ensurePlayoffWeekFixtures(superLiga, seasonYear);
+        } else if (week == SeasonService.FRIENDLY_WEEK) {
+            seasonService.ensureFriendlyWeekFixtures(superLiga, seasonYear);
+        }
 
         List<CompetitionEntry> leagueEntries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Team> allTeamsInLeague = leagueEntries.stream()
@@ -100,14 +101,38 @@ public class MatchEngine {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Omladinac is not in Superliga"));
 
-        List<Team> possibleAway = allTeamsInLeague.stream()
-                .filter(t -> !t.getId().equals(homeTeam.getId()))
-                .toList();
+        List<Match> weekFixtures = matchRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
+                superLiga.getId(), seasonYear, week
+        );
+        Match userFixture = weekFixtures.stream()
+                .filter(f -> f.getHomeTeam() != null && f.getAwayTeam() != null)
+                .filter(f -> Objects.equals(f.getHomeTeam().getId(), homeTeam.getId()) || Objects.equals(f.getAwayTeam().getId(), homeTeam.getId()))
+                .findFirst()
+                .orElse(null);
 
-        if (possibleAway.isEmpty()) {
-            throw new RuntimeException("No opponent available for Omladinac in Superliga");
+        Team awayTeam;
+        Match match;
+        if (userFixture != null) {
+            boolean omladinacHome = Objects.equals(userFixture.getHomeTeam().getId(), homeTeam.getId());
+            awayTeam = omladinacHome ? userFixture.getAwayTeam() : userFixture.getHomeTeam();
+            match = userFixture;
+            match.setHomeTeam(omladinacHome ? homeTeam : awayTeam);
+            match.setAwayTeam(omladinacHome ? awayTeam : homeTeam);
+        } else {
+            List<Team> possibleAway = allTeamsInLeague.stream()
+                    .filter(t -> !t.getId().equals(homeTeam.getId()))
+                    .toList();
+            if (possibleAway.isEmpty()) {
+                throw new RuntimeException("No opponent available for Omladinac in Superliga");
+            }
+            awayTeam = possibleAway.get(random.nextInt(possibleAway.size()));
+            match = new Match();
+            match.setCompetition(superLiga);
+            match.setSeasonYear(seasonYear);
+            match.setRoundNumber(week);
+            match.setWeekNumber(week);
+            match.setMatchDate(clock.getCurrentDate());
         }
-        Team awayTeam = possibleAway.get(random.nextInt(possibleAway.size()));
 
         log.info("Demo match: {} vs {} (random from league)", homeTeam.getName(), awayTeam.getName());
 
@@ -129,12 +154,19 @@ public class MatchEngine {
         Lineup homeLineup = createLineupForMatch(homeTeam, homePlayers, "4-4-2");
         Lineup awayLineup = createLineupForMatch(awayTeam, awayPlayers, "4-2-3-1");
 
-        Match match = new Match();
-        match.setHomeTeam(homeTeam);
-        match.setAwayTeam(awayTeam);
+        match.setHomeTeam(match.getHomeTeam() != null ? match.getHomeTeam() : homeTeam);
+        match.setAwayTeam(match.getAwayTeam() != null ? match.getAwayTeam() : awayTeam);
         match.setHomeLineup(homeLineup);
         match.setAwayLineup(awayLineup);
-        match.setMatchDate(clock.getCurrentDate());
+        if (match.getMatchDate() == null) {
+            ZoneId zone = ZoneId.of("Europe/Belgrade");
+            LocalDateTime currentCET = LocalDateTime.now(zone);
+            match.setMatchDate(currentCET);
+        }
+        match.setCompetition(superLiga);
+        match.setSeasonYear(seasonYear);
+        if (match.getRoundNumber() == null) match.setRoundNumber(week);
+        if (match.getWeekNumber() == null) match.setWeekNumber(week);
 
         match = matchRepository.save(match);
 
@@ -790,32 +822,33 @@ public class MatchEngine {
 
         GameClock clock = gameClockRepository.findById(1L).orElseThrow();
 
-        List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
-        List<Team> teams = entries.stream().map(CompetitionEntry::getTeam).toList();
-
-        List<Team> remainingTeams = teams.stream()
-                .filter(t -> {
-                    if (alreadyPlayedHome == null || alreadyPlayedAway == null) return true;
-                    return !t.getId().equals(alreadyPlayedHome.getId()) && !t.getId().equals(alreadyPlayedAway.getId());}).collect(Collectors.toList());
-
-        if (remainingTeams.size() % 2 != 0) {
-            log.warn("Odd number of teams for simulation: {}", remainingTeams.size());
+        int currentWeek = seasonService.getCurrentWeek();
+        if (currentWeek == SeasonService.PLAYOFF_WEEK) {
+            seasonService.ensurePlayoffWeekFixtures(league, season.getSeasonYear());
+        } else if (currentWeek == SeasonService.FRIENDLY_WEEK) {
+            seasonService.ensureFriendlyWeekFixtures(league, season.getSeasonYear());
         }
+        List<Match> roundFixtures = matchRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
+                league.getId(), season.getSeasonYear(), currentWeek
+        );
 
-        Collections.shuffle(remainingTeams);
-        for (int i = 0; i + 1 < remainingTeams.size(); i += 2) {
-            Team home = remainingTeams.get(i);
-            Team away = remainingTeams.get(i + 1);
+        for (Match simulatedMatch : roundFixtures) {
+            Team home = simulatedMatch.getHomeTeam();
+            Team away = simulatedMatch.getAwayTeam();
+            if (home == null || away == null) continue;
+            if (alreadyPlayedHome != null && alreadyPlayedAway != null) {
+                boolean isUserFixture = (Objects.equals(home.getId(), alreadyPlayedHome.getId()) && Objects.equals(away.getId(), alreadyPlayedAway.getId()))
+                        || (Objects.equals(home.getId(), alreadyPlayedAway.getId()) && Objects.equals(away.getId(), alreadyPlayedHome.getId()));
+                if (isUserFixture) continue;
+            }
 
             int homeGoals = random.nextInt(6);
             int awayGoals = random.nextInt(6);
-
-            Match simulatedMatch = new Match();
-            simulatedMatch.setHomeTeam(home);
-            simulatedMatch.setAwayTeam(away);
             simulatedMatch.setHomeGoals(homeGoals);
             simulatedMatch.setAwayGoals(awayGoals);
-            simulatedMatch.setMatchDate(clock.getCurrentDate());
+            simulatedMatch.setPlayed(true);
+            simulatedMatch.setStarted(true);
+            simulatedMatch.setMatchDate(simulatedMatch.getMatchDate() != null ? simulatedMatch.getMatchDate() : clock.getCurrentDate());
             matchRepository.save(simulatedMatch);
 
             generateSimulatedMatchEvents(simulatedMatch, homeGoals, awayGoals);

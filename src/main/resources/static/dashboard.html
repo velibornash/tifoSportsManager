@@ -65,10 +65,13 @@
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
-                <div onclick="loadPage('leagueMatches'); closeMobileMenu()">Superliga Matches</div>
-                <div onclick="loadPage('cup'); closeMobileMenu()">Cup</div>
-                <div onclick="loadPage('international'); closeMobileMenu()">International</div>
-                <div onclick="loadPage('friendlies'); closeMobileMenu()">Friendlies</div>
+                <div onclick="loadPage('leagueSchedule'); closeMobileMenu()">Schedule</div>
+                <div onclick="loadPage('leagueMatches'); closeMobileMenu()">League Results</div>
+                <div onclick="initializeDatabase(); closeMobileMenu()">Initialize DB (Demo)</div>
+                <div onclick="resetDatabase(); closeMobileMenu()">Reset DB (Demo)</div>
+                <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
+                <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
+                <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
             </div>
         </div>
 
@@ -151,10 +154,13 @@
     <div class="sidebar-content">
         <h3>Competitions</h3>
         <div onclick="loadPage('leagueTable')">League Table</div>
-        <div onclick="loadPage('leagueMatches')">Superliga Matches</div>
-        <div onclick="loadPage('cup')">Cup</div>
-        <div onclick="loadPage('international')">International</div>
-        <div onclick="loadPage('friendlies')">Friendlies</div>
+        <div onclick="loadPage('leagueSchedule')">Schedule</div>
+        <div onclick="loadPage('leagueMatches')">League Results</div>
+        <div onclick="initializeDatabase()">Initialize DB (Demo)</div>
+        <div onclick="resetDatabase()">Reset DB (Demo)</div>
+        <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
+        <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
+        <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
     </div>
 </div>
 <div id="communitySidebar" class="sidebar">

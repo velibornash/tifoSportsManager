@@ -16,6 +16,7 @@ public class GameClock {
     @Id
     private Long Id = 1L;
     private Integer currentSeason;
+    private Integer currentWeek;
     private SeasonPhase currentPhase;
     @Column(name = "current_game_date")
     private LocalDateTime currentDate;

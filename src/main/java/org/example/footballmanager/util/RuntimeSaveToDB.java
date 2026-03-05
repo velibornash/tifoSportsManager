@@ -87,6 +87,8 @@ public class RuntimeSaveToDB {
 
         match.setHomeGoals(rt.homeGoals);
         match.setAwayGoals(rt.awayGoals);
+        match.setPlayed(true);
+        match.setStarted(true);
         matchRepository.save(match);
 
         matchStatisticEngineHandling.simulateInjuriesAndCards(homePlayers, match);
@@ -119,14 +121,17 @@ public class RuntimeSaveToDB {
     }
 
     private void updateLeagueTable(Match match, MatchRuntime rt) {
-        // Demo flow currently updates Superliga Srbija standings directly.
-        Competition superLiga = competitionRepository.findByNameAndCountryIsoCode("Superliga Srbije", "SRB").orElse(null);
-        if (superLiga == null) return;
+        Competition league = match.getCompetition();
+        if (league == null) {
+            league = competitionRepository.findByNameAndCountryIsoCode("Superliga Srbije", "SRB").orElse(null);
+        }
+        if (league == null) return;
 
-        Season currentSeason = seasonRepository.findBySeasonYear(2025).orElse(null);
-        if (currentSeason == null) return;
-
-        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, 2025).orElse(null);
+        Integer seasonYear = match.getSeasonYear();
+        if (seasonYear == null) {
+            seasonYear = 2025;
+        }
+        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, seasonYear).orElse(null);
         if (sc == null) return;
 
         CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getHomeTeam()).orElse(null);
