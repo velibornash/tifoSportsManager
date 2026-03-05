@@ -46,7 +46,7 @@ public class MatchTickState {
     public MatchTickState(Match match, int tick, String playersJson, String ballJson, Integer carrierId) {
         this.match = match;
         this.tick = tick;
-        this.minute = tick / 10;
+        this.minute = tick / 27;
         this.playerPositionsJson = playersJson;
         this.ballPositionJson = ballJson;
         this.currentCarrierId = carrierId;

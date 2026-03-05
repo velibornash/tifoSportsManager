@@ -162,7 +162,8 @@ public class RuntimeSaveToDB {
             MatchTickState state = new MatchTickState();
             state.setMatch(match);
             state.setTick(snapshot.tick);
-            state.setMinute(snapshot.tick / 10);
+            int ticksPerMinute = rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
+            state.setMinute(snapshot.tick / ticksPerMinute);
 
             try {
                 state.setPlayerPositionsJson(objectMapper.writeValueAsString(snapshot.players));

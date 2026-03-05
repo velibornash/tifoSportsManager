@@ -1,6 +1,5 @@
 package org.example.footballmanager.util;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +51,11 @@ public class DatabaseInitializer {
         log.info("Inicijalizacija završena.");
     }
 
+    @Transactional
+    public void seedOwnerAfterReset() {
+        createOwnerUserIfNotExists();
+    }
+
     private void createOwnerUserIfNotExists() {
         if (userRepository.findByUsername("velibor@example.com").isEmpty()) {
             User owner = new User();
@@ -82,7 +86,7 @@ public class DatabaseInitializer {
     }
 
     @Transactional
-    private void initSerbianFootballStructure() {
+    protected void initSerbianFootballStructure() {
         // 1. Država – Srbija + još nekoliko (modularno)
         createCountryIfNotExists("Srbija", "SRB", 65, 70);
         createCountryIfNotExists("Bosna i Hercegovina", "BIH", 55, 60);

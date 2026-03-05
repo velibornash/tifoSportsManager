@@ -2,7 +2,7 @@
 let canvas, ctx;
 let animationFrameId = null;
 const FIELD = { offsetX: 50, offsetY: 50, width: 800, height: 400 };
-const MOVE_DURATION = 620;
+const MOVE_DURATION = 560;
 const GOAL_SHOT_DURATION = 1000;
 const GOAL_RESET_DURATION = 1100;
 
@@ -79,8 +79,9 @@ function updatePositions() {
     const now = performance.now();
     Object.values(players).forEach(p => {
         const progress = Math.min((now - p.moveStartTime) / MOVE_DURATION, 1);
-        p.x = p.startX + (p.targetX - p.startX) * progress;
-        p.y = p.startY + (p.targetY - p.startY) * progress;
+        const eased = 1 - Math.pow(1 - progress, 3);
+        p.x = p.startX + (p.targetX - p.startX) * eased;
+        p.y = p.startY + (p.targetY - p.startY) * eased;
     });
     if (scriptedBallAnimation) {
         const elapsed = now - scriptedBallAnimation.startTime;
@@ -100,8 +101,9 @@ function updatePositions() {
         }
     } else {
         const bProg = Math.min((now - ball.moveStartTime) / MOVE_DURATION, 1);
-        ball.x = ball.startX + (ball.targetX - ball.startX) * bProg;
-        ball.y = ball.startY + (ball.targetY - ball.startY) * bProg;
+        const eased = 1 - Math.pow(1 - bProg, 3);
+        ball.x = ball.startX + (ball.targetX - ball.startX) * eased;
+        ball.y = ball.startY + (ball.targetY - ball.startY) * eased;
     }
 }
 

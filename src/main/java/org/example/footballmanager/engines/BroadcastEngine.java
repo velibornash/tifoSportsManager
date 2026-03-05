@@ -24,8 +24,9 @@ public class BroadcastEngine {
     private final MatchEventMapper mapper;
 
     public void broadcastState(long matchId, MatchRuntime rt) {
+        int ticksPerMinute = rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
         GameStateDTO state = new GameStateDTO(
-                rt.tick / 10 + 1,
+                Math.min(90, rt.tick / ticksPerMinute + 1),
                 new ArrayList<>(rt.players),
                 rt.ball
         );

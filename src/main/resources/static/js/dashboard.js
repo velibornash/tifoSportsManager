@@ -112,8 +112,7 @@ async function resetDatabase() {
     if (!confirmReset) return;
 
     try {
-        const response = await fetch('/admin/reset-db', { method: 'POST' });
-        if (!response.ok) throw new Error('Reset failed');
+        const response = await authFetch('/admin/reset-db', { method: 'POST' });
 
         const message = await response.text();
         alert(message);
@@ -159,14 +158,10 @@ async function initializeDatabase() {
     document.body.appendChild(loadingPopup);
 
     try {
-        const response = await fetch('/admin/initialize-db', { method: 'POST' });
+        const response = await authFetch('/admin/initialize-db', { method: 'POST' });
 
         if (document.body.contains(loadingPopup)) {
             document.body.removeChild(loadingPopup);
-        }
-
-        if (!response.ok) {
-            throw new Error(`Error: ${response.status} ${response.statusText}`);
         }
 
         const message = await response.text();

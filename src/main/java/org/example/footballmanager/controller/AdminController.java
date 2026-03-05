@@ -25,6 +25,7 @@ public class AdminController {
     @PostMapping("/reset-db")
     public ResponseEntity<String> resetDatabase() {
         resetService.resetDatabase();
-        return ResponseEntity.ok("Database successfully cleared.");
+        databaseInitializer.seedOwnerAfterReset();
+        return ResponseEntity.ok("Database successfully cleared. Owner user has been restored.");
     }
 }

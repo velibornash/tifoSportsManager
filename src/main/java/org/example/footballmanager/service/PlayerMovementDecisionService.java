@@ -27,9 +27,10 @@ public class PlayerMovementDecisionService {
     private static final double DEEP_RETREAT_FORCE = 25.0;
     private static final double RETREAT_FORCE = 12.0;
     private static final double ATTACKER_PULL_WEIGHT = 0.05;
-    private static final double DUEL_DISTANCE = 2.6;
+    private static final double DUEL_DISTANCE = 3.8;
     private static final double INTERCEPTION_DISTANCE = 1.9;
-    private static final double LOOSE_BALL_PICKUP_DISTANCE = 2.2;
+    private static final double LOOSE_BALL_PICKUP_DISTANCE = 6.0;
+    private static final double PRESS_DISTANCE = 26.0;
     private final Random random = new Random();
 
     private List<PlayerPositionDTO> findNearbyPlayers(PlayerPositionDTO carrier, List<PlayerPositionDTO> players, int numberOfPlayers) {
@@ -127,6 +128,7 @@ public class PlayerMovementDecisionService {
         if (!offsidesActivated) {
             // 3. Role-based movement
             applyRoleMovement(p, players, random, attacksRight, rt);
+            applyContextReaction(p, players, rt);
 
             // 4. If barely moved, apply idle jitter
             double movementDelta = Math.abs(p.getX() - oldX) + Math.abs(p.getY() - oldY);
@@ -300,9 +302,9 @@ public class PlayerMovementDecisionService {
     }
     // -------- Position-specific movement methods --------
     private void moveGoalkeeper(PlayerPositionDTO gk, Random random, boolean attacksRight) {
-        double goalX = attacksRight ? 6 : 94;
-        double targetX = goalX + (random.nextDouble() - 0.5) * 5;
-        double targetY = 48 + (random.nextDouble() - 0.5) * 12;
+        double homeGoalX = gk.getTeam().equals("HOME") ? 6 : 94;
+        double targetX = homeGoalX + (random.nextDouble() - 0.5) * 3.0;
+        double targetY = 48 + (random.nextDouble() - 0.5) * 7;
         gk.setX(clamp(lerp(gk.getX(), targetX, smoothFactor)));
         gk.setY(clamp(lerp(gk.getY(), targetY, smoothFactor)));
     }
@@ -347,6 +349,11 @@ public class PlayerMovementDecisionService {
 
         targetX += (random.nextDouble() - 0.5) * 1.4;
         targetY += (random.nextDouble() - 0.5) * 3.0;
+        if (isRightBack) {
+            targetY = Math.max(8, Math.min(25, targetY));
+        } else {
+            targetY = Math.max(75, Math.min(92, targetY));
+        }
 
         fb.setX(clamp(lerp(fb.getX(), targetX, smoothFactor)));
         fb.setY(clamp(lerp(fb.getY(), targetY, smoothFactor)));
@@ -395,11 +402,11 @@ public class PlayerMovementDecisionService {
     }
     private void moveCentralMidfielder(PlayerPositionDTO cm, List<PlayerPositionDTO> players, Random random, boolean attacksRight, MatchRuntime rt) {
         boolean inPossession = rt.currentCarrier != null && cm.getTeam().equals(rt.currentCarrier.getTeam());
-        double baseX = attacksRight ? (inPossession ? 48 : 44) : (inPossession ? 52 : 56);
+        double baseX = attacksRight ? (inPossession ? 50 : 42) : (inPossession ? 50 : 58);
         double laneY = (cm.getId() == 6 || cm.getId() == 17) ? 42 : 58;
 
-        double ballPullX = (rt.ball.getX() - baseX) * (inPossession ? 0.16 : 0.22);
-        double ballPullY = (rt.ball.getY() - laneY) * (inPossession ? 0.16 : 0.24);
+        double ballPullX = (rt.ball.getX() - baseX) * (inPossession ? 0.22 : 0.30);
+        double ballPullY = (rt.ball.getY() - laneY) * (inPossession ? 0.24 : 0.34);
 
         PlayerPositionDTO nearestOpp = players.stream()
                 .filter(p -> !p.getTeam().equals(cm.getTeam()))
@@ -410,16 +417,16 @@ public class PlayerMovementDecisionService {
             ballPullY += (nearestOpp.getY() - cm.getY()) * 0.12;
         }
 
-        double targetX = baseX + ballPullX + (random.nextDouble() - 0.5) * 1.5;
-        double targetY = laneY + ballPullY + (random.nextDouble() - 0.5) * 2.2;
+        double targetX = baseX + ballPullX + (random.nextDouble() - 0.5) * 2.1;
+        double targetY = laneY + ballPullY + (random.nextDouble() - 0.5) * 3.2;
         cm.setX(clamp(lerp(cm.getX(), targetX, smoothFactor)));
         cm.setY(clamp(lerp(cm.getY(), targetY, smoothFactor)));
     }
     private void moveWinger(PlayerPositionDTO winger, List<PlayerPositionDTO> players, Random random, boolean attacksRight, MatchRuntime rt) {
         boolean inPossession = rt.currentCarrier != null && winger.getTeam().equals(rt.currentCarrier.getTeam());
         double baseY = (winger.getId() == 7 || winger.getId() == 19) ? 78 : 22;
-        double baseX = attacksRight ? (inPossession ? 58 : 47) : (inPossession ? 42 : 53);
-        double advance = inPossession ? (attacksRight ? 6.5 : -6.5) : (attacksRight ? 2.5 : -2.5);
+        double baseX = attacksRight ? (inPossession ? 62 : 45) : (inPossession ? 38 : 55);
+        double advance = inPossession ? (attacksRight ? 8.0 : -8.0) : (attacksRight ? 3.0 : -3.0);
         double targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.20 : 0.15) + advance;
 
         if (rt.currentCarrier != null && winger.getTeam().equals(rt.currentCarrier.getTeam()) && checkOffsideRisk(winger, players, attacksRight, rt)) {
@@ -435,6 +442,11 @@ public class PlayerMovementDecisionService {
         }
 
         double targetY = baseY + (rt.ball.getY() - baseY) * (inPossession ? 0.16 : 0.10) + (random.nextDouble() - 0.5) * 2.4;
+        if (winger.getId() == 11 || winger.getId() == 20) {
+            targetY = Math.max(6, Math.min(28, targetY));
+        } else {
+            targetY = Math.max(72, Math.min(94, targetY));
+        }
         winger.setX(clamp(lerp(winger.getX(), targetX, smoothFactor)));
         winger.setY(clamp(lerp(winger.getY(), targetY, smoothFactor)));
     }
@@ -442,11 +454,11 @@ public class PlayerMovementDecisionService {
     private void moveStriker(PlayerPositionDTO striker, List<PlayerPositionDTO> players, Random random, boolean attacksRight, MatchRuntime rt) {
         boolean inPossession = rt.currentCarrier != null && striker.getTeam().equals(rt.currentCarrier.getTeam());
         double bandY = (striker.getId() == 9 || striker.getId() == 21) ? 46 : 54;
-        double baseX = attacksRight ? (inPossession ? 64 : 56) : (inPossession ? 36 : 44);
+        double baseX = attacksRight ? (inPossession ? 67 : 54) : (inPossession ? 33 : 46);
         double targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.18 : 0.12);
 
         if (inPossession) {
-            targetX += attacksRight ? 4.0 : -4.0;
+            targetX += attacksRight ? 5.5 : -5.5;
         }
         if (rt.currentCarrier != null && rt.currentCarrier.getTeam().equals(striker.getTeam())) {
             double carrierX = rt.currentCarrier.getX();
@@ -505,12 +517,14 @@ public class PlayerMovementDecisionService {
         double dx = rt.ball.getX() - p.getX();
         double dy = rt.ball.getY() - p.getY();
         double distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance > 15) return; // Only if ball is relatively close
+        if (distance > 42) return;
 
         double weight;
-        if (isStriker(p)) weight = 0.06;
-        else if (isCenterBack(p)) weight = 0.03;
-        else weight = 0.08;
+        if (isGoalkeeper(p)) weight = 0.04;
+        else if (isCenterBack(p)) weight = distance < 24 ? 0.08 : 0.05;
+        else if (isFullBack(p)) weight = 0.10;
+        else if (isStriker(p)) weight = 0.12;
+        else weight = 0.14;
 
         p.setX(p.getX() + dx * weight);
         p.setY(p.getY() + dy * weight);
@@ -644,20 +658,23 @@ public class PlayerMovementDecisionService {
         boolean forwardRole = isWinger(carrier) || isStriker(carrier) || carrier.getId() == 6 || carrier.getId() == 8 || carrier.getId() == 17 || carrier.getId() == 18;
 
         double shotWeight = 0.0;
-        if (forwardRole && distToGoal <= 42) {
-            double zoneFactor = 1.0 - Math.min(1.0, distToGoal / 42.0);
-            shotWeight = 0.18 + zoneFactor * 0.48 + skill(carrierEntity, SkillType.STRIKER) * 0.18;
+        if (forwardRole && distToGoal <= 30) {
+            double zoneFactor = 1.0 - Math.min(1.0, distToGoal / 30.0);
+            shotWeight = 0.12 + zoneFactor * 0.40 + skill(carrierEntity, SkillType.STRIKER) * 0.16;
+            if (distToGoal > 24) {
+                shotWeight *= 0.55;
+            }
         }
 
-        double dangerPassWeight = playmaker > 0.72 ? 0.32 + (playmaker - 0.72) * 0.45 : 0.08;
-        double nearPassWeight = 0.36 + passing * 0.22 + technique * 0.12;
-        double dribbleWeight = 0.20 + pace * 0.22 + technique * 0.14;
-        double keepWeight = 0.16 + playmaker * 0.14 + total * 0.10;
+        double dangerPassWeight = playmaker > 0.72 ? 0.38 + (playmaker - 0.72) * 0.45 : 0.10;
+        double nearPassWeight = 0.52 + passing * 0.26 + technique * 0.14;
+        double dribbleWeight = 0.12 + pace * 0.16 + technique * 0.10;
+        double keepWeight = 0.08 + playmaker * 0.08 + total * 0.06;
 
         PlayerPositionDTO nearestOpponent = nearestOpponent(carrier, players);
         if (nearestOpponent != null && distance(carrier, nearestOpponent) < 7.0) {
-            dribbleWeight += 0.28;
-            keepWeight -= 0.06;
+            dribbleWeight += 0.12;
+            keepWeight -= 0.03;
         }
 
         String action = pickWeightedAction(random, Map.of(
@@ -726,8 +743,8 @@ public class PlayerMovementDecisionService {
     }
 
     private void applyCarrierProgression(PlayerPositionDTO carrier, boolean attacksRight, double pace, double technique, Random rnd) {
-        double moveX = (attacksRight ? 1 : -1) * (0.8 + pace * 1.4 + rnd.nextDouble() * 0.8);
-        double moveY = (rnd.nextDouble() - 0.5) * (0.7 + technique * 1.2);
+        double moveX = (attacksRight ? 1 : -1) * (1.0 + pace * 1.9 + rnd.nextDouble() * 0.9);
+        double moveY = (rnd.nextDouble() - 0.5) * (1.0 + technique * 1.5);
         carrier.setX(clamp(carrier.getX() + moveX));
         carrier.setY(clamp(carrier.getY() + moveY));
     }
@@ -826,7 +843,7 @@ public class PlayerMovementDecisionService {
         quality += (random.nextDouble() - 0.5) * 0.22;
         rt.passQuality = Math.max(0.12, Math.min(0.95, quality));
         double passDistance = Math.hypot(receiver.getX() - passer.getX(), receiver.getY() - passer.getY());
-        rt.maxPassTicks = Math.max(3, Math.min(8, (int) Math.round(passDistance / (3.0 + rt.passQuality * 3.0))));
+        rt.maxPassTicks = Math.max(5, Math.min(14, (int) Math.round(passDistance / (1.6 + rt.passQuality * 1.8))));
 
         double errorRadius = (1.0 - rt.passQuality) * 18.0;
         rt.targetBallX = clamp(receiver.getX() + (random.nextDouble() - 0.5) * errorRadius);
@@ -836,7 +853,7 @@ public class PlayerMovementDecisionService {
 
     public void handlePassMovement(List<PlayerPositionDTO> players, MatchRuntime rt) {
         rt.passTicks++;
-        double passSpeed = 0.36 + rt.passQuality * 0.42;
+        double passSpeed = 0.22 + rt.passQuality * 0.30;
         rt.ball.setX(clamp(rt.ball.getX() + (rt.targetBallX - rt.ball.getX()) * passSpeed));
         rt.ball.setY(clamp(rt.ball.getY() + (rt.targetBallY - rt.ball.getY()) * passSpeed));
 
@@ -924,13 +941,16 @@ public class PlayerMovementDecisionService {
     private void initiateShot(PlayerPositionDTO shooter, List<PlayerPositionDTO> players, Random random, boolean attacksRight, MatchRuntime rt) {
         rt.attacksRightDuringShot = attacksRight;
         rt.targetBallX = attacksRight ? 99 : 1;
-        rt.targetBallY = 50 + (random.nextDouble() - 0.5) * 14;
+        rt.targetBallY = 50 + (random.nextDouble() - 0.5) * 9;
 
         rt.isShooting = true;
         rt.shotTicks = 0;
         rt.lastTouchTeam = shooter.getTeam();
     }
     public void updatePositions(MatchRuntime rt) {
+        if (rt.currentCarrier == null) {
+            pullLooseBallToNearestPlayer(rt);
+        }
         rt.players.forEach(p -> {
             boolean attacksRight = p.getTeam().equals("HOME");
             movePlayerByRole(
@@ -952,35 +972,42 @@ public class PlayerMovementDecisionService {
             return;
         }
 
-        Player carrierEntity = getRuntimePlayer(rt, rt.currentCarrier.getId());
-        double decisionIQ = skill(carrierEntity, SkillType.PLAYMAKER) * 0.58 + overallOutfield(carrierEntity) * 0.42;
-        int holdTicks = Math.max(4, 10 - (int) Math.round(decisionIQ * 5.0));
-
-        rt.possessionTicks++;
-        if (rt.possessionTicks > holdTicks + random.nextInt(4)) {
-            PlayerPositionDTO next = chooseNextAction(rt.currentCarrier, rt.players, random, rt);
-            if (!rt.isPassing && next != null) {
-                rt.currentCarrier = next;
-            }
-            rt.possessionTicks = 0;
+        if (rt.reactionTicksRemaining > 0) {
+            rt.reactionTicksRemaining--;
+            return;
+        }
+        if (rt.tick < rt.nextDecisionTick) {
+            return;
         }
 
-        if (!rt.isPassing) {
-            rt.spacePassCooldown++;
-            if (rt.spacePassCooldown > 10 && random.nextDouble() < 0.11) {
-                PlayerPositionDTO target = trySpacePassTarget(
-                        rt.currentCarrier,
-                        rt.players,
-                        random,
-                        rt.currentCarrier.getTeam().equals("HOME")
-                );
-                if (target != null && target.getId() != rt.currentCarrier.getId()) {
-                    initiatePass(rt.currentCarrier, target, rt,
-                            skill(carrierEntity, SkillType.PASSING),
-                            skill(carrierEntity, SkillType.TECHNIQUE),
-                            skill(carrierEntity, SkillType.PLAYMAKER));
-                }
-                rt.spacePassCooldown = 0;
+        Player carrierEntity = getRuntimePlayer(rt, rt.currentCarrier.getId());
+        double decisionIQ = skill(carrierEntity, SkillType.PLAYMAKER) * 0.62 + overallOutfield(carrierEntity) * 0.38;
+
+        PlayerPositionDTO next = chooseNextAction(rt.currentCarrier, rt.players, random, rt);
+        if (!rt.isPassing && next != null) {
+            rt.currentCarrier = next;
+        }
+
+        int ticksPerMinute = rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
+        int minDecisionGap = Math.max(7, ticksPerMinute / 4);
+        int maxDecisionGap = Math.max(11, ticksPerMinute / 3 + 2);
+        int iqBonus = (int) Math.round(decisionIQ * 2.0);
+        int nextGap = Math.max(6, minDecisionGap - iqBonus) + random.nextInt(Math.max(2, maxDecisionGap - minDecisionGap + 1));
+        rt.nextDecisionTick = rt.tick + nextGap;
+        rt.reactionTicksRemaining = rt.isPassing ? 3 + random.nextInt(3) : 2 + random.nextInt(2);
+
+        if (!rt.isPassing && random.nextDouble() < 0.08) {
+            PlayerPositionDTO target = trySpacePassTarget(
+                    rt.currentCarrier,
+                    rt.players,
+                    random,
+                    rt.currentCarrier.getTeam().equals("HOME")
+            );
+            if (target != null && target.getId() != rt.currentCarrier.getId()) {
+                initiatePass(rt.currentCarrier, target, rt,
+                        skill(carrierEntity, SkillType.PASSING),
+                        skill(carrierEntity, SkillType.TECHNIQUE),
+                        skill(carrierEntity, SkillType.PLAYMAKER));
             }
         }
     }
@@ -1017,7 +1044,8 @@ public class PlayerMovementDecisionService {
         }
 
         MatchContext duelContext = new MatchContext(rt.matchRef, rt.crowd, rt.referee, rt.homeTactics, rt.awayTactics);
-        duelContext.setCurrentMinute(rt.tick / 10 + 1);
+        int ticksPerMinute = rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
+        duelContext.setCurrentMinute(Math.min(90, rt.tick / ticksPerMinute + 1));
         DuelCalculator.DuelResult result = DuelCalculator.resolveDuel(attacker, defender, duelContext, DuelCalculator.DuelType.DRIBBLING);
         if (result.getOutcome() == DuelCalculator.DuelOutcomeQuality.CLEAN) {
             return;
@@ -1049,6 +1077,69 @@ public class PlayerMovementDecisionService {
             rt.lastTouchTeam = nearest.getTeam();
             rt.ball.setX(nearest.getX());
             rt.ball.setY(nearest.getY());
+        }
+    }
+
+    private void applyContextReaction(PlayerPositionDTO p, List<PlayerPositionDTO> players, MatchRuntime rt) {
+        if (rt.currentCarrier == null) {
+            return;
+        }
+        if (p.getId() == rt.currentCarrier.getId()) {
+            return;
+        }
+
+        boolean sameTeam = p.getTeam().equals(rt.currentCarrier.getTeam());
+        double distCarrier = distance(p, rt.currentCarrier);
+
+        if (sameTeam) {
+            if (distCarrier > 8 && distCarrier < 42) {
+                double forwardBias = p.getTeam().equals("HOME") ? 5.0 : -5.0;
+                double tx;
+                double ty;
+                if (isFullBack(p) || isWinger(p)) {
+                    double laneY = (p.getId() == 2 || p.getId() == 13 || p.getId() == 11 || p.getId() == 20) ? 20 : 80;
+                    tx = rt.currentCarrier.getX() + (isWinger(p) ? forwardBias : forwardBias * 0.35);
+                    ty = laneY + (rt.currentCarrier.getY() - laneY) * 0.08;
+                } else if (isStriker(p)) {
+                    tx = rt.currentCarrier.getX() + forwardBias * 0.85;
+                    ty = rt.currentCarrier.getY() + (random.nextDouble() - 0.5) * 14;
+                } else if (isCenterBack(p)) {
+                    tx = p.getTeam().equals("HOME") ? 26 : 74;
+                    ty = (p.getId() == 4 || p.getId() == 14) ? 44 : 56;
+                } else {
+                    tx = rt.currentCarrier.getX() + forwardBias * 0.25;
+                    ty = rt.currentCarrier.getY() + (random.nextDouble() - 0.5) * 10;
+                }
+                p.setX(clamp(lerp(p.getX(), tx, smoothFactor * 0.45)));
+                p.setY(clamp(lerp(p.getY(), ty, smoothFactor * 0.45)));
+            }
+            return;
+        }
+
+        // Defensive team presses carrier instead of staying static.
+        if (distCarrier < PRESS_DISTANCE) {
+            double press = isCenterBack(p) || isFullBack(p) ? 0.30 : isGoalkeeper(p) ? 0.08 : 0.22;
+            double tx = rt.currentCarrier.getX();
+            double ty;
+            if (isFullBack(p) || isWinger(p)) {
+                double laneY = (p.getId() == 2 || p.getId() == 13 || p.getId() == 11 || p.getId() == 20) ? 20 : 80;
+                ty = laneY + (rt.currentCarrier.getY() - laneY) * 0.25;
+            } else if (isCenterBack(p)) {
+                double lineY = (p.getId() == 4 || p.getId() == 14) ? 44 : 56;
+                ty = lineY + (rt.currentCarrier.getY() - lineY) * 0.30;
+            } else {
+                ty = rt.currentCarrier.getY();
+            }
+            p.setX(clamp(lerp(p.getX(), tx, smoothFactor * press)));
+            p.setY(clamp(lerp(p.getY(), ty, smoothFactor * press)));
+        } else if (isCenterBack(p) || isFullBack(p)) {
+            // Keep backline shifting with ball even when far.
+            double goalX = p.getTeam().equals("HOME") ? 14 : 86;
+            double tx = goalX + (rt.ball.getX() - goalX) * 0.18;
+            double lineY = isCenterBack(p) ? ((p.getId() == 4 || p.getId() == 14) ? 44 : 56) : ((p.getId() == 2 || p.getId() == 13) ? 24 : 76);
+            double ty = lineY + (rt.ball.getY() - lineY) * 0.14;
+            p.setX(clamp(lerp(p.getX(), tx, smoothFactor * 0.42)));
+            p.setY(clamp(lerp(p.getY(), ty, smoothFactor * 0.42)));
         }
     }
 }

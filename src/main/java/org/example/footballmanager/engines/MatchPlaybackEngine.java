@@ -114,6 +114,7 @@ public class MatchPlaybackEngine {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
 
+        final int ticksPerMinute = rt != null && rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
         final int[] frameIndex = {0};
         final int[] lastBroadcastMinute = {-1};
 
@@ -125,7 +126,7 @@ public class MatchPlaybackEngine {
                 }
 
                 MatchRuntime.TickState frame = frames.get(frameIndex[0]++);
-                int minute = frame.tick / 10 + 1;
+                int minute = Math.min(90, frame.tick / ticksPerMinute + 1);
 
                 GameStateDTO state = new GameStateDTO(minute, frame.players, frame.ball);
                 broadcastEngine.broadcastState(matchId, state);

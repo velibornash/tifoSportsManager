@@ -30,6 +30,9 @@ public class ChanceEvent extends MatchEvent {
 
     @Override
         public String getDescription() {
-            return minute + "' Posed - " + team.getName();
+            String teamName = team != null ? team.getName() : "Unknown team";
+            String playerName = player != null ? player.getName() : "Unknown player";
+            String danger = dangerous ? "dangerous attack" : "possession circulation";
+            return minute + "' " + teamName + " - " + danger + " (" + playerName + ")";
         }
 }

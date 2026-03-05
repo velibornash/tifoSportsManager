@@ -173,6 +173,7 @@ public class MatchEngine {
     public MatchRuntime simulateFullMatch(Match match) {
         MatchRuntime rt = new MatchRuntime();
         rt = matchPlaybackEngine.initializeRuntimeAndPositions(rt);
+        rt.ticksPerMinute = 27;
         rt.homePlayers = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
         rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
         rt.homeSquad = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
@@ -202,10 +203,11 @@ public class MatchEngine {
         Integer pendingShooterPositionId = null;
         String pendingShooterTeam = null;
 
-        // ========== 900-TICK SIMULATION LOOP ==========
-        for (int tick = 0; tick < 900; tick++) {
+        // ========== FULL-MATCH TICK SIMULATION LOOP ==========
+        int totalTicks = 90 * rt.ticksPerMinute;
+        for (int tick = 0; tick < totalTicks; tick++) {
             rt.tick = tick;
-            int minute = tick / 10 + 1;
+            int minute = Math.min(90, tick / rt.ticksPerMinute + 1);
             context.setCurrentMinute(minute);
 
             // 1. Handle active stoppages (countdown)
@@ -264,8 +266,8 @@ public class MatchEngine {
                 checkBallOutOfBounds(rt, match, minute);
             }
 
-            // 8. Every 10 ticks = 1 minute: fatigue, tactics, tackle duels
-            if (tick % 10 == 0) {
+            // 8. Every simulated minute: fatigue, tactics, tackle duels
+            if (tick % rt.ticksPerMinute == 0) {
                 updateFatigue(context);
                 updatePossession(context, rt.homePlayers, rt.awayPlayers,
                         rt.homeTactics.getFormation(), rt.awayTactics.getFormation());
@@ -298,6 +300,8 @@ public class MatchEngine {
 
         Player shooter = findPlayerByPositionId(rt, rt.currentCarrier.getId());
         boolean attacksRight = rt.currentCarrier.getTeam().equals("HOME");
+        double goalX = attacksRight ? 100.0 : 0.0;
+        double distToGoal = Math.abs(rt.currentCarrier.getX() - goalX);
         String defendingTeam = attacksRight ? "AWAY" : "HOME";
 
         // Find the opponent goalkeeper
@@ -317,8 +321,7 @@ public class MatchEngine {
 
         DuelCalculator.DuelResult result = DuelCalculator.resolveDuel(
                 shooter, goalkeeper, context, DuelCalculator.DuelType.SHOOTING);
-
-        return switch (result.getOutcome()) {
+        PlayerMovementDecisionService.ShotOutcome base = switch (result.getOutcome()) {
             case CLEAN -> PlayerMovementDecisionService.ShotOutcome.GOAL;
             case PARTIAL -> random.nextDouble() < 0.35
                     ? PlayerMovementDecisionService.ShotOutcome.GOAL
@@ -327,6 +330,25 @@ public class MatchEngine {
                     ? PlayerMovementDecisionService.ShotOutcome.SAVED
                     : PlayerMovementDecisionService.ShotOutcome.MISSED;
         };
+
+        // Long shots should be much less efficient.
+        if (distToGoal > 33) {
+            if (base == PlayerMovementDecisionService.ShotOutcome.GOAL && random.nextDouble() < 0.88) {
+                return random.nextDouble() < 0.55
+                        ? PlayerMovementDecisionService.ShotOutcome.SAVED
+                        : PlayerMovementDecisionService.ShotOutcome.MISSED;
+            }
+            if (base == PlayerMovementDecisionService.ShotOutcome.SAVED && random.nextDouble() < 0.35) {
+                return PlayerMovementDecisionService.ShotOutcome.MISSED;
+            }
+        } else if (distToGoal > 26) {
+            if (base == PlayerMovementDecisionService.ShotOutcome.GOAL && random.nextDouble() < 0.55) {
+                return random.nextDouble() < 0.60
+                        ? PlayerMovementDecisionService.ShotOutcome.SAVED
+                        : PlayerMovementDecisionService.ShotOutcome.MISSED;
+            }
+        }
+        return base;
     }
 
     /** Create the appropriate event after a shot resolves */

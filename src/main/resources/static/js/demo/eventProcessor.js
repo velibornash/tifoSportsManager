@@ -4,8 +4,8 @@ import { setCurrentMinute, triggerGoalAnimation } from './canvasRenderer.js';
 
 let eventQueue = [];
 let isProcessing = false;
-const EVENT_DELAY = 2400;
-const GOAL_DELAY = 4200;
+const EVENT_DELAY = 650;
+const GOAL_DELAY = 1200;
 
 let lastEventBox = document.getElementById('lastEventBox');
 let eventImage = document.getElementById('eventImage');

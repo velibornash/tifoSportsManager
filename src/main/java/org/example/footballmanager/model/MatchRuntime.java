@@ -53,6 +53,9 @@ public class MatchRuntime {
     public Team homeTeam = new Team();
     public Team awayTeam = new Team();
     public int tick = 0;
+    public int ticksPerMinute = 27;
+    public int nextDecisionTick = 0;
+    public int reactionTicksRemaining = 0;
 
     // JPA Player references for event creation during simulation
     public List<Player> homeSquad = new ArrayList<>();
