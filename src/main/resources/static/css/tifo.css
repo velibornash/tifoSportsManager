@@ -13,6 +13,31 @@
 }
 .big-button:hover { transform: scale(1.05); background: linear-gradient(90deg, #36a85a, #4caf50); }
 .big-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.cs-next-round-wrap { display: flex; align-items: center; }
+.cs-next-round-btn {
+    font-size: 1.02em;
+    padding: 11px 24px;
+    box-shadow: 0 0 0 1px rgba(76, 175, 80, 0.35), 0 8px 22px rgba(54, 168, 90, 0.28);
+}
+.cs-next-round-btn:hover { box-shadow: 0 0 0 1px rgba(76, 175, 80, 0.55), 0 12px 24px rgba(54, 168, 90, 0.33); }
+.cs-back-main {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #fff;
+    font-weight: 700;
+}
+.cs-back-main:hover { background: rgba(255,255,255,0.16); }
+.cs-inbox-unread {
+    background: rgba(255, 152, 0, 0.18) !important;
+    border: 1px solid rgba(255, 152, 0, 0.45);
+    color: #ffd27d !important;
+}
+.cs-inline-link {
+    color: #80d8ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.cs-inline-link:hover { color: #b7ecff; }
 
 .corner-logo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
 .logo-corner { margin-left: auto; display: flex; align-items: center; }
@@ -94,6 +119,10 @@
 .cs-inbox-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 6px; }
 .cs-inbox-badge.welcome { background: #2a8c4a; color: #fff; }
 .cs-inbox-badge.match { background: #1976d2; color: #fff; }
+.cs-inbox-badge.report { background: #26a69a; color: #fff; }
+.cs-inbox-badge.round-report { background: #5c6bc0; color: #fff; }
+.cs-inbox-badge.international { background: #00897b; color: #fff; }
+.cs-inbox-badge.message { background: #8e24aa; color: #fff; }
 .cs-inbox-badge.info { background: #ff9800; color: #000; }
 .cs-inbox-badge.error { background: #f44336; color: #fff; }
 .cs-inbox-badge.transfer { background: #9c27b0; color: #fff; }
@@ -164,3 +193,41 @@
     text-align: center; padding: 60px 20px; color: #666;
 }
 .cs-transfer-placeholder .icon { font-size: 3em; margin-bottom: 16px; }
+
+/* Live round simulation */
+.cs-live-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.cs-live-card {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+}
+.cs-live-card.user-match {
+    border-color: rgba(255, 215, 0, 0.6);
+    background: rgba(255, 215, 0, 0.08);
+}
+.cs-live-score {
+    font-size: 1.35em;
+    font-weight: 800;
+    margin-top: 6px;
+}
+.cs-live-score.pulse {
+    color: #9cffad;
+    text-shadow: 0 0 12px rgba(156,255,173,0.45);
+}
+.cs-live-feed {
+    margin-top: 14px;
+    max-height: 180px;
+    overflow-y: auto;
+    font-size: 0.9em;
+    color: #d9d9d9;
+}
+.cs-live-feed-item {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}

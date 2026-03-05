@@ -184,6 +184,8 @@ public class EventCreator {
         goal.setTeam(scoringTeam);
         goal.setScorer(scorer);
         goal.setMinute(rnd.nextInt(90) + 1);
+        // Simulated-match goals are valid unless explicitly overturned by a VAR flow.
+        goal.apply();
 
         scorer.setTotalGoals(scorer.getTotalGoals() + 1);
         playerRepository.save(scorer);

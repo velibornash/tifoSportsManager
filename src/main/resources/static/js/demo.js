@@ -21,7 +21,7 @@ window.addEventListener('load', async () => {
 });
 
 async function startDemoTest() {
-    const button = document.querySelector('.dashboard-actions button');
+    const button = document.getElementById('start-demo-btn');
     if (!button) {
         console.error('Start demo button not found');
         return;
@@ -43,8 +43,36 @@ async function startDemoTest() {
         console.error('Failed to start demo:', error);
         alert('Failed to start demo simulation.');
         button.disabled = false;
-        button.textContent = 'Start Demo Simulation';
+        button.textContent = 'Simulate Next Round';
+    }
+}
+
+async function startKeyEventsTest() {
+    const button = document.getElementById('start-key-events-btn');
+    if (!button) {
+        console.error('Key events button not found');
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Preparing key events...';
+
+    try {
+        const response = await authFetch('/start-demo-key-events');
+        if (!response.ok) throw new Error('Server error');
+
+        const data = await response.json();
+        const matchId = data.matchId;
+        if (!matchId) throw new Error('Missing matchId in response');
+
+        window.location.href = `/key-events.html?matchId=${matchId}`;
+    } catch (error) {
+        console.error('Failed to start key events simulation:', error);
+        alert('Failed to start key events simulation.');
+        button.disabled = false;
+        button.textContent = 'Simulate Key Events';
     }
 }
 
 window.startDemoTest = startDemoTest;
+window.startKeyEventsTest = startKeyEventsTest;

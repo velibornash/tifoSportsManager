@@ -11,19 +11,22 @@
 <div class="background"></div>
 
 <div class="top-menu">
-    <div class="menu-button desktop-only" onclick="tifoBackToMain()">← Back to Main App</div>
-    <div class="menu-button desktop-only" onclick="tifoNav('inbox')">Inbox</div>
+    <div id="backMainDesktop" class="menu-button desktop-only cs-back-main" onclick="tifoBackToMain()">← Back to Main App</div>
+    <div id="inboxBtnDesktop" class="menu-button desktop-only" onclick="tifoNav('inbox')">Inbox</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('tifoClubSidebar')">Club</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('tifoCompetitionsSidebar')">Competitions</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('tifoStatsSidebar')">Stats</div>
-    <div class="menu-button desktop-only">
-        <button id="nextRoundBtn" class="big-button" onclick="tifoNextRound()">Next Round -></button>
+    <div class="menu-button desktop-only cs-next-round-wrap">
+        <button id="nextRoundBtn" class="big-button cs-next-round-btn" onclick="tifoNextRound()">Next Round -></button>
     </div>
     <div class="desktop-only" id="roundInfo" style="color:#aaa; padding:10px; font-size:0.85em;"></div>
     <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
 
-    <div class="menu-button mobile-only" onclick="tifoBackToMain()">← Main App</div>
-    <div class="menu-button mobile-only" onclick="tifoNav('inbox')">Inbox</div>
+    <div id="backMainMobile" class="menu-button mobile-only cs-back-main" onclick="tifoBackToMain()">← Main App</div>
+    <div id="inboxBtnMobile" class="menu-button mobile-only" onclick="tifoNav('inbox')">Inbox</div>
+    <div class="menu-button mobile-only cs-next-round-wrap">
+        <button id="nextRoundBtnMobileTop" class="big-button cs-next-round-btn" onclick="tifoNextRound()">Next</button>
+    </div>
     <div class="menu-button mobile-only" id="mobileMenuBtn" onclick="toggleMobileMenu()">Menu</div>
     <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
 </div>
@@ -66,9 +69,6 @@
         <div onclick="tifoNav('topAssists'); toggleMobileMenu()">Top Assists</div>
         <div onclick="tifoNav('transfers'); toggleMobileMenu()">Transfers</div>
         <div onclick="tifoNav('clubInfo'); toggleMobileMenu()">Club Info</div>
-        <div style="padding:25px 15px; text-align:center; margin-top:30px;">
-            <button class="big-button" onclick="tifoNextRound(); toggleMobileMenu()">Next Round -></button>
-        </div>
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="toggleMobileMenu()"></div>

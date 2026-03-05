@@ -111,16 +111,18 @@ public class CleanSheetController {
     }
 
     private Map<String, Object> buildStateResponse(CleanSheetGameState state) {
-        return Map.of(
-                "active", true,
-                "userTeam", state.getUserTeam(),
-                "roster", state.getRoster(),
-                "leagueTable", state.getLeagueTable(),
-                "tactics", state.getTactics(),
-                "currentRound", state.getCurrentRound(),
-                "totalRounds", state.getTotalRounds(),
-                "seasonYear", state.getSeasonYear(),
-                "inbox", state.getInbox()
+        return Map.ofEntries(
+                Map.entry("active", true),
+                Map.entry("userTeam", state.getUserTeam()),
+                Map.entry("roster", state.getRoster()),
+                Map.entry("leagueTable", state.getLeagueTable()),
+                Map.entry("leagueName", state.getLeagueName()),
+                Map.entry("tactics", state.getTactics()),
+                Map.entry("currentRound", state.getCurrentRound()),
+                Map.entry("totalRounds", state.getTotalRounds()),
+                Map.entry("seasonYear", state.getSeasonYear()),
+                Map.entry("inbox", state.getInbox()),
+                Map.entry("seasonHistory", state.getSeasonHistory())
         );
     }
 }

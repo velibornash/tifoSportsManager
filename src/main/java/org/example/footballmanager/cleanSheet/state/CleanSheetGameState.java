@@ -14,6 +14,7 @@ public class CleanSheetGameState {
     private Long userId;
     private int seasonYear;
     private int currentRound = 1;
+    private String leagueName;
 
     // Korisnikov tim
     private CSTeam userTeam;
@@ -32,6 +33,7 @@ public class CleanSheetGameState {
     // Istorija
     private List<CSMatchResult> matchHistory = new ArrayList<>();
     private List<CSInboxMessage> inbox = new ArrayList<>();
+    private List<CSSeasonRecord> seasonHistory = new ArrayList<>();
 
     public void addInboxMessage(String type, String text) {
         inbox.add(CSInboxMessage.builder()

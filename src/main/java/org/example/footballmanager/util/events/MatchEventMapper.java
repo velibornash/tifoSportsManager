@@ -158,14 +158,17 @@ public class MatchEventMapper {
                 dto.setDecision(v.getDecision());
                 dto.setOverturnReason(v.getOverturnReason());
                 if (v.getReviewedGoalEvent() != null) {
+                    fillPlayerFields(dto, v.getReviewedGoalEvent().getScorer());
                     dto.setReviewTarget("goal");
                     dto.setTeamName(v.getReviewedGoalEvent().getTeam() != null ? v.getReviewedGoalEvent().getTeam().getName() : null);
                     dto.setPlayerName(v.getReviewedGoalEvent().getScorer() != null ? v.getReviewedGoalEvent().getScorer().getName() : null);
                 } else if (v.getReviewedPenaltyEvent() != null) {
+                    fillPlayerFields(dto, v.getReviewedPenaltyEvent().getTaker());
                     dto.setReviewTarget("penalty");
                     dto.setTeamName(v.getReviewedPenaltyEvent().getTeam() != null ? v.getReviewedPenaltyEvent().getTeam().getName() : null);
                     dto.setPlayerName(v.getReviewedPenaltyEvent().getTaker() != null ? v.getReviewedPenaltyEvent().getTaker().getName() : null);
                 } else if (v.getReviewedOffsideEvent() != null) {
+                    fillPlayerFields(dto, v.getReviewedOffsideEvent().getPlayer());
                     dto.setReviewTarget("offside");
                     dto.setTeamName(v.getReviewedOffsideEvent().getPlayer() != null && v.getReviewedOffsideEvent().getPlayer().getTeam() != null
                             ? v.getReviewedOffsideEvent().getPlayer().getTeam().getName()

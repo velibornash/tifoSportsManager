@@ -215,9 +215,11 @@ public class MatchStatisticEngine {
         int homeShotsTotal     = homeGoals + rnd.nextInt(6) + 4;           // 4–9 + golovi
         int awayShotsTotal     = awayGoals + rnd.nextInt(6) + 4;
 
-        // Šutevi u okvir: ~35–55% od ukupnih šuteva
-        int homeShotsOnTarget  = Math.min(homeGoals + rnd.nextInt(5), (int)(homeShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
-        int awayShotsOnTarget  = Math.min(awayGoals + rnd.nextInt(5), (int)(awayShotsTotal * (0.35 + rnd.nextDouble() * 0.2)));
+        // Shots on target: keep realistic ratio, but never below valid goals.
+        int homeOnTargetBase = (int)(homeShotsTotal * (0.35 + rnd.nextDouble() * 0.2));
+        int awayOnTargetBase = (int)(awayShotsTotal * (0.35 + rnd.nextDouble() * 0.2));
+        int homeShotsOnTarget  = Math.min(homeShotsTotal, Math.max(homeGoals, homeOnTargetBase));
+        int awayShotsOnTarget  = Math.min(awayShotsTotal, Math.max(awayGoals, awayOnTargetBase));
 
         int homeShotsOffTarget = homeShotsTotal-homeShotsOnTarget;
         int awayShotsOffTarget = awayShotsTotal-awayShotsOnTarget;

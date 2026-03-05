@@ -96,7 +96,8 @@ function loadDashboard() {
         </div>
 
         <div class="dashboard-actions">
-            <button onclick="startDemoTest()">Simulate Next Round</button>
+            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>
+            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>
             <button onclick="initializeDatabase()">Initialize Database</button>
             <button onclick="resetDatabase()" style="background:#b71c1c;">Reset Database</button>
         </div>

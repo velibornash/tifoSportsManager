@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -29,6 +30,9 @@ public class CleanSheetService {
     private final CSMatchSimulator matchSimulator = new CSMatchSimulator();
     private final CSLeagueManager leagueManager = new CSLeagueManager();
     private final CSMatchReportGenerator reportGenerator = new CSMatchReportGenerator();
+    private final Random random = new Random();
+    private final AtomicLong generatedTeamId = new AtomicLong(-10_000);
+    private final AtomicLong generatedPlayerId = new AtomicLong(-500_000);
 
     /**
      * Pokrece novu igru — cita iz baze JEDNOM, mapira u CS objekte,
@@ -82,6 +86,7 @@ public class CleanSheetService {
         CleanSheetGameState state = new CleanSheetGameState();
         state.setUserId(userId);
         state.setSeasonYear(sc.getSeasonYear());
+        state.setLeagueName(league.getName() != null ? league.getName() : "League");
         state.setCurrentRound(1);
         state.setUserTeam(userTeam);
         state.setRoster(userRoster);
@@ -97,9 +102,9 @@ public class CleanSheetService {
 
         // 8. Welcome poruka
         state.addInboxMessage("welcome",
-                "Dobrodosao u Clean Sheet! Upravljas timom " + userTeam.getName() +
-                ". Sezona " + sc.getSeasonYear() + "/" + (sc.getSeasonYear() + 1) +
-                ". Liga ima " + csTeams.size() + " timova, " + state.getTotalRounds() + " kola. Srecno!");
+                "Welcome to Clean Sheet! You manage " + userTeam.getName() +
+                ". Season " + sc.getSeasonYear() + "/" + (sc.getSeasonYear() + 1) +
+                ". " + state.getLeagueName() + " has " + csTeams.size() + " teams and " + state.getTotalRounds() + " rounds.");
 
         // 9. Sacuvaj
         activeGames.put(userId, state);
@@ -125,6 +130,8 @@ public class CleanSheetService {
             response.put("table", state.getLeagueTable());
             response.put("roster", state.getRoster());
             response.put("seasonYear", state.getSeasonYear());
+            response.put("leagueName", state.getLeagueName());
+            response.put("seasonHistory", state.getSeasonHistory());
             return response;
         }
 
@@ -168,6 +175,8 @@ public class CleanSheetService {
         // Simuliraj ostale meceve
         List<CSMatchResult> allResults = leagueManager.simulateRound(state, round, userResult);
         state.addInboxMessage("round-report", reportGenerator.buildRoundReport(round, allResults, state.getUserTeam().getId()));
+        generateInternationalInbox(state, round);
+        generateRumorInbox(state, round);
 
         // Oporavi fatigue izmedju kola
         recoverFatigueBetweenRounds(state);
@@ -190,6 +199,7 @@ public class CleanSheetService {
         response.put("seasonOver", state.isSeasonOver());
         // Return updated roster so frontend can refresh goals/assists
         response.put("roster", state.getRoster());
+        response.put("leagueName", state.getLeagueName());
         return response;
     }
 
@@ -228,7 +238,7 @@ public class CleanSheetService {
             }
         }
         state.addInboxMessage("info",
-                "Taktika promenjena: " + tactics.getFormation() + " / " + tactics.getStyle());
+                "Tactics updated: " + tactics.getFormation() + " / " + tactics.getStyle());
         return tactics;
     }
 
@@ -332,6 +342,48 @@ public class CleanSheetService {
     }
 
     private void rolloverToNextSeason(CleanSheetGameState state) {
+        List<CSTableEntry> finalTable = new ArrayList<>(state.getLeagueTable());
+        if (finalTable.isEmpty()) {
+            state.setCurrentRound(1);
+            state.setSchedule(leagueManager.generateSchedule(state.getAllTeams()));
+            return;
+        }
+
+        CSTableEntry champion = finalTable.getFirst();
+        CSTableEntry relegated = findWorstNonUser(finalTable, state.getUserTeam().getId(), Set.of());
+        CSTableEntry playoff = findWorstNonUser(finalTable, state.getUserTeam().getId(),
+                relegated != null ? Set.of(relegated.getTeamId()) : Set.of());
+
+        CSTeam promotedDirect = createGeneratedTeam("FK " + pickPromotedName());
+        CSTeam playoffChallenger = createGeneratedTeam("OFK " + pickPromotedName());
+        boolean playoffChallengerWins = random.nextDouble() < 0.52;
+
+        List<String> promotedNames = new ArrayList<>();
+        promotedNames.add(promotedDirect.getName());
+        if (playoffChallengerWins) {
+            promotedNames.add(playoffChallenger.getName());
+        }
+
+        if (relegated != null) {
+            replaceTeamInLeague(state, relegated.getTeamId(), promotedDirect, createGeneratedRoster(promotedDirect.getId()));
+        }
+        if (playoff != null && playoffChallengerWins) {
+            replaceTeamInLeague(state, playoff.getTeamId(), playoffChallenger, createGeneratedRoster(playoffChallenger.getId()));
+        }
+
+        CSSeasonRecord record = CSSeasonRecord.builder()
+                .seasonYear(state.getSeasonYear())
+                .leagueName(state.getLeagueName())
+                .champion(champion.getTeamName())
+                .relegatedTeam(relegated != null ? relegated.getTeamName() : "n/a")
+                .playoffTeam(playoff != null ? playoff.getTeamName() : "n/a")
+                .playoffOutcome(playoff == null
+                        ? "No playoff"
+                        : (playoffChallengerWins ? playoffChallenger.getName() + " won playoff" : playoff.getTeamName() + " stayed in the league"))
+                .promotedTeams(promotedNames)
+                .build();
+        state.getSeasonHistory().add(record);
+
         state.setSeasonYear(state.getSeasonYear() + 1);
         state.setCurrentRound(1);
         state.setSchedule(leagueManager.generateSchedule(state.getAllTeams()));
@@ -347,10 +399,196 @@ public class CleanSheetService {
             }
         }
 
-        state.addInboxMessage(
-                "info",
-                "New season started: " + state.getSeasonYear() + "/" + (state.getSeasonYear() + 1) +
-                        ". Table and schedule are reset."
-        );
+        state.setRoster(state.getAllTeamRosters().getOrDefault(state.getUserTeam().getId(), List.of()));
+
+        String playoffMsg = playoff == null
+                ? "No playoff was required."
+                : (playoffChallengerWins
+                    ? playoffChallenger.getName() + " beat " + playoff.getTeamName() + " in playoff and got promoted."
+                    : playoff.getTeamName() + " survived playoff against " + playoffChallenger.getName() + ".");
+
+        state.addInboxMessage("info",
+                "Season transition: champion " + champion.getTeamName() + ". " +
+                        (relegated != null ? relegated.getTeamName() + " relegated. " : "") +
+                        playoffMsg +
+                        " New season " + state.getSeasonYear() + "/" + (state.getSeasonYear() + 1) + " started.");
+    }
+
+    private CSTableEntry findWorstNonUser(List<CSTableEntry> table, Long userTeamId, Set<Long> excluded) {
+        for (int i = table.size() - 1; i >= 0; i--) {
+            CSTableEntry e = table.get(i);
+            if (Objects.equals(e.getTeamId(), userTeamId)) continue;
+            if (excluded.contains(e.getTeamId())) continue;
+            return e;
+        }
+        return null;
+    }
+
+    private void replaceTeamInLeague(CleanSheetGameState state, Long outgoingTeamId, CSTeam incomingTeam, List<CSPlayer> incomingRoster) {
+        for (int i = 0; i < state.getAllTeams().size(); i++) {
+            if (Objects.equals(state.getAllTeams().get(i).getId(), outgoingTeamId)) {
+                state.getAllTeams().set(i, incomingTeam);
+                break;
+            }
+        }
+        state.getAllTeamRosters().remove(outgoingTeamId);
+        state.getAllTeamRosters().put(incomingTeam.getId(), incomingRoster);
+    }
+
+    private CSTeam createGeneratedTeam(String name) {
+        return CSTeam.builder()
+                .id(generatedTeamId.getAndDecrement())
+                .name(name)
+                .budget(420_000 + random.nextInt(220_000))
+                .reputation(38 + random.nextInt(22))
+                .stadiumName(name + " Arena")
+                .stadiumCapacity(4000 + random.nextInt(7000))
+                .formation("4-4-2")
+                .build();
+    }
+
+    private List<CSPlayer> createGeneratedRoster(Long teamId) {
+        List<CSPlayer> players = new ArrayList<>();
+        players.add(createGeneratedPlayer(teamId, "GK", 60));
+        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer(teamId, "DEF", 58));
+        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer(teamId, "MID", 60));
+        for (int i = 0; i < 2; i++) players.add(createGeneratedPlayer(teamId, "WNG", 60));
+        for (int i = 0; i < 3; i++) players.add(createGeneratedPlayer(teamId, "ATT", 61));
+        return players;
+    }
+
+    private CSPlayer createGeneratedPlayer(Long teamId, String pos, int baseRating) {
+        int rating = Math.max(44, Math.min(78, baseRating + random.nextInt(13) - 6));
+        String name = pickFirstName() + " " + pickLastName();
+        int age = 18 + random.nextInt(16);
+        int stamina = clampSkill(6 + random.nextInt(12));
+        int goalkeeper = "GK".equals(pos) ? clampSkill(10 + random.nextInt(10)) : clampSkill(1 + random.nextInt(6));
+        int defending = "DEF".equals(pos) ? clampSkill(10 + random.nextInt(10)) : clampSkill(2 + random.nextInt(10));
+        int pace = clampSkill(4 + random.nextInt(14));
+        int technique = clampSkill(4 + random.nextInt(13));
+        int playmaker = clampSkill(4 + random.nextInt(13));
+        int passing = clampSkill(4 + random.nextInt(13));
+        int shooting = "ATT".equals(pos) ? clampSkill(10 + random.nextInt(10)) : clampSkill(2 + random.nextInt(10));
+
+        return CSPlayer.builder()
+                .id(generatedPlayerId.getAndDecrement())
+                .name(name)
+                .position(pos)
+                .age(age)
+                .rating(rating)
+                .form(4.6 + random.nextDouble() * 1.8)
+                .fatigue(0.8 + random.nextDouble() * 1.8)
+                .talent(3.0 + random.nextDouble() * 6.0)
+                .stamina(stamina)
+                .goalkeeper(goalkeeper)
+                .defending(defending)
+                .pace(pace)
+                .technique(technique)
+                .playmaker(playmaker)
+                .passing(passing)
+                .shooting(shooting)
+                .goals(0)
+                .assists(0)
+                .value(80_000 + random.nextInt(420_000))
+                .earnings(550 + random.nextInt(3400))
+                .height(1.70 + random.nextDouble() * 0.25)
+                .weight(64 + random.nextDouble() * 22)
+                .build();
+    }
+
+    private int clampSkill(int s) {
+        return Math.max(1, Math.min(20, s));
+    }
+
+    private String pickFirstName() {
+        String[] first = {"Marko", "Lazar", "Nikola", "Vuk", "Stefan", "Milan", "Nemanja", "Boris", "Aleksa", "Dusan"};
+        return first[random.nextInt(first.length)];
+    }
+
+    private String pickLastName() {
+        String[] last = {"Jovanovic", "Petrovic", "Milosavljevic", "Nikolic", "Pavlovic", "Ilic", "Markovic", "Stankovic", "Kovacevic", "Mitrovic"};
+        return last[random.nextInt(last.length)];
+    }
+
+    private String pickPromotedName() {
+        String[] names = {"Backa", "Jadar", "Morava", "Drina", "Sloga", "Mladost", "Hajduk", "Jedinstvo", "Buducnost", "Bratstvo"};
+        return names[random.nextInt(names.length)] + " " + (10 + random.nextInt(90));
+    }
+
+    private void generateInternationalInbox(CleanSheetGameState state, int round) {
+        if (random.nextDouble() > 0.55) {
+            return;
+        }
+        String stage = random.nextDouble() < 0.28 ? "World Cup Qualifiers" : "International Friendlies";
+        List<String> nations = new ArrayList<>(List.of("Serbia", "Croatia", "Romania", "Bulgaria", "Hungary", "Greece", "Slovakia", "Austria", "Sweden", "Denmark"));
+        Collections.shuffle(nations, random);
+        if (!nations.contains("Serbia")) nations.add(0, "Serbia");
+
+        List<String> lines = new ArrayList<>();
+        lines.add(stage + " update (Round " + round + "):");
+
+        int fixtures = 3 + random.nextInt(2);
+        for (int i = 0; i < fixtures; i++) {
+            String home = (i == 0) ? "Serbia" : nations.get((i * 2) % nations.size());
+            String away = nations.get((i * 2 + 1) % nations.size());
+            if (home.equals(away)) continue;
+
+            int hg = random.nextInt(4);
+            int ag = random.nextInt(4);
+            String scorer = pickRandomLeaguePlayerName(state);
+            String scorerLine = scorer != null ? " Scorer highlight: " + scorer + "." : "";
+            lines.add(home + " " + hg + ":" + ag + " " + away + "." + scorerLine);
+        }
+        state.addInboxMessage("international", String.join("\n", lines));
+    }
+
+    private void generateRumorInbox(CleanSheetGameState state, int round) {
+        if (state.getRoster() == null || state.getRoster().isEmpty()) {
+            return;
+        }
+        if (random.nextDouble() < 0.32) {
+            CSPlayer own = state.getRoster().get(random.nextInt(state.getRoster().size()));
+            state.addInboxMessage("message",
+                    "Agent message: " + own.getName() + " wants to discuss a contract extension after Round " + round + ".");
+        }
+
+        if (random.nextDouble() < 0.28) {
+            CSPlayer target = pickRandomLeaguePlayer(state);
+            CSTeam linkedTeam = pickRandomOtherTeam(state, state.getUserTeam().getId());
+            if (target != null && linkedTeam != null) {
+                state.addInboxMessage("message",
+                        "Media rumor: " + linkedTeam.getName() + " are monitoring " + target.getName() + ".");
+            }
+        }
+
+        if (random.nextDouble() < 0.26) {
+            CSPlayer own = state.getRoster().get(random.nextInt(state.getRoster().size()));
+            CSTeam linkedTeam = pickRandomOtherTeam(state, state.getUserTeam().getId());
+            if (linkedTeam != null) {
+                state.addInboxMessage("message",
+                        "Journalists link " + own.getName() + " with a move to " + linkedTeam.getName() + ".");
+            }
+        }
+    }
+
+    private CSTeam pickRandomOtherTeam(CleanSheetGameState state, Long excludedTeamId) {
+        List<CSTeam> options = state.getAllTeams().stream()
+                .filter(t -> !Objects.equals(t.getId(), excludedTeamId))
+                .toList();
+        if (options.isEmpty()) return null;
+        return options.get(random.nextInt(options.size()));
+    }
+
+    private CSPlayer pickRandomLeaguePlayer(CleanSheetGameState state) {
+        List<CSPlayer> pool = state.getAllTeamRosters().values().stream()
+                .flatMap(List::stream)
+                .toList();
+        if (pool.isEmpty()) return null;
+        return pool.get(random.nextInt(pool.size()));
+    }
+
+    private String pickRandomLeaguePlayerName(CleanSheetGameState state) {
+        CSPlayer p = pickRandomLeaguePlayer(state);
+        return p != null ? p.getName() : null;
     }
 }

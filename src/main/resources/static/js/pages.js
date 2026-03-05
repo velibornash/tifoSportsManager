@@ -368,9 +368,13 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 const awayShotsOn  = events.filter(e => e.eventType === "ShotOnTargetEvent" && e.shotOnTargetTeam === awayTeamName).length;
                 const homeShotsOff = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === homeTeamName).length;
                 const awayShotsOff = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === awayTeamName).length;
+                const homeGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === homeTeamName && e.goalScored !== false).length;
+                const awayGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === awayTeamName && e.goalScored !== false).length;
 
-                const homeTotalShots = homeShotsOn + homeShotsOff;
-                const awayTotalShots = awayShotsOn + awayShotsOff;
+                const adjHomeShotsOn = Math.max(homeShotsOn, homeGoalsCount);
+                const adjAwayShotsOn = Math.max(awayShotsOn, awayGoalsCount);
+                const homeTotalShots = Math.max(adjHomeShotsOn + homeShotsOff, homeGoalsCount);
+                const awayTotalShots = Math.max(adjAwayShotsOn + awayShotsOff, awayGoalsCount);
 
                 const homeCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === homeTeamName).length;
                 const awayCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === awayTeamName).length;
@@ -384,10 +388,34 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 const homePenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === homeTeamName).length;
                 const awayPenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === awayTeamName).length;
 
-                const homePoss = events.filter(e => e.eventType === "ChanceEvent" && e.eventTeam === homeTeamName).length;
-                const awayPoss = events.filter(e => e.eventType === "ChanceEvent" && e.eventTeam === awayTeamName).length;
-                const totalPoss = homePoss + awayPoss;
-                const homePossPct = totalPoss > 0 ? Math.round((homePoss / totalPoss) * 100) : 50;
+                const countTeamEvents = (type, teamName) =>
+                    events.filter(e => e.eventType === type && e.eventTeam === teamName).length;
+
+                // Possession proxy: weighted attacking/control events to avoid constant 50-50 when ChanceEvent is sparse.
+                const homePossWeight =
+                    (countTeamEvents("ChanceEvent", homeTeamName) * 3.0) +
+                    (homeShotsOn * 2.0) +
+                    (homeShotsOff * 1.4) +
+                    (homeCorners * 1.2) +
+                    (countTeamEvents("FreeKickEvent", homeTeamName) * 0.9) +
+                    (homePenalties * 1.3) +
+                    (countTeamEvents("GoalEvent", homeTeamName) * 1.1);
+
+                const awayPossWeight =
+                    (countTeamEvents("ChanceEvent", awayTeamName) * 3.0) +
+                    (awayShotsOn * 2.0) +
+                    (awayShotsOff * 1.4) +
+                    (awayCorners * 1.2) +
+                    (countTeamEvents("FreeKickEvent", awayTeamName) * 0.9) +
+                    (awayPenalties * 1.3) +
+                    (countTeamEvents("GoalEvent", awayTeamName) * 1.1);
+
+                const baselineWeight = 18.0;
+                const totalPoss = (homePossWeight + baselineWeight) + (awayPossWeight + baselineWeight);
+                let homePossPct = totalPoss > 0
+                    ? Math.round(((homePossWeight + baselineWeight) / totalPoss) * 100)
+                    : 50;
+                homePossPct = Math.max(32, Math.min(68, homePossPct));
                 const awayPossPct = 100 - homePossPct;
 
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Match Stats</h3>`;
@@ -404,7 +432,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <tbody>
                         <tr><td style="padding:10px;">Possession</td><td style="text-align:center;font-weight:bold;">${homePossPct}%</td><td style="text-align:center;font-weight:bold;">${awayPossPct}%</td></tr>
                         <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
-                        <tr><td style="padding:10px;">Shots on target</td><td style="text-align:center;">${homeShotsOn}</td><td style="text-align:center;">${awayShotsOn}</td></tr>
+                        <tr><td style="padding:10px;">Shots on target</td><td style="text-align:center;">${adjHomeShotsOn}</td><td style="text-align:center;">${adjAwayShotsOn}</td></tr>
                         <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots off target</td><td style="text-align:center;">${homeShotsOff}</td><td style="text-align:center;">${awayShotsOff}</td></tr>
                         <tr><td style="padding:10px;">Corners</td><td style="text-align:center;">${homeCorners}</td><td style="text-align:center;">${awayCorners}</td></tr>
                         <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Yellow cards</td><td style="text-align:center;color:#ff9800;">${homeYellows}</td><td style="text-align:center;color:#ff9800;">${awayYellows}</td></tr>

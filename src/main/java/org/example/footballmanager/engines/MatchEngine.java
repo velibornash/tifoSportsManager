@@ -604,6 +604,7 @@ public class MatchEngine {
                     goal.setMatch(match);
                     goal.setTeam(fouledTeam);
                     goal.setScorer(carrier);
+                    goal.apply();
                     processSpecialEvents(goal, rt, match);
                     rt.runtimeEvents.add(goal);
                     rt.runtimeGoals.add(goal);

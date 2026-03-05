@@ -32,6 +32,16 @@ public class SimulationController {
     @SneakyThrows
     @GetMapping("/start-demo")
     public ResponseEntity<Map<String, String>> startDemo() {
+        return startDemoInternal();
+    }
+
+    @SneakyThrows
+    @GetMapping("/start-demo-key-events")
+    public ResponseEntity<Map<String, String>> startDemoKeyEvents() {
+        return startDemoInternal();
+    }
+
+    private ResponseEntity<Map<String, String>> startDemoInternal() {
         Match demoMatch = matchEngine.createMatch();
 
         Competition superLiga = competitionRepository.findById(1L).orElse(null);
