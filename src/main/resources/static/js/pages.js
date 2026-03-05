@@ -65,7 +65,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     break;
 
                 case "training":
+                case "trainingSetup":
                     await loadTrainingReports();
+                    break;
+                case "trainingReports":
+                    await loadTrainingReportsPage();
                     break;
 
                 case "profile":
@@ -173,6 +177,20 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/[^a-z0-9]/g, "");
     }
+    async function openTeamByName(teamName) {
+        try {
+            const res = await authFetch('/countries/leagues/1/teams');
+            if (!res.ok) return;
+            const teams = await res.json();
+            const key = normalizeTeamKey(teamName);
+            const found = teams.find(t => normalizeTeamKey(t.name) === key);
+            if (found) {
+                loadLeagueTeam(found.id, found.name);
+            }
+        } catch (e) {
+            console.warn('Team navigation failed:', e);
+        }
+    }
     function escapeHtml(value) {
         return String(value ?? "")
             .replace(/&/g, "&amp;")
@@ -233,6 +251,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         }
 
         const player = await response.json();
+        const fmtSkill = (exact, visible) => {
+            if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
+            if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
+            return "-";
+        };
         mainContent.innerHTML = `
             <div class="manager-card">
                 <button class="big-button" onclick="loadPage('firstTeam')" style="margin-bottom:16px;">Back to Team</button>
@@ -251,14 +274,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
                 <h3 style="margin-top:20px;">Skills</h3>
                 <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val">${player.stamina ?? "-"}</div><div class="lbl">Stamina</div></div>
-                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val">${player.pace ?? "-"}</div><div class="lbl">Pace</div></div>
-                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val">${player.defending ?? "-"}</div><div class="lbl">Defending</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val">${player.technique ?? "-"}</div><div class="lbl">Technique</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val">${player.playmaker ?? "-"}</div><div class="lbl">Playmaker</div></div>
-                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val">${player.passing ?? "-"}</div><div class="lbl">Passing</div></div>
-                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val">${player.shooting ?? "-"}</div><div class="lbl">Shooting</div></div>
-                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val">${player.goalkeeper ?? "-"}</div><div class="lbl">Goalkeeper</div></div>
+                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val">${fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
+                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val">${fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
+                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val">${fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val">${fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val">${fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val">${fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
+                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val">${fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val">${fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
                 </div>
             </div>`;
     }
@@ -301,6 +324,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
             const awayTeamName = first.awayTeam || "Away";
             const homeGoals = first.homeGoals ?? 0;
             const awayGoals = first.awayGoals ?? 0;
+            const homeTeamId = lineupsPayload?.homeTeamId || null;
+            const awayTeamId = lineupsPayload?.awayTeamId || null;
 
             const matchDate = parseMatchDate(first.matchDate);
             const formattedDate = matchDate.toLocaleString('en-US', {
@@ -315,12 +340,12 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
                 <div style="display:flex; justify-content:space-around; font-size:1.3em; margin:20px 0; font-weight:bold;">
                     <div style="text-align:center;">
-                        <div>${homeTeamName}</div>
+                        <div>${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${escapeHtml(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
                         <div>${homeGoals}</div>
                     </div>
                     <div style="align-self:center; font-size:1.6em;">–</div>
                     <div style="text-align:center;">
-                        <div>${awayTeamName}</div>
+                        <div>${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${escapeHtml(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
                         <div>${awayGoals}</div>
                     </div>
                 </div>
@@ -429,8 +454,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                     <thead>
                         <tr style="background:rgba(76,175,80,0.15);">
                             <th style="padding:12px; text-align:left;">Stats</th>
-                            <th style="padding:12px; text-align:center;">${homeTeamName}</th>
-                            <th style="padding:12px; text-align:center;">${awayTeamName}</th>
+                            <th style="padding:12px; text-align:center;">${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${escapeHtml(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</th>
+                            <th style="padding:12px; text-align:center;">${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${escapeHtml(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -482,7 +507,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                         html += `
                             <div style="display:flex; gap:10px; padding:8px 10px; border-radius:6px; background:${rowBg};">
                                 <div style="width:42px; text-align:center; color:#2a8c4a; font-weight:700;">${p.position}</div>
-                                <div style="flex:1;">${p.playerName}</div>
+                                <div style="flex:1;">${p.playerId ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamName === (lineupsPayload.homeTeam || homeTeamName) ? (lineupsPayload.homeTeamId || 0) : (lineupsPayload.awayTeamId || 0)}, ${p.playerId}, '${escapeHtml(teamName)}')">${p.playerName}</span>` : p.playerName}</div>
                                 <div style="width:56px; text-align:center; font-weight:700; color:${gradeColor};">${gradeText}</div>
                                 <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
                                 <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
@@ -509,13 +534,24 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Goals</h3><ul style="list-style:none; padding:0;">`;
 
                 goals.forEach(g => {
-                    const assist = g.assistant ? ` <span style="color:#888;">(assist: ${g.assistant})</span>` : '';
                     const disallowed = g.goalScored === false;
                     const lineColor = disallowed ? "#ffb3b3" : "inherit";
                     const verdict = disallowed ? ` <span style="color:#ff6b6b; font-weight:600;">DISALLOWED (VAR)</span>` : "";
+                    const scorerTeamId = g.scoreTeam === homeTeamName ? homeTeamId : (g.scoreTeam === awayTeamName ? awayTeamId : null);
+                    const scorerStat = (g.scoreTeam === homeTeamName ? (lineupsPayload?.homeLineup || []) : (lineupsPayload?.awayLineup || []))
+                        .find(p => p.playerName === g.scorer);
+                    const assistStat = (g.scoreTeam === homeTeamName ? (lineupsPayload?.homeLineup || []) : (lineupsPayload?.awayLineup || []))
+                        .find(p => p.playerName === g.assistant);
+                    const scorerLabel = scorerStat?.playerId && scorerTeamId
+                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${scorerTeamId}, ${scorerStat.playerId}, '${escapeHtml(g.scoreTeam || '')}')">${g.scorer || "?"}</span>`
+                        : (g.scorer || "?");
+                    const assistLabel = assistStat?.playerId && scorerTeamId
+                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${scorerTeamId}, ${assistStat.playerId}, '${escapeHtml(g.scoreTeam || '')}')">${g.assistant}</span>`
+                        : (g.assistant || "");
+                    const assistHtml = g.assistant ? ` <span style="color:#888;">(assist: ${assistLabel})</span>` : '';
                     html += `
                     <li style="padding:12px; margin:8px 0; background:rgba(255,255,255,0.05); border-radius:8px;">
-                        <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">⚽ ${g.scorer || "?"} ${assist}${verdict}</span>
+                        <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">⚽ ${scorerLabel} ${assistHtml}${verdict}</span>
                         <span style="float:right; color:#aaa;">${g.scoreAfterGoal || ""}</span>
                     </li>`;
                 });
@@ -574,22 +610,54 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         const formations = await response.json();
 
         const mainContent = document.getElementById("main-content");
+        const availableFormations = Array.isArray(formations) && formations.length
+            ? formations.map(f => f.name)
+            : ['4-4-2', '4-3-3', '4-2-3-1', '3-5-2', '5-3-2', '4-5-1'];
+        const availableStyles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER'];
 
-        let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Formations</h2>
-            <div class="formation-list">`;
+        const savedFormation = localStorage.getItem('main_app_tactics_formation') || availableFormations[0] || '4-4-2';
+        const savedStyle = localStorage.getItem('main_app_tactics_style') || 'BALANCED';
 
-        formations.forEach(f => {
-            html += `
-                <div class="formation-card">
-                    <h3>${f.name}</h3>
-                    <p>${f.description ?? ""}</p>
-                </div>`;
-        });
+        const render = (formation, style) => {
+            let html = `<div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <h2>Tactics</h2>
+                <h3>Formation: <span id="currentFormation">${escapeHtml(formation)}</span></h3>
+                <div class="cs-tactics-grid">`;
 
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
+            availableFormations.forEach(f => {
+                const active = f === formation ? 'active' : '';
+                html += `<div class="cs-tactics-btn ${active}" data-formation="${escapeHtml(f)}">${escapeHtml(f)}</div>`;
+            });
+            html += `</div>
+                <h3 style="margin-top:20px;">Style: <span id="currentStyle">${escapeHtml(style)}</span></h3>
+                <div class="cs-tactics-grid">`;
+            availableStyles.forEach(s => {
+                const active = s === style ? 'active' : '';
+                html += `<div class="cs-tactics-btn ${active}" data-style="${escapeHtml(s)}">${escapeHtml(s)}</div>`;
+            });
+            html += `</div>
+                <p style="margin-top:14px; color:#9aa0a6;">Tactics are saved locally for demo UI mode.</p>
+            </div>`;
+            mainContent.innerHTML = html;
+
+            mainContent.querySelectorAll('.cs-tactics-btn[data-formation]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const newFormation = btn.getAttribute('data-formation');
+                    localStorage.setItem('main_app_tactics_formation', newFormation);
+                    render(newFormation, localStorage.getItem('main_app_tactics_style') || style);
+                });
+            });
+            mainContent.querySelectorAll('.cs-tactics-btn[data-style]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const newStyle = btn.getAttribute('data-style');
+                    localStorage.setItem('main_app_tactics_style', newStyle);
+                    render(localStorage.getItem('main_app_tactics_formation') || formation, newStyle);
+                });
+            });
+        };
+
+        render(savedFormation, savedStyle);
     }
     async function loadCoaches() {
         console.log(`Loading coaches for ${currentUserTeamId}`);
@@ -617,28 +685,528 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         mainContent.innerHTML = html;
     }
     async function loadTrainingReports() {
-        console.log(`Loading training reports for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/trainings/${currentUserTeamId}/reports`);
-        console.log(`Response status: ${response.status}`);
-        const reports = await response.json();
-
         const mainContent = document.getElementById("main-content");
+        const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
+        if (!playersRes.ok) {
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
+            return;
+        }
+        const players = await playersRes.json();
 
-        let html = `<div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Training Reports</h2>`;
+        const GROUPS = ["GK", "DEF", "MID", "ATT"];
+        const SKILLS_ALL = ["pace", "defending", "technique", "passing"];
+        const SKILLS_BY_GROUP = {
+            GK: ["goalkeeper", ...SKILLS_ALL],
+            DEF: ["defending", ...SKILLS_ALL.filter(s => s !== "defending")],
+            MID: ["playmaker", ...SKILLS_ALL],
+            ATT: ["shooting", ...SKILLS_ALL]
+        };
+        const ROLE_OPTIONS = ["GK", "DEF", "MID", "ATT"];
+        const defaultGroupSkills = { GK: "goalkeeper", DEF: "defending", MID: "playmaker", ATT: "shooting" };
 
-        reports.forEach(r => {
+        const setupRes = await authFetch(`/training/setup/team/${currentUserTeamId}`);
+        const setup = setupRes.ok ? await setupRes.json() : null;
+
+        const state = {
+            groupSkills: {
+                GK: setup?.groupSkills?.GK || defaultGroupSkills.GK,
+                DEF: setup?.groupSkills?.DEF || defaultGroupSkills.DEF,
+                MID: setup?.groupSkills?.MID || defaultGroupSkills.MID,
+                ATT: setup?.groupSkills?.ATT || defaultGroupSkills.ATT
+            },
+            advanced: Array.isArray(setup?.advancedAssignments) ? setup.advancedAssignments.slice(0, 10).map(a => ({
+                playerId: Number(a.playerId),
+                role: ROLE_OPTIONS.includes((a.role || "").toUpperCase()) ? a.role.toUpperCase() : "MID"
+            })) : [],
+            general: [],
+            selectedReport: null,
+            selectedPlayerGraph: null,
+            loadingReport: false
+        };
+
+        const allIds = new Set(players.map(p => p.id));
+        state.advanced = state.advanced.filter(a => allIds.has(a.playerId));
+        const advancedIds = new Set(state.advanced.map(a => a.playerId));
+        state.general = players.map(p => p.id).filter(id => !advancedIds.has(id));
+
+        const getPlayer = id => players.find(p => p.id === id);
+        const skillLabel = skill => skill.charAt(0).toUpperCase() + skill.slice(1);
+        const playerBadge = p => `${p.name} (${p.position}, OVR ${p.overall ?? "-"})`;
+
+        function colorByIntDelta(delta) {
+            if (delta > 0) return "#4caf50";
+            if (delta < 0) return "#f44336";
+            return "#b7bec9";
+        }
+
+        function moveToAdvanced(playerId, role = "MID") {
+            if (state.advanced.some(a => a.playerId === playerId) || state.advanced.length >= 10) return;
+            state.general = state.general.filter(id => id !== playerId);
+            state.advanced.push({ playerId, role });
+        }
+
+        function moveToGeneral(playerId) {
+            state.advanced = state.advanced.filter(a => a.playerId !== playerId);
+            if (!state.general.includes(playerId)) state.general.push(playerId);
+        }
+
+        async function loadSummaries() {
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports`);
+            if (!res.ok) return [];
+            return await res.json();
+        }
+
+        async function saveSetup() {
+            const payload = {
+                teamId: currentUserTeamId,
+                groupSkills: state.groupSkills,
+                advancedAssignments: state.advanced.map(a => ({ playerId: a.playerId, role: a.role }))
+            };
+            const res = await authFetch(`/training/setup/team/${currentUserTeamId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            return res.ok;
+        }
+
+        async function runTrainingWeek() {
+            await saveSetup();
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/run`, { method: "POST" });
+            if (!res.ok) return null;
+            return await res.json();
+        }
+
+        async function openWeekReport(season, week) {
+            state.loadingReport = true;
+            await render();
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports/${season}/${week}`);
+            state.loadingReport = false;
+            if (!res.ok) return;
+            state.selectedReport = await res.json();
+            state.selectedPlayerGraph = null;
+            await render();
+        }
+
+        async function openPlayerGraph(playerId) {
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/player/${playerId}/graph`);
+            if (!res.ok) return;
+            state.selectedPlayerGraph = {
+                playerId,
+                player: getPlayer(playerId),
+                points: await res.json()
+            };
+            await render();
+        }
+
+        function renderReportTable() {
+            if (state.loadingReport) return `<p>Loading report...</p>`;
+            if (!state.selectedReport) return `<p class="training-empty">Select a week report.</p>`;
+
+            const report = state.selectedReport;
+            let html = `<h3>Report: Season ${report.seasonNumber} • Week ${report.weekNumber}</h3>`;
+            html += `<div class="training-report-table-wrap"><table class="training-report-table"><thead><tr><th>Player</th><th>Role</th><th>DT Skill</th><th>Advanced</th><th>Skills (after / weekly delta / int delta)</th></tr></thead><tbody>`;
+            (report.players || []).forEach(p => {
+                const skillsText = (p.skills || []).map(s => {
+                    const intDelta = Number(s.integerChange || 0);
+                    const decDelta = Number(s.decimalChange ?? (Number(s.after || 0) - Number(s.before || 0)));
+                    const decDeltaText = `${decDelta >= 0 ? "+ " : "- "}${Math.abs(decDelta).toFixed(2)}`;
+                    const intDeltaText = `${intDelta >= 0 ? "+ " : "- "}${Math.abs(intDelta)}`;
+                    return `<span style="color:${colorByIntDelta(intDelta)}; font-weight:700;">${skillLabel(s.skill)} ${Number(s.after).toFixed(2)} (Delta ${decDeltaText} | int ${intDeltaText})</span>`;
+                }).join(" | ");
+                html += `<tr>
+                    <td><span class="cs-clickable" data-training-player-graph="${p.playerId}">${escapeHtml(p.playerName)}</span></td>
+                    <td>${escapeHtml(p.role)}</td>
+                    <td>${escapeHtml(skillLabel(p.directTrainingSkill || "-"))}</td>
+                    <td>${p.advancedTraining ? "Yes" : "No"}</td>
+                    <td>${skillsText}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            return html;
+        }
+
+        function renderGraph() {
+            if (!state.selectedPlayerGraph) return "";
+            const graph = state.selectedPlayerGraph;
+            const points = Array.isArray(graph.points) ? graph.points : [];
+            if (points.length === 0) {
+                return `<div class="training-block"><h3>${escapeHtml(graph.player?.name || "Player")} - Training Graph</h3><p class="training-empty">No graph data.</p></div>`;
+            }
+
+            const weekKeys = Array.from(new Set(points.map(p => `${p.seasonNumber}-${p.weekNumber}`)))
+                .sort((a, b) => {
+                    const [sa, wa] = a.split("-").map(Number);
+                    const [sb, wb] = b.split("-").map(Number);
+                    return sa === sb ? wa - wb : sa - sb;
+                });
+
+            const bySkill = {};
+            points.forEach(p => {
+                if (!bySkill[p.skill]) bySkill[p.skill] = {};
+                bySkill[p.skill][`${p.seasonNumber}-${p.weekNumber}`] = p.value;
+            });
+
+            let html = `<div class="training-block" style="margin-top:14px;"><h3>${escapeHtml(graph.player?.name || "Player")} - Training Graph</h3>`;
+            html += `<div class="training-report-table-wrap"><table class="training-report-table"><thead><tr><th>Skill</th>`;
+            weekKeys.forEach(k => {
+                const [s, w] = k.split("-");
+                html += `<th>S${s}W${w}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            Object.keys(bySkill).forEach(skill => {
+                let prevInt = null;
+                html += `<tr><td>${escapeHtml(skillLabel(skill))}</td>`;
+                weekKeys.forEach(k => {
+                    const val = bySkill[skill][k];
+                    if (typeof val !== "number") {
+                        html += `<td>-</td>`;
+                        return;
+                    }
+                    const currInt = Math.floor(val);
+                    const delta = prevInt == null ? 0 : currInt - prevInt;
+                    prevInt = currInt;
+                    html += `<td style="color:${colorByIntDelta(delta)}; font-weight:700;">${Number(val).toFixed(2)}</td>`;
+                });
+                html += `</tr>`;
+            });
+
+            html += `</tbody></table></div></div>`;
+            return html;
+        }
+
+        async function render() {
+            let html = `
+            <div class="manager-card training-setup-card">
+                <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                <h2>Training Setup</h2>
+                <p class="training-note">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
+
+                <div class="training-grid">
+                    <div class="training-block">
+                        <h3>Formation Training Groups</h3>
+                        <div class="training-groups">`;
+
+            GROUPS.forEach(group => {
+                html += `
+                    <label class="training-group-row">
+                        <span class="group-tag">${group}</span>
+                        <select data-group="${group}" class="group-skill-select">
+                            ${(SKILLS_BY_GROUP[group] || []).map(opt => `<option value="${opt}" ${state.groupSkills[group] === opt ? "selected" : ""}>${skillLabel(opt)}</option>`).join("")}
+                        </select>
+                    </label>`;
+            });
+
             html += `
-                <div class="match-row">
-                    <span>${r.playerName}</span>
-                    <span>${r.note}</span>
-                    <span class="score">${r.improvement}</span>
-                </div>`;
-        });
+                        </div>
+                    </div>
 
-        html += `</div>`;
-        mainContent.innerHTML = html;
+                    <div class="training-block">
+                        <h3>Advanced Training (max 10 players)</h3>
+                        <div id="advanced-drop" class="training-dropzone">
+                            ${state.advanced.length === 0 ? `<div class="training-empty">Drop players here</div>` : ""}
+                            ${state.advanced.map((entry, idx) => {
+                                const p = getPlayer(entry.playerId);
+                                if (!p) return "";
+                                return `
+                                <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="advanced">
+                                    <div class="training-player-main">
+                                        <strong>${escapeHtml(p.name)}</strong>
+                                        <small>${escapeHtml(playerBadge(p))}</small>
+                                    </div>
+                                    <select class="adv-role-select" data-player-id="${p.id}">
+                                        ${ROLE_OPTIONS.map(role => `<option value="${role}" ${entry.role === role ? "selected" : ""}>${role}</option>`).join("")}
+                                    </select>
+                                    <button class="mini-btn" data-remove-adv="${idx}">Remove</button>
+                                </div>`;
+                            }).join("")}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="training-block" style="margin-top:14px;">
+                    <h3>Player Pool</h3>
+                    <div class="training-pools">
+                        <div>
+                            <h4>Formation Training Pool</h4>
+                            <div id="general-drop" class="training-dropzone">
+                                ${state.general.length === 0 ? `<div class="training-empty">No players in formation pool</div>` : ""}
+                                ${state.general.map(id => {
+                                    const p = getPlayer(id);
+                                    if (!p) return "";
+                                    return `
+                                    <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="general">
+                                        <div class="training-player-main">
+                                            <strong>${escapeHtml(p.name)}</strong>
+                                            <small>${escapeHtml(playerBadge(p))}</small>
+                                        </div>
+                                    </div>`;
+                                }).join("")}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="training-actions">
+                    <button id="save-training-setup" class="big-button">Save Setup</button>
+                    <button id="run-training-week" class="big-button" style="margin-left:10px; background:#145d39;">Run Weekly Training</button>
+                </div>
+
+                <div class="training-note" style="margin-top:12px;">
+                    Weekly report history is available in <strong>Training > Training Reports</strong>.
+                </div>
+            </div>`;
+
+            mainContent.innerHTML = html;
+            bindUi();
+        }
+
+        function bindUi() {
+            mainContent.querySelectorAll(".group-skill-select").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    state.groupSkills[sel.getAttribute("data-group")] = sel.value;
+                });
+            });
+            mainContent.querySelectorAll(".adv-role-select").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const playerId = Number(sel.getAttribute("data-player-id"));
+                    const row = state.advanced.find(a => a.playerId === playerId);
+                    if (row) row.role = sel.value;
+                });
+            });
+            mainContent.querySelectorAll("[data-remove-adv]").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const idx = Number(btn.getAttribute("data-remove-adv"));
+                    const entry = state.advanced[idx];
+                    if (entry) moveToGeneral(entry.playerId);
+                    render();
+                });
+            });
+
+            let dragPlayerId = null;
+            let dragOrigin = null;
+            mainContent.querySelectorAll('.training-player-card[draggable="true"]').forEach(card => {
+                card.addEventListener("dragstart", () => {
+                    dragPlayerId = Number(card.getAttribute("data-player-id"));
+                    dragOrigin = card.getAttribute("data-origin");
+                });
+            });
+
+            const advancedDrop = document.getElementById("advanced-drop");
+            const generalDrop = document.getElementById("general-drop");
+            [advancedDrop, generalDrop].forEach(zone => zone && zone.addEventListener("dragover", e => e.preventDefault()));
+
+            if (advancedDrop) {
+                advancedDrop.addEventListener("drop", e => {
+                    e.preventDefault();
+                    if (dragPlayerId && dragOrigin === "general") moveToAdvanced(dragPlayerId, "MID");
+                    render();
+                });
+            }
+            if (generalDrop) {
+                generalDrop.addEventListener("drop", e => {
+                    e.preventDefault();
+                    if (dragPlayerId && dragOrigin === "advanced") moveToGeneral(dragPlayerId);
+                    render();
+                });
+            }
+
+            const saveBtn = document.getElementById("save-training-setup");
+            if (saveBtn) {
+                saveBtn.addEventListener("click", async () => {
+                    saveBtn.disabled = true;
+                    const ok = await saveSetup();
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = ok ? "Saved" : "Save failed";
+                    setTimeout(() => { saveBtn.textContent = "Save Setup"; }, 1100);
+                });
+            }
+
+            const runBtn = document.getElementById("run-training-week");
+            if (runBtn) {
+                runBtn.addEventListener("click", async () => {
+                    runBtn.disabled = true;
+                    runBtn.textContent = "Running...";
+                    const report = await runTrainingWeek();
+                    runBtn.disabled = false;
+                    runBtn.textContent = "Run Weekly Training";
+                    if (report && Number.isFinite(report.seasonNumber) && Number.isFinite(report.weekNumber)) {
+                        sessionStorage.setItem("training_report_focus", `${report.seasonNumber}|${report.weekNumber}`);
+                        await loadTrainingReportsPage();
+                        return;
+                    }
+                    await render();
+                });
+            }
+
+            mainContent.querySelectorAll("[data-open-week]").forEach(item => {
+                item.addEventListener("click", async () => {
+                    const [season, week] = (item.getAttribute("data-open-week") || "").split("|").map(Number);
+                    if (Number.isFinite(season) && Number.isFinite(week)) {
+                        await openWeekReport(season, week);
+                    }
+                });
+            });
+
+            mainContent.querySelectorAll("[data-training-player-graph]").forEach(item => {
+                item.addEventListener("click", async () => {
+                    const playerId = Number(item.getAttribute("data-training-player-graph"));
+                    if (playerId) {
+                        await openPlayerGraph(playerId);
+                    }
+                });
+            });
+        }
+
+        await render();
+    }
+    async function loadTrainingReportsPage() {
+        const mainContent = document.getElementById("main-content");
+        const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
+        if (!playersRes.ok) {
+            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
+            return;
+        }
+        const players = await playersRes.json();
+        const playerById = new Map(players.map(p => [p.id, p]));
+
+        let selectedReport = null;
+
+        const colorByIntDelta = (delta) => {
+            if (delta > 0) return "#4caf50";
+            if (delta < 0) return "#f44336";
+            return "#b7bec9";
+        };
+        const skillLabel = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
+        const skillIcon = (skill) => {
+            switch ((skill || "").toLowerCase()) {
+                case "goalkeeper": return "🧤";
+                case "defending": return "🛡️";
+                case "pace": return "💨";
+                case "technique": return "🎯";
+                case "playmaker": return "🧠";
+                case "passing": return "🎁";
+                case "shooting": return "🚀";
+                case "stamina": return "🔋";
+                default: return "•";
+            }
+        };
+        const normalizeWeekKey = (season, week) => `${Number(season)}|${Number(week)}`;
+
+        async function fetchSummaries() {
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports`);
+            if (!res.ok) return [];
+            const all = await res.json();
+            const unique = [];
+            const seen = new Set();
+            all.forEach(s => {
+                const key = normalizeWeekKey(s.seasonNumber, s.weekNumber);
+                if (seen.has(key)) return;
+                seen.add(key);
+                unique.push(s);
+            });
+            return unique;
+        }
+
+        async function fetchReport(season, week) {
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports/${season}/${week}`);
+            if (!res.ok) return null;
+            return await res.json();
+        }
+
+        function renderReportCards(report) {
+            if (!report) return `<p class="training-empty">Select a week report.</p>`;
+            let html = `<h3>Season ${report.seasonNumber} • Week ${report.weekNumber}</h3><div class="manager-grid">`;
+            (report.players || [])
+                .sort((a, b) => String(a.playerName || "").localeCompare(String(b.playerName || "")))
+                .forEach(p => {
+                const player = playerById.get(p.playerId);
+                const playerName = player?.name || p.playerName || `#${p.playerId}`;
+                const filename = getImageFilename(playerName);
+                const skillsText = (p.skills || []).map(s => {
+                    const intDelta = Number(s.integerChange || 0);
+                    const decDelta = Number(s.decimalChange ?? (Number(s.after || 0) - Number(s.before || 0)));
+                    const decDeltaText = `${decDelta >= 0 ? "+ " : "- "}${Math.abs(decDelta).toFixed(2)}`;
+                    const intDeltaText = `${intDelta >= 0 ? "+ " : "- "}${Math.abs(intDelta)}`;
+                    return `<div style="font-size:0.9em; color:${colorByIntDelta(intDelta)}; font-weight:700;">
+                                ${skillIcon(s.skill)} ${skillLabel(s.skill)}: ${Number(s.after).toFixed(2)}
+                                <span style="opacity:0.9;">(Delta ${decDeltaText} | int ${intDeltaText})</span>
+                            </div>`;
+                }).join("");
+                html += `
+                    <div class="manager-player-card training-report-player-card">
+                        <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
+                        <div class="player-name"><span class="cs-clickable" data-open-training-player="${p.playerId}">${escapeHtml(playerName)}</span></div>
+                        <div class="player-meta">Age: ${Number.isFinite(Number(player?.age)) ? Number(player.age) : "?"}</div>
+                        <div class="player-meta">${escapeHtml(p.role || "-")} • DT: ${escapeHtml(skillLabel(p.directTrainingSkill || "-"))}</div>
+                        <div class="player-meta">${p.advancedTraining ? "Advanced training" : "Formation training"}</div>
+                        <div style="margin-top:8px; text-align:left; width:100%;">${skillsText}</div>
+                    </div>`;
+            });
+            html += `</div>`;
+            return html;
+        }
+
+        async function render() {
+            const summaries = await fetchSummaries();
+            const focusRaw = sessionStorage.getItem("training_report_focus");
+            let focusSeason = null;
+            let focusWeek = null;
+            if (focusRaw && focusRaw.includes("|")) {
+                const [s, w] = focusRaw.split("|").map(Number);
+                if (Number.isFinite(s) && Number.isFinite(w)) {
+                    focusSeason = s;
+                    focusWeek = w;
+                }
+            }
+            if (!selectedReport && focusSeason != null && focusWeek != null) {
+                selectedReport = await fetchReport(focusSeason, focusWeek);
+                sessionStorage.removeItem("training_report_focus");
+            }
+
+            mainContent.innerHTML = `
+                <div class="manager-card training-setup-card">
+                    <button class="back-to-dashboard" onclick="loadDashboard()">Back to Dashboard</button>
+                    <h2>Training Reports</h2>
+                    <p class="training-note">Click week to open players report. Decimal values are shown for testing; color tracks integer up/down.</p>
+                    <div class="training-grid">
+                        <div class="training-block">
+                            <h3>Weeks</h3>
+                            <div class="training-week-list">
+                                ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">Season ${s.seasonNumber} • Week ${s.weekNumber}</div>`).join("")}
+                            </div>
+                        </div>
+                        <div class="training-block">
+                            ${renderReportCards(selectedReport)}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            mainContent.querySelectorAll("[data-open-week]").forEach(item => {
+                item.addEventListener("click", async () => {
+                    const [season, week] = (item.getAttribute("data-open-week") || "").split("|").map(Number);
+                    const report = await fetchReport(season, week);
+                    if (report) {
+                        selectedReport = report;
+                        await render();
+                    }
+                });
+            });
+            mainContent.querySelectorAll("[data-open-training-player]").forEach(item => {
+                item.addEventListener("click", async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const playerId = Number(item.getAttribute("data-open-training-player"));
+                    if (playerId) {
+                        await loadPlayer(playerId);
+                    }
+                });
+            });
+        }
+
+        await render();
     }
     async function loadClubProfile() {
         console.log(`Loading club profile for ${currentUserTeamId}`);
@@ -897,14 +1465,17 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                 html += `<div id="round-${round}" style="margin:14px 0 18px;"><h3 style="margin-bottom:8px;">Round ${round} ${currentTag}</h3>`;
                 matches.forEach(match => {
                     const score = match.played ? `${match.homeGoals} : ${match.awayGoals}` : "vs";
-                    const playedClass = match.played ? "" : "opacity:0.86;";
+                    const playedClass = match.played ? "" : "opacity:0.86; cursor:default;";
+                    const homeEsc = String(match.homeTeam || "").replace(/'/g, "\\'");
+                    const awayEsc = String(match.awayTeam || "").replace(/'/g, "\\'");
+                    const matchIdAttr = match.played && match.id ? `data-match-id="${match.id}"` : "";
                     html += `
-                        <div class="match-row" style="${playedClass}" data-match-id="${match.id}" data-caller="leagueMatches">
+                        <div class="match-row" style="${playedClass}" ${matchIdAttr} data-caller="leagueMatches">
                             <div style="font-size:0.88em; color:#aaa;">${match.matchDate || "N/A"}</div>
                             <div class="match-teams">
-                                <span class="team-home">${escapeHtml(match.homeTeam)}</span>
+                                <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${escapeHtml(match.homeTeam)}</span></span>
                                 <span class="score">${score}</span>
-                                <span class="team-away">${escapeHtml(match.awayTeam)}</span>
+                                <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${escapeHtml(match.awayTeam)}</span></span>
                             </div>
                         </div>`;
                 });
@@ -1012,11 +1583,7 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
         let html = `
         <div class="manager-card">
             <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>Events</h2>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin: 6px 0 14px;">
-                <button class="big-button" onclick="initializeDatabase()">Initialize Database</button>
-                <button class="big-button" onclick="resetDatabase()" style="background:#912d2d;">Reset DB</button>
-            </div>`;
+            <h2>Events</h2>`;
 
         events.forEach(e => {
             html += `
@@ -1058,14 +1625,28 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     async function loadTopScorersAndAssists() {
         try {
             console.log(`Loading top scorers for ${currentUserTeamId}`);
-            const scorersRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topscorers`);
+            const leagueId = 1;
+            const [scorersRes, assistsRes, leagueTeamsRes] = await Promise.all([
+                authFetch(`/stats/leagues/${leagueId}/topscorers`),
+                authFetch(`/stats/leagues/${leagueId}/topassists`),
+                authFetch(`/countries/leagues/${leagueId}/teams`)
+            ]);
             console.log(`Response status: ${scorersRes.status}`);
-            const scorers = await scorersRes.json();
-
-            console.log(`Loading top assists for ${currentUserTeamId}`);
-            const assistsRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topassists`);
             console.log(`Response status: ${assistsRes.status}`);
+            const scorers = await scorersRes.json();
             const assists = await assistsRes.json();
+            const leagueTeams = leagueTeamsRes.ok ? await leagueTeamsRes.json() : [];
+            const teamIdByName = new Map();
+            leagueTeams.forEach(t => teamIdByName.set(t.name, t.id));
+            const playerIdByKey = new Map();
+            await Promise.all(leagueTeams.map(async team => {
+                try {
+                    const r = await authFetch(`/countries/teams/${team.id}/players`);
+                    if (!r.ok) return;
+                    const players = await r.json();
+                    players.forEach(p => playerIdByKey.set(`${team.name}|${p.name}`, p.id));
+                } catch (e) {}
+            }));
 
             const mainContent = document.getElementById("main-content");
 
@@ -1089,7 +1670,10 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                                transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
                         <span style="flex: 1; text-align: left; padding-left: 10px;">
-                            ${s.playerName} <small style="color: #888;">(${s.teamName})</small>
+                            ${playerIdByKey.get(`${s.teamName}|${s.playerName}`) && teamIdByName.get(s.teamName)
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamIdByName.get(s.teamName)}, ${playerIdByKey.get(`${s.teamName}|${s.playerName}`)}, '${escapeHtml(s.teamName)}')">${s.playerName}</span>`
+                                : s.playerName}
+                            <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
                         <span style="font-weight: bold; color: #ff7582; min-width: 60px; text-align: right;">
                             ${s.goals} ⚽
@@ -1112,7 +1696,10 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                                transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
                         <span style="flex: 1; text-align: left; padding-left: 10px;">
-                            ${a.playerName} <small style="color: #888;">(${a.teamName})</small>
+                            ${playerIdByKey.get(`${a.teamName}|${a.playerName}`) && teamIdByName.get(a.teamName)
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamIdByName.get(a.teamName)}, ${playerIdByKey.get(`${a.teamName}|${a.playerName}`)}, '${escapeHtml(a.teamName)}')">${a.playerName}</span>`
+                                : a.playerName}
+                            <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
                         <span style="font-weight: bold; color: #4fc3f7; min-width: 60px; text-align: right;">
                             ${a.assists} 🅰
@@ -1274,6 +1861,11 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 
             if (!playerResponse.ok) throw new Error(`Player load failed: ${playerResponse.status}`);
             const player = await playerResponse.json();
+            const fmtSkill = (exact, visible) => {
+                if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
+                if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
+                return "-";
+            };
             const filename = getImageFilename(player.name);
 
             if (isUserTeam) {
@@ -1291,14 +1883,14 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
                         <div class="player-name">${escapeHtml(player.name)}</div>
                         <div class="player-stats">
                             <div class="stat"><span>Age</span><span>${player.age}</span></div>
-                            <div class="stat"><span>Stamina</span><span>${player.stamina}</span></div>
-                            <div class="stat"><span>Goalkeeper</span><span>${player.goalkeeper}</span></div>
-                            <div class="stat"><span>Pace</span><span>${player.pace}</span></div>
-                            <div class="stat"><span>Defending</span><span>${player.defending}</span></div>
-                            <div class="stat"><span>Technique</span><span>${player.technique}</span></div>
-                            <div class="stat"><span>Playmaker</span><span>${player.playmaker}</span></div>
-                            <div class="stat"><span>Passing</span><span>${player.passing}</span></div>
-                            <div class="stat"><span>Shooting</span><span>${player.shooting}</span></div>
+                            <div class="stat"><span>Stamina</span><span>${fmtSkill(player.staminaExact, player.stamina)}</span></div>
+                            <div class="stat"><span>Goalkeeper</span><span>${fmtSkill(player.goalkeeperExact, player.goalkeeper)}</span></div>
+                            <div class="stat"><span>Pace</span><span>${fmtSkill(player.paceExact, player.pace)}</span></div>
+                            <div class="stat"><span>Defending</span><span>${fmtSkill(player.defendingExact, player.defending)}</span></div>
+                            <div class="stat"><span>Technique</span><span>${fmtSkill(player.techniqueExact, player.technique)}</span></div>
+                            <div class="stat"><span>Playmaker</span><span>${fmtSkill(player.playmakerExact, player.playmaker)}</span></div>
+                            <div class="stat"><span>Passing</span><span>${fmtSkill(player.passingExact, player.passing)}</span></div>
+                            <div class="stat"><span>Shooting</span><span>${fmtSkill(player.shootingExact, player.shooting)}</span></div>
                             <div class="stat"><span>OVR</span><span>${player.overall ?? "-"}</span></div>
                             <div class="stat"><span>Rating</span><span>${formatRatingBadge(player.rating)}</span></div>
                             <div class="stat"><span>Form</span><span>${formatFormBadge(player.form)}</span></div>
@@ -1398,7 +1990,9 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     window.loadJuniors = loadJuniors;
     window.loadFormations = loadFormations;
     window.loadCoaches = loadCoaches;
+    window.loadTrainingSetup = loadTrainingReports;
     window.loadTrainingReports = loadTrainingReports;
+    window.loadTrainingReportsPage = loadTrainingReportsPage;
     window.loadClubProfile = loadClubProfile;
     window.loadUpcomingMatches = loadUpcomingMatches;
     window.loadFixtures = loadFixtures;
@@ -1423,8 +2017,15 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
     window.renderTable = renderTable;
     window.loadLeagueTeam = loadLeagueTeam;
     window.loadLeagueTeamPlayer = loadLeagueTeamPlayer;
+    window.openTeamByName = openTeamByName;
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
+
+
+
+
+
+
 
 
 

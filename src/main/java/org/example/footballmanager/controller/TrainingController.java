@@ -2,9 +2,15 @@ package org.example.footballmanager.controller;
 
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Training;
+import org.example.footballmanager.dto.training.PlayerTrainingGraphPointDTO;
+import org.example.footballmanager.dto.training.PlayerTrainingReportDTO;
+import org.example.footballmanager.dto.training.TrainingSetupDTO;
+import org.example.footballmanager.dto.training.TrainingWeekReportDTO;
+import org.example.footballmanager.dto.training.TrainingWeekSummaryDTO;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TrainingRepository;
 import org.example.footballmanager.service.PlayerSkillProgressionService;
+import org.example.footballmanager.service.TrainingProgressionService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,12 +23,14 @@ public class TrainingController {
     private final TrainingRepository trainingRepository;
     private final PlayerRepository playerRepository;
     private final PlayerSkillProgressionService progressionService;
+    private final TrainingProgressionService trainingProgressionService;
 
 
-    public TrainingController(TrainingRepository trainingRepository, PlayerRepository playerRepository, PlayerSkillProgressionService progressionService) {
+    public TrainingController(TrainingRepository trainingRepository, PlayerRepository playerRepository, PlayerSkillProgressionService progressionService, TrainingProgressionService trainingProgressionService) {
         this.trainingRepository = trainingRepository;
         this.playerRepository = playerRepository;
         this.progressionService = progressionService;
+        this.trainingProgressionService = trainingProgressionService;
     }
 
     // Vraća sve treninge
@@ -98,5 +106,42 @@ public class TrainingController {
         List<Player> players = playerRepository.findAll();
         players.forEach(progressionService::trainPlayer);
         return playerRepository.saveAll(players);
+    }
+
+    // --- New weekly training setup/report API ---
+    @GetMapping("/setup/team/{teamId}")
+    public TrainingSetupDTO getCurrentSetup(@PathVariable Long teamId) {
+        return trainingProgressionService.getCurrentSetup(teamId);
+    }
+
+    @PutMapping("/setup/team/{teamId}")
+    public TrainingSetupDTO saveCurrentSetup(@PathVariable Long teamId, @RequestBody TrainingSetupDTO setup) {
+        return trainingProgressionService.saveCurrentSetup(teamId, setup);
+    }
+
+    @PostMapping("/weekly/team/{teamId}/run")
+    public TrainingWeekReportDTO runWeeklyTraining(@PathVariable Long teamId) {
+        return trainingProgressionService.runWeeklyTraining(teamId);
+    }
+
+    @GetMapping("/weekly/team/{teamId}/reports")
+    public List<TrainingWeekSummaryDTO> getReportSummaries(@PathVariable Long teamId) {
+        return trainingProgressionService.getTeamReportSummaries(teamId);
+    }
+
+    @GetMapping("/weekly/team/{teamId}/reports/{season}/{week}")
+    public TrainingWeekReportDTO getReport(@PathVariable Long teamId, @PathVariable Integer season, @PathVariable Integer week) {
+        return trainingProgressionService.getTeamReport(teamId, season, week);
+    }
+
+    @GetMapping("/weekly/team/{teamId}/player/{playerId}/reports/{season}/{week}")
+    public PlayerTrainingReportDTO getPlayerReport(@PathVariable Long teamId, @PathVariable Long playerId,
+                                                   @PathVariable Integer season, @PathVariable Integer week) {
+        return trainingProgressionService.getPlayerReport(teamId, playerId, season, week);
+    }
+
+    @GetMapping("/weekly/team/{teamId}/player/{playerId}/graph")
+    public List<PlayerTrainingGraphPointDTO> getPlayerGraph(@PathVariable Long teamId, @PathVariable Long playerId) {
+        return trainingProgressionService.getPlayerGraph(teamId, playerId);
     }
 }

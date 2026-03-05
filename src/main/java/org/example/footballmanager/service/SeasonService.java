@@ -26,7 +26,7 @@ public class SeasonService {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final CompetitionRepository competitionRepository;
-    private final MatchRepository matchRepository;
+    private final MatchFixtureRepository matchFixtureRepository;
     private final TeamRepository teamRepository;
     private final Random random = new Random();
 
@@ -117,7 +117,7 @@ public class SeasonService {
     @Transactional
     public void ensureDoubleRoundRobinSchedule(Competition competition, int seasonYear) {
         if (competition == null || competition.getId() == null) return;
-        List<Match> existing = matchRepository.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+        List<MatchFixture> existing = matchFixtureRepository.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
                 competition.getId(), seasonYear
         );
         boolean hasRounds = existing.stream().anyMatch(m -> m.getRoundNumber() != null && m.getRoundNumber() >= 1);
@@ -141,13 +141,13 @@ public class SeasonService {
         GameClock clock = getOrCreateClock();
         LocalDateTime startDate = clock.getCurrentDate();
 
-        List<Match> fixtures = new ArrayList<>();
+        List<MatchFixture> fixtures = new ArrayList<>();
         for (int round = 0; round < rounds; round++) {
             for (int i = 0; i < matchesPerRound; i++) {
                 Team home = list.get(i);
                 Team away = list.get(n - 1 - i);
                 if (home == null || away == null) continue;
-                Match fixture = new Match();
+                MatchFixture fixture = new MatchFixture();
                 fixture.setHomeTeam(home);
                 fixture.setAwayTeam(away);
                 fixture.setCompetition(competition);
@@ -156,7 +156,6 @@ public class SeasonService {
                 fixture.setWeekNumber(round + 1);
                 fixture.setMatchDate(startDate.plusWeeks(round));
                 fixture.setPlayed(false);
-                fixture.setStarted(false);
                 fixtures.add(fixture);
             }
             Team last = list.remove(n - 1);
@@ -164,8 +163,8 @@ public class SeasonService {
         }
         int firstHalf = fixtures.size();
         for (int i = 0; i < firstHalf; i++) {
-            Match base = fixtures.get(i);
-            Match reverse = new Match();
+            MatchFixture base = fixtures.get(i);
+            MatchFixture reverse = new MatchFixture();
             reverse.setHomeTeam(base.getAwayTeam());
             reverse.setAwayTeam(base.getHomeTeam());
             reverse.setCompetition(competition);
@@ -174,17 +173,16 @@ public class SeasonService {
             reverse.setWeekNumber(base.getWeekNumber() + rounds);
             reverse.setMatchDate(base.getMatchDate().plusWeeks(rounds));
             reverse.setPlayed(false);
-            reverse.setStarted(false);
             fixtures.add(reverse);
         }
-        matchRepository.saveAll(fixtures);
+        matchFixtureRepository.saveAll(fixtures);
         log.info("Generated double round-robin schedule for league {} season {} with {} fixtures",
                 competition.getName(), seasonYear, fixtures.size());
     }
 
     @Transactional
     public void ensurePlayoffWeekFixtures(Competition superLiga, int seasonYear) {
-        List<Match> existing = matchRepository.findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
+        List<MatchFixture> existing = matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
                 superLiga.getId(), seasonYear, PLAYOFF_WEEK
         );
         if (!existing.isEmpty()) return;
@@ -212,7 +210,7 @@ public class SeasonService {
         if (lowerRunners.size() < 2) return;
 
         GameClock clock = getOrCreateClock();
-        Match m1 = new Match();
+        MatchFixture m1 = new MatchFixture();
         m1.setHomeTeam(top.get(6).getTeam());
         m1.setAwayTeam(lowerRunners.get(0));
         m1.setCompetition(superLiga);
@@ -222,7 +220,7 @@ public class SeasonService {
         m1.setMatchDate(clock.getCurrentDate().plusWeeks(PLAYOFF_WEEK - clock.getCurrentWeek()));
         m1.setPlayed(false);
 
-        Match m2 = new Match();
+        MatchFixture m2 = new MatchFixture();
         m2.setHomeTeam(top.get(7).getTeam());
         m2.setAwayTeam(lowerRunners.get(1));
         m2.setCompetition(superLiga);
@@ -231,12 +229,12 @@ public class SeasonService {
         m2.setWeekNumber(PLAYOFF_WEEK);
         m2.setMatchDate(clock.getCurrentDate().plusWeeks(PLAYOFF_WEEK - clock.getCurrentWeek()));
         m2.setPlayed(false);
-        matchRepository.saveAll(List.of(m1, m2));
+        matchFixtureRepository.saveAll(List.of(m1, m2));
     }
 
     @Transactional
     public void ensureFriendlyWeekFixtures(Competition superLiga, int seasonYear) {
-        List<Match> existing = matchRepository.findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
+        List<MatchFixture> existing = matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
                 superLiga.getId(), seasonYear, FRIENDLY_WEEK
         );
         if (!existing.isEmpty()) return;
@@ -249,9 +247,9 @@ public class SeasonService {
                 .collect(Collectors.toList());
         Collections.shuffle(teams);
         GameClock clock = getOrCreateClock();
-        List<Match> fixtures = new ArrayList<>();
+        List<MatchFixture> fixtures = new ArrayList<>();
         for (int i = 0; i + 1 < teams.size(); i += 2) {
-            Match m = new Match();
+            MatchFixture m = new MatchFixture();
             m.setHomeTeam(teams.get(i));
             m.setAwayTeam(teams.get(i + 1));
             m.setCompetition(superLiga);
@@ -262,7 +260,7 @@ public class SeasonService {
             m.setPlayed(false);
             fixtures.add(m);
         }
-        matchRepository.saveAll(fixtures);
+        matchFixtureRepository.saveAll(fixtures);
     }
 
     @Transactional

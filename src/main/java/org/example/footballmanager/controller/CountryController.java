@@ -32,16 +32,18 @@ public class CountryController {
     private final PlayerRepository playerRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final MatchRepository matchRepository;
+    private final MatchFixtureRepository matchFixtureRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonService seasonService;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, SeasonRepository seasonRepository, SeasonService seasonService) {
+    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, SeasonService seasonService) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
         this.playerRepository = playerRepository;
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.matchRepository = matchRepository;
+        this.matchFixtureRepository = matchFixtureRepository;
         this.seasonRepository = seasonRepository;
         this.seasonService = seasonService;
     }
@@ -157,19 +159,21 @@ public class CountryController {
         seasonService.ensureEntriesForSeasonCompetition(league, activeSeasonYear);
         seasonService.ensureDoubleRoundRobinSchedule(league, activeSeasonYear);
 
-        return matchRepository.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(leagueId, activeSeasonYear)
+        return matchFixtureRepository.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(leagueId, activeSeasonYear)
                 .stream()
-                .map(m -> {
+                .map(f -> {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("id", m.getId());
-                    row.put("homeTeam", m.getHomeTeam().getName());
-                    row.put("awayTeam", m.getAwayTeam().getName());
-                    row.put("homeGoals", m.getHomeGoals());
-                    row.put("awayGoals", m.getAwayGoals());
-                    row.put("played", m.isPlayed());
-                    row.put("round", m.getRoundNumber() != null ? m.getRoundNumber() : 1);
-                    row.put("week", m.getWeekNumber() != null ? m.getWeekNumber() : m.getRoundNumber());
-                    row.put("matchDate", m.getMatchDate() != null ? m.getMatchDate().toString().substring(0, 16).replace("T", " ") : "N/A");
+                    Match playedMatch = f.getPlayedMatch();
+                    row.put("fixtureId", f.getId());
+                    row.put("id", playedMatch != null ? playedMatch.getId() : null);
+                    row.put("homeTeam", f.getHomeTeam().getName());
+                    row.put("awayTeam", f.getAwayTeam().getName());
+                    row.put("homeGoals", playedMatch != null ? playedMatch.getHomeGoals() : 0);
+                    row.put("awayGoals", playedMatch != null ? playedMatch.getAwayGoals() : 0);
+                    row.put("played", f.isPlayed());
+                    row.put("round", f.getRoundNumber() != null ? f.getRoundNumber() : 1);
+                    row.put("week", f.getWeekNumber() != null ? f.getWeekNumber() : f.getRoundNumber());
+                    row.put("matchDate", f.getMatchDate() != null ? f.getMatchDate().toString().substring(0, 16).replace("T", " ") : "N/A");
                     return row;
                 })
                 .toList();

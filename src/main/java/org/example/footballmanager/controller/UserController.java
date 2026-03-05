@@ -70,7 +70,7 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<UserDTO> getCurrentUser(@AuthenticationPrincipal User user) {
-        System.out.println(" /me pozvan, user = " + (user != null ? user.getUsername() : "NULL"));
+        //System.out.println(" /me pozvan, user = " + (user != null ? user.getUsername() : "NULL"));
         if (user == null) {
             return ResponseEntity.status(401).build();
         }

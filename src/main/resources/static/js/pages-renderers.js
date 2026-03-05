@@ -59,13 +59,15 @@ export function renderMatchesView(matches, title, { loadMatch }) {
         html += `<p style="text-align:center; color:#aaa;">No matches to display.</p>`;
     } else {
         matches.forEach(match => {
+            const homeEsc = String(match.homeTeam || "").replace(/'/g, "\\'");
+            const awayEsc = String(match.awayTeam || "").replace(/'/g, "\\'");
             html += `
             <div class="match-row" data-match-id="${match.id}" data-caller="match">
                 <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">🗓 ${match.matchDate || "N/A"}</div>
                 <div class="match-teams">
-                    <span class="team-home">${match.homeTeam}</span>
+                    <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${match.homeTeam}</span></span>
                     <span class="score">${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}</span>
-                    <span class="team-away">${match.awayTeam}</span>
+                    <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${match.awayTeam}</span></span>
                 </div>
             </div>`;
         });
@@ -95,12 +97,14 @@ export function renderFixturesView(fixtures, title) {
 
     fixtures.forEach(fixture => {
         const fixtureId = fixture.id || fixtures.indexOf(fixture);
+        const homeEsc = String(fixture.homeTeam || "").replace(/'/g, "\\'");
+        const awayEsc = String(fixture.awayTeam || "").replace(/'/g, "\\'");
         html += `
         <div class="match-row upcoming-match" onclick="loadFixture(${fixtureId})">
             <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">🗓 ${fixture.matchDate || "N/A"} • ${fixture.matchTime || ""}</div>
-            <span class="team-home">${fixture.homeTeam}</span>
+            <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${fixture.homeTeam}</span></span>
             <span class="score">VS</span>
-            <span class="team-away">${fixture.awayTeam}</span>
+            <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${fixture.awayTeam}</span></span>
             <div style="font-size:0.85em; color:#888; margin-top:6px;">🏟️ ${fixture.stadiumName || "N/A"}</div>
         </div>`;
     });
@@ -122,6 +126,8 @@ export function renderLeagueMatchesView(matches, title = "League Results", { loa
         html += `<p style="text-align:center; color:#aaa;">No matches in this league yet.</p>`;
     } else {
         matches.forEach(match => {
+            const homeEsc = String(match.homeTeam || "").replace(/'/g, "\\'");
+            const awayEsc = String(match.awayTeam || "").replace(/'/g, "\\'");
             let badgeClass = "";
             let badgeText = "";
 
@@ -142,9 +148,9 @@ export function renderLeagueMatchesView(matches, title = "League Results", { loa
             <div class="match-row" data-match-id="${match.id}" data-caller="leagueMatches">
                 <div style="font-size:0.9em; color:#aaa;">${match.matchDate || "N/A"}</div>
                 <div class="match-teams">
-                    <span class="team-home">${match.homeTeam}</span>
+                    <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${match.homeTeam}</span></span>
                     <span class="score">${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}</span>
-                    <span class="team-away">${match.awayTeam}</span>
+                    <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${match.awayTeam}</span></span>
                 </div>
                 ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
             </div>`;

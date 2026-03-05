@@ -60,7 +60,7 @@ public class TeamController {
 
     @GetMapping("/{teamId}/matches")
     public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId) {
-        List<MatchDTO> matches = matchRepository.findByHomeTeamIdOrAwayTeamId(teamId, teamId)
+        List<MatchDTO> matches = matchRepository.findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(teamId, teamId)
                 .stream()
                 .map(MatchDTO::from)
                 .toList();

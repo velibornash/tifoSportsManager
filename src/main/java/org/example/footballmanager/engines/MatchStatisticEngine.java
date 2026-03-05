@@ -81,12 +81,12 @@ public class MatchStatisticEngine {
         rt.runtimeGoals.forEach(g -> {
             String scorerName = g.getScorer() != null ? g.getScorer().getName() : "N/A";
             String assistName = g.getAssistant() != null ? g.getAssistant().getName() : null;
-            // oblik: 45' ⚽ Igrač (asistencija: Igrač)
+            // oblik: 45' âš½ IgraÄ (asistencija: IgraÄ)
             String desc;
             if (assistName != null) {
-                desc = String.format("%d' ⚽ %s (asistencija: %s)", g.getMinute(), scorerName, assistName);
+                desc = String.format("%d' âš½ %s (asistencija: %s)", g.getMinute(), scorerName, assistName);
             } else {
-                desc = String.format("%d' ⚽ %s", g.getMinute(), scorerName);
+                desc = String.format("%d' âš½ %s", g.getMinute(), scorerName);
             }
             if (!addedGoals.contains(desc)) {
                 sb.append(desc).append("\n");
@@ -94,10 +94,10 @@ public class MatchStatisticEngine {
             }
         });
         sb.append("\n");
-        // --- Ocene igrača ---
-        sb.append("Ocene igrača - ").append(match.getHomeTeam().getName()).append("\n");
+        // --- Ocene igraÄa ---
+        sb.append("Ocene igraÄa - ").append(match.getHomeTeam().getName()).append("\n");
         appendPlayerRatings(sb, homePlayers, rt.runtimeGoals);
-        sb.append("\nOcene igrača - ").append(match.getAwayTeam().getName()).append("\n");
+        sb.append("\nOcene igraÄa - ").append(match.getAwayTeam().getName()).append("\n");
         appendPlayerRatings(sb, awayPlayers, rt.runtimeGoals);
         return sb.toString();
     }
@@ -119,90 +119,79 @@ public class MatchStatisticEngine {
         }
     }
     public void updateLeagueTableForMatchDay(Competition league, Season season) {
-// U metodi updateLeagueTableForMatchDay ili gde god treba
-
         SeasonCompetition sc = seasonCompetitionRepository
                 .findByCompetitionAndSeasonYear(league, season.getSeasonYear())
-                .orElseThrow(() -> new RuntimeException("Sezona nije pronađena za ligu"));
+                .orElseThrow(() -> new RuntimeException("Season not found for league"));
 
-// Dohvati SVE CompetitionEntry za tu sezonu lige
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
-
-// Izvuci ID-ove timova
-        List<Long> teamIds = entries.stream()
-                .map(entry -> entry.getTeam().getId())
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-
-// Sad koristi teamIds za pretragu mečeva
-        List<Match> allLeagueMatches = matchRepository.findByHomeTeamIdInAndAwayTeamIdIn(teamIds, teamIds);
-
-        log.info("Ukupno pronađeno {} mečeva u ligi {}", allLeagueMatches.size(), league.getName());
-
-        if (allLeagueMatches.isEmpty()) {
-            log.warn("Nema mečeva u ligi za ažuriranje tabele!");
+        if (entries.isEmpty()) {
+            log.warn("No competition entries found for league {} season {}", league.getName(), season.getSeasonYear());
             return;
         }
 
-        // 2. Sortiraj OPADAJUĆE po datumu (najnoviji prvi)
-        allLeagueMatches.sort(Comparator.comparing(Match::getMatchDate, Comparator.reverseOrder()));
+        Map<Long, CompetitionEntry> byTeamId = entries.stream()
+                .filter(e -> e.getTeam() != null && e.getTeam().getId() != null)
+                .collect(Collectors.toMap(e -> e.getTeam().getId(), e -> e));
 
-        // 3. Uzmi samo poslednjih 5 (poslednje kolo)
-        List<Match> lastMatches = allLeagueMatches.stream()
-                .limit(5)
+        // Recalculate from scratch to avoid duplicate counting across multiple calls.
+        entries.forEach(e -> {
+            e.setPoints(0);
+            e.setGoalsScored(0);
+            e.setGoalsConceded(0);
+            e.setWins(0);
+            e.setDraws(0);
+            e.setLosses(0);
+        });
+
+        List<Match> playedMatches = matchRepository
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(league.getId(), season.getSeasonYear())
+                .stream()
+                .filter(Match::isPlayed)
+                .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
                 .toList();
 
-        log.info("Ažuriranje tabele na osnovu poslednjih {} mečeva (poslednje kolo)", lastMatches.size());
+        log.info("Recalculating table from {} played matches in league {}", playedMatches.size(), league.getName());
 
-        // 5. Ažuriraj samo za poslednjih 5 mečeva
-        for (Match match : lastMatches) {
-
-            Team home = match.getHomeTeam();
-            Team away = match.getAwayTeam();
-
-            CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
-                    .stream().findFirst().orElse(null);
-            CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
-                    .stream().findFirst().orElse(null);
-
-            if (homeEntry == null || awayEntry == null) {
-                log.warn("Nema entry-ja za timove u meču {} vs {}", home.getName(), away.getName());
-                continue;
-            }
+        for (Match match : playedMatches) {
+            CompetitionEntry homeEntry = byTeamId.get(match.getHomeTeam().getId());
+            CompetitionEntry awayEntry = byTeamId.get(match.getAwayTeam().getId());
+            if (homeEntry == null || awayEntry == null) continue;
 
             int homeG = match.getHomeGoals();
             int awayG = match.getAwayGoals();
 
-            homeEntry.setWins(homeEntry.getWins() + (homeG > awayG ? 1 : 0));
-            homeEntry.setDraws(homeEntry.getDraws() + (homeG == awayG ? 1 : 0));
-            homeEntry.setLosses(homeEntry.getLosses() + (homeG < awayG ? 1 : 0));
+            homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeG);
+            homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayG);
+            awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayG);
+            awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeG);
 
-            awayEntry.setWins(awayEntry.getWins() + (awayG > homeG ? 1 : 0));
-            awayEntry.setDraws(awayEntry.getDraws() + (awayG == homeG ? 1 : 0));
-            awayEntry.setLosses(awayEntry.getLosses() + (awayG < homeG ? 1 : 0));
-
-            competitionEntryRepository.save(homeEntry);
-            competitionEntryRepository.save(awayEntry);
-
-            log.info("Ažuriran meč {} {}:{} {} → Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
-                    home.getName(), homeG, awayG, away.getName(),
-                    homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
-                    awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
+            if (homeG > awayG) {
+                homeEntry.setWins(homeEntry.getWins() + 1);
+                awayEntry.setLosses(awayEntry.getLosses() + 1);
+                homeEntry.setPoints(homeEntry.getPoints() + 3);
+            } else if (awayG > homeG) {
+                awayEntry.setWins(awayEntry.getWins() + 1);
+                homeEntry.setLosses(homeEntry.getLosses() + 1);
+                awayEntry.setPoints(awayEntry.getPoints() + 3);
+            } else {
+                homeEntry.setDraws(homeEntry.getDraws() + 1);
+                awayEntry.setDraws(awayEntry.getDraws() + 1);
+                homeEntry.setPoints(homeEntry.getPoints() + 1);
+                awayEntry.setPoints(awayEntry.getPoints() + 1);
+            }
         }
 
-        // 6. Sortiraj i postavi pozicije
-        List<CompetitionEntry> updatedEntries = competitionEntryRepository.findBySeasonCompetition(sc);
-        updatedEntries.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
+        List<CompetitionEntry> sorted = new ArrayList<>(entries);
+        sorted.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
                 .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
                 .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
 
-        for (int pos = 0; pos < updatedEntries.size(); pos++) {
-            CompetitionEntry entry = updatedEntries.get(pos);
-            entry.setPosition(pos + 1);
-            competitionEntryRepository.save(entry);
+        for (int pos = 0; pos < sorted.size(); pos++) {
+            sorted.get(pos).setPosition(pos + 1);
         }
+        competitionEntryRepository.saveAll(sorted);
 
-        log.info("Tabela lige ažurirana na osnovu poslednjih {} mečeva (poslednje kolo)", lastMatches.size());
+        log.info("League table recalculated for {} teams", sorted.size());
     }
 
     public void generateFakeAdditionalStats(Match match, List<Player> homePlayers, List<Player> awayPlayers, int homeGoals, int awayGoals, Random rnd) {
@@ -210,9 +199,9 @@ public class MatchStatisticEngine {
         Team home = match.getHomeTeam();
         Team away = match.getAwayTeam();
 
-        // 1. Realistični brojevi statistike
-        // Šutevi: pobednik / bolji tim ima više
-        int homeShotsTotal     = homeGoals + rnd.nextInt(6) + 4;           // 4–9 + golovi
+        // 1. RealistiÄni brojevi statistike
+        // Å utevi: pobednik / bolji tim ima viÅ¡e
+        int homeShotsTotal     = homeGoals + rnd.nextInt(6) + 4;           // 4â€“9 + golovi
         int awayShotsTotal     = awayGoals + rnd.nextInt(6) + 4;
 
         // Shots on target: keep realistic ratio, but never below valid goals.
@@ -224,32 +213,32 @@ public class MatchStatisticEngine {
         int homeShotsOffTarget = homeShotsTotal-homeShotsOnTarget;
         int awayShotsOffTarget = awayShotsTotal-awayShotsOnTarget;
 
-        // Korneri: 2–12 po timu, više kod boljeg tima
+        // Korneri: 2â€“12 po timu, viÅ¡e kod boljeg tima
         int homeCorners        = rnd.nextInt(11) + 2 + (homeGoals > awayGoals ? 2 : 0);
         int awayCorners        = rnd.nextInt(11) + 2 + (awayGoals > homeGoals ? 2 : 0);
 
-        // Faulovi: 8–25 po timu
+        // Faulovi: 8â€“25 po timu
         int homeFouls          = rnd.nextInt(18) + 8;
         int awayFouls          = rnd.nextInt(18) + 8;
 
-        // Ofsajdi: 0–8
+        // Ofsajdi: 0â€“8
         int homeOffsides       = rnd.nextInt(9);
         int awayOffsides       = rnd.nextInt(9);
 
-        // Penali: 0–2 po meču, veća šansa ako je mnogo faulova u šesnaestercu
-        int totalPenalties     = rnd.nextInt(3); // 0–2
+        // Penali: 0â€“2 po meÄu, veÄ‡a Å¡ansa ako je mnogo faulova u Å¡esnaestercu
+        int totalPenalties     = rnd.nextInt(3); // 0â€“2
         boolean homePenalty    = totalPenalties > 0 && rnd.nextBoolean();
         boolean awayPenalty    = totalPenalties > 1 || (totalPenalties == 1 && !homePenalty);
 
         // Kartoni
-        int homeYellows        = rnd.nextInt(5) + (homeFouls > 18 ? 1 : 0); // više faulova → više kartona
+        int homeYellows        = rnd.nextInt(5) + (homeFouls > 18 ? 1 : 0); // viÅ¡e faulova â†’ viÅ¡e kartona
         int awayYellows        = rnd.nextInt(5) + (awayFouls > 18 ? 1 : 0);
         int homeReds           = rnd.nextInt(2);
         int awayReds           = rnd.nextInt(2);
 
-        // 2. Snimanje događaja u bazu (samo deo, da ne zatrpamo bazu)
+        // 2. Snimanje dogaÄ‘aja u bazu (samo deo, da ne zatrpamo bazu)
 
-        // Korneri – snimamo ~40–60% da izgleda realno
+        // Korneri â€“ snimamo ~40â€“60% da izgleda realno
         int homeCornersToSave  = (int)(homeCorners * (0.4 + rnd.nextDouble() * 0.2));
         int awayCornersToSave  = (int)(awayCorners * (0.4 + rnd.nextDouble() * 0.2));
 
@@ -271,7 +260,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(c);
         }
 
-        // Šutevi na gol – snimamo deo šuteva u okvir
+        // Å utevi na gol â€“ snimamo deo Å¡uteva u okvir
         for (int i = 0; i < homeShotsOnTarget; i++) {
             ShotOnTargetEvent s = new ShotOnTargetEvent();
             s.setMatch(match);
@@ -290,7 +279,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(s);
         }
 
-        // Šutevi na gol – snimamo deo šuteva van okvira
+        // Å utevi na gol â€“ snimamo deo Å¡uteva van okvira
         for (int i = 0; i < homeShotsOffTarget; i++) {
             ShotOffTargetEvent s = new ShotOffTargetEvent();
             s.setMatch(match);
@@ -316,7 +305,7 @@ public class MatchStatisticEngine {
             p.setTeam(home);
             p.setMinute(rnd.nextInt(90) + 1);
             p.setTaker(getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID), rnd));
-            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspešnosti penala
+            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspeÅ¡nosti penala
             matchEventRepository.save(p);
         }
 
@@ -330,7 +319,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(p);
         }
 
-        // Žuti kartoni – snimamo ~60% da ne bude previše
+        // Å½uti kartoni â€“ snimamo ~60% da ne bude previÅ¡e
         int homeYellowsToSave = (int)(homeYellows * 0.6);
         for (int i = 0; i < homeYellowsToSave; i++) {
             Player offender = getRandomPlayerByPosition(homePlayers, null, rnd); // bilo ko
@@ -354,7 +343,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(yc);
         }
 
-        // Crveni kartoni – retki, snimamo sve
+        // Crveni kartoni â€“ retki, snimamo sve
         for (int i = 0; i < homeReds; i++) {
             Player offender = getRandomPlayerByPosition(homePlayers, null, rnd);
             RedCardEvent rc = new RedCardEvent();
@@ -376,7 +365,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(rc);
         }
 
-        log.info("Generisana fake statistika za simulirani meč {}:{} {} vs {} – šutevi {}/{}, korneri {}/{}, kartoni {}/{}",
+        log.info("Generisana fake statistika za simulirani meÄ {}:{} {} vs {} â€“ Å¡utevi {}/{}, korneri {}/{}, kartoni {}/{}",
                 home.getName(), homeGoals, awayGoals, away.getName(),
                 homeShotsTotal, awayShotsTotal, homeCorners, awayCorners, homeYellows, awayYellows);
     }
@@ -397,3 +386,4 @@ public class MatchStatisticEngine {
         return candidates.get(rnd.nextInt(candidates.size()));
     }
 }
+

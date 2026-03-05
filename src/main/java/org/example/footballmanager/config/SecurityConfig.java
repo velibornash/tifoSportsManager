@@ -70,6 +70,7 @@ public class SecurityConfig {
                                 "/teams/**",
                                 "/players/**",
                                 "/demo-position-updates/**",
+                                "/training/**",
                                 "/demo-match-events/**",
                                 "/match-events/**"
                         ).permitAll()

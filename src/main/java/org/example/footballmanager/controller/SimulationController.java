@@ -13,6 +13,7 @@ import org.example.footballmanager.repository.CompetitionRepository;
 import org.example.footballmanager.repository.SeasonRepository;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.SimulationService;
+import org.example.footballmanager.service.TrainingProgressionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,20 +31,21 @@ public class SimulationController {
     private final MatchEngine matchEngine;
     private final MatchStatisticEngine matchStatisticEngine;
     private final SeasonService seasonService;
+    private final TrainingProgressionService trainingProgressionService;
 
     @SneakyThrows
     @GetMapping("/start-demo")
     public ResponseEntity<Map<String, String>> startDemo() {
-        return startDemoInternal();
+        return startDemoInternal(true, false);
     }
 
     @SneakyThrows
     @GetMapping("/start-demo-key-events")
     public ResponseEntity<Map<String, String>> startDemoKeyEvents() {
-        return startDemoInternal();
+        return startDemoInternal(true, true);
     }
 
-    private ResponseEntity<Map<String, String>> startDemoInternal() {
+    private ResponseEntity<Map<String, String>> startDemoInternal(boolean advanceWeekAfterSimulation, boolean autoRunTrainingAfterSimulation) {
         Competition superLiga = competitionRepository.findById(1L).orElse(null);
         if (superLiga == null) {
             log.error("Cannot find league");
@@ -66,7 +68,17 @@ public class SimulationController {
                 .thenAccept(played -> {
                     log.info("Demo simulation completed for match ID: {}", demoMatch.getId());
                     matchStatisticEngine.updateLeagueTableForMatchDay(superLiga, currentSeason);
-                    seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
+                    if (autoRunTrainingAfterSimulation) {
+                        try {
+                            trainingProgressionService.runWeeklyTraining(omladinac.getId());
+                            log.info("Auto weekly training completed for team {}", omladinac.getId());
+                        } catch (Exception ex) {
+                            log.warn("Auto weekly training failed for team {}", omladinac.getId(), ex);
+                        }
+                    }
+                    if (advanceWeekAfterSimulation) {
+                        seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
+                    }
                 })
                 .exceptionally(throwable -> {
                     log.error("Error while running demo simulation for match {}", demoMatch.getId(), throwable);

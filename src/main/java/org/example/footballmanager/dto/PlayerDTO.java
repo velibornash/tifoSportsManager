@@ -26,6 +26,14 @@ public class PlayerDTO {
     private int defending;
     private int stamina;
     private int playmaker;
+    private double goalkeeperExact;
+    private double paceExact;
+    private double shootingExact;
+    private double passingExact;
+    private double techniqueExact;
+    private double defendingExact;
+    private double staminaExact;
+    private double playmakerExact;
     private int totalGoals;
     private int totalAssists;
 
@@ -48,6 +56,14 @@ public class PlayerDTO {
                 player.getSkills().getDefender(),
                 player.getSkills().getStamina(),
                 player.getSkills().getPlaymaker(),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.GOALKEEPER),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.PACE),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.STRIKER),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.PASSING),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.TECHNIQUE),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.DEFENDER),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.STAMINA),
+                player.getSkills().getExact(org.example.footballmanager.model.SkillName.PLAYMAKER),
                 player.getTotalGoals(),
                 player.getTotalAssists()//
         );

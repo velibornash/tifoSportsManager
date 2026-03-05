@@ -14,11 +14,11 @@
 <div class="top-menu">
     <!-- Desktop menu buttons -->
     <div class="menu-button desktop-only" onclick="toggleSidebar('clubSidebar')">🏟️ Club</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('matchesSidebar')">⚽ Matches</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">🏋️ Training</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">🏆 Competitions</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">💬 Community</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">📊 Stats</div>
-    <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">🧹 TIFO Clean Sheet text mode</div>
+    <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">🤠 TIFO Old school</div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>
@@ -44,18 +44,17 @@
                 <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
                 <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
                 <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
-                <div onclick="loadPage('training'); closeMobileMenu()">Training Reports</div>
                 <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
             </div>
         </div>
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                ⚽ Matches
+                🏋️ Training
             </div>
             <div class="accordion-content">
-                <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
-                <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
+                <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
+                <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
             </div>
         </div>
 
@@ -67,8 +66,8 @@
                 <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
                 <div onclick="loadPage('leagueSchedule'); closeMobileMenu()">Schedule</div>
                 <div onclick="loadPage('leagueMatches'); closeMobileMenu()">League Results</div>
-                <div onclick="initializeDatabase(); closeMobileMenu()">Initialize DB (Demo)</div>
-                <div onclick="resetDatabase(); closeMobileMenu()">Reset DB (Demo)</div>
+                <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
+                <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
                 <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
                 <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
                 <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
@@ -83,6 +82,8 @@
                 <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
                 <div onclick="loadPage('chat'); closeMobileMenu()">Chat</div>
                 <div onclick="loadPage('events'); closeMobileMenu()">Events</div>
+                <div onclick="initializeDatabase(); closeMobileMenu()">Initialize DB (Demo)</div>
+                <div onclick="resetDatabase(); closeMobileMenu()">Reset DB (Demo)</div>
             </div>
         </div>
 
@@ -98,10 +99,10 @@
             </div>
         </div>
 
-        <!-- NOVO: TIFO Clean Sheet kao glavna kategorija u mobile sidebar-u -->
+        <!-- TIFO Old school -->
         <div class="mobile-accordion clean-sheet-mobile">
             <div class="accordion-header" onclick="window.location.href='/tifo.html'">
-                🧹 TIFO Clean Sheet text mode
+                🤠 TIFO Old school
             </div>
         </div>
 
@@ -139,15 +140,14 @@
         </div>
 
 
-        <div onclick="loadPage('training')">Training Reports</div>
         <div onclick="loadPage('profile')">Profile</div>
     </div>
 </div>
-<div id="matchesSidebar" class="sidebar">
+<div id="trainingSidebar" class="sidebar">
     <div class="sidebar-content">
-        <h3>Matches</h3>
-        <div onclick="loadPage('results')">Results</div>
-        <div onclick="loadPage('fixtures')">Fixtures</div>
+        <h3>Training</h3>
+        <div onclick="loadPage('trainingSetup')">Training Setup</div>
+        <div onclick="loadPage('trainingReports')">Training Reports</div>
     </div>
 </div>
 <div id="competitionsSidebar" class="sidebar">
@@ -156,8 +156,8 @@
         <div onclick="loadPage('leagueTable')">League Table</div>
         <div onclick="loadPage('leagueSchedule')">Schedule</div>
         <div onclick="loadPage('leagueMatches')">League Results</div>
-        <div onclick="initializeDatabase()">Initialize DB (Demo)</div>
-        <div onclick="resetDatabase()">Reset DB (Demo)</div>
+        <div onclick="loadPage('results')">Results</div>
+        <div onclick="loadPage('fixtures')">Fixtures</div>
         <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
         <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
         <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
@@ -169,6 +169,8 @@
         <div onclick="loadPage('forum')">Forum</div>
         <div onclick="loadPage('chat')">Chat</div>
         <div onclick="loadPage('events')">Events</div>
+        <div onclick="initializeDatabase()">Initialize DB (Demo)</div>
+        <div onclick="resetDatabase()">Reset DB (Demo)</div>
     </div>
 </div>
 <div id="statsSidebar" class="sidebar">

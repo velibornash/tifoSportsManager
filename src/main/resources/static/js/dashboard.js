@@ -39,7 +39,7 @@ function loadDashboard() {
             <img src="/images/omladinac.png" class="team-logo">
             <div class="team-name-wrapper">
                 <h1>OFK Omladinac</h1>
-                <p class="team-subtitle">Serbian Superliga - Season 2025/26</p>
+                <p class="team-subtitle"><span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> - Season 2025/26</p>
             </div>
         </div>
 
@@ -190,7 +190,11 @@ async function loadRecentMatches() {
         if (!list) return;
 
         if (recent.length === 0) {
-            list.innerHTML = '<p style="text-align:center; color:#aaa;">No recent matches yet.</p>';
+            list.innerHTML = `
+                <div class="empty-badge-wrap">
+                    <span class="empty-badge">No played matches yet</span>
+                </div>
+                <p style="text-align:center; color:#aaa;">Play a match to populate this section.</p>`;
             return;
         }
 
@@ -219,21 +223,33 @@ async function loadRecentMatches() {
 }
 
 async function loadRecentLeagueMatches() {
+    const list = document.getElementById('recent-league-matches-list');
+    const renderEmpty = () => {
+        if (!list) return;
+        list.innerHTML = `
+            <div class="empty-badge-wrap">
+                <span class="empty-badge">No league results yet</span>
+            </div>
+            <p style="text-align:center; color:#aaa;">Simulate a round to populate this section.</p>`;
+    };
+
     try {
         const leagueId = 1;
         const response = await fetch(`/countries/leagues/${leagueId}/matches`);
-        if (!response.ok) throw new Error('Failed to load league matches');
+        if (!response.ok) {
+            renderEmpty();
+            return;
+        }
 
         const matches = await response.json();
         const recent = matches
             .sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate))
             .slice(0, 5);
 
-        const list = document.getElementById('recent-league-matches-list');
         if (!list) return;
 
         if (recent.length === 0) {
-            list.innerHTML = '<p style="text-align:center; color:#aaa;">No recent league matches yet.</p>';
+            renderEmpty();
             return;
         }
 
@@ -269,8 +285,7 @@ async function loadRecentLeagueMatches() {
         list.innerHTML = html;
     } catch (err) {
         console.error('Error loading recent league matches:', err);
-        document.getElementById('recent-league-matches-list').innerHTML =
-            '<p style="text-align:center; color:#f44336;">Failed to load recent league matches.</p>';
+        renderEmpty();
     }
 }
 

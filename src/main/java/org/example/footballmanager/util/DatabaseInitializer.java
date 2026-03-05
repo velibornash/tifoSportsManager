@@ -1,5 +1,6 @@
 package org.example.footballmanager.util;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ public class DatabaseInitializer {
     private final PasswordEncoder encoder;  // Spring Security BCrypt encoder
     private final Random random = new Random();
     private final ResetService resetService;
+
 
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
@@ -261,10 +263,42 @@ public class DatabaseInitializer {
         if (playerRepository.countByTeam(team) == 0) {
             if (Objects.equals(team.getName(), "OFK Omladinac")) {
                 playerFactory.createOmladinacPlayers(team);
+                applyOmladinacTalentProfile(team);
             } else {
                 playerFactory.createRandomTeamPlayers(team.getName(), team);
             }
         }
+    }
+
+    private void applyOmladinacTalentProfile(Team team) {
+        List<Player> players = playerRepository.findByTeam(team);
+        if (players.isEmpty()) return;
+
+        Map<String, Double> fixedTalent = new HashMap<>();
+        fixedTalent.put(normalizeName("Ljupče Ožegović"), 10.0);
+        fixedTalent.put(normalizeName("Borislav Negovanović"), 9.0);
+        fixedTalent.put(normalizeName("Žika Veljković"), 8.0);
+        fixedTalent.put(normalizeName("Šumenko Dabić"), 7.0);
+
+        players.forEach(player -> {
+            String key = normalizeName(player.getName());
+            Double talent = fixedTalent.get(key);
+            if (talent == null) {
+                talent = 5.0 + random.nextDouble() * 3.0; // 5.0 - 8.0
+            }
+            player.setTalent(Math.max(1.0, Math.min(10.0, talent)));
+        });
+        playerRepository.saveAll(players);
+    }
+
+    private String normalizeName(String name) {
+        if (name == null) return "";
+        return name.toLowerCase(Locale.ROOT)
+                .replace("č", "c")
+                .replace("ć", "c")
+                .replace("š", "s")
+                .replace("ž", "z")
+                .replace("đ", "dj");
     }
 
     private String getRandomTeamName() {

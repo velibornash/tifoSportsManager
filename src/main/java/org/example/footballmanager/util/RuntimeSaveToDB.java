@@ -26,6 +26,7 @@ public class RuntimeSaveToDB {
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
+    private final MatchFixtureRepository matchFixtureRepository;
 
     @Autowired
     private EntityManager em;
@@ -43,7 +44,8 @@ public class RuntimeSaveToDB {
             CompetitionRepository competitionRepository,
             SeasonRepository seasonRepository,
             SeasonCompetitionRepository seasonCompetitionRepository,
-            CompetitionEntryRepository competitionEntryRepository
+            CompetitionEntryRepository competitionEntryRepository,
+            MatchFixtureRepository matchFixtureRepository
     ) {
         this.playerRepository = playerRepository;
         this.matchStatisticEngineHandling = matchStatisticEngineHandling;
@@ -52,6 +54,7 @@ public class RuntimeSaveToDB {
         this.seasonRepository = seasonRepository;
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
+        this.matchFixtureRepository = matchFixtureRepository;
     }
 
     private void batchSaveMatchEvents(Match match, List<MatchEvent> events, List<Player> homePlayers, List<Player> awayPlayers) {
@@ -90,6 +93,7 @@ public class RuntimeSaveToDB {
         match.setPlayed(true);
         match.setStarted(true);
         matchRepository.save(match);
+        markFixtureAsPlayed(match);
 
         matchStatisticEngineHandling.simulateInjuriesAndCards(homePlayers, match);
         matchStatisticEngineHandling.simulateInjuriesAndCards(awayPlayers, match);
@@ -118,6 +122,28 @@ public class RuntimeSaveToDB {
         System.out.println(matchStatisticEngineHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
         updateLeagueTable(match, rt);
         return match;
+    }
+
+    private void markFixtureAsPlayed(Match match) {
+        if (match.getCompetition() == null || match.getSeasonYear() == null || match.getRoundNumber() == null
+                || match.getHomeTeam() == null || match.getAwayTeam() == null) {
+            return;
+        }
+        List<MatchFixture> fixtures = matchFixtureRepository
+                .findByCompetitionIdAndSeasonYearAndRoundNumberAndHomeTeamIdAndAwayTeamIdAndPlayedFalse(
+                        match.getCompetition().getId(),
+                        match.getSeasonYear(),
+                        match.getRoundNumber(),
+                        match.getHomeTeam().getId(),
+                        match.getAwayTeam().getId()
+                );
+        if (fixtures.isEmpty()) {
+            return;
+        }
+        MatchFixture fixture = fixtures.getFirst();
+        fixture.setPlayed(true);
+        fixture.setPlayedMatch(match);
+        matchFixtureRepository.save(fixture);
     }
 
     private void updateLeagueTable(Match match, MatchRuntime rt) {
