@@ -16,7 +16,7 @@ public class MatchRatingCalculator {
         double maxScore = getMaxScore(pos);
         double normalizedSkill = skillScore / maxScore * 70.0;
 
-        // Golovi i asistencije koriste allGoals iz baze
+        // Direct attacking contribution
         long goals = allGoals.stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
                 .count();
@@ -24,18 +24,48 @@ public class MatchRatingCalculator {
                 .filter(g ->  g.getAssistant() != null && g.getAssistant().equals(player))
                 .count();
 
-        double contribution = goals * 10 + assists * 6;
+        long teamGoals = allGoals.stream()
+                .filter(g -> g.getScorer() != null && g.getScorer().getTeam().equals(player.getTeam()))
+                .count();
+        long concededGoals = allGoals.stream()
+                .filter(g -> g.getScorer() != null && !g.getScorer().getTeam().equals(player.getTeam()))
+                .count();
 
-        // Clean sheet bonus
-        boolean isOwnTeamCleanSheet = allGoals.stream()
-                .noneMatch(g -> g.getScorer() != null && !g.getScorer().getTeam().equals(player.getTeam()));
-
-        double cleanSheetBonus = 0;
-        if (isOwnTeamCleanSheet && (pos == Position.GK || pos == Position.DEF)) {
-            cleanSheetBonus = 20;
+        double contribution = goals * 12 + assists * 6;
+        if (goals >= 3) {
+            contribution += 4;
+        } else if (goals == 2) {
+            contribution += 2;
         }
 
-        return (int) Math.round(normalizedSkill + contribution + cleanSheetBonus);
+        // Form influence (small but meaningful on 1-100 scale)
+        double formBonus = (player.getForm() - 5.0) * 1.2;
+
+        // Defensive contribution
+        boolean cleanSheet = concededGoals == 0;
+        double defensiveBonus = 0;
+        if (cleanSheet && pos == Position.GK) {
+            defensiveBonus += 8;
+        } else if (cleanSheet && pos == Position.DEF) {
+            defensiveBonus += 5;
+        }
+        if (concededGoals >= 3 && pos == Position.GK) {
+            defensiveBonus -= 6;
+        } else if (concededGoals >= 3 && pos == Position.DEF) {
+            defensiveBonus -= 4;
+        }
+
+        double teamResultModifier = 0;
+        if (teamGoals > concededGoals) {
+            teamResultModifier = 1;
+        } else if (teamGoals < concededGoals) {
+            teamResultModifier = -1;
+        }
+
+        double rating = normalizedSkill + contribution + formBonus + defensiveBonus + teamResultModifier;
+        rating = Math.max(10, Math.min(100, rating));
+
+        return (int) Math.round(rating);
     }
 
 

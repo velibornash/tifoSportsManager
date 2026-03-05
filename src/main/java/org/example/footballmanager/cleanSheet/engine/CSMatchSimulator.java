@@ -143,6 +143,14 @@ public class CSMatchSimulator {
                                                     List<CSMatchEvent> events,
                                                     String teamName) {
         List<CSPlayerMatchStats> stats = new ArrayList<>();
+        long teamGoals = events.stream()
+                .filter(e -> e.getEventType() == CSEventType.GOAL && teamName.equals(e.getTeamName()))
+                .count();
+        long concededGoals = events.stream()
+                .filter(e -> e.getEventType() == CSEventType.GOAL && !teamName.equals(e.getTeamName()))
+                .count();
+        boolean cleanSheet = concededGoals == 0;
+
         for (CSPlayer p : players) {
             long goalsInMatch = events.stream()
                     .filter(e -> e.getEventType() == CSEventType.GOAL
@@ -155,11 +163,43 @@ public class CSMatchSimulator {
                             && teamName.equals(e.getTeamName()))
                     .count();
 
-            double base = 6.0 + rnd.nextDouble() * 1.0; // 6.0 - 7.0
-            base += goalsInMatch * 0.8;
-            base += assistsInMatch * 0.4;
-            // Forma utice malo na ocenu
-            base += (p.getForm() - 5.0) * 0.1;
+            // Wider baseline variance for less flat match grades.
+            double base = 5.8 + rnd.nextDouble() * 1.2; // 5.8 - 7.0
+            // Stronger attacking impact.
+            base += goalsInMatch * 1.2;
+            base += assistsInMatch * 0.6;
+            // Form impact.
+            base += (p.getForm() - 5.0) * 0.12;
+
+            if (goalsInMatch >= 3) {
+                base += 0.4; // Hat-trick bonus
+            } else if (goalsInMatch == 2) {
+                base += 0.2;
+            }
+
+            // Defensive contribution
+            if (cleanSheet) {
+                if ("GK".equals(p.getPosition())) {
+                    base += 0.8;
+                } else if ("DEF".equals(p.getPosition())) {
+                    base += 0.5;
+                }
+            }
+            if (concededGoals >= 3) {
+                if ("GK".equals(p.getPosition())) {
+                    base -= 0.6;
+                } else if ("DEF".equals(p.getPosition())) {
+                    base -= 0.4;
+                }
+            }
+
+            // Small team result modifier
+            if (teamGoals > concededGoals) {
+                base += 0.1;
+            } else if (teamGoals < concededGoals) {
+                base -= 0.1;
+            }
+
             double rating = Math.min(10.0, Math.max(1.0, Math.round(base * 10.0) / 10.0));
 
             stats.add(CSPlayerMatchStats.builder()
