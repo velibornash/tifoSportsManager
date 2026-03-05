@@ -3,16 +3,20 @@ package org.example.footballmanager.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.model.*;
-import org.example.footballmanager.repository.*;
-import org.example.footballmanager.service.SimulationService;
 import org.example.footballmanager.engines.MatchEngine;
 import org.example.footballmanager.engines.MatchStatisticEngine;
+import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.Match;
+import org.example.footballmanager.model.Season;
+import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.CompetitionRepository;
+import org.example.footballmanager.repository.SeasonRepository;
+import org.example.footballmanager.service.SimulationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.*;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -28,39 +32,34 @@ public class SimulationController {
     @SneakyThrows
     @GetMapping("/start-demo")
     public ResponseEntity<Map<String, String>> startDemo() {
-        //1. Napravi mec
         Match demoMatch = matchEngine.createMatch();
 
         Competition superLiga = competitionRepository.findById(1L).orElse(null);
         Season currentSeason = seasonRepository.findBySeasonYear(2025).orElse(null);
 
         if (superLiga == null || currentSeason == null) {
-            log.error("Ne mogu da pronađem ligu ili sezonu!");
-            return ResponseEntity.badRequest().body(Map.of("error", "Liga ili sezona nije pronađena"));
+            log.error("Cannot find league or season");
+            return ResponseEntity.badRequest().body(Map.of("error", "League or season not found"));
         }
 
         Team omladinac = demoMatch.getHomeTeam();
         Team opponent = demoMatch.getAwayTeam();
 
-        // 2. Prvo simuliraj 4 random meča (isključujući Omladinac par)
         matchEngine.simulateRestOfMatchDay(superLiga, currentSeason, omladinac, opponent);
 
-        // 3. Zatim odigraj demo meč (Omladinac vs random)
         simulationService.startSimulation(demoMatch.getId())
                 .thenAccept(played -> {
-                    log.info("Demo simulacija završena za meč ID: {}", demoMatch.getId());
-
-                    // 4. Ažuriraj tabelu za ceo dan (svih 5 mečeva)
+                    log.info("Demo simulation completed for match ID: {}", demoMatch.getId());
                     matchStatisticEngine.updateLeagueTableForMatchDay(superLiga, currentSeason);
                 })
                 .exceptionally(throwable -> {
-                    log.error("Greška u demo simulaciji meča {}", demoMatch.getId(), throwable);
+                    log.error("Error while running demo simulation for match {}", demoMatch.getId(), throwable);
                     return null;
                 });
 
         return ResponseEntity.ok(Map.of(
                 "status", "prepared",
-                "message", "Simulacija pokrenuta – podaci bi trebalo da stižu",
+                "message", "Simulation started - data should stream shortly",
                 "position_socket", "/demo-position-updates",
                 "event_socket", "/demo-match-events",
                 "matchId", demoMatch.getId().toString()

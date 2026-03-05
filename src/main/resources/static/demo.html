@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="sr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,40 +8,39 @@
 </head>
 <body>
 
-<div id="scoreboard">Omladinac 0 - 0 Sremac</div>
+<div id="scoreboard">Omladinac 0 - 0 Opponent</div>
 <canvas id="pitch" width="900" height="500"></canvas>
 
 <div id="events-container">
-    <div id="lastEventBox">⌛ Čekamo start simulacije...</div>
+    <div id="lastEventBox">Waiting for simulation start...</div>
     <div class="event-content">
         <img id="eventImage" src="" alt="Event">
-        <img id="playerImage" src="/images/player.jpg" alt="Igrač">
+        <img id="playerImage" src="/images/player.jpg" alt="Player">
         <div id="playerInfo"></div>
     </div>
 </div>
 
-<button onclick="cleanupAndGoBack()">⏪ Nazad</button>
+<button onclick="cleanupAndGoBack()">Back</button>
 
 <script type="module">
     import { initCanvas } from './js/demo/canvasRenderer.js';
     import { initSockets } from './js/demo/sockets.js';
     import { initEventProcessor } from './js/demo/eventProcessor.js';
     import { initScoreboard } from './js/demo/scoreboard.js';
-    import { cleanupDemo } from './js/demo/demoCleanup.js'; // ← dodaj import
+    import { cleanupDemo } from './js/demo/demoCleanup.js';
 
-    document.addEventListener("DOMContentLoaded", ()=>{
-        initCanvas();         // ovo POKREĆE loop
+    document.addEventListener('DOMContentLoaded', () => {
+        initCanvas();
         initScoreboard();
         initEventProcessor();
-        initSockets();        // ovo otvara WS-ove
+        initSockets();
     });
 
-    window.cleanupAndGoBack = function() {
+    window.cleanupAndGoBack = function () {
         cleanupDemo();
         window.location.href = '/dashboard.html';
     };
 
-    // Dodatna sigurnost: cleanup na zatvaranje taba/refresh
     window.addEventListener('beforeunload', cleanupDemo);
 </script>
 

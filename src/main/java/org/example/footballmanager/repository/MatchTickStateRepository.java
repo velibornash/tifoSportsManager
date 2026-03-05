@@ -11,12 +11,12 @@ import java.util.List;
 public interface MatchTickStateRepository extends JpaRepository<MatchTickState, Long> {
 
     /**
-     * Vraća sve tick stanja za dati meč, sortirano po tick-u (za replay)
+     * Returns all tick states for the given match ordered by tick for replay.
      */
     List<MatchTickState> findByMatchOrderByTickAsc(Match match);
 
     /**
-     * Briše sva stanja za meč (npr. posle brisanja meča ili za čišćenje)
+     * Deletes all stored states for a match.
      */
     void deleteByMatch(Match match);
 }

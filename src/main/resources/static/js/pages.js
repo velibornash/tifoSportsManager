@@ -1,5 +1,6 @@
 // pages.js
 import { authFetch } from './auth.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView } from './pages-renderers.js';
     let currentUserTeamId = null;
 
     async function loadUserTeamId() {
@@ -7,10 +8,10 @@ import { authFetch } from './auth.js';
             const res = await authFetch('/auth/me');
             const user = await res.json();
             currentUserTeamId = user.teamId;
-            console.log("Team ID učitan:", currentUserTeamId);
+            console.log("Team ID loaded:", currentUserTeamId);
             return currentUserTeamId;
         } catch (err) {
-            console.error("Greška /auth/me:", err);
+            console.error("Error /auth/me:", err);
             localStorage.removeItem('token');
             window.location.href = '/login.html';
             return null;
@@ -22,7 +23,7 @@ import { authFetch } from './auth.js';
            if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
                const button = e.target.closest('#back-button');
                const target = button.dataset.target || 'results';
-               console.log(`Back kliknut → učitavam: ${target}`);
+               console.log(`Back clicked -> loading: ${target}`);
                loadPage(target);
            }
        });
@@ -157,55 +158,87 @@ import { authFetch } from './auth.js';
             .replace(/\s+/g, '_')                // razmak → _
             .replace(/[^a-zA-Z0-9_-]/g, '');     // uklanja sve što nije slovo/broj/_/-
     }
+    function normalizeTeamKey(name) {
+        return (name || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+    }
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+    function formatGoalDiff(value) {
+        const number = Number(value || 0);
+        return `${number > 0 ? "+" : ""}${number}`;
+    }
+    async function fetchPlayerRatingSummary(playerId) {
+        try {
+            const response = await authFetch(`/match-stats/player/${playerId}`);
+            if (!response.ok) return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
+            const payload = await response.json();
+            return {
+                averageRating10: payload.averageRating10 ?? null,
+                averageRating100: payload.averageRating100 ?? null,
+                matchesPlayed: payload.matchesPlayed ?? 0
+            };
+        } catch (err) {
+            return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
+        }
+    }
     async function loadPlayer(playerId) {
         const mainContent = document.getElementById("main-content");
-        console.log(`Ucitavam load player za tim ${currentUserTeamId} i igraca ${playerId}`);
-        const response = await authFetch(`/teams/${currentUserTeamId}/players/${playerId}`);
-        console.log(`Status odgovora: ${response.status}`);
-        if(!response.ok) {
-            mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('firstTeam')">⬅ Back</button></div>`;
+        console.log(`Loading player for team ${currentUserTeamId} and player ${playerId}`);
+        const [response, ratingSummary] = await Promise.all([
+            authFetch(`/teams/${currentUserTeamId}/players/${playerId}`),
+            fetchPlayerRatingSummary(playerId)
+        ]);
+        console.log(`Response status: ${response.status}`);
+        if (!response.ok) {
+            mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('firstTeam')">Back</button></div>`;
             return;
         }
 
         const player = await response.json();
-        const filename = getImageFilename(player.name);
         mainContent.innerHTML = `
-
-                <div class="player-card-wrapper">
-                    <div class="player-card">
-                    <button class="back-to-dashboard" onclick="loadPage('firstTeam')">⬅ Back to Team</button>
-                        <div class="card-header">
-                            <div class="overall-rating">${player.overall}</div>
-                            <div class="position">${player.position}</div>
-                        </div>
-                        <div class="player-image">
-                            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'" alt="${player.name}">
-                        </div>
-                        <div class="player-name">${player.name}</div>
-                        <div class="player-stats">
-                            <div class="stat"><span>Age</span><span>${player.age}</span></div>
-                            <div class="stat"><span>Stamina</span><span>${player.stamina}</span></div>
-                            <div class="stat"><span>Goalkeeper</span><span>${player.goalkeeper}</span></div>
-                            <div class="stat"><span>Pace</span><span>${player.pace}</span></div>
-                            <div class="stat"><span>Defending</span><span>${player.defending}</span></div>
-                            <div class="stat"><span>Technique</span><span>${player.technique}</span></div>
-                            <div class="stat"><span>Playmaker</span><span>${player.playmaker}</span></div>
-                            <div class="stat"><span>Passing</span><span>${player.passing}</span></div>
-                            <div class="stat"><span>Shooting</span><span>${player.shooting}</span></div>
-                            <div class="stat"><span>Total Goals</span><span>${player.totalGoals}</span></div>
-                        </div>
-                    </div>
+            <div class="manager-card">
+                <button class="big-button" onclick="loadPage('firstTeam')" style="margin-bottom:16px;">Back to Team</button>
+                <h2>${escapeHtml(player.name)}</h2>
+                <div class="cs-stat-grid">
+                    <div class="cs-stat-card"><div class="icon">📋</div><div class="val">${escapeHtml(player.position)}</div><div class="lbl">Position</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎂</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
+                    <div class="cs-stat-card"><div class="icon">⭐</div><div class="val">${player.overall ?? "-"}</div><div class="lbl">OVR</div></div>
+                    <div class="cs-stat-card"><div class="icon">😮‍💨</div><div class="val">${player.fatigue != null ? Number(player.fatigue).toFixed(1) : "-"}</div><div class="lbl">Fatigue</div></div>
+                    <div class="cs-stat-card"><div class="icon">📈</div><div class="val">${ratingSummary.averageRating10 ?? "-"}</div><div class="lbl">Average Grade (1-10)</div></div>
+                    <div class="cs-stat-card"><div class="icon">⚽</div><div class="val">${player.totalGoals ?? 0}</div><div class="lbl">Goals</div></div>
+                    <div class="cs-stat-card"><div class="icon">🅰️</div><div class="val">${player.totalAssists ?? 0}</div><div class="lbl">Assists</div></div>
+                    <div class="cs-stat-card"><div class="icon">💰</div><div class="val">${player.value != null ? Math.round(player.value).toLocaleString() : "-"}</div><div class="lbl">Value</div></div>
                 </div>
 
-    </div>`;
-
+                <h3 style="margin-top:20px;">Skills</h3>
+                <div class="cs-stat-grid">
+                    <div class="cs-stat-card"><div class="icon">🔋</div><div class="val">${player.stamina ?? "-"}</div><div class="lbl">Stamina</div></div>
+                    <div class="cs-stat-card"><div class="icon">💨</div><div class="val">${player.pace ?? "-"}</div><div class="lbl">Pace</div></div>
+                    <div class="cs-stat-card"><div class="icon">🛡️</div><div class="val">${player.defending ?? "-"}</div><div class="lbl">Defending</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎯</div><div class="val">${player.technique ?? "-"}</div><div class="lbl">Technique</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧠</div><div class="val">${player.playmaker ?? "-"}</div><div class="lbl">Playmaker</div></div>
+                    <div class="cs-stat-card"><div class="icon">🎁</div><div class="val">${player.passing ?? "-"}</div><div class="lbl">Passing</div></div>
+                    <div class="cs-stat-card"><div class="icon">🚀</div><div class="val">${player.shooting ?? "-"}</div><div class="lbl">Shooting</div></div>
+                    <div class="cs-stat-card"><div class="icon">🧤</div><div class="val">${player.goalkeeper ?? "-"}</div><div class="lbl">Goalkeeper</div></div>
+                </div>
+            </div>`;
     }
     async function loadMatch(matchId, caller) {
         const mainContent = document.getElementById("main-content");
-        console.log(`Učitavam meč ID: ${matchId}, caller: ${caller}`);
+        console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if(caller==="undefined"){
-           console.log(`Meč nije pronađen.`);
-           mainContent.innerHTML = `<div class="team-card"><p>Meč nije pronađen.</p></div>`;
+           console.log(`Match not found.`);
+           mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p></div>`;
            return;
         }
         try {
@@ -214,17 +247,22 @@ import { authFetch } from './auth.js';
 
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`Greška ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Meč nije pronađen.</p></div>`;
+                console.error(`Error ${response.status}: ${text}`);
+                mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p></div>`;
                 return;
             }
 
-            const events = await response.json();
+            const [events, lineupsPayload] = await Promise.all([
+                response.json(),
+                authFetch(`/match-stats/lineups/${matchId}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .catch(() => null)
+            ]);
             console.log("MATCH EVENTS:", events);
-            console.log("Broj eventa:", events.length);
+            console.log("Event count:", events.length);
 
             if (events.length === 0) {
-                mainContent.innerHTML = `<div class="team-card"><p>Nema podataka za ovaj meč.</p></div>`;
+                mainContent.innerHTML = `<div class="team-card"><p>No data available for this match.</p></div>`;
                 return;
             }
 
@@ -236,7 +274,7 @@ import { authFetch } from './auth.js';
             const awayGoals = first.awayGoals ?? 0;
 
             const matchDate = parseMatchDate(first.matchDate);
-            const formattedDate = matchDate.toLocaleString('sr-RS', {
+            const formattedDate = matchDate.toLocaleString('en-US', {
                 weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
                 hour: '2-digit', minute: '2-digit'
             });
@@ -244,7 +282,7 @@ import { authFetch } from './auth.js';
             // HTML struktura – sa JEDNIM back dugmetom
             mainContent.innerHTML = `
             <div class="team-card">
-                <h2 style="text-align:center;">Detalji meča</h2>
+                <h2 style="text-align:center;">Match Details</h2>
 
                 <div style="display:flex; justify-content:space-around; font-size:1.3em; margin:20px 0; font-weight:bold;">
                     <div style="text-align:center;">
@@ -263,9 +301,10 @@ import { authFetch } from './auth.js';
                 </div>
 
                 <div id="match-buttons-container" style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
-                    <button id="view-stats" style="padding:8px 16px; font-weight:bold;">Statistika</button>
-                    <button id="view-goals" style="padding:8px 16px; font-weight:bold;">Golovi</button>
-                    <button id="view-events" style="padding:8px 16px; font-weight:bold;">Svi događaji</button>
+                    <button id="view-lineups" style="padding:8px 16px; font-weight:bold;">Lineups</button>
+                    <button id="view-stats" style="padding:8px 16px; font-weight:bold;">Stats</button>
+                    <button id="view-goals" style="padding:8px 16px; font-weight:bold;">Goals</button>
+                    <button id="view-events" style="padding:8px 16px; font-weight:bold;">All Events</button>
                 </div>
 
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
@@ -273,7 +312,7 @@ import { authFetch } from './auth.js';
                 <!-- Jedno zajedničko Back dugme -->
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">
-                        ⬅ Nazad
+                        Back
                     </button>
                 </div>
             </div>`;
@@ -284,12 +323,12 @@ import { authFetch } from './auth.js';
 
             if (caller === 'match') {
                 backTarget = 'results';
-                backButton.textContent = '⬅ Nazad na Rezultate';
+                backButton.textContent = 'Back to Results';
             } else if (caller === 'leagueMatches') {
                 backTarget = 'leagueMatches';
-                backButton.textContent = '⬅ Nazad na Mečeve lige';
+                backButton.textContent = 'Back to League Matches';
             } else {
-                console.warn(`Nepoznat caller: ${caller} → fallback na 'results'`);
+                console.warn(`Unknown caller: ${caller} → fallback na 'results'`);
             }
 
             backButton.dataset.target = backTarget;
@@ -326,26 +365,26 @@ import { authFetch } from './auth.js';
                 const homePossPct = totalPoss > 0 ? Math.round((homePoss / totalPoss) * 100) : 50;
                 const awayPossPct = 100 - homePossPct;
 
-                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Statistika meča</h3>`;
+                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Match Stats</h3>`;
 
                 html += `
                 <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
                     <thead>
                         <tr style="background:rgba(76,175,80,0.15);">
-                            <th style="padding:12px; text-align:left;">Statistika</th>
+                            <th style="padding:12px; text-align:left;">Stats</th>
                             <th style="padding:12px; text-align:center;">${homeTeamName}</th>
                             <th style="padding:12px; text-align:center;">${awayTeamName}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td style="padding:10px;">Posed lopte</td><td style="text-align:center;font-weight:bold;">${homePossPct}%</td><td style="text-align:center;font-weight:bold;">${awayPossPct}%</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Šutevi</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
-                        <tr><td style="padding:10px;">Šutevi u okvir</td><td style="text-align:center;">${homeShotsOn}</td><td style="text-align:center;">${awayShotsOn}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Šutevi van okvira</td><td style="text-align:center;">${homeShotsOff}</td><td style="text-align:center;">${awayShotsOff}</td></tr>
-                        <tr><td style="padding:10px;">Korneri</td><td style="text-align:center;">${homeCorners}</td><td style="text-align:center;">${awayCorners}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Žuti kartoni</td><td style="text-align:center;color:#ff9800;">${homeYellows}</td><td style="text-align:center;color:#ff9800;">${awayYellows}</td></tr>
-                        <tr><td style="padding:10px;">Crveni kartoni</td><td style="text-align:center;color:#f44336;">${homeReds}</td><td style="text-align:center;color:#f44336;">${awayReds}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Penali</td><td style="text-align:center;">${homePenalties}</td><td style="text-align:center;">${awayPenalties}</td></tr>
+                        <tr><td style="padding:10px;">Possession</td><td style="text-align:center;font-weight:bold;">${homePossPct}%</td><td style="text-align:center;font-weight:bold;">${awayPossPct}%</td></tr>
+                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
+                        <tr><td style="padding:10px;">Shots on target</td><td style="text-align:center;">${homeShotsOn}</td><td style="text-align:center;">${awayShotsOn}</td></tr>
+                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots off target</td><td style="text-align:center;">${homeShotsOff}</td><td style="text-align:center;">${awayShotsOff}</td></tr>
+                        <tr><td style="padding:10px;">Corners</td><td style="text-align:center;">${homeCorners}</td><td style="text-align:center;">${awayCorners}</td></tr>
+                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Yellow cards</td><td style="text-align:center;color:#ff9800;">${homeYellows}</td><td style="text-align:center;color:#ff9800;">${awayYellows}</td></tr>
+                        <tr><td style="padding:10px;">Red cards</td><td style="text-align:center;color:#f44336;">${homeReds}</td><td style="text-align:center;color:#f44336;">${awayReds}</td></tr>
+                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Penalties</td><td style="text-align:center;">${homePenalties}</td><td style="text-align:center;">${awayPenalties}</td></tr>
                     </tbody>
                 </table>`;
 
@@ -356,22 +395,67 @@ import { authFetch } from './auth.js';
             showStats();
 
             // Listener-i za ostala dugmad
+            document.getElementById("view-lineups").addEventListener("click", () => {
+                if (!lineupsPayload || (!lineupsPayload.homeLineup && !lineupsPayload.awayLineup)) {
+                    infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Lineups are not available for this match.</p>`;
+                    return;
+                }
+
+                const renderLineup = (teamName, players) => {
+                    const sorted = [...(players || [])].sort((a, b) => {
+                        const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
+                        return (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9);
+                    });
+                    if (sorted.length === 0) return `<p style="color:#aaa;">No lineup data.</p>`;
+
+                    let html = `
+                        <h4 style="margin: 16px 0 8px; color:#ddd;">${teamName}</h4>
+                        <div style="display:flex; gap:10px; padding:4px 10px; color:#888; font-size:0.82em;">
+                            <div style="width:42px; text-align:center;">POS</div>
+                            <div style="flex:1;">Name</div>
+                            <div style="width:56px; text-align:center;">Grade</div>
+                            <div style="width:42px; text-align:center;">G</div>
+                            <div style="width:42px; text-align:center;">A</div>
+                        </div>`;
+                    sorted.forEach((p, i) => {
+                        const rowBg = i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent";
+                        html += `
+                            <div style="display:flex; gap:10px; padding:8px 10px; border-radius:6px; background:${rowBg};">
+                                <div style="width:42px; text-align:center; color:#2a8c4a; font-weight:700;">${p.position}</div>
+                                <div style="flex:1;">${p.playerName}</div>
+                                <div style="width:56px; text-align:center; font-weight:700;">${Number(p.grade).toFixed(1)}</div>
+                                <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
+                                <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
+                            </div>`;
+                    });
+                    return html;
+                };
+
+                infoDiv.innerHTML = `
+                    <h3 style="text-align:center; margin:0 0 16px; color:#4CAF50;">Lineups & Grades</h3>
+                    ${renderLineup(lineupsPayload.homeTeam || homeTeamName, lineupsPayload.homeLineup || [])}
+                    ${renderLineup(lineupsPayload.awayTeam || awayTeamName, lineupsPayload.awayLineup || [])}
+                `;
+            });
             document.getElementById("view-stats").addEventListener("click", showStats);
 
             document.getElementById("view-goals").addEventListener("click", () => {
                 const goals = events.filter(e => e.eventType === "GoalEvent");
                 if (goals.length === 0) {
-                    infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Nema postignutih golova na ovom meču.</p>`;
+                    infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">No goals in this match.</p>`;
                     return;
                 }
 
-                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Golovi</h3><ul style="list-style:none; padding:0;">`;
+                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Goals</h3><ul style="list-style:none; padding:0;">`;
 
                 goals.forEach(g => {
-                    const assist = g.assistant ? ` <span style="color:#888;">(asist: ${g.assistant})</span>` : '';
+                    const assist = g.assistant ? ` <span style="color:#888;">(assist: ${g.assistant})</span>` : '';
+                    const disallowed = g.goalScored === false;
+                    const lineColor = disallowed ? "#ffb3b3" : "inherit";
+                    const verdict = disallowed ? ` <span style="color:#ff6b6b; font-weight:600;">DISALLOWED (VAR)</span>` : "";
                     html += `
                     <li style="padding:12px; margin:8px 0; background:rgba(255,255,255,0.05); border-radius:8px;">
-                        <strong>${g.matchMinute}'</strong> ⚽ ${g.scorer || "?"} ${assist}
+                        <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">⚽ ${g.scorer || "?"} ${assist}${verdict}</span>
                         <span style="float:right; color:#aaa;">${g.scoreAfterGoal || ""}</span>
                     </li>`;
                 });
@@ -383,7 +467,7 @@ import { authFetch } from './auth.js';
             document.getElementById("view-events").addEventListener("click", () => {
                 // ... tvoj postojeći kod za prikaz svih eventa (možeš ga ostaviti isti ili malo očistiti) ...
                 // Primer minimalne verzije:
-                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Svi događaji</h3>`;
+                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">All Events</h3>`;
                 html += `<ul style="list-style:none; padding:0;">`;
 
                 events.sort((a,b) => (a.matchMinute||0) - (b.matchMinute||0)).forEach(e => {
@@ -397,36 +481,36 @@ import { authFetch } from './auth.js';
             });
 
         } catch (err) {
-            console.error("Greška pri učitavanju meča:", err);
-            mainContent.innerHTML = `<div class="team-card"><p>Greška pri učitavanju meča: ${err.message}</p></div>`;
+            console.error("Error loading match:", err);
+            mainContent.innerHTML = `<div class="team-card"><p>Error loading match: ${err.message}</p></div>`;
         }
     }
     async function loadFirstTeam() {
-            console.log(`ucitavam prvi tim za ${currentUserTeamId}`);
+            console.log(`Loading first team for ${currentUserTeamId}`);
             const response = await authFetch(`/teams/${currentUserTeamId}/players`);
-            console.log(`Status odgovora: ${response.status}`);
+            console.log(`Response status: ${response.status}`);
             const players = await response.json();
             renderPlayers(players, "First Team");
         }
     async function loadResults() {
-        console.log(`Ucitavam rezultate za ${currentUserTeamId}`);
+        console.log(`Loading results for ${currentUserTeamId}`);
         const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const matches = await response.json()
         const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
         renderMatches(results, "Results");
     }
     async function loadJuniors() {
-        console.log(`Ucitavam juniore za ${currentUserTeamId}`);
+        console.log(`Loading juniors for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/teams/${currentUserTeamId}/juniors`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const players = await response.json();
         renderPlayers(players, "Juniors");
     }
     async function loadFormations() {
-        console.log(`Ucitavam formacije za ${currentUserTeamId}`);
+        console.log(`Loading formations for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/teams/${currentUserTeamId}/formations`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const formations = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -448,9 +532,9 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadCoaches() {
-        console.log(`Ucitavam load coaches za ${currentUserTeamId}`);
+        console.log(`Loading coaches for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/teams/${currentUserTeamId}/coaches`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const coaches = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -473,9 +557,9 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadTrainingReports() {
-        console.log(`Ucitavam training reports za ${currentUserTeamId}`);
+        console.log(`Loading training reports for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/trainings/${currentUserTeamId}/reports`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const reports = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -497,9 +581,9 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadClubProfile() {
-        console.log(`Ucitavam club profile za ${currentUserTeamId}`);
+        console.log(`Loading club profile for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/teams/${currentUserTeamId}/profile`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const profile = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -557,26 +641,26 @@ import { authFetch } from './auth.js';
         </div>`;
     }
     async function loadUpcomingMatches() {
-        console.log(`ucitavam upcoming matches za ${currentUserTeamId}`);
+        console.log(`Loading upcoming matches for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/upcoming`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Upcoming Matches");
     }
     async function loadFixtures() {
-        console.log(`Ucitavam load fixtures za : ${currentUserTeamId}`);
+        console.log(`Loading fixtures for: ${currentUserTeamId}`);
         const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const fixtures = await response.json();
         renderFixtures(fixtures, "Fixtures");
     }
     async function loadFixture(fixtureId) {
         const mainContent = document.getElementById("main-content");
-        console.log(`Učitavam fixture ID: ${fixtureId}`);
+        console.log(`Loading fixture ID: ${fixtureId}`);
 
         try {
             const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures/${fixtureId}`);
-            console.log(`Status odgovora: ${response.status}`);
+            console.log(`Response status: ${response.status}`);
         // Mapiranje ID → slika stadiona (možeš proširiti)
             let stadiumImage = "/images/default-stadium.png"; // fallback
             if (fixtureId == 1) {
@@ -588,7 +672,7 @@ import { authFetch } from './auth.js';
             }
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`Greška ${response.status}: ${text}`);
+                console.error(`Error ${response.status}: ${text}`);
                 mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" onclick="loadPage('fixtures')">⬅ Back to Fixtures</button></div>`;
                 return;
             }
@@ -640,46 +724,56 @@ import { authFetch } from './auth.js';
                 </div>
             </div>`;
         } catch (err) {
-            console.error("Greška pri učitavanju fiksture:", err);
+            console.error("Error loading fixture:", err);
             mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button onclick="loadPage('fixtures')">⬅ Back</button></div>`;
         }
     }
     async function loadFriendlies() {
-        console.log(`Ucitavam load friendlies za ${currentUserTeamId}`);
+        console.log(`Loading friendlies for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/friendlies`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Friendlies");
     }
-    async function loadLeagueTable() {
-        const leagueId = 1; // Superliga – kasnije možeš proslediti iz URL-a ili dropdown-a
-
+        async function loadLeagueTable() {
+        const leagueId = 1;
         try {
-            console.log(`Ucitavam legaue friendlies...`);
-            const response = await authFetch(`/countries/leagues/${leagueId}/table`);
-            console.log(`Status odgovora: ${response.status}`);
-            if (!response.ok) {
-                throw new Error(`Greška: ${response.status}`);
-            }
-            const table = await response.json();
-            renderTable(table);
+            const [tableResponse, teamsResponse] = await Promise.all([
+                authFetch(`/countries/leagues/${leagueId}/table`),
+                authFetch(`/countries/leagues/${leagueId}/teams`)
+            ]);
+            if (!tableResponse.ok) throw new Error(`League table load failed: ${tableResponse.status}`);
+            if (!teamsResponse.ok) throw new Error(`League teams load failed: ${teamsResponse.status}`);
+
+            const table = await tableResponse.json();
+            const leagueTeams = await teamsResponse.json();
+            const teamIdByName = new Map();
+            leagueTeams.forEach(team => {
+                teamIdByName.set(normalizeTeamKey(team.name), team.id);
+            });
+
+            const enhancedTable = table.map(row => ({
+                ...row,
+                teamId: teamIdByName.get(normalizeTeamKey(row.name)) ?? null
+            }));
+            renderTable(enhancedTable);
         } catch (err) {
-            console.error("Greška pri učitavanju tabele lige:", err);
+            console.error("Failed to load league table:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back</button>
-                    <h2>Greška</h2>
-                    <p>Ne mogu da učitam tabelu lige. Proveri konzolu.</p>
+                    <button class="back-to-dashboard" onclick="loadDashboard()">Back</button>
+                    <h2>Error</h2>
+                    <p>Could not load league table.</p>
                 </div>`;
         }
     }
     async function loadLeagueMatches() {
         const leagueId = 1; // Superliga – kasnije možeš proslediti parametar
         try {
-            console.log(`Ucitavam league matches...`);
+            console.log(`Loading league matches...`);
             const response = await authFetch(`/countries/leagues/${leagueId}/matches`);
-            console.log(`Status odgovora: ${response.status}`);
-            if (!response.ok) throw new Error("Greška pri učitavanju mečeva lige");
+            console.log(`Response status: ${response.status}`);
+            if (!response.ok) throw new Error("Failed to load league matches");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
             renderLeagueMatches(results);
@@ -688,29 +782,29 @@ import { authFetch } from './auth.js';
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
                     <button onclick="loadDashboard()">⬅ Back</button>
-                    <h2>Greška</h2>
-                    <p>Ne mogu da učitam mečeve lige.</p>
+                    <h2>Error</h2>
+                    <p>Could not load league matches.</p>
                 </div>`;
         }
     }
     async function loadCup() {
-        console.log(`Ucitavam load cup za ${currentUserTeamId}`);
+        console.log(`Loading cup matches for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/cups/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Cup");
     }
     async function loadInternational() {
-        console.log(`Ucitavam load international za ${currentUserTeamId}`);
+        console.log(`Loading international matches for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/internationals/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "International Matches");
     }
     async function loadForum() {
-        console.log(`Ucitavam load forum za ${currentUserTeamId}`);
+        console.log(`Loading forum for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/forum/teams/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const posts = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -733,9 +827,9 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadChat() {
-        console.log(`ucitavam load chat za ${currentUserTeamId}`);
+        console.log(`Loading chat for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/chat/teams/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const messages = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -757,9 +851,9 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadEvents() {
-        console.log(`ucitavam load events za ${currentUserTeamId}`);
+        console.log(`Loading events for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/events/teams/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const events = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -781,16 +875,16 @@ import { authFetch } from './auth.js';
         mainContent.innerHTML = html;
     }
     async function loadPlayerStats() {
-        console.log(`ucitavam load player stats za userTeamId ${currentUserTeamId}`);
+        console.log(`Loading player stats for userTeamId ${currentUserTeamId}`);
         const response = await authFetch(`/demo/stats/teams/${currentUserTeamId}/players`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const players = await response.json();
         renderPlayers(players, "Player Stats");
     }
     async function loadTeamStats() {
-        console.log(`Ucitavam laod team stats. za ${currentUserTeamId}`);
+        console.log(`Loading team stats for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/stats/teams/${currentUserTeamId}`);
-        console.log(`Status odgovora: ${response.status}`);
+        console.log(`Response status: ${response.status}`);
         const stats = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -808,14 +902,14 @@ import { authFetch } from './auth.js';
     }
     async function loadTopScorersAndAssists() {
         try {
-            console.log(`Ucitavam top scorers za ${currentUserTeamId}`);
+            console.log(`Loading top scorers for ${currentUserTeamId}`);
             const scorersRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topscorers`);
-            console.log(`Status odgovora: ${scorersRes.status}`);
+            console.log(`Response status: ${scorersRes.status}`);
             const scorers = await scorersRes.json();
 
-            console.log(`Ucitavam za asistente za ${currentUserTeamId}`);
+            console.log(`Loading top assists for ${currentUserTeamId}`);
             const assistsRes = await authFetch(`/stats/leagues/${currentUserTeamId}/topassists`);
-            console.log(`Status odgovora: ${assistsRes.status}`);
+            console.log(`Response status: ${assistsRes.status}`);
             const assists = await assistsRes.json();
 
             const mainContent = document.getElementById("main-content");
@@ -823,7 +917,7 @@ import { authFetch } from './auth.js';
             let html = `
             <div class="manager-card" style="padding: 25px;">
                 <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Statistika lige – Top liste</h2>
+                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Stats lige – Top liste</h2>
 
                 <div class="top-lists" style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
 
@@ -888,19 +982,19 @@ import { authFetch } from './auth.js';
             });
 
         } catch (err) {
-            console.error("Greška pri učitavanju top lista:", err);
+            console.error("Error loading top lists:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
                     <button onclick="loadDashboard()">⬅ Back</button>
-                    <h2>Greška</h2>
-                    <p>Ne mogu da učitam top liste. Proveri konekciju ili backend.</p>
+                    <h2>Error</h2>
+                    <p>Could not load top lists. Check connection or backend.</p>
                 </div>`;
         }
     }
     async function loadAnalytics() {
-            console.log(`Ucitavam load analytics za ${currentUserTeamId}`);
+            console.log(`Loading analytics for ${currentUserTeamId}`);
             const response = await authFetch(`/demo/analytics/teams/${currentUserTeamId}`);
-            console.log(`Status odgovora: ${response.status}`);
+            console.log(`Response status: ${response.status}`);
             const data = await response.json();
 
             const mainContent = document.getElementById("main-content");
@@ -917,260 +1011,188 @@ import { authFetch } from './auth.js';
             mainContent.innerHTML = html;
         }
     function renderPlayers(players, title) {
-        const mainContent = document.getElementById("main-content");
-
-        if (!Array.isArray(players)) {
-            mainContent.innerHTML = buildEmptyState("No players found");
-            return;
-        }
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>${title}</h2>
-            <div class="manager-grid">`;
-
-        players.forEach(player => {
-            const filename = getImageFilename(player.name);  // ← DODAJ OVO
-
-            html += `
-            <div class="manager-player-card" onclick="loadPlayer(${player.id})">
-                <img src="/images/${filename}.jpg"
-                     onerror="this.src='/images/player.jpg'">
-                <div class="player-name">${player.name}</div>
-                <div class="player-meta">${player.position} • ${player.age}</div>
-                <div class="player-rating">OVR ${player.overall}</div>
-            </div>`;
-        });
-
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
-        // Dodaj klik za otvaranje igrača
-            mainContent.querySelectorAll('.player-card').forEach(card => {
-                card.addEventListener('click', () => {
-                    loadPlayer(card.dataset.playerId);
-                });
-            });
+        renderPlayersView(players, title, { loadPlayer, getImageFilename });
     }
-    function renderMatches(matches, title) {
-        const mainContent = document.getElementById("main-content");
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2>${title}</h2>
-            <div class="match-list">`;
-
-        if (!Array.isArray(matches) || matches.length === 0) {
-            html += `<p style="text-align:center; color:#aaa;">Nema mečeva za prikaz.</p>`;
-        } else {
-            matches.forEach(match => {  // ← OVDE JE match, NE m !
-                html += `
-                <div class="match-row"
-                     data-match-id="${match.id}"
-                     data-caller="match">
-                    <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
-                        🗓 ${match.matchDate || "N/A"}
-                    </div>
-                    <div class="match-teams">
-                        <span class="team-home">${match.homeTeam}</span>
-                        <span class="score">
-                            ${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}
-                        </span>
-                        <span class="team-away">${match.awayTeam}</span>
-                    </div>
-                </div>`;
-            });
-        }
-
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
-
-        // Event delegation – radi i posle pre-rendera stranice
-        document.getElementById("main-content").addEventListener('click', function(e) {
-            const row = e.target.closest('.match-row');
-            if (row) {
-                const matchId = row.dataset.matchId;
-                const caller  = row.dataset.caller || 'match';
-                if (matchId) {
-                    loadMatch(matchId, caller);
-                }
-            }
-        });
+        function renderMatches(matches, title) {
+        renderMatchesView(matches, title, { loadMatch });
     }
     function renderTable(table) {
-        const mainContent = document.getElementById("main-content");
-
-        let html = `
-        <div class="manager-card" style="padding: 25px;">
-            <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-            <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">Superliga – Tabela</h2>
-
-            <div style="overflow-x: auto;">
-                <table class="league-table" style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
-                    <thead>
-                        <tr style="background: rgba(157, 78, 221, 0.25); color: #fff;">
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">#</th>
-                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #555;">Tim</th>
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">Pts</th>
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GS</th>
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GC</th>
-                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GD</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
-
-        table.forEach((team, i) => {
-            const rank = i + 1;
-            let rankStyle = '';
-            let rankIcon = '';
-
-            if (rank === 1) {
-                rankStyle = 'color: #ffd700; font-weight: bold;';
-                rankIcon = '🏆 ';
-            } else if (rank === 2) {
-                rankStyle = 'color: #c0c0c0; font-weight: bold;';
-                rankIcon = '🥈 ';
-            } else if (rank === 3) {
-                rankStyle = 'color: #cd7f32; font-weight: bold;';
-                rankIcon = '🥉 ';
-            } else {
-                rankStyle = 'color: #aaa;';
-            }
-
-            const rowBg = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.08)';
-            const gdColor = team.goalDifference > 0 ? '#4caf50' : team.goalDifference < 0 ? '#f44336' : '#aaa';
-
-            html += `
-                <tr style="background: ${rowBg}; transition: all 0.2s;">
-                    <td style="padding: 12px; text-align: center; ${rankStyle}">${rankIcon}${rank}</td>
-                    <td style="padding: 12px; font-weight: 600;">${team.name}</td>
-                    <td style="padding: 12px; text-align: center; font-weight: bold; color: #ffd700;">${team.points}</td>
-                    <td style="padding: 12px; text-align: center;">${team.goalsScored}</td>
-                    <td style="padding: 12px; text-align: center;">${team.goalsConceded}</td>
-                    <td style="padding: 12px; text-align: center; color: ${gdColor}; font-weight: bold;">
-                        ${team.goalDifference > 0 ? '+' : ''}${team.goalDifference}
-                    </td>
-                </tr>`;
-        });
-
-        html += `
-                    </tbody>
-                </table>
-            </div>
-
-            <p style="text-align: center; color: #888; margin-top: 20px; font-size: 0.9rem;">
-                Poslednje ažuriranje: ${new Date().toLocaleString('sr-RS')}
-            </p>
-        </div>`;
-
-        mainContent.innerHTML = html;
-
-        // Hover efekat na redovima
-        document.querySelectorAll('.league-table tr').forEach(row => {
-            if (!row.querySelector('th')) { // preskoči header
-                row.addEventListener('mouseenter', () => {
-                    row.style.background = 'rgba(157, 78, 221, 0.15) !important';
-                    row.style.transform = 'scale(1.01)';
-                });
-                row.addEventListener('mouseleave', () => {
-                    row.style.background = row.style.background.includes('0.03') ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.08)';
-                    row.style.transform = 'scale(1)';
-                });
-            }
-        });
+        renderTableView(table, { loadLeagueTeam, escapeHtml, formatGoalDiff });
     }
-    function renderFixtures(fixtures, title) {
-            const mainContent = document.getElementById("main-content");
+    async function loadLeagueTeam(teamId, teamName) {
+        const mainContent = document.getElementById("main-content");
+        try {
+            const response = await authFetch(`/teams/${teamId}/players`);
+            if (!response.ok) throw new Error(`Team players load failed: ${response.status}`);
+            const players = await response.json();
+            const isUserTeam = Number(teamId) === Number(currentUserTeamId);
 
             let html = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                <h2>${title}</h2>
-                <div class="match-list">`;
+                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back to League Table</button>
+                <h2>${escapeHtml(teamName)}</h2>
+                <p style="text-align:center; color:#9aa0a6; margin-top:-8px;">Click a player to open profile</p>`;
 
-            fixtures.forEach(fixture => {
-                // Koristi fixture.id ako postoji, ili fallback na index
-                const fixtureId = fixture.id || fixtures.indexOf(fixture);
-
+            if (isUserTeam) {
+                html += `<div class="manager-grid">`;
+                players.forEach(player => {
+                    const filename = getImageFilename(player.name);
+                    html += `
+                    <div class="manager-player-card league-player-card"
+                         data-player-id="${player.id}"
+                         data-team-id="${teamId}"
+                         data-team-name="${escapeHtml(teamName)}">
+                        <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
+                        <div class="player-name">${escapeHtml(player.name)}</div>
+                        <div class="player-meta">${escapeHtml(player.position)} - ${player.age}</div>
+                        <div class="player-rating">OVR ${player.overall}</div>
+                        <div class="player-meta">Rating: ${player.rating ?? "-"} | Form: ${player.form != null ? Number(player.form).toFixed(1) : "-"}</div>
+                        <div class="player-meta">Goals: ${player.totalGoals ?? 0} | Assists: ${player.totalAssists ?? 0}</div>
+                    </div>`;
+                });
+                html += `</div>`;
+            } else {
                 html += `
-                <div class="match-row upcoming-match" onclick="loadFixture(${fixtureId})">
-                    <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">
-                        🗓 ${fixture.matchDate || "N/A"} • ${fixture.matchTime || ""}
-                    </div>
-                    <span class="team-home">${fixture.homeTeam}</span>
-                    <span class="score">VS</span>
-                    <span class="team-away">${fixture.awayTeam}</span>
-                    <div style="font-size:0.85em; color:#888; margin-top:6px;">
-                        🏟️ ${fixture.stadiumName || "N/A"}
+                <div style="overflow-x:auto;">
+                    <table class="league-table" style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <thead>
+                            <tr style="background:rgba(157,78,221,0.25); color:#fff;">
+                                <th style="padding:10px; text-align:left;">Player</th>
+                                <th style="padding:10px; text-align:center;">POS</th>
+                                <th style="padding:10px; text-align:center;">Rating</th>
+                                <th style="padding:10px; text-align:center;">Form</th>
+                                <th style="padding:10px; text-align:center;">OVR</th>
+                                <th style="padding:10px; text-align:center;">G/A</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                players.forEach((player, index) => {
+                    const rowBg = index % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.08)";
+                    html += `
+                            <tr class="league-player-card" style="background:${rowBg}; cursor:pointer;"
+                                data-player-id="${player.id}"
+                                data-team-id="${teamId}"
+                                data-team-name="${escapeHtml(teamName)}">
+                                <td style="padding:10px;">${escapeHtml(player.name)}</td>
+                                <td style="padding:10px; text-align:center;">${escapeHtml(player.position)}</td>
+                                <td style="padding:10px; text-align:center;">${player.rating ?? "-"}</td>
+                                <td style="padding:10px; text-align:center;">${player.form != null ? Number(player.form).toFixed(1) : "-"}</td>
+                                <td style="padding:10px; text-align:center;">${player.overall ?? 0}</td>
+                                <td style="padding:10px; text-align:center;">${player.totalGoals ?? 0}/${player.totalAssists ?? 0}</td>
+                            </tr>`;
+                });
+                html += `
+                        </tbody>
+                    </table>
+                </div>`;
+            }
+
+            html += `</div>`;
+            mainContent.innerHTML = html;
+
+            mainContent.querySelectorAll(".league-player-card").forEach(card => {
+                card.addEventListener("click", () => {
+                    const playerId = Number(card.dataset.playerId);
+                    const playerTeamId = Number(card.dataset.teamId);
+                    const playerTeamName = card.dataset.teamName || "Team";
+                    loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName);
+                });
+            });
+        } catch (err) {
+            console.error("Failed to load team details:", err);
+            mainContent.innerHTML = `
+            <div class="manager-card">
+                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
+                <h2>Error</h2>
+                <p>Could not load team details.</p>
+            </div>`;
+        }
+    }
+    async function loadLeagueTeamPlayer(playerId, teamId, teamName) {
+        const mainContent = document.getElementById("main-content");
+        try {
+            const isUserTeam = Number(teamId) === Number(currentUserTeamId);
+            const [playerResponse, ratingSummary] = await Promise.all([
+                authFetch(`/players/${playerId}`),
+                fetchPlayerRatingSummary(playerId)
+            ]);
+
+            if (!playerResponse.ok) throw new Error(`Player load failed: ${playerResponse.status}`);
+            const player = await playerResponse.json();
+            const filename = getImageFilename(player.name);
+
+            if (isUserTeam) {
+                mainContent.innerHTML = `
+                <div class="player-card-wrapper">
+                    <div class="player-card">
+                        <button id="back-to-league-team" class="back-to-dashboard">Back to ${escapeHtml(teamName)}</button>
+                        <div class="card-header">
+                            <div class="overall-rating">${player.overall}</div>
+                            <div class="position">${escapeHtml(player.position)}</div>
+                        </div>
+                        <div class="player-image">
+                            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'" alt="${escapeHtml(player.name)}">
+                        </div>
+                        <div class="player-name">${escapeHtml(player.name)}</div>
+                        <div class="player-stats">
+                            <div class="stat"><span>Age</span><span>${player.age}</span></div>
+                            <div class="stat"><span>Stamina</span><span>${player.stamina}</span></div>
+                            <div class="stat"><span>Goalkeeper</span><span>${player.goalkeeper}</span></div>
+                            <div class="stat"><span>Pace</span><span>${player.pace}</span></div>
+                            <div class="stat"><span>Defending</span><span>${player.defending}</span></div>
+                            <div class="stat"><span>Technique</span><span>${player.technique}</span></div>
+                            <div class="stat"><span>Playmaker</span><span>${player.playmaker}</span></div>
+                            <div class="stat"><span>Passing</span><span>${player.passing}</span></div>
+                            <div class="stat"><span>Shooting</span><span>${player.shooting}</span></div>
+                            <div class="stat"><span>OVR</span><span>${player.overall ?? "-"}</span></div>
+                            <div class="stat"><span>Total Goals</span><span>${player.totalGoals ?? 0}</span></div>
+                            <div class="stat"><span>Total Assists</span><span>${player.totalAssists ?? 0}</span></div>
+                            <div class="stat"><span>Average Grade (1-10)</span><span>${ratingSummary.averageRating10 ?? "-"}</span></div>
+                        </div>
                     </div>
                 </div>`;
-            });
-
-            html += `</div></div>`;
-            mainContent.innerHTML = html;
-        }
-    function renderLeagueMatches(matches) {
-                const mainContent = document.getElementById("main-content");
-
-                let html = `
-                <div class="manager-card">
-                    <button class="back-to-dashboard" onclick="loadDashboard()">⬅ Back to Dashboard</button>
-                    <h2>Superliga Matches</h2>
-                    <div class="match-list">`;
-
-                if (!Array.isArray(matches) || matches.length === 0) {
-                    html += `<p style="text-align:center; color:#aaa;">Još nema mečeva u ovoj ligi.</p>`;
-                } else {
-                    matches.forEach(match => {  // ← match, ne m!
-                        let badgeClass = "";
-                        let badgeText = "";
-
-                        if (match.homeGoals !== null && match.awayGoals !== null) {
-                            if (match.homeGoals > match.awayGoals) {
-                                badgeClass = "win";
-                                badgeText = "1";
-                            } else if (match.homeGoals < match.awayGoals) {
-                                badgeClass = "loss";
-                                badgeText = "2";
-                            } else {
-                                badgeClass = "draw";
-                                badgeText = "X";
-                            }
-                        }
-
-                        html += `
-                        <div class="match-row"
-                             data-match-id="${match.id}"
-                             data-caller="leagueMatches">
-                            <div style="font-size:0.9em; color:#aaa;">${match.matchDate || "N/A"}</div>
-                            <div class="match-teams">
-                                <span class="team-home">${match.homeTeam}</span>
-                                <span class="score">
-                                    ${match.homeGoals ?? "-"} : ${match.awayGoals ?? "-"}
-                                </span>
-                                <span class="team-away">${match.awayTeam}</span>
-                            </div>
-                            ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
-                        </div>`;
-                    });
-                }
-
-                html += `</div></div>`;
-                mainContent.innerHTML = html;
-
-                // Event delegation – radi za sve .match-row u #main-content
-                document.getElementById("main-content").addEventListener('click', function(e) {
-                    const row = e.target.closest('.match-row');
-                    if (row) {
-                        const matchId = row.dataset.matchId;
-                        const caller  = row.dataset.caller || 'leagueMatches';
-                        if (matchId) {
-                            loadMatch(matchId, caller);
-                        }
-                    }
-                });
+            } else {
+                mainContent.innerHTML = `
+                <div class="manager-card" style="max-width:720px; margin:0 auto;">
+                    <button id="back-to-league-team" class="back-to-dashboard">Back to ${escapeHtml(teamName)}</button>
+                    <h2 style="text-align:center;">${escapeHtml(player.name)}</h2>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:18px;">
+                        <div class="stat-item"><div class="stat-label">Position</div><div class="stat-value">${escapeHtml(player.position)}</div></div>
+                        <div class="stat-item"><div class="stat-label">OVR</div><div class="stat-value">${player.overall ?? "-"}</div></div>
+                        <div class="stat-item"><div class="stat-label">OVR</div><div class="stat-value">${player.overall ?? "-"}</div></div>
+                        <div class="stat-item"><div class="stat-label">Age</div><div class="stat-value">${player.age ?? "-"}</div></div>
+                        <div class="stat-item"><div class="stat-label">Goals</div><div class="stat-value">${player.totalGoals ?? 0}</div></div>
+                        <div class="stat-item"><div class="stat-label">Assists</div><div class="stat-value">${player.totalAssists ?? 0}</div></div>
+                        <div class="stat-item"><div class="stat-label">Average Grade (1-10)</div><div class="stat-value">${ratingSummary.averageRating10 ?? "-"} (${ratingSummary.matchesPlayed} matches)</div></div>
+                    </div>
+                    <p style="margin-top:16px; color:#9aa0a6; text-align:center;">Detailed skills are hidden for players outside your team.</p>
+                </div>`;
             }
+
+            const backButton = document.getElementById("back-to-league-team");
+            if (backButton) {
+                backButton.addEventListener("click", () => loadLeagueTeam(teamId, teamName));
+            }
+        } catch (err) {
+            console.error("Failed to load player profile:", err);
+            mainContent.innerHTML = `
+                <div class="manager-card">
+                    <button id="back-to-league-team-fallback" class="back-to-dashboard">Back</button>
+                    <h2>Error</h2>
+                    <p>Could not load player profile.</p>
+                </div>`;
+            const backButton = document.getElementById("back-to-league-team-fallback");
+            if (backButton) {
+                backButton.addEventListener("click", () => loadLeagueTeam(teamId, teamName));
+            }
+        }
+    }
+        function renderFixtures(fixtures, title) {
+        renderFixturesView(fixtures, title);
+    }
+    function renderLeagueMatches(matches) {
+        renderLeagueMatchesView(matches, { loadMatch });
+    }
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu
         window.open(imageUrl, '_blank');
@@ -1240,5 +1262,24 @@ import { authFetch } from './auth.js';
     window.renderPlayers = renderPlayers;
     window.renderMatches = renderMatches;
     window.renderTable = renderTable;
+    window.loadLeagueTeam = loadLeagueTeam;
+    window.loadLeagueTeamPlayer = loadLeagueTeamPlayer;
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

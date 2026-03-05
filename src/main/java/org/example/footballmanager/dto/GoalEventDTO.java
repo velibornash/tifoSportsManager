@@ -20,6 +20,7 @@ public class GoalEventDTO extends MatchEventDTO {
         dto.setScorerName(g.getScorer() != null ? g.getScorer().getName() : "N/A");
         dto.setAssistantName(g.getAssistant() != null ? g.getAssistant().getName() : null);
         dto.setScoreAfterGoal(g.getScoreAfterGoal());
+        dto.setScored(g.isScored());
         return dto;
     }
 }

@@ -26,14 +26,25 @@ public class RuntimeSaveToDB {
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
+
     @Autowired
     private EntityManager em;
+
     @Autowired
     private MatchTickStateRepository tickRepository;
-    @Autowired
 
+    @Autowired
     private ObjectMapper objectMapper;
-    public RuntimeSaveToDB(PlayerRepository playerRepository, MatchStatisticEngine matchStatisticEngineHandling, MatchRepository matchRepository, CompetitionRepository competitionRepository, SeasonRepository seasonRepository, SeasonCompetitionRepository seasonCompetitionRepository, CompetitionEntryRepository competitionEntryRepository) {
+
+    public RuntimeSaveToDB(
+            PlayerRepository playerRepository,
+            MatchStatisticEngine matchStatisticEngineHandling,
+            MatchRepository matchRepository,
+            CompetitionRepository competitionRepository,
+            SeasonRepository seasonRepository,
+            SeasonCompetitionRepository seasonCompetitionRepository,
+            CompetitionEntryRepository competitionEntryRepository
+    ) {
         this.playerRepository = playerRepository;
         this.matchStatisticEngineHandling = matchStatisticEngineHandling;
         this.matchRepository = matchRepository;
@@ -44,139 +55,71 @@ public class RuntimeSaveToDB {
     }
 
     private void batchSaveMatchEvents(Match match, List<MatchEvent> events, List<Player> homePlayers, List<Player> awayPlayers) {
-        int batchSize = 50; // PostgreSQL safe
-        int i = 0;
-
-        for (MatchEvent e : events) {
-            e.setMatch(match);
-            if(e instanceof GoalEvent g)
-            {
-                    // --- ažuriraj scorer ---
-                    if (g.getScorer() != null) {
-                        Player scorer = g.getScorer();
-                        scorer.setTotalGoals(scorer.getTotalGoals() + 1);
-                        playerRepository.save(scorer);
-/*                        // update u runtime listi
-                        homePlayers.stream()
-                                .filter(p -> p.getId().equals(scorer.getId()))
-                                .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
-                        awayPlayers.stream()
-                                .filter(p -> p.getId().equals(scorer.getId()))
-                                .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));*/
-                    }
-                    // --- ažuriraj assistant ---
-                    if (g.getAssistant() != null) {
-                        Player assistant = g.getAssistant();
-                        assistant.setTotalAssists(assistant.getTotalAssists() + 1);
-                        playerRepository.save(assistant);
-/*                        // update u runtime listi
-                        homePlayers.stream()
-                                .filter(p -> p.getId().equals(assistant.getId()))
-                                .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
-
-                        awayPlayers.stream()
-                                .filter(p -> p.getId().equals(assistant.getId()))
-                                .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));*/
-                    }
+        for (MatchEvent event : events) {
+            event.setMatch(match);
+            if (event instanceof GoalEvent goal) {
+                if (!goal.isScored()) {
+                    em.persist(event);
+                    continue;
+                }
+                if (goal.getScorer() != null) {
+                    Player scorer = goal.getScorer();
+                    scorer.setTotalGoals(scorer.getTotalGoals() + 1);
+                    playerRepository.save(scorer);
+                }
+                if (goal.getAssistant() != null) {
+                    Player assistant = goal.getAssistant();
+                    assistant.setTotalAssists(assistant.getTotalAssists() + 1);
+                    playerRepository.save(assistant);
+                }
             }
-            em.merge(e);         // detached entities + merge
-
-            if (++i % batchSize == 0) {
-                em.flush();
-                em.clear();
-            }
+            em.persist(event);
         }
 
         em.flush();
-        em.clear();
-
     }
-    private void batchSaveGoalEvents(Match match, List<GoalEvent> goals, List<Player> homePlayers, List<Player> awayPlayers) {
-        int batchSize = 50; // PostgreSQL safe
-        int i = 0;
-        for (GoalEvent g : goals) {
-            g.setMatch(match);
 
-            // --- ažuriraj scorer ---
-            if (g.getScorer() != null) {
-                Player scorer = g.getScorer();
-                scorer.setTotalGoals(scorer.getTotalGoals() + 1);
-                playerRepository.save(scorer);
-                // update u runtime listi
-                homePlayers.stream()
-                        .filter(p -> p.getId().equals(scorer.getId()))
-                        .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
-                awayPlayers.stream()
-                        .filter(p -> p.getId().equals(scorer.getId()))
-                        .forEach(p -> p.setTotalGoals(scorer.getTotalGoals()));
-            }
-            // --- ažuriraj assistant ---
-            if (g.getAssistant() != null) {
-                Player assistant = g.getAssistant();
-                assistant.setTotalAssists(assistant.getTotalAssists() + 1);
-                playerRepository.save(assistant);
-                // update u runtime listi
-                homePlayers.stream()
-                        .filter(p -> p.getId().equals(assistant.getId()))
-                        .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
-
-                awayPlayers.stream()
-                        .filter(p -> p.getId().equals(assistant.getId()))
-                        .forEach(p -> p.setTotalAssists(assistant.getTotalAssists()));
-            }
-            em.persist(g);
-            if (++i % batchSize == 0) {
-                em.flush();
-                em.clear();
-            }
-        }
-        em.flush();
-        em.clear();
-    }
     public Match finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers, MatchRuntime rt) {
         rt.homeTeam = match.getHomeTeam();
         rt.awayTeam = match.getAwayTeam();
 
-        // --- batch merge svih ostalih eventa (kartoni, povrede, itd.) ---
         batchSaveMatchEvents(match, rt.runtimeEvents, homePlayers, awayPlayers);
-        // --- batch save golova i update igrača ---
-        //batchSaveGoalEvents(match, rt.runtimeGoals, homePlayers, awayPlayers);
-        // --- update meča ---
+
         match.setHomeGoals(rt.homeGoals);
         match.setAwayGoals(rt.awayGoals);
-        matchRepository.save(match); // 🔹 sigurni save
+        matchRepository.save(match);
 
-        // --- simulacija kartona/povreda ---
         matchStatisticEngineHandling.simulateInjuriesAndCards(homePlayers, match);
         matchStatisticEngineHandling.simulateInjuriesAndCards(awayPlayers, match);
 
-        // --- ocene igrača i stats ---
-        homePlayers = matchStatisticEngineHandling.assignRatings(homePlayers, rt.runtimeGoals); // koristimo runtime, ne bazu
+        homePlayers = matchStatisticEngineHandling.assignRatings(homePlayers, rt.runtimeGoals);
         awayPlayers = matchStatisticEngineHandling.assignRatings(awayPlayers, rt.runtimeGoals);
 
-        matchStatisticEngineHandling.savePlayerStats(match, homePlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
-                        .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
-                rt.runtimeEvents.stream()
-                        .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+        matchStatisticEngineHandling.savePlayerStats(
+                match,
+                homePlayers,
+                rt.runtimeGoals,
+                rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
+                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
         );
 
-        matchStatisticEngineHandling.savePlayerStats(match, awayPlayers, rt.runtimeGoals, rt.runtimeEvents.stream()
-                        .filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
-                rt.runtimeEvents.stream()
-                        .filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+        matchStatisticEngineHandling.savePlayerStats(
+                match,
+                awayPlayers,
+                rt.runtimeGoals,
+                rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
+                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
         );
 
-        // NOVO: snimi tick pozicije u bazu (samo jednom, na kraju)
         batchSaveTickPositions(match, rt);
-        // --- za report odmah koristimo runtimeGoalove + runtimeEvente ---
+
         System.out.println(matchStatisticEngineHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
         updateLeagueTable(match, rt);
         return match;
     }
-    // Na kraju finalizeMatchResult
-    private void updateLeagueTable(Match match, MatchRuntime rt) {
 
-        // Pretpostavimo da su timovi u Superligi (id=1) – kasnije možeš naći pravu ligu
+    private void updateLeagueTable(Match match, MatchRuntime rt) {
+        // Demo flow currently updates Superliga Srbija standings directly.
         Competition superLiga = competitionRepository.findByNameAndCountryIsoCode("Superliga Srbije", "SRB").orElse(null);
         if (superLiga == null) return;
 
@@ -186,35 +129,36 @@ public class RuntimeSaveToDB {
         SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, 2025).orElse(null);
         if (sc == null) return;
 
-        // Ažuriraj home tim
         CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getHomeTeam()).orElse(null);
         if (homeEntry != null) {
             int points = 0;
-            if (rt.homeGoals > rt.awayGoals) {points = 3;}
-            else if (rt.awayGoals == rt.homeGoals) {points = 1;}
-            homeEntry.setPoints(homeEntry.getPoints() + points); // npr. 3 za pobedu, 1 za remi
+            if (rt.homeGoals > rt.awayGoals) points = 3;
+            else if (rt.awayGoals == rt.homeGoals) points = 1;
+            homeEntry.setPoints(homeEntry.getPoints() + points);
             homeEntry.setGoalsScored(homeEntry.getGoalsScored() + rt.homeGoals);
             homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + rt.awayGoals);
             competitionEntryRepository.save(homeEntry);
         }
 
-        // Ažuriraj away tim (isto)
         CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getAwayTeam()).orElse(null);
         if (awayEntry != null) {
             int points = 0;
-            if (rt.homeGoals < rt.awayGoals) {points = 3;}
-            else if (rt.awayGoals == rt.homeGoals) {points = 1;}
+            if (rt.homeGoals < rt.awayGoals) points = 3;
+            else if (rt.awayGoals == rt.homeGoals) points = 1;
             awayEntry.setPoints(awayEntry.getPoints() + points);
             awayEntry.setGoalsScored(awayEntry.getGoalsScored() + rt.awayGoals);
             awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + rt.homeGoals);
             competitionEntryRepository.save(awayEntry);
         }
     }
+
     private void batchSaveTickPositions(Match match, MatchRuntime rt) {
         int batchSize = 50;
         int i = 0;
 
-        for (MatchRuntime.TickPositionSnapshot snapshot : rt.positionHistory) {
+        tickRepository.deleteByMatch(match);
+
+        for (MatchRuntime.TickState snapshot : rt.tickStates) {
             MatchTickState state = new MatchTickState();
             state.setMatch(match);
             state.setTick(snapshot.tick);
@@ -222,8 +166,8 @@ public class RuntimeSaveToDB {
 
             try {
                 state.setPlayerPositionsJson(objectMapper.writeValueAsString(snapshot.players));
-                state.setBallPositionJson(objectMapper.writeValueAsString(rt.ballHistory.get(i))); // sinhronizuj sa indeksom
-                state.setCurrentCarrierId(rt.currentCarrier != null ? rt.currentCarrier.getId() : null);
+                state.setBallPositionJson(objectMapper.writeValueAsString(snapshot.ball));
+                state.setCurrentCarrierId(snapshot.carrierId >= 0 ? snapshot.carrierId : null);
 
                 em.persist(state);
 
@@ -232,12 +176,12 @@ public class RuntimeSaveToDB {
                     em.clear();
                 }
             } catch (JsonProcessingException e) {
-                log.error("Greška pri serijalizaciji tick stanja za meč {} tick {}", match.getId(), snapshot.tick, e);
+                log.error("Failed to serialize tick state for match {} tick {}", match.getId(), snapshot.tick, e);
             }
         }
 
         em.flush();
         em.clear();
-        log.info("Snimljeno {} tick stanja za meč {}", rt.positionHistory.size(), match.getId());
+        log.info("Saved {} tick states for match {}", rt.tickStates.size(), match.getId());
     }
 }

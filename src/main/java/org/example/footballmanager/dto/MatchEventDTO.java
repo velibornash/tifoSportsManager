@@ -15,6 +15,8 @@ import lombok.Data;
         @JsonSubTypes.Type(value = InjuryEventDTO.class, name = "injury"),
         @JsonSubTypes.Type(value = OffsideEventDTO.class, name = "offside"),
         @JsonSubTypes.Type(value = CornerEventDTO.class, name = "corner"),
+        @JsonSubTypes.Type(value = ThrowInEventDTO.class, name = "throwIn"),
+        @JsonSubTypes.Type(value = GoalKickEventDTO.class, name = "goalKick"),
         @JsonSubTypes.Type(value = FreeKickEventDTO.class, name = "freeKick"),
         @JsonSubTypes.Type(value = ShotOnTargetEventDTO.class, name = "shotOnTarget"),
         @JsonSubTypes.Type(value = ShotOffTargetEventDTO.class, name = "shotOffTarget"),
@@ -28,16 +30,14 @@ public abstract class MatchEventDTO {
     private int minute;
     private String description;
 
-    // Zajednička polja za igrača (popunjavaju se kada postoji relevantan igrač)
     private String playerName;
     private Integer playerAge;
-    private Double playerHeight;      // u metrima (npr. 1.85)
-    private Double playerWeight;      // u kg (npr. 78.5)
+    private Double playerHeight;
+    private Double playerWeight;
     private Integer playerTotalGoals;
     private Integer playerTotalAssists;
-    private String playerPosition;    // "STRIKER", "MIDFIELDER", itd.
+    private String playerPosition;
     private Integer playerRating;
 
-    // Dodatna polja koja nisu vezana za igrača, ali mogu biti korisna
     private String teamName;
 }

@@ -12,30 +12,24 @@ import org.example.footballmanager.model.Team;
 @Entity
 @Getter
 @Setter
-public class GoalEvent extends MatchEvent {
+public class GoalKickEvent extends MatchEvent {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Sprečava ciklus preko team → players
+    @JsonIgnore
     private Team team;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Sprečava ciklus preko scorer → team → players
-    private Player scorer;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Isto za assistant
-    private Player assistant;
-
-    private String scoreAfterGoal;
-    private boolean scored;
+    @JsonIgnore
+    private Player goalkeeper;
 
     @Override
     public void apply() {
-        scored = true;
     }
 
     @Override
     public String getDescription() {
-        return String.format("%d' ⚽ %s", getMinute(), scorer != null ? scorer.getName() : "N/A");
+        String gkName = goalkeeper != null ? goalkeeper.getName() : "Goalkeeper";
+        String teamName = team != null ? team.getName() : "Unknown team";
+        return minute + "' Goal kick for " + teamName + " (" + gkName + ")";
     }
 }

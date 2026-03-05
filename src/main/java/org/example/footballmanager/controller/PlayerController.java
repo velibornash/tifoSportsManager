@@ -3,7 +3,6 @@ package org.example.footballmanager.controller;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.repository.PlayerRepository;
-import org.example.footballmanager.util.players.PlayerMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,25 +18,23 @@ import java.util.stream.Collectors;
 public class PlayerController {
 
     private final PlayerRepository playerRepository;
-    private final PlayerMapper playerMapper;
 
-    public PlayerController(PlayerRepository playerRepository, PlayerMapper playerMapper) {
+    public PlayerController(PlayerRepository playerRepository) {
         this.playerRepository = playerRepository;
-        this.playerMapper = playerMapper;
     }
 
     @GetMapping
     public List<PlayerDTO> getAllPlayers() {
         return playerRepository.findAll()
                 .stream()
-                .map(playerMapper::toDTO)
+                .map(PlayerDTO::from)
                 .collect(Collectors.toList());
     }
 
     @GetMapping("/{id}")
     public PlayerDTO getPlayer(@PathVariable Long id) {
         Optional<Player> player = playerRepository.findById(id);
-        return player.map(playerMapper::toDTO)
+        return player.map(PlayerDTO::from)
                 .orElseThrow(() -> new RuntimeException("Player not found"));
     }
 

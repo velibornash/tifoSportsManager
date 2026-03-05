@@ -17,6 +17,7 @@ public class MatchEventFlatDTO {
     private String scorer;
     private String assistant;
     private String scoreAfterGoal;
+    private Boolean goalScored;
 
     private String scoreTeam;
 

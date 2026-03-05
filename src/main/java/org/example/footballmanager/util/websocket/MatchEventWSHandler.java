@@ -29,13 +29,13 @@ public class MatchEventWSHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         Long matchId = getMatchId(session);
         if (matchId == null || matchId <= 0) {
-            log.warn("Nevalidan matchId u URL-u – zatvaram sesiju {}", session.getId());
+            log.warn("Invalid matchId in URL, closing session {}", session.getId());
             session.close(CloseStatus.BAD_DATA);
             return;
         }
 
         sessions.computeIfAbsent(matchId, id -> ConcurrentHashMap.newKeySet()).add(session);
-        log.info("Nova WS sesija {} za match {} – aktivnih sesija: {}",
+        log.info("New WS session {} for match {} - active sessions: {}",
                 session.getId(), matchId, sessions.get(matchId).size());
     }
 
@@ -48,17 +48,17 @@ public class MatchEventWSHandler extends TextWebSocketHandler {
                 matchSessions.remove(session);
                 if (matchSessions.isEmpty()) {
                     sessions.remove(matchId);
-                    log.info("Poslednja sesija zatvorena za match {} – mapa uklonjena", matchId);
+                    log.info("Last session closed for match {} - removed from session map", matchId);
                 }
             }
         }
-        log.info("Sesija zatvorena: {} (status: {})", session.getId(), status);
+        log.info("Session closed: {} (status: {})", session.getId(), status);
     }
 
     public void broadcast(Long matchId, Object event) {
         Set<WebSocketSession> matchSessions = sessions.get(matchId);
         if (matchSessions == null || matchSessions.isEmpty()) {
-            // log.debug("Nema aktivnih sesija za match {} – preskačem broadcast eventa", matchId);
+            // log.debug("No active sessions for match {} - skipping event broadcast", matchId);
             return;
         }
 
@@ -76,7 +76,7 @@ public class MatchEventWSHandler extends TextWebSocketHandler {
                         iterator.remove();
                     }
                 } catch (IOException e) {
-                    log.warn("Uklanjam neaktivnu sesiju {} za match {}", s.getId(), matchId);
+                    log.warn("Removing inactive session {} for match {}", s.getId(), matchId);
                     iterator.remove();
                 }
             }

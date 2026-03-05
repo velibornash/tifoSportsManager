@@ -8,7 +8,9 @@ import org.example.footballmanager.dto.MatchEventFlatDTO;
 import org.example.footballmanager.repository.MatchRepository;
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @SuppressWarnings("unchecked")
 @Slf4j
@@ -23,22 +25,23 @@ public class MatchDetailService {
 
     public List<MatchEventFlatDTO> getMatchEventsFlat(Long matchId) {
 
-        log.info("Zahtev za detalje meča ID: {}", matchId);
+        log.info("Request for match details, ID: {}", matchId);
 
         boolean exists = matchRepository.existsById(matchId);
-        log.info("Meč ID {} postoji u bazi? {}", matchId, exists);
+        log.info("Does match ID {} exist in database? {}", matchId, exists);
 
         if (!exists) {
-            log.warn("Meč ID {} NE POSTOJI u bazi!", matchId);
+            log.warn("Match ID {} does not exist in database.", matchId);
             throw new RuntimeException("Match not found: " + matchId);
         }
 
-        log.info("Izvršavam native upit za matchId={}", matchId);
+        log.info("Executing native query for matchId={}", matchId);
 
         List<Object[]> results = entityManager.createNativeQuery("""
         SELECT m.id MatchID, m.match_date MatchDate, hot.name HomeTeam, m.home_goals HomeGoals, awt.name AwayTeam, m.away_goals AwayGoals,
+        me.id EventId,
         me.event_minute MatchMinute, me.event_type EventType,
-        scorer.name Scorer, assistant.name Assistant, ge.score_after_goal ScoreAfterGoal, scoreTeam.name ScoreTeam,
+        scorer.name Scorer, assistant.name Assistant, ge.score_after_goal ScoreAfterGoal, ge.scored GoalScored, scoreTeam.name ScoreTeam,
         possesionTeam.name PossesionTeam, yellowCardTeam.name YellowCardTeam, redCardTeam.name RedCardteam,
         penaltyTeam.name PenaltyTeam,cornerTeam.name CornerTeam,freeKickTeam.name FreeKickTeam,
         cornerTaker.name CornerTaker,fkTaker.name FreeKickTaker,
@@ -91,9 +94,11 @@ public class MatchDetailService {
                 .setParameter("matchId", matchId)
                 .getResultList();
 
-        log.info("Upit vratio {} redova", results.size());
+        log.info("Query returned {} rows", results.size());
 
         List<MatchEventFlatDTO> dtos = new ArrayList<>();
+        Set<Long> seenEventIds = new LinkedHashSet<>();
+        Set<String> seenGoalSignatures = new LinkedHashSet<>();
         for (int rowIndex = 0; rowIndex < results.size(); rowIndex++) {
             Object[] row = results.get(rowIndex);
             try {
@@ -110,11 +115,18 @@ public class MatchDetailService {
                 dto.setHomeGoals(safeInt(row[i++]));
                 dto.setAwayTeam(safeString(row[i++]));
                 dto.setAwayGoals(safeInt(row[i++]));
+
+                Long eventId = safeLong(row[i++]);
+                if (eventId != null && !seenEventIds.add(eventId)) {
+                    continue;
+                }
+
                 dto.setMatchMinute(safeInt(row[i++]));
                 dto.setEventType(safeString(row[i++]));
                 dto.setScorer(safeString(row[i++]));
                 dto.setAssistant(safeString(row[i++]));
                 dto.setScoreAfterGoal(safeString(row[i++]));
+                dto.setGoalScored(safeBoolean(row[i++]));
                 dto.setScoreTeam(safeString(row[i++]));
                 dto.setPossessionTeam(safeString(row[i++]));
                 dto.setYellowCardTeam(safeString(row[i++]));
@@ -134,6 +146,19 @@ public class MatchDetailService {
                 dto.setShotOffTargetPlayer(safeString(row[i++]));
                 dto.setShotOnTargetTeam(safeString(row[i++]));
                 dto.setShotOffTargetTeam(safeString(row[i]));
+
+                if ("GoalEvent".equals(dto.getEventType())) {
+                    String goalSignature = String.join("|",
+                            String.valueOf(dto.getMatchMinute()),
+                            safeString(dto.getScorer()),
+                            safeString(dto.getAssistant()),
+                            safeString(dto.getScoreAfterGoal()),
+                            String.valueOf(dto.getGoalScored())
+                    );
+                    if (!seenGoalSignatures.add(goalSignature)) {
+                        continue;
+                    }
+                }
 
                 String eventType = dto.getEventType();
                 String team = null;
@@ -161,11 +186,11 @@ public class MatchDetailService {
                 dto.setEventTeam(team);
                 dtos.add(dto);
             } catch (Exception ex) {
-                log.error("Greška pri mapiranju reda {} za matchId={}: {}", rowIndex, matchId, ex.getMessage(), ex);
+                log.error("Row mapping error at index {} for matchId={}: {}", rowIndex, matchId, ex.getMessage(), ex);
             }
         }
 
-        log.info("Uspešno mapirano {} eventa", dtos.size());
+        log.info("Successfully mapped {} events", dtos.size());
         return dtos;
     }
 
@@ -173,5 +198,17 @@ public class MatchDetailService {
     private Long safeLong(Object obj) { return obj != null ? ((Number) obj).longValue() : null; }
     private Integer safeInt(Object obj) { return obj != null ? ((Number) obj).intValue() : null; }
     private String safeString(Object obj) { return obj != null ? obj.toString() : null; }
-    private Boolean safeBoolean(Object obj) { return obj != null ? (Boolean) obj : null; }
+    private Boolean safeBoolean(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof Boolean b) {
+            return b;
+        }
+        if (obj instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        return Boolean.parseBoolean(obj.toString());
+    }
 }
+

@@ -1,0 +1,410 @@
+
+.match-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.match-row:hover {
+    background: rgba(42,140,74,0.2);
+}
+
+.score {
+    font-weight: bold;
+    color: #2a8c4a;
+}
+
+.league-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.league-table th,
+.league-table td {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+.league-table tr:hover {
+    background: rgba(42,140,74,0.15);
+}
+/* ─── CLUB PROFILE ─── */
+.profile-card {
+    background: rgba(30,30,30,0.95);
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+    max-width: 900px;
+    margin: 20px auto;
+    display: flex;
+    gap: 30px;
+    color: #eee;
+    flex-wrap: wrap;
+}
+
+.profile-avatar {
+    flex: 0 0 180px;
+    height: 180px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid #2a8c4a;
+}
+
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.profile-info h2 {
+    margin: 0;
+    font-size: 28px;
+    color: #2a8c4a;
+}
+
+.profile-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #ccc;
+}
+
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.profile-stats div {
+    background: rgba(40,40,40,0.9);
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.profile-stats div span {
+    display: block;
+    font-weight: bold;
+    font-size: 16px;
+    color: #2a8c4a;
+}
+
+.profile-stats div label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 4px;
+}
+.back-to-dashboard {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #2a8c4a;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 1em;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.back-to-dashboard:hover {
+    background: #36a85a;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.back-to-dashboard:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+/* Club Profile - FM/FIFA stil */
+.club-profile-card {
+    background: linear-gradient(145deg, rgba(20,20,20,0.95), rgba(30,30,30,0.95));
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+    max-width: 1000px;
+    margin: 20px auto;
+    color: #eee;
+    position: relative;
+}
+
+.club-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.club-logo-container {
+    flex-shrink: 0;
+}
+
+.club-logo {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 5px solid #2a8c4a;
+    box-shadow: 0 6px 20px rgba(42,140,74,0.4);
+    object-fit: cover;
+    background: #111;
+}
+
+.club-title h1 {
+    margin: 0;
+    font-size: 2.8rem;
+    color: #2a8c4a;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+}
+
+.club-title .club-subtitle {
+    margin: 8px 0 0 0;
+    color: #aaa;
+    font-size: 1.1rem;
+}
+
+/* Statistike u karticama */
+.club-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    background: rgba(40,40,40,0.9);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #444;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 30px rgba(42,140,74,0.3);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: #2a8c4a;
+}
+
+.stat-value {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: white;
+}
+
+.stat-label {
+    font-size: 1rem;
+    color: #aaa;
+    margin-top: 6px;
+}
+
+.back-to-dashboard-profile {
+    position: absolute;
+    bottom: 20px;          /* dole */
+    right: 20px;           /* desno */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(42, 140, 74, 0.9);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    z-index: 10;
+}
+
+.back-to-dashboard-profile:hover {
+    background: #36a85a;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+}
+
+.back-to-dashboard-profile:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+/* Recent Matches sekcija */
+.recent-matches-section {
+    margin: 30px 0;
+}
+
+.recent-matches-section h3 {
+    margin-bottom: 15px;
+    color: #2a8c4a;
+    border-left: 4px solid #2a8c4a;
+    padding-left: 12px;
+}
+
+.recent-match {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recent-match {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    background: rgba(255,255,255,0.04);  /* providno, isto kao ostali match-row */
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid rgba(255,255,255,0.08);  /* lagani obrub za dubinu */
+}
+
+.recent-match:hover {
+    background: rgba(42,140,74,0.08);  /* vrlo lagani zeleni hover, ne dreči */
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Badge (W/D/L) - sada glavni fokus */
+.result-badge {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 1.1em;
+    text-align: center;
+    margin: 0 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    transition: transform 0.2s;
+}
+
+.win  { background: #4CAF50; color: white; }
+.draw { background: #ff9800; color: white; }
+.loss { background: #f44336; color: white; }
+
+recent-match:hover .result-badge {
+    transform: scale(1.15);
+}
+
+
+/* Score - neka bude neutralan, badge nosi boju */
+.score {
+    font-weight: bold;
+    min-width: 60px;
+    text-align: center;
+    color: #eee;  /* neutralno sivo-belo, ne preuzima boju */
+}
+.match-info.clickable {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.match-info.clickable:hover {
+    transform: scale(1.03);
+    background: rgba(42,140,74,0.1);
+    border-radius: 10px;
+    padding: 10px;
+}
+.clickable-stadium {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clickable-stadium:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(42,140,74,0.4);
+    background: rgba(42,140,74,0.15);
+}
+.stadium-button {
+    width: 100%;
+    height: 180px;                    /* visina kartice */
+    background: url('/images/dunjareal.png') center/cover no-repeat;  /* slika u pozadini */
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.25s ease;
+}
+
+.stadium-button:hover {
+    transform: scale(1.04);
+    box-shadow: 0 10px 30px rgba(42,140,74,0.5);
+}
+
+.stadium-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);     /* poluprovidna tama preko slike */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-align: center;
+    padding: 15px;
+    transition: background 0.3s;
+}
+
+.stadium-button:hover .stadium-overlay {
+    background: rgba(0,0,0,0.35);     /* svetlije na hover */
+}
+
+.stadium-overlay .stat-icon {
+    font-size: 3rem;
+    margin-bottom: 8px;
+}
+
+.stadium-overlay .stat-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.stadium-overlay .stat-label {
+    font-size: 1rem;
+    opacity: 0.9;
+}
+
+/* ─── ACCORDION (univerzalni, radi na desktopu i mobilnom) ─── */
+.accordion,
+.mobile-accordion {
+    margin-bottom: 8px;
+}
+
+.accordion-header {
+    background: #222;
+    padding: 16px 20px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.25s, transform 0.15s;
+    user-select: none;
+    color: #eee;
+}

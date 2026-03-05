@@ -51,6 +51,7 @@ function updateRoundInfo() {
 function renderPage(page) {
     const main = document.getElementById('main-content');
     main.innerHTML = '';
+    closeDesktopSidebars();
 
     const card = document.createElement('div');
     card.className = 'manager-card';
@@ -383,10 +384,17 @@ function getPosition(teamId) {
 }
 
 function fixtureDetail(round, homeTeamId, awayTeamId) {
-    let match = gameState?.matchHistory?.find(m => m.round === round);
-    if (!match && allRoundResults[round]) {
+    let match = null;
+    if (allRoundResults[round]) {
         match = allRoundResults[round].find(m =>
             m.homeTeamId === homeTeamId && m.awayTeamId === awayTeamId);
+    }
+    if (!match) {
+        match = gameState?.matchHistory?.find(m =>
+            m.round === round && m.homeTeamId === homeTeamId && m.awayTeamId === awayTeamId);
+    }
+    if (!match) {
+        match = gameState?.matchHistory?.find(m => m.round === round);
     }
     if (match) {
         renderMatchDetailFull(match, () => renderPage('schedule'));
@@ -685,6 +693,27 @@ function toggleMobileMenu() {
     overlay?.classList.toggle('active');
 }
 
+function closeDesktopSidebars() {
+    document.querySelectorAll('#tifoClubSidebar, #tifoCompetitionsSidebar, #tifoStatsSidebar')
+        .forEach(el => el.classList.remove('active'));
+}
+
+function toggleSidebar(id) {
+    const sidebars = document.querySelectorAll('#tifoClubSidebar, #tifoCompetitionsSidebar, #tifoStatsSidebar');
+    sidebars.forEach(sb => {
+        if (sb.id === id) sb.classList.toggle('active');
+        else sb.classList.remove('active');
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const clickedInTopMenu = e.target.closest('.top-menu');
+    const clickedInSidebar = e.target.closest('#tifoClubSidebar, #tifoCompetitionsSidebar, #tifoStatsSidebar');
+    if (!clickedInTopMenu && !clickedInSidebar) {
+        closeDesktopSidebars();
+    }
+});
+
 // ─── Expose to global scope (for onclick handlers in HTML) ───
 window.tifoNav = renderPage;
 window.tifoNextRound = nextRound;
@@ -699,3 +728,5 @@ window.tifoViewPlayer = viewPlayerFromTeam;
 window.tifoFixtureDetail = fixtureDetail;
 window.tifoFixturePreview = fixturePreview;
 window.tifoMatchTab = (tab) => showMatchTab(tab);
+window.toggleSidebar = toggleSidebar;
+

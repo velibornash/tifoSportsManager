@@ -10,8 +10,8 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "match_tick_states")
-@NoArgsConstructor          // dodaje prazan konstruktor
-@AllArgsConstructor         // dodaje konstruktor sa svim poljima
+@NoArgsConstructor
+@AllArgsConstructor
 @Getter
 @Setter
 public class MatchTickState {
@@ -25,24 +25,24 @@ public class MatchTickState {
     private Match match;
 
     @Column(name = "tick", nullable = false)
-    private int tick;  // broj tick-a (npr. 0..900)
+    private int tick;  // Tick number (e.g. 0..900)
 
     @Column(name = "minute")
-    private int minute;  // opciono, za lakše pretrage po minutu
+    private int minute;  // Optional helper for minute-based queries
 
     @Column(name = "player_positions_json", columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)                  // ← OVO JE KLJUČNO
-    private String playerPositionsJson;  // JSON niz PlayerPositionDTO
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String playerPositionsJson;  // JSON array of PlayerPositionDTO
 
     @Column(name = "ball_position_json", columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)                  // ← OVO JE KLJUČNO
-    private String ballPositionJson;     // JSON objekat BallPositionDTO
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String ballPositionJson;     // JSON object of BallPositionDTO
 
     @Column(name = "current_carrier_id")
-    private Integer currentCarrierId;    // opciono – ID nosioca lopte u tom trenutku
+    private Integer currentCarrierId;    // Optional: id of the ball carrier at this tick
 
 
-    // Konstruktor za lakše kreiranje
+    // Convenience constructor
     public MatchTickState(Match match, int tick, String playersJson, String ballJson, Integer carrierId) {
         this.match = match;
         this.tick = tick;

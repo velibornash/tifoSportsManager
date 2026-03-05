@@ -5,5 +5,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class VARReviewEventDTO  extends MatchEventDTO {
     private String decision;
+    private String reviewTarget;
+    private String overturnReason;
     private boolean isSecondYellow;
 }

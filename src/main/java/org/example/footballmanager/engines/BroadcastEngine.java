@@ -4,12 +4,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.GameStateDTO;
 import org.example.footballmanager.model.MatchRuntime;
+import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.util.events.MatchEventMapper;
 import org.example.footballmanager.util.websocket.MatchEventWSHandler;
 import org.example.footballmanager.util.websocket.PositionWSHandler;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Component
 @Slf4j
@@ -21,36 +24,64 @@ public class BroadcastEngine {
     private final MatchEventMapper mapper;
 
     public void broadcastState(long matchId, MatchRuntime rt) {
-        // KLJUČNA PROVERA: da li ima ikoga ko gleda?
-        if (!positionWsHandler.hasActiveSessions(matchId)) {
-            // log.debug("Nema aktivnih sesija za match {} – preskačem broadcast pozicija", matchId);
-            return;
-        }
-
         GameStateDTO state = new GameStateDTO(
-                rt.tick / 10,
+                rt.tick / 10 + 1,
                 new ArrayList<>(rt.players),
                 rt.ball
         );
+        broadcastState(matchId, state);
+    }
 
+    public void broadcastState(long matchId, GameStateDTO state) {
+        if (!positionWsHandler.hasActiveSessions(matchId)) {
+            return;
+        }
         positionWsHandler.broadcast(matchId, state);
     }
 
     public void broadcastMinuteEvents(long matchId, MatchRuntime rt, int minute) {
-        // KLJUČNA PROVERA: da li ima ikoga ko gleda?
+        List<MatchEvent> events = rt.runtimeEvents.stream()
+                .filter(e -> e.getMinute() == minute)
+                .toList();
+        broadcastMinuteEvents(matchId, events, minute);
+    }
+
+    public void broadcastMinuteEvents(long matchId, List<MatchEvent> events, int minute) {
         if (!eventWsHandler.hasActiveSessions(matchId)) {
-            // log.debug("Nema aktivnih sesija za match {} – preskačem broadcast eventa", matchId);
             return;
         }
 
-        rt.runtimeEvents.stream()
-                .filter(e -> e.getMinute() == minute)
-                .forEach(e -> {
-                    log.info("[{}'] Event: {}", minute, e.getDescription());
-                    eventWsHandler.broadcast(
-                            matchId,
-                            mapper.toDto(e)
-                    );
-                });
+        events.forEach(e -> {
+            log.info("[{}'] Event: {}", minute, e.getDescription());
+            eventWsHandler.broadcast(matchId, mapper.toDto(e));
+        });
+    }
+
+    public void broadcastPossession(
+            long matchId,
+            int minute,
+            String teamName,
+            String playerName,
+            Integer playerAge,
+            Double playerHeight,
+            Double playerWeight,
+            Integer playerTotalGoals,
+            Integer playerTotalAssists
+    ) {
+        if (!eventWsHandler.hasActiveSessions(matchId)) {
+            return;
+        }
+
+        eventWsHandler.broadcast(matchId, Map.of(
+                "type", "possession",
+                "minute", minute,
+                "teamName", teamName,
+                "playerName", playerName != null ? playerName : "",
+                "playerAge", playerAge != null ? playerAge : 0,
+                "playerHeight", playerHeight != null ? playerHeight : 0.0,
+                "playerWeight", playerWeight != null ? playerWeight : 0,
+                "playerTotalGoals", playerTotalGoals != null ? playerTotalGoals : 0,
+                "playerTotalAssists", playerTotalAssists != null ? playerTotalAssists : 0
+        ));
     }
 }

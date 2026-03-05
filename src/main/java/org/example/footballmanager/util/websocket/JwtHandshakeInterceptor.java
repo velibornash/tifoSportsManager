@@ -43,7 +43,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
             String username = jwtUtil.getUsernameFromToken(token);
             attributes.put("username", username);
 
-            log.info("WS authenticated user: {}", username);
+            //log.info("WS authenticated user: {}", username);
             return true;
         }
 

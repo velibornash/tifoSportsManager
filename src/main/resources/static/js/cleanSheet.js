@@ -579,9 +579,12 @@ async function loadCSMatch(matchId, caller) {
 
             goals.forEach(g => {
                 const assist = g.assistant ? ` <span style="color:#888;">(asist: ${g.assistant})</span>` : '';
+                const disallowed = g.goalScored === false;
+                const lineColor = disallowed ? "#ffb3b3" : "inherit";
+                const verdict = disallowed ? ` <span style="color:#ff6b6b; font-weight:600;">DISALLOWED (VAR)</span>` : "";
                 html += `
                 <li style="padding:12px; margin:8px 0; background:rgba(255,255,255,0.05); border-radius:8px;">
-                    <strong>${g.matchMinute}'</strong> ⚽ ${g.scorer || "?"} ${assist}
+                    <strong>${g.matchMinute}'</strong> <span style="color:${lineColor};">⚽ ${g.scorer || "?"} ${assist}${verdict}</span>
                     <span style="float:right; color:#aaa;">${g.scoreAfterGoal || ""}</span>
                 </li>`;
             });

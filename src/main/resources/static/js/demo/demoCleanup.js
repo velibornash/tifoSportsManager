@@ -1,4 +1,4 @@
-// demoCleanup.js – nema kružnih importa!
+// demoCleanup.js
 let positionSocket = null;
 let eventSocket = null;
 
@@ -8,32 +8,28 @@ export function registerSockets(posSock, evtSock) {
 }
 
 export function cleanupDemo() {
-    console.log("🧹 Cleanup demo stranice – gasimo sve!");
+    console.log('Cleaning demo page - shutting down resources');
 
     if (positionSocket) {
         positionSocket.close();
         positionSocket = null;
-        console.log("Position WS zatvoren");
+        console.log('Position WebSocket closed');
     }
     if (eventSocket) {
         eventSocket.close();
         eventSocket = null;
-        console.log("Event WS zatvoren");
+        console.log('Event WebSocket closed');
     }
 
-    // Zaustavi canvas loop
-    import('./canvasRenderer.js').then(module => {
-        module.stopCanvasLoop();
-    }).catch(err => console.error("Ne mogu da zaustavim canvas:", err));
+    import('./canvasRenderer.js')
+        .then(module => module.stopCanvasLoop())
+        .catch(err => console.error('Failed to stop canvas loop:', err));
 
-    // Čišćenje event queue-a (ako su globalni)
     window.eventQueue = [];
     window.isProcessing = false;
-
-    // Reset stanja
     window.players = {};
-    window.ball = { x:50, y:50, startX:50, startY:50, targetX:50, targetY:50, moveStartTime:performance.now() };
+    window.ball = { x: 50, y: 50, startX: 50, startY: 50, targetX: 50, targetY: 50, moveStartTime: performance.now() };
     window.currentMinute = 0;
 
-    console.log("Cleanup završen – sve ugašeno.");
+    console.log('Demo cleanup finished');
 }
