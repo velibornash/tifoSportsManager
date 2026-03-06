@@ -39,7 +39,7 @@ public class DatabaseInitializer {
     private final SeasonService seasonService;
     private final YouthAcademyService youthAcademyService;
 
-    @PostConstruct
+    
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
