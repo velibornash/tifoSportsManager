@@ -7,8 +7,6 @@ import lombok.Setter;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 
-import java.util.Random;
-
 @Entity
 @Getter
 @Setter
@@ -25,14 +23,14 @@ public class ChanceEvent extends MatchEvent {
 
     @Override
     public void apply() {
-
     }
 
     @Override
-        public String getDescription() {
-            String teamName = team != null ? team.getName() : "Unknown team";
-            String playerName = player != null ? player.getName() : "Unknown player";
-            String danger = dangerous ? "dangerous attack" : "possession circulation";
-            return minute + "' " + teamName + " - " + danger + " (" + playerName + ")";
-        }
+    public String getDescription() {
+        String teamName = team != null ? team.getName() : "Unknown team";
+        String playerName = player != null ? player.getName() : "Unknown player";
+        String danger = dangerous ? "dangerous attack" : "possession circulation";
+        String icon = dangerous ? "🔥" : "🔄";
+        return minute + "' " + icon + " " + teamName + " - " + danger + " (" + playerName + ")";
+    }
 }

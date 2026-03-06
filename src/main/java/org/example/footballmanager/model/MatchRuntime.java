@@ -30,6 +30,12 @@ public class MatchRuntime {
     public Integer pendingReceiverId = null;
     public Integer pendingPasserId = null;
     public String pendingPassTeam = null;
+    public boolean ballInTransit = false;
+    public boolean ballTransitCanBeIntercepted = false;
+    public double ballTransitTargetX = 50.0;
+    public double ballTransitTargetY = 50.0;
+    public int ballTransitTicks = 0;
+    public int ballTransitMaxTicks = 0;
     public Integer lastControllerId = null;
     public int lastControlTick = -100;
     public String lastControlSource = null;

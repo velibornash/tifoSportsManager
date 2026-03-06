@@ -17,9 +17,6 @@ public class FreeKickEvent extends MatchEvent {
     @JsonIgnore
     private Team team;
 
-    private boolean direct;
-    private boolean dangerous;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player taker;
@@ -28,6 +25,8 @@ public class FreeKickEvent extends MatchEvent {
     @JsonIgnore
     private Player player;
 
+    private boolean direct;
+
     @Override
     public void apply() {
     }
@@ -35,6 +34,6 @@ public class FreeKickEvent extends MatchEvent {
     @Override
     public String getDescription() {
         String takerName = taker != null ? taker.getName() : "Unknown";
-        return minute + "' Free kick - " + takerName + (direct ? " (direct)" : " (indirect)");
+        return minute + "' 🎯 Free kick - " + takerName + (direct ? " (direct)" : " (indirect)");
     }
 }

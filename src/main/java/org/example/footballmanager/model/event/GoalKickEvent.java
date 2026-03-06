@@ -13,7 +13,6 @@ import org.example.footballmanager.model.Team;
 @Getter
 @Setter
 public class GoalKickEvent extends MatchEvent {
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
@@ -30,6 +29,6 @@ public class GoalKickEvent extends MatchEvent {
     public String getDescription() {
         String gkName = goalkeeper != null ? goalkeeper.getName() : "Goalkeeper";
         String teamName = team != null ? team.getName() : "Unknown team";
-        return minute + "' Goal kick for " + teamName + " (" + gkName + ")";
+        return minute + "' 🥅 Goal kick for " + teamName + " (" + gkName + ")";
     }
 }

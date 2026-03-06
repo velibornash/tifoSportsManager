@@ -13,7 +13,6 @@ import org.example.footballmanager.model.Team;
 @Getter
 @Setter
 public class ThrowInEvent extends MatchEvent {
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
@@ -30,6 +29,6 @@ public class ThrowInEvent extends MatchEvent {
     public String getDescription() {
         String takerName = taker != null ? taker.getName() : "Unknown";
         String teamName = team != null ? team.getName() : "Unknown team";
-        return minute + "' Throw-in for " + teamName + " (" + takerName + ")";
+        return minute + "' ↪️ Throw-in for " + teamName + " (" + takerName + ")";
     }
 }

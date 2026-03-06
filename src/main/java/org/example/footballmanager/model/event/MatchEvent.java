@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @Entity
-@Inheritance(strategy = InheritanceType.JOINED) // ← promenjeno
+@Inheritance(strategy = InheritanceType.JOINED)
 @DiscriminatorColumn(name = "event_type")
 public abstract class MatchEvent {
     @Id

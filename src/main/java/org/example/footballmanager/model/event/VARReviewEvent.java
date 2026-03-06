@@ -67,6 +67,6 @@ public class VARReviewEvent extends MatchEvent {
             team = reviewedOffsideEvent.getPlayer().getTeam().getName();
         }
 
-        return String.format("%d' VAR %s: %s - %s%s", minute, outcome, target, team, reasonPart);
+        return String.format("%d' 📺 VAR %s: %s - %s%s", minute, outcome, target, team, reasonPart);
     }
 }

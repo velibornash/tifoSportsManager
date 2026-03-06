@@ -13,23 +13,23 @@ import org.example.footballmanager.model.Team;
 @Getter
 @Setter
 public class InterceptionEvent extends MatchEvent {
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player interceptor;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player originalPasser;
-    
+
     @Override
     public void apply() {
     }
-    
+
     @Override
     public String getDescription() {
         return String.format("%d' 🛡️ Interception - %s",

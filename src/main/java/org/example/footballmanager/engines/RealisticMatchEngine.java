@@ -53,11 +53,13 @@ public class RealisticMatchEngine {
     private static final double MAX_X = 96.0;
     private static final double MIN_Y = 6.0;
     private static final double MAX_Y = 94.0;
-    private static final double LOOSE_BALL_PICKUP_RADIUS = 3.2;
+    private static final double LOOSE_BALL_PICKUP_RADIUS = 4.8;
     private static final double LOOSE_BALL_STEP = 7.5;
     private static final double SUPPORT_STEP = 3.0;
     private static final double SHOT_TRIGGER_DISTANCE = 26.0;
-    private static final double CARRIER_CONTROL_RADIUS = 2.6;
+    private static final double CARRIER_CONTROL_RADIUS = 3.8;
+    private static final double PENDING_RECEIVER_LOCK_DISTANCE = 20.0;
+    private static final double RECEIVER_PRIORITY_MARGIN = 2.2;
     private static final int MAX_RETREAT_TICKS = 8;
     private static final double RETREAT_FORCE = 12.0;
     private static final double DEEP_RETREAT_FORCE = 25.0;
@@ -253,7 +255,9 @@ public class RealisticMatchEngine {
      */
     private void simulatePhase(MatchRuntime rt, Match match, int minute, int phase) {
         Player ballCarrier = findBallCarrier(rt);
-        if (ballCarrier == null) {
+        if (rt.ballInTransit) {
+            resolveBallTransit(rt, match, minute);
+        } else if (ballCarrier == null) {
             resolveLooseBall(rt);
         } else {
             refreshCurrentCarrier(rt, ballCarrier);
@@ -305,26 +309,15 @@ public class RealisticMatchEngine {
             return;
         }
 
-        Player interceptor = findInterceptor(rt, passer, receiver, ballTeam);
+        eventGenerator.createPassEvent(rt, match, minute, passer, receiver);
+        rememberPassPair(rt, passer, receiver, ballTeam);
+        startPassTransit(rt, passer, receiver, ballTeam, 1.5);
+        advanceAttackingShape(rt, passer, receiver, ballTeam, 8.0);
 
-        if (interceptor != null) {
-            eventGenerator.createInterceptionEvent(rt, match, minute, passer, interceptor);
-            releaseBall(rt, interceptor, getTeam(interceptor, rt), null, null, 3.0);
-            rt.pendingPasserId = null;
-            rt.pendingPassTeam = null;
-        } else {
-            eventGenerator.createPassEvent(rt, match, minute, passer, receiver);
-            rememberPassPair(rt, passer, receiver, ballTeam);
-            rt.pendingPasserId = Math.toIntExact(passer.getId());
-            rt.pendingPassTeam = ballTeam;
-            releaseBall(rt, receiver, ballTeam, Math.toIntExact(receiver.getId()), Math.toIntExact(passer.getId()), 1.5);
-            advanceAttackingShape(rt, passer, receiver, ballTeam, 8.0);
-
-            List<Player> nearbyDefenders = getNearbyDefenders(rt, receiver, ballTeam);
-            if (!nearbyDefenders.isEmpty() && random.nextDouble() < 0.18) {
-                Player defender = nearbyDefenders.get(0);
-                movePlayerTowardsBall(rt, defender, 4.0);
-            }
+        List<Player> nearbyDefenders = getNearbyDefenders(rt, receiver, ballTeam);
+        if (!nearbyDefenders.isEmpty() && random.nextDouble() < 0.18) {
+            Player defender = nearbyDefenders.get(0);
+            movePlayerTowardsBall(rt, defender, 4.0);
         }
     }
 
@@ -709,6 +702,10 @@ public class RealisticMatchEngine {
         );
         rt.ball = new BallPositionDTO(playerPos.getX(), playerPos.getY());
         rt.pendingReceiverId = null;
+        rt.ballInTransit = false;
+        rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = 0;
         rt.lastControllerId = Math.toIntExact(player.getId());
         rt.lastControlTick = rt.tick;
         rt.lastControlSource = controlSource;
@@ -754,10 +751,14 @@ public class RealisticMatchEngine {
         );
         rt.ball = new BallPositionDTO(playerPos.getX(), playerPos.getY());
         rt.pendingReceiverId = null;
+        rt.ballInTransit = false;
+        rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = 0;
     }
 
     private void syncBallState(MatchRuntime rt) {
-        if (rt.currentCarrier == null) {
+        if (rt.currentCarrier == null || rt.ballInTransit) {
             return;
         }
         Player carrier = findPlayerById(rt, rt.currentCarrier.getId());
@@ -771,12 +772,18 @@ public class RealisticMatchEngine {
     }
 
     private void resolveLooseBall(MatchRuntime rt) {
+        if (rt.ballInTransit) {
+            return;
+        }
         Player target = findLooseBallTarget(rt);
         if (target == null) {
             return;
         }
 
-        movePlayerTowardsBall(rt, target, LOOSE_BALL_STEP);
+        double chaseStep = rt.pendingReceiverId != null && Objects.equals(rt.pendingReceiverId, Math.toIntExact(target.getId()))
+                ? LOOSE_BALL_STEP + 1.8
+                : LOOSE_BALL_STEP;
+        movePlayerTowardsBall(rt, target, chaseStep);
         PlayerPositionDTO pos = getPlayerPosition(rt, target);
         if (distanceBetween(pos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)) <= LOOSE_BALL_PICKUP_RADIUS) {
             String source = rt.pendingReceiverId != null && Objects.equals(rt.pendingReceiverId, Math.toIntExact(target.getId()))
@@ -800,7 +807,27 @@ public class RealisticMatchEngine {
         Player intended = rt.pendingReceiverId != null ? findPlayerById(rt, rt.pendingReceiverId) : null;
         if (intended != null) {
             PlayerPositionDTO intendedPos = getPlayerPosition(rt, intended);
-            if (distanceBetween(intendedPos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)) <= 12.0) {
+            double intendedDistance = distanceBetween(intendedPos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0));
+            if (intendedDistance <= PENDING_RECEIVER_LOCK_DISTANCE) {
+                Player nearestOpponent = outfield.stream()
+                        .filter(player -> !Objects.equals(getTeam(player, rt), getTeam(intended, rt)))
+                        .min(Comparator.comparingDouble(player -> distanceBetween(
+                                getPlayerPosition(rt, player),
+                                new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)
+                        )))
+                        .orElse(null);
+                if (nearestOpponent == null) {
+                    return intended;
+                }
+                double opponentDistance = distanceBetween(
+                        getPlayerPosition(rt, nearestOpponent),
+                        new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)
+                );
+                if (intendedDistance <= opponentDistance + RECEIVER_PRIORITY_MARGIN) {
+                    return intended;
+                }
+            }
+            if (intendedDistance <= 12.0) {
                 return intended;
             }
         }
@@ -810,6 +837,66 @@ public class RealisticMatchEngine {
                         getPlayerPosition(rt, player),
                         new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)
                 )))
+                .orElse(null);
+    }
+
+    private void resolveBallTransit(MatchRuntime rt, Match match, int minute) {
+        if (!rt.ballInTransit || rt.ball == null) {
+            return;
+        }
+
+        rt.ballTransitTicks++;
+        double travelFactor = rt.pendingReceiverId != null ? 0.48 : 0.42;
+        rt.ball.setX(clamp(rt.ball.getX() + (rt.ballTransitTargetX - rt.ball.getX()) * travelFactor, MIN_X, MAX_X));
+        rt.ball.setY(clamp(rt.ball.getY() + (rt.ballTransitTargetY - rt.ball.getY()) * travelFactor, MIN_Y, MAX_Y));
+
+        PlayerPositionDTO ballPos = new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0);
+        if (rt.ballTransitCanBeIntercepted) {
+            Player interceptor = findTransitInterceptor(rt, ballPos);
+            if (interceptor != null) {
+                Player passer = rt.pendingPasserId != null ? findPlayerById(rt, rt.pendingPasserId) : null;
+                eventGenerator.createInterceptionEvent(rt, match, minute, passer, interceptor);
+                rt.ballInTransit = false;
+                rt.pendingReceiverId = null;
+                rt.pendingPasserId = null;
+                rt.pendingPassTeam = null;
+                rt.lastTouchTeam = getTeam(interceptor, rt);
+                setCurrentCarrier(rt, interceptor, "interception");
+                return;
+            }
+        }
+
+        Player intended = rt.pendingReceiverId != null ? findPlayerById(rt, rt.pendingReceiverId) : null;
+        if (intended != null) {
+            movePlayerTowardsBall(rt, intended, LOOSE_BALL_STEP + 1.2);
+            PlayerPositionDTO intendedPos = getPlayerPosition(rt, intended);
+            if (distanceBetween(intendedPos, ballPos) <= LOOSE_BALL_PICKUP_RADIUS) {
+                rt.ballInTransit = false;
+                setCurrentCarrier(rt, intended, "pass_receive");
+                rt.lastTouchTeam = getTeam(intended, rt);
+                return;
+            }
+        }
+
+        if (rt.ballTransitTicks >= rt.ballTransitMaxTicks ||
+                distanceBetween(ballPos, new PlayerPositionDTO(-1, "", rt.ballTransitTargetX, rt.ballTransitTargetY, 0, 0)) <= 1.3) {
+            rt.ballInTransit = false;
+            rt.pendingReceiverId = null;
+        }
+    }
+
+    private Player findTransitInterceptor(MatchRuntime rt, PlayerPositionDTO ballPos) {
+        if (rt.pendingPassTeam == null) {
+            return null;
+        }
+        List<Player> defenders = "HOME".equals(rt.pendingPassTeam) ? rt.awayPlayers : rt.homePlayers;
+        return defenders.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .filter(player -> {
+                    PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                    return pos != null && distanceBetween(pos, ballPos) <= 2.4;
+                })
+                .min(Comparator.comparingDouble(player -> distanceBetween(getPlayerPosition(rt, player), ballPos)))
                 .orElse(null);
     }
 
@@ -937,7 +1024,7 @@ public class RealisticMatchEngine {
             case WNG -> {
                 double wingY = upperLane ? 16.0 : 84.0;
                 double baseX = home ? (inPossession ? 66.0 : 50.0) : (inPossession ? 34.0 : 50.0);
-                double advance = inPossession ? (home ? 10.0 : -10.0) : (home ? 4.0 : -4.0);
+                double advance = inPossession ? (home ? 14.0 : -14.0) : (home ? -2.0 : 2.0);
                 targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.26 : 0.18) + advance;
                 targetY = wingY + (rt.ball.getY() - wingY) * (inPossession ? 0.16 : 0.10);
                 targetY = clamp(targetY, upperLane ? 6.0 : 74.0, upperLane ? 24.0 : 94.0);
@@ -946,15 +1033,16 @@ public class RealisticMatchEngine {
             case ATT -> {
                 double laneY = upperLane ? 44.0 : 56.0;
                 double baseX = home ? (inPossession ? 74.0 : 58.0) : (inPossession ? 26.0 : 42.0);
-                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.24 : 0.16) + (home ? 6.0 : -6.0);
+                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.24 : 0.16) + (inPossession ? (home ? 10.0 : -10.0) : (home ? -2.0 : 2.0));
                 targetY = laneY + (rt.ball.getY() - laneY) * 0.14;
                 targetX = applyOffsideTolerance(rt, pos, targetX, home);
             }
             case MID -> {
-                double laneY = upperLane ? 36.0 : 64.0;
-                double baseX = home ? (inPossession ? 50.0 : 40.0) : (inPossession ? 50.0 : 60.0);
+                double laneY = upperLane ? 32.0 : 68.0;
+                double baseX = home ? (inPossession ? 56.0 : 38.0) : (inPossession ? 44.0 : 62.0);
                 targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.18 : 0.22);
-                targetY = laneY + (rt.ball.getY() - laneY) * (inPossession ? 0.16 : 0.18);
+                targetY = laneY + (rt.ball.getY() - laneY) * (inPossession ? 0.10 : 0.14);
+                targetY = clamp(targetY, upperLane ? 20.0 : 58.0, upperLane ? 42.0 : 80.0);
             }
             default -> {
                 targetX = baseAnchorX(player, team, inPossession);
@@ -962,8 +1050,12 @@ public class RealisticMatchEngine {
             }
         }
 
-        targetX += (random.nextDouble() - 0.5) * 1.0;
-        targetY += (random.nextDouble() - 0.5) * 1.8;
+        if (player.getPosition() != Position.GK) {
+            double directionalNudge = inPossession ? (home ? 1.2 : -1.2) : (home ? -0.6 : 0.6);
+            targetX += directionalNudge;
+        }
+        targetX += (random.nextDouble() - 0.5) * 1.2;
+        targetY += (random.nextDouble() - 0.5) * 2.2;
         movePosition(pos, targetX, targetY, SUPPORT_STEP);
     }
 
@@ -1067,6 +1159,31 @@ public class RealisticMatchEngine {
         }
     }
 
+    private void startPassTransit(MatchRuntime rt, Player passer, Player receiver, String team, double scatter) {
+        PlayerPositionDTO receiverPos = getPlayerPosition(rt, receiver);
+        if (receiverPos == null) {
+            return;
+        }
+
+        double startX = rt.ball != null ? rt.ball.getX() : receiverPos.getX();
+        double startY = rt.ball != null ? rt.ball.getY() : receiverPos.getY();
+        double targetX = clamp(receiverPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X);
+        double targetY = clamp(receiverPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y);
+        double distance = Math.hypot(targetX - startX, targetY - startY);
+
+        rt.currentCarrier = null;
+        rt.ballInTransit = true;
+        rt.ballTransitCanBeIntercepted = true;
+        rt.ballTransitTargetX = targetX;
+        rt.ballTransitTargetY = targetY;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = Math.max(2, Math.min(5, (int) Math.round(distance / 5.0)));
+        rt.pendingReceiverId = Math.toIntExact(receiver.getId());
+        rt.pendingPasserId = Math.toIntExact(passer.getId());
+        rt.pendingPassTeam = team;
+        rt.lastTouchTeam = team;
+    }
+
     private void releaseBall(MatchRuntime rt, Player target, String recoveringTeam, Integer pendingReceiverId, Integer pendingPasserId, double scatter) {
         PlayerPositionDTO targetPos = getPlayerPosition(rt, target);
         if (targetPos == null) {
@@ -1083,6 +1200,12 @@ public class RealisticMatchEngine {
         double factor = distance > 0.01 ? Math.min(1.0, maxTravel / distance) : 0.0;
 
         rt.currentCarrier = null;
+        rt.ballInTransit = true;
+        rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitTargetX = intendedX;
+        rt.ballTransitTargetY = intendedY;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = Math.max(2, Math.min(5, (int) Math.round(distance / 5.0)));
         rt.pendingReceiverId = pendingReceiverId;
         rt.pendingPasserId = pendingPasserId;
         rt.lastTouchTeam = recoveringTeam;

@@ -36,6 +36,6 @@ public class GoalEvent extends MatchEvent {
 
     @Override
     public String getDescription() {
-        return String.format("%d' Goal - %s", getMinute(), scorer != null ? scorer.getName() : "N/A");
+        return String.format("%d' ⚽ Goal - %s", getMinute(), scorer != null ? scorer.getName() : "N/A");
     }
 }

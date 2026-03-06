@@ -13,25 +13,24 @@ import org.example.footballmanager.model.Team;
 @Getter
 @Setter
 public class DuelEvent extends MatchEvent {
-    
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player player1;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player player2;
-    
-    private String winner; // Player1 ili Player2
-    
+
+    private String winner;
+
     @Override
     public void apply() {
     }
-    
+
     @Override
     public String getDescription() {
         return String.format("%d' ⚔️ Duel - %s wins!",

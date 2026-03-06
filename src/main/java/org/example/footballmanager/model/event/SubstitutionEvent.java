@@ -9,13 +9,13 @@ import lombok.Setter;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 
+@Entity
 @Getter
 @Setter
-@Entity
 public class SubstitutionEvent extends MatchEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
-    private Player playerIn;
+    private Team team;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
@@ -23,7 +23,7 @@ public class SubstitutionEvent extends MatchEvent {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
-    private Team team;
+    private Player playerIn;
 
     @Override
     public void apply() {
@@ -33,6 +33,6 @@ public class SubstitutionEvent extends MatchEvent {
     public String getDescription() {
         String outName = playerOut != null ? playerOut.getName() : "Unknown";
         String inName = playerIn != null ? playerIn.getName() : "Unknown";
-        return minute + "' Substitution - " + outName + " off, " + inName + " on";
+        return minute + "' 🔁 Substitution - " + outName + " off, " + inName + " on";
     }
 }

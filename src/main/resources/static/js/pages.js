@@ -902,8 +902,8 @@ import { createMatchesFeature } from './pages/features/matches.js';
             const pos = String(player?.position || "").toUpperCase();
             if (role === "GK") return pos === "GK";
             if (role === "DEF") return pos === "DEF";
-            if (role === "MID") return pos === "MID";
-            if (role === "ATT") return pos === "ATT" || pos === "WNG";
+            if (role === "MID") return pos === "MID" || pos === "WNG";
+            if (role === "ATT") return pos === "ATT" || pos === "WNG" || pos === "MID";
             return false;
         };
 

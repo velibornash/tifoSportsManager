@@ -1,14 +1,16 @@
 package org.example.footballmanager.model.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.footballmanager.model.Player;
 
+@Entity
 @Getter
 @Setter
-@Entity
 public class InjuryEvent extends MatchEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
@@ -16,10 +18,10 @@ public class InjuryEvent extends MatchEvent {
 
     @Override
     public void apply() {
-
     }
+
     @Override
     public String getDescription() {
-        return minute + "' ❌ Povreda: " + player.getName();
+        return minute + "' ❌ Injury - " + player.getName();
     }
 }

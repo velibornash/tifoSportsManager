@@ -13,19 +13,18 @@ import org.example.footballmanager.model.Team;
 @Getter
 @Setter
 public class DribbleEvent extends MatchEvent {
-    
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Team team;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player dribbler;
-    
+
     @Override
     public void apply() {
     }
-    
+
     @Override
     public String getDescription() {
         return String.format("%d' 🏃 %s dribbling",
