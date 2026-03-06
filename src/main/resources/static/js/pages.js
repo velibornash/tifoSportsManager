@@ -941,9 +941,12 @@ import { createMatchesFeature } from './pages/features/matches.js';
             state.benchIds = bench;
         };
 
-        const ensureFormationShape = () => {
+        const normalizeSelectionState = ({ autofillStarters = false, autofillBench = false } = {}) => {
             const slots = formationToSlots(state.formation);
-            if (state.starterIds.length < 11) {
+            state.starterIds = Array.from({ length: 11 }, (_, idx) => Number(state.starterIds[idx] || 0) || null);
+            state.benchIds = Array.from({ length: 7 }, (_, idx) => Number(state.benchIds[idx] || 0) || null);
+
+            if (autofillStarters && state.starterIds.filter(Boolean).length < 11) {
                 state.starterIds = pickDefaultStarters(slots);
             }
             const used = new Set();
@@ -956,18 +959,35 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 used.add(id);
                 return id;
             });
-            slots.forEach((slot, idx) => {
-                if (state.starterIds[idx]) return;
-                const fallback = sortedPlayers.find(p =>
-                    !p.injured &&
-                    !used.has(Number(p.id)) &&
-                    canPlayRole(p, slot.role));
-                if (fallback) {
-                    state.starterIds[idx] = Number(fallback.id);
-                    used.add(Number(fallback.id));
+
+            if (autofillStarters) {
+                slots.forEach((slot, idx) => {
+                    if (state.starterIds[idx]) return;
+                    const fallback = sortedPlayers.find(p =>
+                        !p.injured &&
+                        !used.has(Number(p.id)) &&
+                        canPlayRole(p, slot.role));
+                    if (fallback) {
+                        state.starterIds[idx] = Number(fallback.id);
+                        used.add(Number(fallback.id));
+                    }
+                });
+            }
+
+            const benchUsed = new Set(state.starterIds.filter(Boolean).map(Number));
+            state.benchIds = state.benchIds.map(id => {
+                const numericId = Number(id || 0);
+                const p = getPlayerById(numericId);
+                if (!numericId || !p || p.injured || benchUsed.has(numericId)) {
+                    return null;
                 }
+                benchUsed.add(numericId);
+                return numericId;
             });
-            fillBenchDefaults();
+
+            if (autofillBench) {
+                fillBenchDefaults();
+            }
         };
 
         const getPlayerById = id => sortedPlayers.find(p => Number(p.id) === Number(id));
@@ -988,6 +1008,23 @@ import { createMatchesFeature } from './pages/features/matches.js';
         const poolCandidates = () => {
             const used = selectedIds();
             return sortedPlayers.filter(p => !p.injured && !used.has(Number(p.id)));
+        };
+
+        const clearPlayerFromState = (playerId) => {
+            state.starterIds = state.starterIds.map(id => Number(id) === Number(playerId) ? null : id);
+            state.benchIds = state.benchIds.map(id => Number(id) === Number(playerId) ? null : id);
+        };
+
+        const assignToBench = (playerId, targetIndex) => {
+            const previous = Number(state.benchIds[targetIndex] || 0) || null;
+            state.benchIds[targetIndex] = Number(playerId);
+            return previous;
+        };
+
+        const assignToStarter = (playerId, targetIndex) => {
+            const previous = Number(state.starterIds[targetIndex] || 0) || null;
+            state.starterIds[targetIndex] = Number(playerId);
+            return previous;
         };
 
         const renderDesktopDnD = (slots) => {
@@ -1103,20 +1140,36 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     const targetRole = zone.dataset.role || null;
                     const player = getPlayerById(dragData.playerId);
                     if (!player || player.injured) return;
+                    const sourceStarterRole = dragData.fromZone === "starter"
+                        ? formationToSlots(state.formation)[dragData.fromIndex]?.role
+                        : null;
 
                     if (targetZone === "starter") {
                         if (!canPlayRole(player, targetRole)) return;
-                        if (state.starterIds.some((id, idx) => idx !== targetIndex && Number(id) === dragData.playerId)) return;
-                        if (state.benchIds.some(id => Number(id) === dragData.playerId)) {
-                            state.benchIds = state.benchIds.map(id => Number(id) === dragData.playerId ? null : id);
+                        clearPlayerFromState(dragData.playerId);
+                        const displaced = assignToStarter(dragData.playerId, targetIndex);
+                        if (dragData.fromZone === "starter" && dragData.fromIndex >= 0 && targetIndex !== dragData.fromIndex) {
+                            if (displaced && canPlayRole(getPlayerById(displaced), sourceStarterRole)) {
+                                state.starterIds[dragData.fromIndex] = displaced;
+                            } else {
+                                state.starterIds[dragData.fromIndex] = null;
+                            }
+                        } else if (dragData.fromZone === "bench" && dragData.fromIndex >= 0) {
+                            state.benchIds[dragData.fromIndex] = displaced || null;
                         }
-                        state.starterIds[targetIndex] = dragData.playerId;
                     } else if (targetZone === "bench") {
-                        if (state.starterIds.some(id => Number(id) === dragData.playerId)) {
-                            state.starterIds = state.starterIds.map(id => Number(id) === dragData.playerId ? null : id);
+                        clearPlayerFromState(dragData.playerId);
+                        const displaced = assignToBench(dragData.playerId, targetIndex);
+                        if (dragData.fromZone === "starter" && dragData.fromIndex >= 0) {
+                            const displacedPlayer = getPlayerById(displaced);
+                            if (displacedPlayer && canPlayRole(displacedPlayer, sourceStarterRole)) {
+                                state.starterIds[dragData.fromIndex] = displaced;
+                            } else {
+                                state.starterIds[dragData.fromIndex] = null;
+                            }
+                        } else if (dragData.fromZone === "bench" && dragData.fromIndex >= 0 && targetIndex !== dragData.fromIndex) {
+                            state.benchIds[dragData.fromIndex] = displaced || null;
                         }
-                        if (state.benchIds.some((id, idx) => idx !== targetIndex && Number(id) === dragData.playerId)) return;
-                        state.benchIds[targetIndex] = dragData.playerId;
                     } else if (targetZone === "pool") {
                         if (dragData.fromZone === "starter" && dragData.fromIndex >= 0) {
                             state.starterIds[dragData.fromIndex] = null;
@@ -1125,7 +1178,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                             state.benchIds[dragData.fromIndex] = null;
                         }
                     }
-                    ensureFormationShape();
+                    normalizeSelectionState();
                     render();
                 });
             });
@@ -1141,7 +1194,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         state.benchIds = state.benchIds.map(val => Number(val) === id ? null : val);
                     }
                     state.starterIds[slot] = id;
-                    ensureFormationShape();
+                    normalizeSelectionState();
                     render();
                 });
             });
@@ -1154,16 +1207,16 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         state.benchIds = state.benchIds.map((val, idx) => idx !== slot && Number(val) === id ? null : val);
                     }
                     state.benchIds[slot] = id;
-                    ensureFormationShape();
+                    normalizeSelectionState();
                     render();
                 });
             });
         };
 
-        ensureFormationShape();
+        normalizeSelectionState({ autofillStarters: true, autofillBench: true });
 
         const render = () => {
-            ensureFormationShape();
+            normalizeSelectionState();
             const slots = formationToSlots(state.formation);
             const injuredCount = players.filter(p => p.injured).length;
 
@@ -1200,7 +1253,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 btn.addEventListener('click', () => {
                     state.formation = btn.getAttribute("data-formation");
                     state.starterIds = new Array(11).fill(null);
-                    ensureFormationShape();
+                    normalizeSelectionState({ autofillStarters: true, autofillBench: true });
                     render();
                 });
             });

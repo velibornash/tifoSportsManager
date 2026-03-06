@@ -95,6 +95,15 @@
             left: 0;
         }
 
+        .pitch-overlay {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 14;
+        }
+
         .center-line {
             position: absolute;
             width: 2px;
@@ -155,6 +164,25 @@
             right: 0;
             top: 50%;
             transform: translateY(-50%);
+        }
+
+        .penalty-spot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.9);
+            top: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.8;
+        }
+
+        .penalty-spot.home {
+            left: 12%;
+        }
+
+        .penalty-spot.away {
+            left: 88%;
         }
 
         .player {
@@ -239,6 +267,23 @@
 
         .pitch-event-banner.visible {
             opacity: 1;
+        }
+
+        .goal-celebration {
+            position: absolute;
+            width: 130px;
+            height: 88px;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 16;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.92);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .goal-celebration.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
         }
 
         .events-panel {
@@ -383,18 +428,18 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>⚽ Realistična Simulacija Meča</h1>
+            <h1>Realistic Match Simulation</h1>
         </div>
 
         <div class="match-info">
             <div class="team">
                 <div class="team-name" id="homeTeam">-</div>
-                <div id="homeStats" style="font-size: 0.9em; opacity: 0.8;">Čeka se simulacija...</div>
+                <div id="homeStats" style="font-size: 0.9em; opacity: 0.8;">Waiting for simulation...</div>
             </div>
             <div class="score" id="score">0 - 0</div>
             <div class="team">
                 <div class="team-name" id="awayTeam">-</div>
-                <div id="awayStats" style="font-size: 0.9em; opacity: 0.8;">Čeka se simulacija...</div>
+                <div id="awayStats" style="font-size: 0.9em; opacity: 0.8;">Waiting for simulation...</div>
             </div>
         </div>
 
@@ -408,10 +453,14 @@
                 <div class="penalty-area away"></div>
                 <div class="goal-box home"></div>
                 <div class="goal-box away"></div>
+                <div class="penalty-spot home"></div>
+                <div class="penalty-spot away"></div>
             </div>
+            <canvas class="pitch-overlay" id="pitch-overlay"></canvas>
             <div id="players-container"></div>
             <div class="pitch-event-layer" id="pitch-event-layer">
                 <div class="pitch-event-banner" id="pitch-event-banner"></div>
+                <img class="goal-celebration" id="goal-celebration" src="/images/goal-gol.gif" alt="Goal">
             </div>
             <div class="ball" id="ball" style="display: none;"></div>
         </div>
@@ -420,16 +469,17 @@
             <div id="events-list" style="min-height: 100px;">
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>Učitavanje simulacije...</p>
+                    <p>Loading simulation...</p>
                 </div>
             </div>
         </div>
 
         <div class="controls">
-            <button class="btn btn-back" onclick="window.location.href='/dashboard.html'">← Nazad</button>
+            <button class="btn btn-back" onclick="window.location.href='/dashboard.html'">Back</button>
         </div>
     </div>
 
     <script type="module" src="/js/realisticDemo.js"></script>
 </body>
 </html>
+

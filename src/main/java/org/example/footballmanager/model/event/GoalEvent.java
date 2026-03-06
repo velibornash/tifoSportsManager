@@ -15,15 +15,15 @@ import org.example.footballmanager.model.Team;
 public class GoalEvent extends MatchEvent {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Sprečava ciklus preko team → players
+    @JsonIgnore
     private Team team;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Sprečava ciklus preko scorer → team → players
+    @JsonIgnore
     private Player scorer;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JsonIgnore   // ← Isto za assistant
+    @JsonIgnore
     private Player assistant;
 
     private String scoreAfterGoal;
@@ -36,6 +36,6 @@ public class GoalEvent extends MatchEvent {
 
     @Override
     public String getDescription() {
-        return String.format("%d' ⚽ %s", getMinute(), scorer != null ? scorer.getName() : "N/A");
+        return String.format("%d' Goal - %s", getMinute(), scorer != null ? scorer.getName() : "N/A");
     }
 }

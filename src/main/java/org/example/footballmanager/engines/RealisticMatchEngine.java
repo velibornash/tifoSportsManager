@@ -5,6 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
 import org.example.footballmanager.model.*;
+import org.example.footballmanager.model.event.FreeKickEvent;
+import org.example.footballmanager.model.event.GoalEvent;
+import org.example.footballmanager.model.event.PenaltyEvent;
+import org.example.footballmanager.model.event.VARReviewEvent;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.SeasonService;
 import org.springframework.stereotype.Component;
@@ -15,14 +19,14 @@ import java.util.stream.Stream;
 /**
  * Realistic Match Simulation Engine
  * 
- * Simulira fudbalski meč sa pametnom logikom:
- * - Igrači sa loptom donose inteligentne odluke (pass/shot/dribble)
+ * Simulates a football match with structured logic:
+ * - Players on the ball make intelligent decisions (pass/shot/dribble)
  * - Poziciona odbrana sa pokrivanjem zona
- * - Dueli/kolizije kada su igrači blizu
- * - Smisleni event-i sa realističnim tokom
+ * - Duels/collisions when players are close
+ * - Coherent event flow
  * 
  * Simulacija traje 90 minuta (events-only, bez 2430 ticks)
- * Svaka minuta generiše 1-3 važna event-a
+ * Each minute generates 1-3 relevant events
  */
 @Component
 @Slf4j
@@ -52,10 +56,18 @@ public class RealisticMatchEngine {
     private static final double LOOSE_BALL_PICKUP_RADIUS = 3.2;
     private static final double LOOSE_BALL_STEP = 7.5;
     private static final double SUPPORT_STEP = 3.0;
-    private static final double SHOT_TRIGGER_DISTANCE = 24.0;
+    private static final double SHOT_TRIGGER_DISTANCE = 26.0;
+    private static final double CARRIER_CONTROL_RADIUS = 2.6;
+    private static final int MAX_RETREAT_TICKS = 8;
+    private static final double RETREAT_FORCE = 12.0;
+    private static final double DEEP_RETREAT_FORCE = 25.0;
+    private static final double CENTER_BACK_ENGAGE_DISTANCE = 12.0;
+    private static final int SHOT_WINDOW_TICKS = 3;
+    private static final double DUEL_FOUL_CHANCE = 0.08;
+    private static final double PENALTY_FOUL_CHANCE = 0.14;
 
     /**
-     * Simulira kompletan realistični fudbalski meč od 90 minuta
+     * Simulates a full 90-minute realistic match
      */
     public MatchRuntime simulateRealisticMatch(Match match) {
         log.info("Starting realistic match simulation for match {}", match.getId());
@@ -74,7 +86,7 @@ public class RealisticMatchEngine {
             }
         }
         
-        // Završetak simulacije
+        // Finalize simulation
         finalizeSimulation(rt, match);
         
         log.info("Realistic match simulation finished. Events: {}, Home: {} Away: {}", 
@@ -96,10 +108,10 @@ public class RealisticMatchEngine {
         rt.homeSquad = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
         rt.awaySquad = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
         
-        // Inicijalizuj pozicije igrača
+        // Initialize player positions
         initializePlayerPositions(rt);
         
-        // Inicijalizuj događaje i golove
+        // Initialize events and goals
         rt.runtimeEvents = new ArrayList<>();
         rt.runtimeGoals = new ArrayList<>();
         rt.tickStates = new ArrayList<>();
@@ -107,10 +119,10 @@ public class RealisticMatchEngine {
         rt.awayGoals = 0;
         rt.ticksPerMinute = ACTIONS_PER_MINUTE;
         
-        // Početni događaj
+        // Initial event
         eventGenerator.createMatchStartEvent(rt, match);
         
-        // Početna poleganja lopte
+        // Initial ball placement
         rt.ball = new BallPositionDTO(50, 50);
         Player ballCarrier = rt.homePlayers.stream()
                 .filter(p -> p.getPosition() != Position.GK)
@@ -131,7 +143,7 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * Inicijalizuje pozicije igrača na terenu (4-4-2 vs 4-2-3-1)
+     * Initializes player positions on the pitch (4-4-2 vs 4-2-3-1)
      */
     private void initializePlayerPositions(MatchRuntime rt) {
         // HOME team: 4-4-2
@@ -185,11 +197,11 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * 4-4-2 formacija za domaće (koordinate x, y parovi)
+     * Home 4-4-2 formation (x, y pairs)
      */
     private double[] getHomeFormationPositions() {
         return new double[]{
-            // Igrači od broja 1-11 redosledom: GK, RB, CB, CB, LB, RM, CM, CM, LM, ST, ST
+            // Players 1-11 in order: GK, RB, CB, CB, LB, RM, CM, CM, LM, ST, ST
             10, 50,   // GK - centar branskog dela
             20, 25,   // RB
             22, 40,   // CB
@@ -237,14 +249,14 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * Simulira jednu minutu meča
+     * Simulates one match phase
      */
     private void simulatePhase(MatchRuntime rt, Match match, int minute, int phase) {
         Player ballCarrier = findBallCarrier(rt);
         if (ballCarrier == null) {
             resolveLooseBall(rt);
         } else {
-            setCurrentCarrier(rt, ballCarrier);
+            refreshCurrentCarrier(rt, ballCarrier);
             AIDecisionMaker.Decision decision = aiDecisionMaker.makeDecision(ballCarrier, rt, match, minute);
             String ballTeam = getTeam(ballCarrier, rt);
 
@@ -277,6 +289,22 @@ public class RealisticMatchEngine {
             return;
         }
 
+        if (isOffsideReceiver(rt, passer, receiver, ballTeam)) {
+            eventGenerator.createOffsideEvent(rt, match, minute, receiver);
+            String defendingTeam = "HOME".equals(ballTeam) ? "AWAY" : "HOME";
+            Player restartPlayer = selectRestartPlayer(rt, defendingTeam);
+            rt.pendingPasserId = null;
+            rt.pendingPassTeam = null;
+            rt.pendingReceiverId = null;
+            rt.lastTouchTeam = defendingTeam;
+            if (restartPlayer != null) {
+                releaseBall(rt, restartPlayer, defendingTeam, Math.toIntExact(restartPlayer.getId()), null, 2.0);
+            } else {
+                rt.currentCarrier = null;
+            }
+            return;
+        }
+
         Player interceptor = findInterceptor(rt, passer, receiver, ballTeam);
 
         if (interceptor != null) {
@@ -286,6 +314,7 @@ public class RealisticMatchEngine {
             rt.pendingPassTeam = null;
         } else {
             eventGenerator.createPassEvent(rt, match, minute, passer, receiver);
+            rememberPassPair(rt, passer, receiver, ballTeam);
             rt.pendingPasserId = Math.toIntExact(passer.getId());
             rt.pendingPassTeam = ballTeam;
             releaseBall(rt, receiver, ballTeam, Math.toIntExact(receiver.getId()), Math.toIntExact(passer.getId()), 1.5);
@@ -300,11 +329,21 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * Rukuje šutom na gol
+     * Handles a shot on goal
      */
     private void handleShot(MatchRuntime rt, Match match, int minute,
                            Player shooter, AIDecisionMaker.Decision decision,
                            String ballTeam) {
+        if (!canShootNow(rt, shooter, ballTeam)) {
+            movePlayerTowardsBall(rt, shooter, Math.max(LOOSE_BALL_STEP, 8.0));
+            if (isPlayerControllingBall(rt, shooter)) {
+                setCurrentCarrier(rt, shooter, "carry");
+            } else {
+                resolveLooseBall(rt);
+                return;
+            }
+        }
+
         Player goalkeeper = getGoalkeeper(rt, ballTeam.equals("HOME") ? "AWAY" : "HOME");
         if (goalkeeper == null) {
             handleDribble(rt, match, minute, shooter, decision, ballTeam);
@@ -325,7 +364,8 @@ public class RealisticMatchEngine {
             }
             Player assistant = resolveAssistant(rt, shooter, ballTeam);
             movePlayerTowardsGoal(rt, shooter, ballTeam, 10.0);
-            eventGenerator.createGoalEvent(rt, match, minute, shooter, assistant);
+            GoalEvent goalEvent = eventGenerator.createGoalEvent(rt, match, minute, shooter, assistant);
+            maybeCreateVarReview(goalEvent, null, rt, match, minute);
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
             Player kickoffPlayer = selectRestartPlayer(rt, ballTeam.equals("HOME") ? "AWAY" : "HOME");
@@ -361,7 +401,7 @@ public class RealisticMatchEngine {
                               String ballTeam) {
         List<Player> nearbyDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
 
-        if (!nearbyDefenders.isEmpty() && random.nextDouble() < 0.24) {
+        if (!nearbyDefenders.isEmpty() && random.nextDouble() < 0.22) {
             Player defender = nearbyDefenders.get(0);
             handleDuel(rt, match, minute, dribbler, defender);
         } else {
@@ -373,33 +413,38 @@ public class RealisticMatchEngine {
                 eventGenerator.createChanceEvent(rt, match, minute, dribbler, false);
             }
             rt.lastTouchTeam = ballTeam;
-            setCurrentCarrier(rt, dribbler);
+            setCurrentCarrier(rt, dribbler, "dribble");
 
-            // Uspeo je da izbaci čuvara i ušao je u završnicu: pokušaj šuta odmah u istoj fazi.
+            // The attacker beat the marker and entered the final third: allow an immediate shot attempt.
             double goalDistance = estimateDistanceToGoal(rt, dribbler, ballTeam);
             List<Player> refreshedDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
             if (goalDistance <= SHOT_TRIGGER_DISTANCE &&
                     (refreshedDefenders.isEmpty() || refreshedDefenders.size() == 1) &&
                     dribbler.getPosition() != Position.DEF &&
                     dribbler.getPosition() != Position.GK &&
-                    random.nextDouble() < 0.62) {
+                    random.nextDouble() < 0.74) {
                 handleShot(rt, match, minute, dribbler, decision, ballTeam);
             }
         }
     }
 
     /**
-     * Rukuje duelom između dva igrača
+     * Handles a duel between two players
      */
     private void handleDuel(MatchRuntime rt, Match match, int minute,
                            Player attacker, Player defender) {
+        if (shouldCallFoul(rt, attacker, defender)) {
+            handleFoul(rt, match, minute, attacker, defender);
+            return;
+        }
+
         DuelResolver.DuelResult result = duelResolver.resolveTackleDuel(attacker, defender);
 
         eventGenerator.createDuelEvent(rt, match, minute, attacker, defender, result);
 
         if (result.isWon()) {
             rt.lastTouchTeam = getTeam(attacker, rt);
-            setCurrentCarrier(rt, attacker);
+            setCurrentCarrier(rt, attacker, "duel");
         } else {
             releaseBall(rt, defender, getTeam(defender, rt), Math.toIntExact(defender.getId()), null, 2.0);
             rt.pendingPasserId = null;
@@ -407,6 +452,75 @@ public class RealisticMatchEngine {
         }
 
         if (random.nextDouble() < 0.1) {
+            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+        }
+    }
+
+    private boolean shouldCallFoul(MatchRuntime rt, Player attacker, Player defender) {
+        PlayerPositionDTO attackerPos = getPlayerPosition(rt, attacker);
+        if (attackerPos == null) {
+            return false;
+        }
+        boolean attacksRight = "HOME".equals(getTeam(attacker, rt));
+        double foulChance = isInPenaltyBox(attackerPos, attacksRight) ? PENALTY_FOUL_CHANCE : DUEL_FOUL_CHANCE;
+        if (defender.getPosition() == Position.DEF) {
+            foulChance += 0.03;
+        }
+        return random.nextDouble() < foulChance;
+    }
+
+    private void handleFoul(MatchRuntime rt, Match match, int minute, Player attacker, Player defender) {
+        String attackingTeam = getTeam(attacker, rt);
+        boolean attacksRight = "HOME".equals(attackingTeam);
+        PlayerPositionDTO attackerPos = getPlayerPosition(rt, attacker);
+        if (attackerPos == null) {
+            return;
+        }
+
+        if (isInPenaltyBox(attackerPos, attacksRight)) {
+            PenaltyEvent penalty = new PenaltyEvent();
+            penalty.setMinute(minute);
+            penalty.setMatch(match);
+            penalty.setTeam("HOME".equals(attackingTeam) ? match.getHomeTeam() : match.getAwayTeam());
+            penalty.setTaker(attacker);
+
+            Player goalkeeper = getGoalkeeper(rt, attacksRight ? "AWAY" : "HOME");
+            DuelResolver.DuelResult penResult = duelResolver.resolveShotDuel(attacker, goalkeeper);
+            penalty.setScored(penResult.isGoal());
+            rt.runtimeEvents.add(penalty);
+
+            GoalEvent goalEvent = null;
+            if (penResult.isGoal()) {
+                if ("HOME".equals(attackingTeam)) {
+                    rt.homeGoals++;
+                } else {
+                    rt.awayGoals++;
+                }
+                goalEvent = eventGenerator.createGoalEvent(rt, match, minute, attacker, null);
+                rt.ball = new BallPositionDTO(50, 50);
+                rt.currentCarrier = null;
+                Player kickoffPlayer = selectRestartPlayer(rt, attacksRight ? "AWAY" : "HOME");
+                rt.pendingReceiverId = kickoffPlayer != null ? Math.toIntExact(kickoffPlayer.getId()) : null;
+                rt.lastTouchTeam = attacksRight ? "AWAY" : "HOME";
+            } else if (goalkeeper != null) {
+                releaseBall(rt, goalkeeper, getTeam(goalkeeper, rt), Math.toIntExact(goalkeeper.getId()), null, 1.2);
+            }
+
+            maybeCreateVarReview(goalEvent, penalty, rt, match, minute);
+            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+            return;
+        }
+
+        FreeKickEvent fk = new FreeKickEvent();
+        fk.setMinute(minute);
+        fk.setMatch(match);
+        fk.setTeam("HOME".equals(attackingTeam) ? match.getHomeTeam() : match.getAwayTeam());
+        fk.setTaker(attacker);
+        fk.setPlayer(attacker);
+        rt.runtimeEvents.add(fk);
+        rt.lastTouchTeam = attackingTeam;
+        setCurrentCarrier(rt, attacker, "duel");
+        if (random.nextDouble() < 0.6) {
             eventGenerator.createYellowCardEvent(rt, match, minute, defender);
         }
     }
@@ -443,13 +557,13 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * Generiši periodičke event-e (povrede, zamene, taktičke prilagodbe)
+     * Generates periodic events (injuries, substitutions, tactical adjustments)
      */
     private void maybeGeneratePeriodicalEvent(MatchRuntime rt, Match match, int minute) {
         double rand = random.nextDouble();
         
         if (rand < 0.05) {
-            // Povreda igrača
+            // Player injury
             Player injured = random.nextBoolean() 
                     ? rt.homePlayers.get(random.nextInt(rt.homePlayers.size()))
                     : rt.awayPlayers.get(random.nextInt(rt.awayPlayers.size()));
@@ -467,11 +581,11 @@ public class RealisticMatchEngine {
                 if (!onPitch.equals(substitute) && !onPitchList.contains(substitute)) {
                     eventGenerator.createSubstitutionEvent(rt, match, minute, onPitch, substitute);
                     
-                    // Zameni igrače u listi
+            // Swap players in the list
                     int idx = onPitchList.indexOf(onPitch);
                     onPitchList.set(idx, substitute);
                     
-                    // Ažuriraj pozicije
+                    // Update positions
                     PlayerPositionDTO posToReplace = rt.players.stream()
                             .filter(p -> p.getId() == onPitch.getId())
                             .findFirst()
@@ -503,16 +617,15 @@ public class RealisticMatchEngine {
                 rt.awayGoals, rt.awayTeam.getName());
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // HELPER METHODS
-    // ═══════════════════════════════════════════════════════════════════════════════
+    // Helper methods
 
     private Player findBallCarrier(MatchRuntime rt) {
         if (rt.currentCarrier != null) {
             Player current = findPlayerById(rt, rt.currentCarrier.getId());
-            if (current != null) {
+            if (current != null && isPlayerControllingBall(rt, current)) {
                 return current;
             }
+            rt.currentCarrier = null;
         }
         return null;
     }
@@ -558,6 +671,9 @@ public class RealisticMatchEngine {
                     );
                     return dist < threshold;
                 })
+                .sorted(Comparator
+                        .comparing((Player d) -> d.getPosition() != Position.DEF)
+                        .thenComparingDouble(d -> distanceBetween(attackerPos, getPlayerPosition(rt, d))))
                 .toList();
     }
 
@@ -577,12 +693,57 @@ public class RealisticMatchEngine {
                 .orElse(null);
     }
 
-    private void setCurrentCarrier(MatchRuntime rt, Player player) {
+    private void setCurrentCarrier(MatchRuntime rt, Player player, String controlSource) {
         PlayerPositionDTO playerPos = getPlayerPosition(rt, player);
         if (playerPos == null) {
             return;
         }
 
+        rt.currentCarrier = new PlayerPositionDTO(
+                Math.toIntExact(player.getId()),
+                playerPos.getTeam(),
+                playerPos.getX(),
+                playerPos.getY(),
+                0,
+                0
+        );
+        rt.ball = new BallPositionDTO(playerPos.getX(), playerPos.getY());
+        rt.pendingReceiverId = null;
+        rt.lastControllerId = Math.toIntExact(player.getId());
+        rt.lastControlTick = rt.tick;
+        rt.lastControlSource = controlSource;
+        rt.lastControlX = playerPos.getX();
+        rt.lastControlTeam = playerPos.getTeam();
+
+        switch (controlSource) {
+            case "pass_receive" -> {
+                rt.lastPassReceiverId = Math.toIntExact(player.getId());
+                rt.lastPassReceiveTick = rt.tick;
+                rt.lastPassReceiveX = playerPos.getX();
+                rt.lastPassReceiveTeam = playerPos.getTeam();
+            }
+            case "duel" -> {
+                rt.lastDuelWinnerId = Math.toIntExact(player.getId());
+                rt.lastDuelWinTick = rt.tick;
+                rt.lastDuelWinX = playerPos.getX();
+                rt.lastDuelWinTeam = playerPos.getTeam();
+            }
+            case "loose_ball" -> {
+                rt.lastRecoveryPlayerId = Math.toIntExact(player.getId());
+                rt.lastRecoveryTick = rt.tick;
+                rt.lastRecoveryX = playerPos.getX();
+                rt.lastRecoveryTeam = playerPos.getTeam();
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void refreshCurrentCarrier(MatchRuntime rt, Player player) {
+        PlayerPositionDTO playerPos = getPlayerPosition(rt, player);
+        if (playerPos == null) {
+            return;
+        }
         rt.currentCarrier = new PlayerPositionDTO(
                 Math.toIntExact(player.getId()),
                 playerPos.getTeam(),
@@ -618,7 +779,10 @@ public class RealisticMatchEngine {
         movePlayerTowardsBall(rt, target, LOOSE_BALL_STEP);
         PlayerPositionDTO pos = getPlayerPosition(rt, target);
         if (distanceBetween(pos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)) <= LOOSE_BALL_PICKUP_RADIUS) {
-            setCurrentCarrier(rt, target);
+            String source = rt.pendingReceiverId != null && Objects.equals(rt.pendingReceiverId, Math.toIntExact(target.getId()))
+                    ? "pass_receive"
+                    : "loose_ball";
+            setCurrentCarrier(rt, target, source);
             String recoveredTeam = getTeam(target, rt);
             if (!Objects.equals(rt.pendingPassTeam, recoveredTeam)) {
                 rt.pendingPasserId = null;
@@ -687,17 +851,9 @@ public class RealisticMatchEngine {
             if (rt.currentCarrier != null && rt.currentCarrier.getId() == pos.getId()) {
                 return;
             }
-
-            String team = pos.getTeam();
-            boolean inPossession = team.equals(rt.lastTouchTeam);
-            double anchorX = baseAnchorX(player, team, inPossession);
-            double anchorY = baseAnchorY(player, team);
-            double ballPullX = (rt.ball.getX() - anchorX) * (inPossession ? 0.12 : 0.18);
-            double ballPullY = (rt.ball.getY() - anchorY) * (inPossession ? 0.14 : 0.22);
-            double targetX = anchorX + ballPullX + (random.nextDouble() - 0.5) * 1.2;
-            double targetY = anchorY + ballPullY + (random.nextDouble() - 0.5) * 2.4;
-            movePosition(pos, targetX, targetY, SUPPORT_STEP);
+            applyRoleMovement(rt, pos, player);
         });
+        spreadSameTeamPlayers(rt);
     }
 
     private void movePosition(PlayerPositionDTO pos, double targetX, double targetY, double maxStep) {
@@ -713,18 +869,235 @@ public class RealisticMatchEngine {
         pos.setY(clamp(pos.getY() + dy * factor, MIN_Y, MAX_Y));
     }
 
+    private Player findCenterBackThreat(MatchRuntime rt, PlayerPositionDTO defenderPos, String defenderTeam) {
+        List<Player> attackers = "HOME".equals(defenderTeam) ? rt.awayPlayers : rt.homePlayers;
+        boolean homeDefender = "HOME".equals(defenderTeam);
+
+        return attackers.stream()
+                .filter(player -> player.getPosition() == Position.ATT || player.getPosition() == Position.WNG)
+                .filter(player -> {
+                    PlayerPositionDTO attackerPos = getPlayerPosition(rt, player);
+                    if (attackerPos == null) {
+                        return false;
+                    }
+
+                    boolean inChannel = Math.abs(attackerPos.getY() - defenderPos.getY()) <= 16.0;
+                    boolean inPatrolZone = homeDefender
+                            ? attackerPos.getX() >= 18.0 && attackerPos.getX() <= 40.0
+                            : attackerPos.getX() <= 82.0 && attackerPos.getX() >= 60.0;
+                    return inChannel && inPatrolZone;
+                })
+                .min(Comparator.comparingDouble(player -> distanceBetween(defenderPos, getPlayerPosition(rt, player))))
+                .filter(player -> {
+                    PlayerPositionDTO attackerPos = getPlayerPosition(rt, player);
+                    return attackerPos != null && distanceBetween(defenderPos, attackerPos) <= CENTER_BACK_ENGAGE_DISTANCE;
+                })
+                .orElse(null);
+    }
+
+    private void applyRoleMovement(MatchRuntime rt, PlayerPositionDTO pos, Player player) {
+        String team = pos.getTeam();
+        boolean home = "HOME".equals(team);
+        boolean inPossession = team.equals(rt.lastTouchTeam);
+        boolean upperLane = pos.getY() < 50.0;
+        double targetX;
+        double targetY;
+
+        switch (player.getPosition()) {
+            case GK -> {
+                double goalX = home ? 8.0 : 92.0;
+                targetX = goalX + (rt.ball.getX() - goalX) * 0.05;
+                targetY = 50.0 + (rt.ball.getY() - 50.0) * 0.12;
+            }
+            case DEF -> {
+                double flankY = upperLane ? 16.0 : 84.0;
+                double centralY = upperLane ? 43.0 : 57.0;
+                boolean wideDefender = Math.abs(pos.getY() - flankY) < Math.abs(pos.getY() - centralY);
+                double baseX = wideDefender
+                        ? (home ? (inPossession ? 36.0 : 18.0) : (inPossession ? 64.0 : 82.0))
+                        : (home ? (inPossession ? 26.0 : 16.5) : (inPossession ? 74.0 : 83.5));
+                double baseY = wideDefender ? flankY : centralY;
+                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.10 : 0.18);
+                targetY = baseY + (rt.ball.getY() - baseY) * (wideDefender ? 0.10 : 0.12);
+                if (wideDefender) {
+                    targetY = clamp(targetY, upperLane ? 4.0 : 76.0, upperLane ? 22.0 : 96.0);
+                } else {
+                    Player strikerThreat = findCenterBackThreat(rt, pos, team);
+                    if (strikerThreat != null) {
+                        PlayerPositionDTO threatPos = getPlayerPosition(rt, strikerThreat);
+                        if (threatPos != null) {
+                            targetX += (threatPos.getX() - pos.getX()) * 0.30;
+                            targetY += (threatPos.getY() - pos.getY()) * 0.24;
+                        }
+                    }
+                    targetX = clamp(targetX, home ? 12.0 : 72.0, home ? 34.0 : 88.0);
+                    targetY = clamp(targetY, upperLane ? 34.0 : 50.0, upperLane ? 50.0 : 66.0);
+                }
+            }
+            case WNG -> {
+                double wingY = upperLane ? 16.0 : 84.0;
+                double baseX = home ? (inPossession ? 66.0 : 50.0) : (inPossession ? 34.0 : 50.0);
+                double advance = inPossession ? (home ? 10.0 : -10.0) : (home ? 4.0 : -4.0);
+                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.26 : 0.18) + advance;
+                targetY = wingY + (rt.ball.getY() - wingY) * (inPossession ? 0.16 : 0.10);
+                targetY = clamp(targetY, upperLane ? 6.0 : 74.0, upperLane ? 24.0 : 94.0);
+                targetX = applyOffsideTolerance(rt, pos, targetX, home);
+            }
+            case ATT -> {
+                double laneY = upperLane ? 44.0 : 56.0;
+                double baseX = home ? (inPossession ? 74.0 : 58.0) : (inPossession ? 26.0 : 42.0);
+                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.24 : 0.16) + (home ? 6.0 : -6.0);
+                targetY = laneY + (rt.ball.getY() - laneY) * 0.14;
+                targetX = applyOffsideTolerance(rt, pos, targetX, home);
+            }
+            case MID -> {
+                double laneY = upperLane ? 36.0 : 64.0;
+                double baseX = home ? (inPossession ? 50.0 : 40.0) : (inPossession ? 50.0 : 60.0);
+                targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.18 : 0.22);
+                targetY = laneY + (rt.ball.getY() - laneY) * (inPossession ? 0.16 : 0.18);
+            }
+            default -> {
+                targetX = baseAnchorX(player, team, inPossession);
+                targetY = baseAnchorY(player, team);
+            }
+        }
+
+        targetX += (random.nextDouble() - 0.5) * 1.0;
+        targetY += (random.nextDouble() - 0.5) * 1.8;
+        movePosition(pos, targetX, targetY, SUPPORT_STEP);
+    }
+
+    private void spreadSameTeamPlayers(MatchRuntime rt) {
+        separateCluster(rt.homePlayers, rt);
+        separateCluster(rt.awayPlayers, rt);
+        separateSameLanePlayers(rt.homePlayers, rt);
+        separateSameLanePlayers(rt.awayPlayers, rt);
+    }
+
+    private void separateCluster(List<Player> teamPlayers, MatchRuntime rt) {
+        final double minDistance = 7.2;
+        for (int i = 0; i < teamPlayers.size(); i++) {
+            PlayerPositionDTO a = getPlayerPosition(rt, teamPlayers.get(i));
+            if (a == null) {
+                continue;
+            }
+            for (int j = i + 1; j < teamPlayers.size(); j++) {
+                PlayerPositionDTO b = getPlayerPosition(rt, teamPlayers.get(j));
+                if (b == null) {
+                    continue;
+                }
+                double dx = a.getX() - b.getX();
+                double dy = a.getY() - b.getY();
+                double distance = Math.hypot(dx, dy);
+                if (distance >= minDistance) {
+                    continue;
+                }
+
+                double safeDx = Math.abs(dx) < 0.01 ? (random.nextBoolean() ? 1.0 : -1.0) : dx;
+                double safeDy = Math.abs(dy) < 0.01 ? (random.nextBoolean() ? 0.8 : -0.8) : dy;
+                double factor = (minDistance - Math.max(distance, 0.1)) / 1.6;
+                double norm = Math.hypot(safeDx, safeDy);
+                double pushX = (safeDx / norm) * factor;
+                double pushY = (safeDy / norm) * factor;
+
+                a.setX(clamp(a.getX() + pushX, MIN_X, MAX_X));
+                a.setY(clamp(a.getY() + pushY, MIN_Y, MAX_Y));
+                b.setX(clamp(b.getX() - pushX, MIN_X, MAX_X));
+                b.setY(clamp(b.getY() - pushY, MIN_Y, MAX_Y));
+            }
+        }
+    }
+
+    private void separateSameLanePlayers(List<Player> teamPlayers, MatchRuntime rt) {
+        final double laneDistanceY = 8.0;
+        final double laneDistanceX = 6.5;
+        final double minLaneGap = 9.0;
+
+        for (int i = 0; i < teamPlayers.size(); i++) {
+            Player first = teamPlayers.get(i);
+            PlayerPositionDTO a = getPlayerPosition(rt, first);
+            if (a == null || first.getPosition() == Position.GK) {
+                continue;
+            }
+
+            for (int j = i + 1; j < teamPlayers.size(); j++) {
+                Player second = teamPlayers.get(j);
+                PlayerPositionDTO b = getPlayerPosition(rt, second);
+                if (b == null || second.getPosition() == Position.GK) {
+                    continue;
+                }
+
+                double yGap = Math.abs(a.getY() - b.getY());
+                double xGap = Math.abs(a.getX() - b.getX());
+                if (yGap > laneDistanceY || xGap > laneDistanceX) {
+                    continue;
+                }
+
+                double pushY = ((minLaneGap - yGap) / 2.0) + 0.8;
+                if (a.getY() <= b.getY()) {
+                    a.setY(clamp(a.getY() - pushY, MIN_Y, MAX_Y));
+                    b.setY(clamp(b.getY() + pushY, MIN_Y, MAX_Y));
+                } else {
+                    a.setY(clamp(a.getY() + pushY, MIN_Y, MAX_Y));
+                    b.setY(clamp(b.getY() - pushY, MIN_Y, MAX_Y));
+                }
+
+                double directionalPush = ((laneDistanceX - xGap) / 2.5) + 0.6;
+                if (first.getPosition() == Position.ATT || first.getPosition() == Position.WNG) {
+                    a.setX(clamp(a.getX() + ("HOME".equals(a.getTeam()) ? directionalPush : -directionalPush), MIN_X, MAX_X));
+                }
+                if (second.getPosition() == Position.ATT || second.getPosition() == Position.WNG) {
+                    b.setX(clamp(b.getX() + ("HOME".equals(b.getTeam()) ? directionalPush : -directionalPush), MIN_X, MAX_X));
+                }
+            }
+        }
+    }
+
+    private void rememberPassPair(MatchRuntime rt, Player passer, Player receiver, String team) {
+        rt.previousPassFromId = rt.lastPassFromId;
+        rt.previousPassToId = rt.lastPassToId;
+        rt.previousPassPairTick = rt.lastPassPairTick;
+        rt.lastPassFromId = Math.toIntExact(passer.getId());
+        rt.lastPassToId = Math.toIntExact(receiver.getId());
+        rt.lastPassPairTick = rt.tick;
+        if ("HOME".equals(team)) {
+            rt.homeLastReceiverId = Math.toIntExact(receiver.getId());
+        } else if ("AWAY".equals(team)) {
+            rt.awayLastReceiverId = Math.toIntExact(receiver.getId());
+        }
+    }
+
     private void releaseBall(MatchRuntime rt, Player target, String recoveringTeam, Integer pendingReceiverId, Integer pendingPasserId, double scatter) {
         PlayerPositionDTO targetPos = getPlayerPosition(rt, target);
         if (targetPos == null) {
             return;
         }
+        double startX = rt.ball != null ? rt.ball.getX() : targetPos.getX();
+        double startY = rt.ball != null ? rt.ball.getY() : targetPos.getY();
+        double intendedX = clamp(targetPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X);
+        double intendedY = clamp(targetPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y);
+        double dx = intendedX - startX;
+        double dy = intendedY - startY;
+        double distance = Math.hypot(dx, dy);
+        double maxTravel = pendingReceiverId != null ? 10.0 : 8.0;
+        double factor = distance > 0.01 ? Math.min(1.0, maxTravel / distance) : 0.0;
+
         rt.currentCarrier = null;
         rt.pendingReceiverId = pendingReceiverId;
         rt.pendingPasserId = pendingPasserId;
         rt.lastTouchTeam = recoveringTeam;
+        rt.lastPassReceiverId = null;
+        rt.lastPassReceiveTick = -100;
+        rt.lastPassReceiveTeam = null;
+        rt.lastDuelWinnerId = null;
+        rt.lastDuelWinTick = -100;
+        rt.lastDuelWinTeam = null;
+        rt.lastRecoveryPlayerId = null;
+        rt.lastRecoveryTick = -100;
+        rt.lastRecoveryTeam = null;
         rt.ball = new BallPositionDTO(
-                clamp(targetPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X),
-                clamp(targetPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y)
+                clamp(startX + dx * factor, MIN_X, MAX_X),
+                clamp(startY + dy * factor, MIN_Y, MAX_Y)
         );
     }
 
@@ -763,6 +1136,16 @@ public class RealisticMatchEngine {
         return "HOME".equals(team) ? pos.getX() >= 66.0 : pos.getX() <= 34.0;
     }
 
+    private boolean isInPenaltyBox(PlayerPositionDTO carrier, boolean attacksRight) {
+        if (carrier == null) {
+            return false;
+        }
+        if (attacksRight) {
+            return carrier.getX() >= 84.0 && carrier.getY() >= 22.0 && carrier.getY() <= 78.0;
+        }
+        return carrier.getX() <= 16.0 && carrier.getY() >= 22.0 && carrier.getY() <= 78.0;
+    }
+
     private double estimateDistanceToGoal(MatchRuntime rt, Player player, String team) {
         PlayerPositionDTO pos = getPlayerPosition(rt, player);
         if (pos == null) {
@@ -781,6 +1164,197 @@ public class RealisticMatchEngine {
         double dx = a.getX() - b.getX();
         double dy = a.getY() - b.getY();
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private boolean isPlayerControllingBall(MatchRuntime rt, Player player) {
+        PlayerPositionDTO playerPos = getPlayerPosition(rt, player);
+        if (playerPos == null || rt.ball == null) {
+            return false;
+        }
+        return distanceBetween(playerPos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)) <= CARRIER_CONTROL_RADIUS;
+    }
+
+    private boolean canShootNow(MatchRuntime rt, Player shooter, String ballTeam) {
+        if (rt.currentCarrier == null || shooter == null || shooter.getId() == null) {
+            return false;
+        }
+        if (rt.currentCarrier.getId() != Math.toIntExact(shooter.getId())) {
+            return false;
+        }
+        if (!isPlayerControllingBall(rt, shooter)) {
+            return false;
+        }
+        if (!Objects.equals(rt.lastTouchTeam, ballTeam)) {
+            return false;
+        }
+        if (!isOnOpponentHalf(rt, shooter, ballTeam)) {
+            return false;
+        }
+        if (!isDangerousAttackingPosition(rt, shooter, ballTeam)) {
+            return false;
+        }
+
+        int shooterId = Math.toIntExact(shooter.getId());
+        boolean receivedShotPass = Objects.equals(rt.lastPassReceiverId, shooterId)
+                && Objects.equals(rt.lastPassReceiveTeam, ballTeam)
+                && (rt.tick - rt.lastPassReceiveTick) <= SHOT_WINDOW_TICKS
+                && isInShotZone(ballTeam, rt.lastPassReceiveX);
+
+        boolean wonDuelHigh = Objects.equals(rt.lastDuelWinnerId, shooterId)
+                && Objects.equals(rt.lastDuelWinTeam, ballTeam)
+                && (rt.tick - rt.lastDuelWinTick) <= SHOT_WINDOW_TICKS
+                && isOnOpponentHalf(ballTeam, rt.lastDuelWinX);
+
+        boolean recoveredHigh = Objects.equals(rt.lastRecoveryPlayerId, shooterId)
+                && Objects.equals(rt.lastRecoveryTeam, ballTeam)
+                && (rt.tick - rt.lastRecoveryTick) <= SHOT_WINDOW_TICKS
+                && isOnOpponentHalf(ballTeam, rt.lastRecoveryX);
+
+        return receivedShotPass || wonDuelHigh || recoveredHigh;
+    }
+
+    private boolean isOnOpponentHalf(MatchRuntime rt, Player player, String team) {
+        PlayerPositionDTO pos = getPlayerPosition(rt, player);
+        if (pos == null) {
+            return false;
+        }
+        return isOnOpponentHalf(team, pos.getX());
+    }
+
+    private boolean isOnOpponentHalf(String team, double x) {
+        return "HOME".equals(team) ? x > 50.0 : x < 50.0;
+    }
+
+    private boolean isInShotZone(String team, double x) {
+        return "HOME".equals(team) ? x >= 66.0 : x <= 34.0;
+    }
+
+    private void maybeCreateVarReview(GoalEvent goal, PenaltyEvent penalty, MatchRuntime rt, Match match, int minute) {
+        if (goal == null && penalty == null) {
+            return;
+        }
+        if (random.nextDouble() >= 0.20) {
+            return;
+        }
+
+        VARReviewEvent var = new VARReviewEvent();
+        var.setMinute(minute);
+        var.setMatch(match);
+
+        if (goal != null) {
+            var.setReviewedGoalEvent(goal);
+            var.setNumber(1);
+            if (random.nextDouble() < 0.80) {
+                var.setDecision("Confirmed");
+            } else {
+                var.setDecision("Overturned");
+                var.setOverturnReason(randomOverturnReason());
+                goal.setScored(false);
+                rt.runtimeGoals.remove(goal);
+                if (goal.getTeam() != null && goal.getTeam().equals(match.getHomeTeam())) {
+                    rt.homeGoals = Math.max(0, rt.homeGoals - 1);
+                } else {
+                    rt.awayGoals = Math.max(0, rt.awayGoals - 1);
+                }
+            }
+        } else {
+            var.setReviewedPenaltyEvent(penalty);
+            var.setNumber(2);
+            if (random.nextDouble() < 0.80) {
+                var.setDecision("Confirmed");
+            } else {
+                var.setDecision("Overturned");
+                var.setOverturnReason("encroachment");
+                penalty.setScored(false);
+            }
+        }
+
+        rt.runtimeEvents.add(var);
+    }
+
+    private String randomOverturnReason() {
+        double roll = random.nextDouble();
+        if (roll < 0.45) return "offside";
+        if (roll < 0.80) return "foul in build-up";
+        return "handball";
+    }
+
+    private boolean isOffsideReceiver(MatchRuntime rt, Player passer, Player receiver, String attackingTeam) {
+        if (receiver == null || passer == null || receiver.getId() == null || passer.getId() == null) {
+            return false;
+        }
+        if (receiver.getPosition() == Position.GK || Objects.equals(receiver.getId(), passer.getId())) {
+            return false;
+        }
+
+        PlayerPositionDTO receiverPos = getPlayerPosition(rt, receiver);
+        PlayerPositionDTO passerPos = getPlayerPosition(rt, passer);
+        if (receiverPos == null || passerPos == null) {
+            return false;
+        }
+
+        boolean homeAttack = "HOME".equals(attackingTeam);
+        double offsideLine = calculateOffsideLine(rt, attackingTeam);
+        boolean aheadOfBall = homeAttack
+                ? receiverPos.getX() > passerPos.getX() + 1.0
+                : receiverPos.getX() < passerPos.getX() - 1.0;
+        boolean inOppositionHalf = homeAttack ? receiverPos.getX() > 50.0 : receiverPos.getX() < 50.0;
+        boolean beyondLine = homeAttack
+                ? receiverPos.getX() > offsideLine + 1.0
+                : receiverPos.getX() < offsideLine - 1.0;
+
+        return aheadOfBall && inOppositionHalf && beyondLine;
+    }
+
+    private double calculateOffsideLine(MatchRuntime rt, String attackingTeam) {
+        List<Player> defenders = "HOME".equals(attackingTeam) ? rt.awayPlayers : rt.homePlayers;
+        List<Double> defenderLine = defenders.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .map(player -> getPlayerPosition(rt, player))
+                .filter(Objects::nonNull)
+                .map(PlayerPositionDTO::getX)
+                .sorted()
+                .toList();
+
+        if (defenderLine.isEmpty()) {
+            return "HOME".equals(attackingTeam) ? 95.0 : 5.0;
+        }
+
+        if ("HOME".equals(attackingTeam)) {
+            return defenderLine.size() >= 2 ? defenderLine.get(defenderLine.size() - 2) : defenderLine.get(defenderLine.size() - 1);
+        }
+        return defenderLine.size() >= 2 ? defenderLine.get(1) : defenderLine.get(0);
+    }
+
+    private double applyOffsideTolerance(MatchRuntime rt, PlayerPositionDTO pos, double targetX, boolean homeTeam) {
+        if (rt.currentCarrier == null || !Objects.equals(rt.currentCarrier.getTeam(), pos.getTeam())) {
+            pos.setOffsideTicksRemaining(0);
+            pos.setRetreatTicksRemaining(0);
+            return targetX;
+        }
+
+        double line = calculateOffsideLine(rt, pos.getTeam());
+        double tolerance = 1.0;
+        boolean isOffside = homeTeam ? pos.getX() > line + tolerance : pos.getX() < line - tolerance;
+        if (!isOffside) {
+            pos.setOffsideTicksRemaining(0);
+            pos.setRetreatTicksRemaining(0);
+            return targetX;
+        }
+
+        if (pos.getOffsideTicksRemaining() >= 2) {
+            if (pos.getRetreatTicksRemaining() < MAX_RETREAT_TICKS) {
+                pos.setRetreatTicksRemaining(pos.getRetreatTicksRemaining() + 1);
+            }
+            double progress = pos.getRetreatTicksRemaining() / (double) MAX_RETREAT_TICKS;
+            double effectiveForce = RETREAT_FORCE + DEEP_RETREAT_FORCE * progress;
+            targetX = homeTeam ? (line - effectiveForce) : (line + effectiveForce);
+        } else {
+            targetX = homeTeam ? Math.min(targetX, line + 0.8) : Math.max(targetX, line - 0.8);
+        }
+
+        pos.setOffsideTicksRemaining(pos.getOffsideTicksRemaining() + 1);
+        return targetX;
     }
 
     private Player resolveAssistant(MatchRuntime rt, Player scorer, String scoringTeam) {

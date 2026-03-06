@@ -10,14 +10,14 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Realistični Event Generator
- * 
- * Kreira sve event-e koji se dešavaju tokom meča:
+ * Realistic Event Generator
+ *
+ * Creates match events for the realistic flow:
  * - PassEvent (novi)
  * - InterceptionEvent (novi)
  * - DuelEvent (novi)
- * - GoalEvent (postojeći)
- * - ShotEvent (postojeći)
+ * - GoalEvent
+ * - ShotEvent
  * - CornerEvent, ThrowInEvent, itd.
  */
 @Component
@@ -58,7 +58,7 @@ public class RealisticEventGenerator {
     /**
      * Kreiraj GoalEvent
      */
-    public void createGoalEvent(MatchRuntime rt, Match match, int minute, 
+    public GoalEvent createGoalEvent(MatchRuntime rt, Match match, int minute,
                                 Player scorer, Player assistant) {
         GoalEvent event = new GoalEvent();
         event.setMatch(match);
@@ -79,6 +79,7 @@ public class RealisticEventGenerator {
         rt.runtimeEvents.add(event);
         rt.runtimeGoals.add(event);
         log.debug("GOAL! {} scored in minute {}", scorer.getName(), minute);
+        return event;
     }
 
     /**
@@ -94,7 +95,7 @@ public class RealisticEventGenerator {
         event.setTeam(rt.homePlayers.contains(passer) ? match.getHomeTeam() : match.getAwayTeam());
         
         rt.runtimeEvents.add(event);
-        log.debug("Pass: {} → {}", passer.getName(), receiver.getName());
+        log.debug("Pass: {} -> {}", passer.getName(), receiver.getName());
     }
 
     /**
@@ -143,6 +144,16 @@ public class RealisticEventGenerator {
         log.debug("Chance: {} dangerous={}", player.getName(), dangerous);
     }
 
+    public void createOffsideEvent(MatchRuntime rt, Match match, int minute, Player player) {
+        OffsideEvent event = new OffsideEvent();
+        event.setMatch(match);
+        event.setMinute(minute);
+        event.setPlayer(player);
+
+        rt.runtimeEvents.add(event);
+        log.debug("Offside: {}", player != null ? player.getName() : "unknown");
+    }
+
     /**
      * Kreiraj ShotOnTargetEvent
      */
@@ -155,7 +166,7 @@ public class RealisticEventGenerator {
         event.setTeam(rt.homePlayers.contains(shooter) ? match.getHomeTeam() : match.getAwayTeam());
         
         rt.runtimeEvents.add(event);
-        log.debug("Shot saved: {} → {}", shooter.getName(), goalkeeper.getName());
+        log.debug("Shot saved: {} -> {}", shooter.getName(), goalkeeper.getName());
     }
 
     /**
@@ -196,7 +207,7 @@ public class RealisticEventGenerator {
         event.setMatch(match);
         event.setMinute(minute);
         event.setTeam(rt.lastTouchTeam.equals("HOME") ? match.getHomeTeam() : match.getAwayTeam());
-        // Pronađi random igrača koji će biti krenuo korner
+        // Pick a random player to take the corner.
         List<Player> team = rt.lastTouchTeam.equals("HOME") ? rt.homePlayers : rt.awayPlayers;
         if (!team.isEmpty()) {
             event.setPlayer(team.get((int)(Math.random() * team.size())));
@@ -214,7 +225,7 @@ public class RealisticEventGenerator {
         event.setMatch(match);
         event.setMinute(minute);
         event.setTeam(rt.lastTouchTeam.equals("HOME") ? match.getHomeTeam() : match.getAwayTeam());
-        // Pronađi random igrača koji će biti izvršio throw-in
+        // Pick a random player to take the throw-in.
         List<Player> team = rt.lastTouchTeam.equals("HOME") ? rt.homePlayers : rt.awayPlayers;
         if (!team.isEmpty()) {
             event.setTaker(team.get((int)(Math.random() * team.size())));
@@ -232,7 +243,7 @@ public class RealisticEventGenerator {
         event.setMatch(match);
         event.setMinute(minute);
         event.setTeam(rt.lastTouchTeam.equals("HOME") ? match.getHomeTeam() : match.getAwayTeam());
-        // Postavi golmana koji izvršava kick
+        // Set the goalkeeper who takes the kick.
         String team = rt.lastTouchTeam;
         Player goalkeeper = team.equals("HOME") 
                 ? rt.homePlayers.stream().filter(p -> p.getPosition() == Position.GK).findFirst().orElse(null)
@@ -300,6 +311,6 @@ public class RealisticEventGenerator {
         event.setTeam(rt.homePlayers.contains(playerOut) ? match.getHomeTeam() : match.getAwayTeam());
         
         rt.runtimeEvents.add(event);
-        log.debug("Substitution: {} ← {}", playerIn.getName(), playerOut.getName());
+        log.debug("Substitution: {} <- {}", playerIn.getName(), playerOut.getName());
     }
 }

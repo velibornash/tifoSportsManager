@@ -1,3 +1,4 @@
+
 // realisticDemo.js
 import { authFetch } from './auth.js';
 
@@ -10,12 +11,20 @@ let homeScore = 0;
 let awayScore = 0;
 let isProcessingEvent = false;
 let bannerTimeout = null;
+let animationFrame = null;
+let activeAnimation = null;
+let goalGifTimeout = null;
+
 const EVENT_DELAY = 1650;
 const GOAL_DELAY = 2600;
 const playerElements = new Map();
 const eventQueue = [];
 const playerSlots = new Map();
 const playerNames = new Map();
+const latestPositions = new Map();
+const pendingVarGoals = [];
+const matchEndedImg = new Image();
+matchEndedImg.src = '/images/match_ended.jpg';
 
 const matchData = {
     homeTeam: 'Home',
@@ -31,6 +40,7 @@ window.addEventListener('load', async () => {
         return;
     }
 
+    initPitchOverlay();
     await Promise.all([loadMatchData(), loadLineups()]);
     connectToWebSockets();
 });
@@ -47,7 +57,7 @@ async function loadMatchData() {
         awayScore = 0;
         document.getElementById('homeTeam').textContent = matchData.homeTeam;
         document.getElementById('awayTeam').textContent = matchData.awayTeam;
-        updateDisplayedMinute(0);
+        updateDisplayedMinute(0, true);
         updateScore();
     } catch (error) {
         console.error('Error loading match data:', error);
@@ -87,15 +97,11 @@ function connectToWebSockets() {
     positionSocket = new WebSocket(`${protocol}//${window.location.host}/demo-position-updates?matchId=${matchId}&token=${token}`);
     eventSocket = new WebSocket(`${protocol}//${window.location.host}/demo-match-events?matchId=${matchId}&token=${token}`);
 
-    positionSocket.onopen = () => console.log('Position socket connected');
     positionSocket.onmessage = event => handlePositionUpdate(event.data);
     positionSocket.onerror = error => console.error('Position socket error:', error);
-    positionSocket.onclose = () => console.log('Position socket closed');
 
-    eventSocket.onopen = () => console.log('Event socket connected');
     eventSocket.onmessage = event => handleMatchEvent(event.data);
     eventSocket.onerror = error => console.error('Event socket error:', error);
-    eventSocket.onclose = () => console.log('Event socket closed');
 }
 
 function handlePositionUpdate(raw) {
@@ -103,7 +109,11 @@ function handlePositionUpdate(raw) {
         const state = JSON.parse(raw);
         if (state.matchId && String(state.matchId) !== String(matchId)) return;
 
-        const minute = Number.isFinite(state.minute) ? state.minute : Number.isFinite(state.second) ? state.second : streamMinute;
+        const minute = Number.isFinite(state.minute)
+            ? state.minute
+            : Number.isFinite(state.second)
+                ? state.second
+                : streamMinute;
         streamMinute = minute;
         if (!isProcessingEvent && eventQueue.length === 0) {
             updateDisplayedMinute(streamMinute);
@@ -133,7 +143,17 @@ function processNextEvent() {
     renderEvent(event);
     renderPitchEvent(event);
 
-    const delay = (event.type || '').toLowerCase() === 'goal' ? GOAL_DELAY : EVENT_DELAY;
+    const type = (event.type || '').toLowerCase();
+    const delay = type === 'varreview'
+        ? 2700
+        : type === 'matchended'
+            ? 2500
+            : type === 'goal'
+                ? GOAL_DELAY
+                : isCanvasAnimationEvent(type)
+                    ? 2200
+                    : EVENT_DELAY;
+
     setTimeout(() => {
         isProcessingEvent = false;
         if (eventQueue.length === 0 && streamMinute > displayMinute) {
@@ -153,6 +173,7 @@ function applyEventState(event) {
         updateDisplayedMinute(event.minute);
     }
 
+    const type = (event.type || '').toLowerCase();
     const parsedScore = parseScore(event.scoreAfterGoal);
     if (parsedScore) {
         homeScore = parsedScore.home;
@@ -160,15 +181,44 @@ function applyEventState(event) {
     } else if (Number.isFinite(event.homeGoals) && Number.isFinite(event.awayGoals)) {
         homeScore = event.homeGoals;
         awayScore = event.awayGoals;
-    } else if ((event.type || '').toLowerCase() === 'goal') {
+    } else if (type === 'goal') {
         const eventTeam = normalize(event.teamName);
         if (eventTeam && eventTeam === normalize(matchData.homeTeam)) homeScore += 1;
         if (eventTeam && eventTeam === normalize(matchData.awayTeam)) awayScore += 1;
     }
 
+    if (type === 'goal') {
+        const scorer = event.scorerName || event.playerName || '';
+        const assistant = event.assistantName || '';
+        pendingVarGoals.push({ scorer, assistant, teamName: event.teamName || '' });
+    }
+
+    if (type === 'varreview'
+        && String(event.decision || '').toLowerCase() === 'overturned'
+        && String(event.reviewTarget || '').toLowerCase() === 'goal') {
+        rollbackGoalFromVar(event);
+    }
+
     updateScore();
 }
 
+function rollbackGoalFromVar(event) {
+    const reviewedPlayer = event.playerName || '';
+    const eventTeam = normalize(event.teamName);
+    if (eventTeam && eventTeam === normalize(matchData.homeTeam)) {
+        homeScore = Math.max(0, homeScore - 1);
+    } else if (eventTeam && eventTeam === normalize(matchData.awayTeam)) {
+        awayScore = Math.max(0, awayScore - 1);
+    }
+
+    for (let i = pendingVarGoals.length - 1; i >= 0; i -= 1) {
+        const candidate = pendingVarGoals[i];
+        if (!reviewedPlayer || normalize(candidate.scorer) === normalize(reviewedPlayer)) {
+            pendingVarGoals.splice(i, 1);
+            break;
+        }
+    }
+}
 function renderEvent(event) {
     const eventsList = document.getElementById('events-list');
     const loading = eventsList.querySelector('.loading');
@@ -202,6 +252,8 @@ function buildEventHtml(event) {
             return `<strong>${minute}'</strong> Duel won by <strong>${player}</strong>${event.secondaryPlayerName ? ` over ${event.secondaryPlayerName}` : ''}${event.teamName ? ` <span style="opacity:.8">(${event.teamName})</span>` : ''}`;
         case 'goal':
             return `<strong>${minute}'</strong> Goal: <strong>${player}</strong>${event.assistantName ? `, assist ${event.assistantName}` : ''} <span style="opacity:.8">(${event.teamName || 'team'})</span>`;
+        case 'penalty':
+            return `<strong>${minute}'</strong> Penalty: <strong>${player}</strong>${event.scored ? ' scored' : ' missed'}`;
         case 'chance':
             return `<strong>${minute}'</strong> ${event.description || `Chance for ${player}`}`;
         case 'possession':
@@ -216,6 +268,8 @@ function buildEventHtml(event) {
             return `<strong>${minute}'</strong> Red card: <strong>${player}</strong>`;
         case 'corner':
             return `<strong>${minute}'</strong> Corner for <strong>${event.teamName || 'team'}</strong>`;
+        case 'offside':
+            return `<strong>${minute}'</strong> Offside: <strong>${player}</strong>`;
         case 'throwin':
             return `<strong>${minute}'</strong> Throw-in for <strong>${event.teamName || 'team'}</strong>`;
         case 'goalkick':
@@ -246,13 +300,22 @@ function renderPitchEvent(event) {
     const mainEl = findPlayerElementByName(mainName);
     const secondaryEl = findPlayerElementByName(secondaryName);
 
-    if (mainEl) {
-        mainEl.classList.add('involved-primary');
-    }
-    if (secondaryEl) {
-        secondaryEl.classList.add('involved-secondary');
+    if (mainEl) mainEl.classList.add('involved-primary');
+    if (secondaryEl) secondaryEl.classList.add('involved-secondary');
+
+    if (type === 'goal') {
+        showGoalCelebration(event);
     }
 
+    if (isCanvasAnimationEvent(type)) {
+        startCanvasAnimation(event);
+    }
+}
+
+function getSlotByName(name) {
+    if (!name) return null;
+    const playerId = playerNames.get(normalize(name));
+    return playerId != null ? playerSlots.get(Number(playerId)) || null : null;
 }
 
 function buildPitchBannerText(event) {
@@ -267,12 +330,20 @@ function buildPitchBannerText(event) {
             return `${minute}' INTERCEPTION ${player}`;
         case 'duel':
             return `${minute}' DUEL ${player}`;
+        case 'offside':
+            return `${minute}' OFFSIDE ${player}`;
         case 'goal':
             return `${minute}' GOAL ${player}`;
+        case 'penalty':
+            return `${minute}' PENALTY ${player}`;
         case 'shotontarget':
             return `${minute}' SHOT ON TARGET ${player}`;
         case 'shotofftarget':
             return `${minute}' SHOT OFF TARGET ${player}`;
+        case 'varreview':
+            return `${minute}' VAR REVIEW`;
+        case 'substitution':
+            return `${minute}' SUBSTITUTION`;
         case 'chance':
             return `${minute}' CHANCE ${player}`;
         default:
@@ -290,6 +361,23 @@ function showPitchBanner(text) {
     bannerTimeout = setTimeout(() => banner.classList.remove('visible'), 900);
 }
 
+function showGoalCelebration(event) {
+    const goalGif = document.getElementById('goal-celebration');
+    if (!goalGif) return;
+
+    const direction = getAttackDirection(event);
+    goalGif.style.left = direction === 1 ? '92%' : '8%';
+    goalGif.style.top = '50%';
+    goalGif.classList.add('visible');
+
+    if (goalGifTimeout) {
+        clearTimeout(goalGifTimeout);
+    }
+    goalGifTimeout = setTimeout(() => {
+        goalGif.classList.remove('visible');
+    }, 1800);
+}
+
 function clearPitchHighlights() {
     for (const el of playerElements.values()) {
         el.classList.remove('involved-primary', 'involved-secondary');
@@ -301,7 +389,6 @@ function findPlayerElementByName(name) {
     const playerId = playerNames.get(normalize(name));
     return playerId != null ? playerElements.get(String(playerId)) || null : null;
 }
-
 function renderPlayers(state) {
     const container = document.getElementById('players-container');
     if (!Array.isArray(state.players) || state.players.length === 0) return;
@@ -329,8 +416,7 @@ function renderPlayers(state) {
         el.classList.toggle('away', (player.team || '').toLowerCase() === 'away');
         el.style.left = `calc(${x}% - 20px)`;
         el.style.top = `calc(${y}% - 20px)`;
-        el.dataset.x = String(x);
-        el.dataset.y = String(y);
+        latestPositions.set(Number(player.id), { x, y, team: (player.team || '').toUpperCase() });
         seen.add(key);
     });
 
@@ -338,6 +424,7 @@ function renderPlayers(state) {
         if (!seen.has(key)) {
             el.remove();
             playerElements.delete(key);
+            latestPositions.delete(Number(key));
         }
     }
 
@@ -349,6 +436,386 @@ function renderPlayers(state) {
     }
 }
 
+function initPitchOverlay() {
+    const overlay = document.getElementById('pitch-overlay');
+    if (!overlay) return;
+    syncPitchOverlaySize();
+    window.addEventListener('resize', syncPitchOverlaySize);
+}
+
+function syncPitchOverlaySize() {
+    const pitch = document.querySelector('.pitch');
+    const overlay = document.getElementById('pitch-overlay');
+    if (!pitch || !overlay) return;
+    const rect = pitch.getBoundingClientRect();
+    overlay.width = Math.max(1, Math.round(rect.width));
+    overlay.height = Math.max(1, Math.round(rect.height));
+}
+
+function isShotAnimationEvent(type) {
+    return type === 'goal' || type === 'shotontarget' || type === 'shotofftarget' || type === 'penalty';
+}
+
+function isCanvasAnimationEvent(type) {
+    return isShotAnimationEvent(type) || type === 'varreview' || type === 'substitution' || type === 'matchended' || type === 'injury';
+}
+
+function startCanvasAnimation(event) {
+    clearCanvasAnimation();
+    syncPitchOverlaySize();
+
+    const type = (event.type || '').toLowerCase();
+    if (isShotAnimationEvent(type)) {
+        const direction = getAttackDirection(event);
+        const shooter = resolveShooterPoint(event, direction, type);
+        const keeper = resolveGoalkeeperPoint(direction);
+        const target = resolveShotTarget(event, type, direction, keeper);
+        activeAnimation = {
+            type,
+            event,
+            shooter,
+            keeper,
+            target,
+            scored: Boolean(event.scored),
+            startTs: performance.now(),
+            duration: type === 'goal' || type === 'penalty' ? 1200 : 950
+        };
+    } else {
+        activeAnimation = {
+            type,
+            event,
+            startTs: performance.now(),
+            duration: type === 'varreview' ? 2600 : type === 'matchended' ? 2300 : 2200
+        };
+    }
+
+    const ballEl = document.getElementById('ball');
+    if (ballEl && isShotAnimationEvent(type)) {
+        ballEl.style.opacity = '0';
+    }
+
+    animationFrame = requestAnimationFrame(drawAnimationFrame);
+}
+
+function clearCanvasAnimation() {
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+    }
+    activeAnimation = null;
+    const overlay = document.getElementById('pitch-overlay');
+    if (overlay) {
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+    }
+    const ballEl = document.getElementById('ball');
+    if (ballEl) {
+        ballEl.style.opacity = '1';
+    }
+}
+
+function drawAnimationFrame(timestamp) {
+    if (!activeAnimation) return;
+    const overlay = document.getElementById('pitch-overlay');
+    if (!overlay) return;
+
+    const ctx = overlay.getContext('2d');
+    const progress = Math.min(1, (timestamp - activeAnimation.startTs) / activeAnimation.duration);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    if (isShotAnimationEvent(activeAnimation.type)) {
+        drawShotMarkers(ctx, activeAnimation, progress);
+        drawAnimatedBall(ctx, activeAnimation, progress);
+    } else if (activeAnimation.type === 'varreview') {
+        drawVarAnimation(ctx, overlay, activeAnimation, progress);
+    } else if (activeAnimation.type === 'substitution') {
+        drawSubstitutionAnimation(ctx, overlay, activeAnimation);
+    } else if (activeAnimation.type === 'matchended') {
+        drawMatchEndedAnimation(ctx, overlay);
+    } else if (activeAnimation.type === 'injury') {
+        drawInjuryAnimation(ctx, overlay, activeAnimation, progress);
+    }
+
+    if (progress < 1) {
+        animationFrame = requestAnimationFrame(drawAnimationFrame);
+    } else {
+        clearCanvasAnimation();
+    }
+}
+
+function drawShotMarkers(ctx, anim, progress) {
+    drawPulseCircle(ctx, anim.shooter.x, anim.shooter.y, 13, anim.shooter.color, 0.9);
+    drawPulseCircle(ctx, anim.keeper.x, anim.keeper.y, 14, '#f0ad15', 0.78);
+
+    if ((anim.type === 'goal' || (anim.type === 'penalty' && anim.scored)) && progress > 0.82) {
+        const glowWidth = 18;
+        const goalX = anim.target.x + (anim.target.x > anim.keeper.x ? 4 : -4);
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillRect(goalX - glowWidth / 2, anim.target.y - 28, glowWidth, 56);
+    }
+}
+
+function drawAnimatedBall(ctx, anim, progress) {
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const x = anim.shooter.x + (anim.target.x - anim.shooter.x) * eased;
+    const y = anim.shooter.y + (anim.target.y - anim.shooter.y) * eased;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#1b1b1b';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+}
+
+function drawPulseCircle(ctx, x, y, radius, color, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawVarAnimation(ctx, overlay, anim, progress) {
+    const w = overlay.width;
+    const h = overlay.height;
+
+    ctx.fillStyle = 'rgba(8, 16, 28, 0.72)';
+    ctx.fillRect(0, 0, w, h);
+
+    const cardW = Math.min(520, w - 40);
+    const cardH = 230;
+    const cardX = (w - cardW) / 2;
+    const cardY = (h - cardH) / 2;
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 14, '#0f2038', '#3f5f90');
+
+    drawCameraIcon(ctx, cardX + 72, cardY + 70);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d9f2ff';
+    ctx.font = '700 31px Arial';
+    if (progress < 0.62) {
+        const dots = '.'.repeat((Math.floor(progress * 10) % 3) + 1);
+        ctx.fillText(`VAR CHECK${dots}`, cardX + 142, cardY + 96);
+        ctx.fillStyle = '#9cb8d8';
+        ctx.font = '600 20px Arial';
+        ctx.fillText(`Reviewing ${anim.event.reviewTarget || 'incident'}...`, cardX + 142, cardY + 132);
+    } else {
+        const isOverturned = String(anim.event.decision || '').toLowerCase() === 'overturned';
+        ctx.fillStyle = isOverturned ? '#ff6767' : '#8bff9f';
+        ctx.fillText(`VAR ${String(anim.event.decision || 'PENDING').toUpperCase()}`, cardX + 142, cardY + 96);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 22px Arial';
+        const reason = anim.event.overturnReason || 'check complete';
+        ctx.fillText(`${anim.event.reviewTarget || 'incident'} - ${reason}`, cardX + 142, cardY + 134);
+    }
+    ctx.textAlign = 'start';
+}
+function drawInjuryAnimation(ctx, overlay, anim, progress) {
+    const w = overlay.width;
+    const h = overlay.height;
+    const pulse = 0.55 + Math.abs(Math.sin(progress * Math.PI * 6)) * 0.35;
+    ctx.fillStyle = `rgba(140, 22, 22, ${pulse})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 46px Arial';
+    ctx.fillText('INJURY', w / 2, h / 2 - 16);
+    ctx.font = '600 25px Arial';
+    ctx.fillText(anim.event.playerName || 'Player', w / 2, h / 2 + 28);
+    ctx.textAlign = 'start';
+}
+
+function drawSubstitutionAnimation(ctx, overlay, anim) {
+    const w = overlay.width;
+    const h = overlay.height;
+    ctx.fillStyle = 'rgba(12, 28, 20, 0.78)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#d8ffe8';
+    ctx.font = '700 42px Arial';
+    ctx.fillText('SUBSTITUTION', w / 2, h / 2 - 30);
+    ctx.font = '700 26px Arial';
+    ctx.fillStyle = '#ff9b9b';
+    ctx.fillText(anim.event.playerOutName || 'Player out', w / 2, h / 2 + 8);
+    ctx.fillStyle = '#9bffb5';
+    ctx.fillText(anim.event.playerInName || 'Player in', w / 2, h / 2 + 48);
+    ctx.textAlign = 'start';
+}
+
+function drawMatchEndedAnimation(ctx, overlay) {
+    const w = overlay.width;
+    const h = overlay.height;
+
+    ctx.fillStyle = 'rgba(8, 12, 20, 0.66)';
+    ctx.fillRect(0, 0, w, h);
+
+    const cardW = Math.min(460, w - 36);
+    const cardH = 250;
+    const cardX = Math.floor((w - cardW) / 2);
+    const cardY = Math.floor((h - cardH) / 2);
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 14, '#111b2a', '#3e5f86');
+
+    if (matchEndedImg.complete) {
+        ctx.drawImage(matchEndedImg, cardX + 20, cardY + 20, 180, 120);
+    }
+
+    ctx.fillStyle = '#d9f2ff';
+    ctx.font = '700 36px Arial';
+    ctx.fillText('FULL TIME', cardX + 220, cardY + 92);
+    ctx.font = '600 24px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`${matchData.homeTeam} ${homeScore} - ${awayScore} ${matchData.awayTeam}`, cardX + 28, cardY + 190);
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+function drawCameraIcon(ctx, cx, cy) {
+    ctx.fillStyle = '#4fb2ff';
+    ctx.fillRect(cx - 30, cy - 18, 60, 36);
+    ctx.fillStyle = '#0f2038';
+    ctx.fillRect(cx + 24, cy - 10, 20, 20);
+    ctx.fillStyle = '#d6f3ff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4fb2ff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function getAttackDirection(event) {
+    const teamName = normalize(event.teamName);
+    if (teamName && teamName === normalize(matchData.homeTeam)) {
+        return 1;
+    }
+    return -1;
+}
+
+function resolveShooterPoint(event, direction, type) {
+    if (type === 'penalty') {
+        return getPenaltySpot(direction);
+    }
+
+    const name = event.playerName || event.scorerName || event.takerName || event.goalkeeperName;
+    const fromPlayer = getPlayerPointByName(name);
+    if (fromPlayer) return fromPlayer;
+
+    const fallbackX = direction === 1 ? 78 : 22;
+    return {
+        x: pitchPercentToX(fallbackX),
+        y: pitchPercentToY(50),
+        color: resolveTeamColorForEvent(event)
+    };
+}
+
+function resolveGoalkeeperPoint(direction) {
+    const defendingTeam = direction === 1 ? 'AWAY' : 'HOME';
+    for (const [playerId, slot] of playerSlots.entries()) {
+        if ((slot.position || '').toUpperCase() !== 'GK') continue;
+        const current = latestPositions.get(Number(playerId));
+        if (current && current.team === defendingTeam) {
+            return {
+                x: pitchPercentToX(current.x),
+                y: pitchPercentToY(current.y),
+                color: '#f0ad15'
+            };
+        }
+    }
+
+    return {
+        x: pitchPercentToX(direction === 1 ? 94 : 6),
+        y: pitchPercentToY(50),
+        color: '#f0ad15'
+    };
+}
+
+function resolveShotTarget(event, type, direction, keeper) {
+    const insideGoalX = direction === 1 ? 97 : 3;
+    const missX = direction === 1 ? 100 : 0;
+    const verticalBias = (Math.random() - 0.5) * 26;
+
+    if (type === 'goal' || (type === 'penalty' && event.scored)) {
+        const keeperAvoid = keeper.y <= pitchPercentToY(50) ? 18 : -18;
+        return {
+            x: pitchPercentToX(insideGoalX),
+            y: clampPx(keeper.y + keeperAvoid + verticalBias * 0.15, 26)
+        };
+    }
+
+    if (type === 'shotontarget' || (type === 'penalty' && !event.scored)) {
+        return {
+            x: keeper.x,
+            y: keeper.y + (Math.random() - 0.5) * 8
+        };
+    }
+
+    return {
+        x: pitchPercentToX(missX),
+        y: clampPx(pitchPercentToY(50) + verticalBias + (Math.random() < 0.5 ? -30 : 30), 12)
+    };
+}
+
+function resolveTeamColorForEvent(event) {
+    return getAttackDirection(event) === 1 ? '#FF6B6B' : '#4ECDC4';
+}
+
+function getPlayerPointByName(name) {
+    if (!name) return null;
+    const playerId = playerNames.get(normalize(name));
+    if (playerId == null) return null;
+    const pos = latestPositions.get(Number(playerId));
+    if (!pos) return null;
+    return {
+        x: pitchPercentToX(pos.x),
+        y: pitchPercentToY(pos.y),
+        color: pos.team === 'HOME' ? '#FF6B6B' : '#4ECDC4'
+    };
+}
+
+function getPenaltySpot(direction) {
+    return {
+        x: pitchPercentToX(direction === 1 ? 88 : 12),
+        y: pitchPercentToY(50),
+        color: direction === 1 ? '#FF6B6B' : '#4ECDC4'
+    };
+}
+
+function pitchPercentToX(percent) {
+    const overlay = document.getElementById('pitch-overlay');
+    return (clamp(percent, 0, 100) / 100) * (overlay?.width || 1);
+}
+
+function pitchPercentToY(percent) {
+    const overlay = document.getElementById('pitch-overlay');
+    return (clamp(percent, 0, 100) / 100) * (overlay?.height || 1);
+}
+
+function clampPx(value, padding) {
+    const overlay = document.getElementById('pitch-overlay');
+    const maxY = Math.max((overlay?.height || 1) - padding, padding);
+    return Math.max(padding, Math.min(maxY, value));
+}
 function getPlayerBadge(positionId, slotData) {
     if (slotData && Number.isFinite(Number(slotData.squadNumber)) && Number(slotData.squadNumber) > 0) {
         return String(slotData.squadNumber);
@@ -361,8 +828,9 @@ function getPlayerBadge(positionId, slotData) {
     return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 }
 
-function updateDisplayedMinute(minute) {
-    displayMinute = Math.max(displayMinute, Number(minute) || 0);
+function updateDisplayedMinute(minute, force = false) {
+    const nextMinute = Number(minute) || 0;
+    displayMinute = force ? nextMinute : Math.max(displayMinute, nextMinute);
     document.getElementById('minute').textContent = `${displayMinute}'`;
 }
 
@@ -388,6 +856,8 @@ function clamp(value, min, max) {
 }
 
 window.addEventListener('beforeunload', () => {
+    clearCanvasAnimation();
+    if (goalGifTimeout) clearTimeout(goalGifTimeout);
     if (positionSocket) positionSocket.close();
     if (eventSocket) eventSocket.close();
 });

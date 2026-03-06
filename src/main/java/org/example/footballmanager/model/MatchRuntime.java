@@ -30,6 +30,34 @@ public class MatchRuntime {
     public Integer pendingReceiverId = null;
     public Integer pendingPasserId = null;
     public String pendingPassTeam = null;
+    public Integer lastControllerId = null;
+    public int lastControlTick = -100;
+    public String lastControlSource = null;
+    public double lastControlX = 50.0;
+    public String lastControlTeam = null;
+
+    public Integer lastPassReceiverId = null;
+    public int lastPassReceiveTick = -100;
+    public double lastPassReceiveX = 50.0;
+    public String lastPassReceiveTeam = null;
+    public Integer lastPassFromId = null;
+    public Integer lastPassToId = null;
+    public int lastPassPairTick = -100;
+    public Integer previousPassFromId = null;
+    public Integer previousPassToId = null;
+    public int previousPassPairTick = -100;
+    public Integer homeLastReceiverId = null;
+    public Integer awayLastReceiverId = null;
+
+    public Integer lastDuelWinnerId = null;
+    public int lastDuelWinTick = -100;
+    public double lastDuelWinX = 50.0;
+    public String lastDuelWinTeam = null;
+
+    public Integer lastRecoveryPlayerId = null;
+    public int lastRecoveryTick = -100;
+    public double lastRecoveryX = 50.0;
+    public String lastRecoveryTeam = null;
     public double passQuality = 0.0;
     public int maxReboundTicks = 3;
     public int maxShotTicks = 4;
