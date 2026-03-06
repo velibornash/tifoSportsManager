@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistic Match Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1120px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .match-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .team {
+            flex: 1;
+            text-align: center;
+        }
+
+        .score {
+            text-align: center;
+            font-size: 3em;
+            font-weight: bold;
+            color: #4CAF50;
+            margin: 0 30px;
+        }
+
+        .team-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .minute-display {
+            text-align: center;
+            font-size: 2em;
+            font-weight: bold;
+            color: #FFD700;
+            margin-bottom: 20px;
+        }
+
+        .pitch {
+            position: relative;
+            width: 100%;
+            max-width: 920px;
+            aspect-ratio: 100 / 64;
+            background: linear-gradient(90deg, #1a7a1a 0%, #2d9b2d 50%, #1a7a1a 100%);
+            border: 3px solid #fff;
+            border-radius: 10px;
+            margin: 0 auto 20px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .pitch-markings {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        .center-line {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            top: 0;
+            background: #fff;
+            opacity: 0.5;
+        }
+
+        .center-circle {
+            position: absolute;
+            width: 20%;
+            aspect-ratio: 1 / 1;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.5;
+        }
+
+        .penalty-area {
+            position: absolute;
+            width: 25%;
+            height: 45%;
+            border: 2px solid #fff;
+            opacity: 0.5;
+        }
+
+        .penalty-area.home {
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .penalty-area.away {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .goal-box {
+            position: absolute;
+            width: 6%;
+            height: 20%;
+            border: 2px solid #fff;
+            opacity: 0.4;
+        }
+
+        .goal-box.home {
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .goal-box.away {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .player {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.88em;
+            cursor: pointer;
+            transition: left 0.62s linear, top 0.62s linear, box-shadow 0.25s ease, transform 0.25s ease, filter 0.25s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .player.home {
+            background: #FF6B6B;
+            border: 2px solid #fff;
+        }
+
+        .player.away {
+            background: #4ECDC4;
+            border: 2px solid #fff;
+        }
+
+        .player.carrier {
+            box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+            animation: pulse 0.6s infinite;
+        }
+
+        .player.involved-primary {
+            filter: brightness(1.15);
+            box-shadow: 0 0 18px rgba(255, 255, 255, 0.9);
+            z-index: 12;
+        }
+
+        .player.involved-secondary {
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.55);
+            z-index: 11;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .ball {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            z-index: 10;
+            transition: left 0.62s linear, top 0.62s linear;
+        }
+
+        .pitch-event-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .pitch-event-banner {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(8, 16, 24, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            font-size: 0.86em;
+            letter-spacing: 0.02em;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            backdrop-filter: blur(6px);
+        }
+
+        .pitch-event-banner.visible {
+            opacity: 1;
+        }
+
+        .events-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .event {
+            padding: 12px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #4CAF50;
+            border-radius: 5px;
+            font-size: 0.95em;
+            animation: slideIn 0.3s ease;
+        }
+
+        .event.goal {
+            border-left-color: #FFD700;
+            background: rgba(255, 215, 0, 0.1);
+        }
+
+        .event.card {
+            border-left-color: #FF6B6B;
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        .event.possession {
+            border-left-color: #4ECDC4;
+            background: rgba(78, 205, 196, 0.1);
+            font-size: 0.9em;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .btn-back {
+            background: #666;
+            color: #fff;
+        }
+
+        .btn-back:hover {
+            background: #555;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Scrollbar styling */
+        .events-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .events-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .events-panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+
+        .events-panel::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .match-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .score {
+                margin: 15px 0;
+                font-size: 2.5em;
+            }
+
+            .player {
+                width: 30px;
+                height: 30px;
+                font-size: 0.72em;
+            }
+
+            .pitch {
+                aspect-ratio: 80 / 64;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚽ Realistična Simulacija Meča</h1>
+        </div>
+
+        <div class="match-info">
+            <div class="team">
+                <div class="team-name" id="homeTeam">-</div>
+                <div id="homeStats" style="font-size: 0.9em; opacity: 0.8;">Čeka se simulacija...</div>
+            </div>
+            <div class="score" id="score">0 - 0</div>
+            <div class="team">
+                <div class="team-name" id="awayTeam">-</div>
+                <div id="awayStats" style="font-size: 0.9em; opacity: 0.8;">Čeka se simulacija...</div>
+            </div>
+        </div>
+
+        <div class="minute-display" id="minute">0'</div>
+
+        <div class="pitch">
+            <div class="pitch-markings">
+                <div class="center-line"></div>
+                <div class="center-circle"></div>
+                <div class="penalty-area home"></div>
+                <div class="penalty-area away"></div>
+                <div class="goal-box home"></div>
+                <div class="goal-box away"></div>
+            </div>
+            <div id="players-container"></div>
+            <div class="pitch-event-layer" id="pitch-event-layer">
+                <div class="pitch-event-banner" id="pitch-event-banner"></div>
+            </div>
+            <div class="ball" id="ball" style="display: none;"></div>
+        </div>
+
+        <div class="events-panel">
+            <div id="events-list" style="min-height: 100px;">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Učitavanje simulacije...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-back" onclick="window.location.href='/dashboard.html'">← Nazad</button>
+        </div>
+    </div>
+
+    <script type="module" src="/js/realisticDemo.js"></script>
+</body>
+</html>

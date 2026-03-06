@@ -82,6 +82,7 @@ public class RuntimeSaveToDB {
         em.flush();
     }
 
+    @jakarta.transaction.Transactional
     public Match finalizeMatchResult(Match match, List<Player> homePlayers, List<Player> awayPlayers, MatchRuntime rt) {
         rt.homeTeam = match.getHomeTeam();
         rt.awayTeam = match.getAwayTeam();

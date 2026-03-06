@@ -34,6 +34,7 @@ public class Player {
 
     private int totalGoals;
     private int totalAssists;
+    private Integer squadNumber;
     private Integer injuryDaysRemaining;
     private Integer injurySeasonNumber;
     private Integer injuryWeekNumber;

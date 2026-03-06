@@ -10,6 +10,7 @@ import org.example.footballmanager.service.ResetService;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.YouthAcademyService;
 import org.example.footballmanager.util.players.PlayerFactory;
+import org.example.footballmanager.util.players.SquadNumberAssigner;
 import org.example.footballmanager.util.teams.TeamFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,7 @@ public class DatabaseInitializer {
     private final ResetService resetService;
     private final SeasonService seasonService;
     private final YouthAcademyService youthAcademyService;
+    private final SquadNumberAssigner squadNumberAssigner;
 
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
@@ -54,6 +56,7 @@ public class DatabaseInitializer {
         Team ownerTeam = createOwnerUserIfNotExists();
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
 
+        assignSquadNumbersIfMissing();
         log.info("Inicijalizacija završena.");
     }
 
@@ -61,6 +64,11 @@ public class DatabaseInitializer {
     public void seedOwnerAfterReset() {
         Team ownerTeam = createOwnerUserIfNotExists();
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        assignSquadNumbersIfMissing();
+    }
+
+    private void assignSquadNumbersIfMissing() {
+        teamRepository.findAll().forEach(squadNumberAssigner::assignMissingNumbers);
     }
 
     private Team createOwnerUserIfNotExists() {
@@ -286,6 +294,7 @@ public class DatabaseInitializer {
                 playerFactory.createRandomTeamPlayers(team.getName(), team);
             }
         }
+        squadNumberAssigner.assignMissingNumbers(team);
     }
 
     private void applyOmladinacTalentProfile(Team team) {
@@ -305,6 +314,9 @@ public class DatabaseInitializer {
                 talent = 5.0 + random.nextDouble() * 3.0; // 5.0 - 8.0
             }
             player.setTalent(Math.max(1.0, Math.min(10.0, talent)));
+            if ("zvezdan vukomanovic".equals(key)) {
+                player.setSquadNumber(1);
+            }
         });
         playerRepository.saveAll(players);
     }
@@ -375,3 +387,5 @@ public class DatabaseInitializer {
         return cup;
     }
 }
+
+

@@ -213,6 +213,54 @@ public class MatchEventMapper {
                 dto.setAwayGoals(me.getMatch().getAwayGoals());
                 return dto;
             }
+            case PassEvent p -> {
+                MatchEventDTO dto = new MatchEventDTO() {};
+                dto.setType("pass");
+                dto.setMinute(p.getMinute());
+                dto.setDescription(p.getDescription());
+                fillPlayerFields(dto, p.getPasser());
+                dto.setPlayerName(p.getPasser() != null ? p.getPasser().getName() : null);
+                dto.setTeamName(p.getTeam() != null ? p.getTeam().getName() : null);
+                dto.setTargetPlayerName(p.getReceiver() != null ? p.getReceiver().getName() : null);
+                dto.setOutcome("completed");
+                return dto;
+            }
+            case InterceptionEvent i -> {
+                MatchEventDTO dto = new MatchEventDTO() {};
+                dto.setType("interception");
+                dto.setMinute(i.getMinute());
+                dto.setDescription(i.getDescription());
+                fillPlayerFields(dto, i.getInterceptor());
+                dto.setPlayerName(i.getInterceptor() != null ? i.getInterceptor().getName() : null);
+                dto.setTeamName(i.getTeam() != null ? i.getTeam().getName() : null);
+                dto.setSecondaryPlayerName(i.getOriginalPasser() != null ? i.getOriginalPasser().getName() : null);
+                dto.setOutcome("won");
+                return dto;
+            }
+            case DribbleEvent d -> {
+                MatchEventDTO dto = new MatchEventDTO() {};
+                dto.setType("dribble");
+                dto.setMinute(d.getMinute());
+                dto.setDescription(d.getDescription());
+                fillPlayerFields(dto, d.getDribbler());
+                dto.setPlayerName(d.getDribbler() != null ? d.getDribbler().getName() : null);
+                dto.setTeamName(d.getTeam() != null ? d.getTeam().getName() : null);
+                return dto;
+            }
+            case DuelEvent du -> {
+                MatchEventDTO dto = new MatchEventDTO() {};
+                dto.setType("duel");
+                dto.setMinute(du.getMinute());
+                dto.setDescription(du.getDescription());
+                fillPlayerFields(dto, du.getPlayer1());
+                dto.setPlayerName(du.getWinner());
+                dto.setTeamName(du.getTeam() != null ? du.getTeam().getName() : null);
+                dto.setSecondaryPlayerName(du.getPlayer1() != null && du.getWinner() != null && du.getWinner().equals(du.getPlayer1().getName())
+                        ? (du.getPlayer2() != null ? du.getPlayer2().getName() : null)
+                        : (du.getPlayer1() != null ? du.getPlayer1().getName() : null));
+                dto.setOutcome("won");
+                return dto;
+            }
             default -> {
             }
         }

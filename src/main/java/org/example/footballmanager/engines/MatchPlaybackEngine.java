@@ -133,8 +133,14 @@ public class MatchPlaybackEngine {
                 MatchRuntime.TickState frame = alpha == 0.0 ? current : interpolateFrame(current, next, alpha);
                 int minute = Math.min(90, frame.tick / ticksPerMinute + 1);
 
-                GameStateDTO state = new GameStateDTO(minute, frame.players, frame.ball);
-                broadcastEngine.broadcastState(matchId, state);
+                Map<String, Object> state = new HashMap<>();
+                state.put("matchId", matchId);
+                state.put("minute", minute);
+                state.put("second", minute);
+                state.put("players", frame.players);
+                state.put("ball", frame.ball);
+                state.put("carrierPlayerId", frame.carrierId >= 0 ? frame.carrierId : null);
+                broadcastEngine.positionWsHandler.broadcast(matchId, state);
 
                 if (minute != lastBroadcastMinute[0]) {
                     List<MatchEvent> minuteEvents = eventsByMinute.getOrDefault(minute, List.of());
@@ -200,6 +206,26 @@ public class MatchPlaybackEngine {
 
     public void startPlayback(long matchId) {
         startPlayback(matchId, null);
+    }
+
+    public boolean awaitActiveSessions(long matchId, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 0);
+        do {
+            boolean hasPosition = broadcastEngine.positionWsHandler.hasActiveSessions(matchId);
+            boolean hasEvents = broadcastEngine.eventWsHandler.hasActiveSessions(matchId);
+            if (hasPosition && hasEvents) {
+                return true;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        } while (System.currentTimeMillis() < deadline);
+
+        return broadcastEngine.positionWsHandler.hasActiveSessions(matchId)
+                && broadcastEngine.eventWsHandler.hasActiveSessions(matchId);
     }
 
     public void stopPlayback(long matchId) {

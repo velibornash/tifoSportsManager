@@ -409,9 +409,19 @@ function processQueue() {
 
     startAnimation(type, ev);
     state.processing = true;
+    
+    const shouldRedirect = (type === 'matchended' && state.queue.length === 0);
+    
     setTimeout(() => {
         state.processing = false;
-        processQueue();
+        
+        if (shouldRedirect) {
+            setTimeout(() => {
+                window.location.href = '/dashboard.html';
+            }, 1500);
+        } else {
+            processQueue();
+        }
     }, type === 'varreview' ? 2700 : type === 'matchended' ? 2500 : 2300);
 }
 

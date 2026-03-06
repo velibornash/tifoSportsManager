@@ -74,5 +74,33 @@ async function startKeyEventsTest() {
     }
 }
 
+async function startRealisticDemoTest() {
+    const button = document.getElementById('start-realistic-demo-btn');
+    if (!button) {
+        console.error('Realistic demo button not found');
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Starting realistic simulation...';
+
+    try {
+        const response = await authFetch('/start-realistic-demo');
+        if (!response.ok) throw new Error('Server error');
+
+        const data = await response.json();
+        const matchId = data.matchId;
+        if (!matchId) throw new Error('Missing matchId in response');
+
+        window.location.href = `/realisticDemo.html?matchId=${matchId}`;
+    } catch (error) {
+        console.error('Failed to start realistic demo:', error);
+        alert('Failed to start realistic match simulation.');
+        button.disabled = false;
+        button.textContent = '⚽ Realistic Match';
+    }
+}
+
 window.startDemoTest = startDemoTest;
 window.startKeyEventsTest = startKeyEventsTest;
+window.startRealisticDemoTest = startRealisticDemoTest;

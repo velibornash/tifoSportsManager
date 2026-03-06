@@ -241,7 +241,7 @@ public class MatchStatisticEngine {
         int homeReds           = rnd.nextInt(2);
         int awayReds           = rnd.nextInt(2);
 
-        // 2. Snimanje dogaÄ‘aja u bazu (samo deo, da ne zatrpamo bazu)
+        // 2. Snimanje događaja u bazu (samo deo, da ne zatrpamo bazu)
 
         // Korneri â€“ snimamo ~40â€“60% da izgleda realno
         int homeCornersToSave  = (int)(homeCorners * (0.4 + rnd.nextDouble() * 0.2));
@@ -265,7 +265,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(c);
         }
 
-        // Å utevi na gol â€“ snimamo deo Å¡uteva u okvir
+        // šutevi na gol â€“ snimamo deo šuteva u okvir
         for (int i = 0; i < homeShotsOnTarget; i++) {
             ShotOnTargetEvent s = new ShotOnTargetEvent();
             s.setMatch(match);
@@ -310,7 +310,7 @@ public class MatchStatisticEngine {
             p.setTeam(home);
             p.setMinute(rnd.nextInt(90) + 1);
             p.setTaker(getRandomPlayerByPosition(homePlayers, List.of(Position.ATT, Position.MID), rnd));
-            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspeÅ¡nosti penala
+            p.setScored(rnd.nextDouble() < 0.75); // ~75% uspešnosti penala
             matchEventRepository.save(p);
         }
 
@@ -324,7 +324,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(p);
         }
 
-        // Å½uti kartoni â€“ snimamo ~60% da ne bude previÅ¡e
+        // žuti kartoni â€“ snimamo ~60% da ne bude previše
         int homeYellowsToSave = (int)(homeYellows * 0.6);
         for (int i = 0; i < homeYellowsToSave; i++) {
             Player offender = getRandomPlayerByPosition(homePlayers, null, rnd); // bilo ko
@@ -370,7 +370,7 @@ public class MatchStatisticEngine {
             matchEventRepository.save(rc);
         }
 
-        log.info("Generisana fake statistika za simulirani meÄ {}:{} {} vs {} â€“ Å¡utevi {}/{}, korneri {}/{}, kartoni {}/{}",
+        log.info("Generisana fake statistika za simulirani meč {}:{} {} vs {} â€“ Å¡utevi {}/{}, korneri {}/{}, kartoni {}/{}",
                 home.getName(), homeGoals, awayGoals, away.getName(),
                 homeShotsTotal, awayShotsTotal, homeCorners, awayCorners, homeYellows, awayYellows);
     }

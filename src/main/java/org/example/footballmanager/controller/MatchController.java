@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 @Slf4j
 @RestController
@@ -61,6 +62,24 @@ public class MatchController {
         return matchRepository.findById(matchId)
                 .map(MatchDTO::from)
                 .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{matchId}/lineups")
+    public ResponseEntity<Map<String, Object>> getMatchLineups(@PathVariable Long matchId) {
+        return matchRepository.findById(matchId)
+                .map(match -> {
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("homeTeam", match.getHomeTeam() != null ? match.getHomeTeam().getName() : null);
+                    payload.put("awayTeam", match.getAwayTeam() != null ? match.getAwayTeam().getName() : null);
+                    payload.put("homeLineup", match.getHomeLineup() != null
+                            ? match.getHomeLineup().getStartingPlayers().stream().map(this::toLineupPlayer).toList()
+                            : List.of());
+                    payload.put("awayLineup", match.getAwayLineup() != null
+                            ? match.getAwayLineup().getStartingPlayers().stream().map(this::toLineupPlayer).toList()
+                            : List.of());
+                    return ResponseEntity.ok(payload);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
     @GetMapping("/{matchId}/detail")
@@ -99,5 +118,14 @@ public class MatchController {
                         .toList())
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    private Map<String, Object> toLineupPlayer(Player player) {
+        Map<String, Object> dto = new LinkedHashMap<>();
+        dto.put("id", player.getId());
+        dto.put("name", player.getName());
+        dto.put("position", player.getPosition() != null ? player.getPosition().name() : null);
+        dto.put("squadNumber", player.getSquadNumber());
+        return dto;
     }
 }

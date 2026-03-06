@@ -40,4 +40,7 @@ public abstract class MatchEventDTO {
     private Integer playerRating;
 
     private String teamName;
+    private String secondaryPlayerName;
+    private String targetPlayerName;
+    private String outcome;
 }

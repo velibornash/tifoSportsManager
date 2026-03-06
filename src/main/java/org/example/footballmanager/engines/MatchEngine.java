@@ -112,7 +112,7 @@ public class MatchEngine {
         lineup.setSubstitutes(managedSubs);
         return lineupRepository.save(lineup);
     }
-    public Match createMatch() {
+    public Match createMatch(Team userTeam) {
         GameClock clock = seasonService.getOrCreateClock();
         int seasonYear = seasonService.getActiveSeasonYear();
         int week = seasonService.getCurrentWeek();
@@ -138,53 +138,68 @@ public class MatchEngine {
                 .toList();
 
         if (allTeamsInLeague.size() < 2) {
-            throw new RuntimeException("Not enough teams in Superliga for demo match");
+            throw new RuntimeException("Not enough teams in league for match");
         }
 
-        Team homeTeam = allTeamsInLeague.stream()
-                .filter(t -> "OFK Omladinac".equals(t.getName()))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Omladinac is not in Superliga"));
+        // Verify user's team is in the league
+        if (!allTeamsInLeague.stream().anyMatch(t -> t.getId().equals(userTeam.getId()))) {
+            throw new RuntimeException("User's team '" + userTeam.getName() + "' is not in the league");
+        }
 
+        // Find fixture for user's team in this week
         List<MatchFixture> weekFixtures = matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
                 superLiga.getId(), seasonYear, week
         );
         MatchFixture userFixture = weekFixtures.stream()
                 .filter(f -> f.getHomeTeam() != null && f.getAwayTeam() != null)
-                .filter(f -> Objects.equals(f.getHomeTeam().getId(), homeTeam.getId()) || Objects.equals(f.getAwayTeam().getId(), homeTeam.getId()))
+                .filter(f -> Objects.equals(f.getHomeTeam().getId(), userTeam.getId()) || Objects.equals(f.getAwayTeam().getId(), userTeam.getId()))
                 .findFirst()
                 .orElse(null);
 
+        Team homeTeam;
         Team awayTeam;
         Match match;
         if (userFixture != null) {
-            boolean omladinacHome = Objects.equals(userFixture.getHomeTeam().getId(), homeTeam.getId());
-            awayTeam = omladinacHome ? userFixture.getAwayTeam() : userFixture.getHomeTeam();
+            // Use scheduled fixture
+            boolean userTeamHome = Objects.equals(userFixture.getHomeTeam().getId(), userTeam.getId());
+            homeTeam = userFixture.getHomeTeam();
+            awayTeam = userFixture.getAwayTeam();
             match = new Match();
-            match.setHomeTeam(omladinacHome ? homeTeam : awayTeam);
-            match.setAwayTeam(omladinacHome ? awayTeam : homeTeam);
+            match.setHomeTeam(homeTeam);
+            match.setAwayTeam(awayTeam);
             match.setCompetition(superLiga);
             match.setSeasonYear(seasonYear);
             match.setRoundNumber(userFixture.getRoundNumber());
             match.setWeekNumber(userFixture.getWeekNumber());
             match.setMatchDate(userFixture.getMatchDate() != null ? userFixture.getMatchDate() : clock.getCurrentDate());
+            log.info("Using scheduled fixture for user team '{}' - {}",
+                    userTeam.getName(), userTeamHome ? "HOME" : "AWAY");
         } else {
-            List<Team> possibleAway = allTeamsInLeague.stream()
-                    .filter(t -> !t.getId().equals(homeTeam.getId()))
+            // No scheduled fixture - randomly pick opponent and home/away
+            List<Team> possibleOpponents = allTeamsInLeague.stream()
+                    .filter(t -> !t.getId().equals(userTeam.getId()))
                     .toList();
-            if (possibleAway.isEmpty()) {
-                throw new RuntimeException("No opponent available for Omladinac in Superliga");
+            if (possibleOpponents.isEmpty()) {
+                throw new RuntimeException("No opponent available for team '" + userTeam.getName() + "'");
             }
-            awayTeam = possibleAway.get(random.nextInt(possibleAway.size()));
+            Team opponent = possibleOpponents.get(random.nextInt(possibleOpponents.size()));
+            
+            // Randomly assign user team to home or away (50/50)
+            boolean userTeamHome = random.nextBoolean();
+            homeTeam = userTeamHome ? userTeam : opponent;
+            awayTeam = userTeamHome ? opponent : userTeam;
+            
             match = new Match();
             match.setCompetition(superLiga);
             match.setSeasonYear(seasonYear);
             match.setRoundNumber(week);
             match.setWeekNumber(week);
             match.setMatchDate(clock.getCurrentDate());
+            log.info("No scheduled fixture - randomly generated match for user team '{}' - {}",
+                    userTeam.getName(), userTeamHome ? "HOME" : "AWAY");
         }
 
-        log.info("Demo match: {} vs {} (random from league)", homeTeam.getName(), awayTeam.getName());
+        log.info("Creating match: {} vs {}", homeTeam.getName(), awayTeam.getName());
 
         List<Player> homePlayers = playerRepository.findByTeam(homeTeam);
         List<Player> awayPlayers = playerRepository.findByTeam(awayTeam);
@@ -192,7 +207,7 @@ public class MatchEngine {
         if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
             log.warn("No players for team - populating...");
             if (homePlayers.isEmpty()) {
-                playerFactory.createOmladinacPlayers(homeTeam);
+                playerFactory.createRandomTeamPlayers(homeTeam.getName(), homeTeam);
                 homePlayers = playerRepository.findByTeam(homeTeam);
             }
             if (awayPlayers.isEmpty()) {
@@ -204,8 +219,8 @@ public class MatchEngine {
         Lineup homeLineup = createLineupForMatch(homeTeam, homePlayers, "4-4-2");
         Lineup awayLineup = createLineupForMatch(awayTeam, awayPlayers, "4-2-3-1");
 
-        match.setHomeTeam(match.getHomeTeam() != null ? match.getHomeTeam() : homeTeam);
-        match.setAwayTeam(match.getAwayTeam() != null ? match.getAwayTeam() : awayTeam);
+        match.setHomeTeam(homeTeam);
+        match.setAwayTeam(awayTeam);
         match.setHomeLineup(homeLineup);
         match.setAwayLineup(awayLineup);
         if (match.getMatchDate() == null) {
@@ -220,8 +235,10 @@ public class MatchEngine {
 
         match = matchRepository.save(match);
 
-        log.info("Created demo match ID: {}, Home: {}, Away: {}",
-                match.getId(), match.getHomeTeam().getName(), match.getAwayTeam().getName());
+        log.info("Created match ID: {}, Home: {} ({}), Away: {}",
+                match.getId(), match.getHomeTeam().getName(),
+                match.getHomeTeam().getId().equals(userTeam.getId()) ? "user team" : "opponent",
+                match.getAwayTeam().getName());
 
         return match;
     }

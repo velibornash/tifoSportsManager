@@ -10,6 +10,7 @@ import org.example.footballmanager.repository.JuniorRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.util.players.NameGenerator;
+import org.example.footballmanager.util.players.SquadNumberAssigner;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,7 @@ public class YouthAcademyService {
     private final JuniorRepository juniorRepository;
     private final PlayerRepository playerRepository;
     private final TransferService transferService;
+    private final SquadNumberAssigner squadNumberAssigner;
     private final Random random = new Random();
 
     @Transactional
@@ -193,6 +195,7 @@ public class YouthAcademyService {
 
         Position position = rollPosition();
         player.setPosition(position);
+        player.setSquadNumber(squadNumberAssigner.nextNumberForTeam(junior.getTeam(), position));
 
         int budget = Math.max(6, (int) Math.round(junior.getAcademySkillExact() * 3 + (random.nextInt(9) - 4)));
         SkillBuild skillBuild = createSkillsetFromBudget(budget, position == Position.GK);
@@ -208,6 +211,7 @@ public class YouthAcademyService {
         if (team != null) {
             team.getPlayers().add(player);
             teamRepository.save(team);
+            squadNumberAssigner.assignMissingNumbers(team);
         }
         PromotionBuild build = new PromotionBuild();
         build.player = player;

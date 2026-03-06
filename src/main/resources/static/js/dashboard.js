@@ -2,6 +2,39 @@
 import { authFetch } from './auth.js';
 
 let currentUserTeamId = null;
+let currentUserTeamName = null;
+
+function extractTeamId(team) {
+    if (team === null || team === undefined) return null;
+    if (typeof team === 'object') {
+        return team.id ?? team.teamId ?? team._id ?? null;
+    }
+    return team;
+}
+
+function extractTeamName(team) {
+    if (team === null || team === undefined) return null;
+    if (typeof team === 'object') {
+        return team.name ?? team.teamName ?? null;
+    }
+    return typeof team === 'string' ? team : null;
+}
+
+function isCurrentUserTeam(team) {
+    const teamId = extractTeamId(team);
+    if (teamId !== null && teamId !== undefined && currentUserTeamId !== null && currentUserTeamId !== undefined) {
+        if (Number(teamId) === Number(currentUserTeamId)) {
+            return true;
+        }
+    }
+
+    const teamName = extractTeamName(team);
+    if (teamName && currentUserTeamName) {
+        return teamName.trim().toLowerCase() === currentUserTeamName.trim().toLowerCase();
+    }
+
+    return false;
+}
 
 window.addEventListener('load', async () => {
     const token = localStorage.getItem('token');
@@ -16,7 +49,8 @@ window.addEventListener('load', async () => {
         const user = await res.json();
 
         currentUserTeamId = user.teamId;
-        console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId);
+        currentUserTeamName = user.teamName;
+        console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName);
 
         loadDashboard();
     } catch (err) {
@@ -32,13 +66,16 @@ function loadDashboard() {
         return;
     }
 
+    const teamName = currentUserTeamName || 'Your Team';
+    const teamImagePath = currentUserTeamName === 'OFK Omladinac' ? '/images/omladinac.png' : '/images/default-team.png';
+
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
     <div class="team-card">
         <div class="team-header">
-            <img src="/images/omladinac.png" class="team-logo">
+            <img src="${teamImagePath}" class="team-logo" onerror="this.src='/images/default-team.png'">
             <div class="team-name-wrapper">
-                <h1>OFK Omladinac</h1>
+                <h1>${teamName}</h1>
                 <p class="team-subtitle"><span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> - Season 2025/26</p>
             </div>
         </div>
@@ -70,9 +107,9 @@ function loadDashboard() {
                     <span>Sremac Berkasovo</span>
                 </div>
                 <span class="vs">VS</span>
-                <div class="team-away-home">
-                    <img src="/images/omladinac.png" class="match-team-logo small">
-                    <span>OFK Omladinac</span>
+                <div class="team-away-home" id="nextMatchHome">
+                    <img src="${teamImagePath}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
+                    <span>${teamName}</span>
                 </div>
             </div>
             <div class="match-date">
@@ -97,6 +134,7 @@ function loadDashboard() {
 
         <div class="dashboard-actions">
             <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>
+            <button id="start-realistic-demo-btn" onclick="startRealisticDemoTest()" style="background:#0066cc;">⚽ Realistic Match</button>
             <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>
         </div>
     </div>`;
@@ -201,16 +239,35 @@ async function loadRecentMatches() {
 
         let html = '';
         recent.forEach(match => {
-            const isWin = match.homeGoals > match.awayGoals ? 'win' : '';
-            const isDraw = match.homeGoals === match.awayGoals ? 'draw' : '';
+            const isHomeTeam = isCurrentUserTeam(match.homeTeam);
+            const isAwayTeam = isCurrentUserTeam(match.awayTeam);
+
+            let resultBadge = '';
+            let badgeText = '';
+
+            if (isHomeTeam || isAwayTeam) {
+                const myTeamGoals = isHomeTeam ? match.homeGoals : match.awayGoals;
+                const opponentGoals = isHomeTeam ? match.awayGoals : match.homeGoals;
+
+                if (myTeamGoals > opponentGoals) {
+                    resultBadge = 'win';
+                } else if (myTeamGoals === opponentGoals) {
+                    resultBadge = 'draw';
+                } else {
+                    resultBadge = 'loss';
+                }
+
+                badgeText = resultBadge === 'win' ? 'W' : resultBadge === 'draw' ? 'D' : 'L';
+            }
+
             html += `
             <div class="match-row recent-match" onclick="loadMatch(${match.id}, 'match')">
                 <div class="match-date-small">${match.matchDate || 'N/A'}</div>
                 <div class="match-teams">
-                    <span class="team-home">${match.homeTeam}</span>
+                    <span class="team-home">${match.homeTeam?.name || match.homeTeam}</span>
                     <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
-                    <span class="result-badge ${isWin ? 'win' : isDraw ? 'draw' : 'loss'}">${isWin ? 'W' : isDraw ? 'D' : 'L'}</span>
-                    <span class="team-away">${match.awayTeam}</span>
+                    ${badgeText ? `<span class="result-badge ${resultBadge}">${badgeText}</span>` : ''}
+                    <span class="team-away">${match.awayTeam?.name || match.awayTeam}</span>
                 </div>
             </div>`;
         });
@@ -298,9 +355,12 @@ async function loadHomeTeamStats() {
 
         const table = await response.json();
 
-        const currentName = document.querySelector('.team-name-wrapper h1')?.textContent?.trim() || 'OFK Omladinac';
-        const entry = table.find(t => t.name === currentName) || table.find(t => t.name === 'OFK Omladinac');
-        if (!entry) return;
+        const currentName = currentUserTeamName || document.querySelector('.team-name-wrapper h1')?.textContent?.trim() || 'Unknown';
+        const entry = table.find(t => t.name === currentName);
+        if (!entry) {
+            console.warn('Team not found in league table:', currentName);
+            return;
+        }
 
         document.querySelector('.team-name-wrapper h1').textContent = entry.name;
         document.querySelector('.team-subtitle').textContent = 'Serbian Superliga - Season 2025/26';
@@ -346,5 +406,3 @@ window.loadRecentLeagueMatches = loadRecentLeagueMatches;
 window.loadHomeTeamStats = loadHomeTeamStats;
 window.toggleMobileMenu = toggleMobileMenu;
 window.closeMobileMenu = closeMobileMenu;
-
-
