@@ -73,6 +73,8 @@ public class MatchPlayerStatsController {
         Map<String, Object> payload = new HashMap<>();
         payload.put("homeTeam", homeTeam);
         payload.put("awayTeam", awayTeam);
+        payload.put("homeTeamId", match.getHomeTeam() != null ? match.getHomeTeam().getId() : null);
+        payload.put("awayTeamId", match.getAwayTeam() != null ? match.getAwayTeam().getId() : null);
         payload.put("homeLineup", home);
         payload.put("awayLineup", away);
         return ResponseEntity.ok(payload);
@@ -92,7 +94,8 @@ public class MatchPlayerStatsController {
                 stats.getPlayer().getTeam().getName(),
                 Math.round(grade * 10.0) / 10.0,
                 stats.getGoals(),
-                stats.getAssists()
+                stats.getAssists(),
+                stats.getMinutesPlayed()
         );
     }
 }

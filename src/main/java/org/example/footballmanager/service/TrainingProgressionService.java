@@ -92,7 +92,7 @@ public class TrainingProgressionService {
             SkillName directSkill = dtSkillForRole(setup, role);
 
             Map<SkillName, Double> before = snapshotSkills(skills);
-            applyWeeklyGrowth(player, skills, directSkill, advanced, week);
+            applyWeeklyGrowth(player, skills, directSkill, advanced, season, week);
             skills.syncVisibleFromExact();
             player.setSkills(skills);
             playerRepository.save(player);
@@ -166,7 +166,16 @@ public class TrainingProgressionService {
                         .findFirst().orElse(null);
                 if (player == null) continue;
                 for (SkillDeltaDTO s : player.getSkills()) {
-                    points.add(new PlayerTrainingGraphPointDTO(dto.getSeasonNumber(), dto.getWeekNumber(), s.getSkill(), s.getAfter(), s.getAfterInt()));
+                    points.add(new PlayerTrainingGraphPointDTO(
+                            dto.getSeasonNumber(),
+                            dto.getWeekNumber(),
+                            s.getSkill(),
+                            s.getAfter(),
+                            s.getAfterInt(),
+                            player.getRole(),
+                            player.getDirectTrainingSkill(),
+                            player.isAdvancedTraining()
+                    ));
                 }
             } catch (Exception ignored) {}
         }
@@ -253,8 +262,10 @@ public class TrainingProgressionService {
         return list;
     }
 
-    private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill, boolean advanced, int week) {
+    private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill, boolean advanced, int season, int week) {
+        double injuryFactor = injuryTrainingFactor(player, season, week);
         double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill, advanced);
+        dt *= injuryFactor;
         dt *= slowSkillModifier(directSkill);
         // Rare jackpot is allowed only for low-skill players, to avoid unrealistic fast growth on 14+.
         if (skills.getExact(directSkill) <= 4.0
@@ -280,10 +291,22 @@ public class TrainingProgressionService {
 
         if (week % 4 == 0) {
             double staminaGain = 0.14 * ageTrainingFactor(player.getAge(), SkillName.STAMINA) * talentFactor(effectiveTalent(player.getTalent()));
+            staminaGain *= injuryFactor;
             skills.setExact(SkillName.STAMINA, skills.getExact(SkillName.STAMINA) + Math.max(0.03, staminaGain));
         }
 
         applyAgingDecay(player, skills);
+    }
+
+    private double injuryTrainingFactor(Player player, int season, int week) {
+        if (player == null) return 1.0;
+        if (player.getInjurySeasonNumber() != null
+                && player.getInjuryWeekNumber() != null
+                && player.getInjurySeasonNumber() == season
+                && player.getInjuryWeekNumber() == week) {
+            return 0.35;
+        }
+        return 1.0;
     }
 
     private void applyAgingDecay(Player player, Skills skills) {

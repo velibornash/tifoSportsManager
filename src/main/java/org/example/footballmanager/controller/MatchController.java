@@ -10,9 +10,11 @@ import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.GoalEvent;
+import org.example.footballmanager.model.event.InjuryEvent;
 import org.example.footballmanager.model.event.MatchEndedEvent;
 import org.example.footballmanager.model.event.PenaltyEvent;
 import org.example.footballmanager.model.event.ShotOnTargetEvent;
+import org.example.footballmanager.model.event.SubstitutionEvent;
 import org.example.footballmanager.model.event.VARReviewEvent;
 import org.example.footballmanager.repository.LineupRepository;
 import org.example.footballmanager.repository.MatchEventRepository;
@@ -79,6 +81,8 @@ public class MatchController {
                                 || e instanceof PenaltyEvent
                                 || e instanceof VARReviewEvent
                                 || e instanceof ShotOnTargetEvent
+                                || e instanceof InjuryEvent
+                                || e instanceof SubstitutionEvent
                                 || e instanceof MatchEndedEvent)
                         .sorted((a, b) -> {
                             int byMinute = Integer.compare(a.getMinute(), b.getMinute());

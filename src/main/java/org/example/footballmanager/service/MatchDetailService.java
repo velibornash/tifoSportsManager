@@ -49,7 +49,9 @@ public class MatchDetailService {
         penaltyTaker.name PenaltyTaker, pe.scored PenaltyScored,
         redCardPlayer.name ReadCardPlayer, yellowCardPlayer.name YellowCardPlayer,
         shotOnTarget.name ShotOnTargetPlayer, shotOffTarget.name ShotOffTargetPlayer,
-        shotOnTargetTeam.name ShotOnTargetTeam, shotOffTargetTeam.name ShotOffTargetTeam
+        shotOnTargetTeam.name ShotOnTargetTeam, shotOffTargetTeam.name ShotOffTargetTeam,
+        substitutionTeam.name SubstitutionTeam, playerOut.name PlayerOutName, playerIn.name PlayerInName,
+        injuryTeam.name InjuryTeam, injuryPlayer.name InjuryPlayer
         
         FROM match m
         left join match_event me on m.id=me.match_id
@@ -88,6 +90,11 @@ public class MatchDetailService {
         left join player shotOffTarget on shoffe.shooter_id=shotOffTarget.id
         left join team shotOnTargetTeam on shotOnTargetTeam.id=shone.team_id
         left join team shotOffTargetTeam on shotOffTargetTeam.id=shoffe.team_id
+        left join team substitutionTeam on substitutionTeam.id=sube.team_id
+        left join player playerOut on playerOut.id=sube.player_out_id
+        left join player playerIn on playerIn.id=sube.player_in_id
+        left join player injuryPlayer on injuryPlayer.id=ie.player_id
+        left join team injuryTeam on injuryTeam.id=injuryPlayer.team_id
         WHERE m.id = :matchId
         ORDER BY me.event_minute asc
         """)
@@ -145,7 +152,12 @@ public class MatchDetailService {
                 dto.setShotOnTargetPlayer(safeString(row[i++]));
                 dto.setShotOffTargetPlayer(safeString(row[i++]));
                 dto.setShotOnTargetTeam(safeString(row[i++]));
-                dto.setShotOffTargetTeam(safeString(row[i]));
+                dto.setShotOffTargetTeam(safeString(row[i++]));
+                dto.setSubstitutionTeam(safeString(row[i++]));
+                dto.setPlayerOutName(safeString(row[i++]));
+                dto.setPlayerInName(safeString(row[i++]));
+                dto.setInjuryTeam(safeString(row[i++]));
+                dto.setInjuryPlayer(safeString(row[i]));
 
                 if ("GoalEvent".equals(dto.getEventType())) {
                     String goalSignature = String.join("|",
@@ -182,6 +194,10 @@ public class MatchDetailService {
                     team = dto.getYellowCardTeam();
                 } else if ("RedCardEvent".equals(eventType)) {
                     team = dto.getRedCardTeam();
+                } else if ("SubstitutionEvent".equals(eventType)) {
+                    team = dto.getSubstitutionTeam();
+                } else if ("InjuryEvent".equals(eventType)) {
+                    team = dto.getInjuryTeam();
                 }
                 dto.setEventTeam(team);
                 dtos.add(dto);

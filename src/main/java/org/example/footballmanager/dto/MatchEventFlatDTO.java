@@ -41,6 +41,11 @@ public class MatchEventFlatDTO {
     private String shotOffTargetPlayer;
     private String shotOnTargetTeam;
     private String shotOffTargetTeam;
+    private String substitutionTeam;
+    private String playerOutName;
+    private String playerInName;
+    private String injuryTeam;
+    private String injuryPlayer;
 
     private String homeFormation;
     private String awayFormation;

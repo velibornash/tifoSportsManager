@@ -100,6 +100,14 @@ public class CleanSheetService {
                         .map(CSPlayer::getId)
                         .toList()
         );
+        state.getTactics().setBenchIds(
+                userRoster.stream()
+                        .sorted(Comparator.comparingInt(CSPlayer::getRating).reversed())
+                        .skip(11)
+                        .limit(7)
+                        .map(CSPlayer::getId)
+                        .toList()
+        );
 
         // 6. Inicijalizuj tabelu (sve na nuli — nova sezona)
         state.setLeagueTable(leagueManager.initializeTable(csTeams));
@@ -172,12 +180,22 @@ public class CleanSheetService {
                     homePlayers,
                     home.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getStarterIds() : List.of()
             );
+            List<CSPlayer> homeBench = matchSimulator.pickBenchPlayers(
+                    homePlayers,
+                    homeStarters,
+                    home.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getBenchIds() : List.of()
+            );
             List<CSPlayer> awayStarters = matchSimulator.pickStartingEleven(
                     awayPlayers,
                     away.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getStarterIds() : List.of()
             );
+            List<CSPlayer> awayBench = matchSimulator.pickBenchPlayers(
+                    awayPlayers,
+                    awayStarters,
+                    away.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getBenchIds() : List.of()
+            );
 
-            userResult = matchSimulator.simulate(home, homeStarters, away, awayStarters,
+            userResult = matchSimulator.simulate(home, homeStarters, homeBench, away, awayStarters, awayBench,
                     homeTactics, awayTactics, round);
 
             userFixture.setPlayed(true);
@@ -258,7 +276,7 @@ public class CleanSheetService {
         return tactics;
     }
 
-    public CSTactics changeStarters(Long userId, List<Long> starterIds) {
+    public CSTactics changeLineup(Long userId, List<Long> starterIds, List<Long> benchIds) {
         CleanSheetGameState state = getStateOrThrow(userId);
         Set<Long> rosterIds = state.getRoster().stream().map(CSPlayer::getId).collect(Collectors.toSet());
         List<Long> validIds = (starterIds == null ? List.<Long>of() : starterIds).stream()
@@ -267,8 +285,17 @@ public class CleanSheetService {
                 .distinct()
                 .limit(11)
                 .toList();
+        Set<Long> used = new HashSet<>(validIds);
+        List<Long> validBenchIds = (benchIds == null ? List.<Long>of() : benchIds).stream()
+                .filter(Objects::nonNull)
+                .filter(rosterIds::contains)
+                .filter(id -> !used.contains(id))
+                .distinct()
+                .limit(7)
+                .toList();
         state.getTactics().setStarterIds(validIds);
-        state.addInboxMessage("info", "Starting XI updated.");
+        state.getTactics().setBenchIds(validBenchIds);
+        state.addInboxMessage("info", "Starting XI and bench updated.");
         return state.getTactics();
     }
 
@@ -565,19 +592,42 @@ public class CleanSheetService {
 
             int hg = random.nextInt(4);
             int ag = random.nextInt(4);
-            boolean serbiaMatch = "Serbia".equals(home) || "Serbia".equals(away);
-            if (serbiaMatch && random.nextDouble() < 0.7) {
-                lines.add(home + " " + hg + ":" + ag + " " + away + ". Serbian scorer: " + pickSerbianInternationalScorer() + ".");
-            } else {
-                lines.add(home + " " + hg + ":" + ag + " " + away + ".");
+            boolean serbiaHome = "Serbia".equals(home);
+            boolean serbiaAway = "Serbia".equals(away);
+            int serbiaGoals = serbiaHome ? hg : (serbiaAway ? ag : 0);
+
+            String line = home + " " + hg + ":" + ag + " " + away + ".";
+            if (serbiaGoals > 0) {
+                line += " Serbia scorers: " + String.join(", ", pickInternationalScorers(state, serbiaGoals)) + ".";
             }
+            lines.add(line);
         }
         state.addInboxMessage("international", String.join("\n", lines));
     }
 
-    private String pickSerbianInternationalScorer() {
-        String[] pool = {"Aleksandar Mitrovic", "Dusan Vlahovic", "Luka Jovic", "Filip Kostic", "Andrija Zivkovic", "Sergej Milinkovic-Savic"};
-        return pool[random.nextInt(pool.length)];
+    private List<String> pickInternationalScorers(CleanSheetGameState state, int goals) {
+        List<CSPlayer> pool = state.getAllTeamRosters().values().stream()
+                .flatMap(List::stream)
+                .filter(Objects::nonNull)
+                .toList();
+        if (pool.isEmpty()) {
+            return List.of("Unknown");
+        }
+
+        List<CSPlayer> shuffled = new ArrayList<>(pool);
+        Collections.shuffle(shuffled, random);
+
+        List<String> scorers = shuffled.stream()
+                .map(CSPlayer::getName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .limit(Math.max(1, goals))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        if (scorers.isEmpty()) {
+            scorers.add("Unknown");
+        }
+        return scorers;
     }
 
     private void generateRumorInbox(CleanSheetGameState state, int round) {

@@ -27,12 +27,14 @@ const state = {
     pendingVarGoals: []
 };
 
-const keyTypes = new Set(['goal', 'penalty', 'varreview', 'shotontarget', 'matchended']);
+const keyTypes = new Set(['goal', 'penalty', 'varreview', 'shotontarget', 'injury', 'substitution', 'matchended']);
 const eventImages = {
     goal: '/images/goal-gol.gif',
     penalty: '/images/penalty.jpg',
     varreview: '/images/var.jpg',
     shotontarget: '/images/shot.jpg',
+    injury: '/images/injury.jpg',
+    substitution: '/images/player.jpg',
     matchended: '/images/match_ended.jpg'
 };
 
@@ -201,6 +203,10 @@ function buildText(ev) {
             return `[${min}'] Shot on target: ${player}`;
         case 'varreview':
             return `[${min}'] VAR ${String(ev.decision || 'pending').toUpperCase()} - ${ev.reviewTarget || 'incident'}${ev.overturnReason ? ` (${ev.overturnReason})` : ''}`;
+        case 'injury':
+            return `[${min}'] Injury: ${player}`;
+        case 'substitution':
+            return `[${min}'] Substitution: ${ev.playerOutName || '?'} -> ${ev.playerInName || '?'}`;
         case 'matchstarted':
             return `[${min}'] Match started`;
         case 'matchended':
@@ -253,6 +259,17 @@ function updatePanel(ev) {
         playerInfo.innerHTML = `
             <strong>Full Time</strong><br>
             ${state.homeTeamName} ${state.homeScore} - ${state.awayScore} ${state.awayTeamName}
+        `;
+        return;
+    }
+
+    if (type === 'substitution') {
+        playerImage.src = '/images/player.jpg';
+        playerInfo.innerHTML = `
+            <strong>Substitution</strong><br>
+            Team: ${ev.teamName || 'N/A'}<br>
+            Out: ${ev.playerOutName || '?'}<br>
+            In: ${ev.playerInName || '?'}
         `;
         return;
     }
@@ -521,6 +538,38 @@ function drawVarAnimation(anim, progress) {
     ctx.textAlign = 'start';
 }
 
+function drawInjuryAnimation(anim, progress) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const pulse = 0.55 + Math.abs(Math.sin(progress * Math.PI * 6)) * 0.35;
+    ctx.fillStyle = `rgba(140, 22, 22, ${pulse})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 46px Arial';
+    ctx.fillText('INJURY', w / 2, h / 2 - 16);
+    ctx.font = '600 25px Arial';
+    ctx.fillText(anim.event.playerName || 'Player', w / 2, h / 2 + 28);
+    ctx.textAlign = 'start';
+}
+
+function drawSubstitutionAnimation(anim, progress) {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = 'rgba(12, 28, 20, 0.78)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#d8ffe8';
+    ctx.font = '700 42px Arial';
+    ctx.fillText('SUBSTITUTION', w / 2, h / 2 - 30);
+    ctx.font = '700 26px Arial';
+    ctx.fillStyle = '#ff9b9b';
+    ctx.fillText(anim.event.playerOutName || 'Player out', w / 2, h / 2 + 8);
+    ctx.fillStyle = '#9bffb5';
+    ctx.fillText(anim.event.playerInName || 'Player in', w / 2, h / 2 + 48);
+    ctx.textAlign = 'start';
+}
+
 function drawMatchEndedAnimation() {
     const w = canvas.width;
     const h = canvas.height;
@@ -659,6 +708,8 @@ function render(ts) {
         if (anim.type === 'penalty') drawPenaltyAnimation(anim, progress);
         if (anim.type === 'shotontarget') drawShotOnTargetAnimation(anim, progress);
         if (anim.type === 'varreview') drawVarAnimation(anim, progress);
+        if (anim.type === 'injury') drawInjuryAnimation(anim, progress);
+        if (anim.type === 'substitution') drawSubstitutionAnimation(anim, progress);
         if (anim.type === 'matchended') drawMatchEndedAnimation();
         if (progress >= 1) {
             state.anim = null;

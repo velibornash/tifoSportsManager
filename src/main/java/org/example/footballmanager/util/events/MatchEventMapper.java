@@ -52,6 +52,8 @@ public class MatchEventMapper {
                 dto.setMinute(i.getMinute());
                 dto.setDescription(i.getDescription());
                 fillPlayerFields(dto, i.getPlayer());
+                dto.setPlayerName(i.getPlayer() != null ? i.getPlayer().getName() : null);
+                dto.setTeamName(i.getPlayer() != null && i.getPlayer().getTeam() != null ? i.getPlayer().getTeam().getName() : null);
                 return dto;
             }
             case PenaltyEvent p -> {
@@ -73,7 +75,8 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, s.getPlayerOut());
                 dto.setPlayerOutName(s.getPlayerOut() != null ? s.getPlayerOut().getName() : null);
                 dto.setPlayerInName(s.getPlayerIn() != null ? s.getPlayerIn().getName() : null);
-                dto.setTeamName(s.getPlayerOut() != null && s.getPlayerOut().getTeam() != null ? s.getPlayerOut().getTeam().getName() : null);
+                dto.setTeamName(s.getTeam() != null ? s.getTeam().getName()
+                        : (s.getPlayerOut() != null && s.getPlayerOut().getTeam() != null ? s.getPlayerOut().getTeam().getName() : null));
                 return dto;
             }
             case OffsideEvent o -> {

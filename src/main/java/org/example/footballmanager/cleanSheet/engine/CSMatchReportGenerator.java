@@ -236,9 +236,9 @@ public class CSMatchReportGenerator {
                     "The referee waits for VAR confirmation."
             );
             case SUBSTITUTION -> pick(
-                    "Substitution made by " + team + ".",
-                    team + " refreshes the lineup.",
-                    "Tactical change from " + team + "."
+                    "Substitution for " + team + ": " + safeName(e.getPlayerOutName()) + " off, " + safeName(e.getPlayerInName()) + " on.",
+                    team + " refreshes the lineup: " + safeName(e.getPlayerInName()) + " enters for " + safeName(e.getPlayerOutName()) + ".",
+                    "Tactical change from " + team + " with " + safeName(e.getPlayerInName()) + " replacing " + safeName(e.getPlayerOutName()) + "."
             );
             case INJURY -> pick(
                     player + " is down and needs attention.",

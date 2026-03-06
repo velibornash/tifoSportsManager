@@ -378,6 +378,12 @@ import { createMatchesFeature } from './pages/features/matches.js';
             passing: 0,
             shooting: 0
         };
+        const resetSkillHighlight = () => {
+            Object.values(idByKey).forEach(id => {
+                const node = document.getElementById(id);
+                if (node) node.style.color = "#ffffff";
+            });
+        };
         let remaining = Number(payload.totalSkillBudget || 0);
         if (remainingEl) remainingEl.textContent = String(remaining);
         if (statusEl) statusEl.textContent = "Allocating 1 point every second...";
@@ -387,6 +393,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 await delay(1000);
                 if (Object.prototype.hasOwnProperty.call(current, skillKey)) {
                     current[skillKey] += 1;
+                    resetSkillHighlight();
                     const node = document.getElementById(idByKey[skillKey]);
                     if (node) {
                         node.textContent = `${current[skillKey].toFixed(2)}`;
@@ -401,6 +408,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
             for (const key of order) {
                 await delay(1000);
                 current[key] = Number(allocated[key] || 0);
+                resetSkillHighlight();
                 const node = document.getElementById(idByKey[key]);
                 if (node) {
                     node.textContent = `${current[key].toFixed(2)}`;
@@ -721,6 +729,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                             <div style="width:56px; text-align:center;">Grade</div>
                             <div style="width:42px; text-align:center;">G</div>
                             <div style="width:42px; text-align:center;">A</div>
+                            <div style="width:64px; text-align:center;">Min</div>
                         </div>`;
                     sorted.forEach((p, i) => {
                         const rowBg = i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent";
@@ -734,6 +743,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                                 <div style="width:56px; text-align:center; font-weight:700; color:${gradeColor};">${gradeText}</div>
                                 <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
                                 <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
+                                <div style="width:64px; text-align:center;">${p.minutesPlayed ?? 0}</div>
                             </div>`;
                     });
                     return html;
@@ -784,14 +794,25 @@ import { createMatchesFeature } from './pages/features/matches.js';
             });
 
             document.getElementById("view-events").addEventListener("click", () => {
-                // ... tvoj postojeÄ‡i kod za prikaz svih eventa (moÅ¾eÅ¡ ga ostaviti isti ili malo oÄistiti) ...
-                // Primer minimalne verzije:
+                const eventLabel = (e) => {
+                    if (e.eventType === "SubstitutionEvent") {
+                        return `🔁 ${e.playerOutName || "?"} → ${e.playerInName || "?"}`;
+                    }
+                    if (e.eventType === "InjuryEvent") {
+                        return `❌ Injury: ${e.injuryPlayer || "?"}`;
+                    }
+                    if (e.eventType === "GoalEvent") {
+                        const assist = e.assistant ? ` (assist ${e.assistant})` : "";
+                        return `⚽ ${e.scorer || "?"}${assist} ${e.goalScored === false ? "[DISALLOWED]" : ""}`;
+                    }
+                    return e.description || "";
+                };
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">All Events</h3>`;
                 html += `<ul style="list-style:none; padding:0;">`;
 
                 events.sort((a,b) => (a.matchMinute||0) - (b.matchMinute||0)).forEach(e => {
                     html += `<li style="padding:10px; border-bottom:1px solid #333;">
-                        ${e.matchMinute || "?"}' <strong>[${e.eventType}]</strong> ${e.description || ""}
+                        ${e.matchMinute || "?"}' <strong>[${e.eventType}]</strong> ${eventLabel(e)}
                     </li>`;
                 });
 
@@ -838,45 +859,314 @@ import { createMatchesFeature } from './pages/features/matches.js';
         ]);
         const formations = formationsRes.ok ? await formationsRes.json() : [];
         const players = playersRes.ok ? await playersRes.json() : [];
-        const template = templateRes.ok ? await templateRes.json() : { formation: "4-4-2", starterIds: [] };
+        const template = templateRes.ok ? await templateRes.json() : { formation: "4-4-2", starterIds: [], benchIds: [] };
 
         const availableFormations = Array.from(new Set([
             ...(Array.isArray(formations) ? formations.map(f => f.name) : []),
             "4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "4-5-1", "3-5-2", "3-4-3", "3-4-2-1", "5-3-2", "5-4-1"
         ]));
         const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"];
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+
+        const formationToSlots = (formation) => {
+            const parts = String(formation || "4-4-2")
+                .split("-")
+                .map(v => Number(v))
+                .filter(Number.isFinite);
+            const def = parts[0] ?? 4;
+            const mid = parts[1] ?? 4;
+            const att = parts[2] ?? 2;
+            const slots = [{ label: "GK", role: "GK" }];
+            for (let i = 0; i < def; i++) slots.push({ label: `DEF ${i + 1}`, role: "DEF" });
+            for (let i = 0; i < mid; i++) slots.push({ label: `MID ${i + 1}`, role: "MID" });
+            for (let i = 0; i < att; i++) slots.push({ label: `ATT ${i + 1}`, role: "ATT" });
+            return slots.slice(0, 11);
+        };
+
+        const roleOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
+        const sortedPlayers = [...players].sort((a, b) => {
+            const left = roleOrder[String(a.position || "").toUpperCase()] ?? 9;
+            const right = roleOrder[String(b.position || "").toUpperCase()] ?? 9;
+            if (left !== right) return left - right;
+            return Number(b.overall || 0) - Number(a.overall || 0);
+        });
 
         const state = {
             formation: localStorage.getItem('main_app_tactics_formation') || template.formation || availableFormations[0] || "4-4-2",
             style: localStorage.getItem('main_app_tactics_style') || "BALANCED",
-            starterIds: Array.isArray(template.starterIds) ? template.starterIds.map(Number).filter(Number.isFinite).slice(0, 11) : []
+            starterIds: Array.isArray(template.starterIds) ? template.starterIds.map(Number).filter(Number.isFinite).slice(0, 11) : [],
+            benchIds: Array.isArray(template.benchIds) ? template.benchIds.map(Number).filter(Number.isFinite).slice(0, 7) : []
         };
 
-        const pickDefaultStarters = () => {
+        const canPlayRole = (player, role) => {
+            const pos = String(player?.position || "").toUpperCase();
+            if (role === "GK") return pos === "GK";
+            if (role === "DEF") return pos === "DEF";
+            if (role === "MID") return pos === "MID";
+            if (role === "ATT") return pos === "ATT" || pos === "WNG";
+            return false;
+        };
+
+        const pickDefaultStarters = (slots) => {
             if (!players.length) return [];
-            const byPos = (pos) => players.filter(p => String(p.position || "").toUpperCase() === pos)
+            const byPos = (role) => sortedPlayers.filter(p => canPlayRole(p, role) && !p.injured)
                 .sort((a, b) => Number(b.overall || 0) - Number(a.overall || 0));
-            const picks = [
-                ...byPos("GK").slice(0, 1),
-                ...byPos("DEF").slice(0, 4),
-                ...byPos("MID").slice(0, 3),
-                ...byPos("WNG").slice(0, 2),
-                ...byPos("ATT").slice(0, 1)
-            ];
-            const used = new Set(picks.map(p => p.id));
-            players.filter(p => !used.has(p.id))
+            const picks = [];
+            const used = new Set();
+            slots.forEach(slot => {
+                const candidate = byPos(slot.role).find(p => !used.has(p.id));
+                if (candidate) {
+                    picks.push(candidate.id);
+                    used.add(candidate.id);
+                }
+            });
+            sortedPlayers.filter(p => !p.injured && !used.has(p.id))
                 .sort((a, b) => Number(b.overall || 0) - Number(a.overall || 0))
-                .forEach(p => { if (picks.length < 11) picks.push(p); });
-            return picks.slice(0, 11).map(p => p.id);
+                .forEach(p => { if (picks.length < 11) picks.push(p.id); });
+            return picks.slice(0, 11);
         };
-        if (state.starterIds.length < 11) {
-            state.starterIds = pickDefaultStarters();
-        }
 
-        const playerById = new Map(players.map(p => [p.id, p]));
-        const slotLabels = ["GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "ATT/WNG", "ATT/WNG", "ATT"];
+        const fillBenchDefaults = () => {
+            const used = new Set(state.starterIds.filter(Boolean).map(Number));
+            const bench = state.benchIds.filter(id => id && !used.has(Number(id))).map(Number).slice(0, 7);
+            bench.forEach(id => used.add(id));
+            sortedPlayers
+                .filter(p => !p.injured && !used.has(Number(p.id)))
+                .forEach(p => {
+                    if (bench.length < 7) {
+                        bench.push(Number(p.id));
+                        used.add(Number(p.id));
+                    }
+                });
+            state.benchIds = bench;
+        };
+
+        const ensureFormationShape = () => {
+            const slots = formationToSlots(state.formation);
+            if (state.starterIds.length < 11) {
+                state.starterIds = pickDefaultStarters(slots);
+            }
+            const used = new Set();
+            state.starterIds = slots.map((slot, idx) => {
+                const id = Number(state.starterIds[idx] || 0);
+                const p = sortedPlayers.find(sp => Number(sp.id) === id);
+                if (!id || !p || p.injured || used.has(id) || !canPlayRole(p, slot.role)) {
+                    return null;
+                }
+                used.add(id);
+                return id;
+            });
+            slots.forEach((slot, idx) => {
+                if (state.starterIds[idx]) return;
+                const fallback = sortedPlayers.find(p =>
+                    !p.injured &&
+                    !used.has(Number(p.id)) &&
+                    canPlayRole(p, slot.role));
+                if (fallback) {
+                    state.starterIds[idx] = Number(fallback.id);
+                    used.add(Number(fallback.id));
+                }
+            });
+            fillBenchDefaults();
+        };
+
+        const getPlayerById = id => sortedPlayers.find(p => Number(p.id) === Number(id));
+        const selectedIds = () => new Set([
+            ...state.starterIds.filter(Boolean).map(Number),
+            ...state.benchIds.filter(Boolean).map(Number)
+        ]);
+        const candidatesForSlot = (role, currentId) => {
+            const used = selectedIds();
+            if (currentId) used.delete(Number(currentId));
+            return sortedPlayers.filter(p => !p.injured && !used.has(Number(p.id)) && canPlayRole(p, role));
+        };
+        const benchCandidates = (currentId) => {
+            const used = selectedIds();
+            if (currentId) used.delete(Number(currentId));
+            return sortedPlayers.filter(p => !p.injured && !used.has(Number(p.id)));
+        };
+        const poolCandidates = () => {
+            const used = selectedIds();
+            return sortedPlayers.filter(p => !p.injured && !used.has(Number(p.id)));
+        };
+
+        const renderDesktopDnD = (slots) => {
+            const slotCards = slots.map((slot, idx) => {
+                const selected = Number(state.starterIds[idx] || 0);
+                const p = getPlayerById(selected);
+                return `
+                    <div class="lineup-slot-drop" data-zone="starter" data-index="${idx}" data-role="${slot.role}" style="padding:10px; border:1px dashed #466; border-radius:8px; background:rgba(255,255,255,0.03); min-height:62px;">
+                        <div style="font-size:0.8em; color:#97a6a9; margin-bottom:6px;">${slot.label}</div>
+                        ${p ? `<div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="starter" data-from-index="${idx}" style="padding:7px; border-radius:6px; background:#1f2d3a; cursor:grab;">${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</div>`
+                    : `<div style="color:#6f8188; font-size:0.86em;">Drop ${slot.role} player</div>`}
+                    </div>
+                `;
+            }).join("");
+
+            const benchSlots = Array.from({ length: 7 }).map((_, idx) => {
+                const selected = Number(state.benchIds[idx] || 0);
+                const p = getPlayerById(selected);
+                return `
+                    <div class="lineup-slot-drop" data-zone="bench" data-index="${idx}" style="padding:10px; border:1px dashed #5a5a4a; border-radius:8px; background:rgba(255,255,255,0.03); min-height:62px;">
+                        <div style="font-size:0.8em; color:#97a6a9; margin-bottom:6px;">Bench ${idx + 1}</div>
+                        ${p ? `<div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="bench" data-from-index="${idx}" style="padding:7px; border-radius:6px; background:#2a2d1f; cursor:grab;">${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</div>`
+                    : `<div style="color:#6f8188; font-size:0.86em;">Drop player</div>`}
+                    </div>
+                `;
+            }).join("");
+
+            const pool = poolCandidates().map(p => `
+                <div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="pool" data-from-index="-1" style="padding:7px; border-radius:6px; background:#25303d; cursor:grab; margin-bottom:6px;">
+                    ${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})
+                </div>
+            `).join("");
+
+            return `
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                    <div class="training-block">
+                        <h4>Starting XI (Drag and drop)</h4>
+                        <div style="display:grid; gap:8px;">${slotCards}</div>
+                    </div>
+                    <div class="training-block">
+                        <h4>Bench (7)</h4>
+                        <div style="display:grid; gap:8px; margin-bottom:10px;">${benchSlots}</div>
+                        <h4>Available pool</h4>
+                        <div class="lineup-slot-drop" data-zone="pool" data-index="-1" style="padding:10px; border:1px dashed #344; border-radius:8px; min-height:120px; max-height:320px; overflow:auto;">${pool || `<div style="color:#6f8188; font-size:0.86em;">No available players</div>`}</div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderMobileDropdown = (slots) => {
+            const startersHtml = slots.map((slot, idx) => {
+                const selected = Number(state.starterIds[idx] || 0);
+                const options = candidatesForSlot(slot.role, selected);
+                return `
+                    <label class="training-group-row" style="margin-bottom:6px;">
+                        <span class="group-tag">${slot.label}</span>
+                        <select class="starter-select" data-slot="${idx}">
+                            <option value="">-- Empty --</option>
+                            ${options.map(p => `<option value="${p.id}" ${Number(p.id) === selected ? "selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</option>`).join("")}
+                        </select>
+                    </label>
+                `;
+            }).join("");
+
+            const benchHtml = Array.from({ length: 7 }).map((_, idx) => {
+                const selected = Number(state.benchIds[idx] || 0);
+                const options = benchCandidates(selected);
+                return `
+                    <label class="training-group-row" style="margin-bottom:6px;">
+                        <span class="group-tag">Bench ${idx + 1}</span>
+                        <select class="bench-select" data-slot="${idx}">
+                            <option value="">-- Empty --</option>
+                            ${options.map(p => `<option value="${p.id}" ${Number(p.id) === selected ? "selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</option>`).join("")}
+                        </select>
+                    </label>
+                `;
+            }).join("");
+
+            return `
+                <div class="training-block" style="margin-top:14px;">
+                    <h3>Starting XI</h3>
+                    <p class="training-note">Mobile: dropdown selection with position filters and unique player lock.</p>
+                    ${startersHtml}
+                </div>
+                <div class="training-block" style="margin-top:14px;">
+                    <h3>Bench</h3>
+                    ${benchHtml}
+                </div>
+            `;
+        };
+
+        const bindDesktopDnD = () => {
+            let dragData = null;
+            mainContent.querySelectorAll(".lineup-draggable").forEach(el => {
+                el.addEventListener("dragstart", () => {
+                    dragData = {
+                        playerId: Number(el.dataset.playerId),
+                        fromZone: el.dataset.fromZone,
+                        fromIndex: Number(el.dataset.fromIndex)
+                    };
+                });
+            });
+
+            mainContent.querySelectorAll(".lineup-slot-drop").forEach(zone => {
+                zone.addEventListener("dragover", (e) => {
+                    e.preventDefault();
+                });
+                zone.addEventListener("drop", (e) => {
+                    e.preventDefault();
+                    if (!dragData || !dragData.playerId) return;
+                    const targetZone = zone.dataset.zone;
+                    const targetIndex = Number(zone.dataset.index);
+                    const targetRole = zone.dataset.role || null;
+                    const player = getPlayerById(dragData.playerId);
+                    if (!player || player.injured) return;
+
+                    if (targetZone === "starter") {
+                        if (!canPlayRole(player, targetRole)) return;
+                        if (state.starterIds.some((id, idx) => idx !== targetIndex && Number(id) === dragData.playerId)) return;
+                        if (state.benchIds.some(id => Number(id) === dragData.playerId)) {
+                            state.benchIds = state.benchIds.map(id => Number(id) === dragData.playerId ? null : id);
+                        }
+                        state.starterIds[targetIndex] = dragData.playerId;
+                    } else if (targetZone === "bench") {
+                        if (state.starterIds.some(id => Number(id) === dragData.playerId)) {
+                            state.starterIds = state.starterIds.map(id => Number(id) === dragData.playerId ? null : id);
+                        }
+                        if (state.benchIds.some((id, idx) => idx !== targetIndex && Number(id) === dragData.playerId)) return;
+                        state.benchIds[targetIndex] = dragData.playerId;
+                    } else if (targetZone === "pool") {
+                        if (dragData.fromZone === "starter" && dragData.fromIndex >= 0) {
+                            state.starterIds[dragData.fromIndex] = null;
+                        }
+                        if (dragData.fromZone === "bench" && dragData.fromIndex >= 0) {
+                            state.benchIds[dragData.fromIndex] = null;
+                        }
+                    }
+                    ensureFormationShape();
+                    render();
+                });
+            });
+        };
+
+        const bindMobileSelects = () => {
+            mainContent.querySelectorAll('.starter-select').forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const slot = Number(sel.getAttribute("data-slot"));
+                    const id = Number(sel.value || 0) || null;
+                    if (id) {
+                        state.starterIds = state.starterIds.map((val, idx) => idx !== slot && Number(val) === id ? null : val);
+                        state.benchIds = state.benchIds.map(val => Number(val) === id ? null : val);
+                    }
+                    state.starterIds[slot] = id;
+                    ensureFormationShape();
+                    render();
+                });
+            });
+            mainContent.querySelectorAll('.bench-select').forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const slot = Number(sel.getAttribute("data-slot"));
+                    const id = Number(sel.value || 0) || null;
+                    if (id) {
+                        state.starterIds = state.starterIds.map(val => Number(val) === id ? null : val);
+                        state.benchIds = state.benchIds.map((val, idx) => idx !== slot && Number(val) === id ? null : val);
+                    }
+                    state.benchIds[slot] = id;
+                    ensureFormationShape();
+                    render();
+                });
+            });
+        };
+
+        ensureFormationShape();
 
         const render = () => {
+            ensureFormationShape();
+            const slots = formationToSlots(state.formation);
+            const injuredCount = players.filter(p => p.injured).length;
+
             let html = `<div class="manager-card">
                 <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>Tactics</h2>
@@ -895,31 +1185,22 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 html += `<div class="cs-tactics-btn ${active}" data-style="${escapeHtml(s)}">${escapeHtml(s)}</div>`;
             });
             html += `</div>
-                <div class="training-block" style="margin-top:14px;">
-                    <h3>Starting XI</h3>
-                    <p class="training-note">Select your starters for simulation and lineups.</p>`;
-            for (let i = 0; i < 11; i++) {
-                const selected = state.starterIds[i];
-                html += `
-                    <label class="training-group-row" style="margin-bottom:6px;">
-                        <span class="group-tag">${slotLabels[i]}</span>
-                        <select class="starter-select" data-slot="${i}">
-                            <option value="">-- Empty --</option>
-                            ${players.map(p => `<option value="${p.id}" ${Number(selected) === Number(p.id) ? "selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.position || "-")}, OVR ${p.overall ?? "-"})</option>`).join("")}
-                        </select>
-                    </label>`;
-            }
-            html += `</div>
-                <div class="training-actions">
-                    <button id="save-tactics-main" class="big-button">Save Tactics + XI</button>
+                <p class="training-note" style="margin-top:12px;">Formation slots: DEF ${slots.filter(s => s.role === "DEF").length}, MID ${slots.filter(s => s.role === "MID").length}, ATT ${slots.filter(s => s.role === "ATT").length}. Injured unavailable: ${injuredCount}.</p>`;
+
+            html += isMobile ? renderMobileDropdown(slots) : renderDesktopDnD(slots);
+            html += `
+                <div class="training-actions" style="margin-top:14px;">
+                    <button id="save-tactics-main" class="big-button">Save Tactics + XI + Bench</button>
                 </div>
-                <p style="margin-top:14px; color:#9aa0a6;">Tactics are saved locally; starting XI is persisted on backend and used by match engine.</p>
+                <p style="margin-top:14px; color:#9aa0a6;">Desktop uses drag & drop. Mobile uses filtered dropdowns with unique player lock.</p>
             </div>`;
             mainContent.innerHTML = html;
 
             mainContent.querySelectorAll('.cs-tactics-btn[data-formation]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     state.formation = btn.getAttribute("data-formation");
+                    state.starterIds = new Array(11).fill(null);
+                    ensureFormationShape();
                     render();
                 });
             });
@@ -929,37 +1210,37 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     render();
                 });
             });
-            mainContent.querySelectorAll('.starter-select').forEach(sel => {
-                sel.addEventListener("change", () => {
-                    const slot = Number(sel.getAttribute("data-slot"));
-                    const playerId = Number(sel.value || 0) || null;
-                    const existingIdx = state.starterIds.findIndex((id, idx) => idx !== slot && Number(id) === Number(playerId));
-                    if (existingIdx >= 0) state.starterIds[existingIdx] = null;
-                    state.starterIds[slot] = playerId;
-                });
-            });
+            if (isMobile) bindMobileSelects();
+            else bindDesktopDnD();
 
             const saveBtn = document.getElementById("save-tactics-main");
             if (saveBtn) {
                 saveBtn.addEventListener("click", async () => {
                     saveBtn.disabled = true;
-                    const dedup = [];
+                    const dedupStarter = [];
                     const used = new Set();
                     state.starterIds.forEach(id => {
-                        if (!id || used.has(id) || !playerById.has(id)) return;
+                        if (!id || used.has(id) || !getPlayerById(id)) return;
                         used.add(id);
-                        dedup.push(id);
+                        dedupStarter.push(id);
                     });
+                    const dedupBench = [];
+                    state.benchIds.forEach(id => {
+                        if (!id || used.has(id) || !getPlayerById(id)) return;
+                        used.add(id);
+                        dedupBench.push(id);
+                    });
+
                     localStorage.setItem("main_app_tactics_formation", state.formation);
                     localStorage.setItem("main_app_tactics_style", state.style);
                     const res = await authFetch(`/teams/${currentUserTeamId}/lineup-template`, {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ formation: state.formation, starterIds: dedup })
+                        body: JSON.stringify({ formation: state.formation, starterIds: dedupStarter, benchIds: dedupBench })
                     });
                     saveBtn.disabled = false;
                     saveBtn.textContent = res.ok ? "Saved" : "Save failed";
-                    setTimeout(() => { saveBtn.textContent = "Save Tactics + XI"; }, 1200);
+                    setTimeout(() => { saveBtn.textContent = "Save Tactics + XI + Bench"; }, 1400);
                 });
             }
         };
@@ -1190,8 +1471,8 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 <h2>Training Setup</h2>
                 <p class="training-note">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
 
-                <div class="training-grid">
-                    <div class="training-block">
+                <div class="training-grid training-grid-setup">
+                    <div class="training-block training-block-groups">
                         <h3>Formation Training Groups</h3>
                         <div class="training-groups">`;
 
@@ -1209,62 +1490,64 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         </div>
                     </div>
 
-                    <div class="training-block">
-                        <h3>Advanced Training (max 10 players)</h3>
-                        <div id="advanced-drop" class="training-dropzone">
-                            ${state.advanced.length === 0 ? `<div class="training-empty">Drop players here</div>` : ""}
-                            ${state.advanced.map((entry, idx) => {
-                                const p = getPlayer(entry.playerId);
-                                if (!p) return "";
-                                return `
-                                <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="advanced">
-                                    <div class="training-player-main">
-                                        <strong>${escapeHtml(p.name)}</strong>
-                                        <small>${escapeHtml(playerBadge(p))}</small>
-                                    </div>
-                                    <select class="adv-role-select" data-player-id="${p.id}">
-                                        ${ROLE_OPTIONS.map(role => `<option value="${role}" ${entry.role === role ? "selected" : ""}>${role}</option>`).join("")}
-                                    </select>
-                                    <button class="mini-btn" data-remove-adv="${idx}">Remove</button>
-                                </div>`;
-                            }).join("")}
-                        </div>
-                        <div class="quick-add-wrap" style="margin-top:10px;">
-                            <label style="font-size:0.88rem; color:#9aa7bc;">Mobile fallback: add player to advanced</label>
-                            <select id="quick-player-select">
-                                <option value="">Select player...</option>
-                                ${state.general.map(id => {
-                                    const p = getPlayer(id);
-                                    if (!p) return "";
-                                    return `<option value="${p.id}">${escapeHtml(playerBadge(p))}</option>`;
-                                }).join("")}
-                            </select>
-                            <select id="quick-role-select">
-                                ${ROLE_OPTIONS.map(role => `<option value="${role}">${role}</option>`).join("")}
-                            </select>
-                            <button id="quick-add-advanced" class="big-button" style="padding:8px 12px;">Add to Advanced</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="training-block" style="margin-top:14px;">
-                    <h3>Player Pool</h3>
-                    <div class="training-pools">
-                        <div>
-                            <h4>Formation Training Pool</h4>
-                            <div id="general-drop" class="training-dropzone">
-                                ${state.general.length === 0 ? `<div class="training-empty">No players in formation pool</div>` : ""}
-                                ${state.general.map(id => {
-                                    const p = getPlayer(id);
+                    <div class="training-side-grid">
+                        <div class="training-block">
+                            <h3>Advanced Training (max 10 players)</h3>
+                            <div id="advanced-drop" class="training-dropzone">
+                                ${state.advanced.length === 0 ? `<div class="training-empty">Drop players here</div>` : ""}
+                                ${state.advanced.map((entry, idx) => {
+                                    const p = getPlayer(entry.playerId);
                                     if (!p) return "";
                                     return `
-                                    <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="general">
+                                    <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="advanced">
                                         <div class="training-player-main">
                                             <strong>${escapeHtml(p.name)}</strong>
                                             <small>${escapeHtml(playerBadge(p))}</small>
                                         </div>
+                                        <select class="adv-role-select" data-player-id="${p.id}">
+                                            ${ROLE_OPTIONS.map(role => `<option value="${role}" ${entry.role === role ? "selected" : ""}>${role}</option>`).join("")}
+                                        </select>
+                                        <button class="mini-btn" data-remove-adv="${idx}">Remove</button>
                                     </div>`;
                                 }).join("")}
+                            </div>
+                            <div class="quick-add-wrap" style="margin-top:10px;">
+                                <label style="font-size:0.88rem; color:#9aa7bc;">Mobile fallback: add player to advanced</label>
+                                <select id="quick-player-select">
+                                    <option value="">Select player...</option>
+                                    ${state.general.map(id => {
+                                        const p = getPlayer(id);
+                                        if (!p) return "";
+                                        return `<option value="${p.id}">${escapeHtml(playerBadge(p))}</option>`;
+                                    }).join("")}
+                                </select>
+                                <select id="quick-role-select">
+                                    ${ROLE_OPTIONS.map(role => `<option value="${role}">${role}</option>`).join("")}
+                                </select>
+                                <button id="quick-add-advanced" class="big-button" style="padding:8px 12px;">Add to Advanced</button>
+                            </div>
+                        </div>
+
+                        <div class="training-block training-block-pool">
+                            <h3>Player Pool</h3>
+                            <div class="training-pools">
+                                <div>
+                                    <h4>Formation Training Pool</h4>
+                                    <div id="general-drop" class="training-dropzone">
+                                        ${state.general.length === 0 ? `<div class="training-empty">No players in formation pool</div>` : ""}
+                                        ${state.general.map(id => {
+                                            const p = getPlayer(id);
+                                            if (!p) return "";
+                                            return `
+                                            <div class="training-player-card" draggable="true" data-player-id="${p.id}" data-origin="general">
+                                                <div class="training-player-main">
+                                                    <strong>${escapeHtml(p.name)}</strong>
+                                                    <small>${escapeHtml(playerBadge(p))}</small>
+                                                </div>
+                                            </div>`;
+                                        }).join("")}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1405,6 +1688,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
         const playerById = new Map(players.map(p => [p.id, p]));
 
         let selectedReport = null;
+        let selectedPlayerGraph = null;
 
         const colorByIntDelta = (delta) => {
             if (delta > 0) return "#4caf50";
@@ -1412,6 +1696,19 @@ import { createMatchesFeature } from './pages/features/matches.js';
             return "#b7bec9";
         };
         const skillLabel = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
+        const skillShortLabel = (skill) => {
+            switch ((skill || "").toLowerCase()) {
+                case "goalkeeper": return "GK";
+                case "defending": return "DEF";
+                case "pace": return "PAC";
+                case "technique": return "TEC";
+                case "playmaker": return "PLY";
+                case "passing": return "PAS";
+                case "shooting": return "SHT";
+                case "stamina": return "STA";
+                default: return skillLabel(skill).slice(0, 3).toUpperCase();
+            }
+        };
         const skillIcon = (skill) => {
             switch ((skill || "").toLowerCase()) {
                 case "goalkeeper": return "🧤";
@@ -1426,6 +1723,13 @@ import { createMatchesFeature } from './pages/features/matches.js';
             }
         };
         const normalizeWeekKey = (season, week) => `${Number(season)}|${Number(week)}`;
+        const weekShort = (season, week) => `S${Number(season)}W${Number(week)}`;
+        const skillTone = (delta, isDirectTraining) => {
+            if (delta > 0) return "#4caf50";
+            if (delta < 0) return "#f44336";
+            if (isDirectTraining) return "#9d4edd";
+            return "#dce6f5";
+        };
 
         async function fetchSummaries() {
             const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports`);
@@ -1448,36 +1752,167 @@ import { createMatchesFeature } from './pages/features/matches.js';
             return await res.json();
         }
 
+        async function openPlayerGraph(playerId) {
+            const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/player/${playerId}/graph`);
+            if (!res.ok) return;
+            selectedPlayerGraph = {
+                playerId,
+                player: playerById.get(playerId),
+                points: await res.json()
+            };
+            await render();
+        }
+
         function renderReportCards(report) {
             if (!report) return `<p class="training-empty">Select a week report.</p>`;
-            let html = `<h3>Season ${report.seasonNumber} • Week ${report.weekNumber}</h3><div class="manager-grid">`;
+            const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
+            const reportSkills = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
+            let html = `<h3>${weekShort(report.seasonNumber, report.weekNumber)}</h3>`;
+            html += `<div class="training-report-list">`;
             (report.players || [])
-                .sort((a, b) => String(a.playerName || "").localeCompare(String(b.playerName || "")))
+                .sort((a, b) => {
+                    const aPlayer = playerById.get(a.playerId);
+                    const bPlayer = playerById.get(b.playerId);
+                    const posDiff = (posOrder[aPlayer?.position] ?? 5) - (posOrder[bPlayer?.position] ?? 5);
+                    if (posDiff !== 0) return posDiff;
+                    return String(a.playerName || "").localeCompare(String(b.playerName || ""));
+                })
                 .forEach(p => {
                 const player = playerById.get(p.playerId);
                 const playerName = player?.name || p.playerName || `#${p.playerId}`;
-                const filename = getImageFilename(playerName);
-                const skillsText = (p.skills || []).map(s => {
+                const skillByName = new Map((p.skills || []).map(s => [String(s.skill || "").toLowerCase(), s]));
+                const pos = player?.position || "-";
+                const age = Number.isFinite(Number(player?.age)) ? Number(player.age) : "-";
+                const rating = Number.isFinite(Number(player?.rating)) ? Number(player.rating) : "-";
+                const form = Number.isFinite(Number(player?.form)) ? Number(player.form).toFixed(1) : "-";
+                const goals = Number(player?.goals || 0);
+                const assists = Number(player?.assists || 0);
+                const trainingText = `${escapeHtml(p.role || "-")} • DT: ${escapeHtml(skillShortLabel(p.directTrainingSkill || "-"))} • ${p.advancedTraining ? "ADV" : "FORM"}`;
+                const skillCells = reportSkills.map(skill => {
+                    const s = skillByName.get(skill);
+                    if (!s) return `<span class="training-skill-chip is-empty">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} -</span>`;
                     const intDelta = Number(s.integerChange || 0);
                     const decDelta = Number(s.decimalChange ?? (Number(s.after || 0) - Number(s.before || 0)));
-                    const decDeltaText = `${decDelta >= 0 ? "+ " : "- "}${Math.abs(decDelta).toFixed(2)}`;
-                    const intDeltaText = `${intDelta >= 0 ? "+ " : "- "}${Math.abs(intDelta)}`;
-                    return `<div style="font-size:0.9em; color:${colorByIntDelta(intDelta)}; font-weight:700;">
-                                ${skillIcon(s.skill)} ${skillLabel(s.skill)}: ${Number(s.after).toFixed(2)}
-                                <span style="opacity:0.9;">(Delta ${decDeltaText} | int ${intDeltaText})</span>
-                            </div>`;
+                    const decSign = decDelta > 0 ? "+" : decDelta < 0 ? "-" : "";
+                    const title = `${skillLabel(skill)}: ${Number(s.after || 0).toFixed(2)} | Delta ${decSign}${Math.abs(decDelta).toFixed(2)} | Int ${intDelta >= 0 ? "+" : "-"}${Math.abs(intDelta)}`;
+                    const tone = skillTone(intDelta, skill === String(p.directTrainingSkill || "").toLowerCase());
+                    const isDirect = skill === String(p.directTrainingSkill || "").toLowerCase();
+                    const directCls = isDirect && intDelta <= 0 ? " is-direct" : "";
+                    const upCls = intDelta > 0 ? " is-up" : "";
+                    return `<span class="training-skill-chip${directCls}${upCls}" title="${escapeHtml(title)}" style="color:${tone}; border-color:${tone}44;">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} ${Number(s.after || 0).toFixed(2)} <span style="opacity:0.85;">(${decSign}${Math.abs(decDelta).toFixed(2)})</span></span>`;
                 }).join("");
                 html += `
-                    <div class="manager-player-card training-report-player-card">
-                        <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
-                        <div class="player-name"><span class="cs-clickable" data-open-training-player="${p.playerId}">${escapeHtml(playerName)}</span></div>
-                        <div class="player-meta">Age: ${Number.isFinite(Number(player?.age)) ? Number(player.age) : "?"}</div>
-                        <div class="player-meta">${escapeHtml(p.role || "-")} • DT: ${escapeHtml(skillLabel(p.directTrainingSkill || "-"))}</div>
-                        <div class="player-meta">${p.advancedTraining ? "Advanced training" : "Formation training"}</div>
-                        <div style="margin-top:8px; text-align:left; width:100%;">${skillsText}</div>
+                    <div class="training-report-item">
+                        <div class="training-report-main">
+                            <div class="training-report-main-left">
+                                <span class="training-report-pos">${escapeHtml(pos)}</span>
+                                <span class="cs-clickable training-report-name" data-open-training-player="${p.playerId}">${escapeHtml(playerName)}</span>
+                            </div>
+                            <div class="training-report-main-stats">Age ${age} • Rat ${rating} • Form ${form} • G ${goals} • A ${assists}</div>
+                        </div>
+                        <div class="training-report-sub">${trainingText}</div>
+                        <div class="training-report-skills">${skillCells}</div>
                     </div>`;
             });
             html += `</div>`;
+            return html;
+        }
+
+        function renderGraph() {
+            if (!selectedPlayerGraph) return "";
+            const player = selectedPlayerGraph.player;
+            const points = Array.isArray(selectedPlayerGraph.points) ? selectedPlayerGraph.points : [];
+            if (points.length === 0) {
+                return `<div class="training-block"><div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><button class="big-button" data-training-report-back="1">Back</button><h3 style="margin:0;">${escapeHtml(player?.name || "Player")} • Training Progress</h3></div><p class="training-empty" style="margin-top:14px;">No graph data.</p></div>`;
+            }
+
+            const weekMap = new Map();
+            points.forEach(point => {
+                const key = normalizeWeekKey(point.seasonNumber, point.weekNumber);
+                if (!weekMap.has(key)) {
+                    weekMap.set(key, {
+                        seasonNumber: point.seasonNumber,
+                        weekNumber: point.weekNumber,
+                        role: point.role || "-",
+                        directTrainingSkill: point.directTrainingSkill || "-",
+                        advancedTraining: !!point.advancedTraining,
+                        skills: {}
+                    });
+                }
+                weekMap.get(key).skills[String(point.skill || "").toLowerCase()] = point;
+            });
+
+            const weeksAsc = [...weekMap.values()].sort((a, b) =>
+                a.seasonNumber === b.seasonNumber ? a.weekNumber - b.weekNumber : a.seasonNumber - b.seasonNumber
+            );
+            const graphSkills = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
+            const prevInts = {};
+            weeksAsc.forEach(week => {
+                week.skillMeta = {};
+                graphSkills.forEach(skill => {
+                    const point = week.skills[skill];
+                    if (!point) return;
+                    const prevInt = prevInts[skill];
+                    const delta = prevInt == null ? 0 : Number(point.integerValue) - Number(prevInt);
+                    prevInts[skill] = Number(point.integerValue);
+                    week.skillMeta[skill] = { point, delta };
+                });
+            });
+            const weeks = [...weeksAsc].reverse();
+            const currentPlayer = playerById.get(selectedPlayerGraph.playerId) || player || {};
+            const skillSummary = graphSkills.map(skill => `
+                <div class="cs-stat-card">
+                    <div class="icon">${skillIcon(skill)}</div>
+                    <div class="val">${Number(currentPlayer?.[skill] || 0).toFixed(2)}</div>
+                    <div class="lbl">${escapeHtml(skillShortLabel(skill))}</div>
+                </div>
+            `).join("");
+            let html = `<div class="training-block training-player-detail">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <button class="big-button" data-training-report-back="1">Back</button>
+                    <h3 style="margin:0;">${escapeHtml(currentPlayer?.name || player?.name || "Player")} • Training Progress</h3>
+                </div>
+                <div class="training-player-overview">
+                    <div class="training-player-hero">
+                        <div class="training-report-pos">${escapeHtml(currentPlayer?.position || "-")}</div>
+                        <div>
+                            <div class="training-report-name" style="font-size:1.1rem;">${escapeHtml(currentPlayer?.name || player?.name || "Player")}</div>
+                            <div class="training-report-sub">Age ${Number.isFinite(Number(currentPlayer?.age)) ? Number(currentPlayer.age) : "-"} • Rat ${Number.isFinite(Number(currentPlayer?.rating)) ? Number(currentPlayer.rating) : "-"} • Form ${Number.isFinite(Number(currentPlayer?.form)) ? Number(currentPlayer.form).toFixed(1) : "-"} • G ${Number(currentPlayer?.goals || 0)} • A ${Number(currentPlayer?.assists || 0)}</div>
+                        </div>
+                    </div>
+                    <div class="cs-stat-grid">${skillSummary}</div>
+                </div>
+                <div class="training-graph-table-wrap">
+                    <div class="training-graph-header">
+                        <div class="training-graph-col training-graph-col-week">Week</div>
+                        <div class="training-graph-col training-graph-col-role">Role</div>
+                        <div class="training-graph-col training-graph-col-dt">DT</div>
+                        <div class="training-graph-col training-graph-col-mode">Mode</div>
+                        <div class="training-graph-col training-graph-col-skills">Skills</div>
+                    </div>
+                    <div class="training-graph-list">`;
+
+            weeks.forEach(week => {
+                const skillHtml = graphSkills.map(skill => {
+                    const meta = week.skillMeta?.[skill];
+                    if (!meta?.point) return `<span class="training-skill-chip is-empty">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} -</span>`;
+                    const isDirect = skill === String(week.directTrainingSkill || "").toLowerCase();
+                    const tone = skillTone(meta.delta, isDirect);
+                    const directCls = isDirect && meta.delta <= 0 ? " is-direct" : "";
+                    const upCls = meta.delta > 0 ? " is-up" : "";
+                    return `<span class="training-skill-chip${directCls}${upCls}" style="color:${tone}; border-color:${tone}44;">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} ${Number(meta.point.value).toFixed(2)}</span>`;
+                }).join("");
+
+                html += `<div class="training-graph-row">
+                    <div class="training-graph-col training-graph-col-week" data-label="Week">${weekShort(week.seasonNumber, week.weekNumber)}</div>
+                    <div class="training-graph-col training-graph-col-role" data-label="Role">${escapeHtml(week.role || "-")}</div>
+                    <div class="training-graph-col training-graph-col-dt" data-label="DT">${escapeHtml(skillShortLabel(week.directTrainingSkill || "-"))}</div>
+                    <div class="training-graph-col training-graph-col-mode" data-label="Mode">${week.advancedTraining ? "ADV" : "FORM"}</div>
+                    <div class="training-graph-col training-graph-col-skills" data-label="Skills">${skillHtml}</div>
+                </div>`;
+            });
+
+            html += `</div></div></div>`;
             return html;
         }
 
@@ -1498,45 +1933,66 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 sessionStorage.removeItem("training_report_focus");
             }
 
-            mainContent.innerHTML = `
-                <div class="manager-card training-setup-card">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <h2>Training Reports</h2>
-                    <p class="training-note">Click week to open players report. Decimal values are shown for testing; color tracks integer up/down.</p>
-                    <div class="training-grid">
-                        <div class="training-block">
-                            <h3>Weeks</h3>
-                            <div class="training-week-list">
-                                ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">Season ${s.seasonNumber} • Week ${s.weekNumber}</div>`).join("")}
+            if (selectedPlayerGraph) {
+                mainContent.innerHTML = `
+                    <div class="manager-card training-setup-card">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <h2>Training Reports</h2>
+                        <p class="training-note">Purple marks the direct training skill for that week. Green means growth, red means decline.</p>
+                        ${renderGraph()}
+                    </div>
+                `;
+            } else {
+                mainContent.innerHTML = `
+                    <div class="manager-card training-setup-card">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <h2>Training Reports</h2>
+                        <p class="training-note">Click a week to open that training report. Purple marks the skill trained that week.</p>
+                        <div class="training-grid">
+                            <div class="training-block">
+                                <h3>Weeks</h3>
+                                <div class="training-week-list">
+                                    ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">${weekShort(s.seasonNumber, s.weekNumber)}</div>`).join("")}
+                                </div>
+                            </div>
+                            <div class="training-block">
+                                ${renderReportCards(selectedReport)}
                             </div>
                         </div>
-                        <div class="training-block">
-                            ${renderReportCards(selectedReport)}
-                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
 
-            mainContent.querySelectorAll("[data-open-week]").forEach(item => {
-                item.addEventListener("click", async () => {
-                    const [season, week] = (item.getAttribute("data-open-week") || "").split("|").map(Number);
+            mainContent.onclick = async (event) => {
+                const backEl = event.target.closest("[data-training-report-back]");
+                if (backEl && mainContent.contains(backEl)) {
+                    selectedPlayerGraph = null;
+                    await render();
+                    return;
+                }
+
+                const weekEl = event.target.closest("[data-open-week]");
+                if (weekEl && mainContent.contains(weekEl)) {
+                    const [season, week] = (weekEl.getAttribute("data-open-week") || "").split("|").map(Number);
                     const report = await fetchReport(season, week);
                     if (report) {
                         selectedReport = report;
+                        selectedPlayerGraph = null;
                         await render();
                     }
-                });
-            });
-            mainContent.querySelectorAll("[data-open-training-player]").forEach(item => {
-                item.addEventListener("click", async (event) => {
+                    return;
+                }
+
+                const playerEl = event.target.closest("[data-open-training-player]");
+                if (playerEl && mainContent.contains(playerEl)) {
                     event.preventDefault();
                     event.stopPropagation();
-                    const playerId = Number(item.getAttribute("data-open-training-player"));
+                    const playerId = Number(playerEl.getAttribute("data-open-training-player"));
                     if (playerId) {
-                        await loadPlayer(playerId, "trainingReports");
+                        await openPlayerGraph(playerId);
                     }
-                });
-            });
+                }
+            };
         }
 
         await render();
@@ -2364,6 +2820,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
+
+
+
 
 
 

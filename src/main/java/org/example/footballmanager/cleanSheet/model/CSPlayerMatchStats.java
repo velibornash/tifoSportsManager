@@ -16,4 +16,5 @@ public class CSPlayerMatchStats {
     private double rating;  // 1.0 - 10.0 match rating
     private int goals;
     private int assists;
+    private int minutesPlayed;
 }

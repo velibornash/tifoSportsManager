@@ -19,4 +19,6 @@ public class CSTactics {
     private CSPlayStyle style = CSPlayStyle.BALANCED;
     @Builder.Default
     private List<Long> starterIds = new ArrayList<>();
+    @Builder.Default
+    private List<Long> benchIds = new ArrayList<>();
 }

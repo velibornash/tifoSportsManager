@@ -34,6 +34,9 @@ public class Player {
 
     private int totalGoals;
     private int totalAssists;
+    private Integer injuryDaysRemaining;
+    private Integer injurySeasonNumber;
+    private Integer injuryWeekNumber;
 
     @ManyToOne
     @JoinColumn(name = "team_id")
@@ -51,5 +54,13 @@ public class Player {
 
     public boolean canReceiveBall() {
         return skills.getStamina() > 0 && getCurrentFatigue() < 8.0;
+    }
+
+    public boolean isInjured() {
+        return getInjuryDaysRemaining() > 0;
+    }
+
+    public int getInjuryDaysRemaining() {
+        return injuryDaysRemaining == null ? 0 : injuryDaysRemaining;
     }
 }

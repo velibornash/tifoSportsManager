@@ -7,5 +7,6 @@ public record MatchLineupPlayerDTO(
         String teamName,
         double grade,
         int goals,
-        int assists
+        int assists,
+        int minutesPlayed
 ) {}

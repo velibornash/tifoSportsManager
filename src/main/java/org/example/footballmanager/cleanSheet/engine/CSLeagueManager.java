@@ -186,16 +186,27 @@ public class CSLeagueManager {
                     .getOrDefault(away.getId(), List.of());
 
             List<Long> userStarterIds = state.getTactics() != null ? state.getTactics().getStarterIds() : List.of();
+            List<Long> userBenchIds = state.getTactics() != null ? state.getTactics().getBenchIds() : List.of();
             List<CSPlayer> homeStarters = simulator.pickStartingEleven(
                     homePlayers,
                     home.getId().equals(state.getUserTeam().getId()) ? userStarterIds : List.of()
+            );
+            List<CSPlayer> homeBench = simulator.pickBenchPlayers(
+                    homePlayers,
+                    homeStarters,
+                    home.getId().equals(state.getUserTeam().getId()) ? userBenchIds : List.of()
             );
             List<CSPlayer> awayStarters = simulator.pickStartingEleven(
                     awayPlayers,
                     away.getId().equals(state.getUserTeam().getId()) ? userStarterIds : List.of()
             );
+            List<CSPlayer> awayBench = simulator.pickBenchPlayers(
+                    awayPlayers,
+                    awayStarters,
+                    away.getId().equals(state.getUserTeam().getId()) ? userBenchIds : List.of()
+            );
 
-            CSMatchResult result = simulator.simulateQuick(home, homeStarters, away, awayStarters, round);
+            CSMatchResult result = simulator.simulateQuick(home, homeStarters, homeBench, away, awayStarters, awayBench, round);
 
             fixture.setPlayed(true);
             fixture.setResult(result);

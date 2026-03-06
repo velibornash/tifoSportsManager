@@ -92,7 +92,8 @@ public class CleanSheetController {
                                                     @RequestBody Map<String, List<Long>> payload) {
         if (user == null) return ResponseEntity.status(401).build();
         List<Long> starterIds = payload.getOrDefault("starterIds", List.of());
-        return ResponseEntity.ok(cleanSheetService.changeStarters(user.getId(), starterIds));
+        List<Long> benchIds = payload.getOrDefault("benchIds", List.of());
+        return ResponseEntity.ok(cleanSheetService.changeLineup(user.getId(), starterIds, benchIds));
     }
 
     @GetMapping("/team/{teamId}")

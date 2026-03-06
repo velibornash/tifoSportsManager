@@ -4,6 +4,7 @@ import org.example.footballmanager.cleanSheet.model.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -14,8 +15,8 @@ public class CSMatchSimulator {
 
     private final Random rnd = new Random();
 
-    public CSMatchResult simulate(CSTeam home, List<CSPlayer> homePlayers,
-                                  CSTeam away, List<CSPlayer> awayPlayers,
+    public CSMatchResult simulate(CSTeam home, List<CSPlayer> homePlayers, List<CSPlayer> homeBench,
+                                  CSTeam away, List<CSPlayer> awayPlayers, List<CSPlayer> awayBench,
                                   CSTactics homeTactics, CSTactics awayTactics,
                                   int round) {
 
@@ -36,6 +37,12 @@ public class CSMatchSimulator {
 
         generateGoalEvents(events, home, homePlayers, away, awayPlayers, homeGoals, awayGoals);
         generateStats(events, home, homePlayers, away, awayPlayers, homeGoals, awayGoals);
+        Map<Long, Integer> homeMinutes = new java.util.HashMap<>();
+        Map<Long, Integer> awayMinutes = new java.util.HashMap<>();
+        homePlayers.forEach(p -> homeMinutes.put(p.getId(), 90));
+        awayPlayers.forEach(p -> awayMinutes.put(p.getId(), 90));
+        applySubstitutions(events, home, homePlayers, homeBench, homeMinutes);
+        applySubstitutions(events, away, awayPlayers, awayBench, awayMinutes);
 
         events.add(CSMatchEvent.builder()
                 .minute(90)
@@ -45,8 +52,13 @@ public class CSMatchSimulator {
 
         events.sort((a, b) -> Integer.compare(a.getMinute(), b.getMinute()));
 
-        List<CSPlayerMatchStats> homeStats = assignRatings(homePlayers, events, home.getName());
-        List<CSPlayerMatchStats> awayStats = assignRatings(awayPlayers, events, away.getName());
+        List<CSPlayer> homeAll = new ArrayList<>(homePlayers);
+        homeAll.addAll(homeBench);
+        List<CSPlayer> awayAll = new ArrayList<>(awayPlayers);
+        awayAll.addAll(awayBench);
+
+        List<CSPlayerMatchStats> homeStats = assignRatings(homeAll, events, home.getName(), homeMinutes);
+        List<CSPlayerMatchStats> awayStats = assignRatings(awayAll, events, away.getName(), awayMinutes);
 
         updateFatigueAfterMatch(homePlayers);
         updateFatigueAfterMatch(awayPlayers);
@@ -69,11 +81,11 @@ public class CSMatchSimulator {
     /**
      * Simulacija za ostale meceve u kolu — sada takodje sa punom statistikom.
      */
-    public CSMatchResult simulateQuick(CSTeam home, List<CSPlayer> homePlayers,
-                                       CSTeam away, List<CSPlayer> awayPlayers,
+    public CSMatchResult simulateQuick(CSTeam home, List<CSPlayer> homePlayers, List<CSPlayer> homeBench,
+                                       CSTeam away, List<CSPlayer> awayPlayers, List<CSPlayer> awayBench,
                                        int round) {
         CSTactics defaultTactics = CSTactics.builder().build();
-        return simulate(home, homePlayers, away, awayPlayers, defaultTactics, defaultTactics, round);
+        return simulate(home, homePlayers, homeBench, away, awayPlayers, awayBench, defaultTactics, defaultTactics, round);
     }
 
     public List<CSPlayer> pickStartingEleven(List<CSPlayer> roster, List<Long> preferredStarterIds) {
@@ -100,6 +112,33 @@ public class CSMatchSimulator {
             }
         }
         return picks;
+    }
+
+    public List<CSPlayer> pickBenchPlayers(List<CSPlayer> roster, List<CSPlayer> starters, List<Long> preferredBenchIds) {
+        if (roster == null || roster.isEmpty()) return List.of();
+        java.util.Set<Long> starterIds = starters.stream().map(CSPlayer::getId).collect(java.util.stream.Collectors.toSet());
+        List<CSPlayer> bench = new ArrayList<>();
+        if (preferredBenchIds != null) {
+            for (Long id : preferredBenchIds) {
+                if (id == null) continue;
+                CSPlayer player = roster.stream().filter(p -> id.equals(p.getId()) && !starterIds.contains(p.getId())).findFirst().orElse(null);
+                if (player != null && bench.stream().noneMatch(p -> p.getId().equals(player.getId()))) {
+                    bench.add(player);
+                    if (bench.size() >= 7) break;
+                }
+            }
+        }
+        if (bench.size() < 7) {
+            List<CSPlayer> fallback = new ArrayList<>(roster);
+            fallback.sort((a, b) -> Integer.compare(b.getRating(), a.getRating()));
+            for (CSPlayer player : fallback) {
+                if (starterIds.contains(player.getId())) continue;
+                if (bench.stream().anyMatch(p -> p.getId().equals(player.getId()))) continue;
+                bench.add(player);
+                if (bench.size() >= 7) break;
+            }
+        }
+        return bench;
     }
 
     /**
@@ -166,8 +205,9 @@ public class CSMatchSimulator {
      * Bazna ocena 6.0-7.0 + bonus za gol/asist, mali random.
      */
     private List<CSPlayerMatchStats> assignRatings(List<CSPlayer> players,
-                                                    List<CSMatchEvent> events,
-                                                    String teamName) {
+                                                   List<CSMatchEvent> events,
+                                                   String teamName,
+                                                   java.util.Map<Long, Integer> minutesByPlayer) {
         List<CSPlayerMatchStats> stats = new ArrayList<>();
         long teamGoals = events.stream()
                 .filter(e -> e.getEventType() == CSEventType.GOAL && teamName.equals(e.getTeamName()))
@@ -235,9 +275,48 @@ public class CSMatchSimulator {
                     .rating(rating)
                     .goals((int) goalsInMatch)
                     .assists((int) assistsInMatch)
+                    .minutesPlayed(Math.max(0, minutesByPlayer.getOrDefault(p.getId(), 0)))
                     .build());
         }
         return stats;
+    }
+
+    private void applySubstitutions(List<CSMatchEvent> events,
+                                    CSTeam team,
+                                    List<CSPlayer> starters,
+                                    List<CSPlayer> bench,
+                                    java.util.Map<Long, Integer> minutesByPlayer) {
+        if (starters.isEmpty() || bench.isEmpty()) return;
+        int maxSubs = Math.min(3, bench.size());
+        int subs = rnd.nextDouble() < 0.55 ? rnd.nextInt(maxSubs + 1) : 0;
+        for (int i = 0; i < subs; i++) {
+            int minute = 55 + rnd.nextInt(31);
+            CSPlayer out = pickMostTired(starters);
+            if (out == null) break;
+            CSPlayer in = pickLikeForLike(bench, out.getPosition());
+            if (in == null) break;
+            starters.removeIf(p -> p.getId().equals(out.getId()));
+            starters.add(in);
+            bench.removeIf(p -> p.getId().equals(in.getId()));
+            minutesByPlayer.put(out.getId(), Math.max(1, minute));
+            minutesByPlayer.put(in.getId(), Math.max(0, 91 - minute));
+            events.add(CSMatchEvent.builder()
+                    .minute(minute)
+                    .eventType(CSEventType.SUBSTITUTION)
+                    .teamName(team.getName())
+                    .playerOutName(out.getName())
+                    .playerInName(in.getName())
+                    .description(team.getName() + " substitution: " + out.getName() + " -> " + in.getName())
+                    .build());
+        }
+    }
+
+    private CSPlayer pickMostTired(List<CSPlayer> starters) {
+        return starters.stream().max(java.util.Comparator.comparingDouble(CSPlayer::getFatigue)).orElse(null);
+    }
+
+    private CSPlayer pickLikeForLike(List<CSPlayer> bench, String position) {
+        return bench.stream().filter(p -> position.equals(p.getPosition())).findFirst().orElse(bench.isEmpty() ? null : bench.getFirst());
     }
 
     private int generateGoals(double strengthRatio) {

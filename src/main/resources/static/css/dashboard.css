@@ -55,11 +55,35 @@
     gap: 14px;
 }
 
+.training-grid-setup {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    align-items: start;
+}
+
+.training-side-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+    gap: 14px;
+    align-items: start;
+}
+
 .training-block {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     padding: 12px;
+}
+
+.training-block-groups {
+    padding: 10px 12px;
+}
+
+.training-block-groups .training-groups {
+    gap: 8px;
+}
+
+.training-block-pool {
+    align-self: start;
 }
 
 .training-groups {
@@ -92,7 +116,7 @@
 
 .training-pools {
     display: grid;
-    grid-template-columns: 1.4fr 1fr;
+    grid-template-columns: 1fr;
     gap: 12px;
 }
 
@@ -193,6 +217,153 @@
     font-weight: 700;
 }
 
+.training-report-list,
+.training-graph-list {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+}
+
+.training-report-item,
+.training-graph-week {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+
+.training-report-main,
+.training-graph-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.training-report-main-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.training-report-pos,
+.training-graph-week-id {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(42, 140, 74, 0.18);
+    color: #9fe0af;
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+.training-report-name {
+    font-weight: 700;
+}
+
+.training-report-main-stats,
+.training-report-sub,
+.training-graph-meta {
+    color: #b7bec9;
+    font-size: 0.9rem;
+}
+
+.training-report-sub {
+    margin-top: 6px;
+}
+
+.training-report-skills,
+.training-graph-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.training-player-overview {
+    margin-top: 14px;
+}
+
+.training-player-hero {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.training-graph-table-wrap {
+    margin-top: 18px;
+    width: 100%;
+}
+
+.training-graph-header,
+.training-graph-row {
+    display: grid;
+    grid-template-columns: 90px 90px 70px 80px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.training-graph-header {
+    padding: 0 0 8px;
+    color: #8f99a3;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 8px;
+}
+
+.training-graph-row {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.training-graph-col {
+    min-width: 0;
+    color: #dce6f5;
+    font-size: 0.88rem;
+}
+
+.training-graph-col-week,
+.training-graph-col-role,
+.training-graph-col-dt,
+.training-graph-col-mode {
+    font-weight: 700;
+}
+
+.training-skill-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.training-skill-chip.is-direct {
+    background: rgba(157, 78, 221, 0.16);
+}
+
+.training-skill-chip.is-up {
+    font-size: 0.9rem;
+    font-weight: 800;
+    background: rgba(76, 175, 80, 0.12);
+}
+
+.training-skill-chip.is-empty {
+    color: #6f7a86;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
 .empty-badge-wrap {
     display: flex;
     justify-content: center;
@@ -212,7 +383,72 @@
 
 @media (max-width: 980px) {
     .training-grid,
+    .training-grid-setup,
+    .training-side-grid,
     .training-pools {
         grid-template-columns: 1fr;
+    }
+
+    .training-report-item,
+    .training-graph-week {
+        padding: 10px;
+    }
+
+    .training-report-main,
+    .training-graph-main {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .training-report-main-left {
+        width: 100%;
+    }
+
+    .training-report-main-stats,
+    .training-report-sub,
+    .training-graph-meta {
+        font-size: 0.84rem;
+        line-height: 1.4;
+    }
+
+    .training-report-skills,
+    .training-graph-skills {
+        gap: 6px;
+    }
+
+    .training-player-hero {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .training-graph-header {
+        display: none;
+    }
+
+    .training-graph-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .training-graph-col::before {
+        content: attr(data-label);
+        display: block;
+        color: #8f99a3;
+        font-size: 0.74rem;
+        font-weight: 700;
+        margin-bottom: 2px;
+    }
+
+    .training-skill-chip {
+        font-size: 0.76rem;
+        padding: 4px 7px;
+    }
+
+    .training-skill-chip.is-up {
+        font-size: 0.82rem;
     }
 }

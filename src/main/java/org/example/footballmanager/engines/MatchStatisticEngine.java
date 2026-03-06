@@ -45,7 +45,12 @@ public class MatchStatisticEngine {
             }
         }
     }
-    public void savePlayerStats(Match match, List<Player> players, List<GoalEvent> allGoals, List<YellowCardEvent> allYellows, List<RedCardEvent> allReds) {
+    public void savePlayerStats(Match match,
+                                List<Player> players,
+                                List<GoalEvent> allGoals,
+                                List<YellowCardEvent> allYellows,
+                                List<RedCardEvent> allReds,
+                                Map<Long, Integer> minutesByPlayerId) {
         for (Player player : players) {
             long goals = allGoals.stream()
                     .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
@@ -62,7 +67,7 @@ public class MatchStatisticEngine {
             stats.setAssists((int) assists);
             stats.setYellowCards((int) yellowCards);
             stats.setRedCards((int) redCards);
-            stats.setMinutesPlayed(90);
+            stats.setMinutesPlayed(Math.max(0, minutesByPlayerId.getOrDefault(player.getId(), 90)));
             stats.setRating(player.getRating());
             matchPlayerStatsRepository.save(stats);
         }

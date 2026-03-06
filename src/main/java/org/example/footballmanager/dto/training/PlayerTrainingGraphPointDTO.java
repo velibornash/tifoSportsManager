@@ -11,5 +11,7 @@ public class PlayerTrainingGraphPointDTO {
     private String skill;
     private double value;
     private int integerValue;
+    private String role;
+    private String directTrainingSkill;
+    private boolean advancedTraining;
 }
-

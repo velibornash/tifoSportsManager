@@ -275,6 +275,7 @@ public class SeasonService {
             clock.setCurrentWeek(week + 1);
             clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
             gameClockRepository.save(clock);
+            decrementInjuriesByWeek();
             int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
             int newWeek = clock.getCurrentWeek();
             if (newWeek == 2) {
@@ -285,6 +286,26 @@ public class SeasonService {
             return;
         }
         performPromotionRelegationAndNewSeason(superLiga);
+    }
+
+    @Transactional
+    protected void decrementInjuriesByWeek() {
+        List<Player> players = playerRepository.findAll();
+        boolean changed = false;
+        for (Player player : players) {
+            int current = Math.max(0, player.getInjuryDaysRemaining());
+            if (current <= 0) continue;
+            int next = Math.max(0, current - 7);
+            player.setInjuryDaysRemaining(next);
+            if (next == 0) {
+                player.setInjurySeasonNumber(null);
+                player.setInjuryWeekNumber(null);
+            }
+            changed = true;
+        }
+        if (changed) {
+            playerRepository.saveAll(players);
+        }
     }
 
     @Transactional

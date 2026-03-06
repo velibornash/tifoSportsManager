@@ -95,9 +95,6 @@ public class RuntimeSaveToDB {
         matchRepository.save(match);
         markFixtureAsPlayed(match);
 
-        matchStatisticEngineHandling.simulateInjuriesAndCards(homePlayers, match);
-        matchStatisticEngineHandling.simulateInjuriesAndCards(awayPlayers, match);
-
         homePlayers = matchStatisticEngineHandling.assignRatings(homePlayers, rt.runtimeGoals);
         awayPlayers = matchStatisticEngineHandling.assignRatings(awayPlayers, rt.runtimeGoals);
 
@@ -106,7 +103,8 @@ public class RuntimeSaveToDB {
                 homePlayers,
                 rt.runtimeGoals,
                 rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
-                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList(),
+                rt.playerMinutes
         );
 
         matchStatisticEngineHandling.savePlayerStats(
@@ -114,7 +112,8 @@ public class RuntimeSaveToDB {
                 awayPlayers,
                 rt.runtimeGoals,
                 rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
-                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList()
+                rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList(),
+                rt.playerMinutes
         );
 
         batchSaveTickPositions(match, rt);

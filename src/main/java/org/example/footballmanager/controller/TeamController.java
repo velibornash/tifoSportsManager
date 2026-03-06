@@ -79,12 +79,14 @@ public class TeamController {
         if (template == null) {
             return ResponseEntity.ok(Map.of(
                     "formation", "4-4-2",
-                    "starterIds", List.of()
+                    "starterIds", List.of(),
+                    "benchIds", List.of()
             ));
         }
         return ResponseEntity.ok(Map.of(
                 "formation", template.getFormation() == null ? "4-4-2" : template.getFormation(),
-                "starterIds", template.getStartingPlayers() == null ? List.of() : template.getStartingPlayers().stream().map(Player::getId).toList()
+                "starterIds", template.getStartingPlayers() == null ? List.of() : template.getStartingPlayers().stream().map(Player::getId).toList(),
+                "benchIds", template.getSubstitutes() == null ? List.of() : template.getSubstitutes().stream().map(Player::getId).toList()
         ));
     }
 
@@ -97,7 +99,67 @@ public class TeamController {
         }
 
         String formation = Objects.toString(payload.getOrDefault("formation", "4-4-2"), "4-4-2");
-        List<Long> starterIds = ((List<?>) payload.getOrDefault("starterIds", List.of())).stream()
+        List<Long> starterIds = parseIdList(payload.getOrDefault("starterIds", List.of()), 11);
+        List<Long> benchIds = parseIdList(payload.getOrDefault("benchIds", List.of()), 7);
+
+        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
+        Map<Long, Player> byId = teamPlayers.stream()
+                .filter(p -> !p.isInjured())
+                .collect(java.util.stream.Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
+        List<Player> starters = starterIds.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .toList();
+        if (starters.size() < 11) {
+            List<Player> finalStarters = starters;
+            List<Player> fallback = byId.values().stream()
+                    .filter(p -> finalStarters.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
+                    .sorted((a, b) -> Integer.compare(b.getRating(), a.getRating()))
+                    .limit(11 - starters.size())
+                    .toList();
+            starters = java.util.stream.Stream.concat(starters.stream(), fallback.stream()).toList();
+        }
+
+        List<Player> finalStarters1 = starters;
+        List<Player> bench = benchIds.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .filter(p -> finalStarters1.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
+                .limit(7)
+                .toList();
+        if (bench.size() < 7) {
+            List<Player> finalStarters2 = starters;
+            List<Player> finalBench = bench;
+            List<Player> fallbackBench = byId.values().stream()
+                    .filter(p -> finalStarters2.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
+                    .filter(p -> finalBench.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
+                    .sorted((a, b) -> Integer.compare(b.getRating(), a.getRating()))
+                    .limit(7 - bench.size())
+                    .toList();
+            bench = java.util.stream.Stream.concat(bench.stream(), fallbackBench.stream()).toList();
+        }
+
+        Lineup lineup = new Lineup();
+        lineup.setTeam(team);
+        lineup.setMatch(null);
+        lineup.setFormation(formation);
+        lineup.setStartingPlayers(starters);
+        lineup.setSubstitutes(bench);
+        lineup = lineupRepository.save(lineup);
+
+        return ResponseEntity.ok(Map.of(
+                "id", lineup.getId(),
+                "formation", lineup.getFormation(),
+                "starterIds", lineup.getStartingPlayers().stream().map(Player::getId).toList(),
+                "benchIds", lineup.getSubstitutes().stream().map(Player::getId).toList()
+        ));
+    }
+
+    private List<Long> parseIdList(Object raw, int limit) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
                 .map(v -> {
                     if (v instanceof Number n) return n.longValue();
                     try {
@@ -108,31 +170,7 @@ public class TeamController {
                 })
                 .filter(Objects::nonNull)
                 .distinct()
-                .limit(11)
+                .limit(limit)
                 .toList();
-
-        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
-        Map<Long, Player> byId = teamPlayers.stream().collect(java.util.stream.Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
-        List<Player> starters = starterIds.stream()
-                .map(byId::get)
-                .filter(Objects::nonNull)
-                .toList();
-
-        Lineup lineup = new Lineup();
-        lineup.setTeam(team);
-        lineup.setMatch(null);
-        lineup.setFormation(formation);
-        lineup.setStartingPlayers(starters);
-        lineup.setSubstitutes(teamPlayers.stream()
-                .filter(p -> starters.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
-                .limit(7)
-                .toList());
-        lineup = lineupRepository.save(lineup);
-
-        return ResponseEntity.ok(Map.of(
-                "id", lineup.getId(),
-                "formation", lineup.getFormation(),
-                "starterIds", lineup.getStartingPlayers().stream().map(Player::getId).toList()
-        ));
     }
 }

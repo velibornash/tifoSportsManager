@@ -16,6 +16,8 @@ public class CSMatchEvent {
     private String assistName;
     private String teamName;
     private String description;
+    private String playerOutName;
+    private String playerInName;
     private String scoreAfterGoal;
     private boolean penaltyScored;
 }

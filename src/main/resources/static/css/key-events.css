@@ -45,14 +45,11 @@ body {
 }
 
 .main-grid {
-    max-width: 1320px;
+    max-width: 1460px;
     margin: 12px auto 20px;
     padding: 0 12px;
     box-sizing: border-box;
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 12px;
-    align-items: start;
+    display: block;
 }
 
 .right-panel {
@@ -61,9 +58,15 @@ body {
     gap: 12px;
 }
 
+.visual-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 12px;
+    align-items: stretch;
+}
+
 #keyPitch {
     width: 100%;
-    max-width: 980px;
     height: min(62vh, 560px);
     display: block;
     margin: 0;
@@ -138,7 +141,7 @@ body {
 }
 
 @media (max-width: 900px) {
-    .main-grid {
+    .visual-stage {
         grid-template-columns: 1fr;
     }
 }

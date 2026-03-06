@@ -61,6 +61,10 @@ public class MatchRuntime {
     public List<Player> homeSquad = new ArrayList<>();
     public List<Player> awaySquad = new ArrayList<>();
     public Match matchRef;
+    public Map<Long, Integer> playerMinutes = new HashMap<>();
+    public Map<Long, String> playerTeamSide = new HashMap<>();
+    public int homeSubstitutionsUsed = 0;
+    public int awaySubstitutionsUsed = 0;
 
     // Track which team touched the ball last ("HOME" or "AWAY")
     public String lastTouchTeam = "HOME";
