@@ -10,5 +10,6 @@ import java.util.Optional;
 public interface LineupRepository extends JpaRepository<Lineup, Long> {
     List<Lineup> findByMatchId(Long matchId);
     Optional<Lineup> findByTeamAndFormation(Team team, String formation);
+    Optional<Lineup> findFirstByTeamIdAndMatchIsNullOrderByIdDesc(Long teamId);
 
 }

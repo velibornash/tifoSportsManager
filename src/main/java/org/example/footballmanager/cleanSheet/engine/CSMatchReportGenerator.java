@@ -165,18 +165,24 @@ public class CSMatchReportGenerator {
                 yield pick(
                         "GOOOAAAL! " + player + " scores for " + team + "." + assistText + scoreText,
                         player + " finds the net with a precise finish for " + team + "." + assistText + scoreText,
-                        "Clinical strike by " + player + " for " + team + "." + assistText + scoreText
+                        "Clinical strike by " + player + " for " + team + "." + assistText + scoreText,
+                        player + " attacks the space and buries the chance for " + team + "." + assistText + scoreText,
+                        "A fast move ends with " + player + " scoring for " + team + "." + assistText + scoreText
                 );
             }
             case SHOT_ON_TARGET -> pick(
                     player + " tests the goalkeeper from distance.",
                     "Strong effort on target by " + player + ".",
-                    player + " unleashes a dangerous attempt on goal."
+                    player + " unleashes a dangerous attempt on goal.",
+                    player + " strikes low and forces a save.",
+                    "Good buildup ends with a shot on target from " + player + "."
             );
             case SHOT_OFF_TARGET -> pick(
                     player + " shoots just wide of the post.",
                     "A big chance for " + player + ", but it goes off target.",
-                    player + " cannot keep the shot on frame."
+                    player + " cannot keep the shot on frame.",
+                    "The attempt from " + player + " flies over the bar.",
+                    player + " rushes the finish and misses the target."
             );
             case CORNER -> pick(
                     "Corner kick for " + team + ".",
@@ -220,7 +226,9 @@ public class CSMatchReportGenerator {
             case FREE_KICK -> pick(
                     "Free kick for " + team + ".",
                     "Dangerous free kick won by " + team + ".",
-                    team + " prepare a set-piece situation."
+                    team + " prepare a set-piece situation.",
+                    "Set-piece opportunity for " + team + ".",
+                    "The referee awards a free kick to " + team + "."
             );
             case VAR_REVIEW -> pick(
                     "VAR is checking the previous incident.",
@@ -259,7 +267,9 @@ public class CSMatchReportGenerator {
         return pick(
                 "Key moment: " + decisive.getMinute() + "' - " + scorer + " changed the game.",
                 "Turning point came in " + decisive.getMinute() + "' when " + scorer + " delivered.",
-                "Most decisive action: " + scorer + " at " + decisive.getMinute() + "'."
+                "Most decisive action: " + scorer + " at " + decisive.getMinute() + "'.",
+                "The defining play came at " + decisive.getMinute() + "' through " + scorer + ".",
+                scorer + " produced the key finish in minute " + decisive.getMinute() + "."
         );
     }
 

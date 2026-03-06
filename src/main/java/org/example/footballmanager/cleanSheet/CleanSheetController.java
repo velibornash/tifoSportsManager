@@ -87,6 +87,14 @@ public class CleanSheetController {
         return ResponseEntity.ok(cleanSheetService.changeTactics(user.getId(), formation, style));
     }
 
+    @PutMapping("/tactics/starters")
+    public ResponseEntity<CSTactics> changeStarters(@AuthenticationPrincipal User user,
+                                                    @RequestBody Map<String, List<Long>> payload) {
+        if (user == null) return ResponseEntity.status(401).build();
+        List<Long> starterIds = payload.getOrDefault("starterIds", List.of());
+        return ResponseEntity.ok(cleanSheetService.changeStarters(user.getId(), starterIds));
+    }
+
     @GetMapping("/team/{teamId}")
     public ResponseEntity<?> getTeamInfo(@AuthenticationPrincipal User user,
                                          @PathVariable Long teamId) {

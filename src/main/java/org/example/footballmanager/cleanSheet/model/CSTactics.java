@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -14,4 +17,6 @@ public class CSTactics {
     private String formation = "4-4-2";
     @Builder.Default
     private CSPlayStyle style = CSPlayStyle.BALANCED;
+    @Builder.Default
+    private List<Long> starterIds = new ArrayList<>();
 }

@@ -50,17 +50,37 @@ public class MatchEngine {
         return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
     }
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
+        List<Long> preferredStarterIds = lineupRepository
+                .findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId())
+                .map(lineup -> lineup.getStartingPlayers().stream().map(Player::getId).toList())
+                .orElse(List.of());
+        return createLineupForMatch(team, players, formationName, preferredStarterIds);
+    }
+
+    private Lineup createLineupForMatch(Team team, List<Player> players, String formationName, List<Long> preferredStarterIds) {
         Lineup lineup = new Lineup();
         lineup.setTeam(team);
         lineup.setFormation(formationName);
 
-        List<Player> managedStarting = players.subList(0, Math.min(11, players.size()))
-                .stream()
+        Map<Long, Player> byId = players.stream()
+                .collect(Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
+
+        List<Player> orderedPlayers = new ArrayList<>();
+        if (preferredStarterIds != null && !preferredStarterIds.isEmpty()) {
+            preferredStarterIds.stream()
+                    .map(byId::get)
+                    .filter(Objects::nonNull)
+                    .forEach(orderedPlayers::add);
+        }
+        players.stream()
+                .filter(p -> orderedPlayers.stream().noneMatch(op -> Objects.equals(op.getId(), p.getId())))
+                .forEach(orderedPlayers::add);
+
+        List<Player> managedStarting = orderedPlayers.subList(0, Math.min(11, orderedPlayers.size())).stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
-        List<Player> managedSubs = players.size() > 11 ? players.subList(11, Math.min(15, players.size()))
-                .stream()
+        List<Player> managedSubs = orderedPlayers.size() > 11 ? orderedPlayers.subList(11, Math.min(15, orderedPlayers.size())).stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList() : List.of();
 
@@ -862,12 +882,38 @@ public class MatchEngine {
             simulatedMatch.setAwayGoals(awayGoals);
             simulatedMatch.setPlayed(true);
             simulatedMatch.setStarted(true);
+
+            List<Player> homePlayers = playerRepository.findByTeam(home);
+            List<Player> awayPlayers = playerRepository.findByTeam(away);
+            if (homePlayers.isEmpty()) {
+                playerFactory.createRandomTeamPlayers(home.getName(), home);
+                homePlayers = playerRepository.findByTeam(home);
+            }
+            if (awayPlayers.isEmpty()) {
+                playerFactory.createRandomTeamPlayers(away.getName(), away);
+                awayPlayers = playerRepository.findByTeam(away);
+            }
+
+            Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
+            Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
+            simulatedMatch.setHomeLineup(homeLineup);
+            simulatedMatch.setAwayLineup(awayLineup);
+            simulatedMatch.setHomeFormation("4-4-2");
+            simulatedMatch.setAwayFormation("4-4-2");
             simulatedMatch = matchRepository.save(simulatedMatch);
             fixture.setPlayed(true);
             fixture.setPlayedMatch(simulatedMatch);
             matchFixtureRepository.save(fixture);
 
             generateSimulatedMatchEvents(simulatedMatch, homeGoals, awayGoals);
+            List<GoalEvent> goals = matchEventRepository.findGoalsByMatch(simulatedMatch);
+            List<YellowCardEvent> yellows = matchEventRepository.findYellowCardsByMatch(simulatedMatch);
+            List<RedCardEvent> reds = matchEventRepository.findRedCardsByMatch(simulatedMatch);
+
+            List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getStartingPlayers()), goals);
+            List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getStartingPlayers()), goals);
+            matchStatisticEngine.savePlayerStats(simulatedMatch, ratedHome, goals, yellows, reds);
+            matchStatisticEngine.savePlayerStats(simulatedMatch, ratedAway, goals, yellows, reds);
 
             CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
                     .stream().findFirst()

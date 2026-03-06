@@ -76,6 +76,32 @@ public class CSMatchSimulator {
         return simulate(home, homePlayers, away, awayPlayers, defaultTactics, defaultTactics, round);
     }
 
+    public List<CSPlayer> pickStartingEleven(List<CSPlayer> roster, List<Long> preferredStarterIds) {
+        if (roster == null || roster.isEmpty()) return List.of();
+        List<CSPlayer> picks = new ArrayList<>();
+        if (preferredStarterIds != null) {
+            for (Long id : preferredStarterIds) {
+                if (id == null) continue;
+                CSPlayer player = roster.stream().filter(p -> id.equals(p.getId())).findFirst().orElse(null);
+                if (player != null && picks.stream().noneMatch(p -> p.getId().equals(player.getId()))) {
+                    picks.add(player);
+                    if (picks.size() >= 11) break;
+                }
+            }
+        }
+        if (picks.size() < 11) {
+            List<CSPlayer> fallback = new ArrayList<>(roster);
+            fallback.sort((a, b) -> Integer.compare(b.getRating(), a.getRating()));
+            for (CSPlayer player : fallback) {
+                if (picks.stream().noneMatch(p -> p.getId().equals(player.getId()))) {
+                    picks.add(player);
+                    if (picks.size() >= 11) break;
+                }
+            }
+        }
+        return picks;
+    }
+
     /**
      * Racuna snagu tima na osnovu individualnih skillova po poziciji,
      * ratinga, forme, umora i taktike.
@@ -251,6 +277,9 @@ public class CSMatchSimulator {
             // Scorer — bias ka napadacima
             CSPlayer scorer = pickScorer(scoringPlayers);
             CSPlayer assist = pickAssist(scoringPlayers, scorer);
+            if (scorer != null && assist != null && scorer.getId().equals(assist.getId())) {
+                assist = null;
+            }
 
             int remaining = remainingHome + remainingAway - 1;
             int minMinute = lastMinute + 1;

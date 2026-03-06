@@ -830,60 +830,141 @@ import { createMatchesFeature } from './pages/features/matches.js';
             </div>`;
     }
     async function loadFormations() {
-        console.log(`Loading formations for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/teams/${currentUserTeamId}/formations`);
-        console.log(`Response status: ${response.status}`);
-        const formations = await response.json();
-
         const mainContent = document.getElementById("main-content");
-        const availableFormations = Array.isArray(formations) && formations.length
-            ? formations.map(f => f.name)
-            : ['4-4-2', '4-3-3', '4-2-3-1', '3-5-2', '5-3-2', '4-5-1'];
-        const availableStyles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER'];
+        const [formationsRes, playersRes, templateRes] = await Promise.all([
+            authFetch(`/demo/teams/${currentUserTeamId}/formations`),
+            authFetch(`/teams/${currentUserTeamId}/players`),
+            authFetch(`/teams/${currentUserTeamId}/lineup-template`)
+        ]);
+        const formations = formationsRes.ok ? await formationsRes.json() : [];
+        const players = playersRes.ok ? await playersRes.json() : [];
+        const template = templateRes.ok ? await templateRes.json() : { formation: "4-4-2", starterIds: [] };
 
-        const savedFormation = localStorage.getItem('main_app_tactics_formation') || availableFormations[0] || '4-4-2';
-        const savedStyle = localStorage.getItem('main_app_tactics_style') || 'BALANCED';
+        const availableFormations = Array.from(new Set([
+            ...(Array.isArray(formations) ? formations.map(f => f.name) : []),
+            "4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "4-5-1", "3-5-2", "3-4-3", "3-4-2-1", "5-3-2", "5-4-1"
+        ]));
+        const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"];
 
-        const render = (formation, style) => {
+        const state = {
+            formation: localStorage.getItem('main_app_tactics_formation') || template.formation || availableFormations[0] || "4-4-2",
+            style: localStorage.getItem('main_app_tactics_style') || "BALANCED",
+            starterIds: Array.isArray(template.starterIds) ? template.starterIds.map(Number).filter(Number.isFinite).slice(0, 11) : []
+        };
+
+        const pickDefaultStarters = () => {
+            if (!players.length) return [];
+            const byPos = (pos) => players.filter(p => String(p.position || "").toUpperCase() === pos)
+                .sort((a, b) => Number(b.overall || 0) - Number(a.overall || 0));
+            const picks = [
+                ...byPos("GK").slice(0, 1),
+                ...byPos("DEF").slice(0, 4),
+                ...byPos("MID").slice(0, 3),
+                ...byPos("WNG").slice(0, 2),
+                ...byPos("ATT").slice(0, 1)
+            ];
+            const used = new Set(picks.map(p => p.id));
+            players.filter(p => !used.has(p.id))
+                .sort((a, b) => Number(b.overall || 0) - Number(a.overall || 0))
+                .forEach(p => { if (picks.length < 11) picks.push(p); });
+            return picks.slice(0, 11).map(p => p.id);
+        };
+        if (state.starterIds.length < 11) {
+            state.starterIds = pickDefaultStarters();
+        }
+
+        const playerById = new Map(players.map(p => [p.id, p]));
+        const slotLabels = ["GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "ATT/WNG", "ATT/WNG", "ATT"];
+
+        const render = () => {
             let html = `<div class="manager-card">
                 <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2>Tactics</h2>
-                <h3>Formation: <span id="currentFormation">${escapeHtml(formation)}</span></h3>
+                <h3>Formation: <span id="currentFormation">${escapeHtml(state.formation)}</span></h3>
                 <div class="cs-tactics-grid">`;
 
             availableFormations.forEach(f => {
-                const active = f === formation ? 'active' : '';
+                const active = f === state.formation ? "active" : "";
                 html += `<div class="cs-tactics-btn ${active}" data-formation="${escapeHtml(f)}">${escapeHtml(f)}</div>`;
             });
             html += `</div>
-                <h3 style="margin-top:20px;">Style: <span id="currentStyle">${escapeHtml(style)}</span></h3>
+                <h3 style="margin-top:20px;">Style: <span id="currentStyle">${escapeHtml(state.style)}</span></h3>
                 <div class="cs-tactics-grid">`;
             availableStyles.forEach(s => {
-                const active = s === style ? 'active' : '';
+                const active = s === state.style ? "active" : "";
                 html += `<div class="cs-tactics-btn ${active}" data-style="${escapeHtml(s)}">${escapeHtml(s)}</div>`;
             });
             html += `</div>
-                <p style="margin-top:14px; color:#9aa0a6;">Tactics are saved locally for demo UI mode.</p>
+                <div class="training-block" style="margin-top:14px;">
+                    <h3>Starting XI</h3>
+                    <p class="training-note">Select your starters for simulation and lineups.</p>`;
+            for (let i = 0; i < 11; i++) {
+                const selected = state.starterIds[i];
+                html += `
+                    <label class="training-group-row" style="margin-bottom:6px;">
+                        <span class="group-tag">${slotLabels[i]}</span>
+                        <select class="starter-select" data-slot="${i}">
+                            <option value="">-- Empty --</option>
+                            ${players.map(p => `<option value="${p.id}" ${Number(selected) === Number(p.id) ? "selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.position || "-")}, OVR ${p.overall ?? "-"})</option>`).join("")}
+                        </select>
+                    </label>`;
+            }
+            html += `</div>
+                <div class="training-actions">
+                    <button id="save-tactics-main" class="big-button">Save Tactics + XI</button>
+                </div>
+                <p style="margin-top:14px; color:#9aa0a6;">Tactics are saved locally; starting XI is persisted on backend and used by match engine.</p>
             </div>`;
             mainContent.innerHTML = html;
 
             mainContent.querySelectorAll('.cs-tactics-btn[data-formation]').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const newFormation = btn.getAttribute('data-formation');
-                    localStorage.setItem('main_app_tactics_formation', newFormation);
-                    render(newFormation, localStorage.getItem('main_app_tactics_style') || style);
+                    state.formation = btn.getAttribute("data-formation");
+                    render();
                 });
             });
             mainContent.querySelectorAll('.cs-tactics-btn[data-style]').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const newStyle = btn.getAttribute('data-style');
-                    localStorage.setItem('main_app_tactics_style', newStyle);
-                    render(localStorage.getItem('main_app_tactics_formation') || formation, newStyle);
+                    state.style = btn.getAttribute("data-style");
+                    render();
                 });
             });
+            mainContent.querySelectorAll('.starter-select').forEach(sel => {
+                sel.addEventListener("change", () => {
+                    const slot = Number(sel.getAttribute("data-slot"));
+                    const playerId = Number(sel.value || 0) || null;
+                    const existingIdx = state.starterIds.findIndex((id, idx) => idx !== slot && Number(id) === Number(playerId));
+                    if (existingIdx >= 0) state.starterIds[existingIdx] = null;
+                    state.starterIds[slot] = playerId;
+                });
+            });
+
+            const saveBtn = document.getElementById("save-tactics-main");
+            if (saveBtn) {
+                saveBtn.addEventListener("click", async () => {
+                    saveBtn.disabled = true;
+                    const dedup = [];
+                    const used = new Set();
+                    state.starterIds.forEach(id => {
+                        if (!id || used.has(id) || !playerById.has(id)) return;
+                        used.add(id);
+                        dedup.push(id);
+                    });
+                    localStorage.setItem("main_app_tactics_formation", state.formation);
+                    localStorage.setItem("main_app_tactics_style", state.style);
+                    const res = await authFetch(`/teams/${currentUserTeamId}/lineup-template`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ formation: state.formation, starterIds: dedup })
+                    });
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = res.ok ? "Saved" : "Save failed";
+                    setTimeout(() => { saveBtn.textContent = "Save Tactics + XI"; }, 1200);
+                });
+            }
         };
 
-        render(savedFormation, savedStyle);
+        render();
     }
     async function loadCoaches() {
         console.log(`Loading coaches for ${currentUserTeamId}`);
@@ -1148,6 +1229,21 @@ import { createMatchesFeature } from './pages/features/matches.js';
                                 </div>`;
                             }).join("")}
                         </div>
+                        <div class="quick-add-wrap" style="margin-top:10px;">
+                            <label style="font-size:0.88rem; color:#9aa7bc;">Mobile fallback: add player to advanced</label>
+                            <select id="quick-player-select">
+                                <option value="">Select player...</option>
+                                ${state.general.map(id => {
+                                    const p = getPlayer(id);
+                                    if (!p) return "";
+                                    return `<option value="${p.id}">${escapeHtml(playerBadge(p))}</option>`;
+                                }).join("")}
+                            </select>
+                            <select id="quick-role-select">
+                                ${ROLE_OPTIONS.map(role => `<option value="${role}">${role}</option>`).join("")}
+                            </select>
+                            <button id="quick-add-advanced" class="big-button" style="padding:8px 12px;">Add to Advanced</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1263,6 +1359,17 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         return;
                     }
                     await render();
+                });
+            }
+
+            const quickAddBtn = document.getElementById("quick-add-advanced");
+            if (quickAddBtn) {
+                quickAddBtn.addEventListener("click", () => {
+                    const playerId = Number(document.getElementById("quick-player-select")?.value || 0);
+                    const role = (document.getElementById("quick-role-select")?.value || "MID").toUpperCase();
+                    if (!playerId) return;
+                    moveToAdvanced(playerId, ROLE_OPTIONS.includes(role) ? role : "MID");
+                    render();
                 });
             }
 

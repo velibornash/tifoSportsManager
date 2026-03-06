@@ -231,3 +231,19 @@
     padding: 6px 0;
     border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+
+@media (max-width: 768px) {
+    #inboxBtnMobile,
+    #mobileMenuBtn,
+    #nextRoundBtnMobileTop {
+        display: inline-flex !important;
+    }
+    #backMainMobile {
+        display: none !important;
+    }
+    #inboxBtnDesktop,
+    #backMainDesktop,
+    #nextRoundBtn {
+        display: none !important;
+    }
+}

@@ -265,11 +265,9 @@ function injectEntityLinks(rawText) {
         for (const playerName of playerNames) {
             const first = csPlayerNameToEntries.get(playerName)?.[0];
             if (!first) continue;
-            const rx = new RegExp(`\\b${escapeRegExp(playerName)}\\b`, 'g');
-            html = html.replace(
-                rx,
-                `<a href="#" class="cs-inline-link" data-kind="player" data-player-id="${first.playerId}" data-team-id="${first.teamId}">${playerName}</a>`
-            );
+            const escapedPlayer = escapeHtml(playerName);
+            const link = `<a href="#" class="cs-inline-link" data-kind="player" data-player-id="${first.playerId}" data-team-id="${first.teamId}">${escapedPlayer}</a>`;
+            html = html.split(escapedPlayer).join(link);
         }
     }
 
@@ -294,6 +292,19 @@ async function openInboxMessage(index) {
     }
     const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>`;
     const linkedText = injectEntityLinks(msg.text || '');
+    if (msg.type === 'international') {
+        const lines = (msg.text || "").split('\n').filter(Boolean);
+        const header = lines.shift() || "International update";
+        const rows = lines.length
+            ? lines.map(line => `<div class="cs-match-card" style="margin-bottom:8px;"><div class="cs-match-teams">${escapeHtml(line)}</div></div>`).join("")
+            : `<p style="color:#aaa;">No fixtures in this update.</p>`;
+        showModal(badgeHtml + ' Message', `
+            <div style="margin-bottom:10px; font-weight:700; color:#d7f3ff;">${escapeHtml(header)}</div>
+            <div>${rows}</div>
+            <div style="font-size:0.85em; color:#666; margin-top:12px;">${msg.timestamp || ''}</div>
+        `);
+        return;
+    }
     showModal(badgeHtml + ' Message', `
         <p style="line-height:1.6;">${linkedText}</p>
         <div style="font-size:0.85em; color:#666; margin-top:12px;">${msg.timestamp || ''}</div>
@@ -735,24 +746,44 @@ function buildStatsHtml(match) {
 // ─── Tactics ───
 function renderTactics(el) {
     const tactics = gameState?.tactics || {};
-    const formations = ['4-4-2', '4-3-3', '4-2-3-1', '3-5-2', '5-3-2', '4-5-1'];
-    const styles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER'];
+    const roster = gameState?.roster || [];
+    const formations = ['4-4-2', '4-3-3', '4-2-3-1', '4-1-4-1', '3-5-2', '3-4-3', '5-3-2', '5-4-1', '4-5-1'];
+    const styles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER', 'POSSESSION', 'HIGH_PRESS', 'DIRECT'];
+    const starterIds = Array.isArray(tactics.starterIds) ? tactics.starterIds.slice(0, 11) : [];
 
-    let html = `<h2>Taktika</h2>
-        <h3>Formacija: <span id="currentFormation">${tactics.formation || '4-4-2'}</span></h3>
+    let html = `<h2>Tactics</h2>
+        <h3>Formation: <span id="currentFormation">${tactics.formation || '4-4-2'}</span></h3>
         <div class="cs-tactics-grid">`;
     formations.forEach(f => {
         const active = f === tactics.formation ? 'active' : '';
         html += `<div class="cs-tactics-btn ${active}" onclick="tifoSetTactics('${f}', null)">${f}</div>`;
     });
     html += `</div>
-        <h3 style="margin-top:20px;">Stil: <span id="currentStyle">${tactics.style || 'BALANCED'}</span></h3>
+        <h3 style="margin-top:20px;">Style: <span id="currentStyle">${tactics.style || 'BALANCED'}</span></h3>
         <div class="cs-tactics-grid">`;
     styles.forEach(s => {
         const active = s === tactics.style ? 'active' : '';
         html += `<div class="cs-tactics-btn ${active}" onclick="tifoSetTactics(null, '${s}')">${s}</div>`;
     });
-    html += `</div>`;
+    html += `</div>
+        <h3 style="margin-top:20px;">Starting XI</h3>
+        <p style="color:#9aa0a6;">Choose starters used in simulations and lineups.</p>
+        <div class="training-groups">`;
+    for (let i = 0; i < 11; i++) {
+        const selected = Number(starterIds[i] || 0);
+        html += `
+        <label class="training-group-row">
+            <span class="group-tag">#${i + 1}</span>
+            <select class="cs-starter-select" data-slot="${i}">
+                <option value="">-- Empty --</option>
+                ${roster.map(p => `<option value="${p.id}" ${Number(p.id) === selected ? 'selected' : ''}>${p.name} (${p.position}, R ${p.rating})</option>`).join('')}
+            </select>
+        </label>`;
+    }
+    html += `</div>
+        <div style="margin-top:12px;">
+            <button class="big-button" onclick="tifoSaveStarters()">Save Starting XI</button>
+        </div>`;
     el.innerHTML = html;
 }
 
@@ -762,6 +793,29 @@ async function setTactics(formation, style) {
     if (style) params.append('style', style);
 
     const res = await csApi(`/api/cs/tactics?${params.toString()}`, { method: 'PUT' });
+    if (res && res.ok) {
+        const updated = await res.json();
+        gameState.tactics = updated;
+        renderPage('tactics');
+    }
+}
+
+async function saveStarters() {
+    const selects = [...document.querySelectorAll('.cs-starter-select')];
+    if (!selects.length) return;
+    const starterIds = [];
+    const used = new Set();
+    for (const sel of selects) {
+        const id = Number(sel.value || 0);
+        if (!id || used.has(id)) continue;
+        used.add(id);
+        starterIds.push(id);
+        if (starterIds.length >= 11) break;
+    }
+    const res = await csApi('/api/cs/tactics/starters', {
+        method: 'PUT',
+        body: JSON.stringify({ starterIds })
+    });
     if (res && res.ok) {
         const updated = await res.json();
         gameState.tactics = updated;
@@ -1194,6 +1248,7 @@ window.toggleSidebar = toggleSidebar;
 window.tifoOpenMatchPlayer = openMatchPlayer;
 window.tifoOpenRankedPlayer = openRankedPlayer;
 window.tifoBackToMain = backToMainApp;
+window.tifoSaveStarters = saveStarters;
 window.tifoContinueFromHalf = () => {
     closeModal();
     if (window._pendingFullTimeContinue) {

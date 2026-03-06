@@ -93,6 +93,13 @@ public class CleanSheetService {
         state.setAllTeams(new ArrayList<>(csTeams));
         state.setAllTeamRosters(allRosters);
         state.setTactics(CSTactics.builder().build());
+        state.getTactics().setStarterIds(
+                userRoster.stream()
+                        .sorted(Comparator.comparingInt(CSPlayer::getRating).reversed())
+                        .limit(11)
+                        .map(CSPlayer::getId)
+                        .toList()
+        );
 
         // 6. Inicijalizuj tabelu (sve na nuli — nova sezona)
         state.setLeagueTable(leagueManager.initializeTable(csTeams));
@@ -161,7 +168,16 @@ public class CleanSheetService {
             CSTactics awayTactics = away.getId().equals(state.getUserTeam().getId())
                     ? state.getTactics() : CSTactics.builder().build();
 
-            userResult = matchSimulator.simulate(home, homePlayers, away, awayPlayers,
+            List<CSPlayer> homeStarters = matchSimulator.pickStartingEleven(
+                    homePlayers,
+                    home.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getStarterIds() : List.of()
+            );
+            List<CSPlayer> awayStarters = matchSimulator.pickStartingEleven(
+                    awayPlayers,
+                    away.getId().equals(state.getUserTeam().getId()) ? state.getTactics().getStarterIds() : List.of()
+            );
+
+            userResult = matchSimulator.simulate(home, homeStarters, away, awayStarters,
                     homeTactics, awayTactics, round);
 
             userFixture.setPlayed(true);
@@ -240,6 +256,20 @@ public class CleanSheetService {
         state.addInboxMessage("info",
                 "Tactics updated: " + tactics.getFormation() + " / " + tactics.getStyle());
         return tactics;
+    }
+
+    public CSTactics changeStarters(Long userId, List<Long> starterIds) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        Set<Long> rosterIds = state.getRoster().stream().map(CSPlayer::getId).collect(Collectors.toSet());
+        List<Long> validIds = (starterIds == null ? List.<Long>of() : starterIds).stream()
+                .filter(Objects::nonNull)
+                .filter(rosterIds::contains)
+                .distinct()
+                .limit(11)
+                .toList();
+        state.getTactics().setStarterIds(validIds);
+        state.addInboxMessage("info", "Starting XI updated.");
+        return state.getTactics();
     }
 
     public boolean hasActiveGame(Long userId) {
@@ -535,11 +565,19 @@ public class CleanSheetService {
 
             int hg = random.nextInt(4);
             int ag = random.nextInt(4);
-            String scorer = pickRandomLeaguePlayerName(state);
-            String scorerLine = scorer != null ? " Scorer highlight: " + scorer + "." : "";
-            lines.add(home + " " + hg + ":" + ag + " " + away + "." + scorerLine);
+            boolean serbiaMatch = "Serbia".equals(home) || "Serbia".equals(away);
+            if (serbiaMatch && random.nextDouble() < 0.7) {
+                lines.add(home + " " + hg + ":" + ag + " " + away + ". Serbian scorer: " + pickSerbianInternationalScorer() + ".");
+            } else {
+                lines.add(home + " " + hg + ":" + ag + " " + away + ".");
+            }
         }
         state.addInboxMessage("international", String.join("\n", lines));
+    }
+
+    private String pickSerbianInternationalScorer() {
+        String[] pool = {"Aleksandar Mitrovic", "Dusan Vlahovic", "Luka Jovic", "Filip Kostic", "Andrija Zivkovic", "Sergej Milinkovic-Savic"};
+        return pool[random.nextInt(pool.length)];
     }
 
     private void generateRumorInbox(CleanSheetGameState state, int round) {

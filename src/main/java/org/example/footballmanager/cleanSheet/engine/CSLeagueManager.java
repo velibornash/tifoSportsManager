@@ -138,8 +138,8 @@ public class CSLeagueManager {
         // Sortiraj tabelu: bodovi desc, gol razlika desc, golovi desc
         table.sort(Comparator
                 .comparingInt(CSTableEntry::getPoints).reversed()
-                .thenComparingInt(CSTableEntry::getGoalDifference).reversed()
-                .thenComparingInt(CSTableEntry::getGoalsScored).reversed());
+                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalDifference).reversed())
+                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalsScored).reversed()));
     }
 
     /**
@@ -185,7 +185,17 @@ public class CSLeagueManager {
             List<CSPlayer> awayPlayers = state.getAllTeamRosters()
                     .getOrDefault(away.getId(), List.of());
 
-            CSMatchResult result = simulator.simulateQuick(home, homePlayers, away, awayPlayers, round);
+            List<Long> userStarterIds = state.getTactics() != null ? state.getTactics().getStarterIds() : List.of();
+            List<CSPlayer> homeStarters = simulator.pickStartingEleven(
+                    homePlayers,
+                    home.getId().equals(state.getUserTeam().getId()) ? userStarterIds : List.of()
+            );
+            List<CSPlayer> awayStarters = simulator.pickStartingEleven(
+                    awayPlayers,
+                    away.getId().equals(state.getUserTeam().getId()) ? userStarterIds : List.of()
+            );
+
+            CSMatchResult result = simulator.simulateQuick(home, homeStarters, away, awayStarters, round);
 
             fixture.setPlayed(true);
             fixture.setResult(result);
