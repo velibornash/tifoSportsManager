@@ -41,7 +41,7 @@ public class DatabaseInitializer {
     private final YouthAcademyService youthAcademyService;
     private final SquadNumberAssigner squadNumberAssigner;
 
-    @PostConstruct
+    
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
