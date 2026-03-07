@@ -255,14 +255,36 @@ public class RealisticMatchEngine {
      */
     private void simulatePhase(MatchRuntime rt, Match match, int minute, int phase) {
         Player ballCarrier = findBallCarrier(rt);
+        
+        // Reset pass completion flag at start of phase
+        rt.passCompletedThisPhase = false;
+        
         if (rt.ballInTransit) {
             resolveBallTransit(rt, match, minute);
+            
+            // If pass was just completed, record an intermediate tick to show receiver with ball
+            if (rt.passCompletedThisPhase) {
+                updateSupportingMovement(rt);
+                syncBallState(rt);
+                // Use tick + 0.5 for intermediate tick (will be stored as int, so just tick value)
+                rt.tick = (minute - 1) * ACTIONS_PER_MINUTE + phase;
+                rt.recordTick();
+                log.debug("[{}'_{}] PASS COMPLETED - Intermediate tick recorded for carrier {}", 
+                        minute, phase, rt.currentCarrier != null ? rt.currentCarrier.getId() : "null");
+            }
         } else if (ballCarrier == null) {
             resolveLooseBall(rt);
         } else {
             refreshCurrentCarrier(rt, ballCarrier);
             AIDecisionMaker.Decision decision = aiDecisionMaker.makeDecision(ballCarrier, rt, match, minute);
             String ballTeam = getTeam(ballCarrier, rt);
+
+            // Log decision for debugging
+            if (decision.getAction() == AIDecisionMaker.ActionType.SHOT) {
+                log.info("[MIN {}, PHASE {}] SHOT by {} ({}) at ({}, {})", 
+                        minute, phase, ballCarrier.getName(), ballTeam,
+                        Math.round(rt.currentCarrier.getX()), Math.round(rt.currentCarrier.getY()));
+            }
 
             switch (decision.getAction()) {
                 case PASS -> handlePass(rt, match, minute, ballCarrier, decision, ballTeam);
@@ -279,6 +301,12 @@ public class RealisticMatchEngine {
         syncBallState(rt);
         rt.tick = (minute - 1) * ACTIONS_PER_MINUTE + phase;
         rt.recordTick();
+        
+        // Log carrier state for debugging
+        if (rt.currentCarrier != null) {
+            log.debug("[{}'_{}] Carrier ID: {}, Ball: ({:.1f}, {:.1f})", 
+                    minute, phase, rt.currentCarrier.getId(), rt.ball.getX(), rt.ball.getY());
+        }
     }
 
     /**
@@ -358,6 +386,7 @@ public class RealisticMatchEngine {
             Player assistant = resolveAssistant(rt, shooter, ballTeam);
             movePlayerTowardsGoal(rt, shooter, ballTeam, 10.0);
             GoalEvent goalEvent = eventGenerator.createGoalEvent(rt, match, minute, shooter, assistant);
+            log.info("⚽ GOAL! {} scores for {}", shooter.getName(), ballTeam);
             maybeCreateVarReview(goalEvent, null, rt, match, minute);
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
@@ -369,12 +398,14 @@ public class RealisticMatchEngine {
         } else if (duelResult.isSaved()) {
             movePlayerTowardsGoal(rt, shooter, ballTeam, 6.0);
             eventGenerator.createShotSavedEvent(rt, match, minute, shooter, goalkeeper);
+            log.info("🧤 SAVE! {} saved by {}", shooter.getName(), goalkeeper.getName());
             releaseBall(rt, goalkeeper, getTeam(goalkeeper, rt), Math.toIntExact(goalkeeper.getId()), null, 1.2);
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
         } else {
             movePlayerTowardsGoal(rt, shooter, ballTeam, 8.0);
             eventGenerator.createShotMissedEvent(rt, match, minute, shooter);
+            log.info("❌ MISS! {} missed", shooter.getName());
             Player restartPlayer = selectRestartPlayer(rt, ballTeam.equals("HOME") ? "AWAY" : "HOME");
             if (restartPlayer != null) {
                 releaseBall(rt, restartPlayer, getTeam(restartPlayer, rt), Math.toIntExact(restartPlayer.getId()), null, 5.0);
@@ -632,8 +663,9 @@ public class RealisticMatchEngine {
     }
 
     private PlayerPositionDTO getPlayerPosition(MatchRuntime rt, Player player) {
+        int playerId = Math.toIntExact(player.getId());
         return rt.players.stream()
-                .filter(p -> p.getId() == player.getId())
+                .filter(p -> p.getId() == playerId)
                 .findFirst()
                 .orElse(null);
     }
@@ -688,8 +720,17 @@ public class RealisticMatchEngine {
 
     private void setCurrentCarrier(MatchRuntime rt, Player player, String controlSource) {
         PlayerPositionDTO playerPos = getPlayerPosition(rt, player);
+        
+        // Fallback: ako player nije pronađen u rt.players, kreiraj default position
         if (playerPos == null) {
-            return;
+            int playerId = Math.toIntExact(player.getId());
+            String team = getTeam(player, rt);
+            // Use ball position or center if all else fails
+            double x = rt.ball != null ? rt.ball.getX() : 50.0;
+            double y = rt.ball != null ? rt.ball.getY() : 50.0;
+            playerPos = new PlayerPositionDTO(playerId, team, x, y, 0, 0);
+            log.warn("Player {} not found in position list, using fallback position ({}, {})", 
+                    player.getId(), x, y);
         }
 
         rt.currentCarrier = new PlayerPositionDTO(
@@ -862,6 +903,7 @@ public class RealisticMatchEngine {
                 rt.pendingPassTeam = null;
                 rt.lastTouchTeam = getTeam(interceptor, rt);
                 setCurrentCarrier(rt, interceptor, "interception");
+                rt.passCompletedThisPhase = true;
                 return;
             }
         }
@@ -874,6 +916,7 @@ public class RealisticMatchEngine {
                 rt.ballInTransit = false;
                 setCurrentCarrier(rt, intended, "pass_receive");
                 rt.lastTouchTeam = getTeam(intended, rt);
+                rt.passCompletedThisPhase = true;
                 return;
             }
         }

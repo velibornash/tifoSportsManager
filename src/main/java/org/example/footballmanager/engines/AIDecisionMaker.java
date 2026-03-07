@@ -45,7 +45,8 @@ public class AIDecisionMaker {
         List<Player> nearbyDefenders = getNearbyDefenders(player, rt, team);
         double defensivePressure = Math.min(1.0, nearbyDefenders.size() / 4.0);
 
-        if (player.getPosition() == Position.ATT && isHardShotZone(player, rt, team, goalDistance)) {
+        // Bilo koji napadač može da šutira u težoj zoni šuta
+        if (isAggressiveFinalThirdPlayer(player) && isHardShotZone(player, rt, team, goalDistance)) {
             return new Decision(ActionType.SHOT, null);
         }
 
@@ -61,10 +62,10 @@ public class AIDecisionMaker {
 
         if (isAggressiveFinalThirdPlayer(player) && isInShotZone(team, getPlayerX(player, rt))) {
             if (bestPassTarget != null && !isForwardPass(player, bestPassTarget, rt, team)) {
-                passScore *= 0.08;
+                passScore *= 0.05;
             }
-            shotScore *= 1.35;
-            dribbleScore *= 1.12;
+            shotScore *= 1.85;  // Increased from 1.35 to encourage shots
+            dribbleScore *= 0.85;  // Slightly reduced
         }
 
         double totalScore = passScore + shotScore + dribbleScore;
@@ -321,7 +322,7 @@ public class AIDecisionMaker {
             return false;
         }
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 25.0 && defensivePressure <= 0.75;
+        return isInShotZone(team, x) && goalDistance <= 28.0 && defensivePressure <= 0.9;
     }
 
     private boolean isHardShotZone(Player player, MatchRuntime rt, String team, double goalDistance) {
@@ -335,7 +336,8 @@ public class AIDecisionMaker {
         if (passerPos == null || receiverPos == null) {
             return false;
         }
-        if (passer.getPosition() == Position.ATT && isHardShotZone(passer, rt, team, goalDistance)) {
+        // Bilo koji napadač u hard shot zone-u trebao bi da šutira
+        if (isAggressiveFinalThirdPlayer(passer) && isHardShotZone(passer, rt, team, goalDistance)) {
             return true;
         }
         if (!isAggressiveFinalThirdPlayer(passer)) {

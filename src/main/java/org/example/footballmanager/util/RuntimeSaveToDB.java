@@ -200,6 +200,8 @@ public class RuntimeSaveToDB {
                 state.setPlayerPositionsJson(objectMapper.writeValueAsString(snapshot.players));
                 state.setBallPositionJson(objectMapper.writeValueAsString(snapshot.ball));
                 state.setCurrentCarrierId(snapshot.carrierId >= 0 ? snapshot.carrierId : null);
+                state.setBallInTransit(snapshot.ballInTransit);  // NEW: Save ballInTransit flag
+                state.setPendingReceiverId(snapshot.pendingReceiverId >= 0 ? snapshot.pendingReceiverId : null);  // NEW: Save pendingReceiverId
 
                 em.persist(state);
 

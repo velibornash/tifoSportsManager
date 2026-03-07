@@ -115,6 +115,15 @@ function handlePositionUpdate(raw) {
                 ? state.second
                 : streamMinute;
         streamMinute = minute;
+        
+        // Log position updates for debugging
+        if (state.players && state.players.length > 0) {
+            const carrier = state.players.find(p => Number(p.id) === Number(state.carrierPlayerId));
+            if (carrier && state.ball) {
+                console.log(`[Position ${minute}] Ball: (${state.ball.x.toFixed(1)}, ${state.ball.y.toFixed(1)}), Carrier: ${carrier.id} at (${carrier.x.toFixed(1)}, ${carrier.y.toFixed(1)})`);
+            }
+        }
+        
         if (!isProcessingEvent && eventQueue.length === 0) {
             updateDisplayedMinute(streamMinute);
         }
@@ -127,6 +136,7 @@ function handlePositionUpdate(raw) {
 function handleMatchEvent(raw) {
     try {
         const event = JSON.parse(raw);
+        console.log(`[Event ${event.minute}] ${event.type}: ${event.description || event.playerName || ''}`);
         eventQueue.push(event);
         processNextEvent();
     } catch (error) {
@@ -428,6 +438,7 @@ function renderPlayers(state) {
         }
     }
 
+    // Ball position is now correctly synchronized with carrier in backend (MatchPlaybackEngine)
     if (state.ball && Number.isFinite(state.ball.x) && Number.isFinite(state.ball.y)) {
         const ballEl = document.getElementById('ball');
         ballEl.style.left = `calc(${clamp(state.ball.x, 0, 100)}% - 7.5px)`;

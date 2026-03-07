@@ -7,6 +7,7 @@ import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.footballmanager.model.Player;
+import org.example.footballmanager.model.Team;
 
 @Entity
 @Getter
@@ -15,6 +16,11 @@ public class RedCardEvent extends MatchEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player player;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JsonIgnore
+    private Team team;
+
 
     @Override
     public void apply() {

@@ -86,12 +86,12 @@ public class MatchStatisticEngine {
         rt.runtimeGoals.forEach(g -> {
             String scorerName = g.getScorer() != null ? g.getScorer().getName() : "N/A";
             String assistName = g.getAssistant() != null ? g.getAssistant().getName() : null;
-            // oblik: 45' âš½ IgraÄ (asistencija: IgraÄ)
+
             String desc;
             if (assistName != null) {
-                desc = String.format("%d' âš½ %s (asistencija: %s)", g.getMinute(), scorerName, assistName);
+                desc = String.format("%d' ⚽ %s (asistencija: %s)", g.getMinute(), scorerName, assistName);
             } else {
-                desc = String.format("%d' âš½ %s", g.getMinute(), scorerName);
+                desc = String.format("%d' ⚽ %s", g.getMinute(), scorerName);
             }
             if (!addedGoals.contains(desc)) {
                 sb.append(desc).append("\n");
@@ -99,10 +99,10 @@ public class MatchStatisticEngine {
             }
         });
         sb.append("\n");
-        // --- Ocene igraÄa ---
-        sb.append("Ocene igraÄa - ").append(match.getHomeTeam().getName()).append("\n");
+
+        sb.append("Ocene igraca - ").append(match.getHomeTeam().getName()).append("\n");
         appendPlayerRatings(sb, homePlayers, rt.runtimeGoals);
-        sb.append("\nOcene igraÄa - ").append(match.getAwayTeam().getName()).append("\n");
+        sb.append("\nOcene igraca - ").append(match.getAwayTeam().getName()).append("\n");
         appendPlayerRatings(sb, awayPlayers, rt.runtimeGoals);
         return sb.toString();
     }

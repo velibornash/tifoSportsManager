@@ -190,14 +190,91 @@ public class MatchPlaybackEngine {
             interpolatedPlayers.add(new PlayerPositionDTO(ap.getId(), ap.getTeam(), nx, ny, 0, 0));
         }
 
-        BallPositionDTO ball = new BallPositionDTO(
-                lerp(a.ball.getX(), b.ball.getX(), alpha),
-                lerp(a.ball.getY(), b.ball.getY(), alpha)
-        );
-        int carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
+        // Validate player counts
+        if (a.players.size() != 22 || b.players.size() != 22) {
+            log.warn("Player count mismatch: frame A has {}, frame B has {} (expected 22 each)", 
+                    a.players.size(), b.players.size());
+        }
+
+        // Ball interpolation logic
+        BallPositionDTO ball;
+        int carrierId;
+        
+        // CRITICAL: Handle ball in transit vs with carrier
+        if (a.ballInTransit && !b.ballInTransit) {
+            // *** SPECIAL CASE: Ball is ARRIVING at receiver between frames ***
+            // Frame A: Ball is in flight (no carrier)
+            // Frame B: Ball has arrived to receiver (new carrier)
+            // Receiver is pendingReceiverId in frame A, or carrierId in frame B
+            int receiverId = a.pendingReceiverId >= 0 ? a.pendingReceiverId : b.carrierId;
+            
+            // Find receiver's position in frame B
+            PlayerPositionDTO receiver = b.players.stream()
+                    .filter(p -> p.getId() == receiverId)
+                    .findFirst()
+                    .orElse(null);
+            
+            if (receiver != null) {
+                // Interpolate from passer to receiver
+                // For second half of transition (alpha >= 0.5), ball should be at receiver
+                if (alpha >= 0.5) {
+                    ball = new BallPositionDTO(receiver.getX(), receiver.getY());
+                    carrierId = receiverId;
+                } else {
+                    // First half: ball is still in flight
+                    ball = new BallPositionDTO(
+                            lerp(a.ball.getX(), receiver.getX(), alpha * 2.0),  // Accelerate to reach receiver
+                            lerp(a.ball.getY(), receiver.getY(), alpha * 2.0)
+                    );
+                    carrierId = -1;  // No carrier while in flight
+                }
+            } else {
+                // Receiver not found - fallback to interpolating ball
+                ball = new BallPositionDTO(
+                        lerp(a.ball.getX(), b.ball.getX(), alpha),
+                        lerp(a.ball.getY(), b.ball.getY(), alpha)
+                );
+                carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
+                log.error("Receiver {} not found! Falling back to frame interpolation", receiverId);
+            }
+        } else if (a.ballInTransit || b.ballInTransit) {
+            // Ball is in transit but not arriving - interpolate smoothly
+            ball = new BallPositionDTO(
+                    lerp(a.ball.getX(), b.ball.getX(), alpha),
+                    lerp(a.ball.getY(), b.ball.getY(), alpha)
+            );
+            carrierId = -1;  // No carrier while in flight
+        } else if (alpha < 0.5 ? (a.carrierId >= 0) : (b.carrierId >= 0)) {
+            // Ball is with a player
+            carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
+            
+            // Find carrier in interpolated players
+            int finalCarrierId = carrierId;
+            PlayerPositionDTO carrier = interpolatedPlayers.stream()
+                    .filter(p -> p.getId() == finalCarrierId)
+                    .findFirst()
+                    .orElse(null);
+            
+            if (carrier != null) {
+                ball = new BallPositionDTO(carrier.getX(), carrier.getY());
+            } else {
+                log.error("Carrier {} not found in {} interpolated players!", 
+                        carrierId, interpolatedPlayers.size());
+                ball = new BallPositionDTO(a.ball.getX(), a.ball.getY());
+                carrierId = -1;
+            }
+        } else {
+            // No carrier, ball is loose
+            ball = new BallPositionDTO(
+                    lerp(a.ball.getX(), b.ball.getX(), alpha),
+                    lerp(a.ball.getY(), b.ball.getY(), alpha)
+            );
+            carrierId = -1;
+        }
+
         int tick = (int) Math.round(lerp(a.tick, b.tick, alpha));
 
-        return new MatchRuntime.TickState(tick, interpolatedPlayers, ball, carrierId, null);
+        return new MatchRuntime.TickState(tick, interpolatedPlayers, ball, carrierId, null, false, -1);
     }
 
     private double lerp(double from, double to, double alpha) {
@@ -258,7 +335,9 @@ public class MatchPlaybackEngine {
                 );
                 BallPositionDTO ball = objectMapper.readValue(s.getBallPositionJson(), BallPositionDTO.class);
                 int carrierId = s.getCurrentCarrierId() != null ? s.getCurrentCarrierId() : -1;
-                frames.add(new MatchRuntime.TickState(s.getTick(), players, ball, carrierId, null));
+                boolean ballInTransit = s.isBallInTransit();  // NEW: Load ballInTransit from DB
+                int pendingReceiverId = s.getPendingReceiverId() != null ? s.getPendingReceiverId() : -1;  // NEW: Load pendingReceiverId from DB
+                frames.add(new MatchRuntime.TickState(s.getTick(), players, ball, carrierId, null, ballInTransit, pendingReceiverId));
             } catch (Exception ex) {
                 log.error("Failed to parse stored tick {} for match {}", s.getTick(), matchId, ex);
             }

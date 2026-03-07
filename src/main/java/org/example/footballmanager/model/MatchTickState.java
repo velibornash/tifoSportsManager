@@ -41,14 +41,31 @@ public class MatchTickState {
     @Column(name = "current_carrier_id")
     private Integer currentCarrierId;    // Optional: id of the ball carrier at this tick
 
+    @Column(name = "ball_in_transit", nullable = false)
+    private boolean ballInTransit;      // NEW: whether ball is being passed/in flight
+
+    @Column(name = "pending_receiver_id")
+    private Integer pendingReceiverId;  // NEW: id of player who will receive the ball if ballInTransit
 
     // Convenience constructor
     public MatchTickState(Match match, int tick, String playersJson, String ballJson, Integer carrierId) {
+        this(match, tick, playersJson, ballJson, carrierId, false, null);
+    }
+
+    // Updated constructor with ballInTransit
+    public MatchTickState(Match match, int tick, String playersJson, String ballJson, Integer carrierId, boolean ballInTransit) {
+        this(match, tick, playersJson, ballJson, carrierId, ballInTransit, null);
+    }
+
+    // Full constructor with pendingReceiverId
+    public MatchTickState(Match match, int tick, String playersJson, String ballJson, Integer carrierId, boolean ballInTransit, Integer pendingReceiverId) {
         this.match = match;
         this.tick = tick;
         this.minute = tick / 27;
         this.playerPositionsJson = playersJson;
         this.ballPositionJson = ballJson;
         this.currentCarrierId = carrierId;
+        this.ballInTransit = ballInTransit;
+        this.pendingReceiverId = pendingReceiverId;
     }
 }

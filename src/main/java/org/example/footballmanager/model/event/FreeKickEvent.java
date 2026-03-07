@@ -27,6 +27,8 @@ public class FreeKickEvent extends MatchEvent {
 
     private boolean direct;
 
+    private boolean dangerous;
+
     @Override
     public void apply() {
     }

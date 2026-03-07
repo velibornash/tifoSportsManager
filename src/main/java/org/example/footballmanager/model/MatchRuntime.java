@@ -102,6 +102,9 @@ public class MatchRuntime {
 
     // Track which team touched the ball last ("HOME" or "AWAY")
     public String lastTouchTeam = "HOME";
+    
+    // Flag to indicate if a pass was completed in this simulation phase
+    public boolean passCompletedThisPhase = false;
 
     // Active stoppage state (corner, free kick, throw-in, var review)
     public StoppageType activeStoppage = null;
@@ -125,8 +128,18 @@ public class MatchRuntime {
         public final BallPositionDTO ball;
         public final int carrierId;
         public final String activeEventType; // null if no event active
+        public final boolean ballInTransit;  // NEW: tracks if ball is being passed
+        public final int pendingReceiverId;  // NEW: tracks who will receive the ball if in transit
 
         public TickState(int tick, List<PlayerPositionDTO> players, BallPositionDTO ball, int carrierId, String activeEventType) {
+            this(tick, players, ball, carrierId, activeEventType, false, -1);
+        }
+
+        public TickState(int tick, List<PlayerPositionDTO> players, BallPositionDTO ball, int carrierId, String activeEventType, boolean ballInTransit) {
+            this(tick, players, ball, carrierId, activeEventType, ballInTransit, -1);
+        }
+
+        public TickState(int tick, List<PlayerPositionDTO> players, BallPositionDTO ball, int carrierId, String activeEventType, boolean ballInTransit, int pendingReceiverId) {
             this.tick = tick;
             this.players = players.stream()
                     .map(p -> new PlayerPositionDTO(p.getId(), p.getTeam(), p.getX(), p.getY(), 0, 0))
@@ -134,6 +147,8 @@ public class MatchRuntime {
             this.ball = new BallPositionDTO(ball.getX(), ball.getY());
             this.carrierId = carrierId;
             this.activeEventType = activeEventType;
+            this.ballInTransit = ballInTransit;
+            this.pendingReceiverId = pendingReceiverId;
         }
     }
 
@@ -141,6 +156,7 @@ public class MatchRuntime {
     public void recordTick() {
         int cId = currentCarrier != null ? currentCarrier.getId() : -1;
         String eventType = activeStoppage != null ? activeStoppage.name() : null;
-        tickStates.add(new TickState(tick, players, ball, cId, eventType));
+        int pReceiverId = pendingReceiverId != null ? pendingReceiverId : -1;
+        tickStates.add(new TickState(tick, players, ball, cId, eventType, ballInTransit, pReceiverId));
     }
 }
