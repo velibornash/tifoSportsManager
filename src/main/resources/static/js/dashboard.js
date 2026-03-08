@@ -71,12 +71,13 @@ function loadDashboard() {
 
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
-    <div class="team-card">
+    <div class="team-card fm-panel fm-dashboard-shell">
         <div class="team-header">
             <img src="${teamImagePath}" class="team-logo" onerror="this.src='/images/default-team.png'">
             <div class="team-name-wrapper">
+                <div class="fm-eyebrow">Club overview</div>
                 <h1>${teamName}</h1>
-                <p class="team-subtitle"><span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> - Season 2025/26</p>
+                <p class="team-subtitle"><span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> · Season 2025/26</p>
             </div>
         </div>
 
@@ -134,7 +135,7 @@ function loadDashboard() {
 
         <div class="dashboard-actions">
 <!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
-            <button id="start-realistic-demo-btn" onclick="startRealisticDemoTest()" style="background:#0066cc;">⚽ Realistic Match</button>
+            <button id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Realistic Match</button>
 <!--            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>-->
         </div>
     </div>`;
@@ -180,16 +181,19 @@ async function initializeDatabase() {
 
     loadingPopup.innerHTML = `
         <div style="
-            background: white;
+            background: linear-gradient(180deg, rgba(17, 23, 37, 0.98), rgba(11, 16, 26, 0.96));
+            border: 1px solid rgba(143, 211, 255, 0.16);
+            color: #eef4ff;
             padding: 30px 50px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            border-radius: 18px;
+            box-shadow: 0 22px 48px rgba(0,0,0,0.34);
             text-align: center;
             font-family: Arial, sans-serif;
         ">
-            <h2 style="margin: 0 0 15px 0; color: #2c3e50;">Database initialization in progress...</h2>
-            <div style="font-size: 1.1em; color: #7f8c8d;">Please wait and keep this page open.</div>
-            <div style="margin-top: 20px; font-size: 2em;">...</div>
+            <div style="margin: 0 0 8px 0; color: #8fd3ff; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;">Database</div>
+            <h2 style="margin: 0 0 15px 0; color: #eef4ff;">Database initialization in progress...</h2>
+            <div style="font-size: 1.05em; color: #99a6bb;">Please wait and keep this page open.</div>
+            <div style="margin-top: 20px; font-size: 2em; color: #8fd3ff;">...</div>
         </div>
     `;
 
@@ -363,7 +367,7 @@ async function loadHomeTeamStats() {
         }
 
         document.querySelector('.team-name-wrapper h1').textContent = entry.name;
-        document.querySelector('.team-subtitle').textContent = 'Serbian Superliga - Season 2025/26';
+        document.querySelector('.team-subtitle').innerHTML = `<span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> · Season 2025/26`;
 
         const statValues = document.querySelectorAll('.stat-value');
         statValues[0].textContent = entry.position || '?';

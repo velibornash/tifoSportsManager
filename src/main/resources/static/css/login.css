@@ -195,7 +195,6 @@ button:hover {
      }
 }
 
-   ────────────────────────────────────────────── */
 @media (max-width: 400px) {
     .corner-logo {
         width: 56px;
@@ -231,4 +230,111 @@ button:hover {
     .login-card {
        padding: 42px 24px;
     }
+}
+
+/* FM / Club-inspired login theme override */
+.background {
+    overflow: hidden;
+    background-image: url('/images/background.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #071018;
+    filter: saturate(0.86) brightness(0.68);
+    transform: scale(1.02);
+}
+
+.background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at top, rgba(143, 211, 255, 0.24), transparent 34%),
+        linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.86));
+}
+
+body {
+    position: relative;
+    min-height: 100vh;
+    background: #071018;
+    color: #eef4ff;
+}
+
+.logo-corner {
+    top: 18px;
+    right: 24px;
+}
+
+.corner-logo {
+    border: 4px solid rgba(143, 211, 255, 0.34);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+.corner-logo:hover {
+    box-shadow: 0 22px 54px rgba(143, 211, 255, 0.22);
+}
+
+.login-card {
+    background: linear-gradient(180deg, rgba(17, 23, 37, 0.96), rgba(11, 16, 26, 0.94));
+    border: 1px solid rgba(143, 211, 255, 0.16);
+    box-shadow: 0 22px 54px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.title {
+    color: #eef4ff;
+    letter-spacing: 2px;
+    text-shadow: 0 6px 16px rgba(0, 0, 0, 0.42);
+}
+
+.invite {
+    color: #b9c7da;
+}
+
+.invite strong {
+    color: #8fd3ff;
+}
+
+.input-group input {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(8, 12, 20, 0.88);
+    color: #eef4ff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.input-group input:focus {
+    background: rgba(10, 15, 24, 0.96);
+    border-color: rgba(143, 211, 255, 0.42);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.16);
+}
+
+.input-group label {
+    color: #8fa0b8;
+}
+
+.input-group input:focus + label,
+.input-group input:not(:placeholder-shown) + label {
+    color: #8fd3ff;
+    background: rgba(15, 21, 33, 0.96);
+}
+
+button {
+    background: linear-gradient(135deg, #4f8fdc, #6fcf97);
+    color: #08111c;
+    box-shadow: 0 16px 34px rgba(15, 27, 44, 0.34);
+}
+
+button:hover {
+    box-shadow: 0 18px 38px rgba(79, 143, 220, 0.28);
+}
+
+.register-link {
+    color: #9aa8bc;
+}
+
+.register-link a {
+    color: #8fd3ff;
+}
+
+.register-link a:hover {
+    color: #cbeeff;
 }
