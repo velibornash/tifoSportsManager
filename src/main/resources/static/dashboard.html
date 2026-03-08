@@ -14,9 +14,9 @@
 <div class="top-menu">
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">&#127967; Club</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">&#127947; Training</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">&#127942; Competitions</div>
+    <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">&#128172; Community</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('statsSidebar')">&#128202; Stats</div>
+    <div class="menu-button desktop-only" onclick="window.location.href='/zox-match-preview.html'">&#128202; Stats</div>
     <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">&#129302; TIFO Old school</div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
@@ -38,6 +38,7 @@
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
+                <div onclick="loadPage('schedule'); closeMobileMenu()">Schedule</div>
                 <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
                 <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
                 <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
@@ -57,18 +58,8 @@
         </div>
 
         <div class="mobile-accordion">
-            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                &#127942; Competitions
-            </div>
-            <div class="accordion-content">
-                <div onclick="loadPage('leagueTable'); closeMobileMenu()">League Table</div>
-                <div onclick="loadPage('leagueSchedule'); closeMobileMenu()">Schedule</div>
-                <div onclick="loadPage('leagueMatches'); closeMobileMenu()">League Results</div>
-                <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
-                <div onclick="loadPage('fixtures'); closeMobileMenu()">Fixtures</div>
-                <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
-                <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
-                <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
+            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('leagueTable')">
+                &#127942; League
             </div>
         </div>
 
@@ -86,13 +77,8 @@
         </div>
 
         <div class="mobile-accordion">
-            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+            <div class="accordion-header" onclick="closeMobileMenu(); window.location.href='/zox-match-preview.html'">
                 &#128202; Stats
-            </div>
-            <div class="accordion-content">
-                <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
-                <div onclick="loadPage('topAssists'); closeMobileMenu()">Top Assists</div>
-                <div onclick="window.location.href='/zox-match-preview.html'; closeMobileMenu()">🔬 ZOX Analytics</div>
             </div>
         </div>
 
@@ -148,20 +134,6 @@
     </div>
 </div>
 
-<div id="competitionsSidebar" class="sidebar">
-    <div class="sidebar-content">
-        <h3>Competitions</h3>
-        <div onclick="loadPage('leagueTable')">League Table</div>
-        <div onclick="loadPage('leagueSchedule')">Schedule</div>
-        <div onclick="loadPage('leagueMatches')">League Results</div>
-        <div onclick="loadPage('results')">Results</div>
-        <div onclick="loadPage('fixtures')">Fixtures</div>
-        <div style="opacity:0.45; pointer-events:none;">Cup (Soon)</div>
-        <div style="opacity:0.45; pointer-events:none;">International (Soon)</div>
-        <div style="opacity:0.45; pointer-events:none;">Friendlies (Soon)</div>
-    </div>
-</div>
-
 <div id="communitySidebar" class="sidebar">
     <div class="sidebar-content">
         <h3>Community</h3>
@@ -170,15 +142,6 @@
         <div onclick="loadPage('events')">Events</div>
         <div onclick="initializeDatabase()">Initialize DB (Demo)</div>
         <div onclick="resetDatabase()">Reset DB (Demo)</div>
-    </div>
-</div>
-
-<div id="statsSidebar" class="sidebar">
-    <div class="sidebar-content">
-        <h3>Stats</h3>
-        <div onclick="loadPage('topScorers')">Top Scorers</div>
-        <div onclick="loadPage('topAssists')">Top Assists</div>
-        <div onclick="window.location.href='/zox-match-preview.html'" style="margin-top:10px; padding-top:10px; border-top: 1px solid rgba(255,255,255,0.1);">🔬 ZOX Analytics</div>
     </div>
 </div>
 

@@ -124,6 +124,7 @@ export function buildClubActionsHtml(currentPage = '') {
     return `
         <div class="fm-club-actions">
             <button type="button" class="${actionClass('firstTeam', 'primary')}" onclick="loadPage('firstTeam')">First Team</button>
+            <button type="button" class="${actionClass('schedule')}" onclick="loadPage('schedule')">Schedule</button>
             <button type="button" class="${actionClass('profile')}" onclick="loadPage('profile')">Club Profile</button>
             <button type="button" class="${actionClass('medicalCenter')}" onclick="loadPage('medicalCenter')">Medical Center</button>
             <button type="button" class="${actionClass('juniors')}" onclick="loadPage('juniors')">Juniors</button>

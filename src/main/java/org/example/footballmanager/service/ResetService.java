@@ -20,8 +20,16 @@ public class ResetService {
     private final EntityManager entityManager;
 
     @Transactional
+    public void sanitizeLegacyLineupOrderSchema() {
+        log.info("Checking lineup schema compatibility for legacy order columns...");
+        dropLegacyColumnIfExists("lineup_starting_players", "slot_order");
+        dropLegacyColumnIfExists("lineup_substitutes", "bench_order");
+    }
+
+    @Transactional
     public void resetDatabase() {
         log.warn("RESET DATABASE STARTED - full truncate with identity reset");
+        sanitizeLegacyLineupOrderSchema();
         List<String> desiredOrder = List.of(
                 "training_week_report",
                 "team_training_setup",
@@ -75,5 +83,11 @@ public class ResetService {
             entityManager.createNativeQuery(sql).executeUpdate();
         }
         log.warn("RESET DATABASE FINISHED - all core tables cleared");
+    }
+
+    private void dropLegacyColumnIfExists(String tableName, String columnName) {
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS " + tableName + " DROP COLUMN IF EXISTS " + columnName)
+                .executeUpdate();
+        log.info("Schema compatibility ensured for {}.{}", tableName, columnName);
     }
 }

@@ -178,6 +178,10 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     await loadResults();
                     break;
 
+                case "schedule":
+                    await loadResults();
+                    break;
+
                 case "fixtures":
                     await loadFixtures();
                     break;
@@ -238,8 +242,8 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     break;
 
                 case "analytics":
-                    await loadTopScorersAndAssists("scorers");
-                    break;
+                    window.location.href = '/zox-match-preview.html';
+                    return;
 
                 default:
                     mainContent.innerHTML = buildEmptyState("Page not found");
@@ -3129,23 +3133,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
         }
     }
     async function loadAnalytics() {
-            console.log(`Loading analytics for ${currentUserTeamId}`);
-            const response = await authFetch(`/demo/analytics/teams/${currentUserTeamId}`);
-            console.log(`Response status: ${response.status}`);
-            const data = await response.json();
-
-            const mainContent = document.getElementById("main-content");
-
-            let html = `
-            <div class="manager-card">
-                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                <h2>Analytics</h2>
-                <p>xG: ${data.xg}</p>
-                <p>xGA: ${data.xga}</p>
-                <p>Pressing Index: ${data.pressing}</p>
-                <p>Form Rating: ${data.form}</p>
-            </div>`;
-            mainContent.innerHTML = html;
+            window.location.href = '/zox-match-preview.html';
         }
     function renderPlayers(players, title) {
         renderPlayersView(players, title, { loadPlayer, getImageFilename });

@@ -12,6 +12,8 @@ import org.example.footballmanager.service.YouthAcademyService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.players.SquadNumberAssigner;
 import org.example.footballmanager.util.teams.TeamFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +43,12 @@ public class DatabaseInitializer {
     private final YouthAcademyService youthAcademyService;
     private final SquadNumberAssigner squadNumberAssigner;
 
+    @EventListener(ApplicationReadyEvent.class)
+    public void sanitizeLegacySchemaOnStartup() {
+        resetService.sanitizeLegacyLineupOrderSchema();
+    }
 
+    @PostConstruct
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
