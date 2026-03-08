@@ -56,7 +56,7 @@ public class RealisticMatchEngine {
     private static final double LOOSE_BALL_PICKUP_RADIUS = 1.0; // TIGHTER PICKUP
     private static final double LOOSE_BALL_STEP = 9.0;
     private static final double SUPPORT_STEP = 6.0;
-    private static final double SHOT_TRIGGER_DISTANCE = 26.0;
+    private static final double SHOT_TRIGGER_DISTANCE = 23.0;
     private static final double CARRIER_CONTROL_RADIUS = 0.5; // VERY TIGHT CONTROL
     private static final double PENDING_RECEIVER_LOCK_DISTANCE = 20.0;
     private static final double RECEIVER_PRIORITY_MARGIN = 2.2;
@@ -506,14 +506,18 @@ public class RealisticMatchEngine {
             rt.lastTouchTeam = ballTeam;
             setCurrentCarrier(rt, dribbler, "dribble");
 
-            // The attacker beat the marker and entered the final third: allow an immediate shot attempt.
+            // The attacker beat the marker and entered the final third: allow an immediate shot attempt,
+            // but keep it mostly for cleaner close-range breaks so shot volume does not inflate unrealistically.
             double goalDistance = estimateDistanceToGoal(rt, dribbler, ballTeam);
             List<Player> refreshedDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
+            boolean cleanBreak = refreshedDefenders.isEmpty()
+                    || (refreshedDefenders.size() == 1 && goalDistance <= 18.0);
+            double immediateShotChance = goalDistance <= 16.0 ? 0.58 : 0.30;
             if (goalDistance <= SHOT_TRIGGER_DISTANCE &&
-                    (refreshedDefenders.isEmpty() || refreshedDefenders.size() == 1) &&
+                    cleanBreak &&
                     dribbler.getPosition() != Position.DEF &&
                     dribbler.getPosition() != Position.GK &&
-                    random.nextDouble() < 0.74) {
+                    random.nextDouble() < immediateShotChance) {
                 handleShot(rt, match, minute, dribbler, decision, ballTeam);
             }
         }
@@ -1366,6 +1370,8 @@ public class RealisticMatchEngine {
 
         // Ball starts EXACTLY at passer's position
         rt.ball = new BallPositionDTO(passerPos.getX(), passerPos.getY());
+        rt.ballTransitStartX = rt.ball.getX();
+        rt.ballTransitStartY = rt.ball.getY();
 
         double targetX = clamp(receiverPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X);
         double targetY = clamp(receiverPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y);
@@ -1403,6 +1409,8 @@ public class RealisticMatchEngine {
         rt.currentCarrier = null;
         rt.ballInTransit = true;
         rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitStartX = startX;
+        rt.ballTransitStartY = startY;
         rt.ballTransitTargetX = intendedX;
         rt.ballTransitTargetY = intendedY;
         rt.ballTransitTicks = 0;

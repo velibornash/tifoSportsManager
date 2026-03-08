@@ -327,6 +327,59 @@ import { createCommunityFeature } from './pages/features/community.js';
     function formatBudget(value) {
         return `EUR ${Number(value || 0).toLocaleString()}`;
     }
+    function formatMilestoneAttendanceValue(value) {
+        const numeric = Number(value || 0);
+        return numeric > 0 ? numeric.toLocaleString() : '—';
+    }
+    function buildMilestoneCardHtml(title, value, meta, extraClass = '') {
+        const safeValue = value == null || value === '' ? '—' : escapeHtml(String(value));
+        const safeMeta = meta == null || meta === '' ? 'No milestone logged yet.' : escapeHtml(String(meta));
+        return `
+            <article class="fm-milestone-card ${extraClass}">
+                <div class="fm-milestone-kicker">${escapeHtml(String(title || 'Milestone'))}</div>
+                <div class="fm-milestone-value">${safeValue}</div>
+                <div class="fm-milestone-meta">${safeMeta}</div>
+            </article>`;
+    }
+    function buildMilestoneBoardHtml(milestones) {
+        const scorer = milestones?.topScorer || null;
+        const assist = milestones?.topAssist || null;
+        const biggestWin = milestones?.biggestWin || null;
+        const biggestLoss = milestones?.biggestLoss || null;
+        const attendance = milestones?.attendance || null;
+
+        return `
+            <div class="fm-milestone-grid">
+                ${buildMilestoneCardHtml(
+                    'Top scorer',
+                    scorer?.playerName || '—',
+                    scorer?.playerName ? `${scorer.teamName || 'No team'} · ${Number(scorer.value || 0)} goals` : 'No goals filed yet.'
+                )}
+                ${buildMilestoneCardHtml(
+                    'Top assist',
+                    assist?.playerName || '—',
+                    assist?.playerName ? `${assist.teamName || 'No team'} · ${Number(assist.value || 0)} assists` : 'No assists filed yet.'
+                )}
+                ${buildMilestoneCardHtml(
+                    'Biggest win',
+                    biggestWin?.summary || '—',
+                    biggestWin?.context || 'Waiting for a standout result.'
+                )}
+                ${buildMilestoneCardHtml(
+                    'Heaviest loss',
+                    biggestLoss?.summary || '—',
+                    biggestLoss?.context || 'No heavy defeat registered yet.'
+                )}
+                ${buildMilestoneCardHtml(
+                    'Attendance',
+                    formatMilestoneAttendanceValue(attendance?.averageAttendance),
+                    attendance?.averageAttendance
+                        ? `High ${formatMilestoneAttendanceValue(attendance.highestAttendance)} (${attendance.highestMatchLabel || '—'}) · Low ${formatMilestoneAttendanceValue(attendance.lowestAttendance)} (${attendance.lowestMatchLabel || '—'}) · ${attendance.insight || ''}`
+                        : (attendance?.insight || 'Crowd data will appear once played fixtures start filing gates.'),
+                    'attendance'
+                )}
+            </div>`;
+    }
     function formatDateTimeLabel(value) {
         if (!value) return '-';
         const date = new Date(value);
@@ -1205,12 +1258,40 @@ import { createCommunityFeature } from './pages/features/community.js';
             function renderMatchReport(reportPayload) {
                 const headline = escapeHtml(String(reportPayload?.headline || 'Match Report'));
                 const reportText = escapeHtml(String(reportPayload?.report || 'No match report available.'));
+                const motm = reportPayload?.manOfTheMatch || null;
+                const motmFacts = [];
+                if (Number.isFinite(Number(motm?.rating10))) motmFacts.push(`${Number(motm.rating10).toFixed(1)} rating`);
+                if (Number(motm?.goals) > 0) motmFacts.push(`${Number(motm.goals)} goal${Number(motm.goals) === 1 ? '' : 's'}`);
+                if (Number(motm?.assists) > 0) motmFacts.push(`${Number(motm.assists)} assist${Number(motm.assists) === 1 ? '' : 's'}`);
+                if (Number(motm?.saves) > 0) motmFacts.push(`${Number(motm.saves)} save${Number(motm.saves) === 1 ? '' : 's'}`);
+                if (Number(motm?.interceptions) > 0) motmFacts.push(`${Number(motm.interceptions)} interceptions`);
+                if (Number(motm?.minutesPlayed) > 0) motmFacts.push(`${Number(motm.minutesPlayed)} min`);
+                if (motm?.cleanSheet) motmFacts.push('clean sheet');
+
+                const motmPlayerLabel = motm?.playerId && motm?.teamId
+                    ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${Number(motm.playerId)}, ${Number(motm.teamId)}, '${escapeHtml(motm.teamName || 'Team')}')">${escapeHtml(motm.playerName || 'Unknown')}</span>`
+                    : escapeHtml(String(motm?.playerName || 'Unknown'));
+                const motmTeamLabel = motm?.teamId
+                    ? `<span class="cs-clickable" onclick="loadLeagueTeam(${Number(motm.teamId)}, '${escapeHtml(motm.teamName || 'Team')}')">${escapeHtml(motm.teamName || 'Unknown')}</span>`
+                    : escapeHtml(String(motm?.teamName || 'Unknown'));
+                const motmBlock = motm ? `
+                    <div class="fm-match-report-motm">
+                        <div class="fm-match-report-motm-top">
+                            <div>
+                                <div class="fm-milestone-kicker">Man of the Match</div>
+                                <div class="fm-match-report-motm-name">${motmPlayerLabel}</div>
+                            </div>
+                            <div class="fm-match-report-motm-team">${motmTeamLabel}</div>
+                        </div>
+                        <div class="fm-match-report-motm-meta">${escapeHtml(motmFacts.join(' · ') || 'Best overall performance recorded for this match.')}</div>
+                    </div>` : '';
 
                 infoDiv.innerHTML = `
-                    <div style="max-width:920px; margin:0 auto; padding:18px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px;">
+                    <div class="fm-match-report-shell">
                         <h3 style="text-align:center; margin:0 0 14px; color:#4CAF50;">Match Report</h3>
-                        <div style="font-size:1.02em; font-weight:700; text-align:center; margin-bottom:16px; color:#f3f3f3;">${headline}</div>
-                        <div style="white-space:pre-line; line-height:1.7; color:#ddd;">${reportText}</div>
+                        <div class="fm-match-report-headline">${headline}</div>
+                        ${motmBlock}
+                        <div class="fm-match-report-body">${reportText}</div>
                     </div>`;
             }
 
@@ -1352,7 +1433,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                         html += `
                             <div style="display:flex; gap:10px; padding:8px 10px; border-radius:6px; background:${rowBg};">
                                 <div style="width:42px; text-align:center; color:#2a8c4a; font-weight:700;">${p.position}</div>
-                                <div style="flex:1;">${p.playerId ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamName === (lineupsPayload.homeTeam || homeTeamName) ? (lineupsPayload.homeTeamId || 0) : (lineupsPayload.awayTeamId || 0)}, ${p.playerId}, '${escapeHtml(teamName)}')">${p.playerName}</span>` : p.playerName}</div>
+                                <div style="flex:1;">${p.playerId ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${p.playerId}, ${teamName === (lineupsPayload.homeTeam || homeTeamName) ? (lineupsPayload.homeTeamId || 0) : (lineupsPayload.awayTeamId || 0)}, '${escapeHtml(teamName)}')">${p.playerName}</span>` : p.playerName}</div>
                                 <div style="width:56px; text-align:center; font-weight:700; color:${gradeColor};">${gradeText}</div>
                                 <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
                                 <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
@@ -1395,10 +1476,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                     const assistStat = (g.scoreTeam === homeTeamName ? (lineupsPayload?.homeLineup || []) : (lineupsPayload?.awayLineup || []))
                         .find(p => p.playerName === g.assistant);
                     const scorerLabel = scorerStat?.playerId && scorerTeamId
-                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${scorerTeamId}, ${scorerStat.playerId}, '${escapeHtml(g.scoreTeam || '')}')">${g.scorer || "?"}</span>`
+                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${scorerStat.playerId}, ${scorerTeamId}, '${escapeHtml(g.scoreTeam || '')}')">${g.scorer || "?"}</span>`
                         : (g.scorer || "?");
                     const assistLabel = assistStat?.playerId && scorerTeamId
-                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${scorerTeamId}, ${assistStat.playerId}, '${escapeHtml(g.scoreTeam || '')}')">${g.assistant}</span>`
+                        ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${assistStat.playerId}, ${scorerTeamId}, '${escapeHtml(g.scoreTeam || '')}')">${g.assistant}</span>`
                         : (g.assistant || "");
                     const assistHtml = g.assistant ? ` <span style="color:#888;">(assist: ${assistLabel})</span>` : '';
                     html += `
@@ -2874,7 +2955,17 @@ import { createCommunityFeature } from './pages/features/community.js';
     }
     async function loadClubProfile() {
         console.log(`Loading club profile for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/teams/${currentUserTeamId}/profile`);
+        const [response, milestones] = await Promise.all([
+            authFetch(`/demo/teams/${currentUserTeamId}/profile`),
+            (async () => {
+                try {
+                    const milestoneResponse = await authFetch(`/teams/${currentUserTeamId}/milestones`);
+                    return milestoneResponse.ok ? await milestoneResponse.json() : null;
+                } catch {
+                    return null;
+                }
+            })()
+        ]);
         console.log(`Response status: ${response.status}`);
         const profile = await response.json();
 
@@ -2931,6 +3022,16 @@ import { createCommunityFeature } from './pages/features/community.js';
                     </div>
                 </section>
             </div>
+            <section class="fm-panel fm-milestone-board-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Club milestones</h3>
+                        <p class="fm-subtle">Current season snapshot for your club, kept alongside the league-wide milestone boards.</p>
+                    </div>
+                    <span class="fm-panel-action">Team board</span>
+                </div>
+                ${buildMilestoneBoardHtml(milestones)}
+            </section>
         </div>`;
 
         const stadiumButton = mainContent.querySelector('.club-profile-stadium-btn');
@@ -3490,12 +3591,20 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
-            const [response, transferOverview] = await Promise.all([
+            const [response, transferOverview, milestones] = await Promise.all([
                 authFetch(`/teams/${teamId}/players`),
                 (async () => {
                     try {
                         const transferResponse = await authFetch(`/transfers/team/${teamId}?viewerTeamId=${encodeURIComponent(currentUserTeamId)}`);
                         return await transferResponse.json();
+                    } catch {
+                        return null;
+                    }
+                })(),
+                (async () => {
+                    try {
+                        const milestoneResponse = await authFetch(`/teams/${teamId}/milestones`);
+                        return milestoneResponse.ok ? await milestoneResponse.json() : null;
                     } catch {
                         return null;
                     }
@@ -3534,6 +3643,16 @@ import { createCommunityFeature } from './pages/features/community.js';
                         <div><strong>${avgAge}</strong><span>Avg age</span></div>
                         <div><strong>${totalGoals}/${totalAssists}</strong><span>Goals / assists</span></div>
                     </div>
+                </section>
+                <section class="fm-panel fm-milestone-board-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>${isUserTeam ? 'Club milestones' : 'Team milestones'}</h3>
+                            <p class="fm-subtle">Season board for ${escapeHtml(teamName)}, keeping club context visible without losing the main league board.</p>
+                        </div>
+                        <span class="fm-panel-action">${isUserTeam ? 'Club area' : 'Season board'}</span>
+                    </div>
+                    ${buildMilestoneBoardHtml(milestones)}
                 </section>
                 <div class="fm-team-layout ${isUserTeam ? 'has-side-panel' : ''}">
                     <section class="fm-panel">

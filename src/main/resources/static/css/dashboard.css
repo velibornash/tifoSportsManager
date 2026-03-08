@@ -1072,6 +1072,65 @@ button.training-week-item {
     text-align: right;
 }
 
+.fm-match-report-shell {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+.fm-match-report-headline {
+    font-size: 1.02em;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 16px;
+    color: #f3f3f3;
+}
+
+.fm-match-report-motm {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(143, 211, 255, 0.08);
+    border: 1px solid rgba(143, 211, 255, 0.14);
+}
+
+.fm-match-report-motm-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fm-match-report-motm-name {
+    margin-top: 6px;
+    color: #eef4ff;
+    font-size: 1.08rem;
+    font-weight: 800;
+}
+
+.fm-match-report-motm-team {
+    color: #99a6bb;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.fm-match-report-motm-meta {
+    color: #c8d2df;
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+.fm-match-report-body {
+    white-space: pre-line;
+    line-height: 1.7;
+    color: #ddd;
+}
+
 .fm-medical-icon {
     font-size: 2.8rem;
     color: #ff8a80;
@@ -2248,6 +2307,20 @@ body {
 
     .fm-milestone-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .club-profile-detail-row,
+    .fm-match-report-motm-top {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .club-profile-detail-row strong {
+        text-align: left;
+    }
+
+    .fm-match-report-shell {
+        padding: 14px;
     }
 
     .match-row,

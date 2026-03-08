@@ -72,8 +72,8 @@ public class AIDecisionMaker {
             if (bestPassTarget != null && !isForwardPass(player, bestPassTarget, rt, team)) {
                 passScore *= 0.02; // Smanjeno sa 0.05
             }
-            shotScore *= 1.65;  // Malo smanjen da ne preteruju sa šutevima iz svake polušanse
-            dribbleScore *= 0.7; // Smanjeno
+            shotScore *= 1.32;
+            dribbleScore *= 0.82;
         }
 
         double totalScore = passScore + shotScore + dribbleScore;
@@ -92,7 +92,7 @@ public class AIDecisionMaker {
         Player targetPlayer = null;
 
         // Povećan prag za šut da bi bio odlučniji
-        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > 0.20 && goalDistance < 34.0) {
+        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > 0.24 && goalDistance < 30.0) {
             action = ActionType.SHOT;
         } else if (passScore >= dribbleScore && bestPassTarget != null) {
             action = ActionType.PASS;
@@ -103,7 +103,7 @@ public class AIDecisionMaker {
 
         if (action == ActionType.PASS && targetPlayer != null && shouldBlockBackwardPass(player, targetPlayer, rt, team, goalDistance)) {
             // Ako je pas unazad blokiran, pokušaj šut ako je iole smislen, inače driblaj napred
-            if (shotScore >= 0.16 && goalDistance < 28.0) {
+            if (shotScore >= 0.18 && goalDistance < 24.0) {
                 return new Decision(ActionType.SHOT, null);
             }
             return new Decision(ActionType.DRIBBLE, null);
@@ -141,11 +141,11 @@ public class AIDecisionMaker {
         } else if (goalDistance < 16) {
             baseScore = 0.90;
         } else if (goalDistance < 22) {
-            baseScore = 0.70;
+            baseScore = 0.68;
         } else if (goalDistance < 28) {
-            baseScore = 0.42;
+            baseScore = 0.34;
         } else if (goalDistance < 34) {
-            baseScore = 0.18;
+            baseScore = 0.10;
         } else {
             return 0.0;
         }
@@ -163,12 +163,12 @@ public class AIDecisionMaker {
         baseScore += player.getSkills().getStriker() / 28.0;
 
         if (isInShotZone(team, getPlayerX(player, rt))) {
-            baseScore *= 1.20;
+            baseScore *= 1.12;
         }
         if (defensivePressure < 0.2) {
-            baseScore *= 1.30;
+            baseScore *= 1.18;
         } else if (defensivePressure > 0.7) {
-            baseScore *= 0.76;
+            baseScore *= 0.72;
         }
 
         return Math.max(0.0, baseScore);
@@ -362,12 +362,12 @@ public class AIDecisionMaker {
             return false;
         }
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 24.0 && defensivePressure <= 0.60;
+        return isInShotZone(team, x) && goalDistance <= 20.0 && defensivePressure <= 0.45;
     }
 
     private boolean isHardShotZone(Player player, MatchRuntime rt, String team, double goalDistance) {
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 20.0;
+        return isInShotZone(team, x) && goalDistance <= 17.5;
     }
 
     private boolean shouldBlockBackwardPass(Player passer, Player receiver, MatchRuntime rt, String team, double goalDistance) {

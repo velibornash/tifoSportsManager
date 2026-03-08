@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.LeagueMilestonesDTO;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Lineup;
@@ -12,6 +13,8 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
+import org.example.footballmanager.service.LeagueMilestoneService;
+import org.example.footballmanager.service.SeasonService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,17 +39,23 @@ public class TeamController {
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
+    private final LeagueMilestoneService leagueMilestoneService;
+    private final SeasonService seasonService;
 
     public TeamController(TeamRepository teamRepository,
                           PlayerRepository playerRepository,
                           MatchRepository matchRepository,
                           LineupRepository lineupRepository,
-                          MatchPlayerStatsRepository matchPlayerStatsRepository) {
+                          MatchPlayerStatsRepository matchPlayerStatsRepository,
+                          LeagueMilestoneService leagueMilestoneService,
+                          SeasonService seasonService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
         this.lineupRepository = lineupRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
+        this.leagueMilestoneService = leagueMilestoneService;
+        this.seasonService = seasonService;
     }
 
     @GetMapping
@@ -106,6 +115,18 @@ public class TeamController {
                 .map(MatchDTO::from)
                 .toList();
         return ResponseEntity.ok(matches);
+    }
+
+    @GetMapping("/{teamId}/milestones")
+    public ResponseEntity<LeagueMilestonesDTO> getTeamMilestones(@PathVariable Long teamId,
+                                                                 @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+        return ResponseEntity.ok(leagueMilestoneService.buildTeamMilestones(team, activeSeasonYear));
     }
 
     @GetMapping("/{teamId}/lineup-template")

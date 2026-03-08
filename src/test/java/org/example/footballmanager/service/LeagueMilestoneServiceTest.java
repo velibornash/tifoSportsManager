@@ -77,6 +77,48 @@ class LeagueMilestoneServiceTest {
         assertNotNull(dto.getAttendance().getInsight());
     }
 
+    @Test
+    void buildsTeamMilestoneBoardUsingTeamResultsAndHomeAttendance() {
+        Competition league = new Competition();
+        league.setId(1L);
+
+        Team omladinac = team(1L, "Omladinac", 68.0, 6200);
+        Team radnicki = team(2L, "Radnicki", 59.0, 5400);
+        Team spartak = team(3L, "Spartak", 52.0, 4800);
+
+        Player marko = player(11L, "Marko", omladinac);
+        Player nikola = player(12L, "Nikola", omladinac);
+        Player petar = player(21L, "Petar", radnicki);
+
+        Match bigWin = match(201L, league, omladinac, spartak, 4, 0, 2026, 6, 6080);
+        Match heavyLoss = match(202L, league, omladinac, radnicki, 0, 2, 2026, 11, 4890);
+        Match awayWin = match(203L, league, spartak, omladinac, 1, 3, 2026, 18, 3880);
+
+        GoalEvent g1 = goal(bigWin, omladinac, marko, nikola);
+        GoalEvent g2 = goal(bigWin, omladinac, marko, nikola);
+        GoalEvent g3 = goal(bigWin, omladinac, nikola, marko);
+        GoalEvent g4 = goal(awayWin, omladinac, marko, nikola);
+        GoalEvent g5 = goal(awayWin, omladinac, petar, null);
+
+        when(matchRepository.findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(1L, 1L))
+                .thenReturn(List.of(awayWin, heavyLoss, bigWin));
+        when(goalEventRepository.findAll()).thenReturn(List.of(g1, g2, g3, g4, g5));
+
+        LeagueMilestonesDTO dto = leagueMilestoneService.buildTeamMilestones(omladinac, 2026);
+
+        assertNotNull(dto);
+        assertEquals(2026, dto.getSeasonYear());
+        assertEquals("Marko", dto.getTopScorer().getPlayerName());
+        assertEquals(3, dto.getTopScorer().getValue());
+        assertEquals("Nikola", dto.getTopAssist().getPlayerName());
+        assertEquals(3, dto.getTopAssist().getValue());
+        assertEquals("4-0 vs Spartak", dto.getBiggestWin().getSummary());
+        assertEquals("0-2 vs Radnicki", dto.getBiggestLoss().getSummary());
+        assertEquals(5485, dto.getAttendance().getAverageAttendance());
+        assertEquals(6080, dto.getAttendance().getHighestAttendance());
+        assertEquals(4890, dto.getAttendance().getLowestAttendance());
+    }
+
     private Team team(Long id, String name, double reputation, int capacity) {
         Team team = new Team();
         team.setId(id);

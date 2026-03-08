@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.LeagueMilestonesDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.model.MatchPlayerStats;
@@ -12,6 +13,8 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
+import org.example.footballmanager.service.LeagueMilestoneService;
+import org.example.footballmanager.service.SeasonService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,6 +31,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -41,6 +45,8 @@ class TeamControllerTest {
     @Mock private MatchRepository matchRepository;
     @Mock private LineupRepository lineupRepository;
     @Mock private MatchPlayerStatsRepository matchPlayerStatsRepository;
+    @Mock private LeagueMilestoneService leagueMilestoneService;
+    @Mock private SeasonService seasonService;
 
     @InjectMocks private TeamController teamController;
 
@@ -151,5 +157,27 @@ class TeamControllerTest {
         assertEquals(1, response.getBody().size());
         assertEquals(2, response.getBody().getFirst().getMatchesPlayed());
         assertEquals(8.1, response.getBody().getFirst().getAverageRating10());
+    }
+
+    @Test
+    void getTeamMilestonesUsesActiveSeasonFallback() {
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("Omladinac");
+
+        LeagueMilestonesDTO dto = LeagueMilestonesDTO.builder()
+                .seasonYear(2026)
+                .build();
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(leagueMilestoneService.buildTeamMilestones(team, 2026)).thenReturn(dto);
+
+        ResponseEntity<LeagueMilestonesDTO> response = teamController.getTeamMilestones(1L, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertSame(dto, response.getBody());
+        verify(seasonService).getActiveSeasonYear();
+        verify(leagueMilestoneService).buildTeamMilestones(team, 2026);
     }
 }

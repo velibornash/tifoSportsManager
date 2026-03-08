@@ -47,7 +47,38 @@ public class LeagueMilestoneService {
                 .topAssist(resolveLeader(seasonGoals, false))
                 .biggestWin(resolveBiggestWin(playedMatches))
                 .biggestLoss(resolveBiggestLoss(playedMatches))
-                .attendance(resolveAttendanceMilestone(playedMatches))
+                .attendance(resolveAttendanceMilestone(playedMatches, null))
+                .build();
+    }
+
+    public LeagueMilestonesDTO buildTeamMilestones(Team team, int seasonYear) {
+        List<Match> playedMatches = matchRepository
+                .findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(team.getId(), team.getId())
+                .stream()
+                .filter(match -> Objects.equals(match.getSeasonYear(), seasonYear))
+                .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
+                .toList();
+
+        List<GoalEvent> seasonGoals = goalEventRepository.findAll().stream()
+                .filter(GoalEvent::isScored)
+                .filter(goal -> goal.getMatch() != null
+                        && Objects.equals(goal.getMatch().getSeasonYear(), seasonYear))
+                .toList();
+
+        List<GoalEvent> scoringGoals = seasonGoals.stream()
+                .filter(goal -> sameTeam(goal.getScorer() != null ? goal.getScorer().getTeam() : null, team))
+                .toList();
+        List<GoalEvent> assistGoals = seasonGoals.stream()
+                .filter(goal -> sameTeam(goal.getAssistant() != null ? goal.getAssistant().getTeam() : null, team))
+                .toList();
+
+        return LeagueMilestonesDTO.builder()
+                .seasonYear(seasonYear)
+                .topScorer(resolveLeader(scoringGoals, true))
+                .topAssist(resolveLeader(assistGoals, false))
+                .biggestWin(resolveBiggestWin(playedMatches, team))
+                .biggestLoss(resolveBiggestLoss(playedMatches, team))
+                .attendance(resolveAttendanceMilestone(playedMatches, team))
                 .build();
     }
 
@@ -90,12 +121,36 @@ public class LeagueMilestoneService {
         return resolveResultCandidate(candidates);
     }
 
+    private LeagueMilestonesDTO.MatchMilestoneDTO resolveBiggestWin(List<Match> matches, Team team) {
+        List<ResultCandidate> candidates = new ArrayList<>();
+        for (Match match : matches) {
+            if (sameTeam(match.getHomeTeam(), team) && match.getHomeGoals() > match.getAwayGoals()) {
+                candidates.add(candidateFor(match, match.getHomeTeam(), match.getAwayTeam(), match.getHomeGoals(), match.getAwayGoals()));
+            } else if (sameTeam(match.getAwayTeam(), team) && match.getAwayGoals() > match.getHomeGoals()) {
+                candidates.add(candidateFor(match, match.getAwayTeam(), match.getHomeTeam(), match.getAwayGoals(), match.getHomeGoals()));
+            }
+        }
+        return resolveResultCandidate(candidates);
+    }
+
     private LeagueMilestonesDTO.MatchMilestoneDTO resolveBiggestLoss(List<Match> matches) {
         List<ResultCandidate> candidates = new ArrayList<>();
         for (Match match : matches) {
             if (match.getHomeGoals() < match.getAwayGoals()) {
                 candidates.add(candidateFor(match, match.getHomeTeam(), match.getAwayTeam(), match.getHomeGoals(), match.getAwayGoals()));
             } else if (match.getAwayGoals() < match.getHomeGoals()) {
+                candidates.add(candidateFor(match, match.getAwayTeam(), match.getHomeTeam(), match.getAwayGoals(), match.getHomeGoals()));
+            }
+        }
+        return resolveResultCandidate(candidates);
+    }
+
+    private LeagueMilestonesDTO.MatchMilestoneDTO resolveBiggestLoss(List<Match> matches, Team team) {
+        List<ResultCandidate> candidates = new ArrayList<>();
+        for (Match match : matches) {
+            if (sameTeam(match.getHomeTeam(), team) && match.getHomeGoals() < match.getAwayGoals()) {
+                candidates.add(candidateFor(match, match.getHomeTeam(), match.getAwayTeam(), match.getHomeGoals(), match.getAwayGoals()));
+            } else if (sameTeam(match.getAwayTeam(), team) && match.getAwayGoals() < match.getHomeGoals()) {
                 candidates.add(candidateFor(match, match.getAwayTeam(), match.getHomeTeam(), match.getAwayGoals(), match.getHomeGoals()));
             }
         }
@@ -121,13 +176,24 @@ public class LeagueMilestoneService {
                 .orElse(null);
     }
 
-    private LeagueMilestonesDTO.AttendanceMilestoneDTO resolveAttendanceMilestone(List<Match> matches) {
-        List<Match> withAttendance = matches.stream()
+    private LeagueMilestonesDTO.AttendanceMilestoneDTO resolveAttendanceMilestone(List<Match> matches, Team focalTeam) {
+        List<Match> attendanceScope = focalTeam == null
+                ? matches
+                : matches.stream()
+                .filter(match -> sameTeam(match.getHomeTeam(), focalTeam))
+                .toList();
+        if (attendanceScope.isEmpty()) {
+            attendanceScope = matches;
+        }
+
+        List<Match> withAttendance = attendanceScope.stream()
                 .filter(match -> match.getAttendance() != null && match.getAttendance() > 0)
                 .toList();
         if (withAttendance.isEmpty()) {
             return LeagueMilestonesDTO.AttendanceMilestoneDTO.builder()
-                    .insight("Crowd data will appear once played fixtures start filing gates.")
+                    .insight(focalTeam != null
+                            ? "Home crowd data will appear once played fixtures start filing gates."
+                            : "Crowd data will appear once played fixtures start filing gates.")
                     .build();
         }
 
@@ -145,7 +211,7 @@ public class LeagueMilestoneService {
 
         double overall = withAttendance.stream().mapToInt(match -> match.getAttendance()).average().orElse(0.0);
         double glamourAverage = withAttendance.stream()
-                .filter(match -> resolveReputation(match.getAwayTeam()) >= 60.0)
+                .filter(match -> resolveReputation(resolveAttendanceOpponent(match, focalTeam)) >= 60.0)
                 .mapToInt(match -> match.getAttendance())
                 .average()
                 .orElse(overall);
@@ -203,6 +269,29 @@ public class LeagueMilestoneService {
 
     private double resolveReputation(Team team) {
         return team != null && team.getReputation() != null ? team.getReputation() : 50.0;
+    }
+
+    private Team resolveAttendanceOpponent(Match match, Team focalTeam) {
+        if (focalTeam == null) {
+            return match.getAwayTeam();
+        }
+        if (sameTeam(match.getHomeTeam(), focalTeam)) {
+            return match.getAwayTeam();
+        }
+        if (sameTeam(match.getAwayTeam(), focalTeam)) {
+            return match.getHomeTeam();
+        }
+        return match.getAwayTeam();
+    }
+
+    private boolean sameTeam(Team first, Team second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        if (first.getId() != null && second.getId() != null) {
+            return Objects.equals(first.getId(), second.getId());
+        }
+        return Objects.equals(safe(first.getName()), safe(second.getName()));
     }
 
     private String matchLabel(Match match) {

@@ -3,6 +3,9 @@ package org.example.footballmanager.service;
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.dto.MatchEventFlatDTO;
 import org.example.footballmanager.model.Match;
+import org.example.footballmanager.model.MatchPlayerStats;
+import org.example.footballmanager.model.Player;
+import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +22,7 @@ public class MatchReportService {
 
     private final MatchRepository matchRepository;
     private final MatchDetailService matchDetailService;
+    private final MatchPlayerStatsRepository matchPlayerStatsRepository;
 
     public Map<String, Object> buildMatchReport(Long matchId) {
         Match match = matchRepository.findById(matchId)
@@ -67,7 +71,42 @@ public class MatchReportService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("matchId", matchId);
         payload.put("headline", headline);
+        payload.put("manOfTheMatch", resolveManOfTheMatch(matchId));
         payload.put("report", report);
+        return payload;
+    }
+
+    private Map<String, Object> resolveManOfTheMatch(Long matchId) {
+        return matchPlayerStatsRepository.findByMatchId(matchId).stream()
+                .filter(stats -> stats.getPlayer() != null)
+                .max(Comparator
+                        .comparingInt(MatchPlayerStats::getRating)
+                        .thenComparingInt(MatchPlayerStats::getGoals)
+                        .thenComparingInt(MatchPlayerStats::getAssists)
+                        .thenComparingInt(MatchPlayerStats::getSaves)
+                        .thenComparingInt(MatchPlayerStats::getInterceptions)
+                        .thenComparingInt(MatchPlayerStats::getMinutesPlayed)
+                        .thenComparing(stats -> stats.isCleanSheet() ? 1 : 0))
+                .map(this::toManOfTheMatchPayload)
+                .orElse(null);
+    }
+
+    private Map<String, Object> toManOfTheMatchPayload(MatchPlayerStats stats) {
+        Player player = stats.getPlayer();
+        double rating10 = Math.round((stats.getRating() / 10.0) * 10.0) / 10.0;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("playerId", player.getId());
+        payload.put("playerName", safe(player.getName()));
+        payload.put("teamId", player.getTeam() != null ? player.getTeam().getId() : null);
+        payload.put("teamName", player.getTeam() != null ? safe(player.getTeam().getName()) : "Unknown");
+        payload.put("rating", stats.getRating());
+        payload.put("rating10", rating10);
+        payload.put("goals", stats.getGoals());
+        payload.put("assists", stats.getAssists());
+        payload.put("minutesPlayed", stats.getMinutesPlayed());
+        payload.put("saves", stats.getSaves());
+        payload.put("interceptions", stats.getInterceptions());
+        payload.put("cleanSheet", stats.isCleanSheet());
         return payload;
     }
 
