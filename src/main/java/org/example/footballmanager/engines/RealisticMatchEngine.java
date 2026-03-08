@@ -56,7 +56,7 @@ public class RealisticMatchEngine {
     private static final double LOOSE_BALL_PICKUP_RADIUS = 1.0; // TIGHTER PICKUP
     private static final double LOOSE_BALL_STEP = 9.0;
     private static final double SUPPORT_STEP = 6.0;
-    private static final double SHOT_TRIGGER_DISTANCE = 23.0;
+    private static final double SHOT_TRIGGER_DISTANCE = 21.0;
     private static final double CARRIER_CONTROL_RADIUS = 0.5; // VERY TIGHT CONTROL
     private static final double PENDING_RECEIVER_LOCK_DISTANCE = 20.0;
     private static final double RECEIVER_PRIORITY_MARGIN = 2.2;
@@ -511,12 +511,15 @@ public class RealisticMatchEngine {
             double goalDistance = estimateDistanceToGoal(rt, dribbler, ballTeam);
             List<Player> refreshedDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
             boolean cleanBreak = refreshedDefenders.isEmpty()
-                    || (refreshedDefenders.size() == 1 && goalDistance <= 18.0);
-            double immediateShotChance = goalDistance <= 16.0 ? 0.58 : 0.30;
+                    || (refreshedDefenders.size() == 1 && goalDistance <= 16.0);
+            double immediateShotChance = goalDistance <= 12.0 ? 0.60
+                    : goalDistance <= 16.0 ? 0.26
+                    : 0.0;
             if (goalDistance <= SHOT_TRIGGER_DISTANCE &&
                     cleanBreak &&
                     dribbler.getPosition() != Position.DEF &&
                     dribbler.getPosition() != Position.GK &&
+                    immediateShotChance > 0.0 &&
                     random.nextDouble() < immediateShotChance) {
                 handleShot(rt, match, minute, dribbler, decision, ballTeam);
             }
@@ -1523,6 +1526,15 @@ public class RealisticMatchEngine {
             return false;
         }
         if (!isDangerousAttackingPosition(rt, shooter, ballTeam)) {
+            return false;
+        }
+
+        double goalDistance = estimateDistanceToGoal(rt, shooter, ballTeam);
+        if (goalDistance > SHOT_TRIGGER_DISTANCE) {
+            return false;
+        }
+        List<Player> nearbyDefenders = getNearbyDefenders(rt, shooter, ballTeam);
+        if (goalDistance > 16.0 && nearbyDefenders.size() > 1) {
             return false;
         }
 

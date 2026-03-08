@@ -597,6 +597,15 @@ button.training-week-item {
     gap: 14px;
 }
 
+.fm-page-toolbar > *,
+.fm-club-hero-main > *,
+.fm-panel-head > *,
+.fm-grid-top > *,
+.fm-grid-bottom > *,
+.fm-team-layout > * {
+    min-width: 0;
+}
+
 .fm-page-toolbar,
 .fm-club-hero-main,
 .fm-panel-head,
@@ -678,6 +687,9 @@ button.training-week-item {
 }
 
 .fm-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid rgba(143, 211, 255, 0.24);
     background: rgba(143, 211, 255, 0.12);
     color: #eef4ff;
@@ -685,6 +697,10 @@ button.training-week-item {
     border-radius: 12px;
     cursor: pointer;
     font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    min-width: 0;
 }
 
 .fm-action-btn.secondary {
@@ -1070,6 +1086,88 @@ button.training-week-item {
 .club-profile-detail-row strong {
     color: #eef4ff;
     text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.fm-match-scoreline {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 16px;
+}
+
+.fm-match-score-team {
+    flex: 1 1 180px;
+    min-width: 0;
+    text-align: center;
+}
+
+.fm-match-score-name {
+    overflow-wrap: anywhere;
+}
+
+.fm-match-score-separator {
+    align-self: center;
+}
+
+.fm-match-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.fm-match-action-btn {
+    min-width: 140px;
+}
+
+.top-lists {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.top-list-panel {
+    min-width: 0;
+}
+
+.top-list-entry {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin: 6px 0;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.top-list-rank {
+    font-weight: 700;
+    min-width: 30px;
+    flex: 0 0 auto;
+}
+
+.top-list-player {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    padding-left: 10px;
+    overflow-wrap: anywhere;
+}
+
+.top-list-player small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.top-list-value {
+    font-weight: 700;
+    min-width: 74px;
+    text-align: right;
+    flex: 0 0 auto;
 }
 
 .fm-match-report-shell {
@@ -2319,6 +2417,42 @@ body {
         text-align: left;
     }
 
+    .fm-match-scoreline {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .fm-match-score-team {
+        flex-basis: 100%;
+    }
+
+    .fm-match-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .fm-match-action-btn {
+        width: 100%;
+    }
+
+    .top-lists {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .top-list-entry {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .top-list-value {
+        width: 100%;
+        min-width: 0;
+        text-align: left;
+        padding-left: 40px;
+    }
+
     .fm-match-report-shell {
         padding: 14px;
     }
@@ -2364,5 +2498,12 @@ body {
     .finance-flow-card strong,
     .fm-dashboard-shell .stat-value {
         font-size: 1.18rem;
+    }
+
+    .fm-panel,
+    .team-card,
+    .manager-card {
+        padding-left: 14px;
+        padding-right: 14px;
     }
 }

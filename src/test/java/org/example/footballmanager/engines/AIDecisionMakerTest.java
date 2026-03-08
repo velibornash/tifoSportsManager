@@ -59,6 +59,28 @@ class AIDecisionMakerTest {
         assertEquals(AIDecisionMaker.ActionType.SHOT, decision.getAction());
     }
 
+    @Test
+    void prefersProgressivePassFromMediumRangeInsteadOfRushedShot() {
+        Player carrier = player(8L, Position.MID, 16, 13, 15, 14);
+        Player runner = player(11L, Position.ATT, 11, 14, 13, 13);
+        Player defender = player(21L, Position.DEF, 7, 7, 8, 12);
+
+        MatchRuntime rt = runtime(
+                List.of(carrier, runner),
+                List.of(defender),
+                List.of(
+                        new PlayerPositionDTO(8, "HOME", 79.0, 50.0, 0, 0),
+                        new PlayerPositionDTO(11, "HOME", 87.0, 46.0, 0, 0),
+                        new PlayerPositionDTO(21, "AWAY", 90.0, 71.0, 0, 0)
+                )
+        );
+
+        AIDecisionMaker.Decision decision = decisionMaker.makeDecision(carrier, rt, new Match(), 63);
+
+        assertEquals(AIDecisionMaker.ActionType.PASS, decision.getAction());
+        assertEquals(runner, decision.getTargetPlayer());
+    }
+
     private MatchRuntime runtime(List<Player> homePlayers, List<Player> awayPlayers, List<PlayerPositionDTO> positions) {
         MatchRuntime rt = new MatchRuntime();
         rt.homePlayers = homePlayers;

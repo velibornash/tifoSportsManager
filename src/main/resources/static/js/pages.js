@@ -1200,14 +1200,14 @@ import { createCommunityFeature } from './pages/features/community.js';
             <div class="team-card">
                 <h2 style="text-align:center;">Match Details</h2>
 
-                <div style="display:flex; justify-content:space-around; font-size:1.3em; margin:20px 0; font-weight:bold;">
-                    <div style="text-align:center;">
-                        <div>${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${escapeHtml(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
+                <div class="fm-match-scoreline" style="font-size:1.3em; margin:20px 0; font-weight:bold;">
+                    <div class="fm-match-score-team">
+                        <div class="fm-match-score-name">${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${escapeHtml(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
                         <div>${homeGoals}</div>
                     </div>
-                    <div style="align-self:center; font-size:1.6em;">-</div>
-                    <div style="text-align:center;">
-                        <div>${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${escapeHtml(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
+                    <div class="fm-match-score-separator" style="font-size:1.6em;">-</div>
+                    <div class="fm-match-score-team">
+                        <div class="fm-match-score-name">${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${escapeHtml(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
                         <div>${awayGoals}</div>
                     </div>
                 </div>
@@ -1216,12 +1216,12 @@ import { createCommunityFeature } from './pages/features/community.js';
                     &#128197; ${formattedDate}
                 </div>
 
-                <div id="match-buttons-container" style="display:flex; justify-content:center; gap:12px; margin-bottom:25px; flex-wrap:wrap;">
-                    <button id="view-lineups" style="padding:8px 16px; font-weight:bold;">Lineups</button>
-                    <button id="view-stats" style="padding:8px 16px; font-weight:bold;">Stats</button>
-                    <button id="view-goals" style="padding:8px 16px; font-weight:bold;">Goals</button>
-                    <button id="view-replay" style="padding:8px 16px; font-weight:bold;">Replay</button>
-                    <button id="view-report" style="padding:8px 16px; font-weight:bold;">Match Report</button>
+                <div id="match-buttons-container" class="fm-match-actions">
+                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn">Lineups</button>
+                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn">Stats</button>
+                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn">Goals</button>
+                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn">Replay</button>
+                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn">Match Report</button>
                 </div>
 
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
@@ -3486,10 +3486,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                 <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                 <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">League Stats - Top Lists</h2>
 
-                <div class="top-lists" style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;">
+                <div class="top-lists">
 
                     ${mode !== "assists" ? `
-                    <div class="top-scorers" style="min-width: 340px; flex: 1;">
+                    <div class="top-scorers top-list-panel">
                         <h3 style="text-align: center; color: #ffd700; margin-bottom: 15px;">Top Scorers</h3>
                         <ul style="list-style: none; padding: 0; margin: 0;">` : ""}`;
 
@@ -3498,16 +3498,15 @@ import { createCommunityFeature } from './pages/features/community.js';
                     const rankColor = i < 3 ? '#ffd700' : '#aaa';
                     const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
                     html += `
-                    <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
-                               transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
-                        <span style="flex: 1; text-align: left; padding-left: 10px;">
+                    <li class="top-list-entry" style="background: ${bgColor};">
+                        <span class="top-list-rank" style="color: ${rankColor};">${i+1}.</span>
+                        <span class="top-list-player">
                             ${playerIdByKey.get(`${s.teamName}|${s.playerName}`) && teamIdByName.get(s.teamName)
                                 ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${s.teamName}|${s.playerName}`)}, ${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.playerName}</span>`
                                 : s.playerName}
                             <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
-                        <span style="font-weight: bold; color: #ff7582; min-width: 60px; text-align: right;">
+                        <span class="top-list-value" style="color: #ff7582;">
                             ${s.goals} goals
                         </span>
                     </li>`;
@@ -3519,7 +3518,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             }
 
             if (mode !== "scorers") {
-                html += `<div class="top-assists" style="min-width: 340px; flex: 1;">
+                html += `<div class="top-assists top-list-panel">
                         <h3 style="text-align: center; color: #9d4edd; margin-bottom: 15px;">Top Assists</h3>
                         <ul style="list-style: none; padding: 0; margin: 0;">`;
             }
@@ -3529,16 +3528,15 @@ import { createCommunityFeature } from './pages/features/community.js';
                     const rankColor = i < 3 ? '#9d4edd' : '#aaa';
                     const bgColor = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
                     html += `
-                    <li style="padding: 12px 15px; background: ${bgColor}; border-radius: 8px; margin: 6px 0;
-                               transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
-                        <span style="flex: 1; text-align: left; padding-left: 10px;">
+                    <li class="top-list-entry" style="background: ${bgColor};">
+                        <span class="top-list-rank" style="color: ${rankColor};">${i+1}.</span>
+                        <span class="top-list-player">
                             ${playerIdByKey.get(`${a.teamName}|${a.playerName}`) && teamIdByName.get(a.teamName)
                                 ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${a.teamName}|${a.playerName}`)}, ${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.playerName}</span>`
                                 : a.playerName}
                             <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
-                        <span style="font-weight: bold; color: #4fc3f7; min-width: 60px; text-align: right;">
+                        <span class="top-list-value" style="color: #4fc3f7;">
                             ${a.assists} assists
                         </span>
                     </li>`;
