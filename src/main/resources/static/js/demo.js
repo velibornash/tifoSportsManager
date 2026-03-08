@@ -92,7 +92,7 @@ async function startRealisticDemoTest() {
         const matchId = data.matchId;
         if (!matchId) throw new Error('Missing matchId in response');
 
-        window.location.href = `/realisticDemo.html?matchId=${matchId}`;
+        window.location.href = `/realisticDemo.html?matchId=${matchId}&mode=live`;
     } catch (error) {
         console.error('Failed to start realistic demo:', error);
         alert('Failed to start realistic match simulation.');

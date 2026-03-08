@@ -63,6 +63,7 @@ public class RealisticMatchEngine {
     private static final int MAX_RETREAT_TICKS = 8;
     private static final double RETREAT_FORCE = 12.0;
     private static final double DEEP_RETREAT_FORCE = 25.0;
+    private static final double ONSIDE_BUFFER = 1.8;
     private static final double CENTER_BACK_ENGAGE_DISTANCE = 16.0;
     private static final int SHOT_WINDOW_TICKS = 3;
     private static final double DUEL_FOUL_CHANCE = 0.08;
@@ -1214,8 +1215,8 @@ public class RealisticMatchEngine {
             }
             case WNG -> {
                 double wingY = upperLane ? 8.0 : 92.0;
-                double baseX = home ? (inPossession ? 75.0 : 55.0) : (inPossession ? 25.0 : 45.0);
-                double advance = inPossession ? (home ? 20.0 : -20.0) : (home ? -5.0 : 5.0);
+                double baseX = home ? (inPossession ? 75.0 : 55.0) : (inPossession ? 31.0 : 47.0);
+                double advance = inPossession ? (home ? 20.0 : -12.0) : (home ? -5.0 : 4.0);
                 
                 targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.40 : 0.25) + advance;
                 targetY = wingY + (rt.ball.getY() - wingY) * (inPossession ? 0.15 : 0.18);
@@ -1223,8 +1224,8 @@ public class RealisticMatchEngine {
             }
             case ATT -> {
                 double laneY = upperLane ? 40.0 : 60.0;
-                double baseX = home ? (inPossession ? 85.0 : 65.0) : (inPossession ? 15.0 : 35.0);
-                double offensivePush = inPossession ? (home ? 14.0 : -14.0) : 0;
+                double baseX = home ? (inPossession ? 85.0 : 65.0) : (inPossession ? 23.0 : 39.0);
+                double offensivePush = inPossession ? (home ? 14.0 : -9.0) : 0;
                 
                 targetX = baseX + (rt.ball.getX() - baseX) * (inPossession ? 0.35 : 0.20) + offensivePush;
                 targetY = laneY + (rt.ball.getY() - laneY) * 0.25;
@@ -1332,9 +1333,11 @@ public class RealisticMatchEngine {
                 double directionalPush = ((laneDistanceX - xGap) / 2.5) + 0.6;
                 if (first.getPosition() == Position.ATT || first.getPosition() == Position.WNG) {
                     a.setX(clamp(a.getX() + ("HOME".equals(a.getTeam()) ? directionalPush : -directionalPush), MIN_X, MAX_X));
+                    keepAttackerOnside(rt, a);
                 }
                 if (second.getPosition() == Position.ATT || second.getPosition() == Position.WNG) {
                     b.setX(clamp(b.getX() + ("HOME".equals(b.getTeam()) ? directionalPush : -directionalPush), MIN_X, MAX_X));
+                    keepAttackerOnside(rt, b);
                 }
             }
         }
@@ -1651,7 +1654,8 @@ public class RealisticMatchEngine {
     }
 
     private double applyOffsideTolerance(MatchRuntime rt, PlayerPositionDTO pos, double targetX, boolean homeTeam) {
-        if (rt.currentCarrier == null || !Objects.equals(rt.currentCarrier.getTeam(), pos.getTeam())) {
+        String possessionTeam = resolvePossessionTeam(rt);
+        if (!Objects.equals(possessionTeam, pos.getTeam())) {
             pos.setOffsideTicksRemaining(0);
             pos.setRetreatTicksRemaining(0);
             return targetX;
@@ -1659,11 +1663,12 @@ public class RealisticMatchEngine {
 
         double line = calculateOffsideLine(rt, pos.getTeam());
         double tolerance = 1.0;
+        double safeLine = homeTeam ? line - ONSIDE_BUFFER : line + ONSIDE_BUFFER;
         boolean isOffside = homeTeam ? pos.getX() > line + tolerance : pos.getX() < line - tolerance;
         if (!isOffside) {
             pos.setOffsideTicksRemaining(0);
             pos.setRetreatTicksRemaining(0);
-            return targetX;
+            return homeTeam ? Math.min(targetX, safeLine) : Math.max(targetX, safeLine);
         }
 
         if (pos.getOffsideTicksRemaining() >= 2) {
@@ -1674,11 +1679,32 @@ public class RealisticMatchEngine {
             double effectiveForce = RETREAT_FORCE + DEEP_RETREAT_FORCE * progress;
             targetX = homeTeam ? (line - effectiveForce) : (line + effectiveForce);
         } else {
-            targetX = homeTeam ? Math.min(targetX, line + 0.8) : Math.max(targetX, line - 0.8);
+            targetX = homeTeam ? Math.min(targetX, safeLine) : Math.max(targetX, safeLine);
         }
 
         pos.setOffsideTicksRemaining(pos.getOffsideTicksRemaining() + 1);
         return targetX;
+    }
+
+    private String resolvePossessionTeam(MatchRuntime rt) {
+        if (rt.currentCarrier != null && rt.currentCarrier.getTeam() != null) {
+            return rt.currentCarrier.getTeam();
+        }
+        if (rt.pendingPassTeam != null) {
+            return rt.pendingPassTeam;
+        }
+        return rt.lastTouchTeam;
+    }
+
+    private void keepAttackerOnside(MatchRuntime rt, PlayerPositionDTO pos) {
+        if (pos == null || !Objects.equals(resolvePossessionTeam(rt), pos.getTeam())) {
+            return;
+        }
+
+        double line = calculateOffsideLine(rt, pos.getTeam());
+        double safeX = "HOME".equals(pos.getTeam()) ? line - ONSIDE_BUFFER : line + ONSIDE_BUFFER;
+        double clamped = "HOME".equals(pos.getTeam()) ? Math.min(pos.getX(), safeX) : Math.max(pos.getX(), safeX);
+        pos.setX(clamp(clamped, MIN_X, MAX_X));
     }
 
     private Player resolveAssistant(MatchRuntime rt, Player scorer, String scoringTeam) {

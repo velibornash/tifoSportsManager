@@ -27,6 +27,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MatchEngine {
 
+    private record QuickSimScore(int homeGoals, int awayGoals) {}
+
     private final TacticsAdjustmentService tacticsAdjustmentService;
     private final MatchRepository matchRepository;
     private final MatchFixtureRepository matchFixtureRepository;
@@ -49,25 +51,35 @@ public class MatchEngine {
     public Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
     }
+
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
         Lineup template = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId()).orElse(null);
+        String resolvedFormation = Optional.ofNullable(template)
+                .map(Lineup::getFormation)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse(formationName);
+        String resolvedStyle = Optional.ofNullable(template)
+                .map(Lineup::getStyle)
+                .orElse("BALANCED");
         List<Long> preferredStarterIds = Optional.ofNullable(template)
                 .map(Lineup::getOrderedStarterIds)
                 .orElse(List.of());
         List<Long> preferredBenchIds = Optional.ofNullable(template)
                 .map(Lineup::getOrderedBenchIds)
                 .orElse(List.of());
-        return createLineupForMatch(team, players, formationName, preferredStarterIds, preferredBenchIds);
+        return createLineupForMatch(team, players, resolvedFormation, resolvedStyle, preferredStarterIds, preferredBenchIds);
     }
 
     private Lineup createLineupForMatch(Team team,
                                         List<Player> players,
                                         String formationName,
+                                        String styleName,
                                         List<Long> preferredStarterIds,
                                         List<Long> preferredBenchIds) {
         Lineup lineup = new Lineup();
         lineup.setTeam(team);
         lineup.setFormation(formationName);
+        lineup.setStyle(normalizeStyle(styleName));
 
         List<Player> eligiblePlayers = players.stream()
                 .filter(p -> !p.isInjured())
@@ -77,18 +89,7 @@ public class MatchEngine {
         Map<Long, Player> byId = basePool.stream()
                 .collect(Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
 
-        List<Player> orderedStarters = new ArrayList<>();
-        if (preferredStarterIds != null && !preferredStarterIds.isEmpty()) {
-            preferredStarterIds.stream()
-                    .map(byId::get)
-                    .filter(Objects::nonNull)
-                    .forEach(orderedStarters::add);
-        }
-        basePool.stream()
-                .filter(p -> orderedStarters.stream().noneMatch(op -> Objects.equals(op.getId(), p.getId())))
-                .forEach(orderedStarters::add);
-
-        List<Player> managedStarting = orderedStarters.subList(0, Math.min(11, orderedStarters.size())).stream()
+        List<Player> managedStarting = selectStartingPlayers(basePool, preferredStarterIds).stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
@@ -114,6 +115,59 @@ public class MatchEngine {
         lineup.setBenchOrderFromIds(managedSubs.stream().map(Player::getId).toList());
         return lineupRepository.save(lineup);
     }
+
+    static List<Player> selectStartingPlayers(List<Player> basePool, List<Long> preferredStarterIds) {
+        if (basePool == null || basePool.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Player> byId = basePool.stream()
+                .collect(Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
+
+        List<Player> orderedCandidates = new ArrayList<>();
+        if (preferredStarterIds != null && !preferredStarterIds.isEmpty()) {
+            preferredStarterIds.stream()
+                    .map(byId::get)
+                    .filter(Objects::nonNull)
+                    .filter(player -> orderedCandidates.stream().noneMatch(existing -> Objects.equals(existing.getId(), player.getId())))
+                    .forEach(orderedCandidates::add);
+        }
+        basePool.stream()
+                .filter(player -> orderedCandidates.stream().noneMatch(existing -> Objects.equals(existing.getId(), player.getId())))
+                .forEach(orderedCandidates::add);
+
+        Player primaryGoalkeeper = orderedCandidates.stream()
+                .filter(player -> player.getPosition() == Position.GK)
+                .findFirst()
+                .orElse(null);
+
+        List<Player> starters = new ArrayList<>();
+        if (primaryGoalkeeper != null) {
+            starters.add(primaryGoalkeeper);
+        }
+
+        orderedCandidates.stream()
+                .filter(player -> primaryGoalkeeper == null || !Objects.equals(player.getId(), primaryGoalkeeper.getId()))
+                .filter(player -> player.getPosition() != Position.GK)
+                .forEach(player -> {
+                    if (starters.size() < 11) {
+                        starters.add(player);
+                    }
+                });
+
+        if (starters.size() < 11) {
+            orderedCandidates.stream()
+                    .filter(player -> starters.stream().noneMatch(existing -> Objects.equals(existing.getId(), player.getId())))
+                    .forEach(player -> {
+                        if (starters.size() < 11) {
+                            starters.add(player);
+                        }
+                    });
+        }
+
+        return List.copyOf(starters.subList(0, Math.min(11, starters.size())));
+    }
+
     public Match createMatch(Team userTeam) {
         GameClock clock = seasonService.getOrCreateClock();
         int seasonYear = seasonService.getActiveSeasonYear();
@@ -252,24 +306,10 @@ public class MatchEngine {
         return false;
     }
     public Tactics createHomeTactics(Match match) {
-        Tactics tactics = new Tactics();
-        Formation formation = new Formation();
-        formation.setName(match.getHomeLineup().getFormation() != null ? match.getHomeLineup().getFormation() : "4-4-2");
-        formation.setOffenseModifier(1.05);
-        formation.setDefenseModifier(0.95);
-        formation.setPossessionModifier(1.0);
-        tactics.setFormation(formation);
-        return tactics;
+        return createTacticsFromLineup(match.getHomeLineup(), "4-4-2");
     }
     public Tactics createAwayTactics(Match match) {
-        Tactics tactics = new Tactics();
-        Formation formation = new Formation();
-        formation.setName(match.getAwayLineup().getFormation() != null ? match.getAwayLineup().getFormation() : "4-2-3-1");
-        formation.setOffenseModifier(1.1);
-        formation.setDefenseModifier(0.98);
-        formation.setPossessionModifier(1.05);
-        tactics.setFormation(formation);
-        return tactics;
+        return createTacticsFromLineup(match.getAwayLineup(), "4-2-3-1");
     }
     public MatchRuntime simulateFullMatch(Match match) {
         MatchRuntime rt = new MatchRuntime();
@@ -1086,8 +1126,22 @@ public class MatchEngine {
                 if (isUserFixture) continue;
             }
 
-            int homeGoals = random.nextInt(6);
-            int awayGoals = random.nextInt(6);
+            List<Player> homePlayers = playerRepository.findByTeam(home);
+            List<Player> awayPlayers = playerRepository.findByTeam(away);
+            if (homePlayers.isEmpty()) {
+                playerFactory.createRandomTeamPlayers(home.getName(), home);
+                homePlayers = playerRepository.findByTeam(home);
+            }
+            if (awayPlayers.isEmpty()) {
+                playerFactory.createRandomTeamPlayers(away.getName(), away);
+                awayPlayers = playerRepository.findByTeam(away);
+            }
+            Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
+            Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
+            QuickSimScore quickSimScore = simulateQuickScore(homeLineup, awayLineup);
+            int homeGoals = quickSimScore.homeGoals();
+            int awayGoals = quickSimScore.awayGoals();
+
             Match simulatedMatch = new Match();
             simulatedMatch.setHomeTeam(home);
             simulatedMatch.setAwayTeam(away);
@@ -1101,23 +1155,12 @@ public class MatchEngine {
             simulatedMatch.setPlayed(true);
             simulatedMatch.setStarted(true);
 
-            List<Player> homePlayers = playerRepository.findByTeam(home);
-            List<Player> awayPlayers = playerRepository.findByTeam(away);
-            if (homePlayers.isEmpty()) {
-                playerFactory.createRandomTeamPlayers(home.getName(), home);
-                homePlayers = playerRepository.findByTeam(home);
-            }
-            if (awayPlayers.isEmpty()) {
-                playerFactory.createRandomTeamPlayers(away.getName(), away);
-                awayPlayers = playerRepository.findByTeam(away);
-            }
-
-            Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
-            Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
             simulatedMatch.setHomeLineup(homeLineup);
             simulatedMatch.setAwayLineup(awayLineup);
-            simulatedMatch.setHomeFormation("4-4-2");
-            simulatedMatch.setAwayFormation("4-4-2");
+            simulatedMatch.setHomeFormation(homeLineup.getFormation());
+            simulatedMatch.setAwayFormation(awayLineup.getFormation());
+            simulatedMatch.setHomeGoals(homeGoals);
+            simulatedMatch.setAwayGoals(awayGoals);
             simulatedMatch = matchRepository.save(simulatedMatch);
             fixture.setPlayed(true);
             fixture.setPlayedMatch(simulatedMatch);
@@ -1128,8 +1171,8 @@ public class MatchEngine {
             List<YellowCardEvent> yellows = matchEventRepository.findYellowCardsByMatch(simulatedMatch);
             List<RedCardEvent> reds = matchEventRepository.findRedCardsByMatch(simulatedMatch);
 
-            List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getStartingPlayers()), goals);
-            List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getStartingPlayers()), goals);
+            List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getOrderedStartingPlayers()), goals);
+            List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getOrderedStartingPlayers()), goals);
             Map<Long, Integer> defaultMinutes = new HashMap<>();
             ratedHome.forEach(p -> defaultMinutes.put(p.getId(), 90));
             ratedAway.forEach(p -> defaultMinutes.put(p.getId(), 90));
@@ -1217,16 +1260,39 @@ public class MatchEngine {
         match.setHomeTeam(home);
         match.setAwayTeam(away);
         match.setMatchDate(clock.getCurrentDate());
+        match.setCompetition(sc.getCompetition());
+        match.setSeasonYear(sc.getSeasonYear());
 
-        Random rnd = new Random();
-        int homeGoals = rnd.nextInt(6);
-        int awayGoals = rnd.nextInt(6);
+        List<Player> homePlayers = ensureTeamPlayers(home);
+        List<Player> awayPlayers = ensureTeamPlayers(away);
+        Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
+        Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
+        QuickSimScore quickSimScore = simulateQuickScore(homeLineup, awayLineup);
+        int homeGoals = quickSimScore.homeGoals();
+        int awayGoals = quickSimScore.awayGoals();
 
         match.setHomeGoals(homeGoals);
         match.setAwayGoals(awayGoals);
+        match.setPlayed(true);
+        match.setStarted(true);
+        match.setHomeLineup(homeLineup);
+        match.setAwayLineup(awayLineup);
+        match.setHomeFormation(homeLineup.getFormation());
+        match.setAwayFormation(awayLineup.getFormation());
 
-        matchRepository.save(match);
+        match = matchRepository.save(match);
         generateSimulatedMatchEvents(match, homeGoals, awayGoals);
+
+        List<GoalEvent> goals = matchEventRepository.findGoalsByMatch(match);
+        List<YellowCardEvent> yellows = matchEventRepository.findYellowCardsByMatch(match);
+        List<RedCardEvent> reds = matchEventRepository.findRedCardsByMatch(match);
+        List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getOrderedStartingPlayers()), goals);
+        List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getOrderedStartingPlayers()), goals);
+        Map<Long, Integer> defaultMinutes = new HashMap<>();
+        ratedHome.forEach(player -> defaultMinutes.put(player.getId(), 90));
+        ratedAway.forEach(player -> defaultMinutes.put(player.getId(), 90));
+        matchStatisticEngine.savePlayerStats(match, ratedHome, goals, yellows, reds, defaultMinutes);
+        matchStatisticEngine.savePlayerStats(match, ratedAway, goals, yellows, reds, defaultMinutes);
 
         CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
                 .orElseThrow(() -> new RuntimeException("Home team is not in league: " + home.getName()));
@@ -1267,8 +1333,12 @@ public class MatchEngine {
         Team home = simulatedMatch.getHomeTeam();
         Team away = simulatedMatch.getAwayTeam();
 
-        List<Player> homePlayers = playerRepository.findByTeam(home);
-        List<Player> awayPlayers = playerRepository.findByTeam(away);
+        List<Player> homePlayers = simulatedMatch.getHomeLineup() != null && !simulatedMatch.getHomeLineup().getOrderedStartingPlayers().isEmpty()
+                ? new ArrayList<>(simulatedMatch.getHomeLineup().getOrderedStartingPlayers())
+                : ensureTeamPlayers(home);
+        List<Player> awayPlayers = simulatedMatch.getAwayLineup() != null && !simulatedMatch.getAwayLineup().getOrderedStartingPlayers().isEmpty()
+                ? new ArrayList<>(simulatedMatch.getAwayLineup().getOrderedStartingPlayers())
+                : ensureTeamPlayers(away);
 
         if (homePlayers.isEmpty() || awayPlayers.isEmpty()) {
             log.warn("No players for event generation - team: {}", home.getName());
@@ -1324,5 +1394,199 @@ public class MatchEngine {
 
         // 3. Generate additional statistics (shots, corners, cards...)
         matchStatisticEngine.generateFakeAdditionalStats(simulatedMatch, homePlayers, awayPlayers, homeGoals, awayGoals, rnd);
+    }
+
+    private List<Player> ensureTeamPlayers(Team team) {
+        List<Player> players = playerRepository.findByTeam(team);
+        if (!players.isEmpty()) {
+            return players;
+        }
+        playerFactory.createRandomTeamPlayers(team.getName(), team);
+        return playerRepository.findByTeam(team);
+    }
+
+    private QuickSimScore simulateQuickScore(Lineup homeLineup, Lineup awayLineup) {
+        Tactics homeTactics = createTacticsFromLineup(homeLineup, "4-4-2");
+        Tactics awayTactics = createTacticsFromLineup(awayLineup, "4-4-2");
+
+        double homeStrength = TeamStrengthCalculator.calculateTeamStrength(
+                homeLineup.getOrderedStartingPlayers(),
+                homeTactics.getFormation(),
+                homeTactics,
+                true
+        );
+        double awayStrength = TeamStrengthCalculator.calculateTeamStrength(
+                awayLineup.getOrderedStartingPlayers(),
+                awayTactics.getFormation(),
+                awayTactics,
+                false
+        );
+
+        double homeExpectedGoals = calculateExpectedGoals(homeStrength, awayStrength, homeTactics, awayTactics, true);
+        double awayExpectedGoals = calculateExpectedGoals(awayStrength, homeStrength, awayTactics, homeTactics, false);
+
+        return new QuickSimScore(
+                sampleGoals(homeExpectedGoals, random, 6),
+                sampleGoals(awayExpectedGoals, random, 6)
+        );
+    }
+
+    private double calculateExpectedGoals(double ownStrength,
+                                          double opponentStrength,
+                                          Tactics ownTactics,
+                                          Tactics opponentTactics,
+                                          boolean isHome) {
+        double totalStrength = Math.max(1.0, ownStrength + opponentStrength);
+        double strengthShare = ownStrength / totalStrength;
+        double attackingIntent = (
+                ownTactics.getAggression() * 0.18 +
+                ownTactics.getPressing() * 0.16 +
+                ownTactics.getCounterAttack() * 0.14 +
+                ownTactics.getPossession() * 0.10 +
+                ownTactics.getBallControl() * 0.10
+        ) / 10.0;
+        double opponentResistance = opponentTactics.getFormation().getDefenseModifier()
+                * (0.92 + opponentTactics.getDefenseLine() / 30.0 + opponentTactics.getPressing() / 45.0);
+        double homeBias = isHome ? 1.08 : 0.95;
+        double expectedGoals = (0.45 + strengthShare * 2.25 + attackingIntent * 0.60)
+                * ownTactics.getFormation().getOffenseModifier()
+                * ownTactics.getFormation().getPossessionModifier()
+                * homeBias
+                / Math.max(0.85, opponentResistance);
+
+        return Math.max(0.15, Math.min(4.2, expectedGoals));
+    }
+
+    private int sampleGoals(double lambda, Random rnd, int hardCap) {
+        if (lambda <= 0.0) {
+            return 0;
+        }
+        double threshold = Math.exp(-lambda);
+        double product = 1.0;
+        int goals = 0;
+        do {
+            goals++;
+            product *= rnd.nextDouble();
+        } while (product > threshold && goals <= hardCap);
+        return Math.max(0, Math.min(hardCap, goals - 1));
+    }
+
+    private Tactics createTacticsFromLineup(Lineup lineup, String defaultFormation) {
+        String formationName = lineup != null && lineup.getFormation() != null && !lineup.getFormation().isBlank()
+                ? lineup.getFormation()
+                : defaultFormation;
+        String style = normalizeStyle(lineup != null ? lineup.getStyle() : null);
+
+        Tactics tactics = new Tactics();
+        tactics.setName(style);
+        tactics.setFormation(createFormationProfile(formationName));
+
+        switch (style) {
+            case "ATTACKING" -> {
+                tactics.setAggression(7.4);
+                tactics.setDefenseLine(6.1);
+                tactics.setPressing(6.8);
+                tactics.setPossession(5.5);
+                tactics.setCounterAttack(4.5);
+                tactics.setBallControl(5.7);
+            }
+            case "DEFENSIVE" -> {
+                tactics.setAggression(3.8);
+                tactics.setDefenseLine(3.4);
+                tactics.setPressing(4.4);
+                tactics.setPossession(4.3);
+                tactics.setCounterAttack(6.4);
+                tactics.setBallControl(4.2);
+            }
+            case "COUNTER" -> {
+                tactics.setAggression(5.4);
+                tactics.setDefenseLine(4.5);
+                tactics.setPressing(5.2);
+                tactics.setPossession(3.9);
+                tactics.setCounterAttack(8.2);
+                tactics.setBallControl(4.8);
+            }
+            case "POSSESSION" -> {
+                tactics.setAggression(4.8);
+                tactics.setDefenseLine(5.6);
+                tactics.setPressing(5.7);
+                tactics.setPossession(8.4);
+                tactics.setCounterAttack(3.6);
+                tactics.setBallControl(8.1);
+            }
+            case "HIGH_PRESS" -> {
+                tactics.setAggression(7.8);
+                tactics.setDefenseLine(7.2);
+                tactics.setPressing(8.7);
+                tactics.setPossession(5.4);
+                tactics.setCounterAttack(4.2);
+                tactics.setBallControl(5.2);
+            }
+            case "DIRECT" -> {
+                tactics.setAggression(5.9);
+                tactics.setDefenseLine(5.1);
+                tactics.setPressing(5.6);
+                tactics.setPossession(3.5);
+                tactics.setCounterAttack(7.2);
+                tactics.setBallControl(4.2);
+            }
+            default -> {
+                tactics.setAggression(5.4);
+                tactics.setDefenseLine(5.0);
+                tactics.setPressing(5.3);
+                tactics.setPossession(5.1);
+                tactics.setCounterAttack(4.9);
+                tactics.setBallControl(5.1);
+            }
+        }
+
+        return tactics;
+    }
+
+    private Formation createFormationProfile(String formationName) {
+        String resolvedFormation = formationName == null || formationName.isBlank() ? "4-4-2" : formationName;
+        int[] parts = Arrays.stream(resolvedFormation.split("-"))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .mapToInt(value -> {
+                    try {
+                        return Integer.parseInt(value);
+                    } catch (NumberFormatException ex) {
+                        return 0;
+                    }
+                })
+                .filter(value -> value > 0)
+                .toArray();
+
+        int defenders = parts.length > 0 ? parts[0] : 4;
+        int attackers = parts.length > 0 ? parts[parts.length - 1] : 2;
+        int midfielders = parts.length > 2
+                ? Arrays.stream(parts, 1, parts.length - 1).sum()
+                : (parts.length == 2 ? parts[1] : 4);
+
+        Formation formation = new Formation();
+        formation.setName(resolvedFormation);
+        formation.setOffenseModifier(clamp(0.90, 1.16,
+                1.0 + (attackers - 2) * 0.05 + (midfielders - 4) * 0.015 - (defenders - 4) * 0.02));
+        formation.setDefenseModifier(clamp(0.88, 1.16,
+                1.0 + (defenders - 4) * 0.05 - (attackers - 2) * 0.025));
+        formation.setPossessionModifier(clamp(0.90, 1.14,
+                1.0 + (midfielders - 4) * 0.04 + (attackers == 1 ? 0.02 : 0.0)));
+        return formation;
+    }
+
+    private String normalizeStyle(String style) {
+        if (style == null || style.isBlank()) {
+            return "BALANCED";
+        }
+        String normalized = style.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT" -> normalized;
+            default -> "BALANCED";
+        };
+    }
+
+    private double clamp(double min, double max, double value) {
+        return Math.max(min, Math.min(max, value));
     }
 }

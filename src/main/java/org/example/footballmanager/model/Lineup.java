@@ -48,6 +48,8 @@ public class Lineup {
 
     private String formation; // npr: "4-4-2", "3-5-2"
 
+    private String style;
+
     public List<Long> getOrderedStarterIds() {
         return parseOrder(starterOrder, startingPlayers);
     }

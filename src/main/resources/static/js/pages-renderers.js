@@ -76,7 +76,7 @@ export function buildSquadTableHtml(players, options = {}) {
                 <tbody>
                     ${rows.map(player => {
                         const overall = Number(player?.overall ?? 0);
-                        const rating = Number(player?.rating);
+                        const averageRating = Number(player?.averageRating10);
                         const condition = normalizePercent(player?.staminaExact ?? player?.stamina);
                         const morale = moraleMeta(player);
                         const appearances = Number(player?.played ?? player?.matchesPlayed ?? 0);
@@ -101,7 +101,7 @@ export function buildSquadTableHtml(players, options = {}) {
                                 <td class="sq-games">${appearances > 0 ? appearances : '-'}</td>
                                 <td class="sq-goals">${goals > 0 ? goals : '-'}</td>
                                 <td class="sq-goals">${assists > 0 ? assists : '-'}</td>
-                                <td class="sq-rating">${Number.isFinite(rating) ? rating.toFixed(1) : '-'}</td>
+                                <td class="sq-rating">${Number.isFinite(averageRating) && appearances > 0 ? averageRating.toFixed(1) : '-'}</td>
                             </tr>`;
                     }).join('')}
                 </tbody>

@@ -3,35 +3,50 @@ package org.example.footballmanager.controller;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Lineup;
+import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.repository.LineupRepository;
 import org.example.footballmanager.repository.MatchRepository;
+import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/teams")
 
 public class TeamController {
 
+    private static final Set<String> ALLOWED_STYLES = Set.of(
+            "BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"
+    );
+
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
+    private final MatchPlayerStatsRepository matchPlayerStatsRepository;
 
-    public TeamController(TeamRepository teamRepository, PlayerRepository playerRepository, MatchRepository matchRepository, LineupRepository lineupRepository) {
+    public TeamController(TeamRepository teamRepository,
+                          PlayerRepository playerRepository,
+                          MatchRepository matchRepository,
+                          LineupRepository lineupRepository,
+                          MatchPlayerStatsRepository matchPlayerStatsRepository) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
         this.lineupRepository = lineupRepository;
+        this.matchPlayerStatsRepository = matchPlayerStatsRepository;
     }
 
     @GetMapping
@@ -47,9 +62,17 @@ public class TeamController {
     // Lista igrača
     @GetMapping("/{teamId}/players")
     public ResponseEntity<List<PlayerDTO>> getPlayers(@PathVariable Long teamId) {
-        List<PlayerDTO> players = playerRepository.findByTeamId(teamId)
+        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
+        Map<Long, List<MatchPlayerStats>> statsByPlayerId = teamPlayers.isEmpty()
+                ? Map.of()
+                : matchPlayerStatsRepository.findByPlayerIdIn(teamPlayers.stream().map(Player::getId).toList())
                 .stream()
-                .map(PlayerDTO::from)
+                .filter(stats -> stats.getPlayer() != null)
+                .collect(Collectors.groupingBy(stats -> stats.getPlayer().getId()));
+
+        List<PlayerDTO> players = teamPlayers
+                .stream()
+                .map(player -> toPlayerDto(player, statsByPlayerId.get(player.getId())))
                 .toList();
         return ResponseEntity.ok(players);
     }
@@ -59,9 +82,21 @@ public class TeamController {
     public ResponseEntity<PlayerDTO> getPlayer(@PathVariable Long teamId, @PathVariable Long playerId) {
         return playerRepository.findById(playerId)
                 .filter(p -> p.getTeam().getId().equals(teamId))
-                .map(PlayerDTO::from)
+                .map(player -> toPlayerDto(player, matchPlayerStatsRepository.findByPlayerId(player.getId())))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    private PlayerDTO toPlayerDto(Player player, List<MatchPlayerStats> stats) {
+        List<MatchPlayerStats> safeStats = stats == null ? List.of() : stats;
+        double averageRating10 = safeStats.stream()
+                .mapToInt(MatchPlayerStats::getRating)
+                .average()
+                .orElse(0.0) / 10.0;
+        Double roundedAverageRating10 = safeStats.isEmpty()
+                ? null
+                : Math.round(averageRating10 * 10.0) / 10.0;
+        return PlayerDTO.from(player, safeStats.size(), roundedAverageRating10);
     }
 
     @GetMapping("/{teamId}/matches")
@@ -80,6 +115,7 @@ public class TeamController {
             return ResponseEntity.ok(Map.of(
                     "saved", false,
                     "formation", "4-4-2",
+                    "style", "BALANCED",
                     "starterIds", List.of(),
                     "benchIds", List.of()
             ));
@@ -87,6 +123,7 @@ public class TeamController {
         return ResponseEntity.ok(Map.of(
                 "saved", true,
                 "formation", template.getFormation() == null ? "4-4-2" : template.getFormation(),
+                "style", normalizeStyle(template.getStyle()),
                 "starterIds", template.getOrderedStarterIds(),
                 "benchIds", template.getOrderedBenchIds()
         ));
@@ -101,6 +138,7 @@ public class TeamController {
         }
 
         String formation = Objects.toString(payload.getOrDefault("formation", "4-4-2"), "4-4-2");
+        String style = normalizeStyle(payload.get("style"));
         List<Long> starterIds = parseIdList(payload.getOrDefault("starterIds", List.of()), 11);
         List<Long> benchIds = parseIdList(payload.getOrDefault("benchIds", List.of()), 7);
 
@@ -145,6 +183,7 @@ public class TeamController {
         lineup.setTeam(team);
         lineup.setMatch(null);
         lineup.setFormation(formation);
+        lineup.setStyle(style);
         lineup.setStartingPlayers(starters);
         lineup.setSubstitutes(bench);
         lineup.setStarterOrderFromIds(starters.stream().map(Player::getId).toList());
@@ -155,9 +194,15 @@ public class TeamController {
                 "id", lineup.getId(),
                 "saved", true,
                 "formation", lineup.getFormation(),
+                "style", normalizeStyle(lineup.getStyle()),
                 "starterIds", lineup.getOrderedStarterIds(),
                 "benchIds", lineup.getOrderedBenchIds()
         ));
+    }
+
+    private String normalizeStyle(Object rawStyle) {
+        String style = rawStyle == null ? "BALANCED" : String.valueOf(rawStyle).trim().toUpperCase(Locale.ROOT);
+        return ALLOWED_STYLES.contains(style) ? style : "BALANCED";
     }
 
     private List<Long> parseIdList(Object raw, int limit) {

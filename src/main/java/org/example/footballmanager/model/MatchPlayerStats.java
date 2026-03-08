@@ -22,4 +22,7 @@ public class MatchPlayerStats {
     private int redCards;
     private int minutesPlayed;
     private int rating;
+    private int interceptions;
+    private int saves;
+    private boolean cleanSheet;
 }

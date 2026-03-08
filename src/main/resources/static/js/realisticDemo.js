@@ -23,6 +23,7 @@ let lastEventIdx = 0;
 let isScrubbing = false;
 let resumeAfterScrub = false;
 let controlsBound = false;
+let replayMode = 'replay';
 
 const EVENT_DELAY = 1650;
 const GOAL_DELAY = 2600;
@@ -63,6 +64,7 @@ const teamStats = {
 window.addEventListener('load', async () => {
     const params = new URLSearchParams(window.location.search);
     matchId = params.get('matchId');
+    replayMode = (params.get('mode') || 'replay').toLowerCase() === 'live' ? 'live' : 'replay';
 
     if (!matchId) {
         document.getElementById('events-list').innerHTML = '<p style="color:#f44336;">Missing matchId.</p>';
@@ -70,6 +72,7 @@ window.addEventListener('load', async () => {
     }
 
     initPitchOverlay();
+    configureReplayModeUi();
     bindPlaybackControls();
     resetReplayUi();
 
@@ -87,14 +90,14 @@ async function initializeReplay() {
     const metadata = await waitForReplayMetadata();
     hydrateReplayMetadata(metadata);
     renderSquads(resolveMetadataPlayers(metadata));
-    renderGoalMarkers(resolveMetadataGoals(metadata));
+    renderGoalMarkers(isReplayMode() ? resolveMetadataGoals(metadata) : []);
     updateTimelineBounds();
 
     await ensureChunkLoaded(0);
     void ensureChunkLoaded(1);
 
     await rebuildReplayFromTime(0, { animate: false });
-    setReplayStatus('Replay ready • 10s = 1 match minute');
+    setReplayStatus(isReplayMode() ? 'Replay ready • 10s = 1 match minute' : 'Live match view • timeline hidden');
     setPlaybackToggleLabel();
     startPlaybackLoop();
 }
@@ -181,6 +184,23 @@ function resolveMetadataGoals(metadata) {
 
 function resolveMetadataEvents(metadata) {
     return metadata.events || metadata.eventData || [];
+}
+
+function isReplayMode() {
+    return replayMode === 'replay';
+}
+
+function configureReplayModeUi() {
+    const timelineCard = document.getElementById('timeline-card');
+    const kicker = document.getElementById('playback-kicker');
+
+    if (timelineCard) {
+        timelineCard.hidden = !isReplayMode();
+    }
+
+    if (kicker) {
+        kicker.textContent = isReplayMode() ? 'Open-football style replay' : 'Live match view';
+    }
 }
 
 function bindPlaybackControls() {

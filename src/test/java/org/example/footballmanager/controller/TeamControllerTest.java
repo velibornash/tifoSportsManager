@@ -1,10 +1,15 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Lineup;
+import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
+import org.example.footballmanager.model.Position;
+import org.example.footballmanager.model.Skills;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.repository.LineupRepository;
 import org.example.footballmanager.repository.MatchRepository;
+import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.junit.jupiter.api.Test;
@@ -35,6 +40,7 @@ class TeamControllerTest {
     @Mock private PlayerRepository playerRepository;
     @Mock private MatchRepository matchRepository;
     @Mock private LineupRepository lineupRepository;
+    @Mock private MatchPlayerStatsRepository matchPlayerStatsRepository;
 
     @InjectMocks private TeamController teamController;
 
@@ -47,6 +53,7 @@ class TeamControllerTest {
         assertEquals(200, response.getStatusCode().value());
         assertFalse((Boolean) response.getBody().get("saved"));
         assertEquals("4-4-2", response.getBody().get("formation"));
+        assertEquals("BALANCED", response.getBody().get("style"));
         assertEquals(List.of(), response.getBody().get("starterIds"));
         assertEquals(List.of(), response.getBody().get("benchIds"));
     }
@@ -71,6 +78,7 @@ class TeamControllerTest {
         List<Long> benchIds = List.of(18L, 17L, 16L, 15L, 14L, 13L, 12L);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("formation", "4-3-3");
+        payload.put("style", "HIGH_PRESS");
         payload.put("starterIds", starterIds);
         payload.put("benchIds", benchIds);
 
@@ -92,9 +100,56 @@ class TeamControllerTest {
         assertEquals(starterIds, saved.getStartingPlayers().stream().map(Player::getId).toList());
         assertEquals(benchIds, saved.getSubstitutes().stream().map(Player::getId).toList());
         assertEquals("4-3-3", saved.getFormation());
+        assertEquals("HIGH_PRESS", saved.getStyle());
         assertTrue((Boolean) response.getBody().get("saved"));
         assertEquals(77L, response.getBody().get("id"));
+        assertEquals("HIGH_PRESS", response.getBody().get("style"));
         assertEquals(starterIds, response.getBody().get("starterIds"));
         assertEquals(benchIds, response.getBody().get("benchIds"));
+    }
+
+    @Test
+    void getPlayersIncludesAppsAndAverageRating() {
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("Omladinac");
+
+        Skills skills = new Skills();
+        skills.setGoalkeeper(3);
+        skills.setPace(11);
+        skills.setStriker(14);
+        skills.setPassing(10);
+        skills.setTechnique(12);
+        skills.setDefender(6);
+        skills.setStamina(13);
+        skills.setPlaymaker(9);
+        skills.setFatigue(2);
+
+        Player player = new Player();
+        player.setId(5L);
+        player.setName("Marko");
+        player.setAge(24);
+        player.setPosition(Position.ATT);
+        player.setForm(7.2);
+        player.setRating(74);
+        player.setSkills(skills);
+        player.setTeam(team);
+
+        MatchPlayerStats first = new MatchPlayerStats();
+        first.setPlayer(player);
+        first.setRating(78);
+        MatchPlayerStats second = new MatchPlayerStats();
+        second.setPlayer(player);
+        second.setRating(84);
+
+        when(playerRepository.findByTeamId(1L)).thenReturn(List.of(player));
+        when(matchPlayerStatsRepository.findByPlayerIdIn(List.of(5L))).thenReturn(List.of(first, second));
+
+        ResponseEntity<List<PlayerDTO>> response = teamController.getPlayers(1L);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+        assertEquals(2, response.getBody().getFirst().getMatchesPlayed());
+        assertEquals(8.1, response.getBody().getFirst().getAverageRating10());
     }
 }

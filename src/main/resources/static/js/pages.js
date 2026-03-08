@@ -946,6 +946,8 @@ import { createCommunityFeature } from './pages/features/community.js';
                     <button id="view-lineups" style="padding:8px 16px; font-weight:bold;">Lineups</button>
                     <button id="view-stats" style="padding:8px 16px; font-weight:bold;">Stats</button>
                     <button id="view-goals" style="padding:8px 16px; font-weight:bold;">Goals</button>
+                    <button id="view-replay" style="padding:8px 16px; font-weight:bold;">Replay</button>
+                    <button id="view-report" style="padding:8px 16px; font-weight:bold;">Match Report</button>
                 </div>
 
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
@@ -977,6 +979,40 @@ import { createCommunityFeature } from './pages/features/community.js';
             backButton.style.display = 'inline-block';
 
              const infoDiv = document.getElementById("match-info");
+             let cachedMatchReport = null;
+
+            function renderMatchReport(reportPayload) {
+                const headline = escapeHtml(String(reportPayload?.headline || 'Match Report'));
+                const reportText = escapeHtml(String(reportPayload?.report || 'No match report available.'));
+
+                infoDiv.innerHTML = `
+                    <div style="max-width:920px; margin:0 auto; padding:18px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px;">
+                        <h3 style="text-align:center; margin:0 0 14px; color:#4CAF50;">Match Report</h3>
+                        <div style="font-size:1.02em; font-weight:700; text-align:center; margin-bottom:16px; color:#f3f3f3;">${headline}</div>
+                        <div style="white-space:pre-line; line-height:1.7; color:#ddd;">${reportText}</div>
+                    </div>`;
+            }
+
+            async function showMatchReport() {
+                if (cachedMatchReport) {
+                    renderMatchReport(cachedMatchReport);
+                    return;
+                }
+
+                infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading match report...</p>`;
+
+                try {
+                    const response = await authFetch(`/matches/${matchId}/report`);
+                    if (!response.ok) {
+                        throw new Error(`Report unavailable (${response.status})`);
+                    }
+                    cachedMatchReport = await response.json();
+                    renderMatchReport(cachedMatchReport);
+                } catch (error) {
+                    console.error('Failed to load match report:', error);
+                    infoDiv.innerHTML = `<p style="color:#ffb3b3; text-align:center; padding:30px;">Match report is not available for this match.</p>`;
+                }
+            }
 
             // Funkcija za prikaz statistike
             function showStats() {
@@ -1112,6 +1148,12 @@ import { createCommunityFeature } from './pages/features/community.js';
                 `;
             });
             document.getElementById("view-stats").addEventListener("click", showStats);
+            document.getElementById("view-replay").addEventListener("click", () => {
+                window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(matchId)}&mode=replay`;
+            });
+            document.getElementById("view-report").addEventListener("click", () => {
+                void showMatchReport();
+            });
 
             document.getElementById("view-goals").addEventListener("click", () => {
                 const goals = events.filter(e => e.eventType === "GoalEvent");

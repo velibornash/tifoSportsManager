@@ -22,6 +22,7 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.MatchDetailService;
+import org.example.footballmanager.service.MatchReportService;
 import org.example.footballmanager.old.oldService.MatchService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.events.MatchEventMapper;
@@ -43,17 +44,20 @@ public class MatchController {
     private final MatchDetailService matchDetailService;
     private final MatchEventRepository matchEventRepository;
     private final MatchEventMapper matchEventMapper;
+    private final MatchReportService matchReportService;
     @Autowired
     public MatchController(
             MatchRepository matchRepository,
             MatchDetailService matchDetailService,
             MatchEventRepository matchEventRepository,
-            MatchEventMapper matchEventMapper
+            MatchEventMapper matchEventMapper,
+            MatchReportService matchReportService
     ) {
         this.matchRepository = matchRepository;
         this.matchDetailService = matchDetailService;
         this.matchEventRepository = matchEventRepository;
         this.matchEventMapper = matchEventMapper;
+        this.matchReportService = matchReportService;
     }
 
 
@@ -118,6 +122,15 @@ public class MatchController {
                         .toList())
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{matchId}/report")
+    public ResponseEntity<Map<String, Object>> getMatchReport(@PathVariable Long matchId) {
+        try {
+            return ResponseEntity.ok(matchReportService.buildMatchReport(matchId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     private Map<String, Object> toLineupPlayer(Player player) {

@@ -12,7 +12,6 @@ import org.example.footballmanager.model.MatchRuntime;
 import org.example.footballmanager.util.RuntimeSaveToDB;
 import org.springframework.stereotype.Service;
 
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -36,16 +35,6 @@ public class SimulationService {
 
         // 1) Full simulation runtime
         MatchRuntime runtime = matchEngine.simulateFullMatch(match);
-
-        // 1.5) Generate full additional event set before final save
-        matchStatisticEngine.generateFakeAdditionalStats(
-                match,
-                runtime.homePlayers,
-                runtime.awayPlayers,
-                runtime.homeGoals,
-                runtime.awayGoals,
-                new Random()
-        );
 
         // 2) Persist match + runtime events
         Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);

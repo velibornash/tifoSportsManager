@@ -10,13 +10,6 @@ import java.util.List;
 public class MatchRatingCalculator {
 
     public static int calculate(Player player, Team team, List<GoalEvent> allGoals) {
-        Position pos = player.getPositionEnum();
-
-        double skillScore = player.getSkills().getRatingScore(pos);
-        double maxScore = getMaxScore(pos);
-        double normalizedSkill = skillScore / maxScore * 70.0;
-
-        // Direct attacking contribution
         long goals = allGoals.stream()
                 .filter(g -> g.getScorer() != null && g.getScorer().equals(player))
                 .count();
@@ -31,38 +24,67 @@ public class MatchRatingCalculator {
                 .filter(g -> g.getScorer() != null && !g.getScorer().getTeam().equals(player.getTeam()))
                 .count();
 
-        double contribution = goals * 12 + assists * 6;
+        return calculate(
+                player,
+                (int) goals,
+                (int) assists,
+                0,
+                0,
+                false,
+                0,
+                0,
+                (int) teamGoals,
+                (int) concededGoals,
+                90
+        );
+    }
+
+    public static int calculate(Player player,
+                                int goals,
+                                int assists,
+                                int interceptions,
+                                int saves,
+                                boolean cleanSheet,
+                                int yellowCards,
+                                int redCards,
+                                int teamGoals,
+                                int concededGoals,
+                                int minutesPlayed) {
+        Position pos = player.getPositionEnum() != null ? player.getPositionEnum() : Position.MID;
+
+        double skillScore = player.getSkills().getRatingScore(pos);
+        double maxScore = getMaxScore(pos);
+        double normalizedSkill = Math.max(0.0, Math.min(1.0, skillScore / maxScore));
+        double minuteFactor = Math.max(0.45, Math.min(1.0, minutesPlayed / 90.0));
+
+        double base = 48.0 + normalizedSkill * 18.0 + (player.getForm() - 6.0) * 1.5;
+        base *= minuteFactor;
+
+        double attackingContribution = goals * 11.0 + assists * 6.5;
         if (goals >= 3) {
-            contribution += 4;
+            attackingContribution += 3.5;
         } else if (goals == 2) {
-            contribution += 2;
+            attackingContribution += 1.5;
         }
 
-        // Form influence (small but meaningful on 1-100 scale)
-        double formBonus = (player.getForm() - 5.0) * 1.2;
-
-        // Defensive contribution
-        boolean cleanSheet = concededGoals == 0;
-        double defensiveBonus = 0;
-        if (cleanSheet && pos == Position.GK) {
-            defensiveBonus += 8;
-        } else if (cleanSheet && pos == Position.DEF) {
-            defensiveBonus += 5;
-        }
-        if (concededGoals >= 3 && pos == Position.GK) {
-            defensiveBonus -= 6;
-        } else if (concededGoals >= 3 && pos == Position.DEF) {
-            defensiveBonus -= 4;
-        }
+        double defensiveContribution = switch (pos) {
+            case GK -> saves * 3.2 + (cleanSheet ? 8.0 : 0.0) - concededGoals * 2.2;
+            case DEF -> interceptions * 1.7 + (cleanSheet ? 6.5 : 0.0) - concededGoals * 1.4;
+            case MID -> interceptions * 1.1 + (cleanSheet ? 1.5 : 0.0) - Math.max(0, concededGoals - 2) * 0.4;
+            case ATT, WNG -> interceptions * 0.35;
+        };
 
         double teamResultModifier = 0;
         if (teamGoals > concededGoals) {
-            teamResultModifier = 1;
-        } else if (teamGoals < concededGoals) {
-            teamResultModifier = -1;
+            teamResultModifier = 2.0;
+        } else if (teamGoals == concededGoals) {
+            teamResultModifier = 0.4;
+        } else {
+            teamResultModifier = -1.6;
         }
 
-        double rating = normalizedSkill + contribution + formBonus + defensiveBonus + teamResultModifier;
+        double disciplinePenalty = yellowCards * 3.5 + redCards * 12.0;
+        double rating = base + attackingContribution + defensiveContribution + teamResultModifier - disciplinePenalty;
         rating = Math.max(10, Math.min(100, rating));
 
         return (int) Math.round(rating);
