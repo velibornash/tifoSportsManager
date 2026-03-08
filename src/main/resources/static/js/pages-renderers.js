@@ -1,5 +1,137 @@
 import { backButtonHtml } from './ui/components.js';
 
+function htmlEscape(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizePercent(value, fallback = 78) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    if (numeric <= 20) return Math.max(35, Math.min(100, Math.round(numeric * 5)));
+    return Math.max(35, Math.min(100, Math.round(numeric)));
+}
+
+function buildStars(score) {
+    const filled = Math.max(1, Math.min(5, Math.round((Number(score) || 52) / 18)));
+    return `<div class="fm-stars">${Array.from({ length: 5 }, (_, index) => `<span class="star${index < filled ? ' on' : ''}"></span>`).join('')}</div>`;
+}
+
+function moraleMeta(player) {
+    const form = Number(player?.form);
+    if (Number.isFinite(form) && form >= 7.8) return { icon: '&#9650;', label: 'High', className: 'up' };
+    if (Number.isFinite(form) && form <= 5.8) return { icon: '&#9660;', label: 'Low', className: 'down' };
+    return { icon: '&#9644;', label: 'Stable', className: 'flat' };
+}
+
+function badgeDeck(player) {
+    const badges = [];
+    const form = Number(player?.form);
+    const goals = Number(player?.totalGoals ?? player?.goals ?? 0);
+    const assists = Number(player?.totalAssists ?? player?.assists ?? 0);
+
+    if (player?.injured) badges.push('<span class="fm-badge fm-badge-inj">INJ</span>');
+    if (Number.isFinite(form) && form >= 7.8) badges.push('<span class="fm-badge fm-badge-hot">HOT</span>');
+    if (Number.isFinite(form) && form <= 5.8) badges.push('<span class="fm-badge fm-badge-cold">LOW</span>');
+    if (goals >= 5) badges.push('<span class="fm-badge fm-badge-goal">GLS</span>');
+    if (assists >= 5) badges.push('<span class="fm-badge fm-badge-ast">AST</span>');
+
+    return badges.length ? badges.join('') : '<span class="fm-badge fm-badge-fit">FIT</span>';
+}
+
+export function buildSquadTableHtml(players, options = {}) {
+    const rows = Array.isArray(players) ? players : [];
+    const rowClass = options.rowClass || 'league-player-card';
+    const teamId = options.teamId ?? '';
+    const teamName = options.teamName ?? '';
+    const emptyText = options.emptyText || 'No players found.';
+
+    if (!rows.length) {
+        return `<div class="fm-empty">${htmlEscape(emptyText)}</div>`;
+    }
+
+    return `
+        <div class="fm-squad-wrap">
+            <table class="fm-squad">
+                <thead>
+                    <tr>
+                        <th class="sq-inf"></th>
+                        <th class="sq-name">Name</th>
+                        <th>Position</th>
+                        <th class="sq-age">Age</th>
+                        <th class="sq-ability">Ability</th>
+                        <th class="sq-potential">Potential</th>
+                        <th class="sq-cond">Condition</th>
+                        <th class="sq-morale">Morale</th>
+                        <th class="sq-games">Apps</th>
+                        <th class="sq-goals">Gls</th>
+                        <th class="sq-goals">Ast</th>
+                        <th class="sq-rating">Av Rat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(player => {
+                        const overall = Number(player?.overall ?? 0);
+                        const rating = Number(player?.rating);
+                        const condition = normalizePercent(player?.staminaExact ?? player?.stamina);
+                        const morale = moraleMeta(player);
+                        const appearances = Number(player?.played ?? player?.matchesPlayed ?? 0);
+                        const goals = Number(player?.totalGoals ?? player?.goals ?? 0);
+                        const assists = Number(player?.totalAssists ?? player?.assists ?? 0);
+
+                        return `
+                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-team-id="${teamId}" data-team-name="${htmlEscape(teamName)}">
+                                <td class="sq-inf"><div class="fm-badge-deck">${badgeDeck(player)}</div></td>
+                                <td class="sq-name"><span class="sq-player-link">${htmlEscape(player?.name || 'Unknown')}</span></td>
+                                <td class="sq-pos">${htmlEscape(player?.position || '-')}</td>
+                                <td class="sq-age">${player?.age ?? '-'}</td>
+                                <td class="sq-ability">${buildStars(overall)}</td>
+                                <td class="sq-potential">${buildStars(Math.min(99, overall + 6))}</td>
+                                <td class="sq-cond">
+                                    <div class="fm-cond">
+                                        <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${condition}%"></div></div>
+                                        <span class="fm-cond-val">${condition}%</span>
+                                    </div>
+                                </td>
+                                <td class="sq-morale"><span class="fm-morale fm-morale-${morale.className}">${morale.icon}</span><span class="fm-morale-text">${morale.label}</span></td>
+                                <td class="sq-games">${appearances > 0 ? appearances : '-'}</td>
+                                <td class="sq-goals">${goals > 0 ? goals : '-'}</td>
+                                <td class="sq-goals">${assists > 0 ? assists : '-'}</td>
+                                <td class="sq-rating">${Number.isFinite(rating) ? rating.toFixed(1) : '-'}</td>
+                            </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+export function bindSquadRowClicks(container, onClick, selector = '.league-player-card') {
+    container.querySelectorAll(selector).forEach(row => {
+        row.addEventListener('click', () => onClick(row));
+    });
+}
+
+export function buildClubActionsHtml(currentPage = '') {
+    const actionClass = (page, variant = 'secondary') => {
+        const base = variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
+        return currentPage === page ? `${base} is-current` : base;
+    };
+
+    return `
+        <div class="fm-club-actions">
+            <button type="button" class="${actionClass('firstTeam', 'primary')}" onclick="loadPage('firstTeam')">First Team</button>
+            <button type="button" class="${actionClass('profile')}" onclick="loadPage('profile')">Club Profile</button>
+            <button type="button" class="${actionClass('medicalCenter')}" onclick="loadPage('medicalCenter')">Medical Center</button>
+            <button type="button" class="${actionClass('juniors')}" onclick="loadPage('juniors')">Juniors</button>
+            <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Tactics</button>
+            <button type="button" class="${actionClass('formations')}" onclick="loadPage('formations')">Formations</button>
+        </div>`;
+}
+
 export function renderPlayersView(players, title, { loadPlayer, getImageFilename }) {
     const mainContent = document.getElementById('main-content');
 
@@ -8,45 +140,34 @@ export function renderPlayersView(players, title, { loadPlayer, getImageFilename
         return;
     }
 
-    let html = `
-    <div class="manager-card">
-        ${backButtonHtml('Back', 'dashboard')}
-        <h2>${title}</h2>
-        <div class="manager-grid">`;
+    const isClubSquad = /first team|juniors/i.test(title);
+    const callerPage = /juniors/i.test(title) ? 'juniors' : 'firstTeam';
 
-    players.forEach(player => {
-        const filename = getImageFilename(player.name);
-        const rating = Number(player.rating);
-        const form = Number(player.form);
-        const ratingColor = Number.isFinite(rating)
-            ? (rating >= 7.5 ? '#4caf50' : rating >= 6.5 ? '#ffd700' : rating >= 5.5 ? '#ff9800' : '#f44336')
-            : '#9aa0a6';
-        const formBadge = Number.isFinite(form)
-            ? (form >= 7.8
-                ? `<span class="form-badge hot">&#128293; ${form.toFixed(1)}</span>`
-                : form <= 5.8
-                    ? `<span class="form-badge cold">&#129482; ${form.toFixed(1)}</span>`
-                    : `<span class="form-badge neutral">${form.toFixed(1)}</span>`)
-            : `<span class="form-badge neutral">-</span>`;
+    mainContent.innerHTML = `
+    <div class="fm-page fm-page--club">
+        <section class="fm-panel fm-club-hero">
+            ${backButtonHtml('Back', 'dashboard')}
+            <div class="fm-club-hero-main">
+                <div>
+                    <div class="fm-eyebrow">${isClubSquad ? 'Club squad' : 'Squad view'}</div>
+                    <h2>${htmlEscape(title)}</h2>
+                    <p class="fm-subtle">Click a player row to open the full player profile.</p>
+                </div>
+                ${isClubSquad ? buildClubActionsHtml(callerPage) : ''}
+            </div>
+        </section>
+        <section class="fm-panel">
+            <div class="fm-panel-head">
+                <h3>Squad</h3>
+                <span class="fm-panel-action">${players.length} players</span>
+            </div>
+            ${buildSquadTableHtml(players, { rowClass: 'league-player-card', teamName: title })}
+        </section>
+    </div>`;
 
-        html += `
-        <div class="manager-player-card" data-player-id="${player.id}">
-            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
-            <div class="player-name">${player.name}</div>
-            <div class="player-meta">${player.position} - ${player.age}</div>
-            <div class="player-rating">OVR ${player.overall}</div>
-            <div class="player-meta">Rating: <span style="color:${ratingColor}; font-weight:700;">${Number.isFinite(rating) ? rating.toFixed(1) : '-'}</span> | Form: ${formBadge}</div>
-        </div>`;
-    });
-
-    html += `</div></div>`;
-    mainContent.innerHTML = html;
-
-    mainContent.querySelectorAll('.manager-player-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const playerId = Number(card.dataset.playerId);
-            if (playerId) loadPlayer(playerId, 'firstTeam');
-        });
+    bindSquadRowClicks(mainContent, row => {
+        const playerId = Number(row.dataset.playerId);
+        if (playerId) loadPlayer(playerId, callerPage);
     });
 }
 
@@ -179,116 +300,203 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
     };
 }
 
-export function renderTableView(table, { loadLeagueTeam, escapeHtml, formatGoalDiff }) {
+export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, escapeHtml, formatGoalDiff }) {
     const mainContent = document.getElementById('main-content');
-    const rows = Array.isArray(table) ? table : [];
+    const safe = escapeHtml || htmlEscape;
+    const data = Array.isArray(payload) ? { table: payload } : (payload || {});
+    const rows = Array.isArray(data.table) ? data.table : [];
+    const fixtures = Array.isArray(data.fixtures) ? data.fixtures : [];
+    const topScorers = Array.isArray(data.topScorers) ? data.topScorers : [];
+    const topAssists = Array.isArray(data.topAssists) ? data.topAssists : [];
+    const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+
+    function zoneClass(rank, total) {
+        if (rank <= 4) return 'zone-ucl';
+        if (rank <= 6) return 'zone-uel';
+        if (rank >= Math.max(1, total - 1)) return 'zone-rel';
+        return '';
+    }
+
+    function standingsRowsHtml() {
+        return rows.map((team, index) => {
+            const rank = Number(team.position || index + 1);
+            const wins = Number(team.wins || 0);
+            const draws = Number(team.draws || 0);
+            const losses = Number(team.losses || 0);
+            const played = wins + draws + losses;
+            const gd = Number(team.goalDifference || 0);
+            return `
+                <tr class="${zoneClass(rank, rows.length)} ${team.teamId ? 'js-load-team' : ''}" data-team-id="${team.teamId || ''}" data-team-name="${safe(team.name)}">
+                    <td class="st-pos">${rank}</td>
+                    <td class="st-club">${team.teamId ? `<span class="fm-team-link">${safe(team.name)}</span>` : safe(team.name)}</td>
+                    <td>${played}</td>
+                    <td>${wins}</td>
+                    <td>${draws}</td>
+                    <td>${losses}</td>
+                    <td>${team.goalsScored ?? 0}</td>
+                    <td>${team.goalsConceded ?? 0}</td>
+                    <td class="st-gd">${formatGoalDiff(gd)}</td>
+                    <td class="st-pts">${team.points ?? 0}</td>
+                </tr>`;
+        }).join('');
+    }
+
+    function fixturesHtml() {
+        if (!fixtures.length) {
+            return '<div class="fm-empty">No schedule available yet.</div>';
+        }
+
+        return fixtures.map(group => `
+            <div class="fm-fixture-group${group.isFocusRound ? ' is-focus-round' : ''}"${group.isFocusRound ? ' data-fixture-focus="current"' : ''}>
+                <div class="fm-matchday-hd">Round ${group.round}${group.label ? ` <span class="fm-round-label">${safe(group.label)}</span>` : ''}</div>
+                ${(group.matches || []).map(match => `
+                    <div class="fm-fixture ${match.played && match.id ? 'js-load-match is-played' : ''}" data-match-id="${match.id || ''}">
+                        <div class="fx-date">${safe(match.matchDate || 'TBD')}</div>
+                        <div class="fx-main">
+                            <span class="fx-home ${match.homeTeamId ? 'js-load-team' : ''}" data-team-id="${match.homeTeamId || ''}" data-team-name="${safe(match.homeTeam)}">${safe(match.homeTeam)}</span>
+                            <span class="fx-score ${match.played ? '' : 'pending'}">${match.played ? `${match.homeGoals ?? 0} – ${match.awayGoals ?? 0}` : '–'}</span>
+                            <span class="fx-away ${match.awayTeamId ? 'js-load-team' : ''}" data-team-id="${match.awayTeamId || ''}" data-team-name="${safe(match.awayTeam)}">${safe(match.awayTeam)}</span>
+                        </div>
+                    </div>`).join('')}
+            </div>`).join('');
+    }
+
+    function statTableHtml(items, type) {
+        if (!items.length) {
+            return '<div class="fm-empty">No data available yet.</div>';
+        }
+        return `
+            <table class="fm-player-stats">
+                <thead>
+                    <tr>
+                        <th class="ps-pos">#</th>
+                        <th class="ps-name">Player</th>
+                        <th class="ps-val">${type === 'goals' ? 'Gls' : 'Ast'}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.slice(0, 8).map((item, index) => `
+                        <tr>
+                            <td class="ps-pos">${index + 1}</td>
+                            <td class="ps-name">
+                                ${item.playerId && item.teamId
+                                    ? `<span class="fm-player-link js-load-league-player" data-player-id="${item.playerId}" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName || 'Team')}">${safe(item.playerName || item.name || 'Unknown')}</span>`
+                                    : safe(item.playerName || item.name || 'Unknown')}
+                                <span class="ps-team">${item.teamId ? `<span class="fm-team-link js-load-team" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName)}">${safe(item.teamName)}</span>` : safe(item.teamName || 'No Team')}</span>
+                            </td>
+                            <td class="ps-val">${type === 'goals' ? (item.goals ?? 0) : (item.assists ?? 0)}</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`;
+    }
 
     mainContent.innerHTML = `
-    <div class="manager-card league-table-card" style="padding: 25px;">
-        ${backButtonHtml('Back', 'dashboard')}
-        <h2 class="league-table-title">Superliga Table</h2>
-
-        <div class="league-table-controls">
-            <button type="button" class="table-view-btn active" data-view="normal">Normal</button>
-            <button type="button" class="table-view-btn" data-view="full">Full</button>
+    <div class="fm-page fm-page--league">
+        <div class="fm-page-toolbar">
+            ${backButtonHtml('Back', 'dashboard')}
+            <div class="fm-page-title-block">
+                <div class="fm-eyebrow">Open-football inspired league view</div>
+                <h2 class="league-table-title">Serbian Superliga${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
+            </div>
+            ${seasons.length ? `
+            <label class="fm-season-select-wrap">
+                <span>Season</span>
+                <select id="league-overview-season-select" class="fm-season-select">
+                    ${seasons.map(season => `<option value="${season.seasonYear}" ${season.seasonYear === data.selectedSeason ? 'selected' : ''}>Season ${season.seasonNumber}</option>`).join('')}
+                </select>
+            </label>` : ''}
         </div>
 
-        <div style="overflow-x: auto;">
-            <table class="league-table" style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
-                <thead id="league-table-head"></thead>
-                <tbody id="league-table-body"></tbody>
-            </table>
+        <div class="fm-grid-top">
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <h3>League Table</h3>
+                    <span class="fm-panel-action">Clubs clickable</span>
+                </div>
+                <table class="fm-standings">
+                    <thead>
+                        <tr>
+                            <th class="st-pos">#</th>
+                            <th class="st-club">Club</th>
+                            <th>P</th>
+                            <th>W</th>
+                            <th>D</th>
+                            <th>L</th>
+                            <th>GF</th>
+                            <th>GA</th>
+                            <th>GD</th>
+                            <th class="st-pts">Pts</th>
+                        </tr>
+                    </thead>
+                    <tbody>${standingsRowsHtml()}</tbody>
+                </table>
+                <div class="fm-legend">
+                    <span><i class="legend-dot ucl"></i> Europe</span>
+                    <span><i class="legend-dot uel"></i> Playoff race</span>
+                    <span><i class="legend-dot rel"></i> Relegation zone</span>
+                </div>
+            </section>
+
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <h3>Fixtures & Results</h3>
+                    <span class="fm-panel-action">Current focus</span>
+                </div>
+                <div class="fm-fixtures-scroll">
+                    <div class="fm-fixtures">${fixturesHtml()}</div>
+                </div>
+            </section>
         </div>
-        <p class="league-table-updated">Updated: ${new Date().toLocaleString('en-US')}</p>
+
+        <div class="fm-grid-bottom">
+            <section class="fm-panel">
+                <div class="fm-panel-head"><h3>Top Scorers</h3></div>
+                ${statTableHtml(topScorers, 'goals')}
+            </section>
+            <section class="fm-panel">
+                <div class="fm-panel-head"><h3>Top Assisters</h3></div>
+                ${statTableHtml(topAssists, 'assists')}
+            </section>
+        </div>
     </div>`;
 
-    const headEl = document.getElementById('league-table-head');
-    const bodyEl = document.getElementById('league-table-body');
-    const controlButtons = mainContent.querySelectorAll('.table-view-btn');
+    mainContent.querySelectorAll('.js-load-team').forEach(node => {
+        node.addEventListener('click', event => {
+            event.stopPropagation();
+            const teamId = Number(node.dataset.teamId);
+            const teamName = node.dataset.teamName || 'Team';
+            if (teamId) loadLeagueTeam(teamId, teamName);
+        });
+    });
 
-    function headerHtml(mode) {
-        if (mode === 'full') {
-            return `
-                <tr style="background: rgba(157, 78, 221, 0.25); color: #fff;">
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">#</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #555;">Team</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">P</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">W</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">D</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">L</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GF</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GA</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GD</th>
-                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">Pts</th>
-                </tr>`;
-        }
+    mainContent.querySelectorAll('.js-load-league-player').forEach(node => {
+        node.addEventListener('click', event => {
+            event.stopPropagation();
+            const playerId = Number(node.dataset.playerId);
+            const teamId = Number(node.dataset.teamId);
+            const teamName = node.dataset.teamName || 'Team';
+            if (playerId && teamId) loadLeagueTeamPlayer(playerId, teamId, teamName);
+        });
+    });
 
-        return `
-            <tr style="background: rgba(157, 78, 221, 0.25); color: #fff;">
-                <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">#</th>
-                <th style="padding: 12px; text-align: left; border-bottom: 2px solid #555;">Team</th>
-                <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">Pts</th>
-                <th style="padding: 12px; text-align: center; border-bottom: 2px solid #555;">GD</th>
-            </tr>`;
+    mainContent.querySelectorAll('.js-load-match').forEach(node => {
+        node.addEventListener('click', () => {
+            const matchId = Number(node.dataset.matchId);
+            if (matchId) loadMatch(matchId, 'leagueMatches');
+        });
+    });
+
+    const seasonSelect = document.getElementById('league-overview-season-select');
+    if (seasonSelect) {
+        seasonSelect.addEventListener('change', () => loadLeagueTable(Number(seasonSelect.value)));
     }
 
-    function rowHtml(team, index, mode) {
-        const rank = Number(team.position || index + 1);
-        const wins = Number(team.wins || 0);
-        const draws = Number(team.draws || 0);
-        const losses = Number(team.losses || 0);
-        const played = wins + draws + losses;
-        const gd = Number(team.goalDifference || 0);
-        const rowBg = index % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.08)';
-        const gdColor = gd > 0 ? '#4caf50' : gd < 0 ? '#f44336' : '#aaa';
-        const clickableClass = team.teamId ? 'league-team-row clickable-team-row' : 'league-team-row';
-        const teamCell = `<td style="padding: 12px; font-weight: 600;">${escapeHtml(team.name)}</td>`;
-        const commonAttrs = `class="${clickableClass}" style="background:${rowBg}; transition:all 0.2s;" data-team-id="${team.teamId || ''}" data-team-name="${escapeHtml(team.name)}"`;
-
-        if (mode === 'full') {
-            return `
-                <tr ${commonAttrs}>
-                    <td style="padding: 12px; text-align: center; color:#aaa;">${rank}</td>
-                    ${teamCell}
-                    <td style="padding: 12px; text-align: center;">${played}</td>
-                    <td style="padding: 12px; text-align: center;">${wins}</td>
-                    <td style="padding: 12px; text-align: center;">${draws}</td>
-                    <td style="padding: 12px; text-align: center;">${losses}</td>
-                    <td style="padding: 12px; text-align: center;">${team.goalsScored ?? 0}</td>
-                    <td style="padding: 12px; text-align: center;">${team.goalsConceded ?? 0}</td>
-                    <td style="padding: 12px; text-align: center; color:${gdColor}; font-weight:700;">${formatGoalDiff(gd)}</td>
-                    <td style="padding: 12px; text-align: center; font-weight:700; color:#ffd700;">${team.points ?? 0}</td>
-                </tr>`;
-        }
-
-        return `
-            <tr ${commonAttrs}>
-                <td style="padding: 12px; text-align: center; color:#aaa;">${rank}</td>
-                ${teamCell}
-                <td style="padding: 12px; text-align: center; font-weight:700; color:#ffd700;">${team.points ?? 0}</td>
-                <td style="padding: 12px; text-align: center; color:${gdColor}; font-weight:700;">${formatGoalDiff(gd)}</td>
-            </tr>`;
-    }
-
-    function bindTeamRowClicks() {
-        mainContent.querySelectorAll('.clickable-team-row').forEach(row => {
-            row.addEventListener('click', () => {
-                const teamId = Number(row.dataset.teamId);
-                const teamName = row.dataset.teamName || 'Team';
-                if (teamId) loadLeagueTeam(teamId, teamName);
-            });
+    const fixturesScroll = mainContent.querySelector('.fm-fixtures-scroll');
+    const focusGroup = mainContent.querySelector('[data-fixture-focus="current"]');
+    if (fixturesScroll && focusGroup) {
+        requestAnimationFrame(() => {
+            const targetTop = Math.max(0, focusGroup.offsetTop - Math.max(24, Math.round(fixturesScroll.clientHeight * 0.28)));
+            fixturesScroll.scrollTop = targetTop;
         });
     }
-
-    function setMode(mode) {
-        headEl.innerHTML = headerHtml(mode);
-        bodyEl.innerHTML = rows.map((team, index) => rowHtml(team, index, mode)).join('');
-        controlButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === mode));
-        bindTeamRowClicks();
-    }
-
-    controlButtons.forEach(btn => {
-        btn.addEventListener('click', () => setMode(btn.dataset.view || 'normal'));
-    });
-    setMode('normal');
 }

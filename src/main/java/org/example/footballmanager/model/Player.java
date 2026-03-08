@@ -35,6 +35,7 @@ public class Player {
     private int totalGoals;
     private int totalAssists;
     private Integer squadNumber;
+    private boolean injured;
     private Integer injuryDaysRemaining;
     private Integer injurySeasonNumber;
     private Integer injuryWeekNumber;
@@ -43,6 +44,7 @@ public class Player {
     @JoinColumn(name = "team_id")
     @JsonBackReference   // ← Ovo je back deo (Player → Team), sprečava ciklus
     private Team team;
+
 
     // Helper methods ostaju isti
     public Position getPositionEnum() {
@@ -64,4 +66,5 @@ public class Player {
     public int getInjuryDaysRemaining() {
         return injuryDaysRemaining == null ? 0 : injuryDaysRemaining;
     }
+
 }

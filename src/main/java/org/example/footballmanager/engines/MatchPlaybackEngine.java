@@ -25,8 +25,8 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 public class MatchPlaybackEngine {
 
-    private static final int TICK_MS = 120;
-    private static final int SUBSTEPS_PER_TICK = 4;
+    private static final int TICK_MS = 140; // 12 actions * 6 substeps * 140ms = ~10s per minute
+    private static final int SUBSTEPS_PER_TICK = 6;
 
     private final Map<Long, ScheduledExecutorService> schedulers = new ConcurrentHashMap<>();
     private final BroadcastEngine broadcastEngine;
@@ -107,10 +107,8 @@ public class MatchPlaybackEngine {
         }
 
         List<MatchEvent> events = loadEvents(matchId, rt);
-        Map<Integer, List<MatchEvent>> eventsByMinute = indexEventsByMinute(events);
+        Map<Integer, List<MatchEvent>> eventsByTick = indexEventsByTick(events);
         Match match = loadMatch(matchId, rt);
-        Map<String, String> teamNames = resolveTeamNames(match, events);
-        Map<Integer, Player> playersByPositionId = mapPlayersByPositionId(match);
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
@@ -118,7 +116,7 @@ public class MatchPlaybackEngine {
         final int ticksPerMinute = rt != null && rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
         final int[] frameIndex = {0};
         final int[] substep = {0};
-        final int[] lastBroadcastMinute = {-1};
+        final int[] lastBroadcastTick = {-1};
 
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -142,24 +140,14 @@ public class MatchPlaybackEngine {
                 state.put("carrierPlayerId", frame.carrierId >= 0 ? frame.carrierId : null);
                 broadcastEngine.positionWsHandler.broadcast(matchId, state);
 
-                if (minute != lastBroadcastMinute[0]) {
-                    List<MatchEvent> minuteEvents = eventsByMinute.getOrDefault(minute, List.of());
-                    broadcastEngine.broadcastMinuteEvents(matchId, minuteEvents, minute);
-                    if (minuteEvents.isEmpty()) {
-                        Player carrierPlayer = getCarrierPlayer(frame, playersByPositionId);
-                        broadcastEngine.broadcastPossession(
-                                matchId,
-                                minute,
-                                getTeamInPossession(frame, teamNames),
-                                carrierPlayer != null ? carrierPlayer.getName() : "",
-                                carrierPlayer != null ? carrierPlayer.getAge() : null,
-                                carrierPlayer != null ? carrierPlayer.getHeight() : null,
-                                carrierPlayer != null ? carrierPlayer.getWeight() : null,
-                                carrierPlayer != null ? carrierPlayer.getTotalGoals() : null,
-                                carrierPlayer != null ? carrierPlayer.getTotalAssists() : null
-                        );
+                // SYNC EVENTS WITH TICKS (instead of just minutes)
+                if (frame.tick != lastBroadcastTick[0]) {
+                    List<MatchEvent> tickEvents = eventsByTick.getOrDefault(frame.tick, List.of());
+                    if (!tickEvents.isEmpty()) {
+                        broadcastEngine.broadcastMinuteEvents(matchId, tickEvents, minute);
                     }
-                    lastBroadcastMinute[0] = minute;
+
+                    lastBroadcastTick[0] = frame.tick;
                 }
 
                 substep[0]++;
@@ -202,53 +190,41 @@ public class MatchPlaybackEngine {
         
         // CRITICAL: Handle ball in transit vs with carrier
         if (a.ballInTransit && !b.ballInTransit) {
-            // *** SPECIAL CASE: Ball is ARRIVING at receiver between frames ***
-            // Frame A: Ball is in flight (no carrier)
-            // Frame B: Ball has arrived to receiver (new carrier)
-            // Receiver is pendingReceiverId in frame A, or carrierId in frame B
+            // Ball is ARRIVING at receiver between frames
             int receiverId = a.pendingReceiverId >= 0 ? a.pendingReceiverId : b.carrierId;
             
-            // Find receiver's position in frame B
             PlayerPositionDTO receiver = b.players.stream()
                     .filter(p -> p.getId() == receiverId)
                     .findFirst()
                     .orElse(null);
             
             if (receiver != null) {
-                // Interpolate from passer to receiver
-                // For second half of transition (alpha >= 0.5), ball should be at receiver
-                if (alpha >= 0.5) {
-                    ball = new BallPositionDTO(receiver.getX(), receiver.getY());
-                    carrierId = receiverId;
-                } else {
-                    // First half: ball is still in flight
-                    ball = new BallPositionDTO(
-                            lerp(a.ball.getX(), receiver.getX(), alpha * 2.0),  // Accelerate to reach receiver
-                            lerp(a.ball.getY(), receiver.getY(), alpha * 2.0)
-                    );
-                    carrierId = -1;  // No carrier while in flight
-                }
+                // Smoothly interpolate ball from its position in A to receiver's position in B
+                ball = new BallPositionDTO(
+                        lerp(a.ball.getX(), receiver.getX(), alpha),
+                        lerp(a.ball.getY(), receiver.getY(), alpha)
+                );
+                
+                // Carrier is only set in the very last sub-tick of the transition
+                carrierId = (alpha > 0.95) ? receiverId : -1;
             } else {
-                // Receiver not found - fallback to interpolating ball
                 ball = new BallPositionDTO(
                         lerp(a.ball.getX(), b.ball.getX(), alpha),
                         lerp(a.ball.getY(), b.ball.getY(), alpha)
                 );
-                carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
-                log.error("Receiver {} not found! Falling back to frame interpolation", receiverId);
+                carrierId = (alpha > 0.95) ? b.carrierId : -1;
             }
         } else if (a.ballInTransit || b.ballInTransit) {
-            // Ball is in transit but not arriving - interpolate smoothly
+            // Ball is in transit - interpolate smoothly between the two recorded ball positions
             ball = new BallPositionDTO(
                     lerp(a.ball.getX(), b.ball.getX(), alpha),
                     lerp(a.ball.getY(), b.ball.getY(), alpha)
             );
-            carrierId = -1;  // No carrier while in flight
+            carrierId = -1;
         } else if (alpha < 0.5 ? (a.carrierId >= 0) : (b.carrierId >= 0)) {
-            // Ball is with a player
-            carrierId = alpha < 0.5 ? a.carrierId : b.carrierId;
+            // Ball is with a player in both frames or transitioning between carriers
+            carrierId = (alpha < 0.5) ? a.carrierId : b.carrierId;
             
-            // Find carrier in interpolated players
             int finalCarrierId = carrierId;
             PlayerPositionDTO carrier = interpolatedPlayers.stream()
                     .filter(p -> p.getId() == finalCarrierId)
@@ -258,9 +234,10 @@ public class MatchPlaybackEngine {
             if (carrier != null) {
                 ball = new BallPositionDTO(carrier.getX(), carrier.getY());
             } else {
-                log.error("Carrier {} not found in {} interpolated players!", 
-                        carrierId, interpolatedPlayers.size());
-                ball = new BallPositionDTO(a.ball.getX(), a.ball.getY());
+                ball = new BallPositionDTO(
+                        lerp(a.ball.getX(), b.ball.getX(), alpha),
+                        lerp(a.ball.getY(), b.ball.getY(), alpha)
+                );
                 carrierId = -1;
             }
         } else {
@@ -356,7 +333,8 @@ public class MatchPlaybackEngine {
 
         List<MatchEvent> events = matchEventRepository.findByMatch(match);
         events.sort(Comparator
-                .comparingInt(MatchEvent::getMinute)
+                .comparingInt(MatchEvent::getTick)
+                .thenComparingInt(MatchEvent::getMinute)
                 .thenComparing(e -> e.getId() == null ? 0L : e.getId()));
         return events;
     }
@@ -369,12 +347,12 @@ public class MatchPlaybackEngine {
                 .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
     }
 
-    private Map<Integer, List<MatchEvent>> indexEventsByMinute(List<MatchEvent> events) {
-        Map<Integer, List<MatchEvent>> byMinute = new HashMap<>();
+    private Map<Integer, List<MatchEvent>> indexEventsByTick(List<MatchEvent> events) {
+        Map<Integer, List<MatchEvent>> byTick = new HashMap<>();
         for (MatchEvent event : events) {
-            byMinute.computeIfAbsent(event.getMinute(), k -> new ArrayList<>()).add(event);
+            byTick.computeIfAbsent(event.getTick(), k -> new ArrayList<>()).add(event);
         }
-        return byMinute;
+        return byTick;
     }
 
     private String getTeamInPossession(MatchRuntime.TickState frame, Map<String, String> teamNames) {
@@ -418,8 +396,8 @@ public class MatchPlaybackEngine {
             return result;
         }
 
-        List<Player> home = match.getHomeLineup() != null ? match.getHomeLineup().getStartingPlayers() : List.of();
-        List<Player> away = match.getAwayLineup() != null ? match.getAwayLineup().getStartingPlayers() : List.of();
+        List<Player> home = match.getHomeLineup() != null ? match.getHomeLineup().getOrderedStartingPlayers() : List.of();
+        List<Player> away = match.getAwayLineup() != null ? match.getAwayLineup().getOrderedStartingPlayers() : List.of();
 
         for (int i = 0; i < Math.min(11, home.size()); i++) {
             result.put(i + 1, home.get(i));

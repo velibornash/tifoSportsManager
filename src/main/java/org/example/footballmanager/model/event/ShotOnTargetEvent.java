@@ -1,6 +1,7 @@
 package org.example.footballmanager.model.event;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ManyToOne;
@@ -19,6 +20,9 @@ public class ShotOnTargetEvent extends MatchEvent {
     @ManyToOne(fetch = FetchType.LAZY)
     @JsonIgnore
     private Player shooter;
+
+    @Column(name = "xg")
+    private double xG;
 
     @Override
     public void apply() {

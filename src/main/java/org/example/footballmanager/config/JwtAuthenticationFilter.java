@@ -35,6 +35,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (path.startsWith("/js/")
                 || path.startsWith("/css/")
                 || path.startsWith("/images/")
+                || path.startsWith("/zox/")
                 || path.endsWith(".html")) {
             filterChain.doFilter(request, response);
             return;

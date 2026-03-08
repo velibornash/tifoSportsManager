@@ -58,6 +58,7 @@ public class Match {
 
     @Lob
     private String eventJson;
+    private Boolean finished;
 
     // --- helper metode po tipu eventa ---
     public Set<GoalEvent> getGoals() {
@@ -148,5 +149,17 @@ public class Match {
         Set<MatchStartEvent> list = new HashSet<>();
         for (MatchEvent e : allMatchEvents) if (e instanceof MatchStartEvent) list.add((MatchStartEvent) e);
         return list;
+    }
+
+    public boolean isFinished() {
+        return finished != null && finished;
+    }
+
+    public Boolean getFinished() {
+        return finished;
+    }
+
+    public void setFinished(Boolean finished) {
+        this.finished = finished;
     }
 }

@@ -34,6 +34,8 @@ public class MatchRuntime {
     public boolean ballTransitCanBeIntercepted = false;
     public double ballTransitTargetX = 50.0;
     public double ballTransitTargetY = 50.0;
+    public double ballTransitStartX = 50.0;
+    public double ballTransitStartY = 50.0;
     public int ballTransitTicks = 0;
     public int ballTransitMaxTicks = 0;
     public Integer lastControllerId = null;

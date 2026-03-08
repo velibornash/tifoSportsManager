@@ -1,5 +1,7 @@
 package org.example.footballmanager.config;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.example.footballmanager.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -60,12 +62,17 @@ public class SecurityConfig {
                                 "/cleanSheetTifo.html",
                                 "/tifo.html",
                                 "/key-events.html",
+                                "/zox-match-preview.html",
+                                "/zox/**",
+                                "/api/zox/**",
                                 "/css/**",
                                 "/js/**",
                                 "/images/**",
+                                "/audio/**",
                                 "/auth/**",
                                 "/api/**",
                                 "/api/clean-sheet/**",
+                                "/api/zox/**",
                                 "/countries/**",
                                 "/demo/**",
                                 "/start-demo",
@@ -84,11 +91,27 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exc -> exc
-                        .authenticationEntryPoint((request, response, authException) -> response.sendRedirect("/login.html"))
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            if (shouldReturnUnauthorized(request)) {
+                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                                return;
+                            }
+                            response.sendRedirect("/login.html");
+                        })
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private boolean shouldReturnUnauthorized(HttpServletRequest request) {
+        String requestedWith = request.getHeader("X-Requested-With");
+        String accept = request.getHeader("Accept");
+        return "XMLHttpRequest".equalsIgnoreCase(requestedWith)
+                || request.getHeader("Authorization") != null
+                || !"GET".equalsIgnoreCase(request.getMethod())
+                || (accept != null && accept.contains("application/json"))
+                || request.getRequestURI().startsWith("/api/");
     }
 }

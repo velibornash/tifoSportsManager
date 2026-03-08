@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -50,11 +51,12 @@ public class StatsController {
     }
 
     @GetMapping("/leagues/{leagueId}/topscorers")
-    public ResponseEntity<List<TopScorerDTO>> getTopScorers(@PathVariable Long leagueId) {
+    public ResponseEntity<List<TopScorerDTO>> getTopScorers(@PathVariable Long leagueId,
+                                                            @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
 
-        int activeSeasonYear = seasonService.getActiveSeasonYear();
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         SeasonCompetition sc = seasonCompetitionRepository
                 .findByCompetitionAndSeasonYear(league, activeSeasonYear)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League season not found"));
@@ -92,11 +94,12 @@ public class StatsController {
     }
 
     @GetMapping("/leagues/{leagueId}/topassists")
-    public ResponseEntity<List<TopAssistDTO>> getTopAssists(@PathVariable Long leagueId) {
+    public ResponseEntity<List<TopAssistDTO>> getTopAssists(@PathVariable Long leagueId,
+                                                            @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
 
-        int activeSeasonYear = seasonService.getActiveSeasonYear();
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         SeasonCompetition sc = seasonCompetitionRepository
                 .findByCompetitionAndSeasonYear(league, activeSeasonYear)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League season not found"));

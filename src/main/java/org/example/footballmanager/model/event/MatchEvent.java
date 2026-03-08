@@ -28,6 +28,9 @@ public abstract class MatchEvent {
     @Column(name = "event_minute")
     protected int minute;
 
+    @Column(name = "event_tick")
+    protected int tick;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

@@ -78,15 +78,17 @@ public class TeamController {
         Lineup template = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(teamId).orElse(null);
         if (template == null) {
             return ResponseEntity.ok(Map.of(
+                    "saved", false,
                     "formation", "4-4-2",
                     "starterIds", List.of(),
                     "benchIds", List.of()
             ));
         }
         return ResponseEntity.ok(Map.of(
+                "saved", true,
                 "formation", template.getFormation() == null ? "4-4-2" : template.getFormation(),
-                "starterIds", template.getStartingPlayers() == null ? List.of() : template.getStartingPlayers().stream().map(Player::getId).toList(),
-                "benchIds", template.getSubstitutes() == null ? List.of() : template.getSubstitutes().stream().map(Player::getId).toList()
+                "starterIds", template.getOrderedStarterIds(),
+                "benchIds", template.getOrderedBenchIds()
         ));
     }
 
@@ -139,19 +141,22 @@ public class TeamController {
             bench = java.util.stream.Stream.concat(bench.stream(), fallbackBench.stream()).toList();
         }
 
-        Lineup lineup = new Lineup();
+        Lineup lineup = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(teamId).orElseGet(Lineup::new);
         lineup.setTeam(team);
         lineup.setMatch(null);
         lineup.setFormation(formation);
         lineup.setStartingPlayers(starters);
         lineup.setSubstitutes(bench);
+        lineup.setStarterOrderFromIds(starters.stream().map(Player::getId).toList());
+        lineup.setBenchOrderFromIds(bench.stream().map(Player::getId).toList());
         lineup = lineupRepository.save(lineup);
 
         return ResponseEntity.ok(Map.of(
                 "id", lineup.getId(),
+                "saved", true,
                 "formation", lineup.getFormation(),
-                "starterIds", lineup.getStartingPlayers().stream().map(Player::getId).toList(),
-                "benchIds", lineup.getSubstitutes().stream().map(Player::getId).toList()
+                "starterIds", lineup.getOrderedStarterIds(),
+                "benchIds", lineup.getOrderedBenchIds()
         ));
     }
 

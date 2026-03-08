@@ -8,11 +8,17 @@ const GOAL_SHOT_DURATION = 1000;
 const GOAL_RESET_DURATION = 1100;
 
 let players = {};
+let playerNamesMap = {}; // New: store player names
 let ball = { x: 50, y: 50 };
+let currentCarrierId = null; // New: store current carrier
 let currentMinute = 0;
 let scriptedBallAnimation = null;
 let suppressIncomingBallUntil = 0;
 let frameBuffer = [];
+
+export function setPlayerNames(names) {
+    playerNamesMap = names;
+}
 
 export function initCanvas() {
     canvas = document.getElementById('pitch');
@@ -59,10 +65,13 @@ export function updatePositionsData(data) {
         }
     });
 
+    currentCarrierId = data.carrierPlayerId;
+
     frameBuffer.push({
         at: now,
         players: playerMap,
-        ball: data.ball ? { x: data.ball.x, y: data.ball.y } : { x: ball.x, y: ball.y }
+        ball: data.ball ? { x: data.ball.x, y: data.ball.y } : { x: ball.x, y: ball.y },
+        carrierId: data.carrierPlayerId
     });
 
     while (frameBuffer.length > 12) {
@@ -184,16 +193,42 @@ function drawPlayers() {
     Object.values(players).forEach(p => {
         const x = toCanvasX(p.x);
         const y = toCanvasY(p.y);
+        
+        // Is this player the current carrier?
+        const isCarrier = currentCarrierId != null && Number(currentCarrierId) === Number(p.id);
+
         ctx.beginPath();
         ctx.fillStyle = p.team === 'HOME' ? '#0066ff' : '#ff3333';
         ctx.arc(x, y, 12, 0, Math.PI * 2);
         ctx.fill();
+
+        // Highlight carrier
+        if (isCarrier) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
 
         ctx.fillStyle = '#fff';
         ctx.font = '11px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(p.id, x, y);
+
+        // Draw name bubble for carrier
+        if (isCarrier) {
+            const name = playerNamesMap[p.id] || `Player ${p.id}`;
+            ctx.font = 'bold 12px Arial';
+            const textWidth = ctx.measureText(name).width;
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.beginPath();
+            ctx.roundRect(x - (textWidth + 10) / 2, y - 35, textWidth + 10, 18, 5);
+            ctx.fill();
+            
+            ctx.fillStyle = '#fff';
+            ctx.fillText(name, x, y - 26);
+        }
     });
 }
 

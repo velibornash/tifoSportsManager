@@ -44,28 +44,36 @@ public class AIDecisionMaker {
         double goalDistance = estimateGoalDistance(player, rt, team);
         List<Player> nearbyDefenders = getNearbyDefenders(player, rt, team);
         double defensivePressure = Math.min(1.0, nearbyDefenders.size() / 4.0);
+        double offsideLine = calculateOffsideLine(rt, team);
 
-        // Bilo koji napadač može da šutira u težoj zoni šuta
-        if (isAggressiveFinalThirdPlayer(player) && isHardShotZone(player, rt, team, goalDistance)) {
+        // U opasnoj zoni, ako nema pritiska, šut je apsolutni prioritet
+        if (isDirectShotPriority(player, rt, team, goalDistance, defensivePressure)) {
             return new Decision(ActionType.SHOT, null);
         }
 
-        Player bestPassTarget = selectBestPassReceiver(player, teamPlayers, rt, team, goalDistance);
+        // Bilo koji napadač može da šutira u težoj zoni šuta ako ima prostora
+        if (isAggressiveFinalThirdPlayer(player) && isHardShotZone(player, rt, team, goalDistance) && defensivePressure < 0.6) {
+            return new Decision(ActionType.SHOT, null);
+        }
+
+        Player bestPassTarget = selectBestPassReceiver(player, teamPlayers, rt, team, goalDistance, offsideLine);
 
         double passScore = calculatePassScore(player, bestPassTarget, defensivePressure, rt, team);
         double shotScore = calculateShotScore(player, goalDistance, defensivePressure, rt, team);
         double dribbleScore = calculateDribbleScore(player, defensivePressure, rt, team);
 
-        if (isDirectShotPriority(player, rt, team, goalDistance, defensivePressure)) {
-            return new Decision(ActionType.SHOT, null);
+        // BONUS FOR DRIBBLE IF SPACE IS CLEAR
+        if (nearbyDefenders.isEmpty()) {
+            dribbleScore += 1.5; // Encourage carrying the ball forward if no one is marking
         }
 
         if (isAggressiveFinalThirdPlayer(player) && isInShotZone(team, getPlayerX(player, rt))) {
+            // Drastično smanjujemo šansu za pas ako nije progresivan (napred)
             if (bestPassTarget != null && !isForwardPass(player, bestPassTarget, rt, team)) {
-                passScore *= 0.05;
+                passScore *= 0.02; // Smanjeno sa 0.05
             }
-            shotScore *= 1.85;  // Increased from 1.35 to encourage shots
-            dribbleScore *= 0.85;  // Slightly reduced
+            shotScore *= 1.65;  // Malo smanjen da ne preteruju sa šutevima iz svake polušanse
+            dribbleScore *= 0.7; // Smanjeno
         }
 
         double totalScore = passScore + shotScore + dribbleScore;
@@ -83,7 +91,8 @@ public class AIDecisionMaker {
         ActionType action;
         Player targetPlayer = null;
 
-        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > 0.18 && goalDistance < 38.0) {
+        // Povećan prag za šut da bi bio odlučniji
+        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > 0.20 && goalDistance < 34.0) {
             action = ActionType.SHOT;
         } else if (passScore >= dribbleScore && bestPassTarget != null) {
             action = ActionType.PASS;
@@ -93,7 +102,8 @@ public class AIDecisionMaker {
         }
 
         if (action == ActionType.PASS && targetPlayer != null && shouldBlockBackwardPass(player, targetPlayer, rt, team, goalDistance)) {
-            if (shotScore >= dribbleScore * 0.9 && goalDistance < 30.0) {
+            // Ako je pas unazad blokiran, pokušaj šut ako je iole smislen, inače driblaj napred
+            if (shotScore >= 0.16 && goalDistance < 28.0) {
                 return new Decision(ActionType.SHOT, null);
             }
             return new Decision(ActionType.DRIBBLE, null);
@@ -181,7 +191,7 @@ public class AIDecisionMaker {
         return Math.max(0.0, baseScore);
     }
 
-    private Player selectBestPassReceiver(Player passer, List<Player> teammates, MatchRuntime rt, String team, double goalDistance) {
+    private Player selectBestPassReceiver(Player passer, List<Player> teammates, MatchRuntime rt, String team, double goalDistance, double offsideLine) {
         if (teammates.isEmpty()) {
             return null;
         }
@@ -217,6 +227,7 @@ public class AIDecisionMaker {
         List<Player> filteredCandidates = candidatePool.stream()
                 .filter(player -> !shouldBlockBackwardPass(passer, player, rt, team, goalDistance))
                 .filter(player -> !isReceiverOnCooldown(player, rt, team))
+                .filter(player -> !isClearlyOffside(player, passer, rt, team, offsideLine)) // BLOCK OFFSIDE PASSES
                 .filter(player -> calculatePassTargetScore(passer, player, rt, team) > -1.5)
                 .toList();
         if (!filteredCandidates.isEmpty()) {
@@ -226,6 +237,7 @@ public class AIDecisionMaker {
         List<Player> safeOutlets = nearest.stream()
                 .filter(player -> !shouldBlockBackwardPass(passer, player, rt, team, goalDistance))
                 .filter(player -> !isReceiverOnCooldown(player, rt, team))
+                .filter(player -> !isClearlyOffside(player, passer, rt, team, offsideLine))
                 .filter(player -> calculateSafeOutletScore(passer, player, rt, team) > 0.15)
                 .limit(3)
                 .toList();
@@ -234,6 +246,40 @@ public class AIDecisionMaker {
         }
 
         return nearest.get(random.nextInt(nearest.size()));
+    }
+
+    private boolean isClearlyOffside(Player receiver, Player passer, MatchRuntime rt, String team, double offsideLine) {
+        PlayerPositionDTO receiverPos = getPlayerPosition(receiver, rt);
+        PlayerPositionDTO passerPos = getPlayerPosition(passer, rt);
+        if (receiverPos == null || passerPos == null) return false;
+
+        boolean homeAttack = "HOME".equals(team);
+        boolean inOppositionHalf = homeAttack ? receiverPos.getX() > 50.0 : receiverPos.getX() < 50.0;
+        if (!inOppositionHalf) return false;
+
+        boolean aheadOfBall = homeAttack ? receiverPos.getX() > passerPos.getX() + 0.5 : receiverPos.getX() < passerPos.getX() - 0.5;
+        boolean beyondLine = homeAttack ? receiverPos.getX() > offsideLine + 0.5 : receiverPos.getX() < offsideLine - 0.5;
+
+        return aheadOfBall && beyondLine;
+    }
+
+    private double calculateOffsideLine(MatchRuntime rt, String team) {
+        List<Player> defenders = "HOME".equals(team) ? rt.awayPlayers : rt.homePlayers;
+        List<Double> xPositions = defenders.stream()
+                .filter(p -> p.getPosition() != Position.GK)
+                .map(p -> getPlayerX(p, rt))
+                .sorted()
+                .toList();
+
+        if (xPositions.isEmpty()) return "HOME".equals(team) ? 95.0 : 5.0;
+
+        if ("HOME".equals(team)) {
+            // Last defender (highest X)
+            return xPositions.get(xPositions.size() - 1);
+        } else {
+            // Last defender (lowest X)
+            return xPositions.get(0);
+        }
     }
 
     private double calculatePassTargetScore(Player passer, Player receiver, MatchRuntime rt, String team) {
@@ -250,48 +296,42 @@ public class AIDecisionMaker {
         double nearestOpponent = nearestOpponentDistance(receiverPos, opponents);
 
         double score = 0.0;
-        score += clearLane ? 0.95 : -0.90;
-        score += Math.max(0.0, 8.0 - Math.abs(distance - 12.0)) * 0.07;
-        score += nearestOpponent * 0.06;
-        score += progress * 0.16;
+        score += clearLane ? 1.5 : -3.0; // Even heavier penalty for blocked lanes
+        score += Math.max(0.0, 8.0 - Math.abs(distance - 12.0)) * 0.05;
+        score += nearestOpponent * 0.12; // Favor passing to players with space
+        score += progress * 0.45; // MUCH more weight on forward progress
 
         if (receiver.getPosition() == Position.ATT) {
-            score += 0.72;
+            score += 1.2; // Stronger preference for strikers
         } else if (receiver.getPosition() == Position.WNG) {
-            score += 0.58;
+            score += 0.95;
         } else if (receiver.getPosition() == Position.MID) {
-            score += 0.36;
+            score += 0.40;
         } else if (receiver.getPosition() == Position.DEF) {
-            score -= 0.48;
+            score -= 1.5; // Strong penalty for passing to defenders when in possession
         }
 
         if (isForwardPass(passer, receiver, rt, team)) {
-            score += 0.42;
+            score += 1.0; // Bonus for forward pass
         } else {
-            score -= 0.55;
+            score -= 2.5; // Strong penalty for ANY backward pass
         }
 
         if (isInShotZone(team, passerPos.getX())) {
             if (isBackwardAcrossHalf(passerPos, receiverPos, team)) {
-                score -= 3.5;
+                score -= 5.0; // Block backward across half completely
             } else if (!isForwardPass(passer, receiver, rt, team)) {
-                score -= 1.4;
+                score -= 2.5; // Very strong penalty for non-forward pass in shot zone
             }
         }
 
-        if (receiver.getPosition() == Position.MID && passer.getPosition() == Position.MID && nearCenter(receiverPos)) {
-            score -= 0.60;
+        // Avoid infinite loops between midfielders
+        if (receiver.getPosition() == Position.MID && passer.getPosition() == Position.MID && progress < 3.0) {
+            score -= 1.5;
         }
-        if (receiver.getPosition() == Position.MID
-                && passer.getPosition() == Position.MID
-                && nearCenter(receiverPos)
-                && nearCenter(passerPos)
-                && progress < 4.0) {
-            return -10.0;
-        }
-
-        if (distance > 24.0) {
-            score -= 0.45;
+        
+        if (distance > 28.0) {
+            score -= 0.8; // Harder to make long passes
         }
 
         score += calculateRecentPassMemoryPenalty(passer, receiver, rt);
@@ -322,12 +362,12 @@ public class AIDecisionMaker {
             return false;
         }
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 28.0 && defensivePressure <= 0.9;
+        return isInShotZone(team, x) && goalDistance <= 24.0 && defensivePressure <= 0.60;
     }
 
     private boolean isHardShotZone(Player player, MatchRuntime rt, String team, double goalDistance) {
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 25.0;
+        return isInShotZone(team, x) && goalDistance <= 20.0;
     }
 
     private boolean shouldBlockBackwardPass(Player passer, Player receiver, MatchRuntime rt, String team, double goalDistance) {
@@ -363,16 +403,16 @@ public class AIDecisionMaker {
         double penalty = 0.0;
 
         if (isSamePair(passerId, receiverId, rt.lastPassFromId, rt.lastPassToId)) {
-            penalty -= 1.2;
+            penalty -= 2.5; // Strong penalty for repeating same pass
         }
         if (isReversePair(passerId, receiverId, rt.lastPassFromId, rt.lastPassToId)) {
-            penalty -= 2.6;
+            penalty -= 6.0; // MASSIVE penalty for returning the ball immediately (ping-pong)
         }
         if (isSamePair(passerId, receiverId, rt.previousPassFromId, rt.previousPassToId)) {
-            penalty -= 0.8;
+            penalty -= 1.5;
         }
         if (isReversePair(passerId, receiverId, rt.previousPassFromId, rt.previousPassToId)) {
-            penalty -= 1.7;
+            penalty -= 3.5;
         }
 
         return penalty;

@@ -111,9 +111,11 @@ public class SimulationController {
 
         return ResponseEntity.ok(Map.of(
                 "status", "prepared",
-                "message", "Realistic simulation started - data should stream shortly",
+                "message", "Realistic simulation started - replay data will be available shortly",
                 "position_socket", "/demo-position-updates",
                 "event_socket", "/demo-match-events",
+                "replay_metadata", "/api/zox/replay/" + demoMatch.getId() + "/metadata",
+                "replay_chunk_template", "/api/zox/replay/" + demoMatch.getId() + "/chunks/{chunkIndex}",
                 "matchId", demoMatch.getId().toString()
         ));
     }

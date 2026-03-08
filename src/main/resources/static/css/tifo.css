@@ -231,6 +231,9 @@
     padding: 6px 0;
     border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+.logo-corner {
+    display: none;
+}
 
 @media (max-width: 768px) {
     #inboxBtnMobile,

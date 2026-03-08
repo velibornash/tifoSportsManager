@@ -33,8 +33,9 @@
         }
 
         .header {
-            text-align: center;
-            margin-bottom: 30px;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
         }
 
         .match-info {
@@ -79,20 +80,18 @@
             width: 100%;
             max-width: 920px;
             aspect-ratio: 100 / 64;
-            background: linear-gradient(90deg, #1a7a1a 0%, #2d9b2d 50%, #1a7a1a 100%);
-            border: 3px solid #fff;
-            border-radius: 10px;
-            margin: 0 auto 20px;
+            background: #1d6a38 url('/images/match/field.svg') center/cover no-repeat;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 18px;
+            margin: 0 auto;
             overflow: hidden;
-            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 20px 36px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
         }
 
-        .pitch-markings {
+        #players-container {
             position: absolute;
-            width: 100%;
-            height: 100%;
-            top: 0;
-            left: 0;
+            inset: 0;
+            z-index: 12;
         }
 
         .pitch-overlay {
@@ -104,142 +103,134 @@
             z-index: 14;
         }
 
-        .center-line {
-            position: absolute;
-            width: 2px;
-            height: 100%;
-            left: 50%;
-            top: 0;
-            background: #fff;
-            opacity: 0.5;
-        }
-
-        .center-circle {
-            position: absolute;
-            width: 20%;
-            aspect-ratio: 1 / 1;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            opacity: 0.5;
-        }
-
-        .penalty-area {
-            position: absolute;
-            width: 25%;
-            height: 45%;
-            border: 2px solid #fff;
-            opacity: 0.5;
-        }
-
-        .penalty-area.home {
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .penalty-area.away {
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .goal-box {
-            position: absolute;
-            width: 6%;
-            height: 20%;
-            border: 2px solid #fff;
-            opacity: 0.4;
-        }
-
-        .goal-box.home {
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .goal-box.away {
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .penalty-spot {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.9);
-            top: 50%;
-            transform: translate(-50%, -50%);
-            opacity: 0.8;
-        }
-
-        .penalty-spot.home {
-            left: 12%;
-        }
-
-        .penalty-spot.away {
-            left: 88%;
-        }
-
         .player {
             position: absolute;
-            width: 40px;
-            height: 40px;
+            width: 62px;
+            height: 62px;
+            transform: translate(-50%, -50%);
+            transition: left 110ms linear, top 110ms linear, filter 0.16s ease;
+            pointer-events: none;
+            z-index: 12;
+        }
+
+        .player-marker {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 34px;
+            height: 34px;
+            transform: translate(-50%, -50%);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            font-size: 0.88em;
-            cursor: pointer;
-            transition: left 0.62s linear, top 0.62s linear, box-shadow 0.25s ease, transform 0.25s ease, filter 0.25s ease;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            border: 3px solid rgba(255, 255, 255, 0.94);
+            box-shadow: 0 8px 14px rgba(0, 0, 0, 0.34);
+            font-weight: 800;
+            font-size: 0.8em;
+            letter-spacing: 0.01em;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
         }
 
-        .player.home {
-            background: #FF6B6B;
-            border: 2px solid #fff;
+        .player-number {
+            color: #fff;
+            line-height: 1;
         }
 
-        .player.away {
-            background: #4ECDC4;
-            border: 2px solid #fff;
+        .player-label {
+            position: absolute;
+            left: 50%;
+            top: 40px;
+            transform: translateX(-50%);
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(9, 18, 28, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 0.62em;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            max-width: 96px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+        }
+
+        .player.home .player-marker {
+            background: #d96567;
+        }
+
+        .player.away .player-marker {
+            background: #43aab7;
+        }
+
+        .player.gk .player-marker {
+            background: #f4cb42;
+            border-color: rgba(18, 18, 18, 0.86);
+        }
+
+        .player.gk .player-number {
+            color: #171717;
         }
 
         .player.carrier {
-            box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
-            animation: pulse 0.6s infinite;
+            z-index: 20;
         }
 
-        .player.involved-primary {
+        .player.carrier .player-marker {
+            box-shadow: 0 0 0 6px rgba(255, 214, 74, 0.22), 0 0 18px rgba(255, 214, 74, 0.55);
+            animation: pulseMarker 0.72s infinite;
+        }
+
+        .player.involved-primary .player-marker {
             filter: brightness(1.15);
             box-shadow: 0 0 18px rgba(255, 255, 255, 0.9);
-            z-index: 12;
         }
 
-        .player.involved-secondary {
+        .player.involved-primary .player-label,
+        .player.involved-secondary .player-label,
+        .player.carrier .player-label {
+            background: rgba(16, 34, 56, 0.92);
+            border-color: rgba(255, 255, 255, 0.34);
+        }
+
+        @keyframes clashMarker {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            25% { transform: translate(-50%, -50%) scale(1.18); }
+            50% { transform: translate(-50%, -50%) scale(1.08); }
+            75% { transform: translate(-50%, -50%) scale(1.16); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .duel-clash .player-marker {
+            animation: clashMarker 0.4s ease-out;
+            border-color: #FFD700 !important;
+            box-shadow: 0 0 25px #FFD700 !important;
+            z-index: 30 !important;
+        }
+
+        .player.involved-secondary .player-marker {
             box-shadow: 0 0 12px rgba(255, 255, 255, 0.55);
-            z-index: 11;
         }
 
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+        @keyframes pulseMarker {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.08); }
         }
 
         .ball {
             position: absolute;
-            width: 15px;
-            height: 15px;
-            background: #fff;
+            width: 16px;
+            height: 16px;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ffffff 45%, #d7d7d7 100%);
             border-radius: 50%;
-            box-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            border: 2px solid rgba(20, 20, 20, 0.9);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+            transition: left 90ms linear, top 90ms linear, opacity 0.12s ease;
             z-index: 10;
-            transition: left 0.62s linear, top 0.62s linear;
         }
 
         .pitch-event-layer {
@@ -259,14 +250,35 @@
             background: rgba(8, 16, 24, 0.78);
             border: 1px solid rgba(255, 255, 255, 0.22);
             font-size: 0.86em;
+            font-weight: 700;
             letter-spacing: 0.02em;
             opacity: 0;
             transition: opacity 0.2s ease;
             backdrop-filter: blur(6px);
+            max-width: min(80%, 680px);
+            text-align: center;
         }
 
         .pitch-event-banner.visible {
             opacity: 1;
+        }
+
+        .pitch-event-banner[data-importance="critical"] {
+            background: rgba(78, 58, 6, 0.9);
+            border-color: rgba(255, 215, 0, 0.52);
+            color: #fff3bf;
+        }
+
+        .pitch-event-banner[data-importance="high"] {
+            background: rgba(48, 16, 16, 0.88);
+            border-color: rgba(255, 120, 120, 0.5);
+            color: #ffe1e1;
+        }
+
+        .pitch-event-banner[data-category="system"] {
+            background: rgba(12, 28, 54, 0.9);
+            border-color: rgba(121, 178, 255, 0.45);
+            color: #d6ebff;
         }
 
         .goal-celebration {
@@ -286,39 +298,529 @@
             transform: translate(-50%, -50%) scale(1);
         }
 
-        .events-panel {
+        .playback-shell {
+            display: block;
+            margin-bottom: 20px;
+        }
+
+        .playback-main {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .header-toolbar {
+            min-width: min(100%, 420px);
+            margin-left: auto;
+        }
+
+        .squad-panel {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
+            padding: 14px;
+            backdrop-filter: blur(4px);
+        }
+
+        .squad-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .squad-title {
+            font-size: 1.02em;
+            font-weight: 700;
+        }
+
+        .squad-subtitle {
+            font-size: 0.8em;
+            opacity: 0.75;
+            margin-top: 4px;
+        }
+
+        .squad-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-top: 6px;
+            flex-shrink: 0;
+        }
+
+        .squad-dot.home {
+            background: #FF6B6B;
+        }
+
+        .squad-dot.away {
+            background: #4ECDC4;
+        }
+
+        .squad-section-title {
+            font-size: 0.78em;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.68);
+            margin: 12px 0 8px;
+        }
+
+        .squad-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .squad-player-row {
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .squad-num {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.14);
+            font-weight: 700;
+        }
+
+        .squad-player-name {
+            font-weight: 600;
+            font-size: 0.92em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .squad-player-meta {
+            font-size: 0.78em;
+            opacity: 0.72;
+            margin-top: 2px;
+        }
+
+        .playback-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+        }
+
+        .playback-kicker {
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: rgba(255, 255, 255, 0.68);
+            margin-bottom: 2px;
+        }
+
+        .playback-status {
+            font-size: 0.95em;
+            font-weight: 600;
+        }
+
+        .playback-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .btn-control {
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+        }
+
+        .btn-control:hover {
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .speed-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.86em;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .speed-control select {
+            background: rgba(12, 20, 32, 0.9);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .timeline-card {
+            padding: 14px 16px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+        }
+
+        .timeline-halves {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.76em;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.66);
+            margin-bottom: 12px;
+        }
+
+        .timeline-track-shell {
+            position: relative;
+            padding-top: 8px;
+        }
+
+        .timeline-bar {
+            position: relative;
+            height: 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            overflow: hidden;
+        }
+
+        .timeline-progress {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 0;
+            background: linear-gradient(90deg, #ffd54f, #4fc3f7);
+            border-radius: 999px;
+        }
+
+        .timeline-half-marker {
+            position: absolute;
+            left: 50%;
+            top: -4px;
+            bottom: -4px;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.55);
+            z-index: 2;
+        }
+
+        .goal-markers {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .goal-marker {
+            position: absolute;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(255, 255, 255, 0.92);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
+        }
+
+        .goal-marker.home {
+            background: #FF6B6B;
+        }
+
+        .goal-marker.away {
+            background: #4ECDC4;
+        }
+
+        .timeline-range {
+            -webkit-appearance: none;
+            appearance: none;
+            position: absolute;
+            inset: 8px 0 auto;
+            width: 100%;
+            height: 14px;
+            background: transparent;
+            cursor: pointer;
+            z-index: 5;
+        }
+
+        .timeline-range::-webkit-slider-runnable-track {
+            height: 14px;
+            background: transparent;
+        }
+
+        .timeline-range::-moz-range-track {
+            height: 14px;
+            background: transparent;
+            border: none;
+        }
+
+        .timeline-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            margin-top: -2px;
+            background: #ffffff;
+            border: 2px solid #163251;
+            box-shadow: 0 0 0 4px rgba(79, 195, 247, 0.22);
+        }
+
+        .timeline-range::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid #163251;
+            box-shadow: 0 0 0 4px rgba(79, 195, 247, 0.22);
+        }
+
+        .timeline-time {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -120%);
+            padding: 4px 8px;
+            border-radius: 8px;
+            background: rgba(8, 16, 28, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            font-size: 0.78em;
+            font-weight: 700;
+            z-index: 6;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .match-center-card {
+            padding: 18px 20px;
+        }
+
+        .match-feed-section {
+            margin-top: 18px;
+        }
+
+        .bottom-squads {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 18px;
+        }
+
+        .match-center-grid {
+            display: grid;
+            grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .panel-card {
             background: rgba(255, 255, 255, 0.05);
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
             padding: 20px;
-            max-height: 300px;
+            backdrop-filter: blur(4px);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .panel-header h3 {
+            font-size: 1.08em;
+            margin-bottom: 4px;
+        }
+
+        .panel-subtitle {
+            font-size: 0.86em;
+            opacity: 0.72;
+            line-height: 1.35;
+        }
+
+        .insights-panel {
+            display: grid;
+            gap: 18px;
+        }
+
+        .stat-board {
+            display: grid;
+            gap: 10px;
+        }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 12px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .stat-label {
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            opacity: 0.75;
+        }
+
+        .stat-value {
+            font-weight: 700;
+            font-size: 1.02em;
+        }
+
+        .stat-value.home {
+            text-align: left;
+            color: #ffd1d1;
+        }
+
+        .stat-value.away {
+            text-align: right;
+            color: #c9fffb;
+        }
+
+        .key-moments-list,
+        .events-panel {
+            max-height: 620px;
             overflow-y: auto;
+        }
+
+        .key-moments-list {
+            display: grid;
+            gap: 10px;
+            min-height: 160px;
+        }
+
+        .moment-item {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 12px;
+            padding: 11px 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border-left: 4px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .moment-item.critical {
+            border-left-color: #FFD700;
+            background: rgba(255, 215, 0, 0.12);
+        }
+
+        .moment-item.high {
+            border-left-color: #ff8a8a;
+            background: rgba(255, 106, 106, 0.12);
+        }
+
+        .moment-time {
+            font-weight: 800;
+            color: #FFD700;
+            min-width: 34px;
+        }
+
+        .moment-label {
+            font-size: 0.77em;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        .moment-text {
+            line-height: 1.35;
+        }
+
+        .placeholder {
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.94em;
+            line-height: 1.4;
         }
 
         .event {
             padding: 12px;
             margin-bottom: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border-left: 4px solid #4CAF50;
-            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.08);
+            border-left: 4px solid rgba(255, 255, 255, 0.18);
+            border-radius: 10px;
             font-size: 0.95em;
             animation: slideIn 0.3s ease;
         }
 
-        .event.goal {
+        .event.key {
+            border-left-color: #ffd966;
+            background: rgba(255, 217, 102, 0.12);
+        }
+
+        .event.commentary {
+            border-left-color: #7bc4ff;
+            background: rgba(123, 196, 255, 0.08);
+        }
+
+        .event.system {
+            border-left-color: #9ad0ff;
+            background: rgba(70, 105, 155, 0.16);
+        }
+
+        .event.critical {
             border-left-color: #FFD700;
-            background: rgba(255, 215, 0, 0.1);
+            box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.1);
         }
 
-        .event.card {
+        .event.high {
             border-left-color: #FF6B6B;
-            background: rgba(255, 107, 107, 0.1);
         }
 
-        .event.possession {
-            border-left-color: #4ECDC4;
-            background: rgba(78, 205, 196, 0.1);
-            font-size: 0.9em;
+        .event-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 7px;
+        }
+
+        .event-clock {
+            font-weight: 800;
+            color: #FFD700;
+        }
+
+        .event-label,
+        .event-badge {
+            font-size: 0.76em;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        .event-badge {
+            background: rgba(76, 175, 80, 0.18);
+            color: #c7ffd0;
+        }
+
+        .event-main {
+            font-weight: 700;
+            line-height: 1.45;
+        }
+
+        .event-sub {
+            margin-top: 6px;
+            font-size: 0.88em;
+            line-height: 1.42;
+            opacity: 0.74;
         }
 
         @keyframes slideIn {
@@ -380,27 +882,40 @@
         }
 
         /* Scrollbar styling */
-        .events-panel::-webkit-scrollbar {
+        .events-panel::-webkit-scrollbar,
+        .key-moments-list::-webkit-scrollbar {
             width: 8px;
         }
 
-        .events-panel::-webkit-scrollbar-track {
+        .events-panel::-webkit-scrollbar-track,
+        .key-moments-list::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
         }
 
-        .events-panel::-webkit-scrollbar-thumb {
+        .events-panel::-webkit-scrollbar-thumb,
+        .key-moments-list::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.3);
             border-radius: 10px;
         }
 
-        .events-panel::-webkit-scrollbar-thumb:hover {
+        .events-panel::-webkit-scrollbar-thumb:hover,
+        .key-moments-list::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.5);
         }
 
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
+            }
+
+            .header {
+                justify-content: stretch;
+            }
+
+            .header-toolbar {
+                width: 100%;
+                margin-left: 0;
             }
 
             .match-info {
@@ -414,13 +929,49 @@
             }
 
             .player {
+                width: 54px;
+                height: 54px;
+            }
+
+            .player-marker {
                 width: 30px;
                 height: 30px;
                 font-size: 0.72em;
             }
 
+            .player-label {
+                top: 34px;
+                max-width: 80px;
+                font-size: 0.56em;
+            }
+
             .pitch {
                 aspect-ratio: 80 / 64;
+            }
+
+            .playback-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .playback-actions {
+                justify-content: flex-start;
+            }
+
+            .match-center-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .bottom-squads {
+                grid-template-columns: 1fr;
+            }
+
+            .panel-card {
+                padding: 16px;
+            }
+
+            .events-panel {
+                max-height: 420px;
             }
         }
     </style>
@@ -428,7 +979,25 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Realistic Match Simulation</h1>
+            <div class="playback-toolbar header-toolbar">
+                <div>
+                    <div class="playback-kicker">Open-football style replay</div>
+                    <div class="playback-status" id="replay-status">Preparing replay data...</div>
+                </div>
+                <div class="playback-actions">
+                    <button class="btn btn-control" id="playback-toggle" type="button">Pause</button>
+                    <button class="btn btn-control" id="playback-restart" type="button">Restart</button>
+                    <label class="speed-control" for="playback-speed">
+                        Speed
+                        <select id="playback-speed">
+                            <option value="0.75">0.75x</option>
+                            <option value="1" selected>1x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2">2x</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
         </div>
 
         <div class="match-info">
@@ -443,35 +1012,126 @@
             </div>
         </div>
 
-        <div class="minute-display" id="minute">0'</div>
+        <div class="playback-shell">
+            <div class="playback-main">
+                <div class="minute-display" id="minute">0'</div>
 
-        <div class="pitch">
-            <div class="pitch-markings">
-                <div class="center-line"></div>
-                <div class="center-circle"></div>
-                <div class="penalty-area home"></div>
-                <div class="penalty-area away"></div>
-                <div class="goal-box home"></div>
-                <div class="goal-box away"></div>
-                <div class="penalty-spot home"></div>
-                <div class="penalty-spot away"></div>
+                <div class="pitch">
+                    <canvas class="pitch-overlay" id="pitch-overlay"></canvas>
+                    <div id="players-container"></div>
+                    <div class="pitch-event-layer" id="pitch-event-layer">
+                        <div class="pitch-event-banner" id="pitch-event-banner"></div>
+                        <img class="goal-celebration" id="goal-celebration" src="/images/goal-gol.gif" alt="Goal">
+                    </div>
+                    <div class="ball" id="ball" style="display: none;"></div>
+                </div>
+
+                <div class="timeline-card">
+                    <div class="timeline-halves">
+                        <span>First half</span>
+                        <span>Second half</span>
+                    </div>
+                    <div class="timeline-track-shell">
+                        <div class="timeline-bar">
+                            <div class="timeline-progress" id="timeline-progress"></div>
+                            <div class="timeline-half-marker"></div>
+                            <div class="goal-markers" id="goal-markers"></div>
+                        </div>
+                        <input class="timeline-range" id="timeline-range" type="range" min="0" max="0" value="0" step="100">
+                        <div class="timeline-time" id="timeline-time">0'</div>
+                    </div>
+                </div>
+
+                <section class="panel-card match-center-card">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Match Center</h3>
+                            <div class="panel-subtitle">Whole-match picture with team stats and the biggest moments.</div>
+                        </div>
+                    </div>
+                    <div class="stat-board">
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-xg">0.00</span>
+                            <span class="stat-label">xG</span>
+                            <span class="stat-value away" id="stat-away-xg">0.00</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-shots">0</span>
+                            <span class="stat-label">Shots</span>
+                            <span class="stat-value away" id="stat-away-shots">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-on-target">0</span>
+                            <span class="stat-label">On target</span>
+                            <span class="stat-value away" id="stat-away-on-target">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-big-chances">0</span>
+                            <span class="stat-label">Big chances</span>
+                            <span class="stat-value away" id="stat-away-big-chances">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-corners">0</span>
+                            <span class="stat-label">Corners</span>
+                            <span class="stat-value away" id="stat-away-corners">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-value home" id="stat-home-cards">0Y • 0R</span>
+                            <span class="stat-label">Cards</span>
+                            <span class="stat-value away" id="stat-away-cards">0Y • 0R</span>
+                        </div>
+                    </div>
+                </section>
             </div>
-            <canvas class="pitch-overlay" id="pitch-overlay"></canvas>
-            <div id="players-container"></div>
-            <div class="pitch-event-layer" id="pitch-event-layer">
-                <div class="pitch-event-banner" id="pitch-event-banner"></div>
-                <img class="goal-celebration" id="goal-celebration" src="/images/goal-gol.gif" alt="Goal">
-            </div>
-            <div class="ball" id="ball" style="display: none;"></div>
         </div>
 
-        <div class="events-panel">
-            <div id="events-list" style="min-height: 100px;">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading simulation...</p>
+        <div class="match-feed-section">
+            <section class="panel-card">
+                <div class="panel-header">
+                    <div>
+                        <h3>Match Feed</h3>
+                        <div class="panel-subtitle">Commentary for the full match, filtered away from internal engine micro-actions.</div>
+                    </div>
                 </div>
-            </div>
+                <div class="events-panel">
+                    <div id="events-list" style="min-height: 100px;">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading simulation...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="bottom-squads">
+            <aside class="squad-panel">
+                <div class="squad-header">
+                    <div>
+                        <div class="squad-title" id="home-squad-title">Home XI</div>
+                        <div class="squad-subtitle" id="home-formation">Formation</div>
+                    </div>
+                    <span class="squad-dot home"></span>
+                </div>
+                <div class="squad-section-title">Starting XI</div>
+                <div class="squad-list" id="home-starters-list"></div>
+                <div class="squad-section-title">Bench</div>
+                <div class="squad-list" id="home-bench-list"></div>
+            </aside>
+
+            <aside class="squad-panel">
+                <div class="squad-header">
+                    <div>
+                        <div class="squad-title" id="away-squad-title">Away XI</div>
+                        <div class="squad-subtitle" id="away-formation">Formation</div>
+                    </div>
+                    <span class="squad-dot away"></span>
+                </div>
+                <div class="squad-section-title">Starting XI</div>
+                <div class="squad-list" id="away-starters-list"></div>
+                <div class="squad-section-title">Bench</div>
+                <div class="squad-list" id="away-bench-list"></div>
+            </aside>
         </div>
 
         <div class="controls">

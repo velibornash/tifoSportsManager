@@ -29,6 +29,11 @@ public abstract class MatchEventDTO {
     private String type;
     private int minute;
     private String description;
+    private String clockLabel;
+    private String displayCategory;
+    private String importance;
+    private boolean keyEvent;
+    private Double xG;
 
     private String playerName;
     private Integer playerAge;

@@ -73,10 +73,10 @@ public class MatchController {
                     payload.put("homeTeam", match.getHomeTeam() != null ? match.getHomeTeam().getName() : null);
                     payload.put("awayTeam", match.getAwayTeam() != null ? match.getAwayTeam().getName() : null);
                     payload.put("homeLineup", match.getHomeLineup() != null
-                            ? match.getHomeLineup().getStartingPlayers().stream().map(this::toLineupPlayer).toList()
+                            ? match.getHomeLineup().getOrderedStartingPlayers().stream().map(this::toLineupPlayer).toList()
                             : List.of());
                     payload.put("awayLineup", match.getAwayLineup() != null
-                            ? match.getAwayLineup().getStartingPlayers().stream().map(this::toLineupPlayer).toList()
+                            ? match.getAwayLineup().getOrderedStartingPlayers().stream().map(this::toLineupPlayer).toList()
                             : List.of());
                     return ResponseEntity.ok(payload);
                 })

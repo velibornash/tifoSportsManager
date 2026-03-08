@@ -133,9 +133,9 @@ function loadDashboard() {
         </div>
 
         <div class="dashboard-actions">
-            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>
+<!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
             <button id="start-realistic-demo-btn" onclick="startRealisticDemoTest()" style="background:#0066cc;">⚽ Realistic Match</button>
-            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>
+<!--            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>-->
         </div>
     </div>`;
 

@@ -19,6 +19,7 @@
 
         const canDecide = academy.decisionsOpen === true;
         const currentSeason = Number(academy.currentSeasonNumber || 0);
+        const archive = Array.isArray(academy.archive) ? academy.archive : [];
 
         const statusColor = (status) => {
             if (status === "ACTIVE") return "#6fcf97";
@@ -38,9 +39,12 @@
             Number(j.arrivalSeasonNumber || 0) < currentSeason && !(j.status === "ACTIVE" && Number(j.arrivalSeasonNumber || 0) < currentSeason)
         );
 
+        const renderStatus = (status) => `
+            <span class="academy-status-pill" style="--academy-status:${statusColor(status)};">${escapeHtml(status || 'UNKNOWN')}</span>`;
+
         const renderRows = (list, withActions) => {
             if (!list.length) {
-                return `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">No juniors in this group.</td></tr>`;
+                return `<tr><td colspan="7"><div class="fm-empty">No juniors in this group.</div></td></tr>`;
             }
             return list.map(j => {
                 const delta = Number(j.lastWeeklyDelta || 0);
@@ -52,117 +56,121 @@
                         <td>${j.age}</td>
                         <td>${Number(j.talent).toFixed(1)}</td>
                         <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
-                        <td style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
-                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
+                        <td class="academy-delta-cell" style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
+                        <td>${renderStatus(j.status)}</td>
                         <td>
-                            ${decisionEligible ? actionButton("Promote", j.id, "promote-reveal") : ""}
-                            ${decisionEligible ? actionButton("Transfer List", j.id, "transfer-list") : ""}
-                            ${decisionEligible ? actionButton("Release", j.id, "release", true) : ""}
-                            ${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : ""}
+                            <div class="academy-action-cell">
+                                ${decisionEligible ? actionButton("Promote", j.id, "promote-reveal") : ""}
+                                ${decisionEligible ? actionButton("Transfer List", j.id, "transfer-list") : ""}
+                                ${decisionEligible ? actionButton("Release", j.id, "release", true) : ""}
+                                ${j.promotedPlayerId ? `<span class="sq-player-link" data-open-player="${j.promotedPlayerId}">Open Player</span>` : ""}
+                            </div>
                         </td>
                     </tr>`;
             }).join("");
         };
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Youth Academy</h2>
-            <p class="training-note">Season ${academy.currentSeasonNumber} • Week ${academy.currentWeekNumber} • Junior Coach Skill: ${academy.juniorCoachSkill}/100</p>
-            <p class="training-note">${canDecide ? "Carryover juniors are ready for decisions: Promote / Transfer list / Release." : "No carryover juniors pending decisions."}</p>
-            <p class="training-note">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is 10.</p>
-
-            <h3 style="margin:14px 0 8px;">Carryover Juniors (Decision Pending): ${carryover.length}</h3>
-            <div class="training-report-table-wrap">
-                <table class="training-report-table">
-                    <thead>
-                        <tr>
-                            <th>Junior</th>
-                            <th>Age</th>
-                            <th>Talent</th>
-                            <th>Academy Skill</th>
-                            <th>Last Week Delta</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>${renderRows(carryover, true)}</tbody>
-                </table>
-            </div>
-
-            <h3 style="margin:14px 0 8px;">Current Intake (Season ${academy.currentSeasonNumber}): ${currentIntake.length}</h3>
-            <div class="training-report-table-wrap">
-                <table class="training-report-table">
-                    <thead>
-                        <tr>
-                            <th>Junior</th>
-                            <th>Age</th>
-                            <th>Talent</th>
-                            <th>Academy Skill</th>
-                            <th>Last Week Delta</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>${renderRows(currentIntake, false)}</tbody>
-                </table>
-            </div>
-
-            ${otherVisible.length > 0 ? `
-            <h3 style="margin:14px 0 8px;">Resolved Juniors (Not Archived Yet): ${otherVisible.length}</h3>
-            <div class="training-report-table-wrap">
-                <table class="training-report-table">
-                    <thead>
-                        <tr>
-                            <th>Junior</th>
-                            <th>Age</th>
-                            <th>Talent</th>
-                            <th>Academy Skill</th>
-                            <th>Last Week Delta</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>${renderRows(otherVisible, false)}</tbody>
-                </table>
-            </div>` : ""}
-
-            <div style="margin-top:12px;">
-                <button id="toggle-junior-archive" class="big-button" style="background:#3d4c63;">Show Archive</button>
-            </div>
-            <div id="junior-archive-wrap" style="display:none; margin-top:10px;">
-                <h3 style="margin:8px 0;">Junior Archive</h3>
-                <div class="training-report-table-wrap">
-                    <table class="training-report-table">
+        const renderSection = (title, count, list, withActions, description = '') => `
+            <section class="fm-panel academy-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>${title}</h3>
+                        ${description ? `<p class="fm-subtle academy-panel-copy">${description}</p>` : ''}
+                    </div>
+                    <span class="fm-panel-action">${count} players</span>
+                </div>
+                <div class="fm-squad-wrap">
+                    <table class="fm-squad academy-squad">
                         <thead>
                             <tr>
-                                <th>Junior</th>
+                                <th class="sq-name">Junior</th>
                                 <th>Age</th>
                                 <th>Talent</th>
-                                <th>Academy Skill</th>
+                                <th>Academy</th>
+                                <th>Δ Week</th>
                                 <th>Status</th>
-                                <th>Season In</th>
-                                <th>Open</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            ${(Array.isArray(academy.archive) && academy.archive.length > 0)
-                                ? academy.archive.map(j => `
-                                    <tr>
-                                        <td>${escapeHtml(j.name)}</td>
-                                        <td>${j.age}</td>
-                                        <td>${Number(j.talent).toFixed(1)}</td>
-                                        <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
-                                        <td><span style="color:${statusColor(j.status)}; font-weight:700;">${escapeHtml(j.status)}</span></td>
-                                        <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>
-                                        <td>${j.promotedPlayerId ? `<span class="cs-clickable" data-open-player="${j.promotedPlayerId}">Open Player</span>` : "-"}</td>
-                                    </tr>`).join("")
-                                : `<tr><td colspan="7" style="text-align:center; color:#9aa0a6;">Archive is empty.</td></tr>`
-                            }
-                        </tbody>
+                        <tbody>${renderRows(list, withActions)}</tbody>
                     </table>
                 </div>
-            </div>
+            </section>`;
+
+        let html = `
+        <div class="fm-page fm-page--club fm-page--academy">
+            <section class="fm-panel fm-club-hero academy-hero">
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                <div class="fm-club-hero-main">
+                    <div>
+                        <div class="fm-eyebrow">Academy overview</div>
+                        <h2>Youth Academy</h2>
+                        <p class="fm-subtle">Season ${academy.currentSeasonNumber} · Week ${academy.currentWeekNumber} · Junior Coach Skill ${academy.juniorCoachSkill}/100</p>
+                        <p class="fm-subtle academy-hero-copy">${canDecide ? "Carryover juniors are ready for Promote / Transfer List / Release decisions." : "No carryover juniors are waiting for a final decision right now."}</p>
+                    </div>
+                    <div class="fm-club-actions">
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('firstTeam')">First Team</button>
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('profile')">Club Profile</button>
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Medical Center</button>
+                        <button type="button" class="fm-action-btn secondary is-current">Juniors</button>
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Tactics</button>
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Formations</button>
+                    </div>
+                </div>
+                <div class="fm-medical-stat-grid academy-summary-grid">
+                    <div><strong>${carryover.length}</strong><span>Carryover</span></div>
+                    <div><strong>${currentIntake.length}</strong><span>Current intake</span></div>
+                    <div><strong>${otherVisible.length}</strong><span>Resolved</span></div>
+                    <div><strong>${archive.length}</strong><span>Archive</span></div>
+                </div>
+                <p class="fm-subtle academy-footnote">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is 10.</p>
+            </section>
+
+            ${renderSection('Carryover juniors', carryover.length, carryover, true, 'Decision pending players remain visible until you resolve them.')}
+            ${renderSection(`Current intake · Season ${academy.currentSeasonNumber}`, currentIntake.length, currentIntake, false, 'New intake continues developing through the current season.')}
+            ${otherVisible.length > 0 ? renderSection('Resolved juniors', otherVisible.length, otherVisible, false, 'Resolved players stay visible here until they move into the archive.') : ''}
+
+            <section class="fm-panel academy-panel academy-archive-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Junior archive</h3>
+                        <p class="fm-subtle academy-panel-copy">Past academy outcomes stay here for quick review.</p>
+                    </div>
+                    <button id="toggle-junior-archive" class="fm-action-btn secondary" type="button">Show Archive</button>
+                </div>
+                <div id="junior-archive-wrap" class="academy-archive-wrap" style="display:none;">
+                    <div class="fm-squad-wrap">
+                        <table class="fm-squad academy-squad academy-squad--archive">
+                            <thead>
+                                <tr>
+                                    <th class="sq-name">Junior</th>
+                                    <th>Age</th>
+                                    <th>Talent</th>
+                                    <th>Academy</th>
+                                    <th>Status</th>
+                                    <th>Season In</th>
+                                    <th>Open</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${archive.length > 0
+                                    ? archive.map(j => `
+                                        <tr>
+                                            <td class="sq-name">${escapeHtml(j.name)}</td>
+                                            <td>${j.age}</td>
+                                            <td>${Number(j.talent).toFixed(1)}</td>
+                                            <td>${Number(j.academySkillExact).toFixed(2)} <span class="ps-team">int ${j.academySkill}</span></td>
+                                            <td>${renderStatus(j.status)}</td>
+                                            <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>
+                                            <td>${j.promotedPlayerId ? `<span class="sq-player-link" data-open-player="${j.promotedPlayerId}">Open Player</span>` : "-"}</td>
+                                        </tr>`).join("")
+                                    : `<tr><td colspan="7"><div class="fm-empty">Archive is empty.</div></td></tr>`
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>`;
 
         mainContent.innerHTML = html;

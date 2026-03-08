@@ -1,34 +1,63 @@
-
-// realisticDemo.js
 import { authFetch } from './auth.js';
 
 let matchId = null;
-let positionSocket = null;
-let eventSocket = null;
-let streamMinute = 0;
 let displayMinute = 0;
 let homeScore = 0;
 let awayScore = 0;
-let isProcessingEvent = false;
 let bannerTimeout = null;
 let animationFrame = null;
 let activeAnimation = null;
 let goalGifTimeout = null;
+let playbackFrame = null;
+let highlightTimeout = null;
+let replayMetadata = null;
+let totalDurationMs = 0;
+let chunkDurationMs = 30_000;
+let totalChunks = 0;
+let currentTime = 0;
+let isPlaying = true;
+let playbackRate = 1;
+let lastFrameTs = 0;
+let lastBallIdx = 0;
+let lastEventIdx = 0;
+let isScrubbing = false;
+let resumeAfterScrub = false;
+let controlsBound = false;
 
 const EVENT_DELAY = 1650;
 const GOAL_DELAY = 2600;
+const MAX_FEED_ITEMS = 70;
+const MAX_KEY_MOMENTS = 8;
+const TARGET_FPS = 30;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+const METADATA_POLL_MS = 2000;
+const MAX_METADATA_POLL_ATTEMPTS = 120;
+const CHUNK_PRELOAD_AHEAD = 1;
 const playerElements = new Map();
-const eventQueue = [];
 const playerSlots = new Map();
 const playerNames = new Map();
 const latestPositions = new Map();
 const pendingVarGoals = [];
+const loadedChunks = new Set();
+const loadingChunks = new Set();
+const loadedPlayerPositions = {};
+const lastPlayerIdx = {};
+const keyMoments = [];
 const matchEndedImg = new Image();
 matchEndedImg.src = '/images/match_ended.jpg';
+
+let replayEvents = [];
+let ballData = [];
+let currentInvolvedPlayerIds = new Set();
 
 const matchData = {
     homeTeam: 'Home',
     awayTeam: 'Away'
+};
+
+const teamStats = {
+    HOME: createTeamStats(),
+    AWAY: createTeamStats()
 };
 
 window.addEventListener('load', async () => {
@@ -41,136 +70,583 @@ window.addEventListener('load', async () => {
     }
 
     initPitchOverlay();
-    await Promise.all([loadMatchData(), loadLineups()]);
-    connectToWebSockets();
+    bindPlaybackControls();
+    resetReplayUi();
+
+    try {
+        await initializeReplay();
+    } catch (error) {
+        console.error('Failed to initialize replay:', error);
+        setReplayStatus('Replay unavailable');
+        document.getElementById('events-list').innerHTML = `<p style="color:#f44336;">${escapeHtml(error.message || 'Failed to load replay data.')}</p>`;
+    }
 });
 
-async function loadMatchData() {
-    try {
-        const response = await authFetch(`/matches/${matchId}`);
-        if (!response.ok) throw new Error('Failed to load match data');
+async function initializeReplay() {
+    setReplayStatus('Preparing match replay...');
+    const metadata = await waitForReplayMetadata();
+    hydrateReplayMetadata(metadata);
+    renderSquads(resolveMetadataPlayers(metadata));
+    renderGoalMarkers(resolveMetadataGoals(metadata));
+    updateTimelineBounds();
 
-        const data = await response.json();
-        matchData.homeTeam = data.homeTeam || matchData.homeTeam;
-        matchData.awayTeam = data.awayTeam || matchData.awayTeam;
-        homeScore = 0;
-        awayScore = 0;
-        document.getElementById('homeTeam').textContent = matchData.homeTeam;
-        document.getElementById('awayTeam').textContent = matchData.awayTeam;
-        updateDisplayedMinute(0, true);
-        updateScore();
-    } catch (error) {
-        console.error('Error loading match data:', error);
-    }
+    await ensureChunkLoaded(0);
+    void ensureChunkLoaded(1);
+
+    await rebuildReplayFromTime(0, { animate: false });
+    setReplayStatus('Replay ready • 10s = 1 match minute');
+    setPlaybackToggleLabel();
+    startPlaybackLoop();
 }
 
-async function loadLineups() {
-    try {
-        const response = await authFetch(`/matches/${matchId}/lineups`);
-        if (!response.ok) return;
+async function waitForReplayMetadata() {
+    for (let attempt = 1; attempt <= MAX_METADATA_POLL_ATTEMPTS; attempt += 1) {
+        const response = await authFetch(`/api/zox/replay/${matchId}/metadata`);
+        if (response.ok) {
+            const metadata = await response.json();
+            const duration = Number(metadata.total_duration_ms ?? metadata.totalDurationMs ?? metadata.match_time_ms ?? 0);
+            if (duration > 0) {
+                return metadata;
+            }
+        }
 
-        const data = await response.json();
-        (data.homeLineup || []).forEach(registerPlayerSlot);
-        (data.awayLineup || []).forEach(registerPlayerSlot);
-    } catch (error) {
-        console.warn('Failed to load lineups for realistic demo:', error);
+        setReplayStatus(`Simulation in progress... waiting for recorded playback (${attempt}/${MAX_METADATA_POLL_ATTEMPTS})`);
+        await delay(METADATA_POLL_MS);
     }
+
+    throw new Error('Replay data is still not ready.');
+}
+
+function hydrateReplayMetadata(metadata) {
+    replayMetadata = metadata;
+    totalDurationMs = Number(metadata.total_duration_ms ?? metadata.totalDurationMs ?? metadata.match_time_ms ?? 0);
+    chunkDurationMs = Number(metadata.chunk_duration_ms ?? metadata.chunkDurationMs ?? 30_000);
+    totalChunks = Number(metadata.chunk_count ?? metadata.chunkCount ?? 0);
+    replayEvents = mergeSortedSeries([], resolveMetadataEvents(metadata));
+
+    matchData.homeTeam = metadata.homeTeamName || metadata.home_team_name || matchData.homeTeam;
+    matchData.awayTeam = metadata.awayTeamName || metadata.away_team_name || matchData.awayTeam;
+
+    homeScore = 0;
+    awayScore = 0;
+    resetDerivedState();
+
+    document.getElementById('homeTeam').textContent = matchData.homeTeam;
+    document.getElementById('awayTeam').textContent = matchData.awayTeam;
+    document.getElementById('home-squad-title').textContent = matchData.homeTeam;
+    document.getElementById('away-squad-title').textContent = matchData.awayTeam;
+    document.getElementById('home-formation').textContent = metadata.homeFormation || metadata.home_formation || 'Formation';
+    document.getElementById('away-formation').textContent = metadata.awayFormation || metadata.away_formation || 'Formation';
+
+    playerSlots.clear();
+    playerNames.clear();
+    latestPositions.clear();
+
+    for (const player of resolveMetadataPlayers(metadata)) {
+        registerPlayerSlot(player);
+    }
+
+    updateDisplayedMinute(0, true);
+    updateScore();
+    renderStatBoard();
+    renderKeyMoments();
 }
 
 function registerPlayerSlot(player) {
-    if (!player || !Number.isFinite(Number(player.id))) return;
-    playerSlots.set(Number(player.id), player);
-    if (player.name) {
-        playerNames.set(normalize(player.name), Number(player.id));
+    const playerId = Number(player.playerId ?? player.id);
+    if (!Number.isFinite(playerId)) return;
+
+    const normalized = {
+        id: playerId,
+        name: player.name || player.fullName || player.last_name || `Player ${playerId}`,
+        position: player.position || 'N/A',
+        squadNumber: player.squadNumber ?? player.shirt_number ?? null,
+        teamSide: player.teamSide || (player.is_home ? 'HOME' : 'AWAY'),
+        starter: Boolean(player.starter ?? player.is_starter)
+    };
+
+    playerSlots.set(playerId, normalized);
+    if (normalized.name) {
+        playerNames.set(normalize(normalized.name), playerId);
     }
 }
 
-function connectToWebSockets() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = localStorage.getItem('token');
+function resolveMetadataPlayers(metadata) {
+    return metadata.players || metadata.playersData || [];
+}
 
-    if (!token) {
-        document.getElementById('events-list').innerHTML = '<p style="color:#f44336;">JWT token missing.</p>';
+function resolveMetadataGoals(metadata) {
+    return metadata.goals || metadata.goalsData || [];
+}
+
+function resolveMetadataEvents(metadata) {
+    return metadata.events || metadata.eventData || [];
+}
+
+function bindPlaybackControls() {
+    if (controlsBound) return;
+    controlsBound = true;
+
+    document.getElementById('playback-toggle')?.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            lastFrameTs = 0;
+            setReplayStatus('Replay playing');
+        } else {
+            setReplayStatus('Replay paused');
+        }
+        setPlaybackToggleLabel();
+    });
+
+    document.getElementById('playback-restart')?.addEventListener('click', async () => {
+        isPlaying = true;
+        await seekTo(0, { animate: false });
+        setReplayStatus('Replay restarted');
+        setPlaybackToggleLabel();
+    });
+
+    document.getElementById('playback-speed')?.addEventListener('change', event => {
+        playbackRate = Number(event.target.value) || 1;
+        setReplayStatus(`Replay speed ${playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 2)}x`);
+    });
+
+    const range = document.getElementById('timeline-range');
+    if (range) {
+        range.addEventListener('pointerdown', () => {
+            isScrubbing = true;
+            resumeAfterScrub = isPlaying;
+            isPlaying = false;
+            setPlaybackToggleLabel();
+        });
+
+        range.addEventListener('input', event => {
+            void seekTo(Number(event.target.value) || 0, { animate: false });
+        });
+
+        range.addEventListener('change', async event => {
+            await seekTo(Number(event.target.value) || 0, { animate: false });
+            isScrubbing = false;
+            isPlaying = resumeAfterScrub;
+            setPlaybackToggleLabel();
+        });
+    }
+
+    window.addEventListener('pointerup', () => {
+        if (!isScrubbing) return;
+        isScrubbing = false;
+        isPlaying = resumeAfterScrub;
+        setPlaybackToggleLabel();
+    });
+}
+
+async function seekTo(timeMs, options = {}) {
+    currentTime = clamp(Number(timeMs) || 0, 0, totalDurationMs || 0);
+    await ensureChunkLoaded(getChunkNumber(currentTime));
+    void ensureChunkLoaded(getChunkNumber(currentTime) + 1);
+    await rebuildReplayFromTime(currentTime, options);
+    updateTimelineUi();
+}
+
+async function rebuildReplayFromTime(timeMs, options = {}) {
+    resetReplayUi();
+    resetTemporalCaches();
+    currentTime = clamp(timeMs, 0, totalDurationMs || 0);
+
+    for (const event of replayEvents) {
+        if (getTimestamp(event) > currentTime) break;
+        applyReplayEvent(event, { animate: false });
+        lastEventIdx += 1;
+    }
+
+    updateReplayFrame(currentTime, options);
+    updateTimelineUi();
+}
+
+function startPlaybackLoop() {
+    if (playbackFrame) cancelAnimationFrame(playbackFrame);
+
+    const loop = now => {
+        if (isPlaying && totalDurationMs > 0) {
+            if (!lastFrameTs) lastFrameTs = now;
+            const elapsed = now - lastFrameTs;
+            if (elapsed >= FRAME_INTERVAL) {
+                lastFrameTs = now;
+                currentTime = clamp(currentTime + elapsed * playbackRate, 0, totalDurationMs);
+                ensureChunksNearTime(currentTime);
+                updateReplayFrame(currentTime, { animate: true });
+                advanceEventsToTime(currentTime);
+                updateTimelineUi();
+
+                if (currentTime >= totalDurationMs) {
+                    isPlaying = false;
+                    setReplayStatus('Replay finished');
+                    setPlaybackToggleLabel();
+                }
+            }
+        } else {
+            lastFrameTs = 0;
+        }
+
+        playbackFrame = requestAnimationFrame(loop);
+    };
+
+    playbackFrame = requestAnimationFrame(loop);
+}
+
+function advanceEventsToTime(timeMs) {
+    while (lastEventIdx < replayEvents.length && getTimestamp(replayEvents[lastEventIdx]) <= timeMs) {
+        applyReplayEvent(replayEvents[lastEventIdx], { animate: true });
+        lastEventIdx += 1;
+    }
+}
+
+function applyReplayEvent(event, options = {}) {
+    const animate = Boolean(options.animate);
+    applyEventState(event);
+    renderEvent(event);
+    appendKeyMoment(event);
+
+    clearPitchHighlights();
+    currentInvolvedPlayerIds = resolveInvolvedPlayers(event);
+
+    if (animate && currentInvolvedPlayerIds.size > 0) {
+        if (highlightTimeout) clearTimeout(highlightTimeout);
+        highlightTimeout = setTimeout(() => {
+            currentInvolvedPlayerIds.clear();
+            clearPitchHighlights();
+        }, resolveEventDelay(event));
+    }
+
+    if (animate && isPitchKeyEvent(event)) {
+        renderPitchEvent(event);
+    } else if (!animate) {
+        hidePitchBanner();
+    }
+}
+
+function resolveInvolvedPlayers(event) {
+    const involved = new Set();
+    const mainSlot = getSlotByName(event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName);
+    const secondarySlot = getSlotByName(event.targetPlayerName || event.secondaryPlayerName || event.assistantName || event.playerInName);
+    if (mainSlot?.id != null) involved.add(Number(mainSlot.id));
+    if (secondarySlot?.id != null) involved.add(Number(secondarySlot.id));
+    return involved;
+}
+
+function updateReplayFrame(timeMs) {
+    const state = buildInterpolatedState(timeMs);
+    renderPlayers(state);
+    updateDisplayedMinute(deriveMinuteFromTime(timeMs), true);
+}
+
+function buildInterpolatedState(timeMs) {
+    const players = [];
+
+    for (const [playerId, slot] of playerSlots.entries()) {
+        const series = loadedPlayerPositions[playerId];
+        if (!Array.isArray(series) || series.length === 0) continue;
+
+        const firstTs = getTimestamp(series[0]);
+        const lastTs = getTimestamp(series[series.length - 1]);
+        if (timeMs < firstTs - 1000 || timeMs > lastTs + 1000) continue;
+
+        const idx = findIndexNear(series, timeMs, lastPlayerIdx[playerId] ?? 0);
+        if (idx < 0) continue;
+        lastPlayerIdx[playerId] = idx;
+
+        const [x, y] = interpolateSeriesPoint(series, idx, timeMs);
+        players.push({
+            id: playerId,
+            team: slot.teamSide,
+            x,
+            y
+        });
+    }
+
+    const ballPoint = resolveBallPoint(timeMs);
+    return {
+        players,
+        ball: ballPoint ? { x: ballPoint[0], y: ballPoint[1] } : null,
+        carrierPlayerId: resolveCarrierPlayerId(timeMs),
+        ballInTransit: resolveBallInTransit(timeMs)
+    };
+}
+
+function resolveBallPoint(timeMs) {
+    if (!Array.isArray(ballData) || ballData.length === 0) return null;
+    lastBallIdx = findIndexNear(ballData, timeMs, lastBallIdx);
+    if (lastBallIdx < 0) return null;
+    return interpolateSeriesPoint(ballData, lastBallIdx, timeMs);
+}
+
+function resolveCarrierPlayerId(timeMs) {
+    if (!Array.isArray(ballData) || ballData.length === 0) return null;
+    const idx = Math.max(0, Math.min(lastBallIdx, ballData.length - 1));
+    return ballData[idx]?.carrierPlayerId ?? null;
+}
+
+function resolveBallInTransit() {
+    if (!Array.isArray(ballData) || ballData.length === 0) return false;
+    const idx = Math.max(0, Math.min(lastBallIdx, ballData.length - 1));
+    return Boolean(ballData[idx]?.ballInTransit);
+}
+
+function findIndexNear(arr, timeMs, hint = 0) {
+    const len = Array.isArray(arr) ? arr.length : 0;
+    if (!len) return -1;
+
+    if (hint >= 0 && hint < len) {
+        const hintedTs = getTimestamp(arr[hint]);
+        if (hintedTs <= timeMs) {
+            let i = hint;
+            while (i + 1 < len && getTimestamp(arr[i + 1]) <= timeMs) i += 1;
+            return i;
+        }
+        let i = Math.max(0, hint - 1);
+        while (i > 0 && getTimestamp(arr[i]) > timeMs) i -= 1;
+        return i;
+    }
+
+    let lo = 0;
+    let hi = len - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (getTimestamp(arr[mid]) <= timeMs) lo = mid;
+        else hi = mid - 1;
+    }
+    return lo;
+}
+
+function interpolateSeriesPoint(arr, idx, timeMs) {
+    const current = getPointTuple(arr[idx]);
+    if (idx + 1 < arr.length) {
+        const next = getPointTuple(arr[idx + 1]);
+        const currentTs = getTimestamp(arr[idx]);
+        const nextTs = getTimestamp(arr[idx + 1]);
+        const delta = nextTs - currentTs;
+        if (delta > 0) {
+            const t = clamp((timeMs - currentTs) / delta, 0, 1);
+            return [
+                current[0] + (next[0] - current[0]) * t,
+                current[1] + (next[1] - current[1]) * t,
+                (current[2] || 0) + ((next[2] || 0) - (current[2] || 0)) * t
+            ];
+        }
+    }
+    return current;
+}
+
+function getPointTuple(point) {
+    if (Array.isArray(point?.position)) {
+        return point.position;
+    }
+    return [Number(point?.x ?? 50), Number(point?.y ?? 50), Number(point?.z ?? 0)];
+}
+
+function getTimestamp(point) {
+    return Number(point?.timestamp ?? point?.timestampMs ?? 0);
+}
+
+function getChunkNumber(timeMs) {
+    if (!chunkDurationMs || chunkDurationMs <= 0) return 0;
+    return Math.floor(Math.max(0, timeMs) / chunkDurationMs);
+}
+
+function ensureChunksNearTime(timeMs) {
+    const currentChunk = getChunkNumber(timeMs);
+    void ensureChunkLoaded(currentChunk);
+    for (let offset = 1; offset <= CHUNK_PRELOAD_AHEAD; offset += 1) {
+        void ensureChunkLoaded(currentChunk + offset);
+    }
+}
+
+async function ensureChunkLoaded(chunkIndex) {
+    if (!Number.isFinite(chunkIndex) || chunkIndex < 0) return;
+    if (totalChunks > 0 && chunkIndex >= totalChunks) return;
+    if (loadedChunks.has(chunkIndex) || loadingChunks.has(chunkIndex)) return;
+
+    loadingChunks.add(chunkIndex);
+    try {
+        const response = await authFetch(`/api/zox/replay/${matchId}/chunks/${chunkIndex}`);
+        if (!response.ok) {
+            throw new Error(`Failed to load replay chunk ${chunkIndex}`);
+        }
+        const chunk = await response.json();
+        mergeChunkData(chunk);
+        loadedChunks.add(chunkIndex);
+    } finally {
+        loadingChunks.delete(chunkIndex);
+    }
+}
+
+function mergeChunkData(chunk) {
+    const players = chunk.players || chunk.playerPositions || {};
+    const ball = chunk.ball || chunk.ballData || [];
+    const events = chunk.events || chunk.eventData || [];
+
+    for (const [playerId, incomingSeries] of Object.entries(players)) {
+        const numericId = Number(playerId);
+        loadedPlayerPositions[numericId] = mergeSortedSeries(loadedPlayerPositions[numericId] || [], incomingSeries || []);
+    }
+
+    ballData = mergeSortedSeries(ballData, ball);
+    replayEvents = mergeSortedSeries(replayEvents, events);
+}
+
+function mergeSortedSeries(existing, incoming) {
+    const merged = [...(existing || []), ...(incoming || [])]
+        .sort((left, right) => getTimestamp(left) - getTimestamp(right));
+
+    const deduped = [];
+    for (const item of merged) {
+        if (!deduped.length) {
+            deduped.push(item);
+            continue;
+        }
+        if (getTimestamp(deduped[deduped.length - 1]) === getTimestamp(item)) {
+            deduped[deduped.length - 1] = item;
+        } else {
+            deduped.push(item);
+        }
+    }
+    return deduped;
+}
+
+function renderSquads(players) {
+    renderSquadList('home-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && Boolean(player.starter ?? player.is_starter)));
+    renderSquadList('home-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && !Boolean(player.starter ?? player.is_starter)));
+    renderSquadList('away-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && Boolean(player.starter ?? player.is_starter)));
+    renderSquadList('away-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && !Boolean(player.starter ?? player.is_starter)));
+}
+
+function renderSquadList(elementId, players) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    if (!players.length) {
+        container.innerHTML = '<div class="placeholder">No player data.</div>';
         return;
     }
 
-    positionSocket = new WebSocket(`${protocol}//${window.location.host}/demo-position-updates?matchId=${matchId}&token=${token}`);
-    eventSocket = new WebSocket(`${protocol}//${window.location.host}/demo-match-events?matchId=${matchId}&token=${token}`);
-
-    positionSocket.onmessage = event => handlePositionUpdate(event.data);
-    positionSocket.onerror = error => console.error('Position socket error:', error);
-
-    eventSocket.onmessage = event => handleMatchEvent(event.data);
-    eventSocket.onerror = error => console.error('Event socket error:', error);
+    container.innerHTML = players.map(player => {
+        const name = player.name || player.fullName || player.last_name || 'Unknown';
+        const squadNumber = player.squadNumber ?? player.shirt_number ?? '?';
+        const position = player.position || 'N/A';
+        return `
+            <div class="squad-player-row">
+                <span class="squad-num">${escapeHtml(String(squadNumber))}</span>
+                <div>
+                    <div class="squad-player-name">${escapeHtml(name)}</div>
+                    <div class="squad-player-meta">${escapeHtml(position)}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
-function handlePositionUpdate(raw) {
-    try {
-        const state = JSON.parse(raw);
-        if (state.matchId && String(state.matchId) !== String(matchId)) return;
+function renderGoalMarkers(goals) {
+    const container = document.getElementById('goal-markers');
+    if (!container) return;
+    container.innerHTML = '';
 
-        const minute = Number.isFinite(state.minute)
-            ? state.minute
-            : Number.isFinite(state.second)
-                ? state.second
-                : streamMinute;
-        streamMinute = minute;
-        
-        // Log position updates for debugging
-        if (state.players && state.players.length > 0) {
-            const carrier = state.players.find(p => Number(p.id) === Number(state.carrierPlayerId));
-            if (carrier && state.ball) {
-                console.log(`[Position ${minute}] Ball: (${state.ball.x.toFixed(1)}, ${state.ball.y.toFixed(1)}), Carrier: ${carrier.id} at (${carrier.x.toFixed(1)}, ${carrier.y.toFixed(1)})`);
-            }
-        }
-        
-        if (!isProcessingEvent && eventQueue.length === 0) {
-            updateDisplayedMinute(streamMinute);
-        }
-        renderPlayers(state);
-    } catch (error) {
-        console.error('Position parse error:', error, raw);
+    for (const goal of goals) {
+        const time = Number(goal.time ?? goal.timestampMs ?? goal.timestamp ?? 0);
+        const pct = totalDurationMs > 0 ? clamp((time / totalDurationMs) * 100, 0, 100) : 0;
+        const side = (goal.teamSide || goal.team_side || 'HOME').toString().toLowerCase();
+        const marker = document.createElement('div');
+        marker.className = `goal-marker ${side === 'away' ? 'away' : 'home'}`;
+        marker.style.left = `${pct}%`;
+        marker.title = `${goal.playerName || goal.player_name || 'Goal'} ${goal.minute != null ? `${goal.minute}'` : ''}`.trim();
+        container.appendChild(marker);
     }
 }
 
-function handleMatchEvent(raw) {
-    try {
-        const event = JSON.parse(raw);
-        console.log(`[Event ${event.minute}] ${event.type}: ${event.description || event.playerName || ''}`);
-        eventQueue.push(event);
-        processNextEvent();
-    } catch (error) {
-        console.error('Event parse error:', error, raw);
+function updateTimelineBounds() {
+    const range = document.getElementById('timeline-range');
+    if (!range) return;
+    range.max = String(totalDurationMs);
+    range.value = String(currentTime);
+}
+
+function updateTimelineUi() {
+    const progress = document.getElementById('timeline-progress');
+    const range = document.getElementById('timeline-range');
+    const label = document.getElementById('timeline-time');
+    if (!progress || !range || !label) return;
+
+    const pct = totalDurationMs > 0 ? clamp((currentTime / totalDurationMs) * 100, 0, 100) : 0;
+    progress.style.width = `${pct}%`;
+    range.value = String(currentTime);
+    label.style.left = `${pct}%`;
+    label.textContent = formatMatchClockFromMs(currentTime);
+}
+
+function setPlaybackToggleLabel() {
+    const button = document.getElementById('playback-toggle');
+    if (button) {
+        button.textContent = isPlaying ? 'Pause' : 'Play';
     }
 }
 
-function processNextEvent() {
-    if (isProcessingEvent || eventQueue.length === 0) return;
-    isProcessingEvent = true;
+function setReplayStatus(text) {
+    const status = document.getElementById('replay-status');
+    if (status) {
+        status.textContent = text;
+    }
+}
 
-    const event = eventQueue.shift();
-    applyEventState(event);
-    renderEvent(event);
-    renderPitchEvent(event);
+function resetReplayUi() {
+    homeScore = 0;
+    awayScore = 0;
+    resetDerivedState();
+    clearEventFeed();
+    renderKeyMoments();
+    updateScore();
+    renderStatBoard();
+    updateDisplayedMinute(deriveMinuteFromTime(currentTime), true);
+    hidePitchBanner();
+    clearPitchHighlights();
+    clearCanvasAnimation();
+    currentInvolvedPlayerIds.clear();
+}
 
-    const type = (event.type || '').toLowerCase();
-    const delay = type === 'varreview'
-        ? 2700
-        : type === 'matchended'
-            ? 2500
-            : type === 'goal'
-                ? GOAL_DELAY
-                : isCanvasAnimationEvent(type)
-                    ? 2200
-                    : EVENT_DELAY;
+function resetTemporalCaches() {
+    lastBallIdx = 0;
+    lastEventIdx = 0;
+    Object.keys(lastPlayerIdx).forEach(key => delete lastPlayerIdx[key]);
+}
 
-    setTimeout(() => {
-        isProcessingEvent = false;
-        if (eventQueue.length === 0 && streamMinute > displayMinute) {
-            updateDisplayedMinute(streamMinute);
-        }
-        processNextEvent();
-    }, delay);
+function clearEventFeed() {
+    const eventsList = document.getElementById('events-list');
+    if (!eventsList) return;
+    eventsList.innerHTML = '<div class="placeholder">Match events will appear here.</div>';
+}
+
+function deriveMinuteFromTime(timeMs) {
+    return Math.floor(toMatchSeconds(timeMs) / 60);
+}
+
+function toMatchSeconds(timeMs) {
+    if (totalDurationMs > 0) {
+        return Math.floor((clamp(timeMs, 0, totalDurationMs) / totalDurationMs) * 90 * 60);
+    }
+    return Math.floor((timeMs / 10_000) * 60);
+}
+
+function formatMatchClockFromMs(timeMs) {
+    const totalSeconds = toMatchSeconds(timeMs);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function delay(ms) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function resolveTeamSideForPlayer(player) {
+    if (player.teamSide) return player.teamSide;
+    if (player.team_side) return player.team_side;
+    return player.is_home ? 'HOME' : 'AWAY';
 }
 
 function applyEventState(event) {
@@ -209,7 +685,9 @@ function applyEventState(event) {
         rollbackGoalFromVar(event);
     }
 
+    updateTeamStats(event);
     updateScore();
+    renderStatBoard();
 }
 
 function rollbackGoalFromVar(event) {
@@ -235,83 +713,56 @@ function renderEvent(event) {
     if (loading) loading.remove();
 
     const item = document.createElement('div');
-    item.className = `event ${(event.type || '').toLowerCase()}`;
+    item.className = `event ${normalizeEventType(event.type)} ${resolveEventCategory(event)} ${resolveEventImportance(event)}`;
     item.innerHTML = buildEventHtml(event);
     eventsList.prepend(item);
 
-    while (eventsList.children.length > 50) {
+    while (eventsList.children.length > MAX_FEED_ITEMS) {
         eventsList.removeChild(eventsList.lastChild);
     }
 }
 
 function buildEventHtml(event) {
-    const minute = Number.isFinite(event.minute) ? event.minute : displayMinute;
-    const type = (event.type || '').toLowerCase();
-    const player = event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName || event.playerInName || 'Unknown';
+    const headline = buildEventHeadline(event);
+    const description = event.description && normalize(event.description) !== normalize(headline)
+        ? escapeHtml(event.description)
+        : '';
+    const xgBadge = formatXgBadge(event);
 
-    switch (type) {
-        case 'matchstarted':
-            return `<strong>${minute}'</strong> Kick-off: <strong>${matchData.homeTeam}</strong> vs <strong>${matchData.awayTeam}</strong>`;
-        case 'pass':
-            return `<strong>${minute}'</strong> Pass: <strong>${player}</strong>${event.targetPlayerName ? ` -> ${event.targetPlayerName}` : ''}${event.teamName ? ` <span style="opacity:.8">(${event.teamName})</span>` : ''}`;
-        case 'interception':
-            return `<strong>${minute}'</strong> Interception: <strong>${player}</strong>${event.secondaryPlayerName ? ` stopped ${event.secondaryPlayerName}` : ''}${event.teamName ? ` <span style="opacity:.8">(${event.teamName})</span>` : ''}`;
-        case 'dribble':
-            return `<strong>${minute}'</strong> Carry by <strong>${player}</strong>${event.teamName ? ` <span style="opacity:.8">(${event.teamName})</span>` : ''}`;
-        case 'duel':
-            return `<strong>${minute}'</strong> Duel won by <strong>${player}</strong>${event.secondaryPlayerName ? ` over ${event.secondaryPlayerName}` : ''}${event.teamName ? ` <span style="opacity:.8">(${event.teamName})</span>` : ''}`;
-        case 'goal':
-            return `<strong>${minute}'</strong> Goal: <strong>${player}</strong>${event.assistantName ? `, assist ${event.assistantName}` : ''} <span style="opacity:.8">(${event.teamName || 'team'})</span>`;
-        case 'penalty':
-            return `<strong>${minute}'</strong> Penalty: <strong>${player}</strong>${event.scored ? ' scored' : ' missed'}`;
-        case 'chance':
-            return `<strong>${minute}'</strong> ${event.description || `Chance for ${player}`}`;
-        case 'possession':
-            return `<strong>${minute}'</strong> Possession: <strong>${event.teamName || 'team'}</strong>${event.playerName ? ` via ${event.playerName}` : ''}`;
-        case 'shotontarget':
-            return `<strong>${minute}'</strong> Shot on target by <strong>${player}</strong>`;
-        case 'shotofftarget':
-            return `<strong>${minute}'</strong> Shot off target by <strong>${player}</strong>`;
-        case 'yellowcard':
-            return `<strong>${minute}'</strong> Yellow card: <strong>${player}</strong>`;
-        case 'redcard':
-            return `<strong>${minute}'</strong> Red card: <strong>${player}</strong>`;
-        case 'corner':
-            return `<strong>${minute}'</strong> Corner for <strong>${event.teamName || 'team'}</strong>`;
-        case 'offside':
-            return `<strong>${minute}'</strong> Offside: <strong>${player}</strong>`;
-        case 'throwin':
-            return `<strong>${minute}'</strong> Throw-in for <strong>${event.teamName || 'team'}</strong>`;
-        case 'goalkick':
-            return `<strong>${minute}'</strong> Goal kick by <strong>${player}</strong>`;
-        case 'freekick':
-            return `<strong>${minute}'</strong> Free kick for <strong>${event.teamName || 'team'}</strong>`;
-        case 'injury':
-            return `<strong>${minute}'</strong> Injury: <strong>${player}</strong>`;
-        case 'substitution':
-            return `<strong>${minute}'</strong> Substitution: <strong>${event.playerOutName || '?'}</strong> -> <strong>${event.playerInName || '?'}</strong>`;
-        case 'varreview':
-            return `<strong>${minute}'</strong> VAR ${String(event.decision || 'pending').toUpperCase()}${event.overturnReason ? ` (${event.overturnReason})` : ''}`;
-        case 'matchended':
-            return `<strong>${minute}'</strong> Full time: <strong>${matchData.homeTeam}</strong> ${homeScore} - ${awayScore} <strong>${matchData.awayTeam}</strong>`;
-        default:
-            return `<strong>${minute}'</strong> ${event.description || type || 'event'}`;
-    }
+    return `
+        <div class="event-meta">
+            <span class="event-clock">${escapeHtml(resolveEventClockLabel(event))}</span>
+            <span class="event-label">${escapeHtml(resolveEventTypeLabel(event))}</span>
+            ${xgBadge ? `<span class="event-badge">${escapeHtml(xgBadge)}</span>` : ''}
+        </div>
+        <div class="event-main">${escapeHtml(headline)}</div>
+        ${description ? `<div class="event-sub">${description}</div>` : ''}
+    `;
 }
 
 function renderPitchEvent(event) {
-    const type = (event.type || '').toLowerCase();
+    const type = normalizeEventType(event.type);
     const mainName = event.playerName || event.scorerName || event.takerName || event.goalkeeperName;
     const secondaryName = event.targetPlayerName || event.secondaryPlayerName || event.assistantName;
 
-    clearPitchHighlights();
-    showPitchBanner(buildPitchBannerText(event));
+    showPitchBanner(buildPitchBannerText(event), event);
 
     const mainEl = findPlayerElementByName(mainName);
     const secondaryEl = findPlayerElementByName(secondaryName);
 
     if (mainEl) mainEl.classList.add('involved-primary');
     if (secondaryEl) secondaryEl.classList.add('involved-secondary');
+
+    if (type === 'duel' || type === 'interception') {
+        if (mainEl) {
+            mainEl.classList.add('duel-clash');
+            setTimeout(() => mainEl.classList.remove('duel-clash'), 600);
+        }
+        if (secondaryEl) {
+            secondaryEl.classList.add('duel-clash');
+            setTimeout(() => secondaryEl.classList.remove('duel-clash'), 600);
+        }
+    }
 
     if (type === 'goal') {
         showGoalCelebration(event);
@@ -329,46 +780,57 @@ function getSlotByName(name) {
 }
 
 function buildPitchBannerText(event) {
-    const minute = Number.isFinite(event.minute) ? event.minute : displayMinute;
-    const type = (event.type || '').toLowerCase();
+    const clock = resolveEventClockLabel(event);
+    const type = normalizeEventType(event.type);
     const player = event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName || event.playerInName || '';
 
     switch (type) {
-        case 'pass':
-            return `${minute}' PASS ${player}${event.targetPlayerName ? ` -> ${event.targetPlayerName}` : ''}`;
-        case 'interception':
-            return `${minute}' INTERCEPTION ${player}`;
-        case 'duel':
-            return `${minute}' DUEL ${player}`;
-        case 'offside':
-            return `${minute}' OFFSIDE ${player}`;
+        case 'matchstarted':
+            return `${clock} • Kick-off`;
+        case 'matchended':
+            return `${clock} • Full time • ${matchData.homeTeam} ${homeScore}-${awayScore} ${matchData.awayTeam}`;
         case 'goal':
-            return `${minute}' GOAL ${player}`;
+            return `${clock} • Goal • ${player}`;
         case 'penalty':
-            return `${minute}' PENALTY ${player}`;
+            return `${clock} • Penalty • ${player}`;
         case 'shotontarget':
-            return `${minute}' SHOT ON TARGET ${player}`;
+            return `${clock} • Shot on target • ${player}`;
         case 'shotofftarget':
-            return `${minute}' SHOT OFF TARGET ${player}`;
+            return `${clock} • Shot off target • ${player}`;
         case 'varreview':
-            return `${minute}' VAR REVIEW`;
+            return `${clock} • VAR • ${String(event.decision || 'review').toUpperCase()}`;
         case 'substitution':
-            return `${minute}' SUBSTITUTION`;
+            return `${clock} • Substitution • ${event.teamName || 'Team change'}`;
         case 'chance':
-            return `${minute}' CHANCE ${player}`;
+            return `${clock} • Big chance • ${player || event.teamName || 'Attack'}`;
+        case 'yellowcard':
+            return `${clock} • Yellow card • ${player}`;
+        case 'redcard':
+            return `${clock} • Red card • ${player}`;
+        case 'injury':
+            return `${clock} • Injury • ${player}`;
         default:
-            return `${minute}' ${(type || 'event').toUpperCase()}`;
+            return `${clock} • ${resolveEventTypeLabel(event)}`;
     }
 }
 
-function showPitchBanner(text) {
+function showPitchBanner(text, event) {
     const banner = document.getElementById('pitch-event-banner');
     if (!banner) return;
 
     banner.textContent = text;
+    banner.dataset.importance = resolveEventImportance(event);
+    banner.dataset.category = resolveEventCategory(event);
     banner.classList.add('visible');
     if (bannerTimeout) clearTimeout(bannerTimeout);
-    bannerTimeout = setTimeout(() => banner.classList.remove('visible'), 900);
+    bannerTimeout = setTimeout(() => banner.classList.remove('visible'), resolveBannerDuration(event));
+}
+
+function hidePitchBanner() {
+    const banner = document.getElementById('pitch-event-banner');
+    if (!banner) return;
+    banner.classList.remove('visible');
+    if (bannerTimeout) clearTimeout(bannerTimeout);
 }
 
 function showGoalCelebration(event) {
@@ -399,9 +861,22 @@ function findPlayerElementByName(name) {
     const playerId = playerNames.get(normalize(name));
     return playerId != null ? playerElements.get(String(playerId)) || null : null;
 }
+
 function renderPlayers(state) {
     const container = document.getElementById('players-container');
-    if (!Array.isArray(state.players) || state.players.length === 0) return;
+    const ballEl = document.getElementById('ball');
+
+    if (!Array.isArray(state.players) || state.players.length === 0) {
+        for (const [key, el] of playerElements.entries()) {
+            el.remove();
+            playerElements.delete(key);
+            latestPositions.delete(Number(key));
+        }
+        if (ballEl) {
+            ballEl.style.display = 'none';
+        }
+        return;
+    }
 
     const seen = new Set();
 
@@ -412,6 +887,7 @@ function renderPlayers(state) {
             el = document.createElement('div');
             el.className = `player ${(player.team || 'HOME').toLowerCase()}`;
             el.dataset.playerId = key;
+            el.innerHTML = '<div class="player-marker"><span class="player-number"></span></div><div class="player-label"></div>';
             playerElements.set(key, el);
             container.appendChild(el);
         }
@@ -419,13 +895,23 @@ function renderPlayers(state) {
         const slotData = playerSlots.get(Number(player.id));
         const x = clamp(player.x ?? 50, 0, 100);
         const y = clamp(player.y ?? 50, 0, 100);
-        el.textContent = getPlayerBadge(player.id, slotData);
+        const badgeEl = el.querySelector('.player-number');
+        const labelEl = el.querySelector('.player-label');
+        if (badgeEl) badgeEl.textContent = getPlayerBadge(player.id, slotData);
+        if (labelEl) labelEl.textContent = getPlayerShortLabel(slotData, player.id);
         el.title = slotData ? `${slotData.name} (${slotData.position || 'N/A'})` : `Slot ${player.id}`;
-        el.classList.toggle('carrier', Number(player.id) === Number(state.carrierPlayerId));
+
+        const isCarrier = Number(player.id) === Number(state.carrierPlayerId);
+        const isInvolved = currentInvolvedPlayerIds.has(Number(player.id));
+        const isGoalkeeper = (slotData?.position || '').toUpperCase() === 'GK';
+        el.classList.toggle('carrier', isCarrier);
+        el.classList.toggle('involved', isInvolved);
+        el.classList.toggle('gk', isGoalkeeper);
         el.classList.toggle('home', (player.team || '').toLowerCase() === 'home');
         el.classList.toggle('away', (player.team || '').toLowerCase() === 'away');
-        el.style.left = `calc(${x}% - 20px)`;
-        el.style.top = `calc(${y}% - 20px)`;
+        el.style.left = `${x}%`;
+        el.style.top = `${y}%`;
+
         latestPositions.set(Number(player.id), { x, y, team: (player.team || '').toUpperCase() });
         seen.add(key);
     });
@@ -439,11 +925,12 @@ function renderPlayers(state) {
     }
 
     // Ball position is now correctly synchronized with carrier in backend (MatchPlaybackEngine)
-    if (state.ball && Number.isFinite(state.ball.x) && Number.isFinite(state.ball.y)) {
-        const ballEl = document.getElementById('ball');
-        ballEl.style.left = `calc(${clamp(state.ball.x, 0, 100)}% - 7.5px)`;
-        ballEl.style.top = `calc(${clamp(state.ball.y, 0, 100)}% - 7.5px)`;
+    if (state.ball && Number.isFinite(state.ball.x) && Number.isFinite(state.ball.y) && ballEl) {
+        ballEl.style.left = `${clamp(state.ball.x, 0, 100)}%`;
+        ballEl.style.top = `${clamp(state.ball.y, 0, 100)}%`;
         ballEl.style.display = 'block';
+    } else if (ballEl) {
+        ballEl.style.display = 'none';
     }
 }
 
@@ -839,6 +1326,15 @@ function getPlayerBadge(positionId, slotData) {
     return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 }
 
+function getPlayerShortLabel(slotData, playerId) {
+    if (!slotData || !slotData.name) {
+        return `Player ${playerId}`;
+    }
+
+    const parts = slotData.name.trim().split(/\s+/).filter(Boolean);
+    return parts[parts.length - 1] || slotData.name;
+}
+
 function updateDisplayedMinute(minute, force = false) {
     const nextMinute = Number(minute) || 0;
     displayMinute = force ? nextMinute : Math.max(displayMinute, nextMinute);
@@ -847,8 +1343,330 @@ function updateDisplayedMinute(minute, force = false) {
 
 function updateScore() {
     document.getElementById('score').textContent = `${homeScore} - ${awayScore}`;
-    document.getElementById('homeStats').textContent = `Goals: ${homeScore}`;
-    document.getElementById('awayStats').textContent = `Goals: ${awayScore}`;
+    document.getElementById('homeStats').textContent = buildTeamSummary('HOME');
+    document.getElementById('awayStats').textContent = buildTeamSummary('AWAY');
+}
+
+function createTeamStats() {
+    return {
+        xG: 0,
+        shots: 0,
+        onTarget: 0,
+        dangerousAttacks: 0,
+        corners: 0,
+        yellowCards: 0,
+        redCards: 0
+    };
+}
+
+function resetDerivedState() {
+    teamStats.HOME = createTeamStats();
+    teamStats.AWAY = createTeamStats();
+    keyMoments.length = 0;
+    pendingVarGoals.length = 0;
+}
+
+function shouldQueueEvent(event) {
+    const type = normalizeEventType(event.type);
+    if (type === 'possession') return false;
+    return resolveEventCategory(event) !== 'micro';
+}
+
+function isPitchKeyEvent(event) {
+    return Boolean(event.keyEvent) || ['key', 'system'].includes(resolveEventCategory(event));
+}
+
+function resolveEventDelay(event) {
+    const type = normalizeEventType(event.type);
+    const importance = resolveEventImportance(event);
+
+    if (type === 'varreview') return 2700;
+    if (type === 'matchended') return 2500;
+    if (type === 'goal') return GOAL_DELAY;
+    if (isCanvasAnimationEvent(type)) return 2200;
+    if (importance === 'critical') return 1800;
+    if (importance === 'high') return 1500;
+    if (resolveEventCategory(event) === 'commentary') return 950;
+    return EVENT_DELAY;
+}
+
+function resolveEventCategory(event) {
+    const mapped = normalize(event.displayCategory);
+    if (mapped) return mapped;
+
+    const type = normalizeEventType(event.type);
+    if (['goal', 'penalty', 'shotontarget', 'shotofftarget', 'varreview', 'yellowcard', 'redcard', 'injury', 'substitution'].includes(type)) {
+        return 'key';
+    }
+    if (type === 'chance') {
+        return event.dangerous ? 'key' : 'commentary';
+    }
+    if (['matchstarted', 'matchended'].includes(type)) {
+        return 'system';
+    }
+    if (['corner', 'throwin', 'goalkick', 'freekick', 'offside'].includes(type)) {
+        return 'commentary';
+    }
+    return 'micro';
+}
+
+function resolveEventImportance(event) {
+    const mapped = normalize(event.importance);
+    if (mapped) return mapped;
+
+    const type = normalizeEventType(event.type);
+    if (type === 'goal') return 'critical';
+    if (['varreview', 'penalty', 'redcard'].includes(type)) return 'high';
+    if (type === 'chance') return event.dangerous ? 'high' : 'medium';
+    if (['shotontarget', 'shotofftarget', 'yellowcard', 'injury', 'substitution', 'matchstarted', 'matchended'].includes(type)) {
+        return 'medium';
+    }
+    return 'low';
+}
+
+function resolveEventClockLabel(event) {
+    if (event.clockLabel) return event.clockLabel;
+    const type = normalizeEventType(event.type);
+    if (type === 'matchstarted') return 'KO';
+    if (type === 'matchended') return 'FT';
+    return `${Number.isFinite(event.minute) ? Number(event.minute) : displayMinute}'`;
+}
+
+function resolveEventTypeLabel(event) {
+    const type = normalizeEventType(event.type);
+    switch (type) {
+        case 'matchstarted': return 'Kick-off';
+        case 'matchended': return 'Full time';
+        case 'goal': return 'Goal';
+        case 'penalty': return 'Penalty';
+        case 'chance': return event.dangerous ? 'Big chance' : 'Attack';
+        case 'shotontarget': return 'Shot on target';
+        case 'shotofftarget': return 'Shot off target';
+        case 'yellowcard': return 'Yellow card';
+        case 'redcard': return 'Red card';
+        case 'corner': return 'Corner';
+        case 'offside': return 'Offside';
+        case 'throwin': return 'Throw-in';
+        case 'goalkick': return 'Goal kick';
+        case 'freekick': return 'Free kick';
+        case 'injury': return 'Injury';
+        case 'substitution': return 'Substitution';
+        case 'varreview': return 'VAR';
+        default: return 'Match event';
+    }
+}
+
+function buildEventHeadline(event) {
+    const type = normalizeEventType(event.type);
+    const player = event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName || event.playerInName || 'Unknown';
+    const team = event.teamName || 'team';
+
+    switch (type) {
+        case 'matchstarted':
+            return `${matchData.homeTeam} vs ${matchData.awayTeam}`;
+        case 'goal':
+            return `${player} scores${event.assistantName ? `, assisted by ${event.assistantName}` : ''} for ${team}`;
+        case 'penalty':
+            return `${player} ${event.scored ? 'converts' : 'misses'} the penalty`;
+        case 'chance':
+            return event.dangerous
+                ? `${team} create a dangerous attack${player ? ` through ${player}` : ''}`
+                : (event.description || `${team} keep the pressure on`);
+        case 'shotontarget':
+            return `${player} forces a save / shot on target`;
+        case 'shotofftarget':
+            return `${player} misses the target`;
+        case 'yellowcard':
+            return `${player} goes into the book`;
+        case 'redcard':
+            return `${player} is sent off`;
+        case 'corner':
+            return `Corner for ${team}${event.takerName ? ` • ${event.takerName}` : ''}`;
+        case 'offside':
+            return `${player} is caught offside`;
+        case 'throwin':
+            return `Throw-in for ${team}`;
+        case 'goalkick':
+            return `Goal kick for ${team}${event.goalkeeperName ? ` • ${event.goalkeeperName}` : ''}`;
+        case 'freekick':
+            return `Free kick for ${team}${event.takerName ? ` • ${event.takerName}` : ''}`;
+        case 'injury':
+            return `Play stops for ${player}`;
+        case 'substitution':
+            return `${team} change: ${event.playerOutName || '?'} off, ${event.playerInName || '?'} on`;
+        case 'varreview':
+            return `VAR ${String(event.decision || 'review').toUpperCase()}${event.overturnReason ? ` • ${event.overturnReason}` : ''}`;
+        case 'matchended':
+            return `${matchData.homeTeam} ${homeScore} - ${awayScore} ${matchData.awayTeam}`;
+        default:
+            return event.description || 'Match event';
+    }
+}
+
+function updateTeamStats(event) {
+    const type = normalizeEventType(event.type);
+    const side = resolveTeamSide(event.teamName);
+    if (!side) return;
+
+    const stats = teamStats[side];
+    const xg = resolveEventXgValue(event);
+    if (xg != null && ['goal', 'shotontarget', 'shotofftarget'].includes(type)) {
+        stats.xG += xg;
+    }
+
+    switch (type) {
+        case 'goal':
+            stats.shots += 1;
+            stats.onTarget += 1;
+            break;
+        case 'penalty':
+            stats.shots += 1;
+            if (event.scored) stats.onTarget += 1;
+            break;
+        case 'shotontarget':
+            stats.shots += 1;
+            stats.onTarget += 1;
+            break;
+        case 'shotofftarget':
+            stats.shots += 1;
+            break;
+        case 'chance':
+            if (event.dangerous) stats.dangerousAttacks += 1;
+            break;
+        case 'corner':
+            stats.corners += 1;
+            break;
+        case 'yellowcard':
+            stats.yellowCards += 1;
+            break;
+        case 'redcard':
+            stats.redCards += 1;
+            break;
+        default:
+            break;
+    }
+}
+
+function buildTeamSummary(side) {
+    const stats = teamStats[side];
+    if (!stats) return 'Waiting for simulation...';
+
+    const isEmpty = stats.shots === 0
+        && stats.onTarget === 0
+        && stats.xG === 0
+        && stats.corners === 0
+        && stats.yellowCards === 0
+        && stats.redCards === 0;
+
+    if (isEmpty && displayMinute === 0) {
+        return 'Waiting for simulation...';
+    }
+
+    return `xG ${formatNumber(stats.xG)} • Shots ${stats.shots} • OT ${stats.onTarget}`;
+}
+
+function renderStatBoard() {
+    setText('stat-home-xg', formatNumber(teamStats.HOME.xG));
+    setText('stat-away-xg', formatNumber(teamStats.AWAY.xG));
+    setText('stat-home-shots', String(teamStats.HOME.shots));
+    setText('stat-away-shots', String(teamStats.AWAY.shots));
+    setText('stat-home-on-target', String(teamStats.HOME.onTarget));
+    setText('stat-away-on-target', String(teamStats.AWAY.onTarget));
+    setText('stat-home-big-chances', String(teamStats.HOME.dangerousAttacks));
+    setText('stat-away-big-chances', String(teamStats.AWAY.dangerousAttacks));
+    setText('stat-home-corners', String(teamStats.HOME.corners));
+    setText('stat-away-corners', String(teamStats.AWAY.corners));
+    setText('stat-home-cards', formatCards(teamStats.HOME));
+    setText('stat-away-cards', formatCards(teamStats.AWAY));
+}
+
+function appendKeyMoment(event) {
+    if (!isPitchKeyEvent(event)) return;
+
+    keyMoments.unshift({
+        clock: resolveEventClockLabel(event),
+        label: resolveEventTypeLabel(event),
+        text: buildEventHeadline(event),
+        importance: resolveEventImportance(event)
+    });
+
+    if (keyMoments.length > MAX_KEY_MOMENTS) {
+        keyMoments.length = MAX_KEY_MOMENTS;
+    }
+
+    renderKeyMoments();
+}
+
+function renderKeyMoments() {
+    const list = document.getElementById('key-moments-list');
+    if (!list) return;
+
+    if (keyMoments.length === 0) {
+        list.innerHTML = '<div class="placeholder">Key moments will appear here.</div>';
+        return;
+    }
+
+    list.innerHTML = keyMoments.map(moment => `
+        <div class="moment-item ${moment.importance}">
+            <div class="moment-time">${escapeHtml(moment.clock)}</div>
+            <div class="moment-body">
+                <div class="moment-label">${escapeHtml(moment.label)}</div>
+                <div class="moment-text">${escapeHtml(moment.text)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function resolveTeamSide(teamName) {
+    const normalizedTeam = normalize(teamName);
+    if (!normalizedTeam) return null;
+    if (normalizedTeam === normalize(matchData.homeTeam)) return 'HOME';
+    if (normalizedTeam === normalize(matchData.awayTeam)) return 'AWAY';
+    return null;
+}
+
+function resolveEventXgValue(event) {
+    const xg = Number(event?.xG ?? event?.xg ?? event?.x_g);
+    return Number.isFinite(xg) ? xg : null;
+}
+
+function formatXgBadge(event) {
+    const xg = resolveEventXgValue(event);
+    return xg != null ? `xG ${formatNumber(xg)}` : '';
+}
+
+function formatCards(stats) {
+    return `${stats.yellowCards}Y • ${stats.redCards}R`;
+}
+
+function resolveBannerDuration(event) {
+    const importance = resolveEventImportance(event);
+    if (importance === 'critical') return 2400;
+    if (importance === 'high') return 1900;
+    return 1400;
+}
+
+function normalizeEventType(type) {
+    return normalize(type).replace(/\s+/g, '');
+}
+
+function formatNumber(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(2) : '0.00';
+}
+
+function setText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function parseScore(value) {
@@ -868,7 +1686,8 @@ function clamp(value, min, max) {
 
 window.addEventListener('beforeunload', () => {
     clearCanvasAnimation();
+    if (playbackFrame) cancelAnimationFrame(playbackFrame);
     if (goalGifTimeout) clearTimeout(goalGifTimeout);
-    if (positionSocket) positionSocket.close();
-    if (eventSocket) eventSocket.close();
+    if (bannerTimeout) clearTimeout(bannerTimeout);
+    if (highlightTimeout) clearTimeout(highlightTimeout);
 });

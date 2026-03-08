@@ -97,10 +97,8 @@ public class SimulationService {
         // 1) Persist match + runtime events
         Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
 
-        // 2) Realistic demo depends on both sockets being connected before playback starts.
-        playbackEngine.awaitActiveSessions(match.getId(), 5000);
-
-        // 3) Playback stream (koristi MatchPlaybackEngine)
+        // 2) Keep the legacy websocket playback path available, but the primary realisticDemo
+        // UI now reads persisted replay data through the replay metadata/chunk endpoints.
         playbackEngine.startPlayback(match.getId(), runtime);
 
         log.info("Realistic match simulation finished for match {}", match.getId());

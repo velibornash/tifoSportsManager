@@ -1,6 +1,6 @@
 ﻿// pages.js
 import { authFetch } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
@@ -274,6 +274,13 @@ import { createMatchesFeature } from './pages/features/matches.js';
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/[^a-z0-9]/g, "");
     }
+    function normalizePlayerKey(name) {
+        return (name || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+    }
     async function openTeamByName(teamName) {
         try {
             const res = await authFetch('/countries/leagues/1/teams');
@@ -295,6 +302,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
             .replace(/>/g, "&gt;")
             .replace(/\"/g, "&quot;")
             .replace(/'/g, "&#39;");
+    }
+    function formatBudget(value) {
+        return `EUR ${Number(value || 0).toLocaleString()}`;
     }
     const academyFeature = createAcademyFeature({
         authFetch,
@@ -435,6 +445,348 @@ import { createMatchesFeature } from './pages/features/matches.js';
             return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
         }
     }
+    function formatPlayerSkill(exact, visible) {
+        if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
+        if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
+        return "-";
+    }
+    function clampPercent(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return 0;
+        return Math.max(0, Math.min(100, Math.round(number)));
+    }
+    function getPlayerConditionPercent(player) {
+        const fatigue = Number(player?.fatigue);
+        if (!Number.isFinite(fatigue)) return 100;
+        return clampPercent(100 - fatigue);
+    }
+    function getPlayerPositionInfo(position) {
+        const raw = String(position ?? '').trim();
+        const upper = raw.toUpperCase();
+        const active = new Set();
+
+        if (/GK|GOALKEEPER/.test(upper)) active.add('GK');
+        if (/(LB|DL|LWB|LEFT BACK)/.test(upper)) active.add('DL');
+        if (/(RB|DR|RWB|RIGHT BACK)/.test(upper)) active.add('DR');
+        if (/(CB|DC|STOPPER|DEFENDER)/.test(upper)) active.add('DC');
+        if (/(DM|CDM|DMC)/.test(upper)) active.add('DM');
+        if (/(CM|MC|MIDFIELDER)/.test(upper) && !/(AMC|AMR|AML|DM)/.test(upper)) active.add('MC');
+        if (/(CAM|AMC|AM)/.test(upper)) active.add('AMC');
+        if (/(LM|LW|AML|ML|LEFT WING)/.test(upper)) active.add('WL');
+        if (/(RM|RW|AMR|MR|RIGHT WING)/.test(upper)) active.add('WR');
+        if (/(ST|CF|FC|FW|STRIKER|FORWARD)/.test(upper)) active.add('ST');
+
+        if (!active.size) {
+            if (/KEEPER/.test(upper)) active.add('GK');
+            else if (/BACK|DEF/.test(upper)) active.add('DC');
+            else if (/WING/.test(upper)) active.add('WL');
+            else if (/ATT/.test(upper)) active.add('AMC');
+            else active.add('MC');
+        }
+
+        const primary = active.has('GK') ? 'GK'
+            : active.has('ST') ? 'ST'
+            : active.has('AMC') ? 'AMC'
+            : active.has('MC') ? 'MC'
+            : active.has('DM') ? 'DM'
+            : active.has('DC') ? 'DC'
+            : active.has('DL') ? 'DL'
+            : active.has('DR') ? 'DR'
+            : active.has('WL') ? 'WL'
+            : active.has('WR') ? 'WR'
+            : 'MC';
+
+        return {
+            raw,
+            primary,
+            items: [
+                { key: 'GK', label: 'GK', top: '86%', left: '50%' },
+                { key: 'DL', label: 'DL', top: '69%', left: '20%' },
+                { key: 'DC', label: 'DC', top: '68%', left: '50%' },
+                { key: 'DR', label: 'DR', top: '69%', left: '80%' },
+                { key: 'DM', label: 'DM', top: '54%', left: '50%' },
+                { key: 'WL', label: 'WL', top: '40%', left: '18%' },
+                { key: 'MC', label: 'MC', top: '40%', left: '50%' },
+                { key: 'WR', label: 'WR', top: '40%', left: '82%' },
+                { key: 'AMC', label: 'AMC', top: '24%', left: '50%' },
+                { key: 'ST', label: 'ST', top: '11%', left: '50%' }
+            ].map(item => ({
+                ...item,
+                active: active.has(item.key),
+                primary: item.key === primary
+            }))
+        };
+    }
+    function buildPlayerProfileHeroHtml(player, options = {}) {
+        const {
+            backLabel = 'Back',
+            eyebrow = 'Player overview',
+            teamName = 'Club squad',
+            ratingSummary = {},
+            backButtonId = 'player-back-button',
+            backButtonAttributes = '',
+            showBackButton = true,
+            headerClassName = 'fm-player-header',
+            bannerClassName = ''
+        } = options;
+        const positionInfo = getPlayerPositionInfo(player.position);
+        const filename = getImageFilename(player.name || 'player');
+        const conditionPercent = getPlayerConditionPercent(player);
+        const averageRating = formatRatingBadge(ratingSummary.averageRating10 ?? player?.rating);
+        const formBadge = formatFormBadge(player?.form);
+        const injuryText = player?.injured
+            ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
+            : 'Available';
+        const matchesPlayed = ratingSummary.matchesPlayed ?? player?.played ?? player?.matchesPlayed ?? 0;
+        const outputGoals = player?.totalGoals ?? player?.goals ?? 0;
+        const outputAssists = player?.totalAssists ?? player?.assists ?? 0;
+        const backButtonAttrText = [
+            backButtonId ? `id="${backButtonId}"` : '',
+            'class="back-to-dashboard"',
+            backButtonAttributes
+        ].filter(Boolean).join(' ');
+
+        return `
+            <section class="${headerClassName}">
+                ${showBackButton ? `<button ${backButtonAttrText}>${backLabel}</button>` : ''}
+                <div class="fm-ph-banner fm-panel${bannerClassName ? ` ${bannerClassName}` : ''}">
+                    <div class="fm-ph-photo">
+                        <div class="fm-ph-photo-frame">
+                            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'" alt="${escapeHtml(player?.name || 'Player')}">
+                        </div>
+                    </div>
+                    <div class="fm-ph-identity">
+                        <div class="fm-eyebrow">${escapeHtml(eyebrow)}</div>
+                        <h2>${escapeHtml(player?.name || 'Player')}</h2>
+                        <div class="fm-ph-meta-row">
+                            <span>${escapeHtml(teamName)}</span>
+                            <span class="fm-ph-sep"></span>
+                            <span>${escapeHtml(positionInfo.raw || 'Player')}</span>
+                            <span class="fm-ph-sep"></span>
+                            <span>${player?.age ?? '-'} years</span>
+                        </div>
+                        <div class="fm-ph-id-cols">
+                            <div class="fm-ph-id-col">
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Condition</span>
+                                    <div class="fm-cond">
+                                        <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${conditionPercent}%"></div></div>
+                                        <span class="fm-cond-val">${conditionPercent}%</span>
+                                    </div>
+                                </div>
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Match rating</span>
+                                    <span class="fm-detail-value">${averageRating}</span>
+                                </div>
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Form</span>
+                                    <span class="fm-detail-value">${formBadge}</span>
+                                </div>
+                            </div>
+                            <div class="fm-ph-id-col">
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Value</span>
+                                    <span class="fm-detail-value">${player?.value != null ? Math.round(player.value).toLocaleString() : '-'}</span>
+                                </div>
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Status</span>
+                                    <span class="fm-detail-value">${escapeHtml(injuryText)}</span>
+                                </div>
+                                <div class="fm-ph-rating-item">
+                                    <span class="fm-ph-rlabel">Output</span>
+                                    <span class="fm-detail-value">${outputGoals} goals · ${outputAssists} assists</span>
+                                </div>
+                            </div>
+                            <div class="fm-ph-id-col">
+                                <div class="fm-player-chip-row">
+                                    <span class="fm-player-chip">OVR ${player?.overall ?? '-'}</span>
+                                    <span class="fm-player-chip secondary">${escapeHtml(positionInfo.primary)}</span>
+                                    <span class="fm-player-chip secondary">${matchesPlayed} matches</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>`;
+    }
+    function buildPlayerProfileHtml(player, options = {}) {
+        const {
+            backLabel = 'Back',
+            eyebrow = 'Player overview',
+            teamName = 'Club squad',
+            ratingSummary = {},
+            revealPayload = null,
+            placeholderPrefix = 'This tab is prepared',
+            showReveal = false
+        } = options;
+        const revealActive = showReveal && !!revealPayload;
+        const positionInfo = getPlayerPositionInfo(player.position);
+        const filename = getImageFilename(player.name);
+        const conditionPercent = getPlayerConditionPercent(player);
+        const averageRating = formatRatingBadge(ratingSummary.averageRating10);
+        const formBadge = formatFormBadge(player.form);
+        const injuryText = player.injured
+            ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
+            : 'Available';
+        const skillSections = [
+            {
+                title: 'Ball Skills',
+                items: [
+                    ['Technique', formatPlayerSkill(player.techniqueExact, player.technique), 'skill-technique-val'],
+                    ['Passing', formatPlayerSkill(player.passingExact, player.passing), 'skill-passing-val'],
+                    ['Shooting', formatPlayerSkill(player.shootingExact, player.shooting), 'skill-shooting-val']
+                ]
+            },
+            {
+                title: 'Athletic & Duels',
+                items: [
+                    ['Pace', formatPlayerSkill(player.paceExact, player.pace), 'skill-pace-val'],
+                    ['Stamina', formatPlayerSkill(player.staminaExact, player.stamina), 'skill-stamina-val'],
+                    ['Defending', formatPlayerSkill(player.defendingExact, player.defending), 'skill-defending-val']
+                ]
+            },
+            {
+                title: 'Role Profile',
+                items: [
+                    ['Playmaker', formatPlayerSkill(player.playmakerExact, player.playmaker), 'skill-playmaker-val'],
+                    ['Goalkeeper', formatPlayerSkill(player.goalkeeperExact, player.goalkeeper), 'skill-goalkeeper-val'],
+                    ['Overall', player.overall ?? '-', null]
+                ]
+            }
+        ];
+
+        const renderSkillValue = (value, id) => `<td${id ? ` id="${id}"` : ''}>${revealActive && id ? '0.00' : value}</td>`;
+        const renderPlaceholder = (title, text) => `
+            <section class="fm-panel fm-player-tab-panel" data-player-tab-panel="${title.toLowerCase()}">
+                <div class="fm-panel-head">
+                    <h3>${title}</h3>
+                </div>
+                <div class="fm-empty">${placeholderPrefix}: ${text}</div>
+            </section>`;
+
+        return `
+            <div class="fm-page fm-player-page">
+                ${buildPlayerProfileHeroHtml(player, { backLabel, eyebrow, teamName, ratingSummary, backButtonId: 'player-back-button' })}
+
+                <section class="fm-panel fm-player-tabs-panel">
+                    <div class="fm-player-tabs">
+                        <button type="button" class="fm-player-tab is-active" data-player-tab="overview">Overview</button>
+                        <button type="button" class="fm-player-tab" data-player-tab="matches">Matches</button>
+                        <button type="button" class="fm-player-tab" data-player-tab="transfer">Transfer</button>
+                        <button type="button" class="fm-player-tab" data-player-tab="history">History</button>
+                    </div>
+                </section>
+
+                ${revealActive ? `
+                <section class="fm-panel fm-player-reveal">
+                    <h3>Junior Promotion Reveal</h3>
+                    <p class="fm-subtle">Skills are being generated from academy potential.</p>
+                    <p class="fm-subtle">Remaining skill budget: <strong id="junior-reveal-remaining">${Number(revealPayload.totalSkillBudget || 0)}</strong></p>
+                    <p class="fm-subtle" id="junior-reveal-status">Allocating 1 point every second...</p>
+                </section>` : ''}
+
+                <div class="fm-player-grid">
+                    <div class="fm-player-grid-left">
+                        <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">
+                            <div class="fm-panel-head">
+                                <h3>Positions</h3>
+                            </div>
+                            <div class="fp-pitch">
+                                <div class="fp-field">
+                                    <div class="fp-half-line"></div>
+                                    <div class="fp-center-circle"></div>
+                                    <div class="fp-penalty-area fp-pa-top"></div>
+                                    <div class="fp-goal-area fp-ga-top"></div>
+                                    <div class="fp-penalty-area fp-pa-bot"></div>
+                                    <div class="fp-goal-area fp-ga-bot"></div>
+                                    ${positionInfo.items.map(item => `<span class="fp-dot fp-${item.key.toLowerCase()}${item.active ? ' fp-on' : ''}${item.primary ? ' fp-primary' : ''}" style="top:${item.top}; left:${item.left};">${item.label}</span>`).join('')}
+                                </div>
+                            </div>
+                            <div class="fm-pref-foot">
+                                <span class="fm-detail-label">Current role</span>
+                                <span class="fm-detail-value">${escapeHtml(positionInfo.raw || 'Player')}</span>
+                            </div>
+                            <div class="fm-player-overview-strip">
+                                <div><strong>${player.age ?? '-'}</strong><span>Age</span></div>
+                                <div><strong>${player.overall ?? '-'}</strong><span>OVR</span></div>
+                                <div><strong>${ratingSummary.matchesPlayed ?? 0}</strong><span>Apps</span></div>
+                            </div>
+                        </section>
+                        ${renderPlaceholder('Matches', 'player-by-player match log can be wired later')}
+                        ${renderPlaceholder('Transfer', 'transfer listing / interest history will fit here when we wire the API')}
+                        ${renderPlaceholder('History', 'career timeline UI is ready for later API expansion')}
+                    </div>
+                    <div class="fm-player-grid-right">
+                        <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">
+                            <div class="fm-panel-head">
+                                <h3>Attributes</h3>
+                                <span class="fm-panel-action">Open-football inspired overview with our current skills</span>
+                            </div>
+                            <div class="fm-skills-grid">
+                                ${skillSections.map(section => `
+                                    <div class="fm-skill-col">
+                                        <h4>${section.title}</h4>
+                                        <table class="fm-skills">
+                                            <tbody>
+                                                ${section.items.map(([label, value, id]) => `<tr><td>${label}</td>${renderSkillValue(value, id)}</tr>`).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>`).join('')}
+                            </div>
+                        </section>
+                        <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">
+                            <div class="fm-panel-head">
+                                <h3>Statistics</h3>
+                            </div>
+                            <table class="fm-player-profile-stats">
+                                <thead>
+                                    <tr>
+                                        <th>Scope</th>
+                                        <th>Apps</th>
+                                        <th>Goals</th>
+                                        <th>Assists</th>
+                                        <th>Avg rating</th>
+                                        <th>Form</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Current save</td>
+                                        <td>${ratingSummary.matchesPlayed ?? 0}</td>
+                                        <td>${player.totalGoals ?? 0}</td>
+                                        <td>${player.totalAssists ?? 0}</td>
+                                        <td>${averageRating}</td>
+                                        <td>${formBadge}</td>
+                                        <td>${escapeHtml(injuryText)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </section>
+                    </div>
+                </div>
+            </div>`;
+    }
+    function initPlayerProfilePage(options = {}) {
+        const { onBack } = options;
+        const page = document.querySelector('.fm-player-page');
+        if (!page) return;
+
+        const backButton = page.querySelector('#player-back-button');
+        if (backButton && typeof onBack === 'function') {
+            backButton.addEventListener('click', onBack);
+        }
+
+        const tabs = page.querySelectorAll('[data-player-tab]');
+        const panels = page.querySelectorAll('[data-player-tab-panel]');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const target = tab.dataset.playerTab;
+                tabs.forEach(button => button.classList.toggle('is-active', button === tab));
+                panels.forEach(panel => panel.classList.toggle('is-active', panel.dataset.playerTabPanel === target));
+            });
+        });
+    }
     async function loadPlayer(playerId, callerPage = currentPageId, options = {}) {
         const pushHistory = options.pushHistory !== false;
         if (pushHistory) pushNavState({ type: 'player', playerId, callerPage });
@@ -453,12 +805,6 @@ import { createMatchesFeature } from './pages/features/matches.js';
 
         const player = await response.json();
         const revealPayload = getPendingJuniorReveal(playerId);
-        const revealActive = !!revealPayload;
-        const fmtSkill = (exact, visible) => {
-            if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
-            if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
-            return "-";
-        };
         const backMap = {
             juniors: "Back",
             trainingReports: "Back",
@@ -471,48 +817,18 @@ import { createMatchesFeature } from './pages/features/matches.js';
         };
         const backLabel = backMap[callerPage] || "Back";
         const backTarget = callerPage || "firstTeam";
-        mainContent.innerHTML = `
-            <div class="manager-card">
-                <button id="player-back-button" class="big-button" style="margin-bottom:16px;">${backLabel}</button>
-                <h2>${escapeHtml(player.name)}</h2>
-                ${revealActive ? `
-                <div class="manager-card" style="margin:10px 0 16px; background:rgba(17,26,39,0.85); border:1px solid rgba(111,207,151,0.45);">
-                    <h3 style="margin:0 0 8px;">Junior Promotion Reveal</h3>
-                    <p class="training-note" style="margin:0 0 6px;">Skills are being generated from academy potential.</p>
-                    <p class="training-note" style="margin:0;">Remaining skill budget: <strong id="junior-reveal-remaining">${Number(revealPayload.totalSkillBudget || 0)}</strong></p>
-                    <p class="training-note" id="junior-reveal-status" style="margin:6px 0 0;">Allocating 1 point every second...</p>
-                </div>` : ""}
-                <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">&#128203;</div><div class="val">${escapeHtml(player.position)}</div><div class="lbl">Position</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#127874;</div><div class="val">${player.age}</div><div class="lbl">Age</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#11088;</div><div class="val">${player.overall ?? "-"}</div><div class="lbl">OVR</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128565;</div><div class="val">${player.fatigue != null ? Number(player.fatigue).toFixed(1) : "-"}</div><div class="lbl">Fatigue</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128200;</div><div class="val">${formatRatingBadge(ratingSummary.averageRating10)}</div><div class="lbl">Average Grade (1-10)</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128293;</div><div class="val">${formatFormBadge(player.form)}</div><div class="lbl">Form</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#9917;</div><div class="val">${player.totalGoals ?? 0}</div><div class="lbl">Goals</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#127344;</div><div class="val">${player.totalAssists ?? 0}</div><div class="lbl">Assists</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128176;</div><div class="val">${player.value != null ? Math.round(player.value).toLocaleString() : "-"}</div><div class="lbl">Value</div></div>
-                </div>
-
-                <h3 style="margin-top:20px;">Skills</h3>
-                <div class="cs-stat-grid">
-                    <div class="cs-stat-card"><div class="icon">&#128267;</div><div class="val" id="skill-stamina-val">${revealActive ? "0.00" : fmtSkill(player.staminaExact, player.stamina)}</div><div class="lbl">Stamina</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128168;</div><div class="val" id="skill-pace-val">${revealActive ? "0.00" : fmtSkill(player.paceExact, player.pace)}</div><div class="lbl">Pace</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#128737;</div><div class="val" id="skill-defending-val">${revealActive ? "0.00" : fmtSkill(player.defendingExact, player.defending)}</div><div class="lbl">Defending</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#9874;&#65039;</div><div class="val" id="skill-technique-val">${revealActive ? "0.00" : fmtSkill(player.techniqueExact, player.technique)}</div><div class="lbl">Technique</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#129504;</div><div class="val" id="skill-playmaker-val">${revealActive ? "0.00" : fmtSkill(player.playmakerExact, player.playmaker)}</div><div class="lbl">Playmaker</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#127873;</div><div class="val" id="skill-passing-val">${revealActive ? "0.00" : fmtSkill(player.passingExact, player.passing)}</div><div class="lbl">Passing</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#127919;</div><div class="val" id="skill-shooting-val">${revealActive ? "0.00" : fmtSkill(player.shootingExact, player.shooting)}</div><div class="lbl">Shooting</div></div>
-                    <div class="cs-stat-card"><div class="icon">&#129508;</div><div class="val" id="skill-goalkeeper-val">${revealActive ? "0.00" : fmtSkill(player.goalkeeperExact, player.goalkeeper)}</div><div class="lbl">Goalkeeper</div></div>
-                </div>
-            </div>`;
-        if (revealActive) {
-            await runJuniorRevealAnimation(revealPayload);
-        }
-        const playerBackBtn = document.getElementById("player-back-button");
-        if (playerBackBtn) {
-            playerBackBtn.addEventListener("click", () => goBackSmart(backTarget));
-        }
+        const teamLabel = callerPage === 'juniors' ? 'Junior Squad' : 'First Team';
+        mainContent.innerHTML = buildPlayerProfileHtml(player, {
+            backLabel,
+            eyebrow: 'Player overview',
+            teamName: teamLabel,
+            ratingSummary,
+            revealPayload,
+            showReveal: true,
+            placeholderPrefix: 'This tab UI is ready'
+        });
+        initPlayerProfilePage({ onBack: () => goBackSmart(backTarget) });
+        if (revealPayload) await runJuniorRevealAnimation(revealPayload);
     }
     async function loadMatch(matchId, caller, options = {}) {
         const pushHistory = options.pushHistory !== false;
@@ -837,17 +1153,37 @@ import { createMatchesFeature } from './pages/features/matches.js';
     async function loadMedicalCenter() {
         const mainContent = document.getElementById("main-content");
         mainContent.innerHTML = `
-            <div class="manager-card" style="text-align:center; min-height:320px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;">
-                <button class="back-to-dashboard" data-nav-back="dashboard" style="align-self:flex-start;">Back</button>
-                <div style="display:flex; gap:14px; align-items:center; justify-content:center; margin-top:4px;">
-                    <span style="font-size:3.4rem; color:#ff4d4d; filter: drop-shadow(0 2px 5px rgba(0,0,0,.35));">&#10010;</span>
-                    <span style="font-size:3.2rem; filter: drop-shadow(0 2px 5px rgba(0,0,0,.35));">&#129658;</span>
-                </div>
-                <h2 style="margin:12px 0 6px;">Medical Center</h2>
-                <p style="color:#9aa0a6; max-width:520px;">
-                    Injury diagnosis, recovery plans, and medical staff management are coming soon.
-                </p>
-                <div style="margin-top:10px; color:#ff6b6b; font-weight:700;">Coming Soon</div>
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Club support</div>
+                            <h2>Medical Center</h2>
+                            <p class="fm-subtle">Same club shell as First Team, while keeping our medical workflow area ready for injuries, rehab, and staff expansion.</p>
+                        </div>
+                        ${buildClubActionsHtml('medicalCenter')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>0</strong><span>Critical injuries</span></div>
+                        <div><strong>0</strong><span>Rehab cases</span></div>
+                        <div><strong>100%</strong><span>Squad availability</span></div>
+                        <div><strong>Soon</strong><span>Treatment planner</span></div>
+                    </div>
+                </section>
+                <section class="fm-panel fm-medical-panel is-standalone">
+                    <div class="fm-medical-icon">&#10010; &#129658;</div>
+                    <h3>Medical dashboard</h3>
+                    <p class="fm-subtle" style="max-width:560px; text-align:center;">
+                        Injury diagnosis, recovery plans, and medical staff management stay part of our club area and will be expanded here next.
+                    </p>
+                    <div class="fm-medical-stat-grid">
+                        <div><strong>0</strong><span>Critical injuries</span></div>
+                        <div><strong>0</strong><span>Rehab cases</span></div>
+                        <div><strong>0</strong><span>Return-to-play checks</span></div>
+                    </div>
+                    <div class="fm-panel-action">Coming soon</div>
+                </section>
             </div>`;
     }
     async function loadFormations() {
@@ -859,7 +1195,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
         ]);
         const formations = formationsRes.ok ? await formationsRes.json() : [];
         const players = playersRes.ok ? await playersRes.json() : [];
-        const template = templateRes.ok ? await templateRes.json() : { formation: "4-4-2", starterIds: [], benchIds: [] };
+        const template = templateRes.ok ? await templateRes.json() : { formation: "4-4-2", starterIds: [], benchIds: [], saved: false };
 
         const availableFormations = Array.from(new Set([
             ...(Array.isArray(formations) ? formations.map(f => f.name) : []),
@@ -891,12 +1227,21 @@ import { createMatchesFeature } from './pages/features/matches.js';
             return Number(b.overall || 0) - Number(a.overall || 0);
         });
 
+        const localFormation = localStorage.getItem('main_app_tactics_formation');
+        const localStyle = localStorage.getItem('main_app_tactics_style');
+        const hasSavedTemplate = template?.saved === true || (Array.isArray(template?.starterIds) && template.starterIds.length > 0);
         const state = {
-            formation: localStorage.getItem('main_app_tactics_formation') || template.formation || availableFormations[0] || "4-4-2",
-            style: localStorage.getItem('main_app_tactics_style') || "BALANCED",
+            formation: hasSavedTemplate
+                ? (template.formation || availableFormations[0] || "4-4-2")
+                : (localFormation || template.formation || availableFormations[0] || "4-4-2"),
+            style: localStyle || "BALANCED",
             starterIds: Array.isArray(template.starterIds) ? template.starterIds.map(Number).filter(Number.isFinite).slice(0, 11) : [],
             benchIds: Array.isArray(template.benchIds) ? template.benchIds.map(Number).filter(Number.isFinite).slice(0, 7) : []
         };
+
+        if (hasSavedTemplate && template?.formation) {
+            localStorage.setItem('main_app_tactics_formation', template.formation);
+        }
 
         const canPlayRole = (player, role) => {
             const pos = String(player?.position || "").toUpperCase();
@@ -1220,9 +1565,32 @@ import { createMatchesFeature } from './pages/features/matches.js';
             const slots = formationToSlots(state.formation);
             const injuredCount = players.filter(p => p.injured).length;
 
-            let html = `<div class="manager-card">
-                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                <h2>Tactics</h2>
+            let html = `<div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Club tactics</div>
+                            <h2>Formations</h2>
+                            <p class="fm-subtle">Desktop uses drag & drop. Mobile uses filtered dropdowns with unique player lock.</p>
+                        </div>
+                        ${buildClubActionsHtml('formations')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${state.starterIds.filter(Boolean).length}/11</strong><span>Starting XI</span></div>
+                        <div><strong>${state.benchIds.filter(Boolean).length}/7</strong><span>Bench</span></div>
+                        <div><strong>${escapeHtml(state.formation)}</strong><span>Shape</span></div>
+                        <div><strong>${injuredCount}</strong><span>Unavailable</span></div>
+                    </div>
+                </section>
+                <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Tactics board</h3>
+                        <p class="fm-subtle">Pick the base shape, choose style, and save the exact XI + bench order.</p>
+                    </div>
+                    <span class="fm-panel-action">${escapeHtml(state.style)}</span>
+                </div>
                 <h3>Formation: <span id="currentFormation">${escapeHtml(state.formation)}</span></h3>
                 <div class="cs-tactics-grid">`;
 
@@ -1246,6 +1614,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     <button id="save-tactics-main" class="big-button">Save Tactics + XI + Bench</button>
                 </div>
                 <p style="margin-top:14px; color:#9aa0a6;">Desktop uses drag & drop. Mobile uses filtered dropdowns with unique player lock.</p>
+            </section>
             </div>`;
             mainContent.innerHTML = html;
 
@@ -1284,13 +1653,24 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         dedupBench.push(id);
                     });
 
-                    localStorage.setItem("main_app_tactics_formation", state.formation);
-                    localStorage.setItem("main_app_tactics_style", state.style);
                     const res = await authFetch(`/teams/${currentUserTeamId}/lineup-template`, {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ formation: state.formation, starterIds: dedupStarter, benchIds: dedupBench })
                     });
+                    let savedPayload = null;
+                    if (res.ok) {
+                        savedPayload = await res.json();
+                        state.formation = savedPayload?.formation || state.formation;
+                        state.starterIds = Array.isArray(savedPayload?.starterIds)
+                            ? savedPayload.starterIds.map(Number).filter(Number.isFinite).slice(0, 11)
+                            : state.starterIds;
+                        state.benchIds = Array.isArray(savedPayload?.benchIds)
+                            ? savedPayload.benchIds.map(Number).filter(Number.isFinite).slice(0, 7)
+                            : state.benchIds;
+                        localStorage.setItem("main_app_tactics_formation", state.formation);
+                        localStorage.setItem("main_app_tactics_style", state.style);
+                    }
                     saveBtn.disabled = false;
                     saveBtn.textContent = res.ok ? "Saved" : "Save failed";
                     setTimeout(() => { saveBtn.textContent = "Save Tactics + XI + Bench"; }, 1400);
@@ -1783,6 +2163,21 @@ import { createMatchesFeature } from './pages/features/matches.js';
             if (isDirectTraining) return "#9d4edd";
             return "#dce6f5";
         };
+        const trackedSkills = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
+        const skillHeaderCells = () => trackedSkills.map(skill => `
+            <th class="training-skill-col" title="${escapeHtml(skillLabel(skill))}">
+                <div class="training-skill-head">
+                    <span class="training-skill-head-icon">${skillIcon(skill)}</span>
+                    <span class="training-skill-head-text">${escapeHtml(skillShortLabel(skill))}</span>
+                </div>
+            </th>`).join('');
+        const buildSkillMetricCell = ({ valueText = '-', deltaText = '—', tone = '#dce6f5', isDirect = false, isEmpty = false, title = '' } = {}) => `
+            <td class="training-skill-col${isDirect ? ' is-direct-focus' : ''}${isEmpty ? ' is-empty' : ''}"${title ? ` title="${escapeHtml(title)}"` : ''}>
+                <div class="training-skill-metric" style="--skill-tone:${tone};">
+                    <span class="training-skill-value">${escapeHtml(String(valueText))}</span>
+                    <span class="training-skill-delta">${escapeHtml(String(deltaText))}</span>
+                </div>
+            </td>`;
 
         async function fetchSummaries() {
             const res = await authFetch(`/training/weekly/team/${currentUserTeamId}/reports`);
@@ -1819,10 +2214,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
         function renderReportCards(report) {
             if (!report) return `<p class="training-empty">Select a week report.</p>`;
             const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-            const reportSkills = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
-            let html = `<h3>${weekShort(report.seasonNumber, report.weekNumber)}</h3>`;
-            html += `<div class="training-report-list">`;
-            (report.players || [])
+            const reportPlayers = (report.players || [])
                 .sort((a, b) => {
                     const aPlayer = playerById.get(a.playerId);
                     const bPlayer = playerById.get(b.playerId);
@@ -1830,7 +2222,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     if (posDiff !== 0) return posDiff;
                     return String(a.playerName || "").localeCompare(String(b.playerName || ""));
                 })
-                .forEach(p => {
+                .map(p => {
                 const player = playerById.get(p.playerId);
                 const playerName = player?.name || p.playerName || `#${p.playerId}`;
                 const skillByName = new Map((p.skills || []).map(s => [String(s.skill || "").toLowerCase(), s]));
@@ -1840,43 +2232,111 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 const form = Number.isFinite(Number(player?.form)) ? Number(player.form).toFixed(1) : "-";
                 const goals = Number(player?.goals || 0);
                 const assists = Number(player?.assists || 0);
-                const trainingText = `${escapeHtml(p.role || "-")} • DT: ${escapeHtml(skillShortLabel(p.directTrainingSkill || "-"))} • ${p.advancedTraining ? "ADV" : "FORM"}`;
-                const skillCells = reportSkills.map(skill => {
+                const skillCells = trackedSkills.map(skill => {
                     const s = skillByName.get(skill);
-                    if (!s) return `<span class="training-skill-chip is-empty">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} -</span>`;
+                    if (!s) {
+                        return buildSkillMetricCell({
+                            isEmpty: true,
+                            title: `${skillLabel(skill)}: no report data for this week`
+                        });
+                    }
                     const intDelta = Number(s.integerChange || 0);
                     const decDelta = Number(s.decimalChange ?? (Number(s.after || 0) - Number(s.before || 0)));
                     const decSign = decDelta > 0 ? "+" : decDelta < 0 ? "-" : "";
                     const title = `${skillLabel(skill)}: ${Number(s.after || 0).toFixed(2)} | Delta ${decSign}${Math.abs(decDelta).toFixed(2)} | Int ${intDelta >= 0 ? "+" : "-"}${Math.abs(intDelta)}`;
                     const tone = skillTone(intDelta, skill === String(p.directTrainingSkill || "").toLowerCase());
                     const isDirect = skill === String(p.directTrainingSkill || "").toLowerCase();
-                    const directCls = isDirect && intDelta <= 0 ? " is-direct" : "";
-                    const upCls = intDelta > 0 ? " is-up" : "";
-                    return `<span class="training-skill-chip${directCls}${upCls}" title="${escapeHtml(title)}" style="color:${tone}; border-color:${tone}44;">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} ${Number(s.after || 0).toFixed(2)} <span style="opacity:0.85;">(${decSign}${Math.abs(decDelta).toFixed(2)})</span></span>`;
+                    return buildSkillMetricCell({
+                        valueText: Number(s.after || 0).toFixed(2),
+                        deltaText: decDelta === 0 ? '±0.00' : `${decSign}${Math.abs(decDelta).toFixed(2)}`,
+                        tone,
+                        isDirect,
+                        title
+                    });
                 }).join("");
-                html += `
-                    <div class="training-report-item">
-                        <div class="training-report-main">
-                            <div class="training-report-main-left">
-                                <span class="training-report-pos">${escapeHtml(pos)}</span>
-                                <span class="cs-clickable training-report-name" data-open-training-player="${p.playerId}">${escapeHtml(playerName)}</span>
+                return `
+                    <tr class="fm-squad-row training-report-player-row" data-open-training-player="${p.playerId}">
+                        <td class="sq-name">
+                            <span class="sq-player-link">${escapeHtml(playerName)}</span>
+                            <span class="ps-team">Form ${form} • G ${goals} • A ${assists}</span>
+                        </td>
+                        <td class="sq-pos">${escapeHtml(pos)}</td>
+                        <td class="sq-age">${age}</td>
+                        <td class="sq-rating">${rating}</td>
+                        <td class="sq-role">${escapeHtml(p.role || '-')}</td>
+                        <td class="sq-focus">${escapeHtml(skillShortLabel(p.directTrainingSkill || '-'))}</td>
+                        <td class="sq-mode">${p.advancedTraining ? 'ADV' : 'FORM'}</td>
+                        ${skillCells}
+                    </tr>`;
+            }).join('');
+
+            const playerCount = report.players?.length || 0;
+            const advancedCount = (report.players || []).filter(player => player.advancedTraining).length;
+            return `
+                <div class="fm-page training-report-shell">
+                    <section class="fm-panel fm-club-hero training-report-hero">
+                        <button class="back-to-dashboard" data-training-week-back="1">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Training report</div>
+                                <h2>${weekShort(report.seasonNumber, report.weekNumber)}</h2>
+                                <p class="fm-subtle">Week list is hidden while this squad-style report is open. Click any player row for the detailed progress view.</p>
                             </div>
-                            <div class="training-report-main-stats">Age ${age} • Rat ${rating} • Form ${form} • G ${goals} • A ${assists}</div>
+                            <div class="training-report-actions">
+                                <span class="fm-player-chip secondary">${playerCount} players</span>
+                                <span class="fm-player-chip secondary">${advancedCount} ADV</span>
+                                <span class="fm-player-chip secondary">Focus skill accented</span>
+                            </div>
                         </div>
-                        <div class="training-report-sub">${trainingText}</div>
-                        <div class="training-report-skills">${skillCells}</div>
-                    </div>`;
-            });
-            html += `</div>`;
-            return html;
+                    </section>
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <h3>Squad report</h3>
+                            <span class="fm-panel-action">First-team inspired layout</span>
+                        </div>
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad training-report-squad">
+                                <thead>
+                                    <tr>
+                                        <th class="sq-name">Name</th>
+                                        <th>Pos</th>
+                                        <th class="sq-age">Age</th>
+                                        <th class="sq-rating">Rating</th>
+                                        <th>Role</th>
+                                        <th>Focus</th>
+                                        <th>Mode</th>
+                                        ${skillHeaderCells()}
+                                    </tr>
+                                </thead>
+                                <tbody>${reportPlayers}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>`;
         }
 
         function renderGraph() {
             if (!selectedPlayerGraph) return "";
             const player = selectedPlayerGraph.player;
             const points = Array.isArray(selectedPlayerGraph.points) ? selectedPlayerGraph.points : [];
+            const currentPlayer = playerById.get(selectedPlayerGraph.playerId) || player || {};
+            const headerHtml = buildPlayerProfileHeroHtml(currentPlayer, {
+                backLabel: 'Back',
+                eyebrow: 'Training progress',
+                teamName: 'Training reports',
+                ratingSummary: {
+                    averageRating10: currentPlayer?.rating,
+                    matchesPlayed: currentPlayer?.played ?? currentPlayer?.matchesPlayed ?? 0
+                },
+                backButtonId: 'training-player-back-button',
+                backButtonAttributes: 'data-training-report-back="1"',
+                bannerClassName: 'training-player-banner'
+            });
             if (points.length === 0) {
-                return `<div class="training-block"><div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><button class="big-button" data-training-report-back="1">Back</button><h3 style="margin:0;">${escapeHtml(player?.name || "Player")} • Training Progress</h3></div><p class="training-empty" style="margin-top:14px;">No graph data.</p></div>`;
+                return `${headerHtml}
+                    <section class="fm-panel">
+                        <div class="fm-empty">No graph data.</div>
+                    </section>`;
             }
 
             const weekMap = new Map();
@@ -1898,11 +2358,10 @@ import { createMatchesFeature } from './pages/features/matches.js';
             const weeksAsc = [...weekMap.values()].sort((a, b) =>
                 a.seasonNumber === b.seasonNumber ? a.weekNumber - b.weekNumber : a.seasonNumber - b.seasonNumber
             );
-            const graphSkills = ["goalkeeper", "defending", "pace", "technique", "playmaker", "passing", "shooting", "stamina"];
             const prevInts = {};
             weeksAsc.forEach(week => {
                 week.skillMeta = {};
-                graphSkills.forEach(skill => {
+                trackedSkills.forEach(skill => {
                     const point = week.skills[skill];
                     if (!point) return;
                     const prevInt = prevInts[skill];
@@ -1912,60 +2371,58 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 });
             });
             const weeks = [...weeksAsc].reverse();
-            const currentPlayer = playerById.get(selectedPlayerGraph.playerId) || player || {};
-            const skillSummary = graphSkills.map(skill => `
-                <div class="cs-stat-card">
-                    <div class="icon">${skillIcon(skill)}</div>
-                    <div class="val">${Number(currentPlayer?.[skill] || 0).toFixed(2)}</div>
-                    <div class="lbl">${escapeHtml(skillShortLabel(skill))}</div>
-                </div>
-            `).join("");
-            let html = `<div class="training-block training-player-detail">
-                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-                    <button class="big-button" data-training-report-back="1">Back</button>
-                    <h3 style="margin:0;">${escapeHtml(currentPlayer?.name || player?.name || "Player")} • Training Progress</h3>
-                </div>
-                <div class="training-player-overview">
-                    <div class="training-player-hero">
-                        <div class="training-report-pos">${escapeHtml(currentPlayer?.position || "-")}</div>
-                        <div>
-                            <div class="training-report-name" style="font-size:1.1rem;">${escapeHtml(currentPlayer?.name || player?.name || "Player")}</div>
-                            <div class="training-report-sub">Age ${Number.isFinite(Number(currentPlayer?.age)) ? Number(currentPlayer.age) : "-"} • Rat ${Number.isFinite(Number(currentPlayer?.rating)) ? Number(currentPlayer.rating) : "-"} • Form ${Number.isFinite(Number(currentPlayer?.form)) ? Number(currentPlayer.form).toFixed(1) : "-"} • G ${Number(currentPlayer?.goals || 0)} • A ${Number(currentPlayer?.assists || 0)}</div>
-                        </div>
+            let html = `<div class="training-player-shell">
+                ${headerHtml}
+                <section class="fm-panel training-player-detail">
+                    <div class="fm-panel-head">
+                        <h3>Weekly progression</h3>
+                        <span class="fm-panel-action">${weeks.length} tracked weeks</span>
                     </div>
-                    <div class="cs-stat-grid">${skillSummary}</div>
-                </div>
-                <div class="training-graph-table-wrap">
-                    <div class="training-graph-header">
-                        <div class="training-graph-col training-graph-col-week">Week</div>
-                        <div class="training-graph-col training-graph-col-role">Role</div>
-                        <div class="training-graph-col training-graph-col-dt">DT</div>
-                        <div class="training-graph-col training-graph-col-mode">Mode</div>
-                        <div class="training-graph-col training-graph-col-skills">Skills</div>
-                    </div>
-                    <div class="training-graph-list">`;
+                    <p class="training-note">Skill columns show exact values, with the week delta beneath. Focus skill stays accented; green means growth and red means decline.</p>
+                    <div class="fm-squad-wrap">
+                        <table class="fm-squad training-graph-squad">
+                            <thead>
+                                <tr>
+                                    <th>Week</th>
+                                    <th>Role</th>
+                                    <th>Focus</th>
+                                    <th>Mode</th>
+                                    ${skillHeaderCells()}
+                                </tr>
+                            </thead>
+                            <tbody>`;
 
             weeks.forEach(week => {
-                const skillHtml = graphSkills.map(skill => {
+                const skillHtml = trackedSkills.map(skill => {
                     const meta = week.skillMeta?.[skill];
-                    if (!meta?.point) return `<span class="training-skill-chip is-empty">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} -</span>`;
+                    if (!meta?.point) {
+                        return buildSkillMetricCell({
+                            isEmpty: true,
+                            title: `${skillLabel(skill)}: no tracked value`
+                        });
+                    }
                     const isDirect = skill === String(week.directTrainingSkill || "").toLowerCase();
                     const tone = skillTone(meta.delta, isDirect);
-                    const directCls = isDirect && meta.delta <= 0 ? " is-direct" : "";
-                    const upCls = meta.delta > 0 ? " is-up" : "";
-                    return `<span class="training-skill-chip${directCls}${upCls}" style="color:${tone}; border-color:${tone}44;">${skillIcon(skill)} ${escapeHtml(skillShortLabel(skill))} ${Number(meta.point.value).toFixed(2)}</span>`;
+                    const deltaText = meta.delta === 0 ? '±0' : `${meta.delta > 0 ? '+' : '-'}${Math.abs(meta.delta)}`;
+                    return buildSkillMetricCell({
+                        valueText: Number(meta.point.value).toFixed(2),
+                        deltaText,
+                        tone,
+                        isDirect,
+                        title: `${skillLabel(skill)}: ${Number(meta.point.value).toFixed(2)} | Weekly int delta ${deltaText}`
+                    });
                 }).join("");
 
-                html += `<div class="training-graph-row">
-                    <div class="training-graph-col training-graph-col-week" data-label="Week">${weekShort(week.seasonNumber, week.weekNumber)}</div>
-                    <div class="training-graph-col training-graph-col-role" data-label="Role">${escapeHtml(week.role || "-")}</div>
-                    <div class="training-graph-col training-graph-col-dt" data-label="DT">${escapeHtml(skillShortLabel(week.directTrainingSkill || "-"))}</div>
-                    <div class="training-graph-col training-graph-col-mode" data-label="Mode">${week.advancedTraining ? "ADV" : "FORM"}</div>
-                    <div class="training-graph-col training-graph-col-skills" data-label="Skills">${skillHtml}</div>
-                </div>`;
+                html += `<tr>
+                    <td>${weekShort(week.seasonNumber, week.weekNumber)}</td>
+                    <td>${escapeHtml(week.role || '-')}</td>
+                    <td>${escapeHtml(skillShortLabel(week.directTrainingSkill || '-'))}</td>
+                    <td>${week.advancedTraining ? 'ADV' : 'FORM'}</td>
+                    ${skillHtml}
+                </tr>`;
             });
 
-            html += `</div></div></div>`;
+            html += `</tbody></table></div></section></div>`;
             return html;
         }
 
@@ -1987,14 +2444,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
             }
 
             if (selectedPlayerGraph) {
-                mainContent.innerHTML = `
-                    <div class="manager-card training-setup-card">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                        <h2>Training Reports</h2>
-                        <p class="training-note">Purple marks the direct training skill for that week. Green means growth, red means decline.</p>
-                        ${renderGraph()}
-                    </div>
-                `;
+                mainContent.innerHTML = renderGraph();
+            } else if (selectedReport) {
+                mainContent.innerHTML = renderReportCards(selectedReport);
             } else {
                 mainContent.innerHTML = `
                     <div class="manager-card training-setup-card">
@@ -2019,6 +2471,14 @@ import { createMatchesFeature } from './pages/features/matches.js';
             mainContent.onclick = async (event) => {
                 const backEl = event.target.closest("[data-training-report-back]");
                 if (backEl && mainContent.contains(backEl)) {
+                    selectedPlayerGraph = null;
+                    await render();
+                    return;
+                }
+
+                const weekBackEl = event.target.closest("[data-training-week-back]");
+                if (weekBackEl && mainContent.contains(weekBackEl)) {
+                    selectedReport = null;
                     selectedPlayerGraph = null;
                     await render();
                     return;
@@ -2063,50 +2523,60 @@ import { createMatchesFeature } from './pages/features/matches.js';
         const stadiumImage = "/images/dunjareal.png"; // default, ili po profil.stadium
 
         mainContent.innerHTML = `
-        <div class="club-profile-card">
-            <div style="display:flex; justify-content:flex-start; margin:6px 0 10px 0; padding-left:4px;">
-                <button class="back-to-dashboard-profile" data-nav-back="dashboard" style="position:static; margin:0;">Back</button>
-            </div>
-            <!-- Glavni header sa logom i imenom -->
-            <div class="club-header">
-                <div class="club-logo-container">
-                    <img src="${profile.logo || '/images/omladinac.png'}"
-                         class="club-logo"
-                         alt="${profile.name}"
-                         onerror="this.src='/images/omladinac.png'">
-                </div>
-                <div class="club-title">
-                    <h1>${profile.name}</h1>
-                    <p class="club-subtitle">Serbian Super League - Season 2025/26</p>
-                </div>
-            </div>
-
-            <!-- Statistike u lepim karticama -->
-            <div class="club-stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">Year</div>
-                    <div class="stat-value">${profile.founded || "N/A"}</div>
-                    <div class="stat-label">Founded</div>
-                </div>
-            <button class="stadium-button" onclick="showStadiumModal('${stadiumImage}', '${profile.stadium || 'Stadion'}')">
-                    <div class="stadium-overlay">
-                        <div class="stat-icon">Stadium</div>
-                        <div class="stat-value">${profile.stadium || "N/A"}</div>
-                        <div class="stat-label">Stadium (click to view)</div>
+        <div class="fm-page fm-page--club">
+            <section class="fm-panel fm-club-hero">
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                <div class="fm-club-hero-main">
+                    <div>
+                        <div class="fm-eyebrow">Club overview</div>
+                        <h2>${escapeHtml(profile.name || 'Club Profile')}</h2>
+                        <p class="fm-subtle">Same club shell as First Team, with profile data, stadium access, budget, and reputation.</p>
                     </div>
-            </button>
-                <div class="stat-card">
-                    <div class="stat-icon">Budget</div>
-                    <div class="stat-value">EUR ${(profile.budget || 0).toLocaleString()}</div>
-                    <div class="stat-label">Budget</div>
+                    ${buildClubActionsHtml('profile')}
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon">Rep</div>
-                    <div class="stat-value">${profile.reputation || "N/A"}</div>
-                    <div class="stat-label">Reputation</div>
+                <div class="fm-medical-stat-grid team-summary-grid">
+                    <div><strong>${escapeHtml(profile.founded || 'N/A')}</strong><span>Founded</span></div>
+                    <div><strong>${escapeHtml(profile.stadium || 'N/A')}</strong><span>Home stadium</span></div>
+                    <div><strong>${escapeHtml(profile.reputation || 'N/A')}</strong><span>Reputation</span></div>
+                    <div><strong>${escapeHtml(formatBudget(profile.budget))}</strong><span>Budget</span></div>
                 </div>
+            </section>
+            <div class="fm-grid-top fm-grid-top--club-profile">
+                <section class="fm-panel club-profile-brand-card">
+                    <div class="club-profile-brand-mark">
+                        <img src="${profile.logo || '/images/omladinac.png'}"
+                             class="club-logo"
+                             alt="${escapeHtml(profile.name)}"
+                             onerror="this.src='/images/omladinac.png'">
+                    </div>
+                    <h3>${escapeHtml(profile.name || 'Club')}</h3>
+                    <p class="fm-subtle">Serbian club profile with open-football-inspired presentation and our existing app data.</p>
+                    <button type="button" class="fm-action-btn secondary club-profile-stadium-btn" data-stadium-image="${escapeHtml(stadiumImage)}" data-stadium-name="${escapeHtml(profile.stadium || 'Stadium')}">Open Stadium View</button>
+                </section>
+                <section class="fm-panel club-profile-detail-card">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Club details</h3>
+                            <p class="fm-subtle">Profile data stays concise, wide, and visually aligned with the rest of the club area.</p>
+                        </div>
+                        <span class="fm-panel-action">Profile</span>
+                    </div>
+                    <div class="club-profile-detail-list">
+                        <div class="club-profile-detail-row"><span>Founded</span><strong>${escapeHtml(profile.founded || 'N/A')}</strong></div>
+                        <div class="club-profile-detail-row"><span>Stadium</span><strong>${escapeHtml(profile.stadium || 'N/A')}</strong></div>
+                        <div class="club-profile-detail-row"><span>Budget</span><strong>${escapeHtml(formatBudget(profile.budget))}</strong></div>
+                        <div class="club-profile-detail-row"><span>Reputation</span><strong>${escapeHtml(profile.reputation || 'N/A')}</strong></div>
+                    </div>
+                </section>
             </div>
         </div>`;
+
+        const stadiumButton = mainContent.querySelector('.club-profile-stadium-btn');
+        if (stadiumButton) {
+            stadiumButton.addEventListener('click', () => {
+                showStadiumModal(stadiumButton.dataset.stadiumImage, stadiumButton.dataset.stadiumName);
+            });
+        }
     }
     async function loadUpcomingMatches() {
         if (!await ensureUserTeamId()) return;
@@ -2207,16 +2677,28 @@ import { createMatchesFeature } from './pages/features/matches.js';
     async function loadLeagueTable(seasonYear = null) {
         const leagueId = 1;
         try {
-            const seasonParam = seasonYear ? `?seasonYear=${seasonYear}` : "";
-            const [tableResponse, teamsResponse] = await Promise.all([
+            const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
+            const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
+            const selectedSeason = seasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+            const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber
+                || (selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : 1);
+            const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
+
+            const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse] = await Promise.all([
                 authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`),
-                authFetch(`/countries/leagues/${leagueId}/teams`)
+                authFetch(`/countries/leagues/${leagueId}/teams`),
+                authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`),
+                authFetch(`/stats/leagues/${leagueId}/topscorers${seasonParam}`),
+                authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`)
             ]);
             if (!tableResponse.ok) throw new Error(`League table load failed: ${tableResponse.status}`);
             if (!teamsResponse.ok) throw new Error(`League teams load failed: ${teamsResponse.status}`);
 
             const table = await tableResponse.json();
             const leagueTeams = await teamsResponse.json();
+            const schedule = scheduleResponse.ok ? await scheduleResponse.json() : [];
+            const scorers = scorersResponse.ok ? await scorersResponse.json() : [];
+            const assists = assistsResponse.ok ? await assistsResponse.json() : [];
             const teamIdByName = new Map();
             leagueTeams.forEach(team => {
                 teamIdByName.set(normalizeTeamKey(team.name), team.id);
@@ -2226,7 +2708,72 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 ...row,
                 teamId: teamIdByName.get(normalizeTeamKey(row.name)) ?? null
             }));
-            renderTable(enhancedTable);
+
+            const byRound = new Map();
+            schedule.forEach(match => {
+                const round = Number(match.round || 1);
+                if (!byRound.has(round)) byRound.set(round, []);
+                byRound.get(round).push({
+                    ...match,
+                    homeTeamId: teamIdByName.get(normalizeTeamKey(match.homeTeam)) ?? null,
+                    awayTeamId: teamIdByName.get(normalizeTeamKey(match.awayTeam)) ?? null
+                });
+            });
+            const rounds = [...byRound.keys()].sort((a, b) => a - b);
+            const currentRound = rounds.find(round => (byRound.get(round) || []).some(match => !match.played))
+                || rounds[rounds.length - 1]
+                || 1;
+
+            const playerIdByKey = new Map();
+            await Promise.all(leagueTeams.map(async team => {
+                try {
+                    const response = await authFetch(`/countries/teams/${team.id}/players`);
+                    if (!response.ok) return;
+                    const players = await response.json();
+                    players.forEach(player => {
+                        playerIdByKey.set(
+                            `${normalizeTeamKey(team.name)}|${normalizePlayerKey(player.name)}`,
+                            player.id
+                        );
+                    });
+                } catch (e) {
+                    console.warn('League player map fetch failed for team:', team?.name, e);
+                }
+            }));
+
+            const visibleRounds = rounds.map(round => ({
+                round,
+                label: round === currentRound
+                    ? 'Current focus'
+                    : round === currentRound - 1
+                        ? 'Latest results'
+                        : round === currentRound + 1
+                            ? 'Next fixtures'
+                            : '',
+                isFocusRound: round === currentRound,
+                matches: byRound.get(round)
+            }));
+
+            const mappedScorers = scorers.map(item => ({
+                ...item,
+                teamId: teamIdByName.get(normalizeTeamKey(item.teamName)) ?? null,
+                playerId: playerIdByKey.get(`${normalizeTeamKey(item.teamName)}|${normalizePlayerKey(item.playerName || item.name)}`) ?? null
+            }));
+            const mappedAssists = assists.map(item => ({
+                ...item,
+                teamId: teamIdByName.get(normalizeTeamKey(item.teamName)) ?? null,
+                playerId: playerIdByKey.get(`${normalizeTeamKey(item.teamName)}|${normalizePlayerKey(item.playerName || item.name)}`) ?? null
+            }));
+
+            renderTable({
+                table: enhancedTable,
+                fixtures: visibleRounds,
+                topScorers: mappedScorers,
+                topAssists: mappedAssists,
+                seasons,
+                selectedSeason,
+                selectedSeasonNumber
+            });
         } catch (err) {
             console.error("Failed to load league table:", err);
             document.getElementById("main-content").innerHTML = `
@@ -2510,7 +3057,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
                         <span style="flex: 1; text-align: left; padding-left: 10px;">
                             ${playerIdByKey.get(`${s.teamName}|${s.playerName}`) && teamIdByName.get(s.teamName)
-                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamIdByName.get(s.teamName)}, ${playerIdByKey.get(`${s.teamName}|${s.playerName}`)}, '${escapeHtml(s.teamName)}')">${s.playerName}</span>`
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${s.teamName}|${s.playerName}`)}, ${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.playerName}</span>`
                                 : s.playerName}
                             <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${escapeHtml(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
@@ -2541,7 +3088,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                         <span style="color: ${rankColor}; font-weight: bold; min-width: 30px;">${i+1}.</span>
                         <span style="flex: 1; text-align: left; padding-left: 10px;">
                             ${playerIdByKey.get(`${a.teamName}|${a.playerName}`) && teamIdByName.get(a.teamName)
-                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${teamIdByName.get(a.teamName)}, ${playerIdByKey.get(`${a.teamName}|${a.playerName}`)}, '${escapeHtml(a.teamName)}')">${a.playerName}</span>`
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${a.teamName}|${a.playerName}`)}, ${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.playerName}</span>`
                                 : a.playerName}
                             <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${escapeHtml(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
@@ -2607,7 +3154,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
         renderMatchesView(matches, title, { loadMatch });
     }
     function renderTable(table) {
-        renderTableView(table, { loadLeagueTeam, escapeHtml, formatGoalDiff });
+        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, escapeHtml, formatGoalDiff });
     }
     async function loadLeagueTeam(teamId, teamName, options = {}) {
         const pushHistory = options.pushHistory !== false;
@@ -2619,76 +3166,73 @@ import { createMatchesFeature } from './pages/features/matches.js';
             const players = await response.json();
             const isUserTeam = Number(teamId) === Number(currentUserTeamId);
 
+            const avgOverall = players.length
+                ? (players.reduce((sum, player) => sum + Number(player.overall || 0), 0) / players.length).toFixed(1)
+                : '-';
+            const avgAge = players.length
+                ? (players.reduce((sum, player) => sum + Number(player.age || 0), 0) / players.length).toFixed(1)
+                : '-';
+            const totalGoals = players.reduce((sum, player) => sum + Number(player.totalGoals ?? player.goals ?? 0), 0);
+            const totalAssists = players.reduce((sum, player) => sum + Number(player.totalAssists ?? player.assists ?? 0), 0);
+            const injuryCount = players.filter(player => player.injured).length;
+            const poorFormCount = players.filter(player => Number(player.form) <= 5.8).length;
+
             let html = `
-            <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
-                <h2>${escapeHtml(teamName)}</h2>
-                <p style="text-align:center; color:#9aa0a6; margin-top:-8px;">Click a player to open profile</p>`;
-
-            if (isUserTeam) {
-                html += `<div class="manager-grid">`;
-                players.forEach(player => {
-                    const filename = getImageFilename(player.name);
-                    html += `
-                    <div class="manager-player-card league-player-card"
-                         data-player-id="${player.id}"
-                         data-team-id="${teamId}"
-                         data-team-name="${escapeHtml(teamName)}">
-                        <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'">
-                        <div class="player-name">${escapeHtml(player.name)}</div>
-                        <div class="player-meta">${escapeHtml(player.position)} - ${player.age}</div>
-                        <div class="player-rating">OVR ${player.overall}</div>
-                        <div class="player-meta">Rating: ${formatRatingBadge(player.rating)} | Form: ${formatFormBadge(player.form)}</div>
-                        <div class="player-meta">Goals: ${player.totalGoals ?? 0} | Assists: ${player.totalAssists ?? 0}</div>
-                    </div>`;
-                });
-                html += `</div>`;
-            } else {
-                html += `
-                <div style="overflow-x:auto;">
-                    <table class="league-table" style="width:100%; border-collapse:collapse; margin-top:10px;">
-                        <thead>
-                            <tr style="background:rgba(157,78,221,0.25); color:#fff;">
-                                <th style="padding:10px; text-align:left;">Player</th>
-                                <th style="padding:10px; text-align:center;">POS</th>
-                                <th style="padding:10px; text-align:center;">Rating</th>
-                                <th style="padding:10px; text-align:center;">Form</th>
-                                <th style="padding:10px; text-align:center;">OVR</th>
-                                <th style="padding:10px; text-align:center;">G/A</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
-                players.forEach((player, index) => {
-                    const rowBg = index % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.08)";
-                    html += `
-                            <tr class="league-player-card" style="background:${rowBg}; cursor:pointer;"
-                                data-player-id="${player.id}"
-                                data-team-id="${teamId}"
-                                data-team-name="${escapeHtml(teamName)}">
-                                <td style="padding:10px;">${escapeHtml(player.name)}</td>
-                                <td style="padding:10px; text-align:center;">${escapeHtml(player.position)}</td>
-                                <td style="padding:10px; text-align:center;">${formatRatingBadge(player.rating)}</td>
-                                <td style="padding:10px; text-align:center;">${formatFormBadge(player.form)}</td>
-                                <td style="padding:10px; text-align:center;">${player.overall ?? 0}</td>
-                                <td style="padding:10px; text-align:center;">${player.totalGoals ?? 0}/${player.totalAssists ?? 0}</td>
-                            </tr>`;
-                });
-                html += `
-                        </tbody>
-                    </table>
-                </div>`;
-            }
-
-            html += `</div>`;
+            <div class="fm-page fm-page--team-detail">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Team overview</div>
+                            <h2>${escapeHtml(teamName)}</h2>
+                            <p class="fm-subtle">Open-football inspired squad screen. Click any row to open the player profile.</p>
+                        </div>
+                        ${isUserTeam ? buildClubActionsHtml('firstTeam') : ''}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${players.length}</strong><span>Players</span></div>
+                        <div><strong>${avgOverall}</strong><span>Avg OVR</span></div>
+                        <div><strong>${avgAge}</strong><span>Avg age</span></div>
+                        <div><strong>${totalGoals}/${totalAssists}</strong><span>Goals / assists</span></div>
+                    </div>
+                </section>
+                <div class="fm-team-layout ${isUserTeam ? 'has-side-panel' : ''}">
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <h3>Squad</h3>
+                            <span class="fm-panel-action">${players.length} registered</span>
+                        </div>
+                        ${buildSquadTableHtml(players, {
+                            rowClass: 'league-player-card',
+                            teamId,
+                            teamName,
+                            emptyText: 'No registered players found for this team.'
+                        })}
+                    </section>
+                    ${isUserTeam ? `
+                    <aside class="fm-panel fm-medical-panel">
+                        <div class="fm-panel-head">
+                            <h3>Medical Center</h3>
+                            <span class="fm-panel-action">Club area</span>
+                        </div>
+                        <div class="fm-medical-icon">&#10010; &#129658;</div>
+                        <p class="fm-subtle">Keep the open-football squad view, but retain our app-specific medical workflow for injuries and recovery.</p>
+                        <div class="fm-medical-stat-grid">
+                            <div><strong>${injuryCount}</strong><span>Injuries</span></div>
+                            <div><strong>${poorFormCount}</strong><span>Low morale</span></div>
+                            <div><strong>${players.length - injuryCount}</strong><span>Available</span></div>
+                        </div>
+                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Open Medical Center</button>
+                    </aside>` : ''}
+                </div>
+            </div>`;
             mainContent.innerHTML = html;
 
-            mainContent.querySelectorAll(".league-player-card").forEach(card => {
-                card.addEventListener("click", () => {
-                    const playerId = Number(card.dataset.playerId);
-                    const playerTeamId = Number(card.dataset.teamId);
-                    const playerTeamName = card.dataset.teamName || "Team";
-                    loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName);
-                });
+            bindSquadRowClicks(mainContent, row => {
+                const playerId = Number(row.dataset.playerId);
+                const playerTeamId = Number(row.dataset.teamId);
+                const playerTeamName = row.dataset.teamName || "Team";
+                loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName);
             });
         } catch (err) {
             console.error("Failed to load team details:", err);
@@ -2705,7 +3249,6 @@ import { createMatchesFeature } from './pages/features/matches.js';
         if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
-            const isUserTeam = Number(teamId) === Number(currentUserTeamId);
             const [playerResponse, ratingSummary] = await Promise.all([
                 authFetch(`/players/${playerId}`),
                 fetchPlayerRatingSummary(playerId)
@@ -2713,68 +3256,14 @@ import { createMatchesFeature } from './pages/features/matches.js';
 
             if (!playerResponse.ok) throw new Error(`Player load failed: ${playerResponse.status}`);
             const player = await playerResponse.json();
-            const fmtSkill = (exact, visible) => {
-                if (exact != null && Number.isFinite(Number(exact))) return Number(exact).toFixed(2);
-                if (visible != null && Number.isFinite(Number(visible))) return Number(visible).toFixed(2);
-                return "-";
-            };
-            const filename = getImageFilename(player.name);
-
-            if (isUserTeam) {
-                mainContent.innerHTML = `
-                <div class="player-card-wrapper">
-                    <div class="player-card">
-                        <button id="back-to-league-team" class="back-to-dashboard">Back</button>
-                        <div class="card-header">
-                            <div class="overall-rating">${player.overall}</div>
-                            <div class="position">${escapeHtml(player.position)}</div>
-                        </div>
-                        <div class="player-image">
-                            <img src="/images/${filename}.jpg" onerror="this.src='/images/player.jpg'" alt="${escapeHtml(player.name)}">
-                        </div>
-                        <div class="player-name">${escapeHtml(player.name)}</div>
-                        <div class="player-stats">
-                            <div class="stat"><span>Age</span><span>${player.age}</span></div>
-                            <div class="stat"><span>Stamina</span><span>${fmtSkill(player.staminaExact, player.stamina)}</span></div>
-                            <div class="stat"><span>Goalkeeper</span><span>${fmtSkill(player.goalkeeperExact, player.goalkeeper)}</span></div>
-                            <div class="stat"><span>Pace</span><span>${fmtSkill(player.paceExact, player.pace)}</span></div>
-                            <div class="stat"><span>Defending</span><span>${fmtSkill(player.defendingExact, player.defending)}</span></div>
-                            <div class="stat"><span>Technique</span><span>${fmtSkill(player.techniqueExact, player.technique)}</span></div>
-                            <div class="stat"><span>Playmaker</span><span>${fmtSkill(player.playmakerExact, player.playmaker)}</span></div>
-                            <div class="stat"><span>Passing</span><span>${fmtSkill(player.passingExact, player.passing)}</span></div>
-                            <div class="stat"><span>Shooting</span><span>${fmtSkill(player.shootingExact, player.shooting)}</span></div>
-                            <div class="stat"><span>OVR</span><span>${player.overall ?? "-"}</span></div>
-                            <div class="stat"><span>Rating</span><span>${formatRatingBadge(player.rating)}</span></div>
-                            <div class="stat"><span>Form</span><span>${formatFormBadge(player.form)}</span></div>
-                            <div class="stat"><span>Total Goals</span><span>${player.totalGoals ?? 0}</span></div>
-                            <div class="stat"><span>Total Assists</span><span>${player.totalAssists ?? 0}</span></div>
-                            <div class="stat"><span>Average Grade (1-10)</span><span>${formatRatingBadge(ratingSummary.averageRating10)}</span></div>
-                        </div>
-                    </div>
-                </div>`;
-            } else {
-                mainContent.innerHTML = `
-                <div class="manager-card" style="max-width:720px; margin:0 auto;">
-                    <button id="back-to-league-team" class="back-to-dashboard">Back</button>
-                    <h2 style="text-align:center;">${escapeHtml(player.name)}</h2>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:18px;">
-                        <div class="stat-item"><div class="stat-label">Position</div><div class="stat-value">${escapeHtml(player.position)}</div></div>
-                        <div class="stat-item"><div class="stat-label">OVR</div><div class="stat-value">${player.overall ?? "-"}</div></div>
-                        <div class="stat-item"><div class="stat-label">Rating</div><div class="stat-value">${formatRatingBadge(player.rating)}</div></div>
-                        <div class="stat-item"><div class="stat-label">Form</div><div class="stat-value">${formatFormBadge(player.form)}</div></div>
-                        <div class="stat-item"><div class="stat-label">Age</div><div class="stat-value">${player.age ?? "-"}</div></div>
-                        <div class="stat-item"><div class="stat-label">Goals</div><div class="stat-value">${player.totalGoals ?? 0}</div></div>
-                        <div class="stat-item"><div class="stat-label">Assists</div><div class="stat-value">${player.totalAssists ?? 0}</div></div>
-                        <div class="stat-item"><div class="stat-label">Average Grade (1-10)</div><div class="stat-value">${formatRatingBadge(ratingSummary.averageRating10)} (${ratingSummary.matchesPlayed} matches)</div></div>
-                    </div>
-                    <p style="margin-top:16px; color:#9aa0a6; text-align:center;">Detailed skills are hidden for players outside your team.</p>
-                </div>`;
-            }
-
-            const backButton = document.getElementById("back-to-league-team");
-            if (backButton) {
-                backButton.addEventListener("click", () => loadLeagueTeam(teamId, teamName));
-            }
+            mainContent.innerHTML = buildPlayerProfileHtml(player, {
+                backLabel: 'Back',
+                eyebrow: 'Team player',
+                teamName: teamName || 'Team',
+                ratingSummary,
+                placeholderPrefix: 'This tab UI is ready'
+            });
+            initPlayerProfilePage({ onBack: () => goBackSmart('leagueTable') });
         } catch (err) {
             console.error("Failed to load player profile:", err);
             mainContent.innerHTML = `
@@ -2785,7 +3274,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 </div>`;
             const backButton = document.getElementById("back-to-league-team-fallback");
             if (backButton) {
-                backButton.addEventListener("click", () => loadLeagueTeam(teamId, teamName));
+                backButton.addEventListener("click", () => goBackSmart('leagueTable'));
             }
         }
     }

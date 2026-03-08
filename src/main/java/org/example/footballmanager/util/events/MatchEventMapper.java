@@ -26,6 +26,8 @@ public class MatchEventMapper {
                 dto.setTeamName(g.getTeam() != null ? g.getTeam().getName() : null);
                 dto.setScoreAfterGoal(g.getScoreAfterGoal());
                 dto.setScored(g.isScored());
+                dto.setXG(roundXg(g.getXG()));
+                applyPresentationMetadata(dto, g);
                 return dto;
             }
             case YellowCardEvent y -> {
@@ -36,6 +38,7 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, y.getPlayer());
                 dto.setPlayerName(y.getPlayer() != null ? y.getPlayer().getName() : null);
                 dto.setTeamName(y.getPlayer() != null && y.getPlayer().getTeam() != null ? y.getPlayer().getTeam().getName() : null);
+                applyPresentationMetadata(dto, y);
                 return dto;
             }
             case RedCardEvent r -> {
@@ -44,6 +47,9 @@ public class MatchEventMapper {
                 dto.setMinute(r.getMinute());
                 dto.setDescription(r.getDescription());
                 fillPlayerFields(dto, r.getPlayer());
+                dto.setPlayerName(r.getPlayer() != null ? r.getPlayer().getName() : null);
+                dto.setTeamName(r.getTeam() != null ? r.getTeam().getName() : null);
+                applyPresentationMetadata(dto, r);
                 return dto;
             }
             case InjuryEvent i -> {
@@ -54,6 +60,7 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, i.getPlayer());
                 dto.setPlayerName(i.getPlayer() != null ? i.getPlayer().getName() : null);
                 dto.setTeamName(i.getPlayer() != null && i.getPlayer().getTeam() != null ? i.getPlayer().getTeam().getName() : null);
+                applyPresentationMetadata(dto, i);
                 return dto;
             }
             case PenaltyEvent p -> {
@@ -65,6 +72,7 @@ public class MatchEventMapper {
                 dto.setTakerName(p.getTaker() != null ? p.getTaker().getName() : null);
                 dto.setTeamName(p.getTeam() != null ? p.getTeam().getName() : null);
                 dto.setScored(p.isScored());
+                applyPresentationMetadata(dto, p);
                 return dto;
             }
             case SubstitutionEvent s -> {
@@ -77,6 +85,7 @@ public class MatchEventMapper {
                 dto.setPlayerInName(s.getPlayerIn() != null ? s.getPlayerIn().getName() : null);
                 dto.setTeamName(s.getTeam() != null ? s.getTeam().getName()
                         : (s.getPlayerOut() != null && s.getPlayerOut().getTeam() != null ? s.getPlayerOut().getTeam().getName() : null));
+                applyPresentationMetadata(dto, s);
                 return dto;
             }
             case OffsideEvent o -> {
@@ -87,6 +96,7 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, o.getPlayer());
                 dto.setPlayerName(o.getPlayer() != null ? o.getPlayer().getName() : null);
                 dto.setTeamName(o.getPlayer() != null && o.getPlayer().getTeam() != null ? o.getPlayer().getTeam().getName() : null);
+                applyPresentationMetadata(dto, o);
                 return dto;
             }
             case CornerEvent c -> {
@@ -98,6 +108,7 @@ public class MatchEventMapper {
                 dto.setPlayerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
                 dto.setTakerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
                 dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
+                applyPresentationMetadata(dto, c);
                 return dto;
             }
             case ThrowInEvent t -> {
@@ -109,6 +120,7 @@ public class MatchEventMapper {
                 dto.setPlayerName(t.getTaker() != null ? t.getTaker().getName() : null);
                 dto.setTakerName(t.getTaker() != null ? t.getTaker().getName() : null);
                 dto.setTeamName(t.getTeam() != null ? t.getTeam().getName() : null);
+                applyPresentationMetadata(dto, t);
                 return dto;
             }
             case GoalKickEvent gk -> {
@@ -120,6 +132,7 @@ public class MatchEventMapper {
                 dto.setPlayerName(gk.getGoalkeeper() != null ? gk.getGoalkeeper().getName() : null);
                 dto.setGoalkeeperName(gk.getGoalkeeper() != null ? gk.getGoalkeeper().getName() : null);
                 dto.setTeamName(gk.getTeam() != null ? gk.getTeam().getName() : null);
+                applyPresentationMetadata(dto, gk);
                 return dto;
             }
             case FreeKickEvent f -> {
@@ -130,7 +143,9 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, f.getTaker());
                 dto.setPlayerName(f.getPlayer() != null ? f.getPlayer().getName() : null);
                 dto.setTakerName(f.getTaker() != null ? f.getTaker().getName() : null);
-                dto.setTeamName(f.getPlayer() != null && f.getPlayer().getTeam() != null ? f.getPlayer().getTeam().getName() : null);
+                dto.setTeamName(f.getTeam() != null ? f.getTeam().getName()
+                        : (f.getPlayer() != null && f.getPlayer().getTeam() != null ? f.getPlayer().getTeam().getName() : null));
+                applyPresentationMetadata(dto, f);
                 return dto;
             }
             case ShotOnTargetEvent s -> {
@@ -141,6 +156,9 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, s.getShooter());
                 dto.setPlayerName(s.getShooter() != null ? s.getShooter().getName() : null);
                 dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
+                dto.setShooterName(s.getShooter() != null ? s.getShooter().getName() : null);
+                dto.setXG(roundXg(s.getXG()));
+                applyPresentationMetadata(dto, s);
                 return dto;
             }
             case ShotOffTargetEvent s -> {
@@ -151,6 +169,9 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, s.getShooter());
                 dto.setPlayerName(s.getShooter() != null ? s.getShooter().getName() : null);
                 dto.setTeamName(s.getTeam() != null ? s.getTeam().getName() : null);
+                dto.setShooterName(s.getShooter() != null ? s.getShooter().getName() : null);
+                dto.setXG(roundXg(s.getXG()));
+                applyPresentationMetadata(dto, s);
                 return dto;
             }
             case VARReviewEvent v -> {
@@ -180,6 +201,7 @@ public class MatchEventMapper {
                 } else {
                     dto.setReviewTarget("incident");
                 }
+                applyPresentationMetadata(dto, v);
                 return dto;
             }
             case ChanceEvent c -> {
@@ -191,6 +213,7 @@ public class MatchEventMapper {
                 dto.setPlayerName(c.getPlayer() != null ? c.getPlayer().getName() : null);
                 dto.setTeamName(c.getTeam() != null ? c.getTeam().getName() : null);
                 dto.setDangerous(c.isDangerous());
+                applyPresentationMetadata(dto, c);
                 return dto;
             }
             case MatchStartEvent ms -> {
@@ -200,6 +223,7 @@ public class MatchEventMapper {
                 dto.setDescription(ms.getDescription());
                 dto.setHomeTeamName(ms.getMatch().getHomeTeam().getName());
                 dto.setAwayTeamName(ms.getMatch().getAwayTeam().getName());
+                applyPresentationMetadata(dto, ms);
                 return dto;
             }
             case MatchEndedEvent me -> {
@@ -211,6 +235,7 @@ public class MatchEventMapper {
                 dto.setAwayTeamName(me.getMatch().getAwayTeam().getName());
                 dto.setHomeGoals(me.getMatch().getHomeGoals());
                 dto.setAwayGoals(me.getMatch().getAwayGoals());
+                applyPresentationMetadata(dto, me);
                 return dto;
             }
             case PassEvent p -> {
@@ -223,6 +248,7 @@ public class MatchEventMapper {
                 dto.setTeamName(p.getTeam() != null ? p.getTeam().getName() : null);
                 dto.setTargetPlayerName(p.getReceiver() != null ? p.getReceiver().getName() : null);
                 dto.setOutcome("completed");
+                applyPresentationMetadata(dto, p);
                 return dto;
             }
             case InterceptionEvent i -> {
@@ -235,6 +261,7 @@ public class MatchEventMapper {
                 dto.setTeamName(i.getTeam() != null ? i.getTeam().getName() : null);
                 dto.setSecondaryPlayerName(i.getOriginalPasser() != null ? i.getOriginalPasser().getName() : null);
                 dto.setOutcome("won");
+                applyPresentationMetadata(dto, i);
                 return dto;
             }
             case DribbleEvent d -> {
@@ -245,6 +272,7 @@ public class MatchEventMapper {
                 fillPlayerFields(dto, d.getDribbler());
                 dto.setPlayerName(d.getDribbler() != null ? d.getDribbler().getName() : null);
                 dto.setTeamName(d.getTeam() != null ? d.getTeam().getName() : null);
+                applyPresentationMetadata(dto, d);
                 return dto;
             }
             case DuelEvent du -> {
@@ -259,6 +287,7 @@ public class MatchEventMapper {
                         ? (du.getPlayer2() != null ? du.getPlayer2().getName() : null)
                         : (du.getPlayer1() != null ? du.getPlayer1().getName() : null));
                 dto.setOutcome("won");
+                applyPresentationMetadata(dto, du);
                 return dto;
             }
             default -> {
@@ -281,5 +310,74 @@ public class MatchEventMapper {
         dto.setPlayerTotalAssists(player.getTotalAssists());
         dto.setPlayerPosition(player.getPosition() != null ? player.getPosition().name() : null);
         dto.setPlayerRating(player.getRating());
+    }
+
+    private void applyPresentationMetadata(MatchEventDTO dto, MatchEvent event) {
+        dto.setClockLabel(resolveClockLabel(event));
+        dto.setDisplayCategory(resolveDisplayCategory(event));
+        dto.setImportance(resolveImportance(event));
+        dto.setKeyEvent(isKeyEvent(event));
+    }
+
+    private String resolveClockLabel(MatchEvent event) {
+        return switch (event) {
+            case MatchStartEvent ignored -> "KO";
+            case MatchEndedEvent ignored -> "FT";
+            default -> event.getMinute() + "'";
+        };
+    }
+
+    private String resolveDisplayCategory(MatchEvent event) {
+        return switch (event) {
+            case GoalEvent ignored -> "key";
+            case PenaltyEvent ignored -> "key";
+            case ShotOnTargetEvent ignored -> "key";
+            case ShotOffTargetEvent ignored -> "key";
+            case VARReviewEvent ignored -> "key";
+            case YellowCardEvent ignored -> "key";
+            case RedCardEvent ignored -> "key";
+            case InjuryEvent ignored -> "key";
+            case SubstitutionEvent ignored -> "key";
+            case ChanceEvent c -> c.isDangerous() ? "key" : "commentary";
+            case MatchStartEvent ignored -> "system";
+            case MatchEndedEvent ignored -> "system";
+            case CornerEvent ignored -> "commentary";
+            case ThrowInEvent ignored -> "commentary";
+            case GoalKickEvent ignored -> "commentary";
+            case FreeKickEvent ignored -> "commentary";
+            case OffsideEvent ignored -> "commentary";
+            case PassEvent ignored -> "micro";
+            case InterceptionEvent ignored -> "micro";
+            case DribbleEvent ignored -> "micro";
+            case DuelEvent ignored -> "micro";
+            default -> "commentary";
+        };
+    }
+
+    private String resolveImportance(MatchEvent event) {
+        return switch (event) {
+            case GoalEvent ignored -> "critical";
+            case VARReviewEvent ignored -> "high";
+            case PenaltyEvent ignored -> "high";
+            case RedCardEvent ignored -> "high";
+            case ChanceEvent c -> c.isDangerous() ? "high" : "medium";
+            case ShotOnTargetEvent ignored -> "medium";
+            case ShotOffTargetEvent ignored -> "medium";
+            case YellowCardEvent ignored -> "medium";
+            case InjuryEvent ignored -> "medium";
+            case SubstitutionEvent ignored -> "medium";
+            case MatchStartEvent ignored -> "medium";
+            case MatchEndedEvent ignored -> "medium";
+            default -> "low";
+        };
+    }
+
+    private boolean isKeyEvent(MatchEvent event) {
+        String category = resolveDisplayCategory(event);
+        return "key".equals(category) || "system".equals(category);
+    }
+
+    private double roundXg(double xg) {
+        return Math.round(xg * 100.0) / 100.0;
     }
 }

@@ -12,7 +12,7 @@
 <body>
 <div class="background"></div>
 <div class="top-menu">
-    <div class="menu-button desktop-only" onclick="toggleSidebar('clubSidebar')">&#127967; Club</div>
+    <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">&#127967; Club</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">&#127947; Training</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('competitionsSidebar')">&#127942; Competitions</div>
     <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">&#128172; Community</div>
@@ -40,7 +40,6 @@
                 <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
                 <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
                 <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
-                <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
                 <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
                 <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
             </div>
@@ -53,6 +52,7 @@
             <div class="accordion-content">
                 <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
                 <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
+                <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
             </div>
         </div>
 
@@ -92,6 +92,7 @@
             <div class="accordion-content">
                 <div onclick="loadPage('topScorers'); closeMobileMenu()">Top Scorers</div>
                 <div onclick="loadPage('topAssists'); closeMobileMenu()">Top Assists</div>
+                <div onclick="window.location.href='/zox-match-preview.html'; closeMobileMenu()">🔬 ZOX Analytics</div>
             </div>
         </div>
 
@@ -130,7 +131,6 @@
             </div>
             <div class="accordion-content">
                 <div onclick="loadPage('formations')">Formations</div>
-                <div onclick="loadPage('coaches')">Coaches</div>
                 <div onclick="loadPage('medicalCenter')">Medical Center</div>
             </div>
         </div>
@@ -144,6 +144,7 @@
         <h3>Training</h3>
         <div onclick="loadPage('trainingSetup')">Training Setup</div>
         <div onclick="loadPage('trainingReports')">Training Reports</div>
+        <div onclick="loadPage('coaches')">Coaches</div>
     </div>
 </div>
 
@@ -177,6 +178,7 @@
         <h3>Stats</h3>
         <div onclick="loadPage('topScorers')">Top Scorers</div>
         <div onclick="loadPage('topAssists')">Top Assists</div>
+        <div onclick="window.location.href='/zox-match-preview.html'" style="margin-top:10px; padding-top:10px; border-top: 1px solid rgba(255,255,255,0.1);">🔬 ZOX Analytics</div>
     </div>
 </div>
 

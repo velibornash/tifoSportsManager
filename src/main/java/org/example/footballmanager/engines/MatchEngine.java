@@ -52,10 +52,10 @@ public class MatchEngine {
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {
         Lineup template = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId()).orElse(null);
         List<Long> preferredStarterIds = Optional.ofNullable(template)
-                .map(lineup -> lineup.getStartingPlayers().stream().map(Player::getId).toList())
+                .map(Lineup::getOrderedStarterIds)
                 .orElse(List.of());
         List<Long> preferredBenchIds = Optional.ofNullable(template)
-                .map(lineup -> lineup.getSubstitutes().stream().map(Player::getId).toList())
+                .map(Lineup::getOrderedBenchIds)
                 .orElse(List.of());
         return createLineupForMatch(team, players, formationName, preferredStarterIds, preferredBenchIds);
     }
@@ -110,6 +110,8 @@ public class MatchEngine {
 
         lineup.setStartingPlayers(managedStarting);
         lineup.setSubstitutes(managedSubs);
+        lineup.setStarterOrderFromIds(managedStarting.stream().map(Player::getId).toList());
+        lineup.setBenchOrderFromIds(managedSubs.stream().map(Player::getId).toList());
         return lineupRepository.save(lineup);
     }
     public Match createMatch(Team userTeam) {
@@ -273,12 +275,12 @@ public class MatchEngine {
         MatchRuntime rt = new MatchRuntime();
         rt = matchPlaybackEngine.initializeRuntimeAndPositions(rt);
         rt.ticksPerMinute = 27;
-        rt.homePlayers = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
-        rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
-        rt.homeSquad = new ArrayList<>(match.getHomeLineup().getStartingPlayers());
-        rt.awaySquad = new ArrayList<>(match.getAwayLineup().getStartingPlayers());
-        List<Player> homeBench = new ArrayList<>(match.getHomeLineup().getSubstitutes());
-        List<Player> awayBench = new ArrayList<>(match.getAwayLineup().getSubstitutes());
+        rt.homePlayers = new ArrayList<>(match.getHomeLineup().getOrderedStartingPlayers());
+        rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getOrderedStartingPlayers());
+        rt.homeSquad = new ArrayList<>(match.getHomeLineup().getOrderedStartingPlayers());
+        rt.awaySquad = new ArrayList<>(match.getAwayLineup().getOrderedStartingPlayers());
+        List<Player> homeBench = new ArrayList<>(match.getHomeLineup().getOrderedSubstitutePlayers());
+        List<Player> awayBench = new ArrayList<>(match.getAwayLineup().getOrderedSubstitutePlayers());
         rt.matchRef = match;
         rt.playerMinutes = new HashMap<>();
         rt.playerTeamSide = new HashMap<>();
