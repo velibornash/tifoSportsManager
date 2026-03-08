@@ -119,6 +119,13 @@ function loadDashboard() {
             </div>
         </div>
 
+        <div class="recent-matches-section fm-milestone-board">
+            <h3>Milestones</h3>
+            <div id="dashboard-milestones" class="fm-milestone-grid">
+                <div class="fm-milestone-card"><div class="fm-milestone-kicker">Season board</div><div class="fm-milestone-value">Loading...</div><div class="fm-milestone-meta">Collecting current league milestones.</div></div>
+            </div>
+        </div>
+
         <div class="recent-matches-section">
             <h3>Recent Matches</h3>
             <div id="recent-matches-list" class="match-list">
@@ -143,6 +150,67 @@ function loadDashboard() {
     loadRecentMatches();
     loadRecentLeagueMatches();
     loadHomeTeamStats();
+    loadDashboardMilestones();
+}
+
+function formatMilestoneAttendance(value) {
+    const numeric = Number(value || 0);
+    return numeric > 0 ? numeric.toLocaleString() : '—';
+}
+
+function milestoneCard(title, value, meta, extraClass = '') {
+    return `
+        <article class="fm-milestone-card ${extraClass}">
+            <div class="fm-milestone-kicker">${title}</div>
+            <div class="fm-milestone-value">${value || '—'}</div>
+            <div class="fm-milestone-meta">${meta || 'No milestone logged yet.'}</div>
+        </article>`;
+}
+
+async function loadDashboardMilestones() {
+    const host = document.getElementById('dashboard-milestones');
+    if (!host) return;
+
+    try {
+        const response = await authFetch('/stats/leagues/1/milestones');
+        if (!response.ok) throw new Error(`Failed to load milestones: ${response.status}`);
+
+        const data = await response.json();
+        const attendance = data?.attendance || {};
+        host.innerHTML = [
+            milestoneCard(
+                'Top scorer',
+                data?.topScorer?.playerName || '—',
+                data?.topScorer?.playerName ? `${data.topScorer.teamName || 'No team'} · ${Number(data.topScorer.value || 0)} goals` : 'No goals filed yet.'
+            ),
+            milestoneCard(
+                'Top assist',
+                data?.topAssist?.playerName || '—',
+                data?.topAssist?.playerName ? `${data.topAssist.teamName || 'No team'} · ${Number(data.topAssist.value || 0)} assists` : 'No assists filed yet.'
+            ),
+            milestoneCard(
+                'Biggest win',
+                data?.biggestWin?.summary || '—',
+                data?.biggestWin?.context || 'Waiting for a standout result.'
+            ),
+            milestoneCard(
+                'Heaviest loss',
+                data?.biggestLoss?.summary || '—',
+                data?.biggestLoss?.context || 'No heavy defeat registered yet.'
+            ),
+            milestoneCard(
+                'Attendance',
+                formatMilestoneAttendance(attendance.averageAttendance),
+                attendance.averageAttendance
+                    ? `High ${formatMilestoneAttendance(attendance.highestAttendance)} (${attendance.highestMatchLabel || '—'}) · Low ${formatMilestoneAttendance(attendance.lowestAttendance)} (${attendance.lowestMatchLabel || '—'}) · ${attendance.insight || ''}`
+                    : (attendance.insight || 'Crowd data will appear once played fixtures start filing gates.'),
+                'attendance'
+            )
+        ].join('');
+    } catch (err) {
+        console.error('Error loading dashboard milestones:', err);
+        host.innerHTML = milestoneCard('Milestones', 'Unavailable', 'Could not load the current season board.');
+    }
 }
 
 async function resetDatabase() {

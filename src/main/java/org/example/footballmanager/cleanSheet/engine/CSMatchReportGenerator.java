@@ -3,8 +3,13 @@ package org.example.footballmanager.cleanSheet.engine;
 import org.example.footballmanager.cleanSheet.model.CSEventType;
 import org.example.footballmanager.cleanSheet.model.CSMatchEvent;
 import org.example.footballmanager.cleanSheet.model.CSMatchResult;
+import org.example.footballmanager.cleanSheet.model.CSPlayerMatchStats;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 
 /**
  * Builds a richer textual report from simulated match events.
@@ -15,236 +20,196 @@ public class CSMatchReportGenerator {
     private final Random rnd = new Random();
 
     public String buildDetailedReport(CSMatchResult result) {
-        if (result == null) {
-            return "No report available.";
-        }
+        if (result == null) return "No report available.";
 
         List<CSMatchEvent> sorted = new ArrayList<>(result.getEvents() == null ? List.of() : result.getEvents());
         sorted.sort(Comparator.comparingInt(CSMatchEvent::getMinute));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Round ").append(result.getRound()).append(".\n");
-        sb.append(result.getHomeTeamName()).append(" vs ").append(result.getAwayTeamName()).append('\n');
-        sb.append("Final score: ")
-                .append(result.getHomeTeamName()).append(' ')
-                .append(result.getHomeGoals()).append(':').append(result.getAwayGoals()).append(' ')
-                .append(result.getAwayTeamName()).append("\n\n");
-
         List<CSMatchEvent> timeline = sorted.stream()
                 .filter(e -> e.getEventType() != CSEventType.MATCH_START && e.getEventType() != CSEventType.MATCH_END)
                 .toList();
 
+        StringBuilder sb = new StringBuilder();
+        sb.append("MATCH DAY FILE // ROUND ").append(result.getRound()).append("\n");
+        sb.append(result.getHomeTeamName()).append(" vs ").append(result.getAwayTeamName()).append("\n");
+        sb.append("Final score: ").append(result.getHomeTeamName()).append(' ')
+                .append(result.getHomeGoals()).append(':').append(result.getAwayGoals()).append(' ')
+                .append(result.getAwayTeamName()).append("\n");
+        sb.append(buildScoreHeadline(result)).append("\n");
+
+        CSPlayerMatchStats motm = findManOfTheMatch(result);
+        if (motm != null) {
+            sb.append("Man of the match: ").append(safeName(motm.getPlayerName()))
+                    .append(" (rating ").append(String.format(java.util.Locale.US, "%.1f", motm.getRating())).append(")")
+                    .append("\n");
+        }
+        sb.append("Desk note: ").append(buildMiniSummaryLine(result)).append("\n");
+
         if (timeline.isEmpty()) {
-            sb.append("A tactical and cautious match, with very few notable moments.\n");
+            sb.append("\nThe game never truly opened up and the notebook stayed almost empty.\n");
         } else {
-            int lastMinute = -1;
-            int lineCounter = 0;
+            sb.append("\nKey incidents\n");
             for (CSMatchEvent e : timeline) {
-                if (e.getMinute() != lastMinute) {
-                    if (lineCounter > 0) {
-                        sb.append('\n');
-                    }
-                    sb.append(e.getMinute()).append(" minute.\n");
-                    lastMinute = e.getMinute();
-                } else {
-                    sb.append(" ");
+                String line = toNarration(e);
+                if (!line.isBlank()) {
+                    sb.append(e.getMinute()).append("' ").append(line).append("\n");
                 }
-                sb.append(toNarration(e)).append(' ');
-                lineCounter++;
             }
-            sb.append("\n");
         }
 
         appendHalfSummary(sb, result, sorted, 1, 45, "Half-time");
         appendHalfSummary(sb, result, sorted, 46, 90, "Second half");
+        appendMatchDesk(sb, result, sorted, motm);
 
-        sb.append("\nThe match ends: ")
-                .append(result.getHomeTeamName()).append(' ')
-                .append(result.getHomeGoals()).append(':').append(result.getAwayGoals()).append(' ')
-                .append(result.getAwayTeamName())
-                .append('.');
-
-        return sb.toString().replaceAll("[ \\t]+", " ").trim();
+        sb.append("\nFull-time verdict: ").append(buildClosingVerdict(result));
+        return sb.toString().replaceAll("[ \t]+", " ").trim();
     }
 
     public String buildRoundReport(int round, List<CSMatchResult> results, Long userTeamId) {
-        if (results == null || results.isEmpty()) {
-            return "Round " + round + ": no match data available.";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Round ").append(round).append(" review.\n\n");
+        if (results == null || results.isEmpty()) return "Round " + round + ": no match data available.";
 
         List<CSMatchResult> sorted = new ArrayList<>(results);
-        sorted.sort(Comparator.comparing(CSMatchResult::getHomeTeamName));
+        sorted.sort(Comparator.<CSMatchResult, Boolean>comparing(r -> !(Objects.equals(r.getHomeTeamId(), userTeamId) || Objects.equals(r.getAwayTeamId(), userTeamId)))
+                .thenComparing(CSMatchResult::getHomeTeamName));
 
-        for (CSMatchResult r : sorted) {
-            boolean userMatch = Objects.equals(r.getHomeTeamId(), userTeamId) || Objects.equals(r.getAwayTeamId(), userTeamId);
-            String marker = userMatch ? " [YOUR MATCH]" : "";
-            sb.append(r.getHomeTeamName()).append(' ')
-                    .append(r.getHomeGoals()).append(':').append(r.getAwayGoals()).append(' ')
-                    .append(r.getAwayTeamName())
-                    .append(marker).append('\n');
-
-            sb.append(buildMiniSummaryLine(r)).append("\n\n");
-        }
-
+        int totalGoals = sorted.stream().mapToInt(r -> r.getHomeGoals() + r.getAwayGoals()).sum();
         CSMatchResult biggestWin = sorted.stream()
                 .max(Comparator.comparingInt(r -> Math.abs(r.getHomeGoals() - r.getAwayGoals())))
                 .orElse(sorted.getFirst());
-        sb.append("Headline: ")
-                .append(biggestWin.getHomeTeamName()).append(' ')
-                .append(biggestWin.getHomeGoals()).append(':').append(biggestWin.getAwayGoals()).append(' ')
-                .append(biggestWin.getAwayTeamName())
-                .append(" was one of the stories of the round.");
+        CSMatchResult highestScoring = sorted.stream()
+                .max(Comparator.comparingInt(r -> r.getHomeGoals() + r.getAwayGoals()))
+                .orElse(sorted.getFirst());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("ROUND ").append(round).append(" REVIEW\n");
+        sb.append(buildRoundHeadline(totalGoals, sorted.size(), biggestWin, highestScoring)).append("\n\n");
+
+        for (CSMatchResult r : sorted) {
+            boolean userMatch = Objects.equals(r.getHomeTeamId(), userTeamId) || Objects.equals(r.getAwayTeamId(), userTeamId);
+            sb.append(r.getHomeTeamName()).append(' ').append(r.getHomeGoals()).append(':').append(r.getAwayGoals())
+                    .append(' ').append(r.getAwayTeamName())
+                    .append(userMatch ? " [YOUR MATCH]" : "")
+                    .append("\n");
+            sb.append(buildMiniSummaryLine(r)).append("\n\n");
+        }
+
+        sb.append("Headline result: ").append(biggestWin.getHomeTeamName()).append(' ').append(biggestWin.getHomeGoals())
+                .append(':').append(biggestWin.getAwayGoals()).append(' ').append(biggestWin.getAwayTeamName())
+                .append(" carried the strongest final margin.");
         return sb.toString().trim();
     }
 
-    private void appendHalfSummary(StringBuilder sb,
-                                   CSMatchResult result,
-                                   List<CSMatchEvent> sorted,
-                                   int fromMinute,
-                                   int toMinute,
-                                   String label) {
-        int homeGoals = 0;
-        int awayGoals = 0;
-        int homeShotsOn = 0;
-        int awayShotsOn = 0;
-
-        for (CSMatchEvent e : sorted) {
-            if (e.getMinute() < fromMinute || e.getMinute() > toMinute) {
-                continue;
-            }
-            if (e.getEventType() == CSEventType.GOAL) {
-                if (Objects.equals(e.getTeamName(), result.getHomeTeamName())) {
-                    homeGoals++;
-                } else if (Objects.equals(e.getTeamName(), result.getAwayTeamName())) {
-                    awayGoals++;
-                }
-            } else if (e.getEventType() == CSEventType.SHOT_ON_TARGET) {
-                if (Objects.equals(e.getTeamName(), result.getHomeTeamName())) {
-                    homeShotsOn++;
-                } else if (Objects.equals(e.getTeamName(), result.getAwayTeamName())) {
-                    awayShotsOn++;
-                }
-            }
-        }
-
+    private void appendHalfSummary(StringBuilder sb, CSMatchResult result, List<CSMatchEvent> events,
+                                   int fromMinute, int toMinute, String label) {
+        int homeGoals = countEvents(events, CSEventType.GOAL, result.getHomeTeamName(), fromMinute, toMinute);
+        int awayGoals = countEvents(events, CSEventType.GOAL, result.getAwayTeamName(), fromMinute, toMinute);
+        int homeShotsOn = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getHomeTeamName(), fromMinute, toMinute);
+        int awayShotsOn = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getAwayTeamName(), fromMinute, toMinute);
         int totalShots = homeShotsOn + awayShotsOn;
         int homeShare = totalShots == 0 ? 50 : Math.round((homeShotsOn * 100f) / totalShots);
-        int awayShare = 100 - homeShare;
 
-        sb.append('\n').append('\n')
-                .append(label).append(": ")
-                .append(result.getHomeTeamName()).append(' ')
-                .append(homeGoals).append(':').append(awayGoals).append(' ')
-                .append(result.getAwayTeamName()).append(". ");
+        sb.append("\n\n").append(label).append(": ")
+                .append(result.getHomeTeamName()).append(' ').append(homeGoals).append(':').append(awayGoals).append(' ')
+                .append(result.getAwayTeamName()).append(". ")
+                .append(pick(
+                        "The tempo stayed honest and the midfield battle never really cooled.",
+                        "The spell had an old-school league grind to it.",
+                        "There was enough bite in the contest to keep every duel meaningful."
+                ))
+                .append(' ').append("Control estimate: ")
+                .append(result.getHomeTeamName()).append(' ').append(homeShare).append("%, ")
+                .append(result.getAwayTeamName()).append(' ').append(100 - homeShare).append("%.");
+    }
 
-        String tempo = pick(
-                "The tempo was intense.",
-                "Both teams tried to keep the rhythm high.",
-                "It was a tactical but lively period."
+    private void appendMatchDesk(StringBuilder sb, CSMatchResult result, List<CSMatchEvent> events, CSPlayerMatchStats motm) {
+        int homeShots = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getHomeTeamName(), 1, 90)
+                + countEvents(events, CSEventType.SHOT_OFF_TARGET, result.getHomeTeamName(), 1, 90);
+        int awayShots = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getAwayTeamName(), 1, 90)
+                + countEvents(events, CSEventType.SHOT_OFF_TARGET, result.getAwayTeamName(), 1, 90);
+        int homeCards = countEvents(events, CSEventType.YELLOW_CARD, result.getHomeTeamName(), 1, 90)
+                + countEvents(events, CSEventType.RED_CARD, result.getHomeTeamName(), 1, 90);
+        int awayCards = countEvents(events, CSEventType.YELLOW_CARD, result.getAwayTeamName(), 1, 90)
+                + countEvents(events, CSEventType.RED_CARD, result.getAwayTeamName(), 1, 90);
+
+        sb.append("\n\nMatch desk\n");
+        sb.append(result.getHomeTeamName()).append(" shots: ").append(homeShots)
+                .append(" | ").append(result.getAwayTeamName()).append(" shots: ").append(awayShots).append("\n");
+        sb.append(result.getHomeTeamName()).append(" disciplinary count: ").append(homeCards)
+                .append(" | ").append(result.getAwayTeamName()).append(" disciplinary count: ").append(awayCards).append("\n");
+        if (motm != null) {
+            sb.append("Notebook star: ").append(safeName(motm.getPlayerName())).append(" led the headlines.\n");
+        }
+    }
+
+    private String buildScoreHeadline(CSMatchResult result) {
+        int diff = Math.abs(result.getHomeGoals() - result.getAwayGoals());
+        if (result.getHomeGoals() == result.getAwayGoals()) {
+            return pick(
+                    "A finely-balanced contest ended with honours shared.",
+                    "Neither side could fully break the other over ninety minutes.",
+                    "The fixture stayed in the balance right to the closing whistle."
+            );
+        }
+        String winner = result.getHomeGoals() > result.getAwayGoals() ? result.getHomeTeamName() : result.getAwayTeamName();
+        return diff >= 3
+                ? winner + " produced a statement win and left little room for debate."
+                : diff == 2
+                ? winner + " found a decisive edge once the key moment arrived."
+                : winner + " edged a competitive match by the narrowest convincing margin.";
+    }
+
+    private String buildClosingVerdict(CSMatchResult result) {
+        if (result.getHomeGoals() == result.getAwayGoals()) {
+            return pick(
+                    "A point each and plenty for both managers to review before the next round.",
+                    "The draw goes into the books after a match that rarely drifted away from balance.",
+                    "A result that settles nothing, but keeps both clubs moving."
+            );
+        }
+        String winner = result.getHomeGoals() > result.getAwayGoals() ? result.getHomeTeamName() : result.getAwayTeamName();
+        return pick(
+                winner + " take the points and the better mood into the next week.",
+                winner + " leave with the stronger story and the healthier dressing room.",
+                winner + " close the file as deserved winners on the day."
         );
-        sb.append(tempo).append(' ')
-                .append("Control estimate: ")
-                .append(result.getHomeTeamName()).append(' ')
-                .append(homeShare).append("%, ")
-                .append(result.getAwayTeamName()).append(' ')
-                .append(awayShare).append("%.");
+    }
+
+    private String buildRoundHeadline(int totalGoals, int matches, CSMatchResult biggestWin, CSMatchResult highestScoring) {
+        return pick(
+                "The round returned " + totalGoals + " goals across " + matches + " fixtures, with " + highestScoring.getHomeTeamName() + " vs " + highestScoring.getAwayTeamName() + " among the livelier files.",
+                "A busy round produced " + totalGoals + " goals, while " + biggestWin.getHomeTeamName() + " vs " + biggestWin.getAwayTeamName() + " delivered the clearest winning margin.",
+                totalGoals + " total goals were logged this round, and several coaches will spend the week replaying the bigger moments."
+        );
     }
 
     private String toNarration(CSMatchEvent e) {
         String player = safeName(e.getPlayerName());
-        String team = safeName(e.getTeamName());
+        String team = safeTeam(e.getTeamName());
         return switch (e.getEventType()) {
             case GOAL -> {
-                String assistText = e.getAssistName() != null && !e.getAssistName().isBlank()
-                        ? " Assist by " + e.getAssistName() + "."
-                        : "";
+                String assistText = e.getAssistName() != null && !e.getAssistName().isBlank() ? " Assist: " + e.getAssistName() + "." : "";
                 String scoreText = e.getScoreAfterGoal() != null ? " [" + e.getScoreAfterGoal() + "]" : "";
                 yield pick(
-                        "GOOOAAAL! " + player + " scores for " + team + "." + assistText + scoreText,
-                        player + " finds the net with a precise finish for " + team + "." + assistText + scoreText,
-                        "Clinical strike by " + player + " for " + team + "." + assistText + scoreText,
-                        player + " attacks the space and buries the chance for " + team + "." + assistText + scoreText,
-                        "A fast move ends with " + player + " scoring for " + team + "." + assistText + scoreText
+                        "GOAL - " + player + " finishes for " + team + "." + assistText + scoreText,
+                        player + " gets on the end of the move and scores for " + team + "." + assistText + scoreText,
+                        "Clinical work from " + player + " puts " + team + " in business." + assistText + scoreText
                 );
             }
-            case SHOT_ON_TARGET -> pick(
-                    player + " tests the goalkeeper from distance.",
-                    "Strong effort on target by " + player + ".",
-                    player + " unleashes a dangerous attempt on goal.",
-                    player + " strikes low and forces a save.",
-                    "Good buildup ends with a shot on target from " + player + "."
-            );
-            case SHOT_OFF_TARGET -> pick(
-                    player + " shoots just wide of the post.",
-                    "A big chance for " + player + ", but it goes off target.",
-                    player + " cannot keep the shot on frame.",
-                    "The attempt from " + player + " flies over the bar.",
-                    player + " rushes the finish and misses the target."
-            );
-            case CORNER -> pick(
-                    "Corner kick for " + team + ".",
-                    team + " win a corner.",
-                    "Set piece chance for " + team + "."
-            );
-            case YELLOW_CARD -> pick(
-                    "Yellow card shown to " + player + ".",
-                    player + " is booked.",
-                    "Caution for " + player + "."
-            );
-            case RED_CARD -> pick(
-                    "Red card! " + player + " is sent off.",
-                    player + " receives a straight red card.",
-                    "Dismissal for " + player + "."
-            );
-            case PENALTY -> {
-                if (e.isPenaltyScored()) {
-                    yield pick(
-                            "Penalty scored by " + player + ".",
-                            player + " converts from the spot.",
-                            "Composed penalty finish by " + player + "."
-                    );
-                }
-                yield pick(
-                        "Penalty missed by " + player + ".",
-                        player + " fails to score from the spot.",
-                        "Saved penalty from " + player + "."
-                );
-            }
-            case FOUL -> pick(
-                    "Foul committed by " + player + ".",
-                    "Referee whistles for a foul by " + player + ".",
-                    player + " is late into the challenge."
-            );
-            case OFFSIDE -> pick(
-                    "Offside against " + player + ".",
-                    player + " is caught offside.",
-                    "The flag is up for " + player + "."
-            );
-            case FREE_KICK -> pick(
-                    "Free kick for " + team + ".",
-                    "Dangerous free kick won by " + team + ".",
-                    team + " prepare a set-piece situation.",
-                    "Set-piece opportunity for " + team + ".",
-                    "The referee awards a free kick to " + team + "."
-            );
-            case VAR_REVIEW -> pick(
-                    "VAR is checking the previous incident.",
-                    "Long VAR review underway.",
-                    "The referee waits for VAR confirmation."
-            );
-            case SUBSTITUTION -> pick(
-                    "Substitution for " + team + ": " + safeName(e.getPlayerOutName()) + " off, " + safeName(e.getPlayerInName()) + " on.",
-                    team + " refreshes the lineup: " + safeName(e.getPlayerInName()) + " enters for " + safeName(e.getPlayerOutName()) + ".",
-                    "Tactical change from " + team + " with " + safeName(e.getPlayerInName()) + " replacing " + safeName(e.getPlayerOutName()) + "."
-            );
-            case INJURY -> pick(
-                    player + " is down and needs attention.",
-                    "Medical team called for " + player + ".",
-                    "Injury stoppage involving " + player + "."
-            );
+            case SHOT_ON_TARGET -> pick(player + " tests the goalkeeper.", player + " forces a save from the keeper.", team + " work the ball for a shot on target by " + player + ".");
+            case SHOT_OFF_TARGET -> pick(player + " drags the effort off target.", player + " misses the frame from a promising position.", team + " threaten, but " + player + " cannot keep the finish down.");
+            case CORNER -> pick("Corner to " + team + ".", team + " win a set-piece in a dangerous area.", "Another corner is earned by " + team + ".");
+            case YELLOW_CARD -> pick(player + " goes into the book.", "The referee shows yellow to " + player + ".", player + " is cautioned after a late challenge.");
+            case RED_CARD -> pick("Red card - " + player + " is dismissed.", player + " sees red and leaves " + team + " short-handed.", "The match turns sharply as " + player + " is sent off.");
+            case PENALTY -> e.isPenaltyScored()
+                    ? pick(player + " keeps his nerve from the spot.", "Penalty converted by " + player + ".", player + " makes no mistake with the penalty.")
+                    : pick(player + " fails to convert the penalty.", "Penalty missed by " + player + ".", "The spot-kick is wasted by " + player + ".");
+            case FOUL -> pick(player + " gives away a foul.", "Referee penalises " + player + ".", player + " arrives late and the whistle follows.");
+            case OFFSIDE -> pick(player + " is flagged offside.", "The move breaks down with " + player + " beyond the line.", "Offside against " + player + ".");
+            case FREE_KICK -> pick("Free kick for " + team + ".", team + " have a set-piece chance.", "Dangerous dead-ball situation for " + team + ".");
+            case VAR_REVIEW -> pick("VAR takes a closer look at the previous action.", "The referee pauses play for a VAR check.", "A short VAR delay adds tension to the stadium.");
+            case SUBSTITUTION -> pick(team + " change it up: " + safeName(e.getPlayerOutName()) + " off, " + safeName(e.getPlayerInName()) + " on.",
+                    "Tactical switch from " + team + " as " + safeName(e.getPlayerInName()) + " replaces " + safeName(e.getPlayerOutName()) + ".",
+                    "Fresh legs for " + team + " with " + safeName(e.getPlayerInName()) + " entering the game.");
+            case INJURY -> pick(player + " stays down and the physio is called.", "There is concern for " + player + " after a heavy moment.", "An injury pause interrupts the flow for " + player + ".");
             case MATCH_START, MATCH_END -> "";
         };
     }
@@ -254,33 +219,52 @@ public class CSMatchReportGenerator {
                 .filter(e -> e.getEventType() == CSEventType.GOAL)
                 .sorted(Comparator.comparingInt(CSMatchEvent::getMinute))
                 .toList();
-        if (goals.isEmpty()) {
-            return pick(
-                    "A compact match with little space and no breakthrough.",
-                    "Both defenses kept full control and no side found a winner.",
-                    "A tactical game where chances were limited."
-            );
-        }
-
-        CSMatchEvent decisive = goals.getLast();
-        String scorer = safeName(decisive.getPlayerName());
-        return pick(
-                "Key moment: " + decisive.getMinute() + "' - " + scorer + " changed the game.",
-                "Turning point came in " + decisive.getMinute() + "' when " + scorer + " delivered.",
-                "Most decisive action: " + scorer + " at " + decisive.getMinute() + "'.",
-                "The defining play came at " + decisive.getMinute() + "' through " + scorer + ".",
-                scorer + " produced the key finish in minute " + decisive.getMinute() + "."
+        if (goals.isEmpty()) return pick(
+                "A tight file dominated by structure, shape and defended spaces.",
+                "Chances were scarce and the back lines stayed in charge.",
+                "One for the purists: organisation first, fireworks second."
         );
+        CSMatchEvent decisive = goals.getLast();
+        return pick(
+                "Defining moment: " + decisive.getMinute() + "' and " + safeName(decisive.getPlayerName()) + " supplied it.",
+                "The key strike arrived in " + decisive.getMinute() + "' through " + safeName(decisive.getPlayerName()) + ".",
+                safeName(decisive.getPlayerName()) + " wrote the main headline with the crucial goal in minute " + decisive.getMinute() + "."
+        );
+    }
+
+    private CSPlayerMatchStats findManOfTheMatch(CSMatchResult result) {
+        return allPlayerStats(result).stream()
+                .max(Comparator.comparingDouble(CSPlayerMatchStats::getRating)
+                        .thenComparingInt(CSPlayerMatchStats::getGoals)
+                        .thenComparingInt(CSPlayerMatchStats::getAssists))
+                .orElse(null);
+    }
+
+    private List<CSPlayerMatchStats> allPlayerStats(CSMatchResult result) {
+        List<CSPlayerMatchStats> stats = new ArrayList<>();
+        if (result.getHomePlayerStats() != null) stats.addAll(result.getHomePlayerStats());
+        if (result.getAwayPlayerStats() != null) stats.addAll(result.getAwayPlayerStats());
+        return stats;
+    }
+
+    private int countEvents(List<CSMatchEvent> events, CSEventType type, String team, int fromMinute, int toMinute) {
+        return (int) events.stream()
+                .filter(e -> e.getEventType() == type)
+                .filter(e -> e.getMinute() >= fromMinute && e.getMinute() <= toMinute)
+                .filter(e -> Objects.equals(team, e.getTeamName()))
+                .count();
     }
 
     private String safeName(String value) {
         return value == null || value.isBlank() ? "Unknown player" : value;
     }
 
+    private String safeTeam(String value) {
+        return value == null || value.isBlank() ? "Unknown team" : value;
+    }
+
     private String pick(String... variants) {
-        if (variants == null || variants.length == 0) {
-            return "";
-        }
+        if (variants == null || variants.length == 0) return "";
         return variants[rnd.nextInt(variants.length)];
     }
 }

@@ -3090,12 +3090,13 @@ import { createCommunityFeature } from './pages/features/community.js';
                 || (selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : 1);
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
 
-            const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse] = await Promise.all([
+            const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse, milestonesResponse] = await Promise.all([
                 authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`),
                 authFetch(`/countries/leagues/${leagueId}/teams`),
                 authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`),
                 authFetch(`/stats/leagues/${leagueId}/topscorers${seasonParam}`),
-                authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`)
+                authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
+                authFetch(`/stats/leagues/${leagueId}/milestones${seasonParam}`)
             ]);
             if (!tableResponse.ok) throw new Error(`League table load failed: ${tableResponse.status}`);
             if (!teamsResponse.ok) throw new Error(`League teams load failed: ${teamsResponse.status}`);
@@ -3105,6 +3106,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             const schedule = scheduleResponse.ok ? await scheduleResponse.json() : [];
             const scorers = scorersResponse.ok ? await scorersResponse.json() : [];
             const assists = assistsResponse.ok ? await assistsResponse.json() : [];
+            const milestones = milestonesResponse.ok ? await milestonesResponse.json() : null;
             const teamIdByName = new Map();
             leagueTeams.forEach(team => {
                 teamIdByName.set(normalizeTeamKey(team.name), team.id);
@@ -3176,6 +3178,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 fixtures: visibleRounds,
                 topScorers: mappedScorers,
                 topAssists: mappedAssists,
+                milestones,
                 seasons,
                 selectedSeason,
                 selectedSeasonNumber

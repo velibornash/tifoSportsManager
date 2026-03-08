@@ -116,10 +116,7 @@ public class CleanSheetService {
         state.setSchedule(leagueManager.generateSchedule(csTeams));
 
         // 8. Welcome poruka
-        state.addInboxMessage("welcome",
-                "Welcome to Clean Sheet! You manage " + userTeam.getName() +
-                ". Season " + sc.getSeasonYear() + "/" + (sc.getSeasonYear() + 1) +
-                ". " + state.getLeagueName() + " has " + csTeams.size() + " teams and " + state.getTotalRounds() + " rounds.");
+        state.addInboxMessage("welcome", buildWelcomeMessage(state, userTeam, csTeams.size()));
 
         // 9. Sacuvaj
         activeGames.put(userId, state);
@@ -202,12 +199,19 @@ public class CleanSheetService {
             userFixture.setResult(userResult);
 
             state.getMatchHistory().add(userResult);
-            state.addInboxMessage("match", "Round " + round + ": " + userResult.getSummary());
-            state.addInboxMessage("report", reportGenerator.buildDetailedReport(userResult));
+            String detailedReport = reportGenerator.buildDetailedReport(userResult);
+            userResult.setReport(detailedReport);
+            state.addInboxMessage("match", buildMatchInboxText(round, userResult, state.getUserTeam().getId()));
+            state.addInboxMessage("report", detailedReport);
         }
 
         // Simuliraj ostale meceve
         List<CSMatchResult> allResults = leagueManager.simulateRound(state, round, userResult);
+        allResults.forEach(result -> {
+            if (result != null && (result.getReport() == null || result.getReport().isBlank())) {
+                result.setReport(reportGenerator.buildDetailedReport(result));
+            }
+        });
         state.addInboxMessage("round-report", reportGenerator.buildRoundReport(round, allResults, state.getUserTeam().getId()));
         generateInternationalInbox(state, round);
         generateRumorInbox(state, round);
@@ -220,9 +224,7 @@ public class CleanSheetService {
         // Ako je sezona gotova
         if (state.isSeasonOver()) {
             CSTableEntry champion = state.getLeagueTable().get(0);
-            state.addInboxMessage("info",
-                    "Season finished! Champion: " + champion.getTeamName() +
-                    " with " + champion.getPoints() + " points. Click Next Round to start the next season.");
+            state.addInboxMessage("info", buildSeasonFinishMessage(state, champion));
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -387,6 +389,150 @@ public class CleanSheetService {
             }
         }
         return "?";
+    }
+
+    private String buildWelcomeMessage(CleanSheetGameState state, CSTeam userTeam, int teamCount) {
+        CSFixture opener = state.getSchedule().stream()
+                .filter(f -> f.getRound() == 1)
+                .filter(f -> Objects.equals(f.getHomeTeamId(), userTeam.getId()) || Objects.equals(f.getAwayTeamId(), userTeam.getId()))
+                .findFirst()
+                .orElse(null);
+
+        String openingLine = opener == null
+                ? "Opening fixture will be confirmed once the schedule office finishes its work."
+                : "Opening fixture: " + opener.getHomeTeamName() + " vs " + opener.getAwayTeamName() + ".";
+
+        return "Chairman's briefing:\n"
+                + "You take charge of " + userTeam.getName() + " for the " + state.getSeasonYear() + "/" + (state.getSeasonYear() + 1) + " campaign.\n"
+                + state.getLeagueName() + " will be played over " + state.getTotalRounds() + " rounds with " + teamCount + " clubs in the race.\n"
+                + "Board expectation: " + buildBoardExpectation(userTeam) + "\n"
+                + "Club desk: budget €" + formatMoney(userTeam.getBudget()) + ", reputation " + safeInt(userTeam.getReputation())
+                + ", stadium " + safeText(userTeam.getStadiumName(), userTeam.getName() + " Stadium")
+                + " (" + safeInt(userTeam.getStadiumCapacity()) + ").\n"
+                + openingLine + "\n"
+                + pick(
+                        "Supporters want a season with substance, discipline and a few memorable afternoons.",
+                        "The local press expects a competitive side that can make the division take notice.",
+                        "The board room message is simple: build momentum quickly and make home matches count."
+                );
+    }
+
+    private String buildMatchInboxText(int round, CSMatchResult result, Long userTeamId) {
+        boolean userHome = Objects.equals(result.getHomeTeamId(), userTeamId);
+        String userTeamName = userHome ? result.getHomeTeamName() : result.getAwayTeamName();
+        String opponent = userHome ? result.getAwayTeamName() : result.getHomeTeamName();
+        int goalsFor = userHome ? result.getHomeGoals() : result.getAwayGoals();
+        int goalsAgainst = userHome ? result.getAwayGoals() : result.getHomeGoals();
+
+        String verdict = goalsFor > goalsAgainst
+                ? pick(
+                        "A strong result keeps spirits high in the dressing room.",
+                        "Three points safely filed away after a professional shift.",
+                        "Your side got the job done and the fans leave satisfied."
+                )
+                : goalsFor == goalsAgainst
+                ? pick(
+                        "The points were shared after a tight contest.",
+                        "Neither side found the final push to turn one point into three.",
+                        "A draw felt fair after a match of swings and counter-swings."
+                )
+                : pick(
+                        "A difficult result that will invite questions before the next kickoff.",
+                        "Your team comes away empty-handed after a frustrating afternoon.",
+                        "There will be work to do on the training ground before the next round."
+                );
+
+        String scorersLine = summarizeScorers(result, userTeamName);
+        return "Round " + round + " report: " + result.getSummary() + ". "
+                + verdict + " Opposition: " + opponent + ". "
+                + scorersLine;
+    }
+
+    private String buildSeasonFinishMessage(CleanSheetGameState state, CSTableEntry champion) {
+        List<CSTableEntry> table = state.getLeagueTable() == null ? List.of() : state.getLeagueTable();
+        CSTableEntry userEntry = table.stream()
+                .filter(e -> Objects.equals(e.getTeamId(), state.getUserTeam().getId()))
+                .findFirst()
+                .orElse(null);
+        int userPosition = userEntry == null ? -1 : table.indexOf(userEntry) + 1;
+
+        String championLine = Objects.equals(champion.getTeamId(), state.getUserTeam().getId())
+                ? "Season finished: you are champions of " + state.getLeagueName() + "."
+                : "Season finished: champion is " + champion.getTeamName() + " with " + champion.getPoints() + " points.";
+
+        String userLine = userEntry == null
+                ? "Final placing for your club is not available."
+                : "Your final position: " + ordinal(userPosition) + " place with " + userEntry.getPoints() + " points and goal difference "
+                + userEntry.getGoalsScored() + ":" + userEntry.getGoalsConceded() + ".";
+
+        return championLine + " " + userLine + " "
+                + pick(
+                        "Press Next Round to open the file for the new season.",
+                        "The boardroom is already preparing the next campaign. Press Next Round to continue.",
+                        "A new set of fixtures awaits as soon as you advance into the next season."
+                );
+    }
+
+    private String buildBoardExpectation(CSTeam team) {
+        int reputation = safeInt(team.getReputation());
+        if (reputation >= 70) {
+            return "Push near the title race and make the club relevant at the top end.";
+        }
+        if (reputation >= 58) {
+            return "Finish in the upper half and stay in touch with the promotion conversation.";
+        }
+        if (reputation >= 46) {
+            return "Establish a stable mid-table season and keep home form reliable.";
+        }
+        return "Stay clear of the relegation fight and build a tougher identity week by week.";
+    }
+
+    private String summarizeScorers(CSMatchResult result, String teamName) {
+        List<String> scorers = (result.getEvents() == null ? List.<CSMatchEvent>of() : result.getEvents()).stream()
+                .filter(e -> e.getEventType() == CSEventType.GOAL)
+                .filter(e -> Objects.equals(teamName, e.getTeamName()))
+                .map(CSMatchEvent::getPlayerName)
+                .filter(Objects::nonNull)
+                .toList();
+        if (scorers.isEmpty()) {
+            return pick(
+                    teamName + " could not make the better spells count in front of goal.",
+                    "There was no scorer's line to celebrate for " + teamName + ".",
+                    teamName + " lacked the final touch when chances appeared."
+            );
+        }
+        return "Scorers: " + String.join(", ", scorers) + ".";
+    }
+
+    private String formatMoney(Number value) {
+        long amount = value == null ? 0L : value.longValue();
+        return String.format(Locale.US, "%,d", amount);
+    }
+
+    private int safeInt(Number value) {
+        return value == null ? 0 : value.intValue();
+    }
+
+    private String safeText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private String ordinal(int n) {
+        if (n <= 0) return "Unknown";
+        if (n % 100 >= 11 && n % 100 <= 13) return n + "th";
+        return switch (n % 10) {
+            case 1 -> n + "st";
+            case 2 -> n + "nd";
+            case 3 -> n + "rd";
+            default -> n + "th";
+        };
+    }
+
+    private String pick(String... options) {
+        if (options == null || options.length == 0) {
+            return "";
+        }
+        return options[random.nextInt(options.length)];
     }
 
     private void recoverFatigueBetweenRounds(CleanSheetGameState state) {
@@ -582,7 +728,11 @@ public class CleanSheetService {
         if (!nations.contains("Serbia")) nations.add(0, "Serbia");
 
         List<String> lines = new ArrayList<>();
-        lines.add(stage + " update (Round " + round + "):");
+        lines.add(pick(
+                "International desk - " + stage + " (Round " + round + ")",
+                stage + " bulletin - match window around Round " + round,
+                stage + " watch - results filed during Round " + round
+        ));
 
         int fixtures = 3 + random.nextInt(2);
         for (int i = 0; i < fixtures; i++) {
@@ -596,12 +746,22 @@ public class CleanSheetService {
             boolean serbiaAway = "Serbia".equals(away);
             int serbiaGoals = serbiaHome ? hg : (serbiaAway ? ag : 0);
 
-            String line = home + " " + hg + ":" + ag + " " + away + ".";
+            String line = home + " " + hg + ":" + ag + " " + away + ". "
+                    + pick(
+                            "A lively contest.",
+                            "Another useful scouting note for the inbox.",
+                            "The result drew a fair amount of attention on the wire."
+                    );
             if (serbiaGoals > 0) {
                 line += " Serbia scorers: " + String.join(", ", pickInternationalScorers(state, serbiaGoals)) + ".";
             }
             lines.add(line);
         }
+        lines.add(pick(
+                "European scouts continue to circulate after a busy round of international fixtures.",
+                "Reports from abroad suggest several players have enhanced their stock.",
+                "Clubs across the region will be comparing notes after this window."
+        ));
         state.addInboxMessage("international", String.join("\n", lines));
     }
 
@@ -637,7 +797,11 @@ public class CleanSheetService {
         if (random.nextDouble() < 0.32) {
             CSPlayer own = state.getRoster().get(random.nextInt(state.getRoster().size()));
             state.addInboxMessage("message",
-                    "Agent message: " + own.getName() + " wants to discuss a contract extension after Round " + round + ".");
+                    pick(
+                            "Agent note: " + own.getName() + " wants to sit down after Round " + round + " and revisit contract terms.",
+                            "Representation office message: " + own.getName() + " is open to extension talks following Round " + round + ".",
+                            "Private word from the dressing room: " + own.getName() + " expects a contract discussion after the latest fixture."
+                    ));
         }
 
         if (random.nextDouble() < 0.28) {
@@ -645,7 +809,11 @@ public class CleanSheetService {
             CSTeam linkedTeam = pickRandomOtherTeam(state, state.getUserTeam().getId());
             if (target != null && linkedTeam != null) {
                 state.addInboxMessage("message",
-                        "Media rumor: " + linkedTeam.getName() + " are monitoring " + target.getName() + ".");
+                        pick(
+                                "Media rumor: " + linkedTeam.getName() + " are keeping tabs on " + target.getName() + ".",
+                                "Scout whisper: " + linkedTeam.getName() + " have asked for fresh reports on " + target.getName() + ".",
+                                "Back-page line: " + target.getName() + " has been linked with interest from " + linkedTeam.getName() + "."
+                        ));
             }
         }
 
@@ -654,7 +822,11 @@ public class CleanSheetService {
             CSTeam linkedTeam = pickRandomOtherTeam(state, state.getUserTeam().getId());
             if (linkedTeam != null) {
                 state.addInboxMessage("message",
-                        "Journalists link " + own.getName() + " with a move to " + linkedTeam.getName() + ".");
+                        pick(
+                                "Journalists link " + own.getName() + " with a possible move to " + linkedTeam.getName() + ".",
+                                "Transfer gossip: " + linkedTeam.getName() + " are mentioned alongside " + own.getName() + ".",
+                                "Column talk suggests " + linkedTeam.getName() + " may test your resolve for " + own.getName() + "."
+                        ));
             }
         }
     }

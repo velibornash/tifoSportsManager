@@ -11,6 +11,7 @@ import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.event.RedCardEvent;
 import org.example.footballmanager.model.event.YellowCardEvent;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,7 @@ public class RuntimeSaveToDB {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final MatchFixtureRepository matchFixtureRepository;
+    private final AttendanceService attendanceService;
 
     @Autowired
     private EntityManager em;
@@ -45,7 +47,8 @@ public class RuntimeSaveToDB {
             SeasonRepository seasonRepository,
             SeasonCompetitionRepository seasonCompetitionRepository,
             CompetitionEntryRepository competitionEntryRepository,
-            MatchFixtureRepository matchFixtureRepository
+            MatchFixtureRepository matchFixtureRepository,
+            AttendanceService attendanceService
     ) {
         this.playerRepository = playerRepository;
         this.matchStatisticEngineHandling = matchStatisticEngineHandling;
@@ -55,6 +58,7 @@ public class RuntimeSaveToDB {
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
         this.matchFixtureRepository = matchFixtureRepository;
+        this.attendanceService = attendanceService;
     }
 
     private void batchSaveMatchEvents(Match match, List<MatchEvent> events, List<Player> homePlayers, List<Player> awayPlayers) {
@@ -91,6 +95,7 @@ public class RuntimeSaveToDB {
 
         match.setHomeGoals(rt.homeGoals);
         match.setAwayGoals(rt.awayGoals);
+        attendanceService.ensureAttendance(match);
         match.setPlayed(true);
         match.setStarted(true);
         matchRepository.save(match);

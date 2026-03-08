@@ -2025,6 +2025,57 @@ body {
     gap: 12px;
 }
 
+.fm-milestone-board {
+    display: grid;
+    gap: 12px;
+}
+
+.fm-milestone-board-panel {
+    margin-top: 18px;
+}
+
+.fm-milestone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.fm-milestone-card {
+    min-width: 0;
+    padding: 14px 15px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.fm-milestone-kicker {
+    color: #8fd3ff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.fm-milestone-value {
+    margin-top: 8px;
+    color: #eef4ff;
+    font-size: 1.02rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.fm-milestone-card.attendance .fm-milestone-value {
+    font-size: 1.12rem;
+}
+
+.fm-milestone-meta {
+    margin-top: 7px;
+    color: #99a6bb;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
 .recent-matches-section h3,
 .fm-dashboard-shell .next-match h3 {
     margin: 0;
@@ -2195,6 +2246,10 @@ body {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .fm-milestone-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .match-row,
     .match-teams {
         grid-template-columns: 1fr;
@@ -2217,6 +2272,10 @@ body {
     }
 
     .fm-dashboard-shell .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .fm-milestone-grid {
         grid-template-columns: 1fr;
     }
 

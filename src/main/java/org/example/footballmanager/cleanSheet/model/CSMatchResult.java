@@ -22,6 +22,7 @@ public class CSMatchResult {
     private int round;
     private List<CSMatchEvent> events;
     private String summary;
+    private String report;
 
     @Builder.Default
     private List<CSPlayerMatchStats> homePlayerStats = new ArrayList<>();

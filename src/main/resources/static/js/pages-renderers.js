@@ -394,6 +394,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     const topScorers = Array.isArray(data.topScorers) ? data.topScorers : [];
     const topAssists = Array.isArray(data.topAssists) ? data.topAssists : [];
     const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+    const milestones = data.milestones || {};
 
     function zoneClass(rank, total) {
         if (rank <= 4) return 'zone-ucl';
@@ -475,6 +476,60 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             </table>`;
     }
 
+    function formatAttendance(value) {
+        const numeric = Number(value || 0);
+        return numeric > 0 ? numeric.toLocaleString() : '—';
+    }
+
+    function milestoneCardHtml(title, value, meta, extraClass = '') {
+        return `
+            <article class="fm-milestone-card ${extraClass}">
+                <div class="fm-milestone-kicker">${safe(title)}</div>
+                <div class="fm-milestone-value">${value || '—'}</div>
+                <div class="fm-milestone-meta">${meta || 'No milestone logged yet.'}</div>
+            </article>`;
+    }
+
+    function milestoneBoardHtml() {
+        const scorer = milestones.topScorer;
+        const assist = milestones.topAssist;
+        const biggestWin = milestones.biggestWin;
+        const biggestLoss = milestones.biggestLoss;
+        const attendance = milestones.attendance;
+
+        return `
+            <div class="fm-milestone-grid">
+                ${milestoneCardHtml(
+                    'Top scorer',
+                    scorer?.playerName ? safe(scorer.playerName) : '—',
+                    scorer?.playerName ? `${safe(scorer.teamName || 'No team')} · ${Number(scorer.value || 0)} goals` : 'No goals filed yet.'
+                )}
+                ${milestoneCardHtml(
+                    'Top assist',
+                    assist?.playerName ? safe(assist.playerName) : '—',
+                    assist?.playerName ? `${safe(assist.teamName || 'No team')} · ${Number(assist.value || 0)} assists` : 'No assists filed yet.'
+                )}
+                ${milestoneCardHtml(
+                    'Biggest win',
+                    biggestWin?.summary ? safe(biggestWin.summary) : '—',
+                    biggestWin?.context ? safe(biggestWin.context) : 'Waiting for a standout result.'
+                )}
+                ${milestoneCardHtml(
+                    'Heaviest loss',
+                    biggestLoss?.summary ? safe(biggestLoss.summary) : '—',
+                    biggestLoss?.context ? safe(biggestLoss.context) : 'No heavy defeat registered yet.'
+                )}
+                ${milestoneCardHtml(
+                    'Attendance',
+                    formatAttendance(attendance?.averageAttendance),
+                    attendance?.averageAttendance
+                        ? `High ${formatAttendance(attendance.highestAttendance)} (${safe(attendance.highestMatchLabel || '—')}) · Low ${formatAttendance(attendance.lowestAttendance)} (${safe(attendance.lowestMatchLabel || '—')}) · ${safe(attendance.insight || '')}`
+                        : safe(attendance?.insight || 'Crowd data will appear once played fixtures start filing gates.'),
+                    'attendance'
+                )}
+            </div>`;
+    }
+
     mainContent.innerHTML = `
     <div class="fm-page fm-page--league">
         <div class="fm-page-toolbar">
@@ -532,6 +587,14 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                 </div>
             </section>
         </div>
+
+        <section class="fm-panel fm-milestone-board-panel">
+            <div class="fm-panel-head">
+                <h3>Milestones</h3>
+                <span class="fm-panel-action">Season board</span>
+            </div>
+            ${milestoneBoardHtml()}
+        </section>
 
         <div class="fm-grid-bottom">
             <section class="fm-panel">

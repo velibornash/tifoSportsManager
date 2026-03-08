@@ -8,6 +8,7 @@ import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.model.tactics.Formation;
 import org.example.footballmanager.model.tactics.Tactics;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.AttendanceService;
 import org.example.footballmanager.service.PlayerMovementDecisionService;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.TacticsAdjustmentService;
@@ -47,6 +48,7 @@ public class MatchEngine {
     private final EventCreator eventCreator;
     private final MatchStatisticEngine matchStatisticEngine;
     private final SeasonService seasonService;
+    private final AttendanceService attendanceService;
 
     public Match loadAndValidateMatch(long matchId) {
         return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
@@ -1145,6 +1147,7 @@ public class MatchEngine {
             Match simulatedMatch = new Match();
             simulatedMatch.setHomeTeam(home);
             simulatedMatch.setAwayTeam(away);
+            simulatedMatch.setStadium(home.getStadium());
             simulatedMatch.setCompetition(league);
             simulatedMatch.setSeasonYear(season.getSeasonYear());
             simulatedMatch.setRoundNumber(fixture.getRoundNumber());
@@ -1152,6 +1155,7 @@ public class MatchEngine {
             simulatedMatch.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : clock.getCurrentDate());
             simulatedMatch.setHomeGoals(homeGoals);
             simulatedMatch.setAwayGoals(awayGoals);
+            attendanceService.ensureAttendance(simulatedMatch);
             simulatedMatch.setPlayed(true);
             simulatedMatch.setStarted(true);
 
@@ -1273,6 +1277,10 @@ public class MatchEngine {
 
         match.setHomeGoals(homeGoals);
         match.setAwayGoals(awayGoals);
+        if (match.getStadium() == null) {
+            match.setStadium(home.getStadium());
+        }
+        attendanceService.ensureAttendance(match);
         match.setPlayed(true);
         match.setStarted(true);
         match.setHomeLineup(homeLineup);

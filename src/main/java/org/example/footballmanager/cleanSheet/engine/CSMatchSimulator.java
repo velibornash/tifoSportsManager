@@ -32,7 +32,7 @@ public class CSMatchSimulator {
         events.add(CSMatchEvent.builder()
                 .minute(1)
                 .eventType(CSEventType.MATCH_START)
-                .description(home.getName() + " vs " + away.getName())
+                .description("Kick-off: " + home.getName() + " vs " + away.getName())
                 .build());
 
         generateGoalEvents(events, home, homePlayers, away, awayPlayers, homeGoals, awayGoals);
@@ -47,7 +47,7 @@ public class CSMatchSimulator {
         events.add(CSMatchEvent.builder()
                 .minute(90)
                 .eventType(CSEventType.MATCH_END)
-                .description("Kraj meca: " + home.getName() + " " + homeGoals + ":" + awayGoals + " " + away.getName())
+                .description("Full-time: " + home.getName() + " " + homeGoals + ":" + awayGoals + " " + away.getName())
                 .build());
 
         events.sort((a, b) -> Integer.compare(a.getMinute(), b.getMinute()));
@@ -306,7 +306,7 @@ public class CSMatchSimulator {
                     .teamName(team.getName())
                     .playerOutName(out.getName())
                     .playerInName(in.getName())
-                    .description(team.getName() + " substitution: " + out.getName() + " -> " + in.getName())
+                    .description(describeSubstitution(team.getName(), out.getName(), in.getName()))
                     .build());
         }
     }
@@ -382,7 +382,7 @@ public class CSMatchSimulator {
                     .playerName(scorer.getName())
                     .assistName(assist != null ? assist.getName() : null)
                     .teamName(scoringTeam.getName())
-                    .description(scorer.getName() + " (" + scoringTeam.getName() + ")")
+                    .description(describeGoal(scoringTeam.getName(), scorer.getName(), assist != null ? assist.getName() : null, scoreAfter))
                     .scoreAfterGoal(scoreAfter)
                     .build());
 
@@ -468,6 +468,33 @@ public class CSMatchSimulator {
             events.add(buildStatEvent(CSEventType.CORNER, away, randomPlayer(awayPlayers)));
         }
 
+        int homeFouls = rnd.nextInt(4) + 2;
+        int awayFouls = rnd.nextInt(4) + 2;
+        for (int i = 0; i < homeFouls; i++) {
+            events.add(buildStatEvent(CSEventType.FOUL, home, randomPlayer(homePlayers)));
+        }
+        for (int i = 0; i < awayFouls; i++) {
+            events.add(buildStatEvent(CSEventType.FOUL, away, randomPlayer(awayPlayers)));
+        }
+
+        int homeOffsides = rnd.nextInt(3);
+        int awayOffsides = rnd.nextInt(3);
+        for (int i = 0; i < homeOffsides; i++) {
+            events.add(buildStatEvent(CSEventType.OFFSIDE, home, pickScorer(homePlayers)));
+        }
+        for (int i = 0; i < awayOffsides; i++) {
+            events.add(buildStatEvent(CSEventType.OFFSIDE, away, pickScorer(awayPlayers)));
+        }
+
+        int homeFreeKicks = rnd.nextInt(3) + 1;
+        int awayFreeKicks = rnd.nextInt(3) + 1;
+        for (int i = 0; i < homeFreeKicks; i++) {
+            events.add(buildStatEvent(CSEventType.FREE_KICK, home, randomPlayer(homePlayers)));
+        }
+        for (int i = 0; i < awayFreeKicks; i++) {
+            events.add(buildStatEvent(CSEventType.FREE_KICK, away, randomPlayer(awayPlayers)));
+        }
+
         // Zuti kartoni
         int homeYellows = rnd.nextInt(4);
         int awayYellows = rnd.nextInt(4);
@@ -496,7 +523,7 @@ public class CSMatchSimulator {
                     .playerName(taker != null ? taker.getName() : "?")
                     .teamName(home.getName())
                     .penaltyScored(scored)
-                    .description((scored ? "Gol" : "Promasen") + " penal - " + (taker != null ? taker.getName() : "?"))
+                    .description(describePenalty(taker != null ? taker.getName() : "?", home.getName(), scored))
                     .build());
         }
         if (rnd.nextDouble() < 0.12) {
@@ -508,8 +535,21 @@ public class CSMatchSimulator {
                     .playerName(taker != null ? taker.getName() : "?")
                     .teamName(away.getName())
                     .penaltyScored(scored)
-                    .description((scored ? "Gol" : "Promasen") + " penal - " + (taker != null ? taker.getName() : "?"))
+                    .description(describePenalty(taker != null ? taker.getName() : "?", away.getName(), scored))
                     .build());
+        }
+
+        if (rnd.nextDouble() < 0.12) {
+            boolean homeIncident = rnd.nextBoolean();
+            CSTeam incidentTeam = homeIncident ? home : away;
+            List<CSPlayer> incidentPlayers = homeIncident ? homePlayers : awayPlayers;
+            events.add(buildStatEvent(CSEventType.INJURY, incidentTeam, randomPlayer(incidentPlayers)));
+        }
+        if (rnd.nextDouble() < 0.16) {
+            boolean homeIncident = rnd.nextBoolean();
+            CSTeam incidentTeam = homeIncident ? home : away;
+            List<CSPlayer> incidentPlayers = homeIncident ? homePlayers : awayPlayers;
+            events.add(buildStatEvent(CSEventType.VAR_REVIEW, incidentTeam, randomPlayer(incidentPlayers)));
         }
     }
 
@@ -519,8 +559,103 @@ public class CSMatchSimulator {
                 .eventType(type)
                 .playerName(player != null ? player.getName() : "?")
                 .teamName(team.getName())
-                .description(type.name() + " - " + (player != null ? player.getName() : "?"))
+                .description(describeStatEvent(type, team.getName(), player != null ? player.getName() : "?"))
                 .build();
+    }
+
+    private String describeGoal(String teamName, String scorerName, String assistName, String scoreAfter) {
+        String assistText = assistName == null || assistName.isBlank() ? "" : " Assist: " + assistName + ".";
+        String scoreText = scoreAfter == null || scoreAfter.isBlank() ? "" : " [" + scoreAfter + "]";
+        return pick(
+                scorerName + " applies the finish for " + teamName + "." + assistText + scoreText,
+                "Goal for " + teamName + ": " + scorerName + " converts the move." + assistText + scoreText,
+                scorerName + " finds the net for " + teamName + "." + assistText + scoreText
+        );
+    }
+
+    private String describeSubstitution(String teamName, String playerOut, String playerIn) {
+        return pick(
+                teamName + " make a change: " + playerOut + " off, " + playerIn + " on.",
+                "Tactical switch for " + teamName + " as " + playerIn + " replaces " + playerOut + ".",
+                teamName + " send on " + playerIn + " for " + playerOut + "."
+        );
+    }
+
+    private String describePenalty(String takerName, String teamName, boolean scored) {
+        return scored
+                ? pick(
+                        takerName + " converts the penalty for " + teamName + ".",
+                        "Penalty scored by " + takerName + " for " + teamName + ".",
+                        takerName + " keeps his nerve from the spot for " + teamName + "."
+                )
+                : pick(
+                        takerName + " misses the penalty for " + teamName + ".",
+                        "Penalty wasted by " + takerName + " for " + teamName + ".",
+                        takerName + " fails from the spot for " + teamName + "."
+                );
+    }
+
+    private String describeStatEvent(CSEventType type, String teamName, String playerName) {
+        return switch (type) {
+            case SHOT_ON_TARGET -> pick(
+                    playerName + " forces a save for " + teamName + ".",
+                    teamName + " work a shot on target through " + playerName + ".",
+                    playerName + " tests the goalkeeper for " + teamName + "."
+            );
+            case SHOT_OFF_TARGET -> pick(
+                    playerName + " fires wide for " + teamName + ".",
+                    teamName + " see " + playerName + " miss the target.",
+                    playerName + " cannot keep the effort down for " + teamName + "."
+            );
+            case CORNER -> pick(
+                    "Corner kick to " + teamName + ".",
+                    teamName + " win a corner.",
+                    "Set-piece chance for " + teamName + "."
+            );
+            case YELLOW_CARD -> pick(
+                    playerName + " goes into the book.",
+                    "Yellow card shown to " + playerName + ".",
+                    playerName + " is cautioned for " + teamName + "."
+            );
+            case RED_CARD -> pick(
+                    playerName + " is sent off for " + teamName + ".",
+                    "Red card for " + playerName + ".",
+                    teamName + " are reduced to ten men after " + playerName + " sees red."
+            );
+            case FOUL -> pick(
+                    playerName + " concedes a foul for " + teamName + ".",
+                    "Free kick given against " + playerName + ".",
+                    playerName + " arrives late and the whistle goes."
+            );
+            case OFFSIDE -> pick(
+                    playerName + " is caught offside.",
+                    "The flag goes up against " + playerName + ".",
+                    playerName + " strays beyond the last line for " + teamName + "."
+            );
+            case FREE_KICK -> pick(
+                    "Free kick to " + teamName + ".",
+                    teamName + " earn a set-piece chance.",
+                    "Dead-ball opportunity for " + teamName + "."
+            );
+            case INJURY -> pick(
+                    playerName + " needs treatment.",
+                    "Medical staff are called for " + playerName + ".",
+                    "There is an injury concern involving " + playerName + "."
+            );
+            case VAR_REVIEW -> pick(
+                    "VAR is checking an incident for " + teamName + ".",
+                    "The referee pauses for a VAR review.",
+                    "A short VAR delay interrupts play."
+            );
+            default -> type.name() + " - " + playerName;
+        };
+    }
+
+    private String pick(String... variants) {
+        if (variants == null || variants.length == 0) {
+            return "";
+        }
+        return variants[rnd.nextInt(variants.length)];
     }
 
     private CSPlayer randomPlayer(List<CSPlayer> players) {

@@ -52,10 +52,87 @@
     padding: 16px;
     border-radius: 10px;
     text-align: center;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 .cs-stat-card .icon { font-size: 1.8em; margin-bottom: 6px; }
 .cs-stat-card .val { font-size: 1.3em; font-weight: bold; }
 .cs-stat-card .lbl { font-size: 0.8em; color: #aaa; margin-top: 4px; }
+.cs-section-label {
+    font-size: 0.74em;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #7fbf8f;
+    margin-bottom: 8px;
+}
+.cs-club-hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(76, 175, 80, 0.18);
+    background: linear-gradient(135deg, rgba(23, 39, 29, 0.96), rgba(33, 49, 61, 0.94));
+}
+.cs-club-title { font-size: 1.8em; font-weight: 800; color: #f4f7f4; }
+.cs-club-subtitle { margin-top: 4px; color: #a9b6ad; }
+.cs-club-hero-side { max-width: 320px; }
+.cs-club-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+.cs-note-card {
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.cs-note-title { font-size: 1.05em; font-weight: 700; color: #eff4ef; }
+.cs-note-text { margin-top: 6px; line-height: 1.55; color: #aeb7bc; }
+.cs-club-milestones { margin-top: 16px; }
+.cs-club-milestones-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+.cs-milestone-card {
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.cs-milestone-value {
+    color: #f2f6f2;
+    font-size: 1.02em;
+    font-weight: 800;
+    line-height: 1.4;
+}
+.cs-milestone-meta {
+    margin-top: 7px;
+    color: #aeb7bc;
+    line-height: 1.5;
+    font-size: 0.87em;
+}
+.cs-milestone-card.attendance .cs-milestone-value { font-size: 1.12em; }
+.cs-form-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cs-form-pill {
+    min-width: 34px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 0.85em;
+    border: 1px solid transparent;
+}
+.cs-form-pill.win { background: rgba(76, 175, 80, 0.18); color: #9be7a2; border-color: rgba(76, 175, 80, 0.35); }
+.cs-form-pill.draw { background: rgba(255, 193, 7, 0.16); color: #ffd779; border-color: rgba(255, 193, 7, 0.32); }
+.cs-form-pill.loss { background: rgba(244, 67, 54, 0.16); color: #ff9a93; border-color: rgba(244, 67, 54, 0.32); }
+.cs-form-pill.empty { background: rgba(255,255,255,0.05); color: #99a3a8; border-color: rgba(255,255,255,0.08); }
 
 /* League table */
 .cs-table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
@@ -114,6 +191,7 @@
     padding: 12px; margin: 6px 0; border-radius: 8px;
     background: rgba(255,255,255,0.04);
     cursor: pointer; transition: background 0.15s;
+    border: 1px solid rgba(255,255,255,0.05);
 }
 .cs-inbox-item:hover { background: rgba(255,255,255,0.08); }
 .cs-inbox-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 6px; }
@@ -126,6 +204,35 @@
 .cs-inbox-badge.info { background: #ff9800; color: #000; }
 .cs-inbox-badge.error { background: #f44336; color: #fff; }
 .cs-inbox-badge.transfer { background: #9c27b0; color: #fff; }
+.cs-inbox-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin: 10px 0 14px;
+    flex-wrap: wrap;
+}
+.cs-pill-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-pill-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #d6dde2;
+    font-size: 0.86em;
+}
+.cs-inbox-topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.cs-inbox-time { color: #7f8b92; font-size: 0.8em; }
+.cs-inbox-subject { margin-top: 8px; font-size: 1.02em; font-weight: 700; color: #eef4f6; }
+.cs-inbox-preview { margin-top: 6px; color: #adb8bf; line-height: 1.5; }
 
 /* Clickable rows */
 .cs-clickable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
@@ -143,7 +250,7 @@
 }
 .cs-modal {
     background: #1e1e2e; border-radius: 14px; padding: 28px;
-    max-width: 540px; width: 90%; max-height: 80vh; overflow-y: auto;
+    max-width: 720px; width: 90%; max-height: 80vh; overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .cs-modal h3 { margin-top: 0; color: #fff; }
@@ -156,6 +263,7 @@
 
 /* Tab buttons */
 .cs-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #333; }
+.cs-tabs { flex-wrap: wrap; }
 .cs-tab-btn {
     padding: 10px 20px; background: none; border: none;
     color: #aaa; cursor: pointer; font-size: 0.95em;
@@ -187,6 +295,87 @@
 .cs-lineup-name { flex: 1; }
 .cs-lineup-stat { width: 45px; text-align: center; font-size: 0.9em; color: #ccc; }
 .cs-lineup-rating { width: 45px; text-align: center; font-weight: bold; }
+.cs-match-header-card {
+    padding: 18px;
+    border-radius: 14px;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, rgba(18, 26, 20, 0.96), rgba(26, 37, 49, 0.94));
+    border: 1px solid rgba(76, 175, 80, 0.18);
+}
+.cs-match-topline { color: #9fb1a1; margin-bottom: 14px; }
+.cs-match-scoreboard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 14px;
+}
+.cs-match-side { text-align: center; }
+.cs-match-team { font-size: 1.15em; font-weight: 800; color: #eef4ef; }
+.cs-match-side-label { margin-top: 4px; font-size: 0.82em; color: #90a09a; text-transform: uppercase; letter-spacing: 0.08em; }
+.cs-match-score-core { text-align: center; min-width: 160px; }
+.cs-match-big-score { font-size: 2.2em; font-weight: 900; color: #ffffff; }
+.cs-match-mini-note { color: #a9b5ae; font-size: 0.86em; }
+.cs-match-meta-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    color: #cfd9d0;
+    font-size: 0.9em;
+}
+.cs-event-list { border-top: 1px solid rgba(255,255,255,0.06); }
+.cs-event-row {
+    display: grid;
+    grid-template-columns: 64px 28px 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.cs-event-minute { color: #7fbf8f; font-weight: 800; }
+.cs-event-icon { text-align: center; }
+.cs-event-body { min-width: 0; }
+.cs-event-title { color: #eef4ef; font-weight: 700; line-height: 1.45; }
+.cs-event-extra { color: #9ca9b0; line-height: 1.5; }
+.cs-event-score { color: #d9e6da; font-weight: 800; white-space: nowrap; }
+.cs-report-shell {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(76, 175, 80, 0.14);
+}
+.cs-report-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.04);
+    color: #dfe8de;
+}
+.cs-report-body {
+    padding: 16px;
+    background: linear-gradient(180deg, rgba(8, 19, 13, 0.82), rgba(19, 29, 25, 0.95));
+    color: #dbe7dc;
+    line-height: 1.7;
+    font-family: "Courier New", monospace;
+    border-top: 1px solid rgba(76, 175, 80, 0.16);
+    white-space: pre-line;
+    word-break: break-word;
+}
+.cs-message-shell { display: flex; flex-direction: column; gap: 12px; }
+.cs-message-headline { font-weight: 800; color: #e8f0ef; font-size: 1.05em; }
+.cs-message-body {
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    color: #d5dee3;
+    line-height: 1.65;
+    white-space: pre-line;
+    word-break: break-word;
+}
+.cs-message-timestamp { color: #7e8b92; font-size: 0.85em; }
+.cs-message-card { margin-bottom: 8px; }
 
 /* Transfers dummy */
 .cs-transfer-placeholder {
@@ -207,9 +396,27 @@
     padding: 10px 12px;
     border: 1px solid transparent;
 }
+.cs-live-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+}
 .cs-live-card.user-match {
     border-color: rgba(255, 215, 0, 0.6);
     background: rgba(255, 215, 0, 0.08);
+}
+.cs-live-match-tag,
+.cs-live-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 215, 0, 0.16);
+    border: 1px solid rgba(255, 215, 0, 0.38);
+    color: #ffe08a;
+    font-size: 0.74em;
+    font-weight: 800;
+    letter-spacing: 0.06em;
 }
 .cs-live-score {
     font-size: 1.35em;
@@ -236,6 +443,23 @@
 }
 
 @media (max-width: 768px) {
+    .cs-club-hero,
+    .cs-match-scoreboard {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+    .cs-club-hero-side,
+    .cs-match-side,
+    .cs-match-score-core {
+        max-width: none;
+        text-align: left;
+    }
+    .cs-event-row {
+        grid-template-columns: 52px 24px 1fr;
+    }
+    .cs-event-score {
+        grid-column: 3;
+    }
     #inboxBtnMobile,
     #mobileMenuBtn,
     #nextRoundBtnMobileTop {

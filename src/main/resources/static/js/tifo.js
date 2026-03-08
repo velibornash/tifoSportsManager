@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (data.active) {
         gameState = data;
+        rebuildRoundResultsFromSchedule();
         rebuildTeamIndex();
         ensurePlayerIndexLoaded();
         inboxUnreadCount = 0;
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         gameState = await startRes.json();
+        rebuildRoundResultsFromSchedule();
         rebuildTeamIndex();
         ensurePlayerIndexLoaded();
         inboxUnreadCount = 0;
@@ -63,6 +65,45 @@ function updateRoundInfo() {
 
 function getLeagueDisplayName() {
     return gameState?.leagueName || 'League';
+}
+
+function rebuildRoundResultsFromSchedule() {
+    allRoundResults = {};
+    (gameState?.schedule || []).forEach(fixture => {
+        if (!fixture?.played || !fixture?.result) return;
+        const round = Number(fixture.result.round || fixture.round || 0);
+        if (!round) return;
+        const normalized = {
+            ...fixture.result,
+            round,
+            homeTeamId: fixture.result.homeTeamId ?? fixture.homeTeamId,
+            awayTeamId: fixture.result.awayTeamId ?? fixture.awayTeamId,
+            homeTeamName: fixture.result.homeTeamName ?? fixture.homeTeamName,
+            awayTeamName: fixture.result.awayTeamName ?? fixture.awayTeamName
+        };
+        if (!allRoundResults[round]) allRoundResults[round] = [];
+        const exists = allRoundResults[round].some(m =>
+            Number(m.homeTeamId) === Number(normalized.homeTeamId)
+            && Number(m.awayTeamId) === Number(normalized.awayTeamId)
+        );
+        if (!exists) allRoundResults[round].push(normalized);
+    });
+}
+
+function applyRoundResultsToSchedule(results) {
+    if (!Array.isArray(gameState?.schedule) || !Array.isArray(results)) return;
+    results.forEach(result => {
+        const fixture = gameState.schedule.find(f =>
+            Number(f.round) === Number(result.round)
+            && Number(f.homeTeamId) === Number(result.homeTeamId)
+            && Number(f.awayTeamId) === Number(result.awayTeamId)
+        );
+        if (fixture) {
+            fixture.played = true;
+            fixture.result = result;
+        }
+    });
+    rebuildRoundResultsFromSchedule();
 }
 
 function updateInboxRibbon() {
@@ -173,34 +214,381 @@ function closeModal() {
     if (existing) existing.remove();
 }
 
+function formatMoney(value) {
+    return `€${Number(value || 0).toLocaleString()}`;
+}
+
+function ordinal(value) {
+    const n = Number(value || 0);
+    if (!n) return '-';
+    const mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+    switch (n % 10) {
+        case 1: return `${n}st`;
+        case 2: return `${n}nd`;
+        case 3: return `${n}rd`;
+        default: return `${n}th`;
+    }
+}
+
+function getUserTableEntry() {
+    const teamId = gameState?.userTeam?.id;
+    return (gameState?.leagueTable || []).find(t => Number(t.teamId) === Number(teamId)) || null;
+}
+
+function findNextFixture() {
+    const teamId = gameState?.userTeam?.id;
+    return (gameState?.schedule || []).find(f =>
+        !f.played && (Number(f.homeTeamId) === Number(teamId) || Number(f.awayTeamId) === Number(teamId))
+    ) || null;
+}
+
+function findLatestUserMatch() {
+    const matches = gameState?.matchHistory || [];
+    return matches.length ? matches[matches.length - 1] : null;
+}
+
+function getUserMatchOutcome(match) {
+    const userTeamId = gameState?.userTeam?.id;
+    if (!match || userTeamId == null) return { code: '-', goalsFor: 0, goalsAgainst: 0 };
+    const userHome = Number(match.homeTeamId) === Number(userTeamId);
+    const goalsFor = userHome ? Number(match.homeGoals || 0) : Number(match.awayGoals || 0);
+    const goalsAgainst = userHome ? Number(match.awayGoals || 0) : Number(match.homeGoals || 0);
+    return {
+        code: goalsFor > goalsAgainst ? 'W' : goalsFor === goalsAgainst ? 'D' : 'L',
+        goalsFor,
+        goalsAgainst
+    };
+}
+
+function buildRecentForm(limit = 5) {
+    return (gameState?.matchHistory || []).slice(-limit).map(match => ({
+        round: match.round,
+        ...getUserMatchOutcome(match)
+    }));
+}
+
+function getPlayedClubMatches() {
+    return Array.isArray(gameState?.matchHistory) ? gameState.matchHistory : [];
+}
+
+function getOpponentForUserMatch(match) {
+    const userTeamId = Number(gameState?.userTeam?.id);
+    if (!match || !userTeamId) return null;
+    return Number(match.homeTeamId) === userTeamId
+        ? { id: match.awayTeamId, name: match.awayTeamName, home: true }
+        : { id: match.homeTeamId, name: match.homeTeamName, home: false };
+}
+
+function findTableEntryByTeamId(teamId) {
+    return (gameState?.leagueTable || []).find(entry => Number(entry.teamId) === Number(teamId)) || null;
+}
+
+function deterministicNoise(...values) {
+    const source = values.map(value => String(value ?? '')).join('|');
+    let hash = 0;
+    for (let i = 0; i < source.length; i += 1) {
+        hash = ((hash << 5) - hash) + source.charCodeAt(i);
+        hash |= 0;
+    }
+    return ((Math.abs(hash) % 1000) / 999) - 0.5;
+}
+
+function roundToNearestTen(value) {
+    return Math.max(0, Math.round(Number(value || 0) / 10) * 10);
+}
+
+function formatAttendance(value) {
+    const numeric = Number(value || 0);
+    return numeric > 0 ? numeric.toLocaleString() : '-';
+}
+
+function estimateClubAttendance(match) {
+    const team = gameState?.userTeam;
+    if (!team || Number(match?.homeTeamId) !== Number(team.id)) return 0;
+
+    const capacity = Math.max(2500, Number(team.stadiumCapacity || 6000));
+    const ownReputation = Math.max(25, Number(team.reputation || 55)) / 100;
+    const opponent = getOpponentForUserMatch(match);
+    const opponentEntry = findTableEntryByTeamId(opponent?.id);
+    const opponentPull = opponentEntry
+        ? Math.max(0.18, ((gameState.leagueTable.length - Number(opponentEntry.position || 1) + 1) / Math.max(1, gameState.leagueTable.length)))
+        : 0.42;
+    const roundShare = Number(match?.round || 1) / Math.max(1, Number(gameState?.totalRounds || 1));
+    const form = buildRecentForm(5);
+    const wins = form.filter(item => item.code === 'W').length;
+    const momentum = Math.min(0.08, wins * 0.015);
+    const noise = deterministicNoise(match?.round, match?.homeTeamId, match?.awayTeamId, gameState?.seasonYear) * 0.08;
+
+    const fill = Math.max(0.22, Math.min(0.96,
+        0.4 + (ownReputation * 0.22) + (opponentPull * 0.16) + (roundShare * 0.08) + momentum + noise
+    ));
+    return roundToNearestTen(capacity * fill);
+}
+
+function buildClubGateMilestone() {
+    const homeMatches = getPlayedClubMatches().filter(match => Number(match.homeTeamId) === Number(gameState?.userTeam?.id));
+    if (!homeMatches.length) {
+        return {
+            averageAttendance: 0,
+            highestAttendance: 0,
+            lowestAttendance: 0,
+            trend: 'No home gate data yet. Play a home match to open the turnstiles.',
+            peakLabel: '-',
+            lowLabel: '-'
+        };
+    }
+
+    const estimated = homeMatches.map(match => ({
+        match,
+        attendance: estimateClubAttendance(match)
+    }));
+    const averageAttendance = Math.round(estimated.reduce((sum, item) => sum + item.attendance, 0) / estimated.length);
+    const highest = estimated.reduce((best, item) => !best || item.attendance > best.attendance ? item : best, null);
+    const lowest = estimated.reduce((best, item) => !best || item.attendance < best.attendance ? item : best, null);
+
+    const midpoint = Math.max(1, Math.ceil(estimated.length / 2));
+    const firstHalfAvg = estimated.slice(0, midpoint).reduce((sum, item) => sum + item.attendance, 0) / midpoint;
+    const secondHalf = estimated.slice(midpoint);
+    const secondHalfAvg = secondHalf.length
+        ? secondHalf.reduce((sum, item) => sum + item.attendance, 0) / secondHalf.length
+        : firstHalfAvg;
+
+    let trend = `Crowd is holding around ${formatAttendance(averageAttendance)} at ${gameState?.userTeam?.stadiumName || 'home'}.`;
+    if (secondHalfAvg >= firstHalfAvg * 1.06) {
+        trend = 'Turnstiles are warming up as the campaign gathers pace.';
+    } else if (averageAttendance >= Number(gameState?.userTeam?.stadiumCapacity || 6000) * 0.78) {
+        trend = 'Home dates are starting to feel like packed-house occasions.';
+    }
+
+    return {
+        averageAttendance,
+        highestAttendance: highest?.attendance || 0,
+        lowestAttendance: lowest?.attendance || 0,
+        trend,
+        peakLabel: highest ? `vs ${highest.match.awayTeamName}` : '-',
+        lowLabel: lowest ? `vs ${lowest.match.awayTeamName}` : '-'
+    };
+}
+
+function buildClubMilestoneSnapshot() {
+    const matches = getPlayedClubMatches();
+    const biggestWin = matches
+        .filter(match => getUserMatchOutcome(match).goalsFor > getUserMatchOutcome(match).goalsAgainst)
+        .sort((a, b) => {
+            const aOutcome = getUserMatchOutcome(a);
+            const bOutcome = getUserMatchOutcome(b);
+            const marginDiff = (bOutcome.goalsFor - bOutcome.goalsAgainst) - (aOutcome.goalsFor - aOutcome.goalsAgainst);
+            if (marginDiff !== 0) return marginDiff;
+            return Number(b.round || 0) - Number(a.round || 0);
+        })[0] || null;
+    const biggestLoss = matches
+        .filter(match => getUserMatchOutcome(match).goalsFor < getUserMatchOutcome(match).goalsAgainst)
+        .sort((a, b) => {
+            const aOutcome = getUserMatchOutcome(a);
+            const bOutcome = getUserMatchOutcome(b);
+            const marginDiff = (bOutcome.goalsAgainst - bOutcome.goalsFor) - (aOutcome.goalsAgainst - aOutcome.goalsFor);
+            if (marginDiff !== 0) return marginDiff;
+            return Number(b.round || 0) - Number(a.round || 0);
+        })[0] || null;
+
+    return {
+        topScorer: null,
+        topAssist: null,
+        biggestWin,
+        biggestLoss,
+        gate: buildClubGateMilestone()
+    };
+}
+
+function milestoneMatchHtml(title, match, emptyText) {
+    if (!match) {
+        return `<div class="cs-milestone-card"><div class="cs-section-label">${escapeHtml(title)}</div><div class="cs-milestone-value">-</div><div class="cs-milestone-meta">${escapeHtml(emptyText)}</div></div>`;
+    }
+    const outcome = getUserMatchOutcome(match);
+    const opponent = getOpponentForUserMatch(match);
+    return `<div class="cs-milestone-card">
+        <div class="cs-section-label">${escapeHtml(title)}</div>
+        <div class="cs-milestone-value">${outcome.goalsFor}-${outcome.goalsAgainst} vs ${escapeHtml(opponent?.name || '?')}</div>
+        <div class="cs-milestone-meta">Round ${match.round} · ${Number(match.homeTeamId) === Number(gameState?.userTeam?.id) ? 'Home' : 'Away'} file</div>
+    </div>`;
+}
+
+function buildClubMilestonesGridHtml(snapshot) {
+    const gate = snapshot?.gate || {};
+    return `
+        <div class="cs-milestone-card">
+            <div class="cs-section-label">Top scorer</div>
+            <div class="cs-milestone-value">${escapeHtml(snapshot?.topScorer?.name || '-')}</div>
+            <div class="cs-milestone-meta">${snapshot?.topScorer ? `${escapeHtml(snapshot.topScorer.teamName || 'No team')} · ${Number(snapshot.topScorer.goals || 0)} goals` : 'No goals filed yet.'}</div>
+        </div>
+        <div class="cs-milestone-card">
+            <div class="cs-section-label">Top assist</div>
+            <div class="cs-milestone-value">${escapeHtml(snapshot?.topAssist?.name || '-')}</div>
+            <div class="cs-milestone-meta">${snapshot?.topAssist ? `${escapeHtml(snapshot.topAssist.teamName || 'No team')} · ${Number(snapshot.topAssist.assists || 0)} assists` : 'No assists filed yet.'}</div>
+        </div>
+        ${milestoneMatchHtml('Best win', snapshot?.biggestWin, 'No win on file yet.')}
+        ${milestoneMatchHtml('Worst defeat', snapshot?.biggestLoss, 'No defeat on file yet.')}
+        <div class="cs-milestone-card attendance">
+            <div class="cs-section-label">Gate watch</div>
+            <div class="cs-milestone-value">${formatAttendance(gate.averageAttendance)}</div>
+            <div class="cs-milestone-meta">Peak ${formatAttendance(gate.highestAttendance)} ${escapeHtml(gate.peakLabel || '-')} · Low ${formatAttendance(gate.lowestAttendance)} ${escapeHtml(gate.lowLabel || '-')} · ${escapeHtml(gate.trend || 'No crowd read yet.')}</div>
+        </div>`;
+}
+
+async function hydrateClubMilestones() {
+    const host = document.getElementById('cs-club-milestones');
+    if (!host) return;
+
+    const snapshot = buildClubMilestoneSnapshot();
+    try {
+        const [scorersRes, assistsRes] = await Promise.all([
+            csApi('/api/cs/top-scorers'),
+            csApi('/api/cs/top-assists')
+        ]);
+        const scorers = scorersRes && scorersRes.ok ? await scorersRes.json() : [];
+        const assists = assistsRes && assistsRes.ok ? await assistsRes.json() : [];
+        snapshot.topScorer = Array.isArray(scorers) && scorers.length ? scorers[0] : null;
+        snapshot.topAssist = Array.isArray(assists) && assists.length ? assists[0] : null;
+    } catch (err) {
+        console.warn('Club milestone fetch failed:', err);
+    }
+
+    const activeHost = document.getElementById('cs-club-milestones');
+    if (activeHost) {
+        activeHost.innerHTML = buildClubMilestonesGridHtml(snapshot);
+    }
+}
+
+function getInboxTypeLabel(type) {
+    return ({
+        welcome: 'Chairman note',
+        match: 'Match note',
+        report: 'Match report',
+        'round-report': 'Round review',
+        international: 'International desk',
+        message: 'Rumour mill',
+        info: 'Club office',
+        error: 'Alert',
+        transfer: 'Transfer desk'
+    })[type] || 'Inbox';
+}
+
+function getInboxHeadline(msg) {
+    const lines = String(msg?.text || '').split('\n').map(v => v.trim()).filter(Boolean);
+    return truncate(lines[0] || `${getInboxTypeLabel(msg?.type)} update`, 82);
+}
+
+function getInboxPreview(msg) {
+    const lines = String(msg?.text || '').split('\n').map(v => v.trim()).filter(Boolean);
+    const body = lines.length > 1 ? lines.slice(1).join(' ') : (lines[0] || 'No details filed.');
+    return truncate(body, 160);
+}
+
+function findManOfTheMatch(match) {
+    return [...(match?.homePlayerStats || []), ...(match?.awayPlayerStats || [])]
+        .filter(Boolean)
+        .sort((a, b) => {
+            const ratingDiff = Number(b.rating || 0) - Number(a.rating || 0);
+            if (ratingDiff !== 0) return ratingDiff;
+            const goalDiff = Number(b.goals || 0) - Number(a.goals || 0);
+            if (goalDiff !== 0) return goalDiff;
+            return Number(b.assists || 0) - Number(a.assists || 0);
+        })[0] || null;
+}
+
 // --- Club Info ---
 function renderClubInfo(el) {
     const t = gameState?.userTeam;
     if (!t) { el.innerHTML = '<p>No data</p>'; return; }
+    const tableEntry = getUserTableEntry();
+    const nextFixture = findNextFixture();
+    const lastMatch = findLatestUserMatch();
+    const lastOutcome = lastMatch ? getUserMatchOutcome(lastMatch) : null;
+    const form = buildRecentForm();
+    const tactics = gameState?.tactics || {};
+    const positionLabel = tableEntry ? ordinal(getPosition(t.id)) : 'Unplaced';
+    const nextOpponent = nextFixture
+        ? (Number(nextFixture.homeTeamId) === Number(t.id) ? nextFixture.awayTeamName : nextFixture.homeTeamName)
+        : null;
     el.innerHTML = `
         <h2>Club Info</h2>
+        <div class="cs-club-hero">
+            <div>
+                <div class="cs-section-label">Manager file</div>
+                <div class="cs-club-title">${escapeHtml(t.name)}</div>
+                <div class="cs-club-subtitle">${escapeHtml(getLeagueDisplayName())} &middot; ${positionLabel} place &middot; Season ${gameState.seasonYear}/${gameState.seasonYear + 1}</div>
+            </div>
+            <div class="cs-club-hero-side">
+                <div class="cs-section-label">Board brief</div>
+                <div class="cs-note-text">${tableEntry ? `Current return: ${tableEntry.points} points from ${tableEntry.played} matches. Keep momentum and protect home turf.` : 'The board wants a stable opening and a side with enough steel for the long haul.'}</div>
+            </div>
+        </div>
         <div class="cs-stat-grid">
             <div class="cs-stat-card"><div class="icon">&#127967;&#65039;</div><div class="val">${t.name}</div><div class="lbl">Team</div></div>
-            <div class="cs-stat-card"><div class="icon">&#128176;</div><div class="val">&euro;${t.budget?.toLocaleString() || 0}</div><div class="lbl">Budget</div></div>
+            <div class="cs-stat-card"><div class="icon">&#128176;</div><div class="val">${formatMoney(t.budget)}</div><div class="lbl">Budget</div></div>
             <div class="cs-stat-card"><div class="icon">&#11088;</div><div class="val">${t.reputation || 0}</div><div class="lbl">Reputation</div></div>
             <div class="cs-stat-card"><div class="icon">&#127967;&#65039;</div><div class="val">${t.stadiumName || '?'}</div><div class="lbl">Stadium (${t.stadiumCapacity || '?'})</div></div>
             <div class="cs-stat-card"><div class="icon">&#128203;</div><div class="val">${gameState.roster?.length || 0}</div><div class="lbl">Players</div></div>
             <div class="cs-stat-card"><div class="icon">&#128197;</div><div class="val">${gameState.currentRound} / ${gameState.totalRounds}</div><div class="lbl">Round</div></div>
+            <div class="cs-stat-card"><div class="icon">&#127942;</div><div class="val">${positionLabel}</div><div class="lbl">League Position</div></div>
+            <div class="cs-stat-card"><div class="icon">&#11035;</div><div class="val">${tableEntry?.points ?? 0}</div><div class="lbl">Points</div></div>
+        </div>
+        <div class="cs-club-columns">
+            <div class="cs-note-card">
+                <div class="cs-section-label">Next fixture</div>
+                <div class="cs-note-title">${nextFixture ? `Round ${nextFixture.round} vs ${escapeHtml(nextOpponent || '?')}` : 'No remaining fixture filed'}</div>
+                <div class="cs-note-text">${nextFixture ? `${Number(nextFixture.homeTeamId) === Number(t.id) ? 'Home match' : 'Away trip'}: ${escapeHtml(nextFixture.homeTeamName)} vs ${escapeHtml(nextFixture.awayTeamName)}.` : 'The schedule office has no further active fixture on file for the moment.'}</div>
+            </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Tactical sheet</div>
+                <div class="cs-note-title">${escapeHtml(tactics.formation || '4-4-2')} &middot; ${escapeHtml(tactics.style || 'BALANCED')}</div>
+                <div class="cs-note-text">Recent form</div>
+                <div class="cs-form-strip">
+                    ${form.length ? form.map(item => `<span class="cs-form-pill ${item.code === 'W' ? 'win' : item.code === 'D' ? 'draw' : 'loss'}" title="Round ${item.round}: ${item.goalsFor}-${item.goalsAgainst}">${item.code}</span>`).join('') : '<span class="cs-form-pill empty">No results yet</span>'}
+                </div>
+            </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Latest result</div>
+                <div class="cs-note-title">${lastMatch ? `${escapeHtml(lastMatch.homeTeamName)} ${lastMatch.homeGoals}:${lastMatch.awayGoals} ${escapeHtml(lastMatch.awayTeamName)}` : 'No result on file yet'}</div>
+                <div class="cs-note-text">${lastMatch ? `Round ${lastMatch.round} finished as a ${lastOutcome?.code === 'W' ? 'win' : lastOutcome?.code === 'D' ? 'draw' : 'loss'} for ${escapeHtml(t.name)}.` : 'Open the inbox or play the next round to start building the season story.'}</div>
+            </div>
+        </div>
+        <div class="cs-note-card cs-club-milestones">
+            <div class="cs-section-label">Milestone board</div>
+            <div class="cs-note-title">Season markers</div>
+            <div class="cs-note-text">Top performers, standout scorelines and crowd mood are updated as the save rolls forward.</div>
+            <div class="cs-club-milestones-grid" id="cs-club-milestones">${buildClubMilestonesGridHtml(buildClubMilestoneSnapshot())}</div>
         </div>`;
+    hydrateClubMilestones();
 }
 
 // --- Inbox (click opens modal) ---
 function renderInbox(el) {
     const inbox = gameState?.inbox || [];
+    const counts = inbox.reduce((acc, msg) => {
+        const key = msg?.type || 'message';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {});
+    const summary = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([type, count]) => `<span class="cs-pill-summary"><span class="cs-inbox-badge ${type}">${type.toUpperCase()}</span>${count}</span>`)
+        .join('');
     let html = `<h2>Inbox (${inbox.length})</h2>`;
+    html += `<div class="cs-inbox-toolbar"><div class="cs-note-text">Latest items from the chairman, scouting desk and match-day press box.</div><div class="cs-pill-wrap">${summary || '<span class="cs-note-text">No messages logged.</span>'}</div></div>`;
     if (inbox.length === 0) { html += '<p style="color:#aaa;">No messages.</p>'; }
     else {
         inbox.slice().reverse().forEach((msg, idx) => {
             const realIdx = inbox.length - 1 - idx;
             html += `<div class="cs-inbox-item cs-clickable" onclick="tifoOpenInbox(${realIdx})">
-                <span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>
-                ${truncate(msg.text, 80)}
-                <div style="font-size:0.8em; color:#666; margin-top:4px;">${msg.timestamp || ''}</div>
+                <div class="cs-inbox-topline">
+                    <span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>
+                    <span class="cs-inbox-time">${escapeHtml(msg.timestamp || '')}</span>
+                </div>
+                <div class="cs-inbox-subject">${escapeHtml(getInboxHeadline(msg))}</div>
+                <div class="cs-inbox-preview">${escapeHtml(getInboxPreview(msg))}</div>
             </div>`;
         });
     }
@@ -296,18 +684,24 @@ async function openInboxMessage(index) {
         const lines = (msg.text || "").split('\n').filter(Boolean);
         const header = lines.shift() || "International update";
         const rows = lines.length
-            ? lines.map(line => `<div class="cs-match-card" style="margin-bottom:8px;"><div class="cs-match-teams">${escapeHtml(line)}</div></div>`).join("")
+            ? lines.map(line => `<div class="cs-match-card cs-message-card"><div class="cs-match-teams">${injectEntityLinks(line)}</div></div>`).join("")
             : `<p style="color:#aaa;">No fixtures in this update.</p>`;
         showModal(badgeHtml + ' Message', `
-            <div style="margin-bottom:10px; font-weight:700; color:#d7f3ff;">${escapeHtml(header)}</div>
-            <div>${rows}</div>
-            <div style="font-size:0.85em; color:#666; margin-top:12px;">${msg.timestamp || ''}</div>
+            <div class="cs-message-shell">
+                <div class="cs-message-headline">${escapeHtml(header)}</div>
+                <div>${rows}</div>
+                <div class="cs-message-timestamp">${escapeHtml(msg.timestamp || '')}</div>
+            </div>
         `);
         return;
     }
+    const bodyClass = (msg.type === 'report' || msg.type === 'round-report') ? 'cs-report-body' : 'cs-message-body';
     showModal(badgeHtml + ' Message', `
-        <p style="line-height:1.6;">${linkedText}</p>
-        <div style="font-size:0.85em; color:#666; margin-top:12px;">${msg.timestamp || ''}</div>
+        <div class="cs-message-shell">
+            <div class="cs-message-headline">${escapeHtml(getInboxHeadline(msg))}</div>
+            <div class="${bodyClass}">${linkedText}</div>
+            <div class="cs-message-timestamp">${escapeHtml(msg.timestamp || '')}</div>
+        </div>
     `);
 }
 
@@ -617,24 +1011,45 @@ function renderMatchDetailFull(match, backFn) {
     const homeTeamId = match.homeTeamId;
     const awayTeamId = match.awayTeamId;
     const leagueName = getLeagueDisplayName();
+    const motm = findManOfTheMatch(match);
+    const resultTone = match.homeGoals === match.awayGoals ? 'Drawn contest' : (match.homeGoals > match.awayGoals ? `${homeName} win` : `${awayName} win`);
+    const reportReady = Boolean(match.report || match.summary);
 
     let html = `<div class="manager-card">
         <button class="big-button" onclick="window._tifoMatchBack()" style="margin-bottom:16px;">Back</button>
-        <h2 style="text-align:center;">
-            <span class="cs-clickable" onclick="tifoTeamDetail(${homeTeamId})">${homeName}</span>
-            ${match.homeGoals} : ${match.awayGoals}
-            <span class="cs-clickable" onclick="tifoTeamDetail(${awayTeamId})">${awayName}</span>
-        </h2>
-        <p style="text-align:center;color:#aaa;">
-            <span class="cs-clickable" onclick="tifoNav('leagueTable')">${leagueName}</span>
-            &middot;
-            <span class="cs-clickable" onclick="tifoNav('schedule')">Round ${match.round}</span>
-        </p>
+        <div class="cs-match-header-card">
+            <div class="cs-section-label">Match day file</div>
+            <div class="cs-match-topline">
+                <span class="cs-clickable" onclick="tifoNav('leagueTable')">${leagueName}</span>
+                &middot;
+                <span class="cs-clickable" onclick="tifoNav('schedule')">Round ${match.round}</span>
+                &middot; ${resultTone}
+            </div>
+            <div class="cs-match-scoreboard">
+                <div class="cs-match-side">
+                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${homeTeamId})">${homeName}</span></div>
+                    <div class="cs-match-side-label">Home</div>
+                </div>
+                <div class="cs-match-score-core">
+                    <div class="cs-match-big-score">${match.homeGoals} : ${match.awayGoals}</div>
+                    <div class="cs-match-mini-note">${reportReady ? 'Detailed report filed' : 'Result recorded in the club ledger'}</div>
+                </div>
+                <div class="cs-match-side">
+                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${awayTeamId})">${awayName}</span></div>
+                    <div class="cs-match-side-label">Away</div>
+                </div>
+            </div>
+            <div class="cs-match-meta-row">
+                <span>${motm ? `Man of the Match: ${escapeHtml(motm.playerName)} (${Number(motm.rating || 0).toFixed(1)})` : 'Man of the Match: not available'}</span>
+                <span>${(match.events || []).length} events logged</span>
+            </div>
+        </div>
 
         <div class="cs-tabs">
-            <button class="cs-tab-btn active" onclick="tifoMatchTab('lineups')">Lineups</button>
-            <button class="cs-tab-btn" onclick="tifoMatchTab('goals')">Goals</button>
-            <button class="cs-tab-btn" onclick="tifoMatchTab('stats')">Stats</button>
+            <button class="cs-tab-btn active" data-tab="lineups" onclick="tifoMatchTab('lineups')">Lineups</button>
+            <button class="cs-tab-btn" data-tab="events" onclick="tifoMatchTab('events')">Events</button>
+            <button class="cs-tab-btn" data-tab="stats" onclick="tifoMatchTab('stats')">Stats</button>
+            <button class="cs-tab-btn" data-tab="report" onclick="tifoMatchTab('report')">Report</button>
         </div>
         <div id="matchTabContent"></div>
     </div>`;
@@ -652,14 +1067,15 @@ function showMatchTab(tab) {
     if (!container) return;
 
     document.querySelectorAll('.cs-tab-btn').forEach(btn => {
-        const label = tab === 'lineups' ? 'Lineups' : tab === 'goals' ? 'Goals' : 'Stats';
-        btn.classList.toggle('active', btn.textContent === label);
+        btn.classList.toggle('active', btn.dataset.tab === tab);
     });
 
     switch (tab) {
         case 'lineups': container.innerHTML = buildLineupsHtml(match); break;
-        case 'goals': container.innerHTML = buildGoalsHtml(match); break;
+        case 'events': container.innerHTML = buildGoalsHtml(match); break;
         case 'stats': container.innerHTML = buildStatsHtml(match); break;
+        case 'report': container.innerHTML = buildReportHtml(match); break;
+        default: container.innerHTML = buildLineupsHtml(match); break;
     }
 }
 
@@ -805,37 +1221,71 @@ function buildLineupsHtml(match) {
 }
 
 function buildGoalsHtml(match) {
-    const keyEvents = (match.events || []).filter(e => ['GOAL', 'SUBSTITUTION', 'INJURY'].includes(e.eventType));
+    const keyEvents = (match.events || []).filter(e => ['GOAL', 'PENALTY', 'SUBSTITUTION', 'INJURY', 'VAR_REVIEW', 'YELLOW_CARD', 'RED_CARD'].includes(e.eventType));
     if (keyEvents.length === 0) return '<p style="color:#aaa;">No key events.</p>';
-    let html = '';
+    let html = '<div class="cs-event-list">';
     keyEvents.sort((a, b) => a.minute - b.minute).forEach(g => {
-        if (g.eventType === 'SUBSTITUTION') {
-            const teamId = g.teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId;
-            html += `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-                <strong>${g.minute}'</strong> &#128257; ${g.playerOutName || '?'} &rarr; ${g.playerInName || '?'}
-                <span style="color:#888;">(<span class="cs-clickable" onclick="tifoTeamDetail(${teamId})">${g.teamName}</span>)</span>
-            </div>`;
-            return;
+        const teamLink = renderMatchTeamLink(match, g.teamName);
+        const playerLink = renderMatchPlayerLink(match, g.teamName, g.playerName);
+        const outLink = renderMatchPlayerLink(match, g.teamName, g.playerOutName);
+        const inLink = renderMatchPlayerLink(match, g.teamName, g.playerInName);
+        const assistLink = renderMatchPlayerLink(match, g.teamName, g.assistName);
+        const icon = g.eventType === 'GOAL' ? '&#9917;' : g.eventType === 'PENALTY' ? '&#127919;' : g.eventType === 'SUBSTITUTION' ? '&#128257;' : g.eventType === 'INJURY' ? '&#10060;' : g.eventType === 'RED_CARD' ? '&#128997;' : g.eventType === 'YELLOW_CARD' ? '&#128998;' : '&#128269;';
+        let headline = `${teamLink}`;
+        if (g.eventType === 'GOAL') {
+            headline = `${playerLink} scores for ${teamLink}${g.assistName ? ` <span class="cs-event-extra">Assist: ${assistLink}</span>` : ''}`;
+        } else if (g.eventType === 'PENALTY') {
+            headline = `${playerLink} ${g.penaltyScored ? 'converts' : 'misses'} the penalty for ${teamLink}`;
+        } else if (g.eventType === 'SUBSTITUTION') {
+            headline = `${outLink} off, ${inLink} on <span class="cs-event-extra">(${teamLink})</span>`;
+        } else if (g.eventType === 'INJURY') {
+            headline = `Injury concern for ${playerLink} <span class="cs-event-extra">(${teamLink})</span>`;
+        } else if (g.eventType === 'YELLOW_CARD') {
+            headline = `Yellow card for ${playerLink} <span class="cs-event-extra">(${teamLink})</span>`;
+        } else if (g.eventType === 'RED_CARD') {
+            headline = `Red card for ${playerLink} <span class="cs-event-extra">(${teamLink})</span>`;
+        } else if (g.eventType === 'VAR_REVIEW') {
+            headline = `VAR review involving ${teamLink}`;
         }
-        if (g.eventType === 'INJURY') {
-            const teamId = g.teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId;
-            html += `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-                <strong>${g.minute}'</strong> &#10060; Injury: ${g.playerName || '?'}
-                <span style="color:#888;">(<span class="cs-clickable" onclick="tifoTeamDetail(${teamId})">${g.teamName}</span>)</span>
-            </div>`;
-            return;
-        }
-        const scorerId = findMatchPlayerIdByName(match, g.teamName, g.playerName);
-        const scorerTeamId = g.teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId;
-        const assistId = findMatchPlayerIdByName(match, g.teamName, g.assistName);
-        html += `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-            <strong>${g.minute}'</strong> &#9917; ${scorerId ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${scorerId}, ${scorerTeamId})">${g.playerName}</span>` : (g.playerName || '?')}
-            <span style="color:#888;">(<span class="cs-clickable" onclick="tifoTeamDetail(${scorerTeamId})">${g.teamName}</span>)</span>
-            ${g.assistName ? `<span style="color:#666;"> assist: ${assistId ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${assistId}, ${scorerTeamId})">${g.assistName}</span>` : g.assistName}</span>` : ''}
-            <span style="float:right;color:#aaa;font-weight:bold;">${g.scoreAfterGoal || ''}</span>
+        html += `<div class="cs-event-row">
+            <div class="cs-event-minute">${g.minute}'</div>
+            <div class="cs-event-icon">${icon}</div>
+            <div class="cs-event-body">
+                <div class="cs-event-title">${headline}</div>
+                <div class="cs-event-extra">${escapeHtml(g.description || describeEventShort(g))}</div>
+            </div>
+            <div class="cs-event-score">${escapeHtml(g.scoreAfterGoal || '')}</div>
         </div>`;
     });
-    return html;
+    return html + '</div>';
+}
+
+function getMatchPlayerTeamMeta(match, playerName) {
+    if (!playerName) return null;
+    if ((match?.homePlayerStats || []).some(p => p.playerName === playerName)) {
+        return { teamId: match.homeTeamId, teamName: match.homeTeamName };
+    }
+    if ((match?.awayPlayerStats || []).some(p => p.playerName === playerName)) {
+        return { teamId: match.awayTeamId, teamName: match.awayTeamName };
+    }
+    return null;
+}
+
+function renderMatchTeamLink(match, teamName) {
+    const teamId = teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId;
+    const safeName = escapeHtml(teamName || '?');
+    return teamId ? `<span class="cs-clickable" onclick="tifoTeamDetail(${teamId})">${safeName}</span>` : safeName;
+}
+
+function renderMatchPlayerLink(match, teamName, playerName) {
+    const safeName = escapeHtml(playerName || '?');
+    if (!playerName) return safeName;
+    const meta = getMatchPlayerTeamMeta(match, playerName)
+        || { teamId: teamName === match.homeTeamName ? match.homeTeamId : match.awayTeamId };
+    const playerId = findMatchPlayerIdByName(match, teamName, playerName);
+    return playerId && meta?.teamId
+        ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${playerId}, ${meta.teamId})">${safeName}</span>`
+        : safeName;
 }
 
 function findMatchPlayerIdByName(match, teamName, playerName) {
@@ -850,18 +1300,50 @@ function buildStatsHtml(match) {
     const homeName = match.homeTeamName;
     const awayName = match.awayTeamName;
     const countFor = (type, team) => events.filter(e => e.eventType === type && e.teamName === team).length;
+    const combinedCountFor = (types, team) => types.reduce((sum, type) => sum + countFor(type, team), 0);
+    const homeControlScore = combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName) * 2 + countFor('CORNER', homeName) + countFor('FREE_KICK', homeName);
+    const awayControlScore = combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName) * 2 + countFor('CORNER', awayName) + countFor('FREE_KICK', awayName);
+    const totalControl = homeControlScore + awayControlScore;
+    const homeControl = totalControl === 0 ? 50 : Math.round((homeControlScore * 100) / totalControl);
+    const awayControl = 100 - homeControl;
 
     return `<table class="cs-table">
         <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${homeName}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${awayName}</span></th></tr></thead>
         <tbody>
-            <tr><td>Sutevi u okvir</td><td>${countFor('SHOT_ON_TARGET', homeName)}</td><td>${countFor('SHOT_ON_TARGET', awayName)}</td></tr>
-            <tr><td>Sutevi van okvira</td><td>${countFor('SHOT_OFF_TARGET', homeName)}</td><td>${countFor('SHOT_OFF_TARGET', awayName)}</td></tr>
-            <tr><td>Korneri</td><td>${countFor('CORNER', homeName)}</td><td>${countFor('CORNER', awayName)}</td></tr>
-            <tr><td>Zuti kartoni</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', homeName)}</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', awayName)}</td></tr>
-            <tr><td>Crveni kartoni</td><td style="color:#f44336;">${countFor('RED_CARD', homeName)}</td><td style="color:#f44336;">${countFor('RED_CARD', awayName)}</td></tr>
-            <tr><td>Penali</td><td>${countFor('PENALTY', homeName)}</td><td>${countFor('PENALTY', awayName)}</td></tr>
+            <tr><td>Goals</td><td>${match.homeGoals}</td><td>${match.awayGoals}</td></tr>
+            <tr><td>Total shots</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName)}</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName)}</td></tr>
+            <tr><td>Shots on target</td><td>${countFor('SHOT_ON_TARGET', homeName)}</td><td>${countFor('SHOT_ON_TARGET', awayName)}</td></tr>
+            <tr><td>Shots off target</td><td>${countFor('SHOT_OFF_TARGET', homeName)}</td><td>${countFor('SHOT_OFF_TARGET', awayName)}</td></tr>
+            <tr><td>Corners</td><td>${countFor('CORNER', homeName)}</td><td>${countFor('CORNER', awayName)}</td></tr>
+            <tr><td>Free kicks</td><td>${countFor('FREE_KICK', homeName)}</td><td>${countFor('FREE_KICK', awayName)}</td></tr>
+            <tr><td>Offsides</td><td>${countFor('OFFSIDE', homeName)}</td><td>${countFor('OFFSIDE', awayName)}</td></tr>
+            <tr><td>Fouls</td><td>${countFor('FOUL', homeName)}</td><td>${countFor('FOUL', awayName)}</td></tr>
+            <tr><td>Yellow cards</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', homeName)}</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', awayName)}</td></tr>
+            <tr><td>Red cards</td><td style="color:#f44336;">${countFor('RED_CARD', homeName)}</td><td style="color:#f44336;">${countFor('RED_CARD', awayName)}</td></tr>
+            <tr><td>Penalties</td><td>${countFor('PENALTY', homeName)}</td><td>${countFor('PENALTY', awayName)}</td></tr>
+            <tr><td>Control estimate</td><td>${homeControl}%</td><td>${awayControl}%</td></tr>
         </tbody>
     </table>`;
+}
+
+function buildReportHtml(match) {
+    const reportText = match.report || match.summary || 'No full report available for this match.';
+    const linkedReport = injectEntityLinks(reportText);
+    const motm = findManOfTheMatch(match);
+    const motmMeta = motm ? getMatchPlayerTeamMeta(match, motm.playerName) : null;
+    const motmId = motm && motmMeta ? findMatchPlayerIdByName(match, motmMeta.teamName, motm.playerName) : null;
+    const motmHtml = motm
+        ? (motmId && motmMeta?.teamId
+            ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${motmId}, ${motmMeta.teamId})">${escapeHtml(motm.playerName)}</span> (${Number(motm.rating || 0).toFixed(1)})`
+            : `${escapeHtml(motm.playerName)} (${Number(motm.rating || 0).toFixed(1)})`)
+        : 'Not available';
+    return `<div class="cs-report-shell">
+        <div class="cs-report-summary">
+            <div><strong>Match file:</strong> ${escapeHtml(match.homeTeamName)} ${match.homeGoals}:${match.awayGoals} ${escapeHtml(match.awayTeamName)}</div>
+            <div><strong>Standout:</strong> ${motmHtml}</div>
+        </div>
+        <div class="cs-report-body">${linkedReport}</div>
+    </div>`;
 }
 
 // --- Tactics ---
@@ -871,7 +1353,7 @@ function renderTactics(el) {
     const roster = gameState?.roster || [];
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
     const formations = ['4-4-2', '4-3-3', '4-2-3-1', '4-1-4-1', '3-5-2', '3-4-3', '5-3-2', '5-4-1', '4-5-1'];
-    const styles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER', 'POSSESSION', 'HIGH_PRESS', 'DIRECT'];
+    const styles = ['BALANCED', 'ATTACKING', 'DEFENSIVE', 'COUNTER'];
 
     const formationToSlots = (formation) => {
         const parts = String(formation || '4-4-2').split('-').map(v => Number(v) || 0);
@@ -887,7 +1369,7 @@ function renderTactics(el) {
 
     const state = {
         formation: tactics.formation || '4-4-2',
-        style: tactics.style || 'BALANCED',
+        style: styles.includes(tactics.style) ? tactics.style : 'BALANCED',
         starterIds: Array.isArray(tactics.starterIds) ? tactics.starterIds.slice(0, 11).map(Number) : [],
         benchIds: Array.isArray(tactics.benchIds) ? tactics.benchIds.slice(0, 7).map(Number) : []
     };
@@ -1215,6 +1697,7 @@ async function nextRound() {
             if (stateRes && stateRes.ok) {
                 gameState = await stateRes.json();
             }
+            rebuildRoundResultsFromSchedule();
             rebuildTeamIndex();
             csPlayerIndexLoaded = false;
             ensurePlayerIndexLoaded();
@@ -1245,6 +1728,7 @@ async function nextRound() {
         const roundNum = data.round || gameState.currentRound;
         if (data.allResults) {
             allRoundResults[roundNum] = data.allResults;
+            applyRoundResultsToSchedule(data.allResults);
         }
 
         gameState.currentRound = roundNum + 1;
@@ -1396,7 +1880,10 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
     const render = (minute) => {
         const cards = states.map(s => `
             <div class="cs-live-card ${s.userMatch ? 'user-match' : ''}">
-                <div><strong>${s.homeTeamName}</strong> vs <strong>${s.awayTeamName}</strong></div>
+                <div class="cs-live-card-head">
+                    <div><strong>${s.homeTeamName}</strong> vs <strong>${s.awayTeamName}</strong></div>
+                    ${s.userMatch ? '<span class="cs-live-match-tag">Your match</span>' : ''}
+                </div>
                 <div class="cs-live-score ${s.pulse ? 'pulse' : ''}">${s.homeGoals} : ${s.awayGoals}</div>
             </div>
         `).join('');
@@ -1412,7 +1899,7 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
                 <h2>Live Scores - Round ${states[0]?.round ?? '?'}</h2>
                 <div style="color:#9a9a9a; margin-top:4px;">Minute ${Math.max(1, Math.min(90, minute))}</div>
                 <div class="cs-live-grid">${cards}</div>
-                <div class="cs-live-feed">${feedHtml || '<div class="cs-live-feed-item">No major incidents yet.</div>'}</div>
+                <div class="cs-live-feed">${feedHtml || '<div class="cs-live-feed-item">Press box note: the opening exchanges are still being weighed up.</div>'}</div>
             </div>`;
     };
 
@@ -1439,7 +1926,7 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
                     const assist = g.assistName ? ` (assist: ${g.assistName})` : '';
                     feed.push({
                         minute: g.minute,
-                        line: `${target.homeTeamName} ${target.homeGoals}:${target.awayGoals} ${target.awayTeamName} &mdash; ${g.teamName}: ${g.playerName || '?'}${assist}`
+                        line: `${target.userMatch ? '<span class="cs-live-tag">YOUR MATCH</span> ' : ''}${escapeHtml(target.homeTeamName)} ${target.homeGoals}:${target.awayGoals} ${escapeHtml(target.awayTeamName)} &mdash; GOAL for ${escapeHtml(g.teamName || '?')}: ${escapeHtml(g.playerName || '?')}${escapeHtml(assist)}`
                     });
                 }
                 timelineIdx++;

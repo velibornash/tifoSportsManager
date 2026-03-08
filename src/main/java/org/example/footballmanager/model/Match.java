@@ -48,6 +48,8 @@ public class Match {
     @ManyToOne(fetch = FetchType.LAZY)
     private Stadium stadium;
 
+    private Integer attendance;
+
     private boolean played;
     private boolean started;
     private String homeFormation;

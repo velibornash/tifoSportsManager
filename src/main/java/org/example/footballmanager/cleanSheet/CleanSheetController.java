@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -120,18 +121,20 @@ public class CleanSheetController {
     }
 
     private Map<String, Object> buildStateResponse(CleanSheetGameState state) {
-        return Map.ofEntries(
-                Map.entry("active", true),
-                Map.entry("userTeam", state.getUserTeam()),
-                Map.entry("roster", state.getRoster()),
-                Map.entry("leagueTable", state.getLeagueTable()),
-                Map.entry("leagueName", state.getLeagueName()),
-                Map.entry("tactics", state.getTactics()),
-                Map.entry("currentRound", state.getCurrentRound()),
-                Map.entry("totalRounds", state.getTotalRounds()),
-                Map.entry("seasonYear", state.getSeasonYear()),
-                Map.entry("inbox", state.getInbox()),
-                Map.entry("seasonHistory", state.getSeasonHistory())
-        );
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("active", true);
+        response.put("userTeam", state.getUserTeam());
+        response.put("roster", state.getRoster());
+        response.put("leagueTable", state.getLeagueTable());
+        response.put("leagueName", state.getLeagueName());
+        response.put("tactics", state.getTactics());
+        response.put("currentRound", state.getCurrentRound());
+        response.put("totalRounds", state.getTotalRounds());
+        response.put("seasonYear", state.getSeasonYear());
+        response.put("schedule", state.getSchedule());
+        response.put("matchHistory", state.getMatchHistory());
+        response.put("inbox", state.getInbox());
+        response.put("seasonHistory", state.getSeasonHistory());
+        return response;
     }
 }
