@@ -1,6 +1,6 @@
 ﻿// pages.js
 import { authFetch } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
@@ -150,7 +150,20 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     break;
 
                 case "formations":
+                case "tactics":
                     await loadFormations();
+                    break;
+
+                case "staff":
+                    await loadStaff();
+                    break;
+
+                case "finances":
+                    await loadFinances();
+                    break;
+
+                case "transfers":
+                    await loadTransfers();
                     break;
 
                 case "coaches":
@@ -309,6 +322,35 @@ import { createMatchesFeature } from './pages/features/matches.js';
     }
     function formatBudget(value) {
         return `EUR ${Number(value || 0).toLocaleString()}`;
+    }
+    function formatDateTimeLabel(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return escapeHtml(String(value));
+        return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    function buildCommunityPageShell({ currentPage, eyebrow, title, subtitle, stats = [], bodyHtml = '' }) {
+        const statHtml = stats.map(stat => `
+            <div><strong>${escapeHtml(String(stat.value ?? '-'))}</strong><span>${escapeHtml(stat.label || '')}</span></div>
+        `).join('');
+        return `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">${escapeHtml(eyebrow || 'Community')}</div>
+                            <h2>${escapeHtml(title || 'Community')}</h2>
+                            <p class="fm-subtle">${escapeHtml(subtitle || '')}</p>
+                        </div>
+                        ${buildCommunityActionsHtml(currentPage)}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        ${statHtml}
+                    </div>
+                </section>
+                ${bodyHtml}
+            </div>`;
     }
     const academyFeature = createAcademyFeature({
         authFetch,
@@ -1684,36 +1726,266 @@ import { createMatchesFeature } from './pages/features/matches.js';
 
         render();
     }
-    async function loadCoaches() {
-        console.log(`Loading coaches for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/teams/${currentUserTeamId}/coaches`);
-        console.log(`Response status: ${response.status}`);
-        const coaches = await response.json();
-
+    async function loadStaff() {
+        console.log(`Loading staff for ${currentUserTeamId}`);
+        const [staffRes, profileRes] = await Promise.all([
+            authFetch(`/demo/teams/${currentUserTeamId}/coaches`),
+            authFetch(`/demo/teams/${currentUserTeamId}/profile`)
+        ]);
+        const coaches = staffRes.ok ? await staffRes.json() : [];
+        const profile = profileRes.ok ? await profileRes.json() : {};
         const mainContent = document.getElementById("main-content");
 
-        let html = `<div class="manager-card">
-                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Coaches</h2>
-            <div class="manager-grid">`;
+        const uniqueRoles = [...new Set((coaches || []).map(coach => coach.role).filter(Boolean))];
+        const averageRatingValue = coaches.length
+            ? coaches.reduce((sum, coach) => sum + Number(coach.rating || 0), 0) / coaches.length
+            : null;
+        const averageRating = Number.isFinite(averageRatingValue) ? averageRatingValue.toFixed(1) : '-';
+        const topCoach = [...coaches].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0))[0];
 
-        coaches.forEach(c => {
-            html += `
-                <div class="manager-player-card">
-                    <div class="player-name">${c.name}</div>
-                    <div class="player-meta">${c.role}</div>
-                    <div class="player-rating">Rating ${c.rating}</div>
-                </div>`;
-        });
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Club staff</div>
+                            <h2>${escapeHtml(profile.name || 'Staff')}</h2>
+                            <p class="fm-subtle">Staff page now lives in the same club shell as the rest of the open-football-inspired team area.</p>
+                        </div>
+                        ${buildClubActionsHtml('staff')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${coaches.length}</strong><span>Staff members</span></div>
+                        <div><strong>${averageRating}</strong><span>Average rating</span></div>
+                        <div><strong>${uniqueRoles.length}</strong><span>Departments</span></div>
+                        <div><strong>${escapeHtml(topCoach?.name || '—')}</strong><span>Lead staffer</span></div>
+                    </div>
+                </section>
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Staff room</h3>
+                            <p class="fm-subtle">Role cards stay compact, with the same dark shell and spacing language as the rest of Club.</p>
+                        </div>
+                        <span class="fm-panel-action">${escapeHtml(uniqueRoles.join(' · ') || 'Staff')}</span>
+                    </div>
+                    ${coaches.length === 0 ? `<div class="fm-empty">No staff data available right now.</div>` : `
+                        <div class="manager-grid">
+                            ${coaches.map(coach => `
+                                <div class="manager-player-card">
+                                    <div class="player-name">${escapeHtml(coach.name || 'Unknown')}</div>
+                                    <div class="player-meta">${escapeHtml(coach.role || 'Staff')}</div>
+                                    <div class="player-rating">Rating ${Number(coach.rating || 0)}</div>
+                                </div>`).join('')}
+                        </div>`}
+                </section>
+            </div>`;
+    }
+    async function loadCoaches() {
+        return loadStaff();
+    }
+    async function loadFinances() {
+        console.log(`Loading finances for ${currentUserTeamId}`);
+        const [profileRes, playersRes] = await Promise.all([
+            authFetch(`/demo/teams/${currentUserTeamId}/profile`),
+            authFetch(`/teams/${currentUserTeamId}/players`)
+        ]);
+        const profile = profileRes.ok ? await profileRes.json() : {};
+        const players = playersRes.ok ? await playersRes.json() : [];
+        const mainContent = document.getElementById("main-content");
 
-        html += `</div></div>`;
-        mainContent.innerHTML = html;
+        const squadValue = players.reduce((sum, player) => sum + Number(player.value || 0), 0);
+        const squadSize = players.length;
+        const averageValue = squadSize ? squadValue / squadSize : 0;
+        const topAssets = [...players]
+            .sort((a, b) => Number(b.value || 0) - Number(a.value || 0))
+            .slice(0, 5);
+        const topAsset = topAssets[0] || null;
+        const injuredCount = players.filter(player => player.injured).length;
+
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Club finances</div>
+                            <h2>${escapeHtml(profile.name || 'Finances')}</h2>
+                            <p class="fm-subtle">Budget and squad asset view are now presented in the same wide club shell, using the data already available in the app.</p>
+                        </div>
+                        ${buildClubActionsHtml('finances')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${escapeHtml(formatBudget(profile.budget))}</strong><span>Budget</span></div>
+                        <div><strong>${escapeHtml(formatBudget(Math.round(squadValue)))}</strong><span>Squad value</span></div>
+                        <div><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong><span>Avg asset</span></div>
+                        <div><strong>${escapeHtml(topAsset?.name || '—')}</strong><span>Top asset</span></div>
+                    </div>
+                </section>
+                <div class="fm-grid-top fm-grid-top--club-profile">
+                    <section class="fm-panel club-profile-detail-card">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Financial overview</h3>
+                                <p class="fm-subtle">This version reads from club budget plus current player valuations, so the page is already useful without a dedicated finance backend.</p>
+                            </div>
+                            <span class="fm-panel-action">Snapshot</span>
+                        </div>
+                        <div class="club-profile-detail-list">
+                            <div class="club-profile-detail-row"><span>Available budget</span><strong>${escapeHtml(formatBudget(profile.budget))}</strong></div>
+                            <div class="club-profile-detail-row"><span>Squad market value</span><strong>${escapeHtml(formatBudget(Math.round(squadValue)))}</strong></div>
+                            <div class="club-profile-detail-row"><span>Average player value</span><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong></div>
+                            <div class="club-profile-detail-row"><span>Highest-value player</span><strong>${escapeHtml(topAsset ? `${topAsset.name} (${formatBudget(Math.round(topAsset.value || 0))})` : 'N/A')}</strong></div>
+                            <div class="club-profile-detail-row"><span>Squad size</span><strong>${squadSize}</strong></div>
+                            <div class="club-profile-detail-row"><span>Unavailable players</span><strong>${injuredCount}</strong></div>
+                        </div>
+                    </section>
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Value leaders</h3>
+                                <p class="fm-subtle">Top assets by current player value.</p>
+                            </div>
+                            <span class="fm-panel-action">Top 5</span>
+                        </div>
+                        ${topAssets.length === 0 ? `<div class="fm-empty">No squad valuation data available.</div>` : `
+                            <div class="fm-squad-wrap">
+                                <table class="fm-squad">
+                                    <thead>
+                                        <tr>
+                                            <th class="sq-name">Player</th>
+                                            <th>Pos</th>
+                                            <th class="sq-age">Age</th>
+                                            <th class="sq-rating">OVR</th>
+                                            <th>Form</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${topAssets.map(player => `
+                                            <tr class="fm-squad-row">
+                                                <td class="sq-name">${escapeHtml(player.name || 'Unknown')}</td>
+                                                <td>${escapeHtml(player.position || '-')}</td>
+                                                <td class="sq-age">${player.age ?? '-'}</td>
+                                                <td class="sq-rating">${player.overall ?? '-'}</td>
+                                                <td>${Number.isFinite(Number(player.form)) ? Number(player.form).toFixed(1) : '-'}</td>
+                                                <td>${escapeHtml(formatBudget(Math.round(player.value || 0)))}</td>
+                                            </tr>`).join('')}
+                                    </tbody>
+                                </table>
+                            </div>`}
+                    </section>
+                </div>
+            </div>`;
+    }
+    async function loadTransfers() {
+        console.log(`Loading transfers for ${currentUserTeamId}`);
+        const response = await authFetch(`/transfers`);
+        const transfers = response.ok ? await response.json() : [];
+        const mainContent = document.getElementById("main-content");
+        const orderedTransfers = [...transfers].sort((a, b) => new Date(b.listedAt || 0) - new Date(a.listedAt || 0));
+        const averageAsking = orderedTransfers.length
+            ? orderedTransfers.reduce((sum, transfer) => sum + Number(transfer.askingPrice || 0), 0) / orderedTransfers.length
+            : 0;
+        const highestAsking = orderedTransfers.reduce((max, transfer) => Math.max(max, Number(transfer.askingPrice || 0)), 0);
+        const interestCount = orderedTransfers.reduce((sum, transfer) => {
+            const interestedTeams = Array.isArray(transfer.interestedTeams)
+                ? transfer.interestedTeams
+                : Object.values(transfer.interestedTeams || {});
+            return sum + interestedTeams.length;
+        }, 0);
+
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Transfer centre</div>
+                            <h2>Transfers</h2>
+                            <p class="fm-subtle">Same club shell, now with a live transfer board fed by the current backend transfer list endpoint.</p>
+                        </div>
+                        ${buildClubActionsHtml('transfers')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${orderedTransfers.length}</strong><span>Listed players</span></div>
+                        <div><strong>${escapeHtml(formatBudget(Math.round(averageAsking)))}</strong><span>Avg asking</span></div>
+                        <div><strong>${escapeHtml(formatBudget(Math.round(highestAsking)))}</strong><span>Top asking</span></div>
+                        <div><strong>${interestCount}</strong><span>Interested clubs</span></div>
+                    </div>
+                </section>
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Transfer market board</h3>
+                            <p class="fm-subtle">Read-only for now, with listed time, asking price, and interest already visible.</p>
+                        </div>
+                        <span class="fm-panel-action">Market</span>
+                    </div>
+                    ${orderedTransfers.length === 0 ? `<div class="fm-empty">No players are currently listed for transfer.</div>` : `
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad">
+                                <thead>
+                                    <tr>
+                                        <th class="sq-name">Player</th>
+                                        <th>Pos</th>
+                                        <th class="sq-age">Age</th>
+                                        <th class="sq-rating">Rating</th>
+                                        <th>Value</th>
+                                        <th>Asking</th>
+                                        <th>Interest</th>
+                                        <th>Listed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${orderedTransfers.map(transfer => {
+                                        const player = transfer.player || {};
+                                        const interestedTeams = Array.isArray(transfer.interestedTeams)
+                                            ? transfer.interestedTeams
+                                            : Object.values(transfer.interestedTeams || {});
+                                        return `
+                                            <tr class="fm-squad-row">
+                                                <td class="sq-name">${escapeHtml(player.name || 'Unknown')}</td>
+                                                <td>${escapeHtml(player.position || '-')}</td>
+                                                <td class="sq-age">${player.age ?? '-'}</td>
+                                                <td class="sq-rating">${player.rating ?? '-'}</td>
+                                                <td>${escapeHtml(formatBudget(Math.round(player.playerValue ?? player.value ?? 0)))}</td>
+                                                <td>${escapeHtml(formatBudget(Math.round(transfer.askingPrice || 0)))}</td>
+                                                <td>${escapeHtml(interestedTeams.length ? interestedTeams.join(', ') : 'No interest yet')}</td>
+                                                <td>${escapeHtml(formatDateTimeLabel(transfer.listedAt))}</td>
+                                            </tr>`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>`}
+                </section>
+            </div>`;
     }
     async function loadTrainingReports() {
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><h2>Training Setup</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Training ground</div>
+                                <h2>Training Setup</h2>
+                                <p class="fm-subtle">Could not load player data for the training setup page.</p>
+                            </div>
+                            ${buildTrainingActionsHtml('trainingSetup')}
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid">
+                            <div><strong>0</strong><span>Players</span></div>
+                            <div><strong>0</strong><span>Advanced slots</span></div>
+                            <div><strong>0</strong><span>Formation pool</span></div>
+                            <div><strong>4</strong><span>Training groups</span></div>
+                        </div>
+                    </section>
+                </div>`;
             return;
         }
         const players = await playersRes.json();
@@ -1903,12 +2175,33 @@ import { createMatchesFeature } from './pages/features/matches.js';
 
         async function render() {
             let html = `
-            <div class="manager-card training-setup-card">
-                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                <h2>Training Setup</h2>
-                <p class="training-note">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
-
-                <div class="training-grid training-grid-setup">
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Training ground</div>
+                            <h2>Training Setup</h2>
+                            <p class="fm-subtle">Advanced and formation training stay intact, but the page now opens directly with the same action-row language as Club.</p>
+                        </div>
+                        ${buildTrainingActionsHtml('trainingSetup')}
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${players.length}</strong><span>Players</span></div>
+                        <div><strong>${state.advanced.length}</strong><span>Advanced slots</span></div>
+                        <div><strong>${state.general.length}</strong><span>Formation pool</span></div>
+                        <div><strong>${GROUPS.length}</strong><span>Training groups</span></div>
+                    </div>
+                </section>
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Weekly plan</h3>
+                            <p class="fm-subtle">Advanced + Formation training. Wingers are under MID group. Stamina is automatic.</p>
+                        </div>
+                        <span class="fm-panel-action">Setup</span>
+                    </div>
+                    <div class="training-grid training-grid-setup">
                     <div class="training-block training-block-groups">
                         <h3>Formation Training Groups</h3>
                         <div class="training-groups">`;
@@ -1995,9 +2288,10 @@ import { createMatchesFeature } from './pages/features/matches.js';
                     <button id="run-training-week" class="big-button" style="margin-left:10px; background:#145d39;">Run Weekly Training</button>
                 </div>
 
-                <div class="training-note" style="margin-top:12px;">
-                    Weekly report history is available in <strong>Training > Training Reports</strong>.
-                </div>
+                    <div class="training-note" style="margin-top:12px;">
+                        Weekly report history is available in <strong>Training Reports</strong>.
+                    </div>
+                </section>
             </div>`;
 
             mainContent.innerHTML = html;
@@ -2118,7 +2412,26 @@ import { createMatchesFeature } from './pages/features/matches.js';
         const mainContent = document.getElementById("main-content");
         const playersRes = await authFetch(`/teams/${currentUserTeamId}/players`);
         if (!playersRes.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><h2>Training Reports</h2><p>Could not load players.</p></div>`;
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Training reports</div>
+                                <h2>Training Reports</h2>
+                                <p class="fm-subtle">Could not load player data for the reports page.</p>
+                            </div>
+                            ${buildTrainingActionsHtml('trainingReports')}
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid">
+                            <div><strong>0</strong><span>Weeks</span></div>
+                            <div><strong>0</strong><span>Players</span></div>
+                            <div><strong>0</strong><span>Reports</span></div>
+                            <div><strong>0</strong><span>Graphs</span></div>
+                        </div>
+                    </section>
+                </div>`;
             return;
         }
         const players = await playersRes.json();
@@ -2286,11 +2599,14 @@ import { createMatchesFeature } from './pages/features/matches.js';
                                 <h2>${weekShort(report.seasonNumber, report.weekNumber)}</h2>
                                 <p class="fm-subtle">Week list is hidden while this squad-style report is open. Click any player row for the detailed progress view.</p>
                             </div>
-                            <div class="training-report-actions">
+                            <div>
+                                ${buildTrainingActionsHtml('trainingReports')}
+                            </div>
+                        </div>
+                        <div class="training-report-actions">
                                 <span class="fm-player-chip secondary">${playerCount} players</span>
                                 <span class="fm-player-chip secondary">${advancedCount} ADV</span>
                                 <span class="fm-player-chip secondary">Focus skill accented</span>
-                            </div>
                         </div>
                     </section>
                     <section class="fm-panel">
@@ -2339,6 +2655,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
             if (points.length === 0) {
                 return `${headerHtml}
                     <section class="fm-panel">
+                        ${buildTrainingActionsHtml('trainingReports')}
+                    </section>
+                    <section class="fm-panel">
                         <div class="fm-empty">No graph data.</div>
                     </section>`;
             }
@@ -2377,6 +2696,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
             const weeks = [...weeksAsc].reverse();
             let html = `<div class="training-player-shell">
                 ${headerHtml}
+                <section class="fm-panel">
+                    ${buildTrainingActionsHtml('trainingReports')}
+                </section>
                 <section class="fm-panel training-player-detail">
                     <div class="fm-panel-head">
                         <h3>Weekly progression</h3>
@@ -2453,21 +2775,44 @@ import { createMatchesFeature } from './pages/features/matches.js';
                 mainContent.innerHTML = renderReportCards(selectedReport);
             } else {
                 mainContent.innerHTML = `
-                    <div class="manager-card training-setup-card">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                        <h2>Training Reports</h2>
-                        <p class="training-note">Click a week to open that training report. Purple marks the skill trained that week.</p>
-                        <div class="training-grid">
-                            <div class="training-block">
-                                <h3>Weeks</h3>
-                                <div class="training-week-list">
-                                    ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">${weekShort(s.seasonNumber, s.weekNumber)}</div>`).join("")}
+                    <div class="fm-page fm-page--club">
+                        <section class="fm-panel fm-club-hero">
+                            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                            <div class="fm-club-hero-main">
+                                <div>
+                                    <div class="fm-eyebrow">Training reports</div>
+                                    <h2>Training Reports</h2>
+                                    <p class="fm-subtle">Open any week to keep the current report/player drill-down flow, now wrapped in the same page shell as the rest of Training.</p>
+                                </div>
+                                ${buildTrainingActionsHtml('trainingReports')}
+                            </div>
+                            <div class="fm-medical-stat-grid team-summary-grid">
+                                <div><strong>${summaries.length}</strong><span>Weeks logged</span></div>
+                                <div><strong>${players.length}</strong><span>Players</span></div>
+                                <div><strong>${summaries[0] ? weekShort(summaries[0].seasonNumber, summaries[0].weekNumber) : '—'}</strong><span>Latest report</span></div>
+                                <div><strong>Live</strong><span>Click-through</span></div>
+                            </div>
+                        </section>
+                        <section class="fm-panel">
+                            <div class="fm-panel-head">
+                                <div>
+                                    <h3>Week archive</h3>
+                                    <p class="fm-subtle">Purple marks the skill trained that week. Click a week to open the detailed report.</p>
+                                </div>
+                                <span class="fm-panel-action">Archive</span>
+                            </div>
+                            <div class="training-grid">
+                                <div class="training-block">
+                                    <h3>Weeks</h3>
+                                    <div class="training-week-list">
+                                        ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">${weekShort(s.seasonNumber, s.weekNumber)}</div>`).join("")}
+                                    </div>
+                                </div>
+                                <div class="training-block">
+                                    <div class="training-empty">Select a week to open the report.</div>
                                 </div>
                             </div>
-                            <div class="training-block">
-                                ${renderReportCards(selectedReport)}
-                            </div>
-                        </div>
+                        </section>
                     </div>
                 `;
             }
@@ -2916,74 +3261,149 @@ import { createMatchesFeature } from './pages/features/matches.js';
         console.log(`Loading forum for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/forum/teams/${currentUserTeamId}`);
         console.log(`Response status: ${response.status}`);
-        const posts = await response.json();
+        const posts = response.ok ? await response.json() : [];
 
         const mainContent = document.getElementById("main-content");
+        const orderedPosts = [...posts].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        const uniqueAuthors = [...new Set(orderedPosts.map(post => post.author).filter(Boolean))];
+        const latestPost = orderedPosts[0] || null;
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Forum</h2>`;
-
-        posts.forEach(p => {
-            html += `
-                <div class="match-row">
-                    <span>${p.author}</span>
-                    <span>${p.title}</span>
-                    <span>${p.date}</span>
-                </div>`;
+        mainContent.innerHTML = buildCommunityPageShell({
+            currentPage: 'forum',
+            eyebrow: 'Community forum',
+            title: 'Forum',
+            subtitle: 'Community now opens directly to the forum page, with the old sidebar actions moved into the page action row.',
+            stats: [
+                { value: orderedPosts.length, label: 'Posts' },
+                { value: uniqueAuthors.length, label: 'Authors' },
+                { value: latestPost ? formatDateTimeLabel(latestPost.date) : '—', label: 'Latest post' },
+                { value: 'Open', label: 'Board status' }
+            ],
+            bodyHtml: `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Latest discussions</h3>
+                            <p class="fm-subtle">Forum threads stay simple for now, but they share the same shell and spacing as the rest of Community.</p>
+                        </div>
+                        <span class="fm-panel-action">${orderedPosts.length} topics</span>
+                    </div>
+                    ${orderedPosts.length === 0 ? `<div class="fm-empty">No forum posts available right now.</div>` : `
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad">
+                                <thead>
+                                    <tr>
+                                        <th>Author</th>
+                                        <th class="sq-name">Topic</th>
+                                        <th>Posted</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${orderedPosts.map(post => `
+                                        <tr class="fm-squad-row">
+                                            <td>${escapeHtml(post.author || 'Unknown')}</td>
+                                            <td class="sq-name">${escapeHtml(post.title || 'Untitled topic')}</td>
+                                            <td>${formatDateTimeLabel(post.date)}</td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>`}
+                </section>`
         });
-
-        html += `</div>`;
-        mainContent.innerHTML = html;
     }
     async function loadChat() {
         console.log(`Loading chat for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/chat/teams/${currentUserTeamId}`);
         console.log(`Response status: ${response.status}`);
-        const messages = await response.json();
+        const messages = response.ok ? await response.json() : [];
 
         const mainContent = document.getElementById("main-content");
+        const orderedMessages = [...messages].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        const uniqueUsers = [...new Set(orderedMessages.map(message => message.user).filter(Boolean))];
+        const latestMessage = orderedMessages[0] || null;
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Team Chat</h2>`;
-
-        messages.forEach(m => {
-            html += `
-                <div class="match-row">
-                    <span>${m.user}</span>
-                    <span>${m.message}</span>
-                </div>`;
+        mainContent.innerHTML = buildCommunityPageShell({
+            currentPage: 'chat',
+            eyebrow: 'Team chat',
+            title: 'Team Chat',
+            subtitle: 'Quick locker-room communication now lives inside the same Community shell instead of the old desktop sidebar flow.',
+            stats: [
+                { value: orderedMessages.length, label: 'Messages' },
+                { value: uniqueUsers.length, label: 'Active users' },
+                { value: latestMessage ? formatDateTimeLabel(latestMessage.date) : '—', label: 'Latest message' },
+                { value: 'Live', label: 'Room status' }
+            ],
+            bodyHtml: `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Locker-room feed</h3>
+                            <p class="fm-subtle">Compact chat history with the same dark panel language used across the rest of the app.</p>
+                        </div>
+                        <span class="fm-panel-action">${orderedMessages.length} lines</span>
+                    </div>
+                    ${orderedMessages.length === 0 ? `<div class="fm-empty">No chat messages available right now.</div>` : `
+                        <div class="club-profile-detail-list">
+                            ${orderedMessages.map(message => `
+                                <div class="club-profile-detail-row">
+                                    <span>${escapeHtml(message.user || 'Unknown')}</span>
+                                    <strong>${escapeHtml(message.message || '')}</strong>
+                                    <span>${formatDateTimeLabel(message.date)}</span>
+                                </div>`).join('')}
+                        </div>`}
+                </section>`
         });
-
-        html += `</div>`;
-        mainContent.innerHTML = html;
     }
     async function loadEvents() {
         console.log(`Loading events for ${currentUserTeamId}`);
         const response = await authFetch(`/demo/events/teams/${currentUserTeamId}`);
         console.log(`Response status: ${response.status}`);
-        const events = await response.json();
+        const events = response.ok ? await response.json() : [];
 
         const mainContent = document.getElementById("main-content");
+        const orderedEvents = [...events].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        const latestEvent = orderedEvents[0] || null;
 
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Events</h2>`;
-
-        events.forEach(e => {
-            html += `
-                <div class="match-row">
-                    <span>${e.title}</span>
-                    <span>${e.date}</span>
-                </div>`;
+        mainContent.innerHTML = buildCommunityPageShell({
+            currentPage: 'events',
+            eyebrow: 'Club events',
+            title: 'Events',
+            subtitle: 'Meetings, club happenings, and other community moments now use the same open-football-inspired shell as the rest of the section.',
+            stats: [
+                { value: orderedEvents.length, label: 'Events' },
+                { value: latestEvent ? (latestEvent.title || '—') : '—', label: 'Latest item' },
+                { value: latestEvent ? formatDateTimeLabel(latestEvent.date) : '—', label: 'Latest date' },
+                { value: 'Club', label: 'Scope' }
+            ],
+            bodyHtml: `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Calendar board</h3>
+                            <p class="fm-subtle">Same data as before, just reorganized into the new Community page layout.</p>
+                        </div>
+                        <span class="fm-panel-action">Board</span>
+                    </div>
+                    ${orderedEvents.length === 0 ? `<div class="fm-empty">No events available right now.</div>` : `
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad">
+                                <thead>
+                                    <tr>
+                                        <th class="sq-name">Event</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${orderedEvents.map(event => `
+                                        <tr class="fm-squad-row">
+                                            <td class="sq-name">${escapeHtml(event.title || 'Untitled event')}</td>
+                                            <td>${formatDateTimeLabel(event.date)}</td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>`}
+                </section>`
         });
-
-        html += `</div>`;
-        mainContent.innerHTML = html;
     }
     async function loadPlayerStats() {
         console.log(`Loading player stats for userTeamId ${currentUserTeamId}`);
@@ -3318,6 +3738,9 @@ import { createMatchesFeature } from './pages/features/matches.js';
     window.loadResults = loadResults;
     window.loadJuniors = loadJuniors;
     window.loadFormations = loadFormations;
+    window.loadStaff = loadStaff;
+    window.loadFinances = loadFinances;
+    window.loadTransfers = loadTransfers;
     window.loadCoaches = loadCoaches;
     window.loadTrainingSetup = loadTrainingReports;
     window.loadTrainingReports = loadTrainingReports;

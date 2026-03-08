@@ -115,22 +115,50 @@ export function bindSquadRowClicks(container, onClick, selector = '.league-playe
     });
 }
 
-export function buildClubActionsHtml(currentPage = '') {
-    const actionClass = (page, variant = 'secondary') => {
-        const base = variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
-        return currentPage === page ? `${base} is-current` : base;
-    };
-
+function buildActionRowHtml(actions, currentPage = '') {
     return `
         <div class="fm-club-actions">
-            <button type="button" class="${actionClass('firstTeam', 'primary')}" onclick="loadPage('firstTeam')">First Team</button>
-            <button type="button" class="${actionClass('schedule')}" onclick="loadPage('schedule')">Schedule</button>
-            <button type="button" class="${actionClass('profile')}" onclick="loadPage('profile')">Club Profile</button>
-            <button type="button" class="${actionClass('medicalCenter')}" onclick="loadPage('medicalCenter')">Medical Center</button>
-            <button type="button" class="${actionClass('juniors')}" onclick="loadPage('juniors')">Juniors</button>
-            <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Tactics</button>
-            <button type="button" class="${actionClass('formations')}" onclick="loadPage('formations')">Formations</button>
+            ${actions.map(action => {
+                const currentPages = Array.isArray(action.currentPages) && action.currentPages.length
+                    ? action.currentPages
+                    : [action.page];
+                const base = action.variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
+                const className = currentPages.includes(currentPage) ? `${base} is-current` : base;
+                const onclick = action.onclick || `loadPage('${action.page}')`;
+                return `<button type="button" class="${className}" onclick="${onclick}">${htmlEscape(action.label)}</button>`;
+            }).join('')}
         </div>`;
+}
+
+export function buildClubActionsHtml(currentPage = '') {
+    return buildActionRowHtml([
+        { label: 'First Team', page: 'firstTeam', variant: 'primary' },
+        { label: 'Schedule', page: 'schedule' },
+        { label: 'Club Profile', page: 'profile' },
+        { label: 'Medical Center', page: 'medicalCenter' },
+        { label: 'Juniors', page: 'juniors' },
+        { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
+        { label: 'Staff', page: 'staff' },
+        { label: 'Finances', page: 'finances' },
+        { label: 'Transfers', page: 'transfers' },
+    ], currentPage);
+}
+
+export function buildTrainingActionsHtml(currentPage = '') {
+    return buildActionRowHtml([
+        { label: 'Training Setup', page: 'trainingSetup', variant: 'primary', currentPages: ['training', 'trainingSetup'] },
+        { label: 'Training Reports', page: 'trainingReports' },
+    ], currentPage);
+}
+
+export function buildCommunityActionsHtml(currentPage = '') {
+    return buildActionRowHtml([
+        { label: 'Forum', page: 'forum', variant: 'primary' },
+        { label: 'Chat', page: 'chat' },
+        { label: 'Events', page: 'events' },
+        { label: 'Initialize DB (Demo)', onclick: 'initializeDatabase()' },
+        { label: 'Reset DB (Demo)', onclick: 'resetDatabase()' },
+    ], currentPage);
 }
 
 export function renderPlayersView(players, title, { loadPlayer, getImageFilename }) {

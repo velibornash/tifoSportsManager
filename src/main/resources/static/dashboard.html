@@ -13,9 +13,9 @@
 <div class="background"></div>
 <div class="top-menu">
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">&#127967; Club</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('trainingSidebar')">&#127947; Training</div>
+    <div class="menu-button desktop-only" onclick="loadPage('trainingSetup')">&#127947; Training</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('communitySidebar')">&#128172; Community</div>
+    <div class="menu-button desktop-only" onclick="loadPage('forum')">&#128172; Community</div>
     <div class="menu-button desktop-only" onclick="window.location.href='/zox-match-preview.html'">&#128202; Stats</div>
     <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">&#129302; TIFO Old school</div>
     <div id="live-clock" class="desktop-only live-clock">
@@ -40,7 +40,10 @@
                 <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
                 <div onclick="loadPage('schedule'); closeMobileMenu()">Schedule</div>
                 <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
-                <div onclick="loadPage('formations'); closeMobileMenu()">Formations</div>
+                <div onclick="loadPage('formations'); closeMobileMenu()">Tactics</div>
+                <div onclick="loadPage('staff'); closeMobileMenu()">Staff</div>
+                <div onclick="loadPage('finances'); closeMobileMenu()">Finances</div>
+                <div onclick="loadPage('transfers'); closeMobileMenu()">Transfers</div>
                 <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
                 <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
             </div>
@@ -53,7 +56,6 @@
             <div class="accordion-content">
                 <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
                 <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
-                <div onclick="loadPage('coaches'); closeMobileMenu()">Coaches</div>
             </div>
         </div>
 
@@ -122,26 +124,6 @@
         </div>
 
         <div onclick="loadPage('profile')">Profile</div>
-    </div>
-</div>
-
-<div id="trainingSidebar" class="sidebar">
-    <div class="sidebar-content">
-        <h3>Training</h3>
-        <div onclick="loadPage('trainingSetup')">Training Setup</div>
-        <div onclick="loadPage('trainingReports')">Training Reports</div>
-        <div onclick="loadPage('coaches')">Coaches</div>
-    </div>
-</div>
-
-<div id="communitySidebar" class="sidebar">
-    <div class="sidebar-content">
-        <h3>Community</h3>
-        <div onclick="loadPage('forum')">Forum</div>
-        <div onclick="loadPage('chat')">Chat</div>
-        <div onclick="loadPage('events')">Events</div>
-        <div onclick="initializeDatabase()">Initialize DB (Demo)</div>
-        <div onclick="resetDatabase()">Reset DB (Demo)</div>
     </div>
 </div>
 
