@@ -1,6 +1,9 @@
 package org.example.footballmanager.controller;
 
-import org.example.footballmanager.model.Transfer;
+import org.example.footballmanager.dto.transfer.PlayerTransferStatusDTO;
+import org.example.footballmanager.dto.transfer.TeamTransferOverviewDTO;
+import org.example.footballmanager.dto.transfer.TransferActionRequest;
+import org.example.footballmanager.dto.transfer.TransferDTO;
 import org.example.footballmanager.service.TransferService;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,22 +20,46 @@ public class TransferController {
     }
 
     @PostMapping("/list/{playerId}")
-    public Transfer listPlayer(@PathVariable Long playerId, @RequestParam double price) {
-        return transferService.listPlayerForTransfer(playerId, price);
+    public TransferDTO listPlayer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.listPlayerForTransfer(playerId, request.getTeamId(), request.getPrice() == null ? 0.0 : request.getPrice());
     }
 
     @GetMapping
-    public List<Transfer> getAllTransfers() {
-        return transferService.getAllTransfers();
+    public List<TransferDTO> getAllTransfers(@RequestParam(required = false) Long teamId) {
+        return transferService.getAllTransfers(teamId);
+    }
+
+    @GetMapping("/team/{teamId}")
+    public TeamTransferOverviewDTO getTeamTransfers(@PathVariable Long teamId,
+                                                    @RequestParam(required = false) Long viewerTeamId) {
+        return transferService.getTeamTransferOverview(teamId, viewerTeamId);
+    }
+
+    @GetMapping("/player/{playerId}")
+    public PlayerTransferStatusDTO getPlayerTransferStatus(@PathVariable Long playerId,
+                                                           @RequestParam(required = false) Long viewerTeamId) {
+        return transferService.getPlayerTransferStatus(playerId, viewerTeamId);
     }
 
     @PostMapping("/interest/{playerId}")
-    public Transfer expressInterest(@PathVariable Long playerId, @RequestParam String club) {
-        return transferService.addInterest(playerId, club);
+    public TransferDTO expressInterest(@PathVariable Long playerId,
+                                       @RequestParam(required = false) String club,
+                                       @RequestParam(required = false) Long teamId) {
+        return transferService.addInterest(playerId, teamId, club);
+    }
+
+    @PostMapping("/buy/{playerId}")
+    public TransferDTO buyListedPlayer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.buyListedPlayer(playerId, request.getTeamId(), request.getPrice());
+    }
+
+    @PostMapping("/direct-buy/{playerId}")
+    public TransferDTO directBuyPlayer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.directBuyPlayer(playerId, request.getTeamId(), request.getPrice());
     }
 
     @DeleteMapping("/remove/{playerId}")
-    public void removeFromList(@PathVariable Long playerId) {
-        transferService.removeFromTransferList(playerId);
+    public void removeFromList(@PathVariable Long playerId, @RequestParam Long teamId) {
+        transferService.removeFromTransferList(playerId, teamId);
     }
 }

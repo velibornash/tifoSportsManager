@@ -17,8 +17,19 @@ public class Transfer {
     @OneToOne
     private Player player;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Team sellerTeam;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Team buyerTeam;
+
+    @Enumerated(EnumType.STRING)
+    private TransferStatus status;
+
     private double askingPrice;
+    private Double agreedPrice;
     private LocalDateTime listedAt;
+    private LocalDateTime completedAt;
 
     @ElementCollection
     private Set<String> interestedTeams = new HashSet<>();

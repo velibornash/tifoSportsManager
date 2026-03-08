@@ -7,6 +7,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
 import { createCommunityFeature } from './pages/features/community.js';
     let currentUserTeamId = null;
+    let currentUserTeamName = '';
     let currentPageId = 'dashboard';
     let currentNavState = { type: 'dashboard' };
     const navHistoryStack = [];
@@ -90,6 +91,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             const res = await authFetch('/auth/me');
             const user = await res.json();
             currentUserTeamId = user.teamId;
+            currentUserTeamName = user.teamName || '';
             console.log("Team ID loaded:", currentUserTeamId);
             return currentUserTeamId;
         } catch (err) {
@@ -353,10 +355,13 @@ import { createCommunityFeature } from './pages/features/community.js';
     const clubManagementFeature = createClubManagementFeature({
         authFetch,
         getTeamId: () => currentUserTeamId,
+        getTeamName: () => currentUserTeamName,
         escapeHtml,
         buildClubActionsHtml,
         formatBudget,
         formatDateTimeLabel,
+        loadPlayer: (...args) => loadPlayer(...args),
+        loadLeagueTeamPlayer: (...args) => loadLeagueTeamPlayer(...args),
     });
     const communityFeature = createCommunityFeature({
         authFetch,
@@ -650,12 +655,136 @@ import { createCommunityFeature } from './pages/features/community.js';
                 </div>
             </section>`;
     }
+
+    async function fetchPlayerTransferStatus(playerId) {
+        try {
+            if (!await ensureUserTeamId()) return null;
+            const response = await authFetch(`/transfers/player/${playerId}?viewerTeamId=${encodeURIComponent(currentUserTeamId)}`);
+            return await response.json();
+        } catch (err) {
+            console.warn('Failed to load player transfer status:', err);
+            return null;
+        }
+    }
+
+    function getTransferInterestedTeams(transferStatus) {
+        if (!transferStatus) return [];
+        if (Array.isArray(transferStatus.interestedTeams)) return transferStatus.interestedTeams.filter(Boolean);
+        return Object.values(transferStatus.interestedTeams || {}).filter(Boolean);
+    }
+
+    function formatTransferMoney(value) {
+        if (value == null || !Number.isFinite(Number(value))) return '—';
+        return escapeHtml(formatBudget(Math.round(Number(value))));
+    }
+
+    function buildPlayerTransferPanelHtml(player, transferStatus, options = {}) {
+        const placeholderPrefix = options.placeholderPrefix || 'This tab is prepared';
+        if (!transferStatus) {
+            return `
+                <section class="fm-panel fm-player-tab-panel" data-player-tab-panel="transfer">
+                    <div class="fm-panel-head">
+                        <h3>Transfer</h3>
+                    </div>
+                    <div class="fm-empty">${placeholderPrefix}: transfer listing / interest history will fit here when we wire the API</div>
+                </section>`;
+        }
+
+        const interestedTeams = getTransferInterestedTeams(transferStatus);
+        const actionButtons = [];
+        const defaultValue = Math.max(1, Math.round(Number(player?.value || transferStatus.askingPrice || 1)));
+
+        if (transferStatus.canList) {
+            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="list" data-player-id="${player.id}" data-default-price="${defaultValue}">List player</button>`);
+        }
+        if (transferStatus.canRemove) {
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="remove" data-player-id="${player.id}">Remove from TL</button>`);
+        } else if (transferStatus.ownedByViewer && transferStatus.listed) {
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" disabled title="Cannot remove while another club has registered interest.">Remove from TL</button>`);
+        }
+        if (transferStatus.canBuyListed) {
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="interest" data-player-id="${player.id}">Register interest</button>`);
+            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="buy-listed" data-player-id="${player.id}" data-default-price="${Math.max(1, Math.round(Number(transferStatus.askingPrice || defaultValue)))}">Buy listed</button>`);
+        }
+        if (transferStatus.canDirectBuy && !transferStatus.listed) {
+            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="direct-buy" data-player-id="${player.id}" data-default-price="${defaultValue}">Direct buy</button>`);
+        }
+
+        return `
+            <section class="fm-panel fm-player-tab-panel" data-player-tab-panel="transfer">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Transfer</h3>
+                        <p class="fm-subtle">${escapeHtml(transferStatus.summary || 'Current transfer status is shown here.')}</p>
+                    </div>
+                    <span class="fm-panel-action">${escapeHtml(transferStatus.status || (transferStatus.listed ? 'LISTED' : 'NONE'))}</span>
+                </div>
+                <div class="club-profile-detail-list">
+                    <div class="club-profile-detail-row"><span>Current club</span><strong>${escapeHtml(transferStatus.currentTeamName || 'Unassigned')}</strong></div>
+                    <div class="club-profile-detail-row"><span>Seller club</span><strong>${escapeHtml(transferStatus.sellerTeamName || transferStatus.currentTeamName || '—')}</strong></div>
+                    <div class="club-profile-detail-row"><span>Asking price</span><strong>${formatTransferMoney(transferStatus.askingPrice)}</strong></div>
+                    <div class="club-profile-detail-row"><span>Agreed fee</span><strong>${formatTransferMoney(transferStatus.agreedPrice)}</strong></div>
+                    <div class="club-profile-detail-row"><span>Listed at</span><strong>${escapeHtml(formatDateTimeLabel(transferStatus.listedAt))}</strong></div>
+                    <div class="club-profile-detail-row"><span>Completed at</span><strong>${escapeHtml(formatDateTimeLabel(transferStatus.completedAt))}</strong></div>
+                </div>
+                <div class="fm-empty" style="text-align:left; margin-top:16px;">
+                    ${interestedTeams.length
+                        ? `Interested clubs: ${escapeHtml(interestedTeams.join(', '))}`
+                        : 'No bids / registered interest yet.'}
+                </div>
+                ${actionButtons.length ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:16px;">${actionButtons.join('')}</div>` : ''}
+            </section>`;
+    }
+
+    function buildTeamTransferOverviewHtml(overview, options = {}) {
+        if (!overview) return '';
+        const { isUserTeam = false, teamName = 'Team' } = options;
+        const listedPlayers = Array.isArray(overview.listedPlayers) ? overview.listedPlayers : [];
+
+        return `
+            <section class="fm-panel" style="margin-top:18px;">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Transfer overview</h3>
+                        <p class="fm-subtle">Quick view of ${escapeHtml(teamName)} transfer activity and listed players.</p>
+                    </div>
+                    <span class="fm-panel-action">Transfers</span>
+                </div>
+                <div class="fm-medical-stat-grid team-summary-grid" style="margin-bottom:18px;">
+                    <div><strong>${formatTransferMoney(overview.budget)}</strong><span>Budget</span></div>
+                    <div><strong>${listedPlayers.length}</strong><span>Listed</span></div>
+                    <div><strong>${listedPlayers.reduce((sum, item) => sum + getTransferInterestedTeams(item).length, 0)}</strong><span>Interest</span></div>
+                    <div><strong>${listedPlayers.length ? escapeHtml(listedPlayers[0].playerName || '—') : '—'}</strong><span>Top listing</span></div>
+                </div>
+                ${listedPlayers.length === 0
+                    ? `<div class="fm-empty">${isUserTeam ? 'No players from your club are currently listed.' : 'No active transfer listings for this team right now.'}</div>`
+                    : `<div class="fm-squad-wrap">
+                        <table class="fm-squad">
+                            <thead><tr><th class="sq-name">Player</th><th>Pos</th><th>Asking</th><th>Interest</th><th>Listed</th><th>Action</th></tr></thead>
+                            <tbody>
+                                ${listedPlayers.map(item => `
+                                    <tr class="fm-squad-row">
+                                        <td class="sq-name">${escapeHtml(item.playerName || 'Unknown')}</td>
+                                        <td>${escapeHtml(item.position || '-')}</td>
+                                        <td>${formatTransferMoney(item.askingPrice)}</td>
+                                        <td>${escapeHtml(getTransferInterestedTeams(item).length ? getTransferInterestedTeams(item).join(', ') : 'No interest yet')}</td>
+                                        <td>${escapeHtml(formatDateTimeLabel(item.listedAt))}</td>
+                                        <td><button type="button" class="fm-action-btn secondary" data-team-transfer-player-id="${item.playerId}" data-team-transfer-team-id="${overview.teamId}" data-team-transfer-team-name="${escapeHtml(overview.teamName || teamName)}">Open player</button></td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>`}
+                ${isUserTeam ? `<div style="margin-top:16px;"><button type="button" class="fm-action-btn" onclick="loadPage('transfers')">Open Transfer Centre</button></div>` : ''}
+            </section>`;
+    }
+
     function buildPlayerProfileHtml(player, options = {}) {
         const {
             backLabel = 'Back',
             eyebrow = 'Player overview',
             teamName = 'Club squad',
             ratingSummary = {},
+            transferStatus = null,
             revealPayload = null,
             placeholderPrefix = 'This tab is prepared',
             showReveal = false
@@ -754,7 +883,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                             </div>
                         </section>
                         ${renderPlaceholder('Matches', 'player-by-player match log can be wired later')}
-                        ${renderPlaceholder('Transfer', 'transfer listing / interest history will fit here when we wire the API')}
+                        ${buildPlayerTransferPanelHtml(player, transferStatus, { placeholderPrefix })}
                         ${renderPlaceholder('History', 'career timeline UI is ready for later API expansion')}
                     </div>
                     <div class="fm-player-grid-right">
@@ -809,7 +938,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             </div>`;
     }
     function initPlayerProfilePage(options = {}) {
-        const { onBack } = options;
+        const { onBack, onTransferAction } = options;
         const page = document.querySelector('.fm-player-page');
         if (!page) return;
 
@@ -827,15 +956,100 @@ import { createCommunityFeature } from './pages/features/community.js';
                 panels.forEach(panel => panel.classList.toggle('is-active', panel.dataset.playerTabPanel === target));
             });
         });
+
+        if (typeof onTransferAction === 'function') {
+            page.querySelectorAll('[data-transfer-panel-action]').forEach(button => {
+                button.addEventListener('click', () => onTransferAction(button.dataset.transferPanelAction, button));
+            });
+        }
     }
+
+    function promptTransferActionPrice(label, fallbackValue) {
+        const suggested = Math.max(1, Math.round(Number(fallbackValue || 1)));
+        const raw = window.prompt(label, String(suggested));
+        if (raw == null) return null;
+        const numeric = Number(raw);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            window.alert('Enter a valid positive price.');
+            return null;
+        }
+        return numeric;
+    }
+
+    async function performTransferJsonAction(url, payload, method = 'POST') {
+        const response = await authFetch(url, {
+            method,
+            headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+            body: payload ? JSON.stringify(payload) : undefined
+        });
+        if (method === 'DELETE') return null;
+        try {
+            return await response.json();
+        } catch {
+            return null;
+        }
+    }
+
+    async function handlePlayerTransferAction(action, button, options = {}) {
+        if (!await ensureUserTeamId()) return;
+        const { playerId, reloadCurrent, reloadOwned } = options;
+        const resolvedPlayerId = Number(button?.dataset?.playerId || playerId || 0);
+        if (!resolvedPlayerId) return;
+
+        try {
+            switch (action) {
+                case 'list': {
+                    const price = promptTransferActionPrice('Set asking price for this player:', button?.dataset?.defaultPrice || 1);
+                    if (price == null) return;
+                    await performTransferJsonAction(`/transfers/list/${resolvedPlayerId}`, { teamId: currentUserTeamId, price });
+                    await reloadCurrent?.();
+                    return;
+                }
+                case 'remove': {
+                    if (!window.confirm('Remove this player from the transfer list?')) return;
+                    await performTransferJsonAction(`/transfers/remove/${resolvedPlayerId}?teamId=${encodeURIComponent(currentUserTeamId)}`, null, 'DELETE');
+                    await reloadCurrent?.();
+                    return;
+                }
+                case 'interest': {
+                    const params = new URLSearchParams({ teamId: String(currentUserTeamId) });
+                    if (currentUserTeamName) params.set('club', currentUserTeamName);
+                    await performTransferJsonAction(`/transfers/interest/${resolvedPlayerId}?${params.toString()}`);
+                    await reloadCurrent?.();
+                    return;
+                }
+                case 'buy-listed': {
+                    const price = promptTransferActionPrice('Enter agreed fee for this listed player:', button?.dataset?.defaultPrice || 1);
+                    if (price == null) return;
+                    await performTransferJsonAction(`/transfers/buy/${resolvedPlayerId}`, { teamId: currentUserTeamId, price });
+                    await (reloadOwned || reloadCurrent)?.();
+                    return;
+                }
+                case 'direct-buy': {
+                    const price = promptTransferActionPrice('Enter direct-buy fee for this player:', button?.dataset?.defaultPrice || 1);
+                    if (price == null) return;
+                    await performTransferJsonAction(`/transfers/direct-buy/${resolvedPlayerId}`, { teamId: currentUserTeamId, price });
+                    await (reloadOwned || reloadCurrent)?.();
+                    return;
+                }
+                default:
+                    return;
+            }
+        } catch (err) {
+            console.error('Player transfer action failed:', err);
+            window.alert(err.message || 'Transfer action failed.');
+        }
+    }
+
     async function loadPlayer(playerId, callerPage = currentPageId, options = {}) {
         const pushHistory = options.pushHistory !== false;
         if (pushHistory) pushNavState({ type: 'player', playerId, callerPage });
         const mainContent = document.getElementById("main-content");
         console.log(`Loading player for team ${currentUserTeamId} and player ${playerId}`);
-        const [response, ratingSummary] = await Promise.all([
+        const [response, ratingSummary, transferStatus] = await Promise.all([
             authFetch(`/teams/${currentUserTeamId}/players/${playerId}`),
-            fetchPlayerRatingSummary(playerId)
+            fetchPlayerRatingSummary(playerId),
+            fetchPlayerTransferStatus(playerId)
         ]);
         console.log(`Response status: ${response.status}`);
         if (!response.ok) {
@@ -864,11 +1078,18 @@ import { createCommunityFeature } from './pages/features/community.js';
             eyebrow: 'Player overview',
             teamName: teamLabel,
             ratingSummary,
+            transferStatus,
             revealPayload,
             showReveal: true,
             placeholderPrefix: 'This tab UI is ready'
         });
-        initPlayerProfilePage({ onBack: () => goBackSmart(backTarget) });
+        initPlayerProfilePage({
+            onBack: () => goBackSmart(backTarget),
+            onTransferAction: (action, button) => handlePlayerTransferAction(action, button, {
+                playerId,
+                reloadCurrent: () => loadPlayer(playerId, callerPage, { pushHistory: false })
+            })
+        });
         if (revealPayload) await runJuniorRevealAnimation(revealPayload);
     }
     async function loadMatch(matchId, caller, options = {}) {
@@ -3266,7 +3487,17 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
-            const response = await authFetch(`/teams/${teamId}/players`);
+            const [response, transferOverview] = await Promise.all([
+                authFetch(`/teams/${teamId}/players`),
+                (async () => {
+                    try {
+                        const transferResponse = await authFetch(`/transfers/team/${teamId}?viewerTeamId=${encodeURIComponent(currentUserTeamId)}`);
+                        return await transferResponse.json();
+                    } catch {
+                        return null;
+                    }
+                })()
+            ]);
             if (!response.ok) throw new Error(`Team players load failed: ${response.status}`);
             const players = await response.json();
             const isUserTeam = Number(teamId) === Number(currentUserTeamId);
@@ -3330,6 +3561,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                         <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Open Medical Center</button>
                     </aside>` : ''}
                 </div>
+                ${buildTeamTransferOverviewHtml(transferOverview, { isUserTeam, teamName })}
             </div>`;
             mainContent.innerHTML = html;
 
@@ -3338,6 +3570,15 @@ import { createCommunityFeature } from './pages/features/community.js';
                 const playerTeamId = Number(row.dataset.teamId);
                 const playerTeamName = row.dataset.teamName || "Team";
                 loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName);
+            });
+            mainContent.querySelectorAll('[data-team-transfer-player-id]').forEach(button => {
+                button.addEventListener('click', () => {
+                    loadLeagueTeamPlayer(
+                        Number(button.dataset.teamTransferPlayerId || 0),
+                        Number(button.dataset.teamTransferTeamId || teamId),
+                        button.dataset.teamTransferTeamName || teamName || 'Team'
+                    );
+                });
             });
         } catch (err) {
             console.error("Failed to load team details:", err);
@@ -3354,9 +3595,10 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName });
         const mainContent = document.getElementById("main-content");
         try {
-            const [playerResponse, ratingSummary] = await Promise.all([
+            const [playerResponse, ratingSummary, transferStatus] = await Promise.all([
                 authFetch(`/players/${playerId}`),
-                fetchPlayerRatingSummary(playerId)
+                fetchPlayerRatingSummary(playerId),
+                fetchPlayerTransferStatus(playerId)
             ]);
 
             if (!playerResponse.ok) throw new Error(`Player load failed: ${playerResponse.status}`);
@@ -3366,9 +3608,17 @@ import { createCommunityFeature } from './pages/features/community.js';
                 eyebrow: 'Team player',
                 teamName: teamName || 'Team',
                 ratingSummary,
+                transferStatus,
                 placeholderPrefix: 'This tab UI is ready'
             });
-            initPlayerProfilePage({ onBack: () => goBackSmart('leagueTable') });
+            initPlayerProfilePage({
+                onBack: () => goBackSmart('leagueTable'),
+                onTransferAction: (action, button) => handlePlayerTransferAction(action, button, {
+                    playerId,
+                    reloadCurrent: () => loadLeagueTeamPlayer(playerId, teamId, teamName, { pushHistory: false }),
+                    reloadOwned: () => loadPlayer(playerId, 'leagueTable', { pushHistory: false })
+                })
+            });
         } catch (err) {
             console.error("Failed to load player profile:", err);
             mainContent.innerHTML = `

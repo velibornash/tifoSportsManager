@@ -1,7 +1,17 @@
 import { createStaffDirectoryFeature } from './staff-directory.js';
 
 export function createClubManagementFeature(deps) {
-    const { authFetch, getTeamId, escapeHtml, buildClubActionsHtml, formatBudget, formatDateTimeLabel } = deps;
+    const {
+        authFetch,
+        getTeamId,
+        getTeamName,
+        escapeHtml,
+        buildClubActionsHtml,
+        formatBudget,
+        formatDateTimeLabel,
+        loadPlayer,
+        loadLeagueTeamPlayer
+    } = deps;
     const staffDirectoryFeature = createStaffDirectoryFeature({ authFetch, getTeamId, escapeHtml, buildClubActionsHtml });
 
     async function loadStaff() {
@@ -158,72 +168,309 @@ export function createClubManagementFeature(deps) {
             </div>`;
     }
 
+    function getInterestedTeams(transfer) {
+        if (!transfer) return [];
+        if (Array.isArray(transfer.interestedTeams)) return transfer.interestedTeams.filter(Boolean);
+        return Object.values(transfer.interestedTeams || {}).filter(Boolean);
+    }
+
+    function formatMoney(value) {
+        return escapeHtml(formatBudget(Math.round(Number(value || 0))));
+    }
+
+    function promptTransferPrice(label, fallbackValue) {
+        const initial = Math.max(1, Math.round(Number(fallbackValue || 1)));
+        const raw = window.prompt(label, String(initial));
+        if (raw == null) return null;
+        const numeric = Number(raw);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            window.alert('Enter a valid positive price.');
+            return null;
+        }
+        return numeric;
+    }
+
+    async function sendTransferRequest(url, options = {}) {
+        const method = options.method || 'POST';
+        const payload = options.payload;
+        const response = await authFetch(url, {
+            method,
+            headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+            body: payload ? JSON.stringify(payload) : undefined
+        });
+        if (method === 'DELETE') return null;
+        try {
+            return await response.json();
+        } catch {
+            return null;
+        }
+    }
+
+    function openTransferPlayer(button) {
+        const playerId = Number(button.dataset.playerId || 0);
+        const sellerTeamId = Number(button.dataset.sellerTeamId || 0);
+        const sellerTeamName = button.dataset.sellerTeamName || 'Team';
+        if (!playerId) return;
+        if (sellerTeamId && sellerTeamId === Number(getTeamId())) {
+            loadPlayer(playerId, 'transfers');
+            return;
+        }
+        loadLeagueTeamPlayer(playerId, sellerTeamId, sellerTeamName);
+    }
+
+    function bindTransferCentreActions(mainContent) {
+        const teamId = Number(getTeamId() || 0);
+        const teamName = getTeamName?.() || '';
+
+        mainContent.querySelectorAll('[data-transfer-open]').forEach(button => {
+            button.addEventListener('click', () => openTransferPlayer(button));
+        });
+
+        mainContent.querySelectorAll('[data-transfer-action]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const playerId = Number(button.dataset.playerId || 0);
+                if (!playerId || !teamId) return;
+
+                try {
+                    switch (button.dataset.transferAction) {
+                        case 'list': {
+                            const price = promptTransferPrice(
+                                'Set asking price for this player:',
+                                button.dataset.defaultPrice || 1
+                            );
+                            if (price == null) return;
+                            await sendTransferRequest(`/transfers/list/${playerId}`, {
+                                payload: { teamId, price }
+                            });
+                            break;
+                        }
+                        case 'remove': {
+                            if (!window.confirm('Remove this player from the transfer list?')) return;
+                            await sendTransferRequest(`/transfers/remove/${playerId}?teamId=${teamId}`, {
+                                method: 'DELETE'
+                            });
+                            break;
+                        }
+                        case 'interest': {
+                            const params = new URLSearchParams({ teamId: String(teamId) });
+                            if (teamName) params.set('club', teamName);
+                            await sendTransferRequest(`/transfers/interest/${playerId}?${params.toString()}`);
+                            break;
+                        }
+                        case 'buy': {
+                            const price = promptTransferPrice(
+                                'Enter agreed fee for this listed player:',
+                                button.dataset.defaultPrice || 1
+                            );
+                            if (price == null) return;
+                            await sendTransferRequest(`/transfers/buy/${playerId}`, {
+                                payload: { teamId, price }
+                            });
+                            break;
+                        }
+                        default:
+                            return;
+                    }
+
+                    await loadTransfers();
+                } catch (err) {
+                    console.error('Transfer action failed:', err);
+                    window.alert(err.message || 'Transfer action failed.');
+                }
+            });
+        });
+    }
+
     async function loadTransfers() {
         const teamId = getTeamId();
         console.log(`Loading transfers for ${teamId}`);
-        const response = await authFetch('/transfers');
-        const transfers = response.ok ? await response.json() : [];
         const mainContent = document.getElementById('main-content');
-        const orderedTransfers = [...transfers].sort((a, b) => new Date(b.listedAt || 0) - new Date(a.listedAt || 0));
-        const averageAsking = orderedTransfers.length ? orderedTransfers.reduce((sum, transfer) => sum + Number(transfer.askingPrice || 0), 0) / orderedTransfers.length : 0;
-        const highestAsking = orderedTransfers.reduce((max, transfer) => Math.max(max, Number(transfer.askingPrice || 0)), 0);
-        const interestCount = orderedTransfers.reduce((sum, transfer) => {
-            const interestedTeams = Array.isArray(transfer.interestedTeams) ? transfer.interestedTeams : Object.values(transfer.interestedTeams || {});
-            return sum + interestedTeams.length;
-        }, 0);
+        try {
+            const [marketResponse, overviewResponse, playersResponse] = await Promise.all([
+                authFetch(`/transfers?teamId=${encodeURIComponent(teamId)}`),
+                authFetch(`/transfers/team/${encodeURIComponent(teamId)}?viewerTeamId=${encodeURIComponent(teamId)}`),
+                authFetch(`/teams/${encodeURIComponent(teamId)}/players`)
+            ]);
+            const [transfers, myOverview, players] = await Promise.all([
+                marketResponse.json(),
+                overviewResponse.json(),
+                playersResponse.json()
+            ]);
 
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
-                        <div>
-                            <div class="fm-eyebrow">Transfer centre</div>
-                            <h2>Transfers</h2>
-                            <p class="fm-subtle">Same club shell, now with a live transfer board fed by the current backend transfer list endpoint.</p>
+            const orderedTransfers = [...transfers].sort((a, b) => new Date(b.listedAt || 0) - new Date(a.listedAt || 0));
+            const listedPlayers = Array.isArray(myOverview?.listedPlayers) ? myOverview.listedPlayers : [];
+            const listedIds = new Set(listedPlayers.map(transfer => Number(transfer.playerId)));
+            const orderedOwnPlayers = [...players].sort((a, b) => {
+                const listedDiff = Number(listedIds.has(Number(a.id))) - Number(listedIds.has(Number(b.id)));
+                if (listedDiff !== 0) return listedDiff;
+                return Number(b.overall || b.rating || 0) - Number(a.overall || a.rating || 0);
+            });
+            const averageAsking = orderedTransfers.length
+                ? orderedTransfers.reduce((sum, transfer) => sum + Number(transfer.askingPrice || 0), 0) / orderedTransfers.length
+                : 0;
+            const highestAsking = orderedTransfers.reduce((max, transfer) => Math.max(max, Number(transfer.askingPrice || 0)), 0);
+            const interestCount = orderedTransfers.reduce((sum, transfer) => sum + getInterestedTeams(transfer).length, 0);
+
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Transfer centre</div>
+                                <h2>Transfers</h2>
+                                <p class="fm-subtle">Global transfer list, direct club overview, and quick actions for listing, removing, bidding, and buying players.</p>
+                            </div>
+                            ${buildClubActionsHtml('transfers')}
                         </div>
-                        ${buildClubActionsHtml('transfers')}
-                    </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${orderedTransfers.length}</strong><span>Listed players</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(averageAsking)))}</strong><span>Avg asking</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(highestAsking)))}</strong><span>Top asking</span></div>
-                        <div><strong>${interestCount}</strong><span>Interested clubs</span></div>
-                    </div>
-                </section>
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Transfer market board</h3>
-                            <p class="fm-subtle">Read-only for now, with listed time, asking price, and interest already visible.</p>
+                        <div class="fm-medical-stat-grid team-summary-grid">
+                            <div><strong>${orderedTransfers.length}</strong><span>Listed players</span></div>
+                            <div><strong>${formatMoney(averageAsking)}</strong><span>Avg asking</span></div>
+                            <div><strong>${formatMoney(highestAsking)}</strong><span>Top asking</span></div>
+                            <div><strong>${interestCount}</strong><span>Active interest</span></div>
                         </div>
-                        <span class="fm-panel-action">Market</span>
-                    </div>
-                    ${orderedTransfers.length === 0 ? `<div class="fm-empty">No players are currently listed for transfer.</div>` : `
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>My transfer desk</h3>
+                                <p class="fm-subtle">Budget, listed players, and removal controls for your club.</p>
+                            </div>
+                            <span class="fm-panel-action">${escapeHtml(myOverview?.teamName || 'Club')}</span>
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid" style="margin-bottom:18px;">
+                            <div><strong>${formatMoney(myOverview?.budget || 0)}</strong><span>Budget</span></div>
+                            <div><strong>${listedPlayers.length}</strong><span>Listed now</span></div>
+                            <div><strong>${players.length}</strong><span>Squad size</span></div>
+                            <div><strong>${getInterestedTeams(listedPlayers[0] || null).length || 0}</strong><span>Top-listing interest</span></div>
+                        </div>
+                        ${listedPlayers.length === 0 ? `<div class="fm-empty">No players from your team are currently on the transfer list.</div>` : `
+                            <div class="fm-squad-wrap">
+                                <table class="fm-squad">
+                                    <thead><tr><th class="sq-name">Player</th><th>Pos</th><th>Asking</th><th>Interest</th><th>Listed</th><th>Actions</th></tr></thead>
+                                    <tbody>
+                                        ${listedPlayers.map(transfer => {
+                                            const interests = getInterestedTeams(transfer);
+                                            return `
+                                                <tr class="fm-squad-row">
+                                                    <td class="sq-name">${escapeHtml(transfer.playerName || 'Unknown')}</td>
+                                                    <td>${escapeHtml(transfer.position || '-')}</td>
+                                                    <td>${formatMoney(transfer.askingPrice)}</td>
+                                                    <td>${escapeHtml(interests.length ? interests.join(', ') : 'No interest yet')}</td>
+                                                    <td>${escapeHtml(formatDateTimeLabel(transfer.listedAt))}</td>
+                                                    <td>
+                                                        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                                            <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || teamId}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || myOverview?.teamName || 'Club')}">Open</button>
+                                                            <button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>`}
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Transfer market board</h3>
+                                <p class="fm-subtle">Browse the global TL, register interest, or complete a listed purchase immediately.</p>
+                            </div>
+                            <span class="fm-panel-action">Market</span>
+                        </div>
+                        ${orderedTransfers.length === 0 ? `<div class="fm-empty">No players are currently listed for transfer.</div>` : `
+                            <div class="fm-squad-wrap">
+                                <table class="fm-squad">
+                                    <thead><tr><th class="sq-name">Player</th><th>Club</th><th>Pos</th><th class="sq-age">Age</th><th class="sq-rating">Rating</th><th>Value</th><th>Asking</th><th>Interest</th><th>Actions</th></tr></thead>
+                                    <tbody>
+                                        ${orderedTransfers.map(transfer => {
+                                            const interests = getInterestedTeams(transfer);
+                                            const openLabel = Number(transfer.sellerTeamId) === Number(teamId) ? 'Open' : 'Scout';
+                                            return `
+                                                <tr class="fm-squad-row">
+                                                    <td class="sq-name">${escapeHtml(transfer.playerName || 'Unknown')}</td>
+                                                    <td>${escapeHtml(transfer.sellerTeamName || '-')}</td>
+                                                    <td>${escapeHtml(transfer.position || '-')}</td>
+                                                    <td class="sq-age">${transfer.age ?? '-'}</td>
+                                                    <td class="sq-rating">${transfer.rating ?? '-'}</td>
+                                                    <td>${formatMoney(transfer.playerValue)}</td>
+                                                    <td>${formatMoney(transfer.askingPrice)}</td>
+                                                    <td>${escapeHtml(interests.length ? interests.join(', ') : 'No interest yet')}</td>
+                                                    <td>
+                                                        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                                            <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || 0}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || 'Team')}">${openLabel}</button>
+                                                            ${transfer.ownedByViewer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>` : ''}
+                                                            ${transfer.buyableByViewer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="interest" data-player-id="${transfer.playerId}">Interest</button>` : ''}
+                                                            ${transfer.buyableByViewer ? `<button type="button" class="fm-action-btn" data-transfer-action="buy" data-player-id="${transfer.playerId}" data-default-price="${Math.round(Number(transfer.askingPrice || 1))}">Buy listed</button>` : ''}
+                                                        </div>
+                                                    </td>
+                                                </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>`}
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>My squad · list for transfer</h3>
+                                <p class="fm-subtle">Any promoted junior who lands here can still be listed from the player view or directly from this table.</p>
+                            </div>
+                            <span class="fm-panel-action">Squad</span>
+                        </div>
                         <div class="fm-squad-wrap">
                             <table class="fm-squad">
-                                <thead><tr><th class="sq-name">Player</th><th>Pos</th><th class="sq-age">Age</th><th class="sq-rating">Rating</th><th>Value</th><th>Asking</th><th>Interest</th><th>Listed</th></tr></thead>
+                                <thead><tr><th class="sq-name">Player</th><th>Pos</th><th class="sq-age">Age</th><th class="sq-rating">OVR</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead>
                                 <tbody>
-                                    ${orderedTransfers.map(transfer => {
-                                        const player = transfer.player || {};
-                                        const interestedTeams = Array.isArray(transfer.interestedTeams) ? transfer.interestedTeams : Object.values(transfer.interestedTeams || {});
+                                    ${orderedOwnPlayers.map(player => {
+                                        const isListed = listedIds.has(Number(player.id));
+                                        const listedTransfer = listedPlayers.find(item => Number(item.playerId) === Number(player.id)) || null;
                                         return `
                                             <tr class="fm-squad-row">
                                                 <td class="sq-name">${escapeHtml(player.name || 'Unknown')}</td>
                                                 <td>${escapeHtml(player.position || '-')}</td>
                                                 <td class="sq-age">${player.age ?? '-'}</td>
-                                                <td class="sq-rating">${player.rating ?? '-'}</td>
-                                                <td>${escapeHtml(formatBudget(Math.round(player.playerValue ?? player.value ?? 0)))}</td>
-                                                <td>${escapeHtml(formatBudget(Math.round(transfer.askingPrice || 0)))}</td>
-                                                <td>${escapeHtml(interestedTeams.length ? interestedTeams.join(', ') : 'No interest yet')}</td>
-                                                <td>${escapeHtml(formatDateTimeLabel(transfer.listedAt))}</td>
+                                                <td class="sq-rating">${player.overall ?? player.rating ?? '-'}</td>
+                                                <td>${formatMoney(player.value)}</td>
+                                                <td>${escapeHtml(isListed ? `Listed for ${formatBudget(Math.round(Number(listedTransfer?.askingPrice || 0)))}` : 'Available')}</td>
+                                                <td>
+                                                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                                                        <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${player.id}" data-seller-team-id="${teamId}" data-seller-team-name="${escapeHtml(myOverview?.teamName || 'Club')}">Open</button>
+                                                        ${isListed
+                                                            ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${player.id}" ${(listedTransfer?.removalAllowed ?? false) ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>`
+                                                            : `<button type="button" class="fm-action-btn" data-transfer-action="list" data-player-id="${player.id}" data-default-price="${Math.round(Number(player.value || 1))}">List</button>`}
+                                                    </div>
+                                                </td>
                                             </tr>`;
                                     }).join('')}
                                 </tbody>
                             </table>
-                        </div>`}
-                </section>
-            </div>`;
+                        </div>
+                    </section>
+                </div>`;
+
+            bindTransferCentreActions(mainContent);
+        } catch (err) {
+            console.error('Failed to load transfer centre:', err);
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Transfer centre</div>
+                                <h2>Transfers</h2>
+                                <p class="fm-subtle">The transfer centre could not be loaded right now.</p>
+                            </div>
+                            ${buildClubActionsHtml('transfers')}
+                        </div>
+                    </section>
+                    <section class="fm-panel"><div class="fm-empty">${escapeHtml(err.message || 'Transfer centre unavailable.')}</div></section>
+                </div>`;
+        }
     }
 
     return { loadStaff, loadFinances, loadTransfers, loadCoaches: loadStaff, loadStaffMember: (...args) => staffDirectoryFeature.loadStaffMember(...args) };
