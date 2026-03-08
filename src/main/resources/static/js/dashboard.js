@@ -390,23 +390,9 @@ window.toggleSidebar = function(id) {
     });
 };
 
-function toggleMobileMenu() {
-    const sidebar = document.getElementById('mobileSidebar');
-    const overlay = document.getElementById('mobileOverlay');
-    sidebar.classList.toggle('active');
-    overlay.classList.toggle('active');
-}
-
-function closeMobileMenu() {
-    document.getElementById('mobileSidebar').classList.remove('active');
-    document.getElementById('mobileOverlay').classList.remove('active');
-}
-
 window.loadDashboard = loadDashboard;
 window.resetDatabase = resetDatabase;
 window.initializeDatabase = initializeDatabase;
 window.loadRecentMatches = loadRecentMatches;
 window.loadRecentLeagueMatches = loadRecentLeagueMatches;
 window.loadHomeTeamStats = loadHomeTeamStats;
-window.toggleMobileMenu = toggleMobileMenu;
-window.closeMobileMenu = closeMobileMenu;

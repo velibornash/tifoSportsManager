@@ -38,19 +38,28 @@
 #mobileSidebar {
     position: fixed;
     top: 0;
-    left: -260px;
+    left: 0;
+    transform: translateX(-100%);
     width: 260px;
     height: 100vh;               /* puna visina ekrana */
     background: #1a3c1a;
     box-shadow: 4px 0 12px rgba(0,0,0,0.6);
-    transition: left 0.3s ease;
-    z-index: 50;
+    transition: transform 0.3s ease;
+    z-index: 1200;
     overflow-y: auto;            /* â† omoguÄ‡ava skrol unutar menija */
     -webkit-overflow-scrolling: touch; /* glatko skrolovanje na iOS */
 }
 
 #mobileSidebar.active {
-    left: 0;
+    transform: translateX(0);
+}
+
+#mobileOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 10, 17, 0.58);
+    z-index: 1190;
 }
 
 /* Overlay blokira pozadinu */
@@ -219,6 +228,10 @@
     font-size: 1.8rem;
     cursor: pointer;
     padding: 8px;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1300;
 }
 
 .mobile-logo-wrapper {

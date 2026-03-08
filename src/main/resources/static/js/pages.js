@@ -335,6 +335,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         authFetch,
         getTeamId: () => currentUserTeamId,
         escapeHtml,
+        buildClubActionsHtml,
         loadPlayer: (...args) => loadPlayer(...args),
         goBackSmart: (...args) => goBackSmart(...args),
     });
@@ -945,7 +946,6 @@ import { createCommunityFeature } from './pages/features/community.js';
                     <button id="view-lineups" style="padding:8px 16px; font-weight:bold;">Lineups</button>
                     <button id="view-stats" style="padding:8px 16px; font-weight:bold;">Stats</button>
                     <button id="view-goals" style="padding:8px 16px; font-weight:bold;">Goals</button>
-                    <button id="view-events" style="padding:8px 16px; font-weight:bold;">All Events</button>
                 </div>
 
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
@@ -1149,33 +1149,6 @@ import { createCommunityFeature } from './pages/features/community.js';
                 infoDiv.innerHTML = html;
             });
 
-            document.getElementById("view-events").addEventListener("click", () => {
-                const eventLabel = (e) => {
-                    if (e.eventType === "SubstitutionEvent") {
-                        return `🔁 ${e.playerOutName || "?"} → ${e.playerInName || "?"}`;
-                    }
-                    if (e.eventType === "InjuryEvent") {
-                        return `❌ Injury: ${e.injuryPlayer || "?"}`;
-                    }
-                    if (e.eventType === "GoalEvent") {
-                        const assist = e.assistant ? ` (assist ${e.assistant})` : "";
-                        return `⚽ ${e.scorer || "?"}${assist} ${e.goalScored === false ? "[DISALLOWED]" : ""}`;
-                    }
-                    return e.description || "";
-                };
-                let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">All Events</h3>`;
-                html += `<ul style="list-style:none; padding:0;">`;
-
-                events.sort((a,b) => (a.matchMinute||0) - (b.matchMinute||0)).forEach(e => {
-                    html += `<li style="padding:10px; border-bottom:1px solid #333;">
-                        ${e.matchMinute || "?"}' <strong>[${e.eventType}]</strong> ${eventLabel(e)}
-                    </li>`;
-                });
-
-                html += `</ul>`;
-                infoDiv.innerHTML = html;
-            });
-
         } catch (err) {
             console.error("Error loading match:", err);
             mainContent.innerHTML = `<div class="team-card"><p>Error loading match: ${err.message}</p></div>`;
@@ -1274,13 +1247,18 @@ import { createCommunityFeature } from './pages/features/community.js';
             formation: hasSavedTemplate
                 ? (template.formation || availableFormations[0] || "4-4-2")
                 : (localFormation || template.formation || availableFormations[0] || "4-4-2"),
-            style: localStyle || "BALANCED",
+            style: hasSavedTemplate
+                ? (template.style || localStyle || "BALANCED")
+                : (localStyle || template.style || "BALANCED"),
             starterIds: Array.isArray(template.starterIds) ? template.starterIds.map(Number).filter(Number.isFinite).slice(0, 11) : [],
             benchIds: Array.isArray(template.benchIds) ? template.benchIds.map(Number).filter(Number.isFinite).slice(0, 7) : []
         };
 
         if (hasSavedTemplate && template?.formation) {
             localStorage.setItem('main_app_tactics_formation', template.formation);
+        }
+        if (hasSavedTemplate && template?.style) {
+            localStorage.setItem('main_app_tactics_style', template.style);
         }
 
         const canPlayRole = (player, role) => {
@@ -1696,12 +1674,13 @@ import { createCommunityFeature } from './pages/features/community.js';
                     const res = await authFetch(`/teams/${currentUserTeamId}/lineup-template`, {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ formation: state.formation, starterIds: dedupStarter, benchIds: dedupBench })
+                        body: JSON.stringify({ formation: state.formation, style: state.style, starterIds: dedupStarter, benchIds: dedupBench })
                     });
                     let savedPayload = null;
                     if (res.ok) {
                         savedPayload = await res.json();
                         state.formation = savedPayload?.formation || state.formation;
+                        state.style = savedPayload?.style || state.style;
                         state.starterIds = Array.isArray(savedPayload?.starterIds)
                             ? savedPayload.starterIds.map(Number).filter(Number.isFinite).slice(0, 11)
                             : state.starterIds;
@@ -2244,6 +2223,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         };
         const normalizeWeekKey = (season, week) => `${Number(season)}|${Number(week)}`;
         const weekShort = (season, week) => `S${Number(season)}W${Number(week)}`;
+        const weekLabel = (season, week) => `Season ${Number(season)} Week ${Number(week)}`;
         const skillTone = (delta, isDirectTraining) => {
             if (delta > 0) return "#4caf50";
             if (delta < 0) return "#f44336";
@@ -2366,7 +2346,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                         <div class="fm-club-hero-main">
                             <div>
                                 <div class="fm-eyebrow">Training report</div>
-                                <h2>${weekShort(report.seasonNumber, report.weekNumber)}</h2>
+                                <h2>${weekLabel(report.seasonNumber, report.weekNumber)}</h2>
                                 <p class="fm-subtle">Week list is hidden while this squad-style report is open. Click any player row for the detailed progress view.</p>
                             </div>
                             <div>
@@ -2559,7 +2539,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                             <div class="fm-medical-stat-grid team-summary-grid">
                                 <div><strong>${summaries.length}</strong><span>Weeks logged</span></div>
                                 <div><strong>${players.length}</strong><span>Players</span></div>
-                                <div><strong>${summaries[0] ? weekShort(summaries[0].seasonNumber, summaries[0].weekNumber) : '—'}</strong><span>Latest report</span></div>
+                                <div><strong>${summaries[0] ? weekLabel(summaries[0].seasonNumber, summaries[0].weekNumber) : '—'}</strong><span>Latest report</span></div>
                                 <div><strong>Live</strong><span>Click-through</span></div>
                             </div>
                         </section>
@@ -2575,7 +2555,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                                 <div class="training-block">
                                     <h3>Weeks</h3>
                                     <div class="training-week-list">
-                                        ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<div class="training-week-item cs-clickable" data-open-week="${s.seasonNumber}|${s.weekNumber}">${weekShort(s.seasonNumber, s.weekNumber)}</div>`).join("")}
+                                        ${summaries.length === 0 ? `<div class="training-empty">No reports yet.</div>` : summaries.map(s => `<button type="button" class="training-week-item" data-open-week="${s.seasonNumber}|${s.weekNumber}"><strong>${weekLabel(s.seasonNumber, s.weekNumber)}</strong><span>Open detailed report</span></button>`).join("")}
                                     </div>
                                 </div>
                                 <div class="training-block">

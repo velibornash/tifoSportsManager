@@ -3,6 +3,7 @@
         authFetch,
         getTeamId,
         escapeHtml,
+        buildClubActionsHtml,
         loadPlayer,
         goBackSmart,
     } = deps;
@@ -12,7 +13,7 @@
         const mainContent = document.getElementById("main-content");
         const response = await authFetch(`/juniors/team/${currentUserTeamId}`);
         if (!response.ok) {
-            mainContent.innerHTML = `<div class="manager-card"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><h2>Youth Academy</h2><p>Could not load academy data.</p></div>`;
+            mainContent.innerHTML = `<div class="fm-page fm-page--club"><section class="fm-panel fm-club-hero"><button class="back-to-dashboard" data-nav-back="dashboard">Back</button><div class="fm-club-hero-main"><div><div class="fm-eyebrow">Academy overview</div><h2>Youth Academy</h2><p class="fm-subtle">Could not load academy data.</p></div>${buildClubActionsHtml('juniors')}</div></section><section class="fm-panel"><div class="fm-empty">Could not load academy data.</div></section></div>`;
             return;
         }
         const academy = await response.json();
@@ -108,14 +109,7 @@
                         <p class="fm-subtle">Season ${academy.currentSeasonNumber} · Week ${academy.currentWeekNumber} · Junior Coach Skill ${academy.juniorCoachSkill}/100</p>
                         <p class="fm-subtle academy-hero-copy">${canDecide ? "Carryover juniors are ready for Promote / Transfer List / Release decisions." : "No carryover juniors are waiting for a final decision right now."}</p>
                     </div>
-                    <div class="fm-club-actions">
-                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('firstTeam')">First Team</button>
-                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('profile')">Club Profile</button>
-                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Medical Center</button>
-                        <button type="button" class="fm-action-btn secondary is-current">Juniors</button>
-                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Tactics</button>
-                        <button type="button" class="fm-action-btn secondary" onclick="loadPage('formations')">Formations</button>
-                    </div>
+                    ${buildClubActionsHtml('juniors')}
                 </div>
                 <div class="fm-medical-stat-grid academy-summary-grid">
                     <div><strong>${carryover.length}</strong><span>Carryover</span></div>

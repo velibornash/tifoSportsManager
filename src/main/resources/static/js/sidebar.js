@@ -35,7 +35,7 @@ function handleSidebarLinkClick(e, sidebarId) {
     }
 }
 // Dodaj listener-e za SVAKI sidebar
-const sidebars = ['clubSidebar', 'trainingSidebar', 'competitionsSidebar', 'communitySidebar', 'statsSidebar'];
+const sidebars = ['clubSidebar'];
 sidebars.forEach(id => {
     const sidebar = document.getElementById(id);
     if (!sidebar) return;

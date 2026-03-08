@@ -194,7 +194,8 @@
 
 @media (max-width: 768px) {
     .desktop-only { display: none; }
-    .mobile-only { display: inline-flex; }
+    .mobile-only { display: block; }
+    .top-menu > .mobile-only { display: inline-flex; }
 }
 
 /* Lista igrača */
