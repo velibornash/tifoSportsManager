@@ -494,22 +494,60 @@ function mergeChunkData(chunk) {
 }
 
 function mergeSortedSeries(existing, incoming) {
-    const merged = [...(existing || []), ...(incoming || [])]
-        .sort((left, right) => getTimestamp(left) - getTimestamp(right));
-
-    const deduped = [];
-    for (const item of merged) {
-        if (!deduped.length) {
-            deduped.push(item);
-            continue;
-        }
-        if (getTimestamp(deduped[deduped.length - 1]) === getTimestamp(item)) {
-            deduped[deduped.length - 1] = item;
-        } else {
-            deduped.push(item);
-        }
+    const mergedByKey = new Map();
+    for (const item of [...(existing || []), ...(incoming || [])]) {
+        mergedByKey.set(buildSeriesIdentity(item), item);
     }
-    return deduped;
+    return [...mergedByKey.values()].sort(compareSeriesItems);
+}
+
+function buildSeriesIdentity(item) {
+    const eventId = Number(item?.eventId ?? item?.event_id);
+    if (Number.isFinite(eventId) && eventId > 0) {
+        return `event:${eventId}`;
+    }
+
+    const type = String(item?.type || '').toLowerCase();
+    if (type || item?.description || item?.minute != null || item?.clockLabel || item?.clock_label) {
+        return [
+            'event',
+            getTimestamp(item),
+            type,
+            item?.minute ?? '',
+            item?.playerId ?? item?.player_id ?? '',
+            item?.secondaryPlayerId ?? item?.secondary_player_id ?? '',
+            item?.teamSide ?? item?.team_side ?? '',
+            item?.decision ?? '',
+            item?.reviewTarget ?? item?.review_target ?? '',
+            item?.description ?? ''
+        ].join('|');
+    }
+
+    return [
+        'point',
+        getTimestamp(item),
+        Number(item?.x ?? 50),
+        Number(item?.y ?? 50),
+        Number(item?.z ?? 0),
+        item?.carrierPlayerId ?? item?.carrier_player_id ?? '',
+        item?.pendingReceiverId ?? item?.pending_receiver_id ?? '',
+        Boolean(item?.ballInTransit ?? item?.ball_in_transit)
+    ].join('|');
+}
+
+function compareSeriesItems(left, right) {
+    const timestampDelta = getTimestamp(left) - getTimestamp(right);
+    if (timestampDelta !== 0) return timestampDelta;
+
+    const leftEventId = Number(left?.eventId ?? left?.event_id ?? 0);
+    const rightEventId = Number(right?.eventId ?? right?.event_id ?? 0);
+    if (leftEventId !== rightEventId) return leftEventId - rightEventId;
+
+    const leftMinute = Number(left?.minute ?? -1);
+    const rightMinute = Number(right?.minute ?? -1);
+    if (leftMinute !== rightMinute) return leftMinute - rightMinute;
+
+    return buildSeriesIdentity(left).localeCompare(buildSeriesIdentity(right));
 }
 
 function renderSquads(players) {

@@ -1560,6 +1560,9 @@ public class RealisticMatchEngine {
 
         VARReviewEvent var = new VARReviewEvent();
         var.setMinute(minute);
+        var.setTick(goal != null && goal.getTick() > 0
+                ? goal.getTick()
+                : (penalty != null && penalty.getTick() > 0 ? penalty.getTick() : rt.tick));
         var.setMatch(match);
 
         if (goal != null) {

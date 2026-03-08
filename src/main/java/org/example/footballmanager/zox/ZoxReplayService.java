@@ -43,6 +43,7 @@ public class ZoxReplayService {
         Match match = loadMatch(matchId);
         List<MatchTickState> tickStates = loadTickStates(match);
         List<ZoxReplayEventDTO> replayEvents = loadReplayEvents(match);
+        int ticksPerMinute = resolveTicksPerMinute(replayEvents);
 
         int totalTicks = tickStates.isEmpty() ? 0 : tickStates.get(tickStates.size() - 1).getTick();
         long totalDurationMs = toTimestampMs(totalTicks);
@@ -58,14 +59,14 @@ public class ZoxReplayService {
                 .homeGoals(match.getHomeGoals())
                 .awayGoals(match.getAwayGoals())
                 .timeStatus(match.isFinished() || match.isPlayed() ? "FT" : (match.isStarted() ? "LIVE" : "Replay"))
-                .ticksPerMinute(DEFAULT_TICKS_PER_MINUTE)
+                .ticksPerMinute(ticksPerMinute)
                 .tickDurationMs(TICK_DURATION_MS)
                 .chunkDurationMs(CHUNK_DURATION_MS)
                 .chunkCount(calculateChunkCount(totalDurationMs))
                 .totalTicks(totalTicks)
                 .totalDurationMs(totalDurationMs)
                 .playersData(buildPlayerMetadata(match))
-                .goalsData(buildGoalMarkers(match, replayEvents))
+                .goalsData(buildGoalMarkers(match, replayEvents, ticksPerMinute))
                 .eventData(replayEvents)
                 .keyMoments(replayEvents.stream().filter(ZoxReplayEventDTO::isKeyEvent).toList())
                 .build();
@@ -298,7 +299,7 @@ public class ZoxReplayService {
         }
     }
 
-    private List<ZoxReplayGoalDTO> buildGoalMarkers(Match match, List<ZoxReplayEventDTO> replayEvents) {
+    private List<ZoxReplayGoalDTO> buildGoalMarkers(Match match, List<ZoxReplayEventDTO> replayEvents, int ticksPerMinute) {
         List<ZoxReplayGoalDTO> goals = new ArrayList<>();
         int homeScore = 0;
         int awayScore = 0;
@@ -332,8 +333,8 @@ public class ZoxReplayService {
 
         if (match.getHomeGoals() > 0 || match.getAwayGoals() > 0) {
             goals.add(ZoxReplayGoalDTO.builder()
-                    .timestampMs(toTimestampMs(DEFAULT_TICKS_PER_MINUTE * 90))
-                    .tick(DEFAULT_TICKS_PER_MINUTE * 90)
+                    .timestampMs(toTimestampMs(ticksPerMinute * 90))
+                    .tick(ticksPerMinute * 90)
                     .minute(90)
                     .scoreAfterGoal(match.getHomeGoals() + "-" + match.getAwayGoals())
                     .homeScore(match.getHomeGoals())
@@ -376,7 +377,49 @@ public class ZoxReplayService {
         if (event.getTick() > 0) {
             return event.getTick();
         }
+        if (event instanceof VARReviewEvent varReviewEvent) {
+            int reviewedTick = resolveReviewedEventTick(varReviewEvent);
+            if (reviewedTick > 0) {
+                return reviewedTick;
+            }
+        }
         return Math.max(0, event.getMinute() * DEFAULT_TICKS_PER_MINUTE);
+    }
+
+    private int resolveReviewedEventTick(VARReviewEvent event) {
+        if (event.getReviewedGoalEvent() != null && event.getReviewedGoalEvent().getTick() > 0) {
+            return event.getReviewedGoalEvent().getTick();
+        }
+        if (event.getReviewedPenaltyEvent() != null && event.getReviewedPenaltyEvent().getTick() > 0) {
+            return event.getReviewedPenaltyEvent().getTick();
+        }
+        if (event.getReviewedOffsideEvent() != null && event.getReviewedOffsideEvent().getTick() > 0) {
+            return event.getReviewedOffsideEvent().getTick();
+        }
+        return 0;
+    }
+
+    private int resolveTicksPerMinute(List<ZoxReplayEventDTO> replayEvents) {
+        Map<Integer, Integer> counts = new LinkedHashMap<>();
+        for (ZoxReplayEventDTO event : replayEvents) {
+            int candidate = estimateSupportedTickRate(event);
+            if (candidate <= 0) {
+                continue;
+            }
+            counts.merge(candidate, 1, Integer::sum);
+        }
+        return counts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(DEFAULT_TICKS_PER_MINUTE);
+    }
+
+    private int estimateSupportedTickRate(ZoxReplayEventDTO event) {
+        if (event == null || event.getTick() <= 0 || event.getMinute() <= 0) {
+            return 0;
+        }
+        double rawRate = event.getTick() / (double) event.getMinute();
+        return Math.abs(rawRate - 12.0) <= Math.abs(rawRate - 27.0) ? 12 : 27;
     }
 
     private String resolveFormation(Lineup lineup, String fallbackFormation) {

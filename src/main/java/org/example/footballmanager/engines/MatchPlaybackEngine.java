@@ -25,6 +25,7 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 public class MatchPlaybackEngine {
 
+    private static final int DEFAULT_TICKS_PER_MINUTE = 27;
     private static final int TICK_MS = 140; // 12 actions * 6 substeps * 140ms = ~10s per minute
     private static final int SUBSTEPS_PER_TICK = 6;
 
@@ -106,14 +107,14 @@ public class MatchPlaybackEngine {
             return;
         }
 
-        List<MatchEvent> events = loadEvents(matchId, rt);
-        Map<Integer, List<MatchEvent>> eventsByTick = indexEventsByTick(events);
+        final int ticksPerMinute = rt != null && rt.ticksPerMinute > 0 ? rt.ticksPerMinute : DEFAULT_TICKS_PER_MINUTE;
+        List<MatchEvent> events = loadEvents(matchId, rt, ticksPerMinute);
+        Map<Integer, List<MatchEvent>> eventsByTick = indexEventsByTick(events, ticksPerMinute);
         Match match = loadMatch(matchId, rt);
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         schedulers.put(matchId, scheduler);
 
-        final int ticksPerMinute = rt != null && rt.ticksPerMinute > 0 ? rt.ticksPerMinute : 27;
         final int[] frameIndex = {0};
         final int[] substep = {0};
         final int[] lastBroadcastTick = {-1};
@@ -323,20 +324,26 @@ public class MatchPlaybackEngine {
         return frames;
     }
 
-    private List<MatchEvent> loadEvents(long matchId, MatchRuntime rt) {
+    private List<MatchEvent> loadEvents(long matchId, MatchRuntime rt, int fallbackTicksPerMinute) {
         if (rt != null && rt.runtimeEvents != null && !rt.runtimeEvents.isEmpty()) {
-            return rt.runtimeEvents;
+            List<MatchEvent> runtimeEvents = new ArrayList<>(rt.runtimeEvents);
+            runtimeEvents.sort(buildEventComparator(fallbackTicksPerMinute));
+            return runtimeEvents;
         }
 
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
 
         List<MatchEvent> events = matchEventRepository.findByMatch(match);
-        events.sort(Comparator
-                .comparingInt(MatchEvent::getTick)
-                .thenComparingInt(MatchEvent::getMinute)
-                .thenComparing(e -> e.getId() == null ? 0L : e.getId()));
+        events.sort(buildEventComparator(fallbackTicksPerMinute));
         return events;
+    }
+
+    private Comparator<MatchEvent> buildEventComparator(int fallbackTicksPerMinute) {
+        return Comparator.<MatchEvent>comparingInt(
+                        event -> resolveEventTick(event, fallbackTicksPerMinute))
+                .thenComparingInt(MatchEvent::getMinute)
+                .thenComparing(e -> e.getId() == null ? 0L : e.getId());
     }
 
     private Match loadMatch(long matchId, MatchRuntime rt) {
@@ -347,12 +354,23 @@ public class MatchPlaybackEngine {
                 .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
     }
 
-    private Map<Integer, List<MatchEvent>> indexEventsByTick(List<MatchEvent> events) {
+    private Map<Integer, List<MatchEvent>> indexEventsByTick(List<MatchEvent> events, int fallbackTicksPerMinute) {
         Map<Integer, List<MatchEvent>> byTick = new HashMap<>();
         for (MatchEvent event : events) {
-            byTick.computeIfAbsent(event.getTick(), k -> new ArrayList<>()).add(event);
+            byTick.computeIfAbsent(resolveEventTick(event, fallbackTicksPerMinute), k -> new ArrayList<>()).add(event);
         }
         return byTick;
+    }
+
+    private int resolveEventTick(MatchEvent event, int fallbackTicksPerMinute) {
+        if (event == null) {
+            return 0;
+        }
+        if (event.getTick() > 0) {
+            return event.getTick();
+        }
+        int safeTicksPerMinute = fallbackTicksPerMinute > 0 ? fallbackTicksPerMinute : DEFAULT_TICKS_PER_MINUTE;
+        return Math.max(0, event.getMinute() * safeTicksPerMinute);
     }
 
     private String getTeamInPossession(MatchRuntime.TickState frame, Map<String, String> teamNames) {

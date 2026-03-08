@@ -4,6 +4,8 @@ import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesVi
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
+import { createClubManagementFeature } from './pages/features/club-management.js';
+import { createCommunityFeature } from './pages/features/community.js';
     let currentUserTeamId = null;
     let currentPageId = 'dashboard';
     let currentNavState = { type: 'dashboard' };
@@ -329,29 +331,6 @@ import { createMatchesFeature } from './pages/features/matches.js';
         if (Number.isNaN(date.getTime())) return escapeHtml(String(value));
         return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     }
-    function buildCommunityPageShell({ currentPage, eyebrow, title, subtitle, stats = [], bodyHtml = '' }) {
-        const statHtml = stats.map(stat => `
-            <div><strong>${escapeHtml(String(stat.value ?? '-'))}</strong><span>${escapeHtml(stat.label || '')}</span></div>
-        `).join('');
-        return `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
-                        <div>
-                            <div class="fm-eyebrow">${escapeHtml(eyebrow || 'Community')}</div>
-                            <h2>${escapeHtml(title || 'Community')}</h2>
-                            <p class="fm-subtle">${escapeHtml(subtitle || '')}</p>
-                        </div>
-                        ${buildCommunityActionsHtml(currentPage)}
-                    </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        ${statHtml}
-                    </div>
-                </section>
-                ${bodyHtml}
-            </div>`;
-    }
     const academyFeature = createAcademyFeature({
         authFetch,
         getTeamId: () => currentUserTeamId,
@@ -369,6 +348,21 @@ import { createMatchesFeature } from './pages/features/matches.js';
         getTeamId: () => currentUserTeamId,
         renderMatches: (...args) => renderMatches(...args),
         renderFixtures: (...args) => renderFixtures(...args),
+    });
+    const clubManagementFeature = createClubManagementFeature({
+        authFetch,
+        getTeamId: () => currentUserTeamId,
+        escapeHtml,
+        buildClubActionsHtml,
+        formatBudget,
+        formatDateTimeLabel,
+    });
+    const communityFeature = createCommunityFeature({
+        authFetch,
+        getTeamId: () => currentUserTeamId,
+        escapeHtml,
+        formatDateTimeLabel,
+        buildCommunityActionsHtml,
     });
     function formatGoalDiff(value) {
         const number = Number(value || 0);
@@ -1727,240 +1721,16 @@ import { createMatchesFeature } from './pages/features/matches.js';
         render();
     }
     async function loadStaff() {
-        console.log(`Loading staff for ${currentUserTeamId}`);
-        const [staffRes, profileRes] = await Promise.all([
-            authFetch(`/demo/teams/${currentUserTeamId}/coaches`),
-            authFetch(`/demo/teams/${currentUserTeamId}/profile`)
-        ]);
-        const coaches = staffRes.ok ? await staffRes.json() : [];
-        const profile = profileRes.ok ? await profileRes.json() : {};
-        const mainContent = document.getElementById("main-content");
-
-        const uniqueRoles = [...new Set((coaches || []).map(coach => coach.role).filter(Boolean))];
-        const averageRatingValue = coaches.length
-            ? coaches.reduce((sum, coach) => sum + Number(coach.rating || 0), 0) / coaches.length
-            : null;
-        const averageRating = Number.isFinite(averageRatingValue) ? averageRatingValue.toFixed(1) : '-';
-        const topCoach = [...coaches].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0))[0];
-
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
-                        <div>
-                            <div class="fm-eyebrow">Club staff</div>
-                            <h2>${escapeHtml(profile.name || 'Staff')}</h2>
-                            <p class="fm-subtle">Staff page now lives in the same club shell as the rest of the open-football-inspired team area.</p>
-                        </div>
-                        ${buildClubActionsHtml('staff')}
-                    </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${coaches.length}</strong><span>Staff members</span></div>
-                        <div><strong>${averageRating}</strong><span>Average rating</span></div>
-                        <div><strong>${uniqueRoles.length}</strong><span>Departments</span></div>
-                        <div><strong>${escapeHtml(topCoach?.name || '—')}</strong><span>Lead staffer</span></div>
-                    </div>
-                </section>
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Staff room</h3>
-                            <p class="fm-subtle">Role cards stay compact, with the same dark shell and spacing language as the rest of Club.</p>
-                        </div>
-                        <span class="fm-panel-action">${escapeHtml(uniqueRoles.join(' · ') || 'Staff')}</span>
-                    </div>
-                    ${coaches.length === 0 ? `<div class="fm-empty">No staff data available right now.</div>` : `
-                        <div class="manager-grid">
-                            ${coaches.map(coach => `
-                                <div class="manager-player-card">
-                                    <div class="player-name">${escapeHtml(coach.name || 'Unknown')}</div>
-                                    <div class="player-meta">${escapeHtml(coach.role || 'Staff')}</div>
-                                    <div class="player-rating">Rating ${Number(coach.rating || 0)}</div>
-                                </div>`).join('')}
-                        </div>`}
-                </section>
-            </div>`;
+        return clubManagementFeature.loadStaff();
     }
     async function loadCoaches() {
-        return loadStaff();
+        return clubManagementFeature.loadCoaches();
     }
     async function loadFinances() {
-        console.log(`Loading finances for ${currentUserTeamId}`);
-        const [profileRes, playersRes] = await Promise.all([
-            authFetch(`/demo/teams/${currentUserTeamId}/profile`),
-            authFetch(`/teams/${currentUserTeamId}/players`)
-        ]);
-        const profile = profileRes.ok ? await profileRes.json() : {};
-        const players = playersRes.ok ? await playersRes.json() : [];
-        const mainContent = document.getElementById("main-content");
-
-        const squadValue = players.reduce((sum, player) => sum + Number(player.value || 0), 0);
-        const squadSize = players.length;
-        const averageValue = squadSize ? squadValue / squadSize : 0;
-        const topAssets = [...players]
-            .sort((a, b) => Number(b.value || 0) - Number(a.value || 0))
-            .slice(0, 5);
-        const topAsset = topAssets[0] || null;
-        const injuredCount = players.filter(player => player.injured).length;
-
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
-                        <div>
-                            <div class="fm-eyebrow">Club finances</div>
-                            <h2>${escapeHtml(profile.name || 'Finances')}</h2>
-                            <p class="fm-subtle">Budget and squad asset view are now presented in the same wide club shell, using the data already available in the app.</p>
-                        </div>
-                        ${buildClubActionsHtml('finances')}
-                    </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${escapeHtml(formatBudget(profile.budget))}</strong><span>Budget</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(squadValue)))}</strong><span>Squad value</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong><span>Avg asset</span></div>
-                        <div><strong>${escapeHtml(topAsset?.name || '—')}</strong><span>Top asset</span></div>
-                    </div>
-                </section>
-                <div class="fm-grid-top fm-grid-top--club-profile">
-                    <section class="fm-panel club-profile-detail-card">
-                        <div class="fm-panel-head">
-                            <div>
-                                <h3>Financial overview</h3>
-                                <p class="fm-subtle">This version reads from club budget plus current player valuations, so the page is already useful without a dedicated finance backend.</p>
-                            </div>
-                            <span class="fm-panel-action">Snapshot</span>
-                        </div>
-                        <div class="club-profile-detail-list">
-                            <div class="club-profile-detail-row"><span>Available budget</span><strong>${escapeHtml(formatBudget(profile.budget))}</strong></div>
-                            <div class="club-profile-detail-row"><span>Squad market value</span><strong>${escapeHtml(formatBudget(Math.round(squadValue)))}</strong></div>
-                            <div class="club-profile-detail-row"><span>Average player value</span><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong></div>
-                            <div class="club-profile-detail-row"><span>Highest-value player</span><strong>${escapeHtml(topAsset ? `${topAsset.name} (${formatBudget(Math.round(topAsset.value || 0))})` : 'N/A')}</strong></div>
-                            <div class="club-profile-detail-row"><span>Squad size</span><strong>${squadSize}</strong></div>
-                            <div class="club-profile-detail-row"><span>Unavailable players</span><strong>${injuredCount}</strong></div>
-                        </div>
-                    </section>
-                    <section class="fm-panel">
-                        <div class="fm-panel-head">
-                            <div>
-                                <h3>Value leaders</h3>
-                                <p class="fm-subtle">Top assets by current player value.</p>
-                            </div>
-                            <span class="fm-panel-action">Top 5</span>
-                        </div>
-                        ${topAssets.length === 0 ? `<div class="fm-empty">No squad valuation data available.</div>` : `
-                            <div class="fm-squad-wrap">
-                                <table class="fm-squad">
-                                    <thead>
-                                        <tr>
-                                            <th class="sq-name">Player</th>
-                                            <th>Pos</th>
-                                            <th class="sq-age">Age</th>
-                                            <th class="sq-rating">OVR</th>
-                                            <th>Form</th>
-                                            <th>Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${topAssets.map(player => `
-                                            <tr class="fm-squad-row">
-                                                <td class="sq-name">${escapeHtml(player.name || 'Unknown')}</td>
-                                                <td>${escapeHtml(player.position || '-')}</td>
-                                                <td class="sq-age">${player.age ?? '-'}</td>
-                                                <td class="sq-rating">${player.overall ?? '-'}</td>
-                                                <td>${Number.isFinite(Number(player.form)) ? Number(player.form).toFixed(1) : '-'}</td>
-                                                <td>${escapeHtml(formatBudget(Math.round(player.value || 0)))}</td>
-                                            </tr>`).join('')}
-                                    </tbody>
-                                </table>
-                            </div>`}
-                    </section>
-                </div>
-            </div>`;
+        return clubManagementFeature.loadFinances();
     }
     async function loadTransfers() {
-        console.log(`Loading transfers for ${currentUserTeamId}`);
-        const response = await authFetch(`/transfers`);
-        const transfers = response.ok ? await response.json() : [];
-        const mainContent = document.getElementById("main-content");
-        const orderedTransfers = [...transfers].sort((a, b) => new Date(b.listedAt || 0) - new Date(a.listedAt || 0));
-        const averageAsking = orderedTransfers.length
-            ? orderedTransfers.reduce((sum, transfer) => sum + Number(transfer.askingPrice || 0), 0) / orderedTransfers.length
-            : 0;
-        const highestAsking = orderedTransfers.reduce((max, transfer) => Math.max(max, Number(transfer.askingPrice || 0)), 0);
-        const interestCount = orderedTransfers.reduce((sum, transfer) => {
-            const interestedTeams = Array.isArray(transfer.interestedTeams)
-                ? transfer.interestedTeams
-                : Object.values(transfer.interestedTeams || {});
-            return sum + interestedTeams.length;
-        }, 0);
-
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
-                        <div>
-                            <div class="fm-eyebrow">Transfer centre</div>
-                            <h2>Transfers</h2>
-                            <p class="fm-subtle">Same club shell, now with a live transfer board fed by the current backend transfer list endpoint.</p>
-                        </div>
-                        ${buildClubActionsHtml('transfers')}
-                    </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${orderedTransfers.length}</strong><span>Listed players</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(averageAsking)))}</strong><span>Avg asking</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(highestAsking)))}</strong><span>Top asking</span></div>
-                        <div><strong>${interestCount}</strong><span>Interested clubs</span></div>
-                    </div>
-                </section>
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Transfer market board</h3>
-                            <p class="fm-subtle">Read-only for now, with listed time, asking price, and interest already visible.</p>
-                        </div>
-                        <span class="fm-panel-action">Market</span>
-                    </div>
-                    ${orderedTransfers.length === 0 ? `<div class="fm-empty">No players are currently listed for transfer.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead>
-                                    <tr>
-                                        <th class="sq-name">Player</th>
-                                        <th>Pos</th>
-                                        <th class="sq-age">Age</th>
-                                        <th class="sq-rating">Rating</th>
-                                        <th>Value</th>
-                                        <th>Asking</th>
-                                        <th>Interest</th>
-                                        <th>Listed</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${orderedTransfers.map(transfer => {
-                                        const player = transfer.player || {};
-                                        const interestedTeams = Array.isArray(transfer.interestedTeams)
-                                            ? transfer.interestedTeams
-                                            : Object.values(transfer.interestedTeams || {});
-                                        return `
-                                            <tr class="fm-squad-row">
-                                                <td class="sq-name">${escapeHtml(player.name || 'Unknown')}</td>
-                                                <td>${escapeHtml(player.position || '-')}</td>
-                                                <td class="sq-age">${player.age ?? '-'}</td>
-                                                <td class="sq-rating">${player.rating ?? '-'}</td>
-                                                <td>${escapeHtml(formatBudget(Math.round(player.playerValue ?? player.value ?? 0)))}</td>
-                                                <td>${escapeHtml(formatBudget(Math.round(transfer.askingPrice || 0)))}</td>
-                                                <td>${escapeHtml(interestedTeams.length ? interestedTeams.join(', ') : 'No interest yet')}</td>
-                                                <td>${escapeHtml(formatDateTimeLabel(transfer.listedAt))}</td>
-                                            </tr>`;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>
-            </div>`;
+        return clubManagementFeature.loadTransfers();
     }
     async function loadTrainingReports() {
         const mainContent = document.getElementById("main-content");
@@ -2961,7 +2731,21 @@ import { createMatchesFeature } from './pages/features/matches.js';
             if (!response.ok) {
                 const text = await response.text();
                 console.error(`Error ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Fixture not found.</p><button class="back-to-dashboard" data-nav-back="fixtures">Back</button></div>`;
+                mainContent.innerHTML = `
+                    <div class="fm-page fm-page--club">
+                        <section class="fm-panel fm-club-hero">
+                            <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+                            <div class="fm-club-hero-main">
+                                <div>
+                                    <div class="fm-eyebrow">Club schedule</div>
+                                    <h2>Fixture unavailable</h2>
+                                    <p class="fm-subtle">We could not load the requested fixture.</p>
+                                </div>
+                                ${buildClubActionsHtml('schedule')}
+                            </div>
+                        </section>
+                        <section class="fm-panel"><div class="fm-empty">Fixture not found.</div></section>
+                    </div>`;
                 return;
             }
 
@@ -2969,51 +2753,81 @@ import { createMatchesFeature } from './pages/features/matches.js';
 
             const homeTeamName = fixture.homeTeam || "Home";
             const awayTeamName = fixture.awayTeam || "Away";
-            const matchDateTime = `${fixture.matchDate || "N/A"} - ${fixture.matchTime || "N/A"}`;
+            const matchDate = fixture.matchDate || 'N/A';
+            const matchTime = fixture.matchTime || 'TBD';
+            const matchDateTime = `${matchDate}${matchTime ? ` • ${matchTime}` : ''}`;
             const venue = fixture.stadiumName || "N/A";
 
             mainContent.innerHTML = `
-            <div class="team-card">
-                <h2 style="text-align:center;">Upcoming Fixture</h2>
-
-            <div style="text-align:center; margin:20px 0;">
-                    <img src="${stadiumImage}"
-                         alt="${venue}"
-                         style="max-width: 280px; height: auto; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 2px solid #333;">
-                    <p style="margin-top: 10px; color: #aaa; font-style: italic; font-size: 1em;">
-                        ${venue}
-                    </p>
-            </div>
-
-                <div style="display:flex; justify-content:space-around; font-size:1.5em; margin:30px 0; font-weight:bold;">
-                    <div style="text-align:center;">
-                        ${homeTeamName}
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Club schedule</div>
+                            <h2>Upcoming Fixture</h2>
+                            <p class="fm-subtle">Detailed fixture view now stays inside the same Club shell instead of falling back to a back-only page.</p>
+                        </div>
+                        ${buildClubActionsHtml('schedule')}
                     </div>
-                    <div style="align-self:center; font-size:1.2em; color:#2a8c4a;">VS</div>
-                    <div style="text-align:center;">
-                        ${awayTeamName}
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${escapeHtml(homeTeamName)}</strong><span>Home</span></div>
+                        <div><strong>${escapeHtml(awayTeamName)}</strong><span>Away</span></div>
+                        <div><strong>${escapeHtml(matchDate)}</strong><span>Date</span></div>
+                        <div><strong>${escapeHtml(matchTime)}</strong><span>Kick-off</span></div>
                     </div>
-                </div>
-
-                <div style="text-align:center; font-size:1.2em; color:#ccc; margin:25px 0;">
-                    &#128197; ${matchDateTime}<br>
-                    &#127967; ${venue}
-                </div>
-
-                <div style="text-align:center; margin:40px 0; color:#aaa; font-style:italic; font-size:1.1em;">
-                    This is an upcoming match.<br>
-                    Full preview, lineups, and statistics will be available closer to kick-off or after simulation.
-                </div>
-
-                <div style="text-align:center;">
-                    <button class="back-to-dashboard" data-nav-back="fixtures">
-                        Back
-                    </button>
+                </section>
+                <div class="fm-grid-top fm-grid-top--club-profile">
+                    <section class="fm-panel club-profile-brand-card">
+                        <div class="club-profile-brand-mark">
+                            <img src="${stadiumImage}" class="club-logo" alt="${escapeHtml(venue)}" onerror="this.src='/images/default-stadium.png'">
+                        </div>
+                        <h3>${escapeHtml(venue)}</h3>
+                        <p class="fm-subtle">Venue preview for the next scheduled match.</p>
+                        <button type="button" class="fm-action-btn secondary fixture-stadium-btn" data-stadium-image="${escapeHtml(stadiumImage)}" data-stadium-name="${escapeHtml(venue)}">Open Stadium View</button>
+                    </section>
+                    <section class="fm-panel club-profile-detail-card">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Fixture details</h3>
+                                <p class="fm-subtle">Full preview, lineups, and deeper statistics can continue to plug into this card later.</p>
+                            </div>
+                            <span class="fm-panel-action">Preview</span>
+                        </div>
+                        <div class="club-profile-detail-list">
+                            <div class="club-profile-detail-row"><span>Home team</span><strong>${escapeHtml(homeTeamName)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Away team</span><strong>${escapeHtml(awayTeamName)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Date & time</span><strong>${escapeHtml(matchDateTime)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Venue</span><strong>${escapeHtml(venue)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Status</span><strong>Scheduled</strong></div>
+                        </div>
+                    </section>
                 </div>
             </div>`;
+
+            const stadiumButton = mainContent.querySelector('.fixture-stadium-btn');
+            if (stadiumButton) {
+                stadiumButton.addEventListener('click', () => {
+                    showStadiumModal(stadiumButton.dataset.stadiumImage, stadiumButton.dataset.stadiumName);
+                });
+            }
         } catch (err) {
             console.error("Error loading fixture:", err);
-            mainContent.innerHTML = `<div class="team-card"><p>Error loading fixture: ${err.message}</p><button data-nav-back="fixtures">Back</button></div>`;
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Club schedule</div>
+                                <h2>Fixture error</h2>
+                                <p class="fm-subtle">There was a problem while loading this fixture.</p>
+                            </div>
+                            ${buildClubActionsHtml('schedule')}
+                        </div>
+                    </section>
+                    <section class="fm-panel"><div class="fm-empty">Error loading fixture: ${escapeHtml(err.message)}</div></section>
+                </div>`;
         }
     }
     async function loadFriendlies() {
@@ -3258,152 +3072,13 @@ import { createMatchesFeature } from './pages/features/matches.js';
         renderMatches(matches, "International Matches");
     }
     async function loadForum() {
-        console.log(`Loading forum for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/forum/teams/${currentUserTeamId}`);
-        console.log(`Response status: ${response.status}`);
-        const posts = response.ok ? await response.json() : [];
-
-        const mainContent = document.getElementById("main-content");
-        const orderedPosts = [...posts].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const uniqueAuthors = [...new Set(orderedPosts.map(post => post.author).filter(Boolean))];
-        const latestPost = orderedPosts[0] || null;
-
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'forum',
-            eyebrow: 'Community forum',
-            title: 'Forum',
-            subtitle: 'Community now opens directly to the forum page, with the old sidebar actions moved into the page action row.',
-            stats: [
-                { value: orderedPosts.length, label: 'Posts' },
-                { value: uniqueAuthors.length, label: 'Authors' },
-                { value: latestPost ? formatDateTimeLabel(latestPost.date) : '—', label: 'Latest post' },
-                { value: 'Open', label: 'Board status' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Latest discussions</h3>
-                            <p class="fm-subtle">Forum threads stay simple for now, but they share the same shell and spacing as the rest of Community.</p>
-                        </div>
-                        <span class="fm-panel-action">${orderedPosts.length} topics</span>
-                    </div>
-                    ${orderedPosts.length === 0 ? `<div class="fm-empty">No forum posts available right now.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead>
-                                    <tr>
-                                        <th>Author</th>
-                                        <th class="sq-name">Topic</th>
-                                        <th>Posted</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${orderedPosts.map(post => `
-                                        <tr class="fm-squad-row">
-                                            <td>${escapeHtml(post.author || 'Unknown')}</td>
-                                            <td class="sq-name">${escapeHtml(post.title || 'Untitled topic')}</td>
-                                            <td>${formatDateTimeLabel(post.date)}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>`
-        });
+        return communityFeature.loadForum();
     }
     async function loadChat() {
-        console.log(`Loading chat for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/chat/teams/${currentUserTeamId}`);
-        console.log(`Response status: ${response.status}`);
-        const messages = response.ok ? await response.json() : [];
-
-        const mainContent = document.getElementById("main-content");
-        const orderedMessages = [...messages].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const uniqueUsers = [...new Set(orderedMessages.map(message => message.user).filter(Boolean))];
-        const latestMessage = orderedMessages[0] || null;
-
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'chat',
-            eyebrow: 'Team chat',
-            title: 'Team Chat',
-            subtitle: 'Quick locker-room communication now lives inside the same Community shell instead of the old desktop sidebar flow.',
-            stats: [
-                { value: orderedMessages.length, label: 'Messages' },
-                { value: uniqueUsers.length, label: 'Active users' },
-                { value: latestMessage ? formatDateTimeLabel(latestMessage.date) : '—', label: 'Latest message' },
-                { value: 'Live', label: 'Room status' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Locker-room feed</h3>
-                            <p class="fm-subtle">Compact chat history with the same dark panel language used across the rest of the app.</p>
-                        </div>
-                        <span class="fm-panel-action">${orderedMessages.length} lines</span>
-                    </div>
-                    ${orderedMessages.length === 0 ? `<div class="fm-empty">No chat messages available right now.</div>` : `
-                        <div class="club-profile-detail-list">
-                            ${orderedMessages.map(message => `
-                                <div class="club-profile-detail-row">
-                                    <span>${escapeHtml(message.user || 'Unknown')}</span>
-                                    <strong>${escapeHtml(message.message || '')}</strong>
-                                    <span>${formatDateTimeLabel(message.date)}</span>
-                                </div>`).join('')}
-                        </div>`}
-                </section>`
-        });
+        return communityFeature.loadChat();
     }
     async function loadEvents() {
-        console.log(`Loading events for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/events/teams/${currentUserTeamId}`);
-        console.log(`Response status: ${response.status}`);
-        const events = response.ok ? await response.json() : [];
-
-        const mainContent = document.getElementById("main-content");
-        const orderedEvents = [...events].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const latestEvent = orderedEvents[0] || null;
-
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'events',
-            eyebrow: 'Club events',
-            title: 'Events',
-            subtitle: 'Meetings, club happenings, and other community moments now use the same open-football-inspired shell as the rest of the section.',
-            stats: [
-                { value: orderedEvents.length, label: 'Events' },
-                { value: latestEvent ? (latestEvent.title || '—') : '—', label: 'Latest item' },
-                { value: latestEvent ? formatDateTimeLabel(latestEvent.date) : '—', label: 'Latest date' },
-                { value: 'Club', label: 'Scope' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Calendar board</h3>
-                            <p class="fm-subtle">Same data as before, just reorganized into the new Community page layout.</p>
-                        </div>
-                        <span class="fm-panel-action">Board</span>
-                    </div>
-                    ${orderedEvents.length === 0 ? `<div class="fm-empty">No events available right now.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead>
-                                    <tr>
-                                        <th class="sq-name">Event</th>
-                                        <th>Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${orderedEvents.map(event => `
-                                        <tr class="fm-squad-row">
-                                            <td class="sq-name">${escapeHtml(event.title || 'Untitled event')}</td>
-                                            <td>${formatDateTimeLabel(event.date)}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>`
-        });
+        return communityFeature.loadEvents();
     }
     async function loadPlayerStats() {
         console.log(`Loading player stats for userTeamId ${currentUserTeamId}`);
@@ -3558,8 +3233,8 @@ import { createMatchesFeature } from './pages/features/matches.js';
     function renderPlayers(players, title) {
         renderPlayersView(players, title, { loadPlayer, getImageFilename });
     }
-        function renderMatches(matches, title) {
-        renderMatchesView(matches, title, { loadMatch });
+        function renderMatches(matches, title, options = {}) {
+        renderMatchesView(matches, title, { loadMatch, ...options });
     }
     function renderTable(table) {
         renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, escapeHtml, formatGoalDiff });
@@ -3686,8 +3361,8 @@ import { createMatchesFeature } from './pages/features/matches.js';
             }
         }
     }
-        function renderFixtures(fixtures, title) {
-        renderFixturesView(fixtures, title);
+        function renderFixtures(fixtures, title, options = {}) {
+        renderFixturesView(fixtures, title, options);
     }
     function renderLeagueMatches(matches, title = "League Results") {
         renderLeagueMatchesView(matches, title, { loadMatch });

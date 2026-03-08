@@ -200,19 +200,47 @@ export function renderPlayersView(players, title, { loadPlayer, getImageFilename
     });
 }
 
-export function renderMatchesView(matches, title, { loadMatch }) {
+export function renderMatchesView(matches, title, { loadMatch, currentPage = 'schedule' } = {}) {
     const mainContent = document.getElementById('main-content');
+    const matchRows = Array.isArray(matches) ? matches : [];
+    const completedMatches = matchRows.filter(match => Number.isFinite(Number(match?.homeGoals)) && Number.isFinite(Number(match?.awayGoals)));
+    const wins = completedMatches.filter(match => Number(match.homeGoals) > Number(match.awayGoals)).length;
+    const draws = completedMatches.filter(match => Number(match.homeGoals) === Number(match.awayGoals)).length;
+    const losses = completedMatches.filter(match => Number(match.homeGoals) < Number(match.awayGoals)).length;
 
     let html = `
-    <div class="manager-card">
-        ${backButtonHtml('Back', 'dashboard')}
-        <h2>${title}</h2>
-        <div class="match-list">`;
+    <div class="fm-page fm-page--club">
+        <section class="fm-panel fm-club-hero">
+            ${backButtonHtml('Back', 'dashboard')}
+            <div class="fm-club-hero-main">
+                <div>
+                    <div class="fm-eyebrow">Club schedule</div>
+                    <h2>${htmlEscape(title)}</h2>
+                    <p class="fm-subtle">Every Club-opened match list now keeps the full club action row visible.</p>
+                </div>
+                ${buildClubActionsHtml(currentPage)}
+            </div>
+            <div class="fm-medical-stat-grid team-summary-grid">
+                <div><strong>${matchRows.length}</strong><span>Matches</span></div>
+                <div><strong>${wins}</strong><span>Wins</span></div>
+                <div><strong>${draws}</strong><span>Draws</span></div>
+                <div><strong>${losses}</strong><span>Losses</span></div>
+            </div>
+        </section>
+        <section class="fm-panel">
+            <div class="fm-panel-head">
+                <div>
+                    <h3>Match list</h3>
+                    <p class="fm-subtle">Open any row to jump into detailed match data.</p>
+                </div>
+                <span class="fm-panel-action">${matchRows.length} items</span>
+            </div>
+            <div class="match-list">`;
 
-    if (!Array.isArray(matches) || matches.length === 0) {
-        html += `<p style="text-align:center; color:#aaa;">No matches to display.</p>`;
+    if (matchRows.length === 0) {
+        html += `<div class="fm-empty">No matches to display.</div>`;
     } else {
-        matches.forEach(match => {
+        matchRows.forEach(match => {
             const homeEsc = String(match.homeTeam || '').replace(/'/g, "\\'");
             const awayEsc = String(match.awayTeam || '').replace(/'/g, "\\'");
             html += `
@@ -227,7 +255,7 @@ export function renderMatchesView(matches, title, { loadMatch }) {
         });
     }
 
-    html += `</div></div>`;
+    html += `</div></section></div>`;
     mainContent.innerHTML = html;
 
     mainContent.onclick = (e) => {
@@ -239,16 +267,44 @@ export function renderMatchesView(matches, title, { loadMatch }) {
     };
 }
 
-export function renderFixturesView(fixtures, title) {
+export function renderFixturesView(fixtures, title, { currentPage = 'schedule' } = {}) {
     const mainContent = document.getElementById('main-content');
+    const fixtureRows = Array.isArray(fixtures) ? fixtures : [];
 
     let html = `
-    <div class="manager-card">
-        ${backButtonHtml('Back', 'dashboard')}
-        <h2>${title}</h2>
-        <div class="match-list">`;
+    <div class="fm-page fm-page--club">
+        <section class="fm-panel fm-club-hero">
+            ${backButtonHtml('Back', 'dashboard')}
+            <div class="fm-club-hero-main">
+                <div>
+                    <div class="fm-eyebrow">Club schedule</div>
+                    <h2>${htmlEscape(title)}</h2>
+                    <p class="fm-subtle">Fixture pages now keep the same Club shell instead of dropping to a back-only card.</p>
+                </div>
+                ${buildClubActionsHtml(currentPage)}
+            </div>
+            <div class="fm-medical-stat-grid team-summary-grid">
+                <div><strong>${fixtureRows.length}</strong><span>Fixtures</span></div>
+                <div><strong>${fixtureRows.filter(fixture => fixture?.stadiumName).length}</strong><span>Venues set</span></div>
+                <div><strong>${fixtureRows.filter(fixture => fixture?.matchTime).length}</strong><span>Kick-off set</span></div>
+                <div><strong>${htmlEscape(title)}</strong><span>View</span></div>
+            </div>
+        </section>
+        <section class="fm-panel">
+            <div class="fm-panel-head">
+                <div>
+                    <h3>Upcoming fixtures</h3>
+                    <p class="fm-subtle">Open a row to see the detailed fixture card.</p>
+                </div>
+                <span class="fm-panel-action">${fixtureRows.length} items</span>
+            </div>
+            <div class="match-list">`;
 
-    fixtures.forEach((fixture, idx) => {
+    if (fixtureRows.length === 0) {
+        html += `<div class="fm-empty">No fixtures to display.</div>`;
+    }
+
+    fixtureRows.forEach((fixture, idx) => {
         const fixtureId = fixture.id || idx;
         const homeEsc = String(fixture.homeTeam || '').replace(/'/g, "\\'");
         const awayEsc = String(fixture.awayTeam || '').replace(/'/g, "\\'");
@@ -262,7 +318,7 @@ export function renderFixturesView(fixtures, title) {
         </div>`;
     });
 
-    html += `</div></div>`;
+    html += `</div></section></div>`;
     mainContent.innerHTML = html;
 
     mainContent.querySelectorAll('.upcoming-match[data-fixture-id]').forEach(row => {

@@ -9,6 +9,7 @@ import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.GoalEvent;
+import org.example.footballmanager.model.event.VARReviewEvent;
 import org.example.footballmanager.repository.MatchEventRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.MatchTickStateRepository;
@@ -128,6 +129,7 @@ class ZoxReplayServiceTest {
         ZoxPlaybackChunkDTO secondChunk = replayService.getPlaybackChunk(1L, 1);
 
         assertEquals(1L, metadata.getMatchId());
+        assertEquals(27, metadata.getTicksPerMinute());
         assertEquals(2, metadata.getChunkCount());
         assertEquals(120, metadata.getTotalTicks());
         assertEquals(44_400L, metadata.getTotalDurationMs());
@@ -158,6 +160,65 @@ class ZoxReplayServiceTest {
         assertTrue(secondChunk.getEventData().isEmpty());
         assertTrue(secondChunk.getBallData().getLast().isBallInTransit());
         assertEquals(20, secondChunk.getBallData().getLast().getPendingReceiverId());
+    }
+
+    @Test
+    void alignsVarReviewTickWithReviewedGoalAndInfersRealisticTickRate() throws Exception {
+        Match match = new Match();
+        match.setId(2L);
+        match.setHomeTeam(team(300L, "Omladinac"));
+        match.setAwayTeam(team(400L, "Radnicki"));
+        match.setHomeGoals(0);
+        match.setAwayGoals(0);
+        match.setPlayed(true);
+        match.setFinished(true);
+
+        Player scorer = player(30L, "Petar Petrovic", Position.ATT, 9, match.getHomeTeam());
+
+        GoalEvent goalEvent = new GoalEvent();
+        goalEvent.setId(100L);
+        goalEvent.setMatch(match);
+        goalEvent.setMinute(14);
+        goalEvent.setTick(168);
+        goalEvent.setTeam(match.getHomeTeam());
+        goalEvent.setScorer(scorer);
+        goalEvent.setScoreAfterGoal("1-0");
+        goalEvent.setScored(false);
+
+        VARReviewEvent varReviewEvent = new VARReviewEvent();
+        varReviewEvent.setId(101L);
+        varReviewEvent.setMatch(match);
+        varReviewEvent.setMinute(14);
+        varReviewEvent.setDecision("Overturned");
+        varReviewEvent.setOverturnReason("offside");
+        varReviewEvent.setReviewedGoalEvent(goalEvent);
+
+        MatchTickState state0 = new MatchTickState(match, 0,
+                objectMapper.writeValueAsString(List.of()),
+                objectMapper.writeValueAsString(new org.example.footballmanager.dto.BallPositionDTO(50.0, 50.0)),
+                null,
+                false,
+                null);
+        MatchTickState stateEnd = new MatchTickState(match, 1080,
+                objectMapper.writeValueAsString(List.of()),
+                objectMapper.writeValueAsString(new org.example.footballmanager.dto.BallPositionDTO(50.0, 50.0)),
+                null,
+                false,
+                null);
+
+        when(matchRepository.findById(2L)).thenReturn(Optional.of(match));
+        when(tickStateRepository.findByMatchOrderByTickAsc(match)).thenReturn(List.of(state0, stateEnd));
+        when(matchEventRepository.findByMatch(match)).thenReturn(List.of(varReviewEvent, goalEvent));
+
+        ZoxPlaybackMetadataDTO metadata = replayService.getPlaybackMetadata(2L);
+
+        assertEquals(12, metadata.getTicksPerMinute());
+        assertEquals(2, metadata.getEventData().size());
+        assertEquals("goal", metadata.getEventData().get(0).getType());
+        assertEquals(168, metadata.getEventData().get(0).getTick());
+        assertEquals("varReview", metadata.getEventData().get(1).getType());
+        assertEquals(168, metadata.getEventData().get(1).getTick());
+        assertEquals(168L * 370L, metadata.getEventData().get(1).getTimestampMs());
     }
 
     private Team team(Long id, String name) {
