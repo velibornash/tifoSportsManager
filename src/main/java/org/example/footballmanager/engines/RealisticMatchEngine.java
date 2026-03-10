@@ -85,9 +85,8 @@ public class RealisticMatchEngine {
                 simulatePhase(rt, match, minute, phase);
             }
 
-            if (minute == 15 || minute == 30 || minute == 45 || minute == 60 || minute == 75) {
-                maybeGeneratePeriodicalEvent(rt, match, minute);
-            }
+            updateFatigue(rt, minute);
+            maybeGeneratePeriodicalEvent(rt, match, minute);
         }
         
         // Finalize simulation
@@ -109,8 +108,26 @@ public class RealisticMatchEngine {
         rt.awayTeam = match.getAwayTeam();
         rt.homePlayers = new ArrayList<>(match.getHomeLineup().getOrderedStartingPlayers());
         rt.awayPlayers = new ArrayList<>(match.getAwayLineup().getOrderedStartingPlayers());
-        rt.homeSquad = new ArrayList<>(match.getHomeLineup().getOrderedStartingPlayers());
-        rt.awaySquad = new ArrayList<>(match.getAwayLineup().getOrderedStartingPlayers());
+        rt.home = new ArrayList<>(Stream.concat(
+                match.getHomeLineup().getOrderedStartingPlayers().stream(),
+                match.getHomeLineup().getOrderedSubstitutePlayers().stream()
+        ).toList());
+        rt.away = new ArrayList<>(Stream.concat(
+                match.getAwayLineup().getOrderedStartingPlayers().stream(),
+                match.getAwayLineup().getOrderedSubstitutePlayers().stream()
+        ).toList());
+        rt.homeSquad = new ArrayList<>(rt.homePlayers);
+        rt.awaySquad = new ArrayList<>(rt.awayPlayers);
+        rt.home.forEach(player -> {
+            if (player != null && player.getId() != null) {
+                rt.playerTeamSide.put(player.getId(), "HOME");
+            }
+        });
+        rt.away.forEach(player -> {
+            if (player != null && player.getId() != null) {
+                rt.playerTeamSide.put(player.getId(), "AWAY");
+            }
+        });
         
         // Initialize player positions
         initializePlayerPositions(rt);
@@ -701,49 +718,10 @@ public class RealisticMatchEngine {
      * Generates periodic events (injuries, substitutions, tactical adjustments)
      */
     private void maybeGeneratePeriodicalEvent(MatchRuntime rt, Match match, int minute) {
-        double rand = random.nextDouble();
-        
-        if (rand < 0.05) {
-            // Player injury
-            Player injured = random.nextBoolean() 
-                    ? rt.homePlayers.get(random.nextInt(rt.homePlayers.size()))
-                    : rt.awayPlayers.get(random.nextInt(rt.awayPlayers.size()));
-            eventGenerator.createInjuryEvent(rt, match, minute, injured);
-        } else if (rand < 0.15 && minute != 90) {
-            // Zamena
-            boolean isHomeTeam = random.nextBoolean();
-            List<Player> onPitchList = isHomeTeam ? rt.homePlayers : rt.awayPlayers;
-            List<Player> squadList = isHomeTeam ? rt.homeSquad : rt.awaySquad;
-            
-            if (onPitchList.size() > 0 && squadList.size() > 0) {
-                Player onPitch = onPitchList.get(random.nextInt(onPitchList.size()));
-                Player substitute = squadList.get(random.nextInt(squadList.size()));
-                
-                if (!onPitch.equals(substitute) && !onPitchList.contains(substitute)) {
-                    eventGenerator.createSubstitutionEvent(rt, match, minute, onPitch, substitute);
-                    
-            // Swap players in the list
-                    int idx = onPitchList.indexOf(onPitch);
-                    onPitchList.set(idx, substitute);
-                    
-                    // Update positions
-                    PlayerPositionDTO posToReplace = rt.players.stream()
-                            .filter(p -> p.getId() == onPitch.getId())
-                            .findFirst()
-                            .orElse(null);
-                    if (posToReplace != null) {
-                        int posIdx = rt.players.indexOf(posToReplace);
-                        rt.players.set(posIdx, new PlayerPositionDTO(
-                                Math.toIntExact(substitute.getId()),
-                                posToReplace.getTeam(),
-                                posToReplace.getX(),
-                                posToReplace.getY(),
-                                0, 0
-                        ));
-                    }
-                }
-            }
-        }
+        maybeTriggerInjury(rt, match, minute, "HOME");
+        maybeTriggerInjury(rt, match, minute, "AWAY");
+        maybePerformTacticalSubstitution(rt, match, minute, "HOME");
+        maybePerformTacticalSubstitution(rt, match, minute, "AWAY");
     }
 
     /**
@@ -756,6 +734,263 @@ public class RealisticMatchEngine {
         log.info("Match finalized: {} {} - {} {}", 
                 rt.homeTeam.getName(), rt.homeGoals,
                 rt.awayGoals, rt.awayTeam.getName());
+    }
+
+    private void updateFatigue(MatchRuntime rt, int minute) {
+        rt.homePlayers.forEach(player -> increasePlayerFatigue(player, minute));
+        rt.awayPlayers.forEach(player -> increasePlayerFatigue(player, minute));
+    }
+
+    private void increasePlayerFatigue(Player player, int minute) {
+        if (player == null || player.getSkills() == null) {
+            return;
+        }
+        int current = clampFatigue(player.getSkills().getFatigue());
+        if (player.getPosition() == Position.GK) {
+            if (minute % 18 == 0) {
+                player.getSkills().setSkill(SkillName.FATIGUE, clampFatigue(current + 1));
+            }
+            return;
+        }
+
+        double staminaPenalty = Math.max(0.0, 13.0 - player.getSkills().getStamina()) / 24.0;
+        double positionLoad = switch (player.getPosition()) {
+            case WNG, ATT -> 0.05;
+            case MID -> 0.04;
+            case DEF -> 0.03;
+            case GK -> 0.0;
+        };
+        double gainChance = 0.16 + staminaPenalty + positionLoad;
+        if (minute >= 60) gainChance += 0.07;
+        if (minute >= 78) gainChance += 0.08;
+
+        int gain = random.nextDouble() < gainChance ? 1 : 0;
+        if (minute >= 75 && random.nextDouble() < 0.14 + staminaPenalty) {
+            gain++;
+        }
+        if (gain > 0) {
+            player.getSkills().setSkill(SkillName.FATIGUE, clampFatigue(current + gain));
+        }
+    }
+
+    private void maybePerformTacticalSubstitution(MatchRuntime rt, Match match, int minute, String side) {
+        if (minute < 58 || minute > 84) {
+            return;
+        }
+
+        List<Player> onPitch = "HOME".equals(side) ? rt.homeSquad : rt.awaySquad;
+        List<Player> bench = getAvailableBench(rt, side);
+        int substitutionsUsed = "HOME".equals(side) ? rt.homeSubstitutionsUsed : rt.awaySubstitutionsUsed;
+        if (substitutionsUsed >= 3 || bench.isEmpty()) {
+            return;
+        }
+
+        Player out = pickMostFatigued(onPitch);
+        if (out == null) {
+            return;
+        }
+
+        int fatigue = fatigueOf(out);
+        double chance = 0.012;
+        if (fatigue >= 18) chance += 0.04;
+        if (fatigue >= 26) chance += 0.06;
+        if (minute >= 72) chance += 0.018;
+        if (random.nextDouble() >= chance) {
+            return;
+        }
+
+        Player in = pickReplacementFor(bench, out.getPosition());
+        if (in != null) {
+            applySubstitution(rt, match, side, out, in, minute);
+        }
+    }
+
+    private void maybeTriggerInjury(MatchRuntime rt, Match match, int minute, String side) {
+        if (minute < 8 || minute > 88) {
+            return;
+        }
+
+        List<Player> onPitch = "HOME".equals(side) ? rt.homeSquad : rt.awaySquad;
+        if (onPitch.isEmpty()) {
+            return;
+        }
+
+        Player injured = pickInjuryRiskPlayer(onPitch);
+        if (injured == null) {
+            return;
+        }
+
+        int fatigue = fatigueOf(injured);
+        double chance = 0.00028 + Math.max(0, fatigue - 18) * 0.00008;
+        if (injured.getPosition() == Position.WNG || injured.getPosition() == Position.ATT) {
+            chance += 0.00008;
+        }
+        if (random.nextDouble() >= chance) {
+            return;
+        }
+
+        applyInjury(rt, match, injured, minute);
+        List<Player> bench = getAvailableBench(rt, side);
+        int substitutionsUsed = "HOME".equals(side) ? rt.homeSubstitutionsUsed : rt.awaySubstitutionsUsed;
+        if (substitutionsUsed < 3) {
+            Player replacement = pickReplacementFor(bench, injured.getPosition());
+            if (replacement != null) {
+                applySubstitution(rt, match, side, injured, replacement, minute);
+            }
+        }
+    }
+
+    private void applyInjury(MatchRuntime rt, Match match, Player injured, int minute) {
+        int days = rollInjuryDays();
+        GameClock clock = seasonService.getOrCreateClock();
+        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+
+        injured.setInjuryDaysRemaining(days);
+        injured.setInjurySeasonNumber(season);
+        injured.setInjuryWeekNumber(week);
+        injured.setInjured(true);
+        if (injured.getSkills() != null) {
+            injured.getSkills().setSkill(SkillName.FATIGUE, clampFatigue(fatigueOf(injured) + 6));
+        }
+        playerRepository.save(injured);
+        eventGenerator.createInjuryEvent(rt, match, minute, injured);
+    }
+
+    private int rollInjuryDays() {
+        double roll = random.nextDouble();
+        if (roll < 0.72) return random.nextInt(10) + 1;
+        if (roll < 0.95) return random.nextInt(6) + 11;
+        return random.nextInt(4) + 17;
+    }
+
+    private Player pickMostFatigued(List<Player> squad) {
+        return squad.stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getPosition() != Position.GK)
+                .max(Comparator.comparingInt(this::fatigueOf))
+                .orElse(null);
+    }
+
+    private Player pickInjuryRiskPlayer(List<Player> squad) {
+        List<Player> candidates = squad.stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getPosition() != Position.GK)
+                .toList();
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        double totalWeight = candidates.stream()
+                .mapToDouble(player -> 1.0 + Math.max(0, fatigueOf(player) - 10) * 0.25)
+                .sum();
+        double roll = random.nextDouble() * totalWeight;
+        for (Player player : candidates) {
+            roll -= 1.0 + Math.max(0, fatigueOf(player) - 10) * 0.25;
+            if (roll <= 0) {
+                return player;
+            }
+        }
+        return candidates.get(candidates.size() - 1);
+    }
+
+    private List<Player> getAvailableBench(MatchRuntime rt, String side) {
+        List<Player> fullSquad = "HOME".equals(side) ? rt.home : rt.away;
+        List<Player> onPitch = "HOME".equals(side) ? rt.homeSquad : rt.awaySquad;
+        Set<Long> onPitchIds = onPitch.stream()
+                .filter(Objects::nonNull)
+                .map(Player::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        return fullSquad.stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> !onPitchIds.contains(player.getId()))
+                .filter(player -> !rt.playerMinutes.containsKey(player.getId()))
+                .filter(player -> !player.isInjured())
+                .toList();
+    }
+
+    private Player pickReplacementFor(List<Player> bench, Position targetPosition) {
+        if (bench == null || bench.isEmpty()) {
+            return null;
+        }
+        Player exact = bench.stream()
+                .filter(player -> player.getPosition() == targetPosition)
+                .findFirst()
+                .orElse(null);
+        if (exact != null) {
+            return exact;
+        }
+        if (targetPosition != Position.GK) {
+            return bench.stream()
+                    .filter(player -> player.getPosition() != Position.GK)
+                    .findFirst()
+                    .orElse(null);
+        }
+        return bench.get(0);
+    }
+
+    private void applySubstitution(MatchRuntime rt, Match match, String side, Player playerOut, Player playerIn, int minute) {
+        if (playerOut == null || playerIn == null || Objects.equals(playerOut.getId(), playerIn.getId())) {
+            return;
+        }
+
+        List<Player> onPitch = "HOME".equals(side) ? rt.homePlayers : rt.awayPlayers;
+        List<Player> runtimeSquad = "HOME".equals(side) ? rt.homeSquad : rt.awaySquad;
+        if ("HOME".equals(side)) {
+            if (rt.homeSubstitutionsUsed >= 3) return;
+            rt.homeSubstitutionsUsed++;
+        } else {
+            if (rt.awaySubstitutionsUsed >= 3) return;
+            rt.awaySubstitutionsUsed++;
+        }
+
+        eventGenerator.createSubstitutionEvent(rt, match, minute, playerOut, playerIn);
+
+        replacePlayerReference(onPitch, playerOut, playerIn);
+        replacePlayerReference(runtimeSquad, playerOut, playerIn);
+        replacePlayerPosition(rt, playerOut, playerIn);
+
+        rt.playerMinutes.put(playerOut.getId(), Math.max(1, minute));
+        rt.playerMinutes.put(playerIn.getId(), Math.max(0, 91 - minute));
+        rt.playerTeamSide.put(playerIn.getId(), side);
+    }
+
+    private void replacePlayerReference(List<Player> players, Player oldPlayer, Player newPlayer) {
+        int index = players.indexOf(oldPlayer);
+        if (index >= 0) {
+            players.set(index, newPlayer);
+        }
+    }
+
+    private void replacePlayerPosition(MatchRuntime rt, Player playerOut, Player playerIn) {
+        PlayerPositionDTO posToReplace = rt.players.stream()
+                .filter(position -> position.getId() == Math.toIntExact(playerOut.getId()))
+                .findFirst()
+                .orElse(null);
+        if (posToReplace == null) {
+            return;
+        }
+        int posIdx = rt.players.indexOf(posToReplace);
+        rt.players.set(posIdx, new PlayerPositionDTO(
+                Math.toIntExact(playerIn.getId()),
+                posToReplace.getTeam(),
+                posToReplace.getX(),
+                posToReplace.getY(),
+                0, 0
+        ));
+    }
+
+    private int fatigueOf(Player player) {
+        if (player == null || player.getSkills() == null) {
+            return 0;
+        }
+        return clampFatigue(player.getSkills().getFatigue());
+    }
+
+    private int clampFatigue(int value) {
+        return Math.max(0, Math.min(100, value));
     }
 
     // Helper methods
@@ -1580,6 +1815,9 @@ public class RealisticMatchEngine {
         if (random.nextDouble() >= 0.20) {
             return;
         }
+
+        rt.activeStoppage = MatchRuntime.StoppageType.VAR_REVIEW;
+        rt.stoppageTicks = Math.max(rt.stoppageTicks, 4);
 
         VARReviewEvent var = new VARReviewEvent();
         var.setMinute(minute);

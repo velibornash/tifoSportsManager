@@ -2,6 +2,7 @@ package org.example.footballmanager.controller;
 
 import org.example.footballmanager.dto.LeagueMilestonesDTO;
 import org.example.footballmanager.dto.PlayerDTO;
+import org.example.footballmanager.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
@@ -15,6 +16,7 @@ import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.LeagueMilestoneService;
 import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.TeamMedicalService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -47,6 +49,7 @@ class TeamControllerTest {
     @Mock private MatchPlayerStatsRepository matchPlayerStatsRepository;
     @Mock private LeagueMilestoneService leagueMilestoneService;
     @Mock private SeasonService seasonService;
+    @Mock private TeamMedicalService teamMedicalService;
 
     @InjectMocks private TeamController teamController;
 
@@ -179,5 +182,35 @@ class TeamControllerTest {
         assertSame(dto, response.getBody());
         verify(seasonService).getActiveSeasonYear();
         verify(leagueMilestoneService).buildTeamMilestones(team, 2026);
+    }
+
+    @Test
+    void getMedicalOverviewDelegatesToMedicalService() {
+        TeamMedicalOverviewDTO dto = new TeamMedicalOverviewDTO();
+        dto.setTeamId(1L);
+        dto.setTeamName("Omladinac");
+
+        when(teamMedicalService.buildOverview(1L)).thenReturn(dto);
+
+        ResponseEntity<TeamMedicalOverviewDTO> response = teamController.getMedicalOverview(1L);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertSame(dto, response.getBody());
+        verify(teamMedicalService).buildOverview(1L);
+    }
+
+    @Test
+    void applyMedicalRecoveryDelegatesToMedicalService() {
+        TeamMedicalOverviewDTO dto = new TeamMedicalOverviewDTO();
+        dto.setTeamId(1L);
+        dto.setRehabCount(2);
+
+        when(teamMedicalService.applyRecovery(1L, 5L)).thenReturn(dto);
+
+        ResponseEntity<TeamMedicalOverviewDTO> response = teamController.applyMedicalRecovery(1L, 5L);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertSame(dto, response.getBody());
+        verify(teamMedicalService).applyRecovery(1L, 5L);
     }
 }

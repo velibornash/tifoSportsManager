@@ -3,6 +3,7 @@ package org.example.footballmanager.controller;
 import org.example.footballmanager.dto.LeagueMilestonesDTO;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
+import org.example.footballmanager.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
@@ -15,6 +16,7 @@ import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.LeagueMilestoneService;
 import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.TeamMedicalService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,6 +43,7 @@ public class TeamController {
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final LeagueMilestoneService leagueMilestoneService;
     private final SeasonService seasonService;
+    private final TeamMedicalService teamMedicalService;
 
     public TeamController(TeamRepository teamRepository,
                           PlayerRepository playerRepository,
@@ -48,7 +51,8 @@ public class TeamController {
                           LineupRepository lineupRepository,
                           MatchPlayerStatsRepository matchPlayerStatsRepository,
                           LeagueMilestoneService leagueMilestoneService,
-                          SeasonService seasonService) {
+                          SeasonService seasonService,
+                          TeamMedicalService teamMedicalService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -56,6 +60,7 @@ public class TeamController {
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
         this.leagueMilestoneService = leagueMilestoneService;
         this.seasonService = seasonService;
+        this.teamMedicalService = teamMedicalService;
     }
 
     @GetMapping
@@ -127,6 +132,19 @@ public class TeamController {
 
         int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         return ResponseEntity.ok(leagueMilestoneService.buildTeamMilestones(team, activeSeasonYear));
+    }
+
+    @GetMapping("/{teamId}/medical")
+    public ResponseEntity<TeamMedicalOverviewDTO> getMedicalOverview(@PathVariable Long teamId) {
+        TeamMedicalOverviewDTO overview = teamMedicalService.buildOverview(teamId);
+        return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
+    }
+
+    @PostMapping("/{teamId}/medical/recovery/{playerId}")
+    public ResponseEntity<TeamMedicalOverviewDTO> applyMedicalRecovery(@PathVariable Long teamId,
+                                                                       @PathVariable Long playerId) {
+        TeamMedicalOverviewDTO overview = teamMedicalService.applyRecovery(teamId, playerId);
+        return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
     }
 
     @GetMapping("/{teamId}/lineup-template")

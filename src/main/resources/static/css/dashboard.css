@@ -1027,6 +1027,81 @@ button.training-week-item {
     min-height: 340px;
 }
 
+.fm-medical-roster {
+    display: grid;
+    gap: 12px;
+}
+
+.fm-medical-card {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fm-medical-card-head,
+.fm-medical-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fm-medical-card-head h4 {
+    margin: 0;
+    color: #eef4ff;
+}
+
+.fm-medical-card-subtle {
+    margin-top: 4px;
+    color: #99a6bb;
+    font-size: 0.86rem;
+}
+
+.fm-medical-chip-row,
+.fm-medical-summary-list {
+    display: grid;
+    gap: 8px;
+}
+
+.fm-medical-chip-row {
+    grid-template-columns: repeat(auto-fit, minmax(140px, max-content));
+}
+
+.fm-medical-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(143, 211, 255, 0.10);
+    border: 1px solid rgba(143, 211, 255, 0.14);
+    color: #dceafe;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.fm-medical-summary-list > div {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.fm-medical-summary-list strong {
+    display: block;
+    color: #eef4ff;
+    font-size: 1.05rem;
+}
+
+.fm-medical-summary-list span {
+    display: block;
+    margin-top: 4px;
+    color: #99a6bb;
+    font-size: 0.82rem;
+}
+
 .fm-grid-top--club-profile {
     grid-template-columns: minmax(280px, 0.74fr) minmax(0, 1.26fr);
 }
@@ -1777,6 +1852,16 @@ button.training-week-item {
     }
 
     .fm-club-actions .fm-action-btn {
+        width: 100%;
+    }
+
+    .fm-medical-card-head,
+    .fm-medical-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .fm-medical-actions .fm-action-btn {
         width: 100%;
     }
 

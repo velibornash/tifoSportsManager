@@ -15,7 +15,11 @@ import org.example.footballmanager.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 @Slf4j
 @Component
@@ -91,6 +95,9 @@ public class RuntimeSaveToDB {
         rt.homeTeam = match.getHomeTeam();
         rt.awayTeam = match.getAwayTeam();
 
+        homePlayers = resolveParticipants(rt.home, homePlayers, rt);
+        awayPlayers = resolveParticipants(rt.away, awayPlayers, rt);
+
         batchSaveMatchEvents(match, rt.runtimeEvents, homePlayers, awayPlayers);
 
         match.setHomeGoals(rt.homeGoals);
@@ -122,11 +129,53 @@ public class RuntimeSaveToDB {
                 rt.playerMinutes
         );
 
+        persistPlayerState(homePlayers, awayPlayers);
+
         batchSaveTickPositions(match, rt);
 
         System.out.println(matchStatisticEngineHandling.generateMatchReport(match, rt, homePlayers, awayPlayers));
         updateLeagueTable(match, rt);
         return match;
+    }
+
+    private List<Player> resolveParticipants(List<Player> fullMatchday, List<Player> fallbackPlayers, MatchRuntime rt) {
+        List<Player> source = (fullMatchday != null && !fullMatchday.isEmpty()) ? fullMatchday : fallbackPlayers;
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+
+        java.util.Set<Long> currentIds = fallbackPlayers == null ? java.util.Set.of() : fallbackPlayers.stream()
+                .filter(Objects::nonNull)
+                .map(Player::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        LinkedHashMap<Long, Player> playersById = new LinkedHashMap<>();
+        source.stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> currentIds.contains(player.getId()) || rt.playerMinutes.containsKey(player.getId()))
+                .forEach(player -> playersById.put(player.getId(), player));
+
+        if (!playersById.isEmpty()) {
+            return new ArrayList<>(playersById.values());
+        }
+        return fallbackPlayers == null ? List.of() : fallbackPlayers;
+    }
+
+    private void persistPlayerState(List<Player> homePlayers, List<Player> awayPlayers) {
+        LinkedHashMap<Long, Player> playersById = Stream.concat(homePlayers.stream(), awayPlayers.stream())
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        Player::getId,
+                        player -> player,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        if (!playersById.isEmpty()) {
+            playerRepository.saveAll(new ArrayList<>(playersById.values()));
+        }
     }
 
     private void markFixtureAsPlayed(Match match) {

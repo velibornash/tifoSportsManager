@@ -16,6 +16,20 @@ function normalizePercent(value, fallback = 78) {
     return Math.max(35, Math.min(100, Math.round(numeric)));
 }
 
+function clampPercent(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function conditionPercent(player) {
+    const fatigue = Number(player?.fatigue);
+    if (Number.isFinite(fatigue)) {
+        return clampPercent(100 - fatigue);
+    }
+    return normalizePercent(player?.staminaExact ?? player?.stamina);
+}
+
 function buildStars(score) {
     const filled = Math.max(1, Math.min(5, Math.round((Number(score) || 52) / 18)));
     return `<div class="fm-stars">${Array.from({ length: 5 }, (_, index) => `<span class="star${index < filled ? ' on' : ''}"></span>`).join('')}</div>`;
@@ -77,7 +91,7 @@ export function buildSquadTableHtml(players, options = {}) {
                     ${rows.map(player => {
                         const overall = Number(player?.overall ?? 0);
                         const averageRating = Number(player?.averageRating10);
-                        const condition = normalizePercent(player?.staminaExact ?? player?.stamina);
+                        const condition = conditionPercent(player);
                         const morale = moraleMeta(player);
                         const appearances = Number(player?.played ?? player?.matchesPlayed ?? 0);
                         const goals = Number(player?.totalGoals ?? player?.goals ?? 0);
@@ -161,7 +175,15 @@ export function buildCommunityActionsHtml(currentPage = '') {
     ], currentPage);
 }
 
-export function renderPlayersView(players, title, { loadPlayer, getImageFilename }) {
+export function renderPlayersView(players, title, options = {}) {
+    const {
+        loadPlayer,
+        getImageFilename,
+        teamId = '',
+        teamName = '',
+        milestonesHtml = '',
+        medicalOverview = null
+    } = options;
     const mainContent = document.getElementById('main-content');
 
     if (!Array.isArray(players)) {
@@ -170,7 +192,91 @@ export function renderPlayersView(players, title, { loadPlayer, getImageFilename
     }
 
     const isClubSquad = /first team|juniors/i.test(title);
+    const isEnhancedFirstTeam = /first team/i.test(title);
     const callerPage = /juniors/i.test(title) ? 'juniors' : 'firstTeam';
+
+    if (isEnhancedFirstTeam) {
+        const resolvedTeamName = teamName || title;
+        const avgOverall = players.length
+            ? (players.reduce((sum, player) => sum + Number(player?.overall || 0), 0) / players.length).toFixed(1)
+            : '-';
+        const avgAge = players.length
+            ? (players.reduce((sum, player) => sum + Number(player?.age || 0), 0) / players.length).toFixed(1)
+            : '-';
+        const totalGoals = players.reduce((sum, player) => sum + Number(player?.totalGoals ?? player?.goals ?? 0), 0);
+        const totalAssists = players.reduce((sum, player) => sum + Number(player?.totalAssists ?? player?.assists ?? 0), 0);
+        const averageCondition = medicalOverview?.averageConditionPercent ?? (players.length
+            ? Math.round(players.reduce((sum, player) => sum + conditionPercent(player), 0) / players.length)
+            : 100);
+        const injuryCount = medicalOverview?.injuredCount ?? players.filter(player => player?.injured).length;
+        const rehabCount = medicalOverview?.rehabCount ?? players.filter(player => player?.injured || conditionPercent(player) < 82).length;
+
+        mainContent.innerHTML = `
+        <div class="fm-page fm-page--team-detail">
+            <section class="fm-panel fm-club-hero">
+                ${backButtonHtml('Back', 'dashboard')}
+                <div class="fm-club-hero-main">
+                    <div>
+                        <div class="fm-eyebrow">Club squad</div>
+                        <h2>${htmlEscape(title)}</h2>
+                        <p class="fm-subtle">First Team now uses the same stronger club shell and responsive panel layout as the better-scaling team views.</p>
+                    </div>
+                    ${buildClubActionsHtml(callerPage)}
+                </div>
+                <div class="fm-medical-stat-grid team-summary-grid">
+                    <div><strong>${players.length}</strong><span>Players</span></div>
+                    <div><strong>${avgOverall}</strong><span>Avg OVR</span></div>
+                    <div><strong>${avgAge}</strong><span>Avg age</span></div>
+                    <div><strong>${totalGoals}/${totalAssists}</strong><span>Goals / assists</span></div>
+                </div>
+            </section>
+            ${milestonesHtml ? `
+            <section class="fm-panel fm-milestone-board-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Club milestones</h3>
+                        <p class="fm-subtle">Season context stays visible directly on the First Team page too.</p>
+                    </div>
+                    <span class="fm-panel-action">Club area</span>
+                </div>
+                ${milestonesHtml}
+            </section>` : ''}
+            <div class="fm-team-layout has-side-panel">
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <h3>Squad</h3>
+                        <span class="fm-panel-action">${players.length} registered</span>
+                    </div>
+                    ${buildSquadTableHtml(players, {
+                        rowClass: 'league-player-card',
+                        teamId,
+                        teamName: resolvedTeamName,
+                        emptyText: 'No registered players found for this team.'
+                    })}
+                </section>
+                <aside class="fm-panel fm-medical-panel">
+                    <div class="fm-panel-head">
+                        <h3>Medical Center</h3>
+                        <span class="fm-panel-action">Club area</span>
+                    </div>
+                    <div class="fm-medical-icon">&#10010; &#129658;</div>
+                    <p class="fm-subtle">Condition now follows fatigue consistently here and on the player page, with recovery cases always visible.</p>
+                    <div class="fm-medical-stat-grid">
+                        <div><strong>${injuryCount}</strong><span>Injuries</span></div>
+                        <div><strong>${rehabCount}</strong><span>Recovery queue</span></div>
+                        <div><strong>${averageCondition}%</strong><span>Avg condition</span></div>
+                    </div>
+                    <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Open Medical Center</button>
+                </aside>
+            </div>
+        </div>`;
+
+        bindSquadRowClicks(mainContent, row => {
+            const playerId = Number(row.dataset.playerId);
+            if (playerId) loadPlayer(playerId, callerPage);
+        });
+        return;
+    }
 
     mainContent.innerHTML = `
     <div class="fm-page fm-page--club">
