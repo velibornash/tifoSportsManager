@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.LeagueTableDTO;
 import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.MatchFixture;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -64,10 +66,12 @@ class CountryControllerTest {
         Team home = new Team();
         home.setId(10L);
         home.setName("OFK Omladinac");
+        home.setHumanControlled(true);
 
         Team away = new Team();
         away.setId(20L);
         away.setName("FK Rival");
+        away.setHumanControlled(false);
 
         CompetitionEntry homeEntry = new CompetitionEntry();
         homeEntry.setSeasonCompetition(seasonCompetition);
@@ -88,10 +92,49 @@ class CountryControllerTest {
         assertEquals(2, response.size());
         assertEquals(10L, response.get(0).get("id"));
         assertEquals("OFK Omladinac", response.get(0).get("name"));
+        assertEquals(true, response.get(0).get("humanControlled"));
         assertEquals(20L, response.get(1).get("id"));
         assertEquals("FK Rival", response.get(1).get("name"));
+        assertEquals(false, response.get(1).get("humanControlled"));
         verify(seasonService).ensureEntriesForSeasonCompetition(league, 2027);
         verify(competitionEntryRepository).findBySeasonCompetition(seasonCompetition);
+    }
+
+    @Test
+    void getLeagueTableIncludesTeamIdAndOwnershipFlag() {
+        Competition league = new Competition();
+        league.setId(1L);
+        league.setName("Superliga");
+
+        SeasonCompetition seasonCompetition = new SeasonCompetition();
+        seasonCompetition.setCompetition(league);
+        seasonCompetition.setSeasonYear(2026);
+
+        Team team = new Team();
+        team.setId(10L);
+        team.setName("OFK Omladinac");
+        team.setHumanControlled(true);
+
+        CompetitionEntry entry = new CompetitionEntry();
+        entry.setTeam(team);
+        entry.setPoints(33);
+        entry.setGoalsScored(28);
+        entry.setGoalsConceded(12);
+        entry.setWins(10);
+        entry.setDraws(3);
+        entry.setLosses(1);
+
+        when(competitionRepository.findById(1L)).thenReturn(Optional.of(league));
+        when(seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, 2026)).thenReturn(Optional.of(seasonCompetition));
+        when(competitionEntryRepository.findBySeasonCompetition(seasonCompetition)).thenReturn(List.of(entry));
+
+        ResponseEntity<List<LeagueTableDTO>> response = countryController.getLeagueTable(1L, 2026);
+
+        assertEquals(200, response.getStatusCode().value());
+        LeagueTableDTO row = response.getBody().getFirst();
+        assertEquals(10L, row.teamId());
+        assertEquals("OFK Omladinac", row.name());
+        assertEquals(true, row.humanControlled());
     }
 
     @Test

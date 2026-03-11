@@ -8,6 +8,9 @@ import { createClubManagementFeature } from './pages/features/club-management.js
 import { createCommunityFeature } from './pages/features/community.js';
     let currentUserTeamId = null;
     let currentUserTeamName = '';
+	    let currentUsername = '';
+	    let currentUserRole = '';
+	    let currentUserTeamHumanControlled = null;
 	let currentUserCompetitionId = null;
 	let currentUserCompetitionName = '';
 	let currentUserCompetitionTier = null;
@@ -172,6 +175,9 @@ import { createCommunityFeature } from './pages/features/community.js';
             const user = await res.json();
             currentUserTeamId = user.teamId;
             currentUserTeamName = user.teamName || '';
+	            currentUsername = user.username || '';
+	            currentUserRole = user.role || '';
+	            currentUserTeamHumanControlled = typeof user.teamHumanControlled === 'boolean' ? user.teamHumanControlled : null;
 	        currentUserCompetitionId = user.competitionId ?? null;
 	        currentUserCompetitionName = user.competitionName || '';
 	        currentUserCompetitionTier = user.competitionTier ?? null;
@@ -261,6 +267,23 @@ import { createCommunityFeature } from './pages/features/community.js';
 		            .join('');
 		    }
 
+		    function getCountryFlagImagePath(country) {
+		        const explicitPath = String(country?.flagImagePath || '').trim();
+		        if (explicitPath) return explicitPath;
+		        return String(country?.isoCode || '').trim().toUpperCase() === 'SRB'
+		            ? '/images/serbiaflag.png'
+		            : '';
+		    }
+
+		    function buildCountryFlagBadgeHtml(country, countryName) {
+		        const imagePath = getCountryFlagImagePath(country);
+		        if (imagePath) {
+		            return `<div class="fm-country-badge fm-country-badge--image"><img src="${escapeHtml(imagePath)}" alt="${escapeHtml(countryName)} flag"></div>`;
+		        }
+		        const flagEmoji = countryFlagEmojiFromIso(country?.isoCode);
+		        return `<div class="fm-country-badge">${flagEmoji || '🌍'}</div>`;
+		    }
+
 	    function sortCountryLeagues(leagues) {
 	        return [...(Array.isArray(leagues) ? leagues : [])].sort((left, right) => {
 	            const tierDiff = Number(left?.tier || 999) - Number(right?.tier || 999);
@@ -321,8 +344,8 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                u21NationalTeam: null
 	            };
 		            const countryName = country?.name || currentUserCountryName || countryIso;
-		            const flagEmoji = countryFlagEmojiFromIso(country?.isoCode || countryIso);
-		            const countryTitle = `${flagEmoji ? `${flagEmoji} ` : ''}${escapeHtml(countryName)}`;
+		            const countryTitle = escapeHtml(countryName);
+		            const countryBadgeHtml = buildCountryFlagBadgeHtml(country, countryName);
 
 	            mainContent.innerHTML = `
 	                <div class="fm-page fm-page--country">
@@ -338,7 +361,7 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                    <div class="fm-grid-top fm-grid-top--country">
 	                        <section class="fm-panel fm-country-hero">
 	                            <div class="fm-country-hero-main">
-		                                <div class="fm-country-badge">${flagEmoji || '🌍'}</div>
+	                                ${countryBadgeHtml}
 	                                <div class="fm-country-meta">
 	                                    <div class="fm-eyebrow">Federation</div>
 		                                    <h3>${countryTitle}</h3>
@@ -368,7 +391,7 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                                        <div class="fm-milestone-kicker">${escapeHtml(buildLeagueMetaLabel(league))}</div>
 	                                        <div class="fm-update-title">${escapeHtml(league?.name || 'League')}</div>
 	                                        <div class="fm-update-meta">Open the same standings/fixtures/scorers shell used for your main league view.</div>
-	                                        <button type="button" class="fm-action-btn secondary" data-country-league-id="${league?.id || ''}" data-country-league-name="${escapeHtml(league?.name || 'League')}">Open table</button>
+	                                        <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-league-id="${league?.id || ''}" data-country-league-name="${escapeHtml(league?.name || 'League')}">Open table</button>
 	                                    </article>`).join('') || `<div class="fm-empty">No leagues found for this country yet.</div>`}
 	                            </div>
 	                            ${sortedLeagues.length ? `
@@ -398,13 +421,13 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                                    <div class="fm-milestone-kicker">Senior</div>
 	                                    <div class="fm-update-title">${escapeHtml(country?.seniorNationalTeam?.name || `${country?.name || currentUserCountryName || 'Country'} National Team`)}</div>
 	                                    <div class="fm-update-meta">Top-level squad hub placeholder.</div>
-	                                    <button type="button" class="fm-action-btn secondary" data-country-placeholder="nationalTeam">Open</button>
+	                                    <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-placeholder="nationalTeam">Open</button>
 	                                </article>
 	                                <article class="fm-country-team-card">
 	                                    <div class="fm-milestone-kicker">U-21</div>
 	                                    <div class="fm-update-title">${escapeHtml(country?.u21NationalTeam?.name || `${country?.name || currentUserCountryName || 'Country'} U-21`)}</div>
 	                                    <div class="fm-update-meta">Youth national setup placeholder.</div>
-	                                    <button type="button" class="fm-action-btn secondary" data-country-placeholder="u21Team">Open</button>
+	                                    <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-placeholder="u21Team">Open</button>
 	                                </article>
 	                            </div>
 	                        </section>
@@ -789,9 +812,13 @@ import { createCommunityFeature } from './pages/features/community.js';
     const communityFeature = createCommunityFeature({
         authFetch,
         getTeamId: () => currentUserTeamId,
+	        getTeamName: () => currentUserTeamName,
+	        getUsername: () => currentUsername,
+	        getUserRole: () => currentUserRole,
         escapeHtml,
         formatDateTimeLabel,
         buildCommunityActionsHtml,
+	        loadLeagueTeam: (...args) => loadLeagueTeam(...args),
     });
     function formatGoalDiff(value) {
         const number = Number(value || 0);
@@ -4491,14 +4518,22 @@ import { createCommunityFeature } from './pages/features/community.js';
             const assists = assistsResponse.ok ? await assistsResponse.json() : [];
             const milestones = milestonesResponse.ok ? await milestonesResponse.json() : null;
             const seasonSummary = seasonSummaryResponse.ok ? await seasonSummaryResponse.json() : null;
-            const teamIdByName = new Map();
-            leagueTeams.forEach(team => {
-                teamIdByName.set(normalizeTeamKey(team.name), team.id);
-            });
+	            const teamMetaByName = new Map();
+	            const teamIdByName = new Map();
+	            leagueTeams.forEach(team => {
+	                const key = normalizeTeamKey(team.name);
+	                teamMetaByName.set(key, team);
+	                teamIdByName.set(key, team.id);
+	            });
 
             const enhancedTable = table.map(row => ({
                 ...row,
-                teamId: teamIdByName.get(normalizeTeamKey(row.name)) ?? null
+	                teamId: row.teamId ?? teamIdByName.get(normalizeTeamKey(row.name)) ?? null,
+	                humanControlled: typeof row.humanControlled === 'boolean'
+	                    ? row.humanControlled
+	                    : (typeof teamMetaByName.get(normalizeTeamKey(row.name))?.humanControlled === 'boolean'
+	                        ? teamMetaByName.get(normalizeTeamKey(row.name)).humanControlled
+	                        : null)
             }));
 
             const byRound = new Map();

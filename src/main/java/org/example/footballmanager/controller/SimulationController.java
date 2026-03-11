@@ -106,12 +106,14 @@ public class SimulationController {
         log.info("Realistic demo: User team '{}' is {}", userTeam.getName(), 
                 userTeam.getId().equals(homeTeam.getId()) ? "HOME" : "AWAY");
 
-        // Simulate rest of matchday for other teams
-        matchEngine.simulateRestOfMatchDay(activeLeague, currentSeason, homeTeam, awayTeam);
-
         simulationService.startRealisticSimulation(demoMatch.getId())
                 .thenAccept(played -> {
+                    if (played == null) {
+                        log.warn("Realistic demo simulation did not produce a played match for ID: {}", demoMatch.getId());
+                        return;
+                    }
                     log.info("Realistic demo simulation completed for match ID: {}", demoMatch.getId());
+                    matchEngine.simulateRestOfMatchDay(activeLeague, currentSeason, homeTeam, awayTeam);
                     matchStatisticEngine.updateLeagueTableForMatchDay(activeLeague, currentSeason);
                     try {
                         trainingProgressionService.runWeeklyTraining(userTeam.getId());

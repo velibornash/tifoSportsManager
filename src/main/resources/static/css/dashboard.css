@@ -656,6 +656,118 @@ button.training-week-item {
     color: #e6eef8;
 }
 
+.community-compose-form {
+    display: grid;
+    gap: 12px;
+}
+
+.community-compose-textarea {
+    width: 100%;
+    min-height: 110px;
+    resize: vertical;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #eef4ff;
+    padding: 14px 16px;
+    font: inherit;
+    line-height: 1.5;
+}
+
+.community-compose-textarea:focus {
+    outline: none;
+    border-color: rgba(143, 211, 255, 0.36);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.12);
+}
+
+.community-compose-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.community-feed {
+    display: grid;
+    gap: 14px;
+}
+
+.community-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(17, 25, 40, 0.92), rgba(10, 15, 26, 0.94));
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.community-card-head,
+.community-card-footer,
+.community-admin-actions,
+.fm-club-cell {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.community-card-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    color: #9fb2cb;
+    font-size: 0.82rem;
+}
+
+.community-card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #eef4ff;
+}
+
+.community-card-body {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    color: #eef4ff;
+}
+
+.community-registration-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.community-registration-grid > div {
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 12px;
+}
+
+.community-registration-grid span {
+    display: block;
+    color: #8fa0ba;
+    font-size: 0.74rem;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.community-registration-grid strong {
+    color: #eef4ff;
+    font-size: 0.92rem;
+}
+
+.community-type-badge.community-type-user { background: rgba(143, 211, 255, 0.18); color: #cfeeff; }
+.community-type-badge.community-type-admin { background: rgba(255, 214, 79, 0.16); color: #ffe8a8; }
+.community-type-badge.community-type-service { background: rgba(111, 207, 151, 0.16); color: #cef3d8; }
+
+.fm-badge-owner { background: rgba(111, 207, 151, 0.18); color: #c9f6d7; }
+.fm-badge-ai { background: rgba(255, 255, 255, 0.1); color: #c5d0de; }
+
 .finance-flow-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -1069,6 +1181,11 @@ button.training-week-item {
     gap: 12px;
 }
 
+.fm-country-league-card,
+.fm-country-team-card {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .fm-country-hero-main {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -1086,6 +1203,18 @@ button.training-week-item {
     background: radial-gradient(circle at top, rgba(143, 211, 255, 0.24), rgba(255, 255, 255, 0.06));
     border: 1px solid rgba(143, 211, 255, 0.18);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.fm-country-badge--image {
+    padding: 8px;
+}
+
+.fm-country-badge img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 14px;
+    display: block;
 }
 
 .fm-country-meta {
@@ -1113,6 +1242,16 @@ button.training-week-item {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.fm-country-league-card .fm-action-btn,
+.fm-country-team-card .fm-action-btn,
+.fm-country-card-action {
+    margin-top: auto;
+    align-self: flex-start;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.82rem;
 }
 
 .fm-country-select-row {
@@ -1303,6 +1442,10 @@ button.training-week-item {
 .fx-away:hover,
 .sq-player-link:hover {
     color: #8fd3ff;
+}
+
+.fm-club-cell {
+    justify-content: flex-start;
 }
 
 .zone-title td:first-child { box-shadow: inset 4px 0 0 #4caf50; }
@@ -2912,6 +3055,25 @@ body {
     transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+.fm-menu-country-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-menu-country-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    object-fit: cover;
+    display: block;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.fm-menu-country-emoji {
+    line-height: 1;
+}
+
 .menu-button:hover,
 .top-menu button:hover {
     background: rgba(143, 211, 255, 0.14);
@@ -3452,6 +3614,15 @@ body {
     .community-message-body {
         padding: 12px 14px;
         line-height: 1.5;
+    }
+
+    .community-card {
+        padding: 14px;
+    }
+
+    .community-compose-actions .fm-action-btn,
+    .community-admin-actions .fm-action-btn {
+        width: 100%;
     }
 
     .fm-dashboard-shell .stats-grid {

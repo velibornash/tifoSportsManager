@@ -16,7 +16,7 @@
     <div class="menu-button desktop-only" onclick="loadPage('trainingSetup')">&#127947; Training</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
-    <div class="menu-button desktop-only" onclick="loadPage('forum')">&#128172; Community</div>
+	    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
     <div class="menu-button desktop-only clean-sheet-btn" onclick="window.location.href='/tifo.html'">🎩 TIFO Old School</div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
@@ -71,18 +71,11 @@
             </div>
         </div>
 
-        <div class="mobile-accordion">
-            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                &#128172; Community
-            </div>
-            <div class="accordion-content">
-                <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
-                <div onclick="loadPage('chat'); closeMobileMenu()">Chat</div>
-                <div onclick="loadPage('events'); closeMobileMenu()">Events</div>
-                <div onclick="initializeDatabase(); closeMobileMenu()">Initialize DB (Demo)</div>
-                <div onclick="resetDatabase(); closeMobileMenu()">Reset DB (Demo)</div>
-            </div>
-        </div>
+	        <div class="mobile-accordion">
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('chat')">
+	                &#128172; Community Chat
+	            </div>
+	        </div>
 
         <div class="mobile-accordion clean-sheet-mobile">
             <div class="accordion-header" onclick="window.location.href='/tifo.html'">

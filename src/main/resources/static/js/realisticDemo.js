@@ -95,7 +95,9 @@ async function initializeReplay() {
     updateTimelineBounds();
 
     await ensureChunkLoaded(0);
-    void ensureChunkLoaded(1);
+    if (totalChunks > 1) {
+        void ensureChunkLoaded(1);
+    }
 
     await rebuildReplayFromTime(0, { animate: false });
     setReplayStatus(isReplayMode() ? `Replay ready • ${describeReplayMinutePacing(playbackRate)} = 1 match minute` : 'Live match view • timeline hidden');
@@ -114,7 +116,7 @@ async function waitForReplayMetadata() {
             }
         }
 
-        setReplayStatus(`Simulation in progress... waiting for recorded playback (${attempt}/${MAX_METADATA_POLL_ATTEMPTS})`);
+        setReplayStatus(`Simulation in progress... (${attempt}/${MAX_METADATA_POLL_ATTEMPTS})`);
         await delay(METADATA_POLL_MS);
     }
 

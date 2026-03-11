@@ -1,5 +1,15 @@
 export function createCommunityFeature(deps) {
-    const { authFetch, getTeamId, escapeHtml, formatDateTimeLabel, buildCommunityActionsHtml } = deps;
+    const {
+        authFetch,
+        getTeamId,
+        getTeamName,
+        getUsername,
+        getUserRole,
+        escapeHtml,
+        formatDateTimeLabel,
+        buildCommunityActionsHtml,
+        loadLeagueTeam,
+    } = deps;
 
     function buildCommunityPageShell({ currentPage, eyebrow, title, subtitle, stats = [], bodyHtml = '' }) {
         const statHtml = stats.map(stat => `
@@ -23,308 +33,248 @@ export function createCommunityFeature(deps) {
             </div>`;
     }
 
+    function isAdminViewer() {
+        const role = String(getUserRole?.() || '').toUpperCase();
+        return role === 'OWNER' || role === 'ADMIN' || role === 'DEV';
+    }
+
     function formatCommunityDate(value, fallback = '—') {
         return value ? formatDateTimeLabel(value) : fallback;
     }
 
-    function buildCommunityDetailBody({ backPage, backLabel, title, subtitle, summaryRows = [], primaryCopy = '', secondaryTitle = '', secondaryRows = [] }) {
+    function typeBadgeClass(type) {
+        const value = String(type || '').toUpperCase();
+        if (value === 'ADMIN') return 'community-type-admin';
+        if (value === 'SERVICE') return 'community-type-service';
+        return 'community-type-user';
+    }
+
+    function buildRegistrationGrid(message) {
+        const rows = [];
+        if (message?.requestedUsername) rows.push({ label: 'Applicant', value: message.requestedUsername });
+        if (message?.requestedEmail) rows.push({ label: 'Email', value: message.requestedEmail });
+        if (message?.requestedTeamName) rows.push({ label: 'Reserved club', value: message.requestedTeamName });
+        if (message?.registrationStatus) rows.push({ label: 'Status', value: message.registrationStatus });
+        if (message?.reviewerUsername) rows.push({ label: 'Reviewed by', value: message.reviewerUsername });
+        if (message?.reviewNote) rows.push({ label: 'Review note', value: message.reviewNote });
+        if (!rows.length) return '';
         return `
-            <section class="fm-panel">
-                <div class="fm-panel-head">
+            <div class="community-registration-grid">
+                ${rows.map(row => `
                     <div>
-                        <h3>${escapeHtml(title)}</h3>
-                        <p class="fm-subtle">${escapeHtml(subtitle || '')}</p>
-                    </div>
-                    <button type="button" class="fm-action-btn secondary" data-community-back="${escapeHtml(backPage)}">${escapeHtml(backLabel)}</button>
-                </div>
-                <div class="community-message-body">${escapeHtml(primaryCopy)}</div>
-                <div class="club-profile-detail-list" style="margin-top:14px;">
-                    ${summaryRows.map(row => `<div class="club-profile-detail-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(String(row.value ?? '-'))}</strong></div>`).join('')}
-                </div>
-            </section>
-            ${secondaryRows.length ? `
-                <section class="fm-panel">
-                    <div class="fm-panel-head"><h3>${escapeHtml(secondaryTitle || 'Details')}</h3></div>
-                    <div class="club-profile-detail-list">
-                        ${secondaryRows.map(row => `<div class="club-profile-detail-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(String(row.value ?? '-'))}</strong></div>`).join('')}
-                    </div>
-                </section>` : ''}`;
+                        <span>${escapeHtml(row.label)}</span>
+                        <strong>${escapeHtml(String(row.value ?? '—'))}</strong>
+                    </div>`).join('')}
+            </div>`;
     }
 
-    function bindCommunityBack(mainContent, callback) {
-        const backButton = mainContent.querySelector('[data-community-back]');
-        if (backButton) backButton.addEventListener('click', callback);
+    function buildClubButtons(message) {
+        const buttons = [];
+        if (message?.teamId && message?.teamName) {
+            buttons.push(`<button type="button" class="fm-action-btn secondary" data-community-team-id="${message.teamId}" data-community-team-name="${escapeHtml(message.teamName)}">Open club</button>`);
+        }
+        if (message?.requestedTeamId && message?.requestedTeamName && message.requestedTeamId !== message.teamId) {
+            buttons.push(`<button type="button" class="fm-action-btn secondary" data-community-team-id="${message.requestedTeamId}" data-community-team-name="${escapeHtml(message.requestedTeamName)}">Open reserved club</button>`);
+        }
+        return buttons.join('');
     }
 
-    async function loadForum() {
-        const teamId = getTeamId();
-        console.log(`Loading forum for ${teamId}`);
-        const response = await authFetch(`/demo/forum/teams/${teamId}`);
-        console.log(`Response status: ${response.status}`);
-        const posts = response.ok ? await response.json() : [];
+    function buildAdminButtons(message) {
+        if (!message?.registrationRequestId) return '';
+        const buttons = [];
+        if (message.canApprove) {
+            buttons.push(`<button type="button" class="fm-action-btn" data-registration-action="approve" data-registration-id="${message.registrationRequestId}">Approve club</button>`);
+        }
+        if (message.canReject) {
+            buttons.push(`<button type="button" class="fm-action-btn secondary" data-registration-action="reject" data-registration-id="${message.registrationRequestId}">Reject request</button>`);
+        }
+        return buttons.join('');
+    }
 
-        const mainContent = document.getElementById('main-content');
-        const orderedPosts = [...posts].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const uniqueAuthors = [...new Set(orderedPosts.map(post => post.author).filter(Boolean))];
-        const latestPost = orderedPosts[0] || null;
+    function buildMessageCard(message) {
+        const metaBits = [];
+        if (message?.teamName) metaBits.push(`Current club: ${message.teamName}`);
+        if (message?.registrationStatus) metaBits.push(`Registration ${message.registrationStatus}`);
+        const footerBits = [];
+        if (message?.requestedUsername && !message?.registrationStatus) footerBits.push(`Applicant ${message.requestedUsername}`);
 
-        function openForumTopic(index) {
-            const post = orderedPosts[index];
-            if (!post) return loadForum();
+        return `
+            <article class="community-card">
+                <div class="community-card-head">
+                    <div>
+                        <div class="community-card-meta">
+                            <span class="fm-badge community-type-badge ${typeBadgeClass(message?.type)}">${escapeHtml(String(message?.type || 'USER'))}</span>
+                            <span>${escapeHtml(formatCommunityDate(message?.date, 'Just now'))}</span>
+                        </div>
+                        <div class="community-card-title">${escapeHtml(message?.author || 'Community')}</div>
+                        ${metaBits.length ? `<div class="community-card-meta">${metaBits.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>` : ''}
+                    </div>
+                </div>
+                <div class="community-card-body">${escapeHtml(message?.message || '')}</div>
+                ${buildRegistrationGrid(message)}
+                <div class="community-card-footer">
+                    <div class="community-card-meta">${footerBits.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>
+                    <div class="community-admin-actions">
+                        ${buildClubButtons(message)}
+                        ${buildAdminButtons(message)}
+                    </div>
+                </div>
+            </article>`;
+    }
 
-            mainContent.innerHTML = buildCommunityPageShell({
-                currentPage: 'forum',
-                eyebrow: 'Forum topic',
-                title: post.title || 'Untitled topic',
-                subtitle: 'Lightweight topic drill-down that keeps Community inside the same FM shell.',
-                stats: [
-                    { value: post.author || 'Unknown', label: 'Author' },
-                    { value: formatCommunityDate(post.date), label: 'Posted' },
-                    { value: 'General board', label: 'Board' },
-                    { value: 'Open', label: 'Status' }
-                ],
-                bodyHtml: buildCommunityDetailBody({
-                    backPage: 'forum',
-                    backLabel: 'Back to Forum',
-                    title: 'Thread overview',
-                    subtitle: 'This view leaves room for fuller thread/reply data later.',
-                    primaryCopy: `${post.author || 'A community member'} opened this topic to discuss "${post.title || 'Untitled topic'}". For now, this detail page gives the forum items the same click-through feel as the rest of the app while keeping the implementation safe and frontend-only.`,
-                    summaryRows: [
-                        { label: 'Topic', value: post.title || 'Untitled topic' },
-                        { label: 'Author', value: post.author || 'Unknown' },
-                        { label: 'Opened', value: formatCommunityDate(post.date) },
-                        { label: 'Activity', value: 'Awaiting full thread backend' }
-                    ],
-                    secondaryTitle: 'Thread notes',
-                    secondaryRows: [
-                        { label: 'Discussion focus', value: 'Matchday / club talk' },
-                        { label: 'Tone', value: 'Community board' },
-                        { label: 'Next step', value: 'Reply flow can be added later' }
-                    ]
-                })
+    async function handleSendMessage(form) {
+        const textarea = form.querySelector('textarea');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const message = String(textarea?.value || '').trim();
+        if (!message) return;
+
+        submitButton.disabled = true;
+        submitButton.textContent = 'Sending...';
+        try {
+            await authFetch('/community/chat', {
+                method: 'POST',
+                body: JSON.stringify({ message })
             });
+            textarea.value = '';
+            await loadChat();
+        } catch (error) {
+            alert(error.message || 'Failed to send message.');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Send message';
+        }
+    }
 
-            bindCommunityBack(mainContent, () => loadForum());
+    async function handleRegistrationAction(button) {
+        const requestId = Number(button.dataset.registrationId);
+        const action = button.dataset.registrationAction;
+        if (!requestId || !action) return;
+
+        const note = window.prompt(
+            action === 'approve'
+                ? 'Optional approval note:'
+                : 'Optional rejection note:',
+            ''
+        );
+        if (note === null) return;
+
+        button.disabled = true;
+        try {
+            const response = await authFetch(`/admin/registration-requests/${requestId}/${action}`, {
+                method: 'POST',
+                body: JSON.stringify({ note: note.trim() })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (payload?.message) alert(payload.message);
+            await loadChat();
+        } catch (error) {
+            alert(error.message || 'Failed to review registration request.');
+            button.disabled = false;
+        }
+    }
+
+    function bindCommunityInteractions(mainContent) {
+        const form = mainContent.querySelector('#community-compose-form');
+        if (form) {
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                await handleSendMessage(form);
+            });
         }
 
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'forum',
-            eyebrow: 'Community forum',
-            title: 'Forum',
-            subtitle: 'Community now opens directly to the forum page, with the old sidebar actions moved into the page action row.',
-            stats: [
-                { value: orderedPosts.length, label: 'Posts' },
-                { value: uniqueAuthors.length, label: 'Authors' },
-                { value: latestPost ? formatCommunityDate(latestPost.date) : '—', label: 'Latest post' },
-                { value: 'Open', label: 'Board status' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Latest discussions</h3>
-                            <p class="fm-subtle">Forum threads stay simple for now, but they share the same shell and spacing as the rest of Community.</p>
-                        </div>
-                        <span class="fm-panel-action">${orderedPosts.length} topics</span>
-                    </div>
-                    ${orderedPosts.length === 0 ? `<div class="fm-empty">No forum posts available right now.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead><tr><th>Author</th><th class="sq-name">Topic</th><th>Posted</th></tr></thead>
-                                <tbody>
-                                    ${orderedPosts.map((post, index) => `
-                                        <tr class="fm-squad-row community-click-row" data-open-forum="${index}">
-                                            <td>${escapeHtml(post.author || 'Unknown')}</td>
-                                            <td class="sq-name">${escapeHtml(post.title || 'Untitled topic')}</td>
-                                            <td>${formatCommunityDate(post.date)}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>`
+        mainContent.querySelectorAll('[data-community-team-id]').forEach(button => {
+            button.addEventListener('click', () => {
+                const teamId = Number(button.dataset.communityTeamId);
+                if (!teamId || typeof loadLeagueTeam !== 'function') return;
+                loadLeagueTeam(teamId, button.dataset.communityTeamName || 'Club');
+            });
         });
 
-        mainContent.querySelectorAll('[data-open-forum]').forEach(row => row.addEventListener('click', () => openForumTopic(Number(row.dataset.openForum))));
+        mainContent.querySelectorAll('[data-registration-action]').forEach(button => {
+            button.addEventListener('click', async () => handleRegistrationAction(button));
+        });
     }
 
     async function loadChat() {
-        const teamId = getTeamId();
-        console.log(`Loading chat for ${teamId}`);
-        const response = await authFetch(`/demo/chat/teams/${teamId}`);
-        console.log(`Response status: ${response.status}`);
-        const messages = response.ok ? await response.json() : [];
-
         const mainContent = document.getElementById('main-content');
-        const orderedMessages = [...messages].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const uniqueUsers = [...new Set(orderedMessages.map(message => message.user).filter(Boolean))];
-        const latestMessage = orderedMessages[0] || null;
-
-        function openChatMessage(index) {
-            const message = orderedMessages[index];
-            if (!message) return loadChat();
+        try {
+            const response = await authFetch('/community/chat');
+            const messages = response.ok ? await response.json() : [];
+            const orderedMessages = [...messages].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            const pendingApprovals = orderedMessages.filter(item => item?.registrationStatus === 'PENDING').length;
+            const latestMessage = orderedMessages[0] || null;
+            const adminViewer = isAdminViewer();
+            const viewerRole = getUserRole?.() || 'USER';
+            const viewerTeam = getTeamName?.() || 'Unassigned';
 
             mainContent.innerHTML = buildCommunityPageShell({
                 currentPage: 'chat',
-                eyebrow: 'Chat thread',
-                title: message.user || 'Team message',
-                subtitle: 'Locker-room messages now open their own FM-style detail panel.',
+                eyebrow: adminViewer ? 'Community control room' : 'Community chat',
+                title: 'Community Chat',
+                subtitle: adminViewer
+                    ? 'Managers can chat normally, while admin, owner, and dev accounts can approve or reject pending club ownership requests directly from service messages.'
+                    : 'Managers can send messages here and follow service updates about approved or rejected club ownership requests.',
                 stats: [
-                    { value: message.user || 'Unknown', label: 'Sender' },
-                    { value: formatCommunityDate(message.date, 'Live room'), label: 'Sent' },
-                    { value: 'Locker room', label: 'Channel' },
-                    { value: String(message.message || '').length, label: 'Chars' }
+                    { value: orderedMessages.length, label: 'Messages' },
+                    { value: viewerTeam, label: 'Your club' },
+                    { value: viewerRole, label: 'Role' },
+                    { value: adminViewer ? pendingApprovals : formatCommunityDate(latestMessage?.date), label: adminViewer ? 'Pending approvals' : 'Latest update' }
                 ],
-                bodyHtml: buildCommunityDetailBody({
-                    backPage: 'chat',
-                    backLabel: 'Back to Chat',
-                    title: 'Message detail',
-                    subtitle: 'Simple detail view for chat lines, ready for a richer message thread later.',
-                    primaryCopy: message.message || 'No message text available.',
-                    summaryRows: [
-                        { label: 'Sender', value: message.user || 'Unknown' },
-                        { label: 'Sent', value: formatCommunityDate(message.date, 'Live room') },
-                        { label: 'Context', value: 'Squad communication' },
-                        { label: 'Visibility', value: 'Team only' }
-                    ],
-                    secondaryTitle: 'Message notes',
-                    secondaryRows: [
-                        { label: 'Status', value: 'Delivered' },
-                        { label: 'Room', value: 'Locker room' },
-                        { label: 'Future expansion', value: 'Reply chain / reactions' }
-                    ]
-                })
+                bodyHtml: `
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Send message</h3>
+                                <p class="fm-subtle">Signed in as ${escapeHtml(getUsername?.() || 'Manager')}. Messages are stored in the shared community feed.</p>
+                            </div>
+                            <span class="fm-panel-action">Live feed</span>
+                        </div>
+                        <form id="community-compose-form" class="community-compose-form">
+                            <textarea class="community-compose-textarea" name="message" maxlength="1200" placeholder="Write a message to the community..." required></textarea>
+                            <div class="community-compose-actions">
+                                <span class="fm-subtle">${adminViewer ? 'Service messages below can also contain registration approvals.' : 'Admin service decisions will appear here as system messages.'}</span>
+                                <button type="submit" class="fm-action-btn">Send message</button>
+                            </div>
+                        </form>
+                    </section>
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Recent feed</h3>
+                                <p class="fm-subtle">Newest messages first. Pending registration requests are visible only to admin-side roles.</p>
+                            </div>
+                            <span class="fm-panel-action">${orderedMessages.length} items</span>
+                        </div>
+                        ${orderedMessages.length
+                            ? `<div class="community-feed">${orderedMessages.map(buildMessageCard).join('')}</div>`
+                            : `<div class="fm-empty">No community messages yet. Start the conversation.</div>`}
+                    </section>`
             });
 
-            bindCommunityBack(mainContent, () => loadChat());
+            bindCommunityInteractions(mainContent);
+        } catch (error) {
+            mainContent.innerHTML = buildCommunityPageShell({
+                currentPage: 'chat',
+                eyebrow: 'Community chat',
+                title: 'Community Chat',
+                subtitle: 'The chat feed could not be loaded right now.',
+                stats: [
+                    { value: getTeamName?.() || 'Unassigned', label: 'Your club' },
+                    { value: getUserRole?.() || 'USER', label: 'Role' },
+                    { value: 'Error', label: 'Status' },
+                    { value: getUsername?.() || 'Manager', label: 'Signed in as' }
+                ],
+                bodyHtml: `<section class="fm-panel"><div class="fm-empty">${escapeHtml(error.message || 'Failed to load the community feed.')}</div></section>`
+            });
         }
+    }
 
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'chat',
-            eyebrow: 'Team chat',
-            title: 'Team Chat',
-            subtitle: 'Quick locker-room communication now lives inside the same Community shell instead of the old desktop sidebar flow.',
-            stats: [
-                { value: orderedMessages.length, label: 'Messages' },
-                { value: uniqueUsers.length, label: 'Active users' },
-                { value: latestMessage ? formatCommunityDate(latestMessage.date, 'Live room') : '—', label: 'Latest message' },
-                { value: 'Live', label: 'Room status' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Locker-room feed</h3>
-                            <p class="fm-subtle">Compact chat history with the same dark panel language used across the rest of the app.</p>
-                        </div>
-                        <span class="fm-panel-action">${orderedMessages.length} lines</span>
-                    </div>
-                    ${orderedMessages.length === 0 ? `<div class="fm-empty">No chat messages available right now.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead><tr><th>User</th><th class="sq-name">Message</th><th>Sent</th></tr></thead>
-                                <tbody>
-                                    ${orderedMessages.map((message, index) => `
-                                        <tr class="fm-squad-row community-click-row" data-open-chat="${index}">
-                                            <td>${escapeHtml(message.user || 'Unknown')}</td>
-                                            <td class="sq-name">${escapeHtml(message.message || '')}</td>
-                                            <td>${formatCommunityDate(message.date, 'Live room')}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>`
-        });
-
-        mainContent.querySelectorAll('[data-open-chat]').forEach(row => row.addEventListener('click', () => openChatMessage(Number(row.dataset.openChat))));
+    async function loadForum() {
+        return loadChat();
     }
 
     async function loadEvents() {
-        const teamId = getTeamId();
-        console.log(`Loading events for ${teamId}`);
-        const response = await authFetch(`/demo/events/teams/${teamId}`);
-        console.log(`Response status: ${response.status}`);
-        const events = response.ok ? await response.json() : [];
-
-        const mainContent = document.getElementById('main-content');
-        const orderedEvents = [...events].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        const latestEvent = orderedEvents[0] || null;
-
-        function openEventDetail(index) {
-            const event = orderedEvents[index];
-            if (!event) return loadEvents();
-
-            mainContent.innerHTML = buildCommunityPageShell({
-                currentPage: 'events',
-                eyebrow: 'Community event',
-                title: event.title || 'Untitled event',
-                subtitle: 'Event cards now open a detail page that matches the current community styling.',
-                stats: [
-                    { value: event.title || 'Untitled event', label: 'Event' },
-                    { value: formatCommunityDate(event.date), label: 'Date' },
-                    { value: 'Club', label: 'Scope' },
-                    { value: 'Planned', label: 'Status' }
-                ],
-                bodyHtml: buildCommunityDetailBody({
-                    backPage: 'events',
-                    backLabel: 'Back to Events',
-                    title: 'Event overview',
-                    subtitle: 'A light detail page now exists even before we add full event descriptions or locations from the backend.',
-                    primaryCopy: `${event.title || 'This event'} is scheduled for ${formatCommunityDate(event.date)}. The page keeps the same Community shell and gives each board item a proper destination instead of leaving the list flat.`,
-                    summaryRows: [
-                        { label: 'Event', value: event.title || 'Untitled event' },
-                        { label: 'Date', value: formatCommunityDate(event.date) },
-                        { label: 'Venue', value: 'Club community space' },
-                        { label: 'Status', value: 'Planned' }
-                    ],
-                    secondaryTitle: 'Operational notes',
-                    secondaryRows: [
-                        { label: 'Preparation', value: 'Open' },
-                        { label: 'Visibility', value: 'Club community' },
-                        { label: 'Future expansion', value: 'Description / RSVP / location' }
-                    ]
-                })
-            });
-
-            bindCommunityBack(mainContent, () => loadEvents());
-        }
-
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'events',
-            eyebrow: 'Club events',
-            title: 'Events',
-            subtitle: 'Meetings, club happenings, and other community moments now use the same open-football-inspired shell as the rest of the section.',
-            stats: [
-                { value: orderedEvents.length, label: 'Events' },
-                { value: latestEvent ? (latestEvent.title || '—') : '—', label: 'Latest item' },
-                { value: latestEvent ? formatCommunityDate(latestEvent.date) : '—', label: 'Latest date' },
-                { value: 'Club', label: 'Scope' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Calendar board</h3>
-                            <p class="fm-subtle">Same data as before, just reorganized into the new Community page layout.</p>
-                        </div>
-                        <span class="fm-panel-action">Board</span>
-                    </div>
-                    ${orderedEvents.length === 0 ? `<div class="fm-empty">No events available right now.</div>` : `
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad">
-                                <thead><tr><th class="sq-name">Event</th><th>Date</th></tr></thead>
-                                <tbody>
-                                    ${orderedEvents.map((event, index) => `
-                                        <tr class="fm-squad-row community-click-row" data-open-event="${index}">
-                                            <td class="sq-name">${escapeHtml(event.title || 'Untitled event')}</td>
-                                            <td>${formatCommunityDate(event.date)}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>`}
-                </section>`
-        });
-
-        mainContent.querySelectorAll('[data-open-event]').forEach(row => row.addEventListener('click', () => openEventDetail(Number(row.dataset.openEvent))));
+        return loadChat();
     }
 
     return { loadForum, loadChat, loadEvents };

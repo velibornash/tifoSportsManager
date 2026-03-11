@@ -3,23 +3,24 @@ package org.example.footballmanager.controller;
 import lombok.Data;
 import org.example.footballmanager.dto.JwtResponseDTO;
 import org.example.footballmanager.dto.LoginRequestDTO;
+import org.example.footballmanager.dto.RegisterResponseDTO;
 import org.example.footballmanager.dto.RegisterRequestDTO;
 import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.Country;
+import org.example.footballmanager.model.RegistrationRequest;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
-import org.example.footballmanager.model.UserRole;
 import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.UserRepository;
+import org.example.footballmanager.service.RegistrationService;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.JwtUtil;
-import org.example.footballmanager.util.teams.TeamFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,53 +28,47 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserRepository userRepo;
-    private final PasswordEncoder encoder;
-    private final TeamFactory teamFactory;
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
     private final SeasonService seasonService;
     private final CompetitionEntryRepository competitionEntryRepository;
+    private final RegistrationService registrationService;
 
-    public UserController(UserRepository userRepo, PasswordEncoder encoder, TeamFactory teamFactory,
-                          AuthenticationManager authManager, JwtUtil jwtUtil, SeasonService seasonService,
-                          CompetitionEntryRepository competitionEntryRepository) {
+    public UserController(UserRepository userRepo, AuthenticationManager authManager,
+                          JwtUtil jwtUtil, SeasonService seasonService,
+                          CompetitionEntryRepository competitionEntryRepository,
+                          RegistrationService registrationService) {
         this.userRepo = userRepo;
-        this.encoder = encoder;
-        this.teamFactory = teamFactory;
         this.authManager = authManager;
         this.jwtUtil = jwtUtil;
         this.seasonService = seasonService;
         this.competitionEntryRepository = competitionEntryRepository;
+        this.registrationService = registrationService;
     }
 
     @PostMapping("/register")
-    public ResponseEntity<JwtResponseDTO> register(@RequestBody RegisterRequestDTO dto) {
-        if (userRepo.findByEmail(dto.getEmail()).isPresent()) {
-            return ResponseEntity.badRequest().body(null);
+    public ResponseEntity<RegisterResponseDTO> register(@RequestBody RegisterRequestDTO dto) {
+        try {
+            RegistrationRequest request = registrationService.createPendingRequest(dto);
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(new RegisterResponseDTO(
+                    "PENDING_APPROVAL",
+                    "Registration request sent. Reserved club: " + request.getTeam().getName() + ". Owner approval is required before login.",
+                    request.getTeam().getId(),
+                    request.getTeam().getName()
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(new RegisterResponseDTO("INVALID_REQUEST", ex.getMessage(), null, null));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new RegisterResponseDTO("NO_FREE_TEAMS", ex.getMessage(), null, null));
         }
-
-        User user = new User();
-        user.setUsername(dto.getUsername());
-        user.setEmail(dto.getEmail());
-        user.setPassword(encoder.encode(dto.getPassword()));
-        user.setRole(UserRole.REGULAR); // Default; Owner-a ručno
-
-        // Kreiraj tim
-        Team team = teamFactory.findOrCreate(dto.getUsername() + "'s Team");
-        user.setTeam(team);
-
-        userRepo.save(user);
-
-        // Automatski login posle register-a
-        String token = jwtUtil.generateToken(user);
-        return ResponseEntity.ok(new JwtResponseDTO(token));
     }
 
     @PostMapping("/login")
     public ResponseEntity<JwtResponseDTO> login(@RequestBody LoginRequestDTO dto) {
         authManager.authenticate(new UsernamePasswordAuthenticationToken(dto.getUsername(), dto.getPassword()));
 
-        User user = userRepo.findByUsername(dto.getUsername()).orElseThrow();
+        User user = userRepo.findByUsernameOrEmail(dto.getUsername()).orElseThrow();
         String token = jwtUtil.generateToken(user);
         return ResponseEntity.ok(new JwtResponseDTO(token));
     }
@@ -98,6 +93,7 @@ public class UserController {
 	        if (resolvedUser.getTeam() != null) {
 	            dto.setTeamId(resolvedUser.getTeam().getId());
 	            dto.setTeamName(resolvedUser.getTeam().getName());
+	            dto.setTeamHumanControlled(resolvedUser.getTeam().isHumanControlled());
 	            Country country = resolvedUser.getTeam().getCountry();
 	            Competition competition = resolvedUser.getTeam().getCompetition();
             if (competition == null) {
@@ -133,6 +129,7 @@ public class UserController {
         private String role;
         private Long teamId;
         private String teamName;
+        private Boolean teamHumanControlled;
         private Long competitionId;
         private String competitionName;
         private Integer competitionTier;

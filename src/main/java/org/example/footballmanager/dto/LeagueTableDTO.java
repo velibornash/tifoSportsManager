@@ -1,6 +1,7 @@
 package org.example.footballmanager.dto;
 
 public record LeagueTableDTO(
+        Long teamId,
         String name,
         Integer points,
         Integer goalsScored,
@@ -9,5 +10,6 @@ public record LeagueTableDTO(
         Integer wins,
         Integer draws,
         Integer losses,
-        Integer position
+        Integer position,
+        Boolean humanControlled
 ) {}

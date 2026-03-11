@@ -100,6 +100,8 @@ public class DatabaseInitializer {
                         return temp;
                     });
 
+            omladinac.setHumanControlled(true);
+            teamRepository.save(omladinac);
             owner.setTeam(omladinac);
             userRepository.save(owner);
             ownerTeam = omladinac;
@@ -111,6 +113,10 @@ public class DatabaseInitializer {
                     .map(User::getTeam)
                     .orElseGet(() -> teamRepository.findByName("OFK Omladinac")
                             .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac")));
+            if (ownerTeam != null) {
+                ownerTeam.setHumanControlled(true);
+                teamRepository.save(ownerTeam);
+            }
         }
         return ownerTeam;
     }
@@ -176,15 +182,28 @@ public class DatabaseInitializer {
 
     private Country createCountryIfNotExists(String name, String isoCode, int reputation, int youthRating) {
         return countryRepository.findByIsoCode(isoCode)
+                .map(existing -> {
+                    if ((existing.getFlagImagePath() == null || existing.getFlagImagePath().isBlank())
+                            && "SRB".equalsIgnoreCase(isoCode)) {
+                        existing.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
+                        return countryRepository.save(existing);
+                    }
+                    return existing;
+                })
                 .orElseGet(() -> {
                     Country c = new Country();
                     c.setName(name);
                     c.setIsoCode(isoCode);
+                    c.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
                     c.setCurrencyCode(isoCode.equals("SRB") ? "RSD" : "EUR");
                     c.setReputation(reputation);
                     c.setYouthRating(youthRating);
                     return countryRepository.save(c);
                 });
+    }
+
+    private String resolveCountryFlagImagePath(String isoCode) {
+        return "SRB".equalsIgnoreCase(String.valueOf(isoCode)) ? "/images/serbiaflag.png" : null;
     }
 
     private Season createSeasonIfNotExists(int year, String description) {

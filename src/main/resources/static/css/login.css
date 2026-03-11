@@ -172,6 +172,44 @@ button:hover {
     color: #e94560;
 }
 
+.auth-note {
+    margin: -4px 0 16px;
+    color: #9fb2cb;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    text-align: left;
+}
+
+.auth-status {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    text-align: left;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: #eef4ff;
+}
+
+.auth-status.info {
+    border-color: rgba(143, 211, 255, 0.28);
+    background: rgba(143, 211, 255, 0.12);
+    color: #d9f1ff;
+}
+
+.auth-status.success {
+    border-color: rgba(111, 207, 151, 0.34);
+    background: rgba(111, 207, 151, 0.14);
+    color: #dff9e6;
+}
+
+.auth-status.error {
+    border-color: rgba(239, 83, 80, 0.34);
+    background: rgba(239, 83, 80, 0.14);
+    color: #ffd6d3;
+}
+
 @media (max-width: 767px) {
     .logo-corner {
         top: 16px;

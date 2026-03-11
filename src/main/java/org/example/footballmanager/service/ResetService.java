@@ -31,6 +31,8 @@ public class ResetService {
         log.warn("RESET DATABASE STARTED - full truncate with identity reset");
         sanitizeLegacyLineupOrderSchema();
         List<String> desiredOrder = List.of(
+                "community_message",
+                "registration_request",
                 "training_week_report",
                 "team_training_setup",
                 "training",
@@ -53,6 +55,7 @@ public class ResetService {
                 "season",
                 "country",
                 "game_clock",
+                "app_user",
                 "user"
         );
 

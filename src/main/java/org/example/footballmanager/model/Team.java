@@ -38,6 +38,7 @@ public class Team {
     private Double budget; // samo za CLUB
     private Double reputation; // 0-100
     private Integer juniorCoachSkill; // 1-100
+    private boolean humanControlled;
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Player> players = new ArrayList<>();

@@ -362,11 +362,7 @@ export function buildTrainingActionsHtml(currentPage = '') {
 
 export function buildCommunityActionsHtml(currentPage = '') {
     return buildActionRowHtml([
-        { label: 'Forum', page: 'forum', variant: 'primary' },
-        { label: 'Chat', page: 'chat' },
-        { label: 'Events', page: 'events' },
-        { label: 'Initialize DB (Demo)', onclick: 'initializeDatabase()' },
-        { label: 'Reset DB (Demo)', onclick: 'resetDatabase()' },
+        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['forum', 'chat', 'events'] },
     ], currentPage);
 }
 
@@ -706,6 +702,11 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         return '';
     }
 
+    function ownershipBadgeHtml(humanControlled) {
+        if (typeof humanControlled !== 'boolean') return '';
+        return `<span class="fm-badge ${humanControlled ? 'fm-badge-owner' : 'fm-badge-ai'}">${humanControlled ? 'PLAYER' : 'AI'}</span>`;
+    }
+
     function standingsRowsHtml() {
         return rows.map((team, index) => {
             const rank = Number(team.position || index + 1);
@@ -714,10 +715,11 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             const losses = Number(team.losses || 0);
             const played = wins + draws + losses;
             const gd = Number(team.goalDifference || 0);
+            const teamLabel = team.teamId ? `<span class="fm-team-link">${safe(team.name)}</span>` : safe(team.name);
             return `
                 <tr class="${zoneClass(rank, rows.length)} ${team.teamId ? 'js-load-team' : ''}" data-team-id="${team.teamId || ''}" data-team-name="${safe(team.name)}" data-season-year="${selectedSeason ?? ''}">
                     <td class="st-pos">${rank}</td>
-                    <td class="st-club">${team.teamId ? `<span class="fm-team-link">${safe(team.name)}</span>` : safe(team.name)}</td>
+                    <td class="st-club"><div class="fm-club-cell">${teamLabel}${ownershipBadgeHtml(team.humanControlled)}</div></td>
                     <td>${played}</td>
                     <td>${wins}</td>
                     <td>${draws}</td>

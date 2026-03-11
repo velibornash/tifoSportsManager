@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register - Tifo Football Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/login.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="background"></div>
+<div class="logo-corner">
+    <img src="/images/logomain.jpg" alt="Tifo Football Manager Logo" class="corner-logo">
+</div>
+<div class="login-wrapper">
+    <div class="login-card glass">
+        <h1 class="title">Claim a Club</h1>
+
+        <p class="invite">
+            Register your manager profile.<br>
+            A free AI club will be reserved for you.<br>
+            <strong>Owner approval is required before login.</strong>
+        </p>
+
+        <form id="registerForm">
+            <div class="input-group">
+                <input type="text" placeholder=" " name="username" required minlength="3" maxlength="30">
+                <label>Username</label>
+            </div>
+            <div class="input-group">
+                <input type="email" placeholder=" " name="email" required>
+                <label>Email</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder=" " name="password" required minlength="6">
+                <label>Password</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder=" " name="confirmPassword" required minlength="6">
+                <label>Confirm password</label>
+            </div>
+
+            <p class="auth-note">
+                If no free AI clubs exist, registration will be refused and you will get a clear message.
+            </p>
+            <div id="registerStatus" class="auth-status info" hidden></div>
+            <button id="registerBtn" type="submit">Send registration request</button>
+        </form>
+
+        <p class="register-link">
+            Already approved? <a href="/login.html">Back to login</a>
+        </p>
+    </div>
+</div>
+
+<script type="module" src="/js/auth.js"></script>
+<script type="module" src="/js/register.js"></script>
+
+</body>
+</html>

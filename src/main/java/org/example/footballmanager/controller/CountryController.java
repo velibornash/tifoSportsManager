@@ -82,6 +82,7 @@ public class CountryController {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", entry.getTeam().getId());
                     row.put("name", entry.getTeam().getName());
+                    row.put("humanControlled", entry.getTeam().isHumanControlled());
                     return row;
                 })
                 .toList();
@@ -112,6 +113,7 @@ public class CountryController {
         for (int i = 0; i < sortedEntries.size(); i++) {
             CompetitionEntry e = sortedEntries.get(i);
             table.add(new LeagueTableDTO(
+                    e.getTeam().getId(),
                     e.getTeam().getName(),
                     e.getPoints(),
                     e.getGoalsScored(),
@@ -120,7 +122,8 @@ public class CountryController {
                     e.getWins() != null ? e.getWins() : 0,
                     e.getDraws() != null ? e.getDraws() : 0,
                     e.getLosses() != null ? e.getLosses() : 0,
-                    i + 1  // ← position iz sortiranja
+                    i + 1,
+                    e.getTeam().isHumanControlled()
             ));
         }
 

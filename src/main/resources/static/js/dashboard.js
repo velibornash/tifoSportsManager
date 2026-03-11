@@ -7,14 +7,36 @@ let currentUserCompetitionId = null;
 let currentUserCompetitionName = null;
 let currentSeasonYear = null;
 let currentUserCountryName = null;
+let currentUserCountryIsoCode = null;
 
 function updateCountryMenuLabels() {
     const countryLabel = currentUserCountryName || 'Country';
     const desktopButton = document.getElementById('country-menu-button');
     const mobileButton = document.getElementById('country-mobile-button');
 
-    if (desktopButton) desktopButton.textContent = `🌎 ${countryLabel}`;
-    if (mobileButton) mobileButton.textContent = `🌎 ${countryLabel}`;
+    if (desktopButton) {
+        desktopButton.classList.add('fm-menu-country');
+        desktopButton.innerHTML = buildCountryMenuLabelHtml(countryLabel);
+    }
+    if (mobileButton) {
+        mobileButton.classList.add('fm-menu-country');
+        mobileButton.innerHTML = buildCountryMenuLabelHtml(countryLabel);
+    }
+}
+
+function getCountryMenuFlagPath() {
+    return String(currentUserCountryIsoCode || '').trim().toUpperCase() === 'SRB'
+        ? '/images/serbiaflag.png'
+        : '';
+}
+
+function buildCountryMenuLabelHtml(countryLabel) {
+    const safeLabel = escapeHtml(countryLabel || 'Country');
+    const flagPath = getCountryMenuFlagPath();
+    const iconMarkup = flagPath
+        ? `<img class="fm-menu-country-icon" src="${escapeHtml(flagPath)}" alt="${safeLabel} flag">`
+        : '<span class="fm-menu-country-emoji">🌎</span>';
+    return `<span class="fm-menu-country-content">${iconMarkup}<span class="fm-menu-country-label">${safeLabel}</span></span>`;
 }
 
 function getCurrentTeamImagePath() {
@@ -232,6 +254,7 @@ window.addEventListener('load', async () => {
         currentUserCompetitionName = user.competitionName ?? null;
         currentSeasonYear = user.seasonYear ?? null;
         currentUserCountryName = user.countryName ?? null;
+        currentUserCountryIsoCode = user.countryIsoCode ?? null;
         updateCountryMenuLabels();
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
