@@ -10,9 +10,9 @@ import org.example.footballmanager.model.event.YellowCardEvent;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.util.match.MatchAnalyticsService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * ZOX Match Analytics Service
@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ZoxMatchAnalyticsService {
 
     private final MatchRepository matchRepository;
@@ -34,8 +35,7 @@ public class ZoxMatchAnalyticsService {
      * Generiše detaljni match preview sa svim analytics
      */
     public ZoxMatchPreviewDTO generateMatchPreview(Long matchId) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
+        Match match = loadMatchWithTeams(matchId);
 
         ZoxMatchPreviewDTO preview = ZoxMatchPreviewDTO.builder()
                 .matchId(matchId)
@@ -66,13 +66,36 @@ public class ZoxMatchAnalyticsService {
         return preview;
     }
 
+    public Map<String, Object> generatePlayerRatings(Long matchId) {
+        Match match = loadMatchWithTeams(matchId);
+        return Map.of(
+                "homeTeam", match.getHomeTeam().getName(),
+                "awayTeam", match.getAwayTeam().getName(),
+                "homePlayers", getPlayerRatingsForTeam(matchId, match.getHomeTeam()),
+                "awayPlayers", getPlayerRatingsForTeam(matchId, match.getAwayTeam())
+        );
+    }
+
+    public Map<String, Object> generateMatchStats(Long matchId) {
+        return matchAnalyticsService.generateStats(loadMatch(matchId));
+    }
+
+    public ZoxMatchPredictionDTO generateMatchPrediction(Long matchId) {
+        return calculateMatchPrediction(loadMatchWithTeams(matchId));
+    }
+
     /**
      * Kalkuliše player ratings za sve igrače na terenu
      */
     public List<ZoxPlayerRatingDTO> getPlayerRatingsForTeam(Long matchId, Team team) {
-        List<Lineup> lineups = lineupRepository.findAll().stream()
-                .filter(l -> l.getMatch().getId().equals(matchId) && l.getTeam().equals(team))
-                .collect(Collectors.toList());
+        if (team == null || team.getId() == null) {
+            return List.of();
+        }
+
+        List<Lineup> lineups = lineupRepository.findByMatchId(matchId).stream()
+                .filter(lineup -> lineup.getTeam() != null)
+                .filter(lineup -> Objects.equals(lineup.getTeam().getId(), team.getId()))
+                .toList();
 
         // Get starting players from lineups
         List<ZoxPlayerRatingDTO> ratings = new ArrayList<>();
@@ -98,13 +121,9 @@ public class ZoxMatchAnalyticsService {
                 .build();
 
         // Get match stats if available
-        Optional<MatchPlayerStats> statsOpt = matchPlayerStatsRepository.findAll().stream()
-                .filter(s -> s.getPlayer().equals(player) && s.getMatch().equals(match))
-                .findFirst();
+        MatchPlayerStats stats = matchPlayerStatsRepository.findByMatchAndPlayer(match, player);
 
-        if (statsOpt.isPresent()) {
-            MatchPlayerStats stats = statsOpt.get();
-            
+        if (stats != null) {
             rating.setPasses(0); // Not available in model
             rating.setSuccessfulPasses(0);
             rating.setTackles(0);
@@ -168,9 +187,11 @@ public class ZoxMatchAnalyticsService {
      * Kalkuliši team strength rating (0-100)
      */
     public Integer calculateTeamRating(Team team) {
-        List<Player> players = playerRepository.findAll().stream()
-                .filter(p -> p.getTeam() != null && p.getTeam().equals(team))
-                .collect(Collectors.toList());
+        if (team == null || team.getId() == null) {
+            return 50;
+        }
+
+        List<Player> players = playerRepository.findByTeamId(team.getId());
 
         if (players.isEmpty()) return 50;
 
@@ -269,12 +290,12 @@ public class ZoxMatchAnalyticsService {
      * Generate formation visualization with player positions
      */
     public ZoxFormationDTO generateFormation(Long matchId, Team team) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
+        loadMatch(matchId);
 
-        List<Lineup> lineups = lineupRepository.findAll().stream()
-                .filter(l -> l.getMatch().getId().equals(matchId) && l.getTeam().equals(team))
-                .collect(Collectors.toList());
+        List<Lineup> lineups = lineupRepository.findByMatchId(matchId).stream()
+                .filter(lineup -> lineup.getTeam() != null)
+                .filter(lineup -> team != null && Objects.equals(lineup.getTeam().getId(), team.getId()))
+                .toList();
 
         if (lineups.isEmpty()) {
             return ZoxFormationDTO.builder()
@@ -357,8 +378,7 @@ public class ZoxMatchAnalyticsService {
      * Generate event stream for match
      */
     public ZoxEventStreamDTO generateEventStream(Long matchId) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
+        Match match = loadMatch(matchId);
 
         List<ZoxEventStreamDTO.ZoxMatchEventDTO> events = new ArrayList<>();
         
@@ -422,5 +442,15 @@ public class ZoxMatchAnalyticsService {
                 .awayGoals(match.getAwayGoals())
                 .events(events)
                 .build();
+    }
+
+    private Match loadMatch(Long matchId) {
+        return matchRepository.findById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
+    }
+
+    private Match loadMatchWithTeams(Long matchId) {
+        return matchRepository.findWithTeamsById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
     }
 }

@@ -48,8 +48,12 @@ public class DatabaseInitializer {
         resetService.sanitizeLegacyLineupOrderSchema();
     }
 
-
+    @PostConstruct
     public void init() {
+        resetAndInitializeDatabase();
+    }
+
+    public void resetAndInitializeDatabase() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
         // 1. Ako baza nema zemalja – pokreni punu inicijalizaciju strukture

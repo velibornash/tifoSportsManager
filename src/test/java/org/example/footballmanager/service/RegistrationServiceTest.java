@@ -60,7 +60,7 @@ class RegistrationServiceTest {
         dto.setEmail("NOVI@example.com");
         dto.setPassword("A12345!");
 
-        when(teamRepository.findAllByTypeOrderByIdAsc(CompetitionTeamType.CLUB)).thenReturn(List.of(ownerTeam, freeTeam));
+        when(teamRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(ownerTeam, freeTeam));
         when(userRepository.existsByUsernameIgnoreCase("noviuser")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("novi@example.com")).thenReturn(false);
         when(userRepository.existsByTeam(freeTeam)).thenReturn(false);
@@ -96,7 +96,7 @@ class RegistrationServiceTest {
         dto.setEmail("NOVI@example.com");
         dto.setPassword("A12345!");
 
-        when(teamRepository.findAllByTypeOrderByIdAsc(CompetitionTeamType.CLUB)).thenReturn(List.of(ownerTeam, freeTeam));
+        when(teamRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(ownerTeam, freeTeam));
         when(userRepository.existsByUsernameIgnoreCase("noviuser")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("novi@example.com")).thenReturn(false);
         when(userRepository.existsByTeam(freeTeam)).thenReturn(false);
@@ -107,6 +107,38 @@ class RegistrationServiceTest {
         RegistrationRequest request = registrationService.createPendingRequest(dto);
 
         assertEquals(freeTeam, request.getTeam());
+        assertEquals(RegistrationRequestStatus.PENDING, request.getStatus());
+    }
+
+    @Test
+    void createPendingRequestTreatsNullTypeTeamsAsRegistrableClubs() {
+        Team ownerTeam = new Team();
+        ownerTeam.setId(1L);
+        ownerTeam.setName("OFK Omladinac");
+        ownerTeam.setType(CompetitionTeamType.CLUB);
+        ownerTeam.setHumanControlled(true);
+
+        Team legacyClub = new Team();
+        legacyClub.setId(2L);
+        legacyClub.setName("FK Legacy");
+        legacyClub.setType(null);
+        legacyClub.setHumanControlled(false);
+
+        RegisterRequestDTO dto = new RegisterRequestDTO();
+        dto.setUsername("noviuser");
+        dto.setEmail("NOVI@example.com");
+        dto.setPassword("A12345!");
+
+        when(teamRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(ownerTeam, legacyClub));
+        when(userRepository.existsByUsernameIgnoreCase("noviuser")).thenReturn(false);
+        when(userRepository.existsByEmailIgnoreCase("novi@example.com")).thenReturn(false);
+        when(userRepository.existsByTeam(legacyClub)).thenReturn(false);
+        when(passwordEncoder.encode("A12345!")).thenReturn("encoded-password");
+        when(registrationRequestRepository.save(any(RegistrationRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RegistrationRequest request = registrationService.createPendingRequest(dto);
+
+        assertEquals(legacyClub, request.getTeam());
         assertEquals(RegistrationRequestStatus.PENDING, request.getStatus());
     }
 
@@ -123,7 +155,7 @@ class RegistrationServiceTest {
         dto.setEmail("novi@example.com");
         dto.setPassword("A12345!");
 
-        when(teamRepository.findAllByTypeOrderByIdAsc(CompetitionTeamType.CLUB)).thenReturn(List.of(takenTeam));
+        when(teamRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(takenTeam));
         when(userRepository.existsByUsernameIgnoreCase("noviuser")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("novi@example.com")).thenReturn(false);
         when(userRepository.existsByTeam(takenTeam)).thenReturn(true);

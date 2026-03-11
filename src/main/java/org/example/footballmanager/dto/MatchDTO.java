@@ -26,8 +26,8 @@ public class MatchDTO {
 
         return new MatchDTO(
                 match.getId(),
-                match.getHomeTeam().getName(),
-                match.getAwayTeam().getName(),
+                match.getHomeTeam() != null ? match.getHomeTeam().getName() : "TBD",
+                match.getAwayTeam() != null ? match.getAwayTeam().getName() : "TBD",
                 match.getHomeGoals(),
                 match.getAwayGoals(),
                 formattedDate

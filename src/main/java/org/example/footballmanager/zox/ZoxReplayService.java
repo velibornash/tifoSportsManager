@@ -105,8 +105,20 @@ public class ZoxReplayService {
     }
 
     private Match loadMatch(Long matchId) {
-        return matchRepository.findById(matchId)
+        Match match = matchRepository.findWithTeamsAndLineupsById(matchId)
                 .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
+        initializeLineup(match.getHomeLineup());
+        initializeLineup(match.getAwayLineup());
+        return match;
+    }
+
+    private void initializeLineup(Lineup lineup) {
+        if (lineup == null) {
+            return;
+        }
+        lineup.getFormation();
+        lineup.getOrderedStartingPlayers().size();
+        lineup.getOrderedSubstitutePlayers().size();
     }
 
     private List<MatchTickState> loadTickStates(Match match) {

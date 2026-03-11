@@ -25,7 +25,7 @@ export function createCommunityFeature(deps) {
                             <h2>${escapeHtml(title || 'Community')}</h2>
                             <p class="fm-subtle">${escapeHtml(subtitle || '')}</p>
                         </div>
-                        ${buildCommunityActionsHtml(currentPage)}
+                        ${buildCommunityActionsHtml(currentPage, { showAdminTools: isAdminViewer() })}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">${statHtml}</div>
                 </section>
@@ -93,6 +93,10 @@ export function createCommunityFeature(deps) {
 
     function buildMessageCard(message) {
         const metaBits = [];
+        if (message?.privateMessage) {
+            const peer = message?.privatePeerUsername || message?.recipientUsername || 'manager';
+            metaBits.push(message?.sentByViewer ? `Private to ${peer}` : `Private with ${peer}`);
+        }
         if (message?.teamName) metaBits.push(`Current club: ${message.teamName}`);
         if (message?.registrationStatus) metaBits.push(`Registration ${message.registrationStatus}`);
         const footerBits = [];
@@ -104,6 +108,7 @@ export function createCommunityFeature(deps) {
                     <div>
                         <div class="community-card-meta">
                             <span class="fm-badge community-type-badge ${typeBadgeClass(message?.type)}">${escapeHtml(String(message?.type || 'USER'))}</span>
+                            ${message?.privateMessage ? '<span class="fm-badge community-visibility-badge is-private">Private</span>' : ''}
                             <span>${escapeHtml(formatCommunityDate(message?.date, 'Just now'))}</span>
                         </div>
                         <div class="community-card-title">${escapeHtml(message?.author || 'Community')}</div>
@@ -122,10 +127,53 @@ export function createCommunityFeature(deps) {
             </article>`;
     }
 
+    function buildRecipientOptions(recipients) {
+        const safeRecipients = Array.isArray(recipients) ? recipients : [];
+        return `
+            <option value="">Everyone (shared chat)</option>
+            ${safeRecipients.map(recipient => {
+                const teamBit = recipient?.teamName ? ` · ${recipient.teamName}` : '';
+                return `<option value="${Number(recipient.userId)}">${escapeHtml(`${recipient.username || 'Manager'}${teamBit}`)}</option>`;
+            }).join('')}`;
+    }
+
+    async function handleAdminTool(button) {
+        const action = button?.dataset?.communityAdminAction;
+        const handler = action === 'reset' ? window.resetDatabase : window.initializeDatabase;
+        if (typeof handler !== 'function') {
+            alert('This admin action is not available right now.');
+            return;
+        }
+
+        button.disabled = true;
+        try {
+            await handler();
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function handleSeasonFlowTool(button) {
+        const action = button?.dataset?.communitySeasonAction;
+        const handler = {
+            'play-match': window.startRealisticDemoTest,
+            'simulate-round': window.simulateCurrentRoundTest,
+            'advance-week': window.advanceWeekTest,
+        }[action];
+        if (typeof handler !== 'function') {
+            alert('This season flow action is not available right now.');
+            return;
+        }
+
+        await handler();
+    }
+
     async function handleSendMessage(form) {
         const textarea = form.querySelector('textarea');
+        const recipientSelect = form.querySelector('select[name="recipientUserId"]');
         const submitButton = form.querySelector('button[type="submit"]');
         const message = String(textarea?.value || '').trim();
+        const recipientUserId = recipientSelect?.value ? Number(recipientSelect.value) : null;
         if (!message) return;
 
         submitButton.disabled = true;
@@ -133,9 +181,10 @@ export function createCommunityFeature(deps) {
         try {
             await authFetch('/community/chat', {
                 method: 'POST',
-                body: JSON.stringify({ message })
+                body: JSON.stringify({ message, recipientUserId })
             });
             textarea.value = '';
+            if (recipientSelect) recipientSelect.value = '';
             await loadChat();
         } catch (error) {
             alert(error.message || 'Failed to send message.');
@@ -193,13 +242,25 @@ export function createCommunityFeature(deps) {
         mainContent.querySelectorAll('[data-registration-action]').forEach(button => {
             button.addEventListener('click', async () => handleRegistrationAction(button));
         });
+
+        mainContent.querySelectorAll('[data-community-admin-action]').forEach(button => {
+            button.addEventListener('click', async () => handleAdminTool(button));
+        });
+
+        mainContent.querySelectorAll('[data-community-season-action]').forEach(button => {
+            button.addEventListener('click', async () => handleSeasonFlowTool(button));
+        });
     }
 
     async function loadChat() {
         const mainContent = document.getElementById('main-content');
         try {
-            const response = await authFetch('/community/chat');
+            const [response, recipientsResponse] = await Promise.all([
+                authFetch('/community/chat'),
+                authFetch('/community/recipients').catch(() => null)
+            ]);
             const messages = response.ok ? await response.json() : [];
+            const recipients = recipientsResponse?.ok ? await recipientsResponse.json() : [];
             const orderedMessages = [...messages].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
             const pendingApprovals = orderedMessages.filter(item => item?.registrationStatus === 'PENDING').length;
             const latestMessage = orderedMessages[0] || null;
@@ -225,14 +286,22 @@ export function createCommunityFeature(deps) {
                         <div class="fm-panel-head">
                             <div>
                                 <h3>Send message</h3>
-                                <p class="fm-subtle">Signed in as ${escapeHtml(getUsername?.() || 'Manager')}. Messages are stored in the shared community feed.</p>
+                                <p class="fm-subtle">Signed in as ${escapeHtml(getUsername?.() || 'Manager')}. Choose everyone for the shared feed or pick a manager for a private message only the two of you can see.</p>
                             </div>
                             <span class="fm-panel-action">Live feed</span>
                         </div>
                         <form id="community-compose-form" class="community-compose-form">
                             <textarea class="community-compose-textarea" name="message" maxlength="1200" placeholder="Write a message to the community..." required></textarea>
+                            <div class="community-compose-toolbar">
+                                <label class="fm-season-select-wrap community-recipient-wrap">
+                                    <span>Send to</span>
+                                    <select class="fm-season-select community-recipient-select" name="recipientUserId">
+                                        ${buildRecipientOptions(recipients)}
+                                    </select>
+                                </label>
+                            </div>
                             <div class="community-compose-actions">
-                                <span class="fm-subtle">${adminViewer ? 'Service messages below can also contain registration approvals.' : 'Admin service decisions will appear here as system messages.'}</span>
+                                <span class="fm-subtle">${adminViewer ? 'Service messages below can still contain registration approvals, while private messages stay visible only to sender and recipient.' : 'Admin service decisions appear here as system messages, while private messages stay visible only to sender and recipient.'}</span>
                                 <button type="submit" class="fm-action-btn">Send message</button>
                             </div>
                         </form>
@@ -241,7 +310,7 @@ export function createCommunityFeature(deps) {
                         <div class="fm-panel-head">
                             <div>
                                 <h3>Recent feed</h3>
-                                <p class="fm-subtle">Newest messages first. Pending registration requests are visible only to admin-side roles.</p>
+                                <p class="fm-subtle">Newest messages first. Pending registration requests stay admin-only, while private messages are shown only to the sender and recipient.</p>
                             </div>
                             <span class="fm-panel-action">${orderedMessages.length} items</span>
                         </div>
@@ -270,7 +339,74 @@ export function createCommunityFeature(deps) {
     }
 
     async function loadForum() {
-        return loadChat();
+        const mainContent = document.getElementById('main-content');
+        if (!isAdminViewer()) {
+            return loadChat();
+        }
+
+        mainContent.innerHTML = buildCommunityPageShell({
+            currentPage: 'forum',
+            eyebrow: 'Community control room',
+            title: 'Admin DB Tools',
+            subtitle: 'Reset and initialization actions are available here again until further notice, while the chat remains the shared community/forum feed.',
+            stats: [
+                { value: getUserRole?.() || 'ADMIN', label: 'Role' },
+                { value: getUsername?.() || 'Manager', label: 'Signed in as' },
+                { value: '5', label: 'Admin actions' },
+                { value: getTeamName?.() || 'Unassigned', label: 'Current club' }
+            ],
+            bodyHtml: `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Database controls</h3>
+                            <p class="fm-subtle">Use these only when you really want to clear or rebuild the local data. Both actions reuse the existing admin endpoints.</p>
+                        </div>
+                        <span class="fm-panel-action">Admin only</span>
+                    </div>
+                    <div class="community-tool-grid">
+                        <article class="community-tool-card">
+                            <h4>Reset DB</h4>
+                            <p class="fm-subtle">Clears local data and rebuilds the usable football baseline so login and dashboard boot work again.</p>
+                            <button type="button" class="fm-action-btn secondary" data-community-admin-action="reset">Reset DB</button>
+                        </article>
+                        <article class="community-tool-card">
+                            <h4>Initialize DB</h4>
+                            <p class="fm-subtle">Runs the full initializer again and rebuilds the football structure.</p>
+                            <button type="button" class="fm-action-btn" data-community-admin-action="initialize">Initialize DB</button>
+                        </article>
+                    </div>
+                </section>
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Season flow controls</h3>
+                            <p class="fm-subtle">Same manual round controls as the dashboard, now available here next to the DB tools for admin testing.</p>
+                        </div>
+                        <span class="fm-panel-action">Manual flow</span>
+                    </div>
+                    <div id="dashboard-season-flow-status" class="fm-season-flow-status">Choose the next manual season action for the current week.</div>
+                    <div class="community-tool-grid fm-season-flow-buttons">
+                        <article class="community-tool-card">
+                            <h4>Play your match</h4>
+                            <p class="fm-subtle">Starts your club's current scheduled live/replay-ready match when one exists for this week.</p>
+                            <button type="button" id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" data-label="⚽ Play Your Match" data-community-season-action="play-match">⚽ Play Your Match</button>
+                        </article>
+                        <article class="community-tool-card">
+                            <h4>Simulate other results</h4>
+                            <p class="fm-subtle">Runs the remaining fixtures for the current round across the Serbian league pyramid and shows a summary.</p>
+                            <button type="button" id="simulate-current-round-btn" class="fm-action-btn" data-label="🧮 Simulate Other Results" data-community-season-action="simulate-round">🧮 Simulate Other Results</button>
+                        </article>
+                        <article class="community-tool-card">
+                            <h4>Advance week</h4>
+                            <p class="fm-subtle">Moves the calendar forward once the current round is fully resolved and training/season logic can continue.</p>
+                            <button type="button" id="advance-week-btn" class="fm-action-btn secondary" data-label="📅 Advance Week" data-community-season-action="advance-week">📅 Advance Week</button>
+                        </article>
+                    </div>
+                </section>`
+        });
+
+        bindCommunityInteractions(mainContent);
     }
 
     async function loadEvents() {

@@ -8,6 +8,6 @@ import java.util.List;
 
 public interface CommunityMessageRepository extends JpaRepository<CommunityMessage, Long> {
 
-    @EntityGraph(attributePaths = {"authorUser", "authorUser.team", "registrationRequest", "registrationRequest.team"})
+    @EntityGraph(attributePaths = {"authorUser", "authorUser.team", "recipientUser", "recipientUser.team", "registrationRequest", "registrationRequest.team"})
     List<CommunityMessage> findTop150ByOrderByCreatedAtDescIdDesc();
 }

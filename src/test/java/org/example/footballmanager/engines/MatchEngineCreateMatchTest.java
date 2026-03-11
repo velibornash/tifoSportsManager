@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verify;
@@ -96,6 +97,36 @@ class MatchEngineCreateMatchTest {
         verify(seasonService).ensureFriendlyWeekFixtures(prvaLiga, 2026);
     }
 
+    @Test
+    void loadAndValidateMatchInitializesLineupPlayersViaSafeFetch() {
+        Match match = new Match();
+        match.setId(77L);
+        match.setHomeTeam(team(10L, "OFK Omladinac", league(2L, "Prva Liga", 2)));
+        match.setAwayTeam(team(11L, "Rival", league(2L, "Prva Liga", 2)));
+
+        Lineup homeLineup = new Lineup();
+        homeLineup.setFormation("4-4-2");
+        homeLineup.setStartingPlayers(List.of(player(match.getHomeTeam(), 1001L, Position.GK)));
+        homeLineup.setSubstitutes(List.of(player(match.getHomeTeam(), 1002L, Position.DEF)));
+        match.setHomeLineup(homeLineup);
+
+        Lineup awayLineup = new Lineup();
+        awayLineup.setFormation("4-3-3");
+        awayLineup.setStartingPlayers(List.of(player(match.getAwayTeam(), 2001L, Position.GK)));
+        awayLineup.setSubstitutes(List.of(player(match.getAwayTeam(), 2002L, Position.DEF)));
+        match.setAwayLineup(awayLineup);
+
+        when(matchRepository.findWithTeamsAndLineupsById(77L)).thenReturn(Optional.of(match));
+
+        Match loaded = matchEngine.loadAndValidateMatch(77L);
+
+        assertSame(match, loaded);
+        assertEquals(1, loaded.getHomeLineup().getOrderedStartingPlayers().size());
+        assertEquals(1, loaded.getHomeLineup().getOrderedSubstitutePlayers().size());
+        assertEquals(1, loaded.getAwayLineup().getOrderedStartingPlayers().size());
+        assertEquals(1, loaded.getAwayLineup().getOrderedSubstitutePlayers().size());
+    }
+
     private Competition league(Long id, String name, Integer tier) {
         Competition competition = new Competition();
         competition.setId(id);
@@ -132,5 +163,15 @@ class MatchEngineCreateMatchTest {
             playersById.put(player.getId(), player);
             return player;
         }).toList();
+    }
+
+    private Player player(Team team, Long id, Position position) {
+        Player player = new Player();
+        player.setId(id);
+        player.setName(team.getName() + "-" + position + "-" + id);
+        player.setTeam(team);
+        player.setPosition(position);
+        player.setInjured(false);
+        return player;
     }
 }

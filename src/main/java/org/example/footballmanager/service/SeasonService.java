@@ -531,6 +531,11 @@ public class SeasonService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<Competition> getSerbianLeaguesInOrder() {
+        return findSerbianLeagues();
+    }
+
     private List<Competition> findSerbianLeagues() {
         return competitionRepository.findAll().stream()
                 .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))

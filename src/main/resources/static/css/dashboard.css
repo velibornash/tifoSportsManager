@@ -661,6 +661,12 @@ button.training-week-item {
     gap: 12px;
 }
 
+.community-compose-toolbar {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(220px, 360px);
+}
+
 .community-compose-textarea {
     width: 100%;
     min-height: 110px;
@@ -686,6 +692,10 @@ button.training-week-item {
     gap: 12px;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.community-recipient-wrap {
+    margin: 0;
 }
 
 .community-feed {
@@ -764,6 +774,31 @@ button.training-week-item {
 .community-type-badge.community-type-user { background: rgba(143, 211, 255, 0.18); color: #cfeeff; }
 .community-type-badge.community-type-admin { background: rgba(255, 214, 79, 0.16); color: #ffe8a8; }
 .community-type-badge.community-type-service { background: rgba(111, 207, 151, 0.16); color: #cef3d8; }
+
+.community-visibility-badge.is-private {
+    background: rgba(203, 166, 247, 0.18);
+    color: #eadbff;
+}
+
+.community-tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.community-tool-card {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.community-tool-card h4 {
+    margin: 0;
+    color: #eef4ff;
+}
 
 .fm-badge-owner { background: rgba(111, 207, 151, 0.18); color: #c9f6d7; }
 .fm-badge-ai { background: rgba(255, 255, 255, 0.1); color: #c5d0de; }
@@ -3257,6 +3292,20 @@ body {
     overflow: hidden;
 }
 
+.fm-dashboard-ticker.is-community-alert {
+    background: linear-gradient(135deg, rgba(123, 92, 214, 0.22), rgba(171, 106, 255, 0.14));
+    border-color: rgba(192, 147, 255, 0.38);
+    box-shadow: 0 10px 28px rgba(73, 28, 118, 0.18);
+}
+
+.fm-dashboard-ticker.is-community-alert .fm-dashboard-ticker-label {
+    color: #efd7ff;
+}
+
+.fm-dashboard-ticker.is-community-alert .fm-dashboard-ticker-move {
+    color: #fff5ff;
+}
+
 .fm-dashboard-ticker-label {
     color: #8fd3ff;
     font-size: 0.72rem;
@@ -3353,6 +3402,83 @@ body {
 .recent-matches-section {
     display: grid;
     gap: 12px;
+}
+
+.dashboard-actions {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.fm-season-flow-panel {
+    gap: 14px;
+}
+
+.fm-season-flow-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fm-season-flow-copy {
+    margin-top: 6px;
+    color: var(--fm-legacy-muted);
+    line-height: 1.5;
+    font-size: 0.92rem;
+}
+
+.fm-season-flow-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(143, 211, 255, 0.14);
+    border: 1px solid rgba(143, 211, 255, 0.24);
+    color: #d9eeff;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.fm-season-flow-buttons .fm-action-btn {
+    width: 100%;
+    min-height: 54px;
+}
+
+.fm-season-flow-status {
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: #dceafe;
+    line-height: 1.45;
+}
+
+.fm-season-flow-status.is-success {
+    background: rgba(72, 187, 120, 0.14);
+    border-color: rgba(111, 207, 151, 0.3);
+    color: #e7fff0;
+}
+
+.fm-season-flow-status.is-warning {
+    background: rgba(255, 193, 7, 0.12);
+    border-color: rgba(255, 214, 102, 0.28);
+    color: #fff6d6;
+}
+
+.fm-season-flow-status.is-error {
+    background: rgba(229, 62, 62, 0.12);
+    border-color: rgba(252, 129, 129, 0.3);
+    color: #ffe4e4;
+}
+
+.fm-season-flow-status.is-info {
+    background: rgba(93, 168, 255, 0.12);
+    border-color: rgba(135, 191, 255, 0.24);
+    color: #eaf4ff;
 }
 
 .fm-milestone-board {
@@ -3618,6 +3744,10 @@ body {
 
     .community-card {
         padding: 14px;
+    }
+
+    .community-compose-toolbar {
+        grid-template-columns: 1fr;
     }
 
     .community-compose-actions .fm-action-btn,

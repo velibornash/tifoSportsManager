@@ -8,6 +8,9 @@ let currentUserCompetitionName = null;
 let currentSeasonYear = null;
 let currentUserCountryName = null;
 let currentUserCountryIsoCode = null;
+let currentUserRole = null;
+
+const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
 
 function updateCountryMenuLabels() {
     const countryLabel = currentUserCountryName || 'Country';
@@ -107,6 +110,52 @@ function buildImportantTickerMarkup(message) {
     return `<div class="fm-dashboard-ticker-move"><span>${safeMessage}</span></div>`;
 }
 
+function isAdminUser() {
+    const normalizedRole = String(currentUserRole || '').trim().toUpperCase().replace(/^ROLE_/, '');
+    return normalizedRole === 'ADMIN' || normalizedRole === 'OWNER' || normalizedRole === 'DEV';
+}
+
+function readDashboardFlowFlash() {
+    try {
+        const raw = sessionStorage.getItem(DASHBOARD_FLOW_FLASH_KEY);
+        if (!raw) return null;
+        sessionStorage.removeItem(DASHBOARD_FLOW_FLASH_KEY);
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed.message === 'string' ? parsed : null;
+    } catch (err) {
+        console.warn('Failed to read dashboard flow flash:', err);
+        sessionStorage.removeItem(DASHBOARD_FLOW_FLASH_KEY);
+        return null;
+    }
+}
+
+function buildSeasonFlowPanel() {
+    const flash = readDashboardFlowFlash();
+    const statusTone = flash?.tone || 'info';
+    const statusMessage = flash?.message || (isAdminUser()
+        ? 'Manual match-week flow is active here: Play Your Match, then Simulate Other Results, then Advance Week.'
+        : 'Start your club match here. Admin dashboard controls handle the rest of the round and week flow.');
+
+    return `
+        <div class="recent-matches-section fm-season-flow-panel">
+            <div class="fm-season-flow-head">
+                <div>
+                    <h3>Match Week Controls</h3>
+                    <div class="fm-season-flow-copy">${escapeHtml(isAdminUser()
+                        ? 'Manual buttons for the current round and calendar progression. Later the same operations can be scheduler-driven in pre-prod.'
+                        : 'Open your live match from here. The wider round/week controls are kept on the admin dashboard flow.')}</div>
+                </div>
+                ${isAdminUser() ? '<span class="fm-season-flow-badge">Admin</span>' : ''}
+            </div>
+            <div class="dashboard-actions fm-season-flow-buttons">
+                <button id="start-realistic-demo-btn" data-label="⚽ Play Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Play Your Match</button>
+                ${isAdminUser() ? '<button id="simulate-current-round-btn" data-label="🧮 Simulate Other Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()">🧮 Simulate Other Results</button>' : ''}
+                ${isAdminUser() ? '<button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>' : ''}
+            </div>
+            <div id="dashboard-season-flow-status" class="fm-season-flow-status is-${escapeHtml(statusTone)}">${escapeHtml(statusMessage)}</div>
+        </div>`;
+}
+
 function buildImportantTickerLine(updates) {
     return updates.map(update => {
         const severity = update?.severity === 'alert' ? 'Urgent' : update?.severity === 'warning' ? 'Watch' : 'Info';
@@ -116,13 +165,32 @@ function buildImportantTickerLine(updates) {
     }).join(' ✦ ');
 }
 
-function buildImportantUpdates(medical, lineupTemplate, transferOverview) {
+function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary) {
     const updates = [];
     const recoveryQueue = Array.isArray(medical?.recoveryQueue) ? medical.recoveryQueue.filter(Boolean) : [];
     const starterIds = Array.isArray(lineupTemplate?.starterIds) ? lineupTemplate.starterIds.filter(Boolean) : [];
     const benchIds = Array.isArray(lineupTemplate?.benchIds) ? lineupTemplate.benchIds.filter(Boolean) : [];
     const listedPlayers = Array.isArray(transferOverview?.listedPlayers) ? transferOverview.listedPlayers : [];
     const interestedListings = listedPlayers.filter(player => Array.isArray(player?.interestedTeams) && player.interestedTeams.length > 0);
+
+    if (communitySummary?.hasNewMessages) {
+        const total = Number(communitySummary.newMessageCount || 0);
+        const privateCount = Number(communitySummary.newPrivateCount || 0);
+        const sharedCount = Number(communitySummary.newSharedCount || 0);
+        const breakdown = [
+            privateCount > 0 ? `${privateCount} private` : null,
+            sharedCount > 0 ? `${sharedCount} shared` : null
+        ].filter(Boolean).join(' · ');
+        const latest = communitySummary.latestAuthor
+            ? `${communitySummary.latestAuthor}: ${communitySummary.latestMessage || 'sent a new message.'}`
+            : 'Open Community to read the latest message.';
+
+        updates.push({
+            severity: privateCount > 0 ? 'alert' : 'warning',
+            title: privateCount > 0 ? 'New private/community message' : 'New chat/community activity',
+            meta: `${total} new ${total === 1 ? 'message' : 'messages'}${breakdown ? ` (${breakdown})` : ''}. ${latest}`
+        });
+    }
 
     if (lineupTemplate?.saved === false) {
         updates.push({
@@ -176,15 +244,18 @@ function buildImportantUpdates(medical, lineupTemplate, transferOverview) {
 async function loadImportantUpdates() {
     const host = document.getElementById('dashboard-important-updates');
     if (!host) return;
+    const ticker = host.closest('.fm-dashboard-ticker');
 
     try {
-        const [medical, lineupTemplate, transferOverview] = await Promise.all([
+        const [medical, lineupTemplate, transferOverview, communitySummary] = await Promise.all([
             authFetch(`/teams/${currentUserTeamId}/medical`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/teams/${currentUserTeamId}/lineup-template`).then(response => response.ok ? response.json() : null).catch(() => null),
-            authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null)
+            authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch('/community/summary').then(response => response.ok ? response.json() : null).catch(() => null)
         ]);
 
-        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview);
+        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary);
+        ticker?.classList.toggle('is-community-alert', Boolean(communitySummary?.hasNewMessages));
         if (!updates.length) {
             host.innerHTML = buildImportantTickerMarkup('No urgent club updates right now.');
             return;
@@ -255,6 +326,7 @@ window.addEventListener('load', async () => {
         currentSeasonYear = user.seasonYear ?? null;
         currentUserCountryName = user.countryName ?? null;
         currentUserCountryIsoCode = user.countryIsoCode ?? null;
+        currentUserRole = user.role ?? null;
         updateCountryMenuLabels();
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
@@ -281,7 +353,7 @@ function loadDashboard() {
         <section class="fm-dashboard-ticker" aria-label="Important updates">
             <div class="fm-dashboard-ticker-label">Important updates</div>
             <div id="dashboard-important-updates" class="fm-dashboard-ticker-host">
-                ${buildImportantTickerMarkup('Loading important updates — checking lineup, medical status, and transfer signals.')}
+                ${buildImportantTickerMarkup('Loading important updates — checking lineup, medical status, transfers, and community messages.')}
             </div>
         </section>
 
@@ -343,11 +415,7 @@ function loadDashboard() {
                 </div>
             </div>-->
 
-            <div class="dashboard-actions">
-    <!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
-                <button id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Realistic Match</button>
-    <!--            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>-->
-            </div>
+	            ${buildSeasonFlowPanel()}
         </div>
     </div>`;
 

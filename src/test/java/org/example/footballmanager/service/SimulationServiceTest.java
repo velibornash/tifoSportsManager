@@ -49,4 +49,26 @@ class SimulationServiceTest {
         verify(playbackEngine).startPlayback(11L, runtime);
         verifyNoInteractions(matchStatisticEngine);
     }
+
+    @Test
+    void startRealisticSimulationReloadsMatchBeforeTransactionalFinalize() {
+        Match simulatedMatch = new Match();
+        simulatedMatch.setId(21L);
+
+        Match managedMatch = new Match();
+        managedMatch.setId(21L);
+
+        MatchRuntime runtime = new MatchRuntime();
+
+        when(matchEngine.loadAndValidateMatch(21L)).thenReturn(simulatedMatch, managedMatch);
+        when(matchEngine.startSimulationOnlyIfNotRunning(21L)).thenReturn(false);
+        when(realisticMatchEngine.simulateRealisticMatch(simulatedMatch)).thenReturn(runtime);
+        when(runtimeToDB.finalizeMatchResult(managedMatch, runtime.homePlayers, runtime.awayPlayers, runtime)).thenReturn(managedMatch);
+
+        CompletableFuture<Match> result = simulationService.startRealisticSimulation(21L);
+
+        assertSame(managedMatch, result.join());
+        verify(runtimeToDB).finalizeMatchResult(managedMatch, runtime.homePlayers, runtime.awayPlayers, runtime);
+        verify(playbackEngine).startPlayback(21L, runtime);
+    }
 }

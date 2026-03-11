@@ -120,7 +120,7 @@ class ZoxReplayServiceTest {
         goalEvent.setScoreAfterGoal("1-0");
         goalEvent.setXG(0.42);
 
-        when(matchRepository.findById(1L)).thenReturn(Optional.of(match));
+        when(matchRepository.findWithTeamsAndLineupsById(1L)).thenReturn(Optional.of(match));
         when(tickStateRepository.findByMatchOrderByTickAsc(match)).thenReturn(List.of(state0, state80, state120));
         when(matchEventRepository.findByMatch(match)).thenReturn(List.of(goalEvent));
 
@@ -206,7 +206,7 @@ class ZoxReplayServiceTest {
                 false,
                 null);
 
-        when(matchRepository.findById(2L)).thenReturn(Optional.of(match));
+        when(matchRepository.findWithTeamsAndLineupsById(2L)).thenReturn(Optional.of(match));
         when(tickStateRepository.findByMatchOrderByTickAsc(match)).thenReturn(List.of(state0, stateEnd));
         when(matchEventRepository.findByMatch(match)).thenReturn(List.of(varReviewEvent, goalEvent));
 

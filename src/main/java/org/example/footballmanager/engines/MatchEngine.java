@@ -17,6 +17,7 @@ import org.example.footballmanager.util.match.MatchContext;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.teams.TeamStrengthCalculator;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -50,8 +51,22 @@ public class MatchEngine {
     private final SeasonService seasonService;
     private final AttendanceService attendanceService;
 
+    @Transactional(readOnly = true)
     public Match loadAndValidateMatch(long matchId) {
-        return matchRepository.findById(matchId).orElseThrow(() -> new RuntimeException("Match not found"));
+        Match match = matchRepository.findWithTeamsAndLineupsById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found"));
+        initializeLineup(match.getHomeLineup());
+        initializeLineup(match.getAwayLineup());
+        return match;
+    }
+
+    private void initializeLineup(Lineup lineup) {
+        if (lineup == null) {
+            return;
+        }
+        lineup.getFormation();
+        lineup.getOrderedStartingPlayers().size();
+        lineup.getOrderedSubstitutePlayers().size();
     }
 
     private Lineup createLineupForMatch(Team team, List<Player> players, String formationName) {

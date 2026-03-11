@@ -3,6 +3,8 @@ import { authFetch } from './auth.js';
 
 let currentUserTeamId = null;
 
+const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
+
 function resetButton(button, label) {
     if (!button) return;
     button.disabled = false;
@@ -104,11 +106,159 @@ function showPlayoffSummary(summary, message) {
                 <div style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.08em;opacity:0.7;margin-bottom:10px;">Playoff results</div>
                 ${playoffHtml}
             </section>
-            <div style="padding-top:4px;font-size:0.94rem;opacity:0.82;">Next click on <strong>Realistic Match</strong> starts the friendly week.</div>
+            <div style="padding-top:4px;font-size:0.94rem;opacity:0.82;">Next click on <strong>Play Your Match</strong> starts the friendly week.</div>
         </div>
     `;
 
     showModal(`Season ${escapeHtml(summary?.seasonYear ?? '')} playoff summary`, bodyHtml);
+}
+
+function getButtonDefaultLabel(button, fallback) {
+    return button?.dataset?.label || fallback;
+}
+
+function persistDashboardFlowFlash(message, tone = 'info') {
+    if (!message) return;
+    try {
+        sessionStorage.setItem(DASHBOARD_FLOW_FLASH_KEY, JSON.stringify({ message, tone }));
+    } catch (err) {
+        console.warn('Failed to persist dashboard flow message:', err);
+    }
+}
+
+function setSeasonFlowStatus(message, tone = 'info', options = {}) {
+    const host = document.getElementById('dashboard-season-flow-status');
+    if (host) {
+        host.className = `fm-season-flow-status is-${tone}`;
+        host.textContent = message;
+    }
+    if (options.persist) {
+        persistDashboardFlowFlash(message, tone);
+    }
+}
+
+function renderLeagueResults(leagueResults) {
+    if (!Array.isArray(leagueResults) || leagueResults.length === 0) {
+        return '<div style="opacity:0.75;">No other league fixtures needed simulation in this round.</div>';
+    }
+
+    return leagueResults.map(result => `
+        <div style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);border-left:3px solid rgba(135,191,255,0.7);margin-bottom:8px;">
+            <div style="font-weight:700;">${escapeHtml(result.league || 'League')}</div>
+            <div style="font-size:0.92rem;opacity:0.84;">Remaining before: ${escapeHtml(result.remainingBefore ?? 0)} · simulated: ${escapeHtml(result.simulated ?? 0)} · left now: ${escapeHtml(result.remainingAfter ?? 0)}</div>
+        </div>
+    `).join('');
+}
+
+function showRoundSimulationSummary(data) {
+    const bodyHtml = `
+        <div style="display:grid;gap:18px;">
+            <div style="padding:12px 14px;border-radius:12px;background:rgba(93,168,255,0.14);border:1px solid rgba(135,191,255,0.25);line-height:1.5;">
+                ${escapeHtml(data?.message || 'Current round simulation completed.')}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+                <div style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);">
+                    <div style="font-size:0.78rem;opacity:0.72;text-transform:uppercase;letter-spacing:0.08em;">Fixtures simulated</div>
+                    <div style="font-size:1.35rem;font-weight:700;">${escapeHtml(data?.simulatedCount ?? 0)}</div>
+                </div>
+                <div style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.06);">
+                    <div style="font-size:0.78rem;opacity:0.72;text-transform:uppercase;letter-spacing:0.08em;">Leagues processed</div>
+                    <div style="font-size:1.35rem;font-weight:700;">${escapeHtml(data?.leaguesProcessed ?? 0)}</div>
+                </div>
+            </div>
+            <section>
+                <div style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.08em;opacity:0.7;margin-bottom:10px;">League breakdown</div>
+                ${renderLeagueResults(data?.leagueResults)}
+            </section>
+        </div>
+    `;
+
+    showModal('Current round simulation', bodyHtml);
+}
+
+function handleSeasonFlowResponse(data, button, defaultLabel) {
+    const action = data?.action;
+
+    if (action === 'SHOW_PLAYOFF_SUMMARY') {
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Playoff week finished.', 'success');
+        showPlayoffSummary(data.summary, data.message);
+        return;
+    }
+
+    if (action === 'START_MATCH') {
+        setSeasonFlowStatus(data.message || 'Opening your live match...', 'success');
+        const matchId = data.matchId;
+        if (!matchId) {
+            throw new Error('Missing matchId in response');
+        }
+        window.location.href = `/realisticDemo.html?matchId=${matchId}&mode=live`;
+        return;
+    }
+
+    if (action === 'NO_MATCH_CURRENT_WEEK') {
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'No scheduled match exists for your club in the current week.', 'warning');
+        return;
+    }
+
+    if (action === 'ROUND_SIMULATED') {
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Other fixtures for the current round were simulated.', 'success');
+        showRoundSimulationSummary(data);
+        return;
+    }
+
+    if (action === 'ROUND_NOT_COMPLETE') {
+        resetButton(button, defaultLabel);
+        const remaining = Number(data?.remainingFixtures || 0);
+        setSeasonFlowStatus(data.message || `Current round still has ${remaining} unfinished fixture${remaining === 1 ? '' : 's'}.`, 'warning');
+        return;
+    }
+
+    if (action === 'WEEK_ADVANCED') {
+        const message = data.message || 'Calendar advanced to the next week.';
+        setSeasonFlowStatus(message, 'success', { persist: true });
+        const shouldRefreshDashboard = !!button?.closest('.fm-dashboard-view') && typeof window.loadDashboard === 'function';
+        if (shouldRefreshDashboard) {
+            window.loadDashboard();
+        } else {
+            resetButton(button, defaultLabel);
+        }
+        return;
+    }
+
+    resetButton(button, defaultLabel);
+    if (data?.message) {
+        setSeasonFlowStatus(data.message, 'info');
+    }
+}
+
+async function runSeasonFlowAction(buttonId, requestUrl, loadingLabel, fallbackLabel, requestOptions = {}) {
+    const button = document.getElementById(buttonId);
+    if (!button) {
+        console.error(`Season flow button not found: ${buttonId}`);
+        return;
+    }
+
+    const defaultLabel = getButtonDefaultLabel(button, fallbackLabel);
+    button.disabled = true;
+    button.textContent = loadingLabel;
+
+    try {
+        const response = await authFetch(requestUrl, requestOptions);
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok && !data?.action) {
+            throw new Error(data?.message || data?.error || 'Server error');
+        }
+
+        handleSeasonFlowResponse(data || {}, button, defaultLabel);
+    } catch (error) {
+        console.error(`Failed season flow action for ${requestUrl}:`, error);
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(error.message || 'Season flow action failed.', 'error');
+    }
 }
 
 window.addEventListener('load', async () => {
@@ -183,37 +333,36 @@ async function startKeyEventsTest() {
 }
 
 async function startRealisticDemoTest() {
-    const button = document.getElementById('start-realistic-demo-btn');
-    if (!button) {
-        console.error('Realistic demo button not found');
-        return;
-    }
+    await runSeasonFlowAction(
+        'start-realistic-demo-btn',
+        '/start-realistic-demo',
+        'Preparing your match...',
+        '⚽ Play Your Match'
+    );
+}
 
-    button.disabled = true;
-    button.textContent = 'Starting realistic simulation...';
+async function simulateCurrentRoundTest() {
+    await runSeasonFlowAction(
+        'simulate-current-round-btn',
+        '/simulation/current-round/simulate-all',
+        'Simulating other results...',
+        '🧮 Simulate Other Results',
+        { method: 'POST' }
+    );
+}
 
-    try {
-        const response = await authFetch('/start-realistic-demo');
-        if (!response.ok) throw new Error('Server error');
-
-        const data = await response.json();
-        if (data.action === 'SHOW_PLAYOFF_SUMMARY') {
-            resetButton(button, '⚽ Realistic Match');
-            showPlayoffSummary(data.summary, data.message);
-            return;
-        }
-
-        const matchId = data.matchId;
-        if (!matchId) throw new Error('Missing matchId in response');
-
-        window.location.href = `/realisticDemo.html?matchId=${matchId}&mode=live`;
-    } catch (error) {
-        console.error('Failed to start realistic demo:', error);
-        alert('Failed to start realistic match simulation.');
-        resetButton(button, '⚽ Realistic Match');
-    }
+async function advanceWeekTest() {
+    await runSeasonFlowAction(
+        'advance-week-btn',
+        '/simulation/week/advance',
+        'Advancing week...',
+        '📅 Advance Week',
+        { method: 'POST' }
+    );
 }
 
 window.startDemoTest = startDemoTest;
 window.startKeyEventsTest = startKeyEventsTest;
 window.startRealisticDemoTest = startRealisticDemoTest;
+window.simulateCurrentRoundTest = simulateCurrentRoundTest;
+window.advanceWeekTest = advanceWeekTest;

@@ -66,7 +66,7 @@ public class SimulationService {
                 MatchRuntime runtime = realisticMatchEngine.simulateRealisticMatch(match);
 
                 // 2) Persist match + runtime events (u novoj transakciji)
-                return finalizeRealisticMatch(match, runtime);
+                return finalizeRealisticMatch(matchId, runtime);
             } catch (InterruptedException e) {
                 log.error("Realistic match simulation interrupted for match {}", matchId, e);
                 Thread.currentThread().interrupt();
@@ -82,15 +82,17 @@ public class SimulationService {
      * Finalizuje realistic match u svojoj transakciji
      */
     @Transactional
-    protected Match finalizeRealisticMatch(Match match, MatchRuntime runtime) {
+    protected Match finalizeRealisticMatch(long matchId, MatchRuntime runtime) {
+        Match managedMatch = matchEngine.loadAndValidateMatch(matchId);
+
         // 1) Persist match + runtime events
-        Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
+        Match saved = runtimeToDB.finalizeMatchResult(managedMatch, runtime.homePlayers, runtime.awayPlayers, runtime);
 
         // 2) Keep the legacy websocket playback path available, but the primary realisticDemo
         // UI now reads persisted replay data through the replay metadata/chunk endpoints.
-        playbackEngine.startPlayback(match.getId(), runtime);
+        playbackEngine.startPlayback(matchId, runtime);
 
-        log.info("Realistic match simulation finished for match {}", match.getId());
+        log.info("Realistic match simulation finished for match {}", matchId);
         return saved;
     }
 }

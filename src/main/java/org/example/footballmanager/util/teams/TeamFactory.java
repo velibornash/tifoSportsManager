@@ -1,6 +1,7 @@
 package org.example.footballmanager.util.teams;
 
 import jakarta.transaction.Transactional;
+import org.example.footballmanager.model.CompetitionTeamType;
 import org.example.footballmanager.model.Country;
 import org.example.footballmanager.model.Stadium;
 import org.example.footballmanager.model.Team;
@@ -40,12 +41,18 @@ public class TeamFactory {
         // 🔹 Proveri da li tim već postoji
         Optional<Team> existing = teamRepository.findByName(name);
         if (existing.isPresent()) {
-            return existing.get();
+            Team existingTeam = existing.get();
+            if (existingTeam.getType() == null) {
+                existingTeam.setType(CompetitionTeamType.CLUB);
+                return teamRepository.save(existingTeam);
+            }
+            return existingTeam;
         }
 
         // 🔹 Kreiraj novi tim
         Team newTeam = new Team();
         newTeam.setName(name);
+        newTeam.setType(CompetitionTeamType.CLUB);
         newTeam.setBudget(0.0);
         newTeam.setReputation(50.0);
         newTeam.setJuniorCoachSkill(35 + new java.util.Random().nextInt(51)); // 35-85

@@ -2,11 +2,8 @@ package org.example.footballmanager.zox;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Team;
-import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.TeamRepository;
-import org.example.footballmanager.util.match.MatchAnalyticsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,8 +21,6 @@ public class ZoxMatchAnalyticsController {
 
     private final ZoxMatchAnalyticsService zoxAnalyticsService;
     private final ZoxReplayService zoxReplayService;
-    private final MatchAnalyticsService matchAnalyticsService;
-    private final MatchRepository matchRepository;
     private final TeamRepository teamRepository;
 
     /**
@@ -50,18 +45,8 @@ public class ZoxMatchAnalyticsController {
     public ResponseEntity<?> getPlayerRatings(@PathVariable Long matchId) {
         try {
             log.info("Fetching player ratings for match {}", matchId);
-            
-            Match match = matchRepository.findById(matchId)
-                    .orElseThrow(() -> new RuntimeException("Match not found"));
-            
-            Map<String, Object> ratings = Map.of(
-                    "homeTeam", match.getHomeTeam().getName(),
-                    "awayTeam", match.getAwayTeam().getName(),
-                    "homePlayers", zoxAnalyticsService.getPlayerRatingsForTeam(matchId, match.getHomeTeam()),
-                    "awayPlayers", zoxAnalyticsService.getPlayerRatingsForTeam(matchId, match.getAwayTeam())
-            );
-            
-            return ResponseEntity.ok(ratings);
+
+            return ResponseEntity.ok(zoxAnalyticsService.generatePlayerRatings(matchId));
         } catch (Exception e) {
             log.error("Error fetching player ratings for match {}", matchId, e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -75,12 +60,8 @@ public class ZoxMatchAnalyticsController {
     public ResponseEntity<?> getMatchStats(@PathVariable Long matchId) {
         try {
             log.info("Fetching match stats for match {}", matchId);
-            
-            Match match = matchRepository.findById(matchId)
-                    .orElseThrow(() -> new RuntimeException("Match not found"));
-            
-            Map<String, Object> stats = matchAnalyticsService.generateStats(match);
-            return ResponseEntity.ok(stats);
+
+            return ResponseEntity.ok(zoxAnalyticsService.generateMatchStats(matchId));
         } catch (Exception e) {
             log.error("Error fetching match stats for match {}", matchId, e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -94,11 +75,8 @@ public class ZoxMatchAnalyticsController {
     public ResponseEntity<?> getMatchPrediction(@PathVariable Long matchId) {
         try {
             log.info("Fetching match prediction for match {}", matchId);
-            
-            Match match = matchRepository.findById(matchId)
-                    .orElseThrow(() -> new RuntimeException("Match not found"));
-            
-            ZoxMatchPredictionDTO prediction = zoxAnalyticsService.calculateMatchPrediction(match);
+
+            ZoxMatchPredictionDTO prediction = zoxAnalyticsService.generateMatchPrediction(matchId);
             return ResponseEntity.ok(prediction);
         } catch (Exception e) {
             log.error("Error fetching match prediction for match {}", matchId, e);
@@ -113,13 +91,10 @@ public class ZoxMatchAnalyticsController {
     public ResponseEntity<?> getFormation(@PathVariable Long matchId, @PathVariable Long teamId) {
         try {
             log.info("Fetching formation for match {} team {}", matchId, teamId);
-            
-            Match match = matchRepository.findById(matchId)
-                    .orElseThrow(() -> new RuntimeException("Match not found"));
-            
+
             Team team = teamRepository.findById(teamId)
                     .orElseThrow(() -> new RuntimeException("Team not found"));
-            
+
             ZoxFormationDTO formation = zoxAnalyticsService.generateFormation(matchId, team);
             return ResponseEntity.ok(formation);
         } catch (Exception e) {

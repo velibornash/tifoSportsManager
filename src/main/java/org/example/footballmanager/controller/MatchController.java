@@ -69,7 +69,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}")
     public ResponseEntity<MatchDTO> getMatch(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return matchRepository.findWithTeamsById(matchId)
                 .map(MatchDTO::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -77,7 +77,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/lineups")
     public ResponseEntity<Map<String, Object>> getMatchLineups(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return matchRepository.findDetailedById(matchId)
                 .map(match -> {
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("homeTeam", match.getHomeTeam() != null ? match.getHomeTeam().getName() : null);
@@ -132,7 +132,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/preview")
     public ResponseEntity<Map<String, Object>> getMatchPreview(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return matchRepository.findWithTeamsById(matchId)
                 .map(match -> {
                     Team homeTeam = match.getHomeTeam();
                     Team awayTeam = match.getAwayTeam();

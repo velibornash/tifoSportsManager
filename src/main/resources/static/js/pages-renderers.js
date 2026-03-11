@@ -360,10 +360,14 @@ export function buildTrainingActionsHtml(currentPage = '') {
     ], currentPage);
 }
 
-export function buildCommunityActionsHtml(currentPage = '') {
-    return buildActionRowHtml([
-        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['forum', 'chat', 'events'] },
-    ], currentPage);
+export function buildCommunityActionsHtml(currentPage = '', options = {}) {
+    const actions = [
+        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['chat', 'events'] },
+    ];
+    if (options.showAdminTools) {
+        actions.push({ label: 'DB Tools', page: 'forum', currentPages: ['forum'] });
+    }
+    return buildActionRowHtml(actions, currentPage);
 }
 
 export function renderPlayersView(players, title, options = {}) {

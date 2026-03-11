@@ -31,6 +31,10 @@ public class CommunityMessage {
     private CommunityMessageType type;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recipient_user_id")
+    private User recipientUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "registration_request_id")
     private RegistrationRequest registrationRequest;
 

@@ -11,6 +11,7 @@ import org.example.footballmanager.model.UserRole;
 import org.example.footballmanager.repository.RegistrationRequestRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.repository.UserRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,8 +45,9 @@ public class RegistrationService {
             throw new IllegalArgumentException("Email is already taken or waiting for approval.");
         }
 
-        Team reservedTeam = teamRepository.findAllByTypeOrderByIdAsc(CompetitionTeamType.CLUB)
+        Team reservedTeam = teamRepository.findAll(Sort.by(Sort.Direction.ASC, "id"))
                 .stream()
+                .filter(this::isRegistrableClub)
                 .filter(team -> !team.isHumanControlled())
                 .filter(team -> !userRepository.existsByTeam(team))
                 .findFirst()
@@ -127,6 +129,10 @@ public class RegistrationService {
             throw new IllegalArgumentException("Reviewer not found.");
         }
         return userRepository.findById(reviewer.getId()).orElse(reviewer);
+    }
+
+    private boolean isRegistrableClub(Team team) {
+        return team != null && (team.getType() == null || team.getType() == CompetitionTeamType.CLUB);
     }
 
     private String normalizeText(String value, String errorMessage) {
