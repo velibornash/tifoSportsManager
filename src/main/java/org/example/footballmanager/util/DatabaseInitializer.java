@@ -48,7 +48,7 @@ public class DatabaseInitializer {
         resetService.sanitizeLegacyLineupOrderSchema();
     }
 
-    @PostConstruct
+
     public void init() {
         resetAndInitializeDatabase();
     }

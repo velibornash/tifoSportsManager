@@ -2608,7 +2608,7 @@ public class RealisticMatchEngine {
             return false;
         }
         List<Player> nearbyDefenders = getNearbyDefenders(rt, shooter, ballTeam);
-        if (goalDistance > 16.0 && nearbyDefenders.size() > 1) {
+        if (goalDistance > 18.5 && nearbyDefenders.size() > 1) {
             return false;
         }
 
