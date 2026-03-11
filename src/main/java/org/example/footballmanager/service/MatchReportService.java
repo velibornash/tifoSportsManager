@@ -155,6 +155,7 @@ public class MatchReportService {
 
         List<String> keyMoments = events.stream()
                 .sorted(Comparator.comparingInt(e -> e.getMatchMinute() != null ? e.getMatchMinute() : 999))
+                .filter(event -> !isRedundantScoredPenalty(event, events))
                 .map(this::toMomentLine)
                 .filter(Objects::nonNull)
                 .distinct()
@@ -209,6 +210,23 @@ public class MatchReportService {
             case "SubstitutionEvent" -> minute + "' Substitution for " + safe(resolveTeam(event)) + ": " + safe(event.getPlayerOutName()) + " off, " + safe(event.getPlayerInName()) + " on";
             default -> null;
         };
+    }
+
+    private boolean isRedundantScoredPenalty(MatchEventFlatDTO event, List<MatchEventFlatDTO> events) {
+        if (!"PenaltyEvent".equals(event.getEventType()) || !Boolean.TRUE.equals(event.getPenaltyScored())) {
+            return false;
+        }
+        Integer minute = event.getMatchMinute();
+        String penaltyTeam = resolveTeam(event);
+        String penaltyTaker = safe(event.getPenaltyTaker());
+        return events.stream().anyMatch(candidate ->
+                "GoalEvent".equals(candidate.getEventType())
+                        && !Boolean.FALSE.equals(candidate.getGoalScored())
+                        && Objects.equals(candidate.getMatchMinute(), minute)
+                        && Objects.equals(resolveTeam(candidate), penaltyTeam)
+                        && (Objects.equals(safe(candidate.getScorer()), penaltyTaker)
+                        || Objects.equals(penaltyTaker, "Unknown"))
+        );
     }
 
     private String resolveTeam(MatchEventFlatDTO event) {

@@ -34,6 +34,7 @@ public class ResetService {
                 "training_week_report",
                 "team_training_setup",
                 "training",
+                "team_tactics_profile",
                 "match_tick_states",
                 "match_player_stats",
                 "match_event",

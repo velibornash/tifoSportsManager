@@ -135,6 +135,7 @@ public class CleanSheetController {
         response.put("matchHistory", state.getMatchHistory());
         response.put("inbox", state.getInbox());
         response.put("seasonHistory", state.getSeasonHistory());
+        response.put("clubMood", state.getClubMood());
         return response;
     }
 }

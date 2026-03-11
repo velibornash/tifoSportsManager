@@ -91,7 +91,7 @@ public class MatchEngine {
         Map<Long, Player> byId = basePool.stream()
                 .collect(Collectors.toMap(Player::getId, p -> p, (a, b) -> a));
 
-        List<Player> managedStarting = selectStartingPlayers(basePool, preferredStarterIds).stream()
+        List<Player> managedStarting = selectStartingPlayers(basePool, preferredStarterIds, formationName).stream()
                 .map(p -> playerRepository.getReferenceById(p.getId()))
                 .toList();
 
@@ -119,8 +119,16 @@ public class MatchEngine {
     }
 
     static List<Player> selectStartingPlayers(List<Player> basePool, List<Long> preferredStarterIds) {
+        return selectStartingPlayers(basePool, preferredStarterIds, "4-4-2");
+    }
+
+    static List<Player> selectStartingPlayers(List<Player> basePool, List<Long> preferredStarterIds, String formationName) {
         if (basePool == null || basePool.isEmpty()) {
             return List.of();
+        }
+
+        if (preferredStarterIds == null || preferredStarterIds.isEmpty()) {
+            return selectFallbackStartingPlayers(basePool, formationName);
         }
 
         Map<Long, Player> byId = basePool.stream()
@@ -170,6 +178,128 @@ public class MatchEngine {
         return List.copyOf(starters.subList(0, Math.min(11, starters.size())));
     }
 
+    private static List<Player> selectFallbackStartingPlayers(List<Player> basePool, String formationName) {
+        List<Player> remaining = new ArrayList<>(basePool);
+        remaining.sort(Comparator
+                .comparingInt(MatchEngine::selectionPriority)
+                .thenComparing(Comparator.comparingInt(Player::getRating).reversed())
+                .thenComparing(Player::getId));
+
+        List<Player> starters = new ArrayList<>();
+        Player goalkeeper = pickBestMatching(remaining, Position.GK);
+        if (goalkeeper != null) {
+            starters.add(goalkeeper);
+            remaining.remove(goalkeeper);
+        }
+
+        for (Position desired : fallbackOutfieldOrder(formationName)) {
+            if (starters.size() >= 11) {
+                break;
+            }
+            Player chosen = pickBestMatching(remaining, desired);
+            if (chosen != null) {
+                starters.add(chosen);
+                remaining.remove(chosen);
+            }
+        }
+
+        remaining.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .forEach(player -> {
+                    if (starters.size() < 11) {
+                        starters.add(player);
+                    }
+                });
+
+        if (starters.size() < 11) {
+            remaining.stream()
+                    .filter(player -> starters.stream().noneMatch(existing -> Objects.equals(existing.getId(), player.getId())))
+                    .forEach(player -> {
+                        if (starters.size() < 11) {
+                            starters.add(player);
+                        }
+                    });
+        }
+
+        return List.copyOf(starters.subList(0, Math.min(11, starters.size())));
+    }
+
+    private static Player pickBestMatching(List<Player> remaining, Position desired) {
+        return remaining.stream()
+                .filter(player -> matchesDesiredSlot(player.getPosition(), desired))
+                .min(Comparator
+                        .comparingInt((Player player) -> slotFitScore(player.getPosition(), desired))
+                        .thenComparing(Comparator.comparingInt(Player::getRating).reversed())
+                        .thenComparing(Player::getId))
+                .orElse(null);
+    }
+
+    private static int slotFitScore(Position actual, Position desired) {
+        if (actual == null || desired == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (actual == desired) {
+            return 0;
+        }
+        return switch (desired) {
+            case DEF -> actual == Position.MID ? 1 : 10;
+            case MID -> actual == Position.WNG ? 1 : actual == Position.ATT ? 2 : 10;
+            case WNG -> actual == Position.MID ? 1 : actual == Position.ATT ? 2 : 10;
+            case ATT -> actual == Position.WNG ? 1 : actual == Position.MID ? 2 : 10;
+            default -> 10;
+        };
+    }
+
+    private static boolean matchesDesiredSlot(Position actual, Position desired) {
+        if (actual == null || desired == null) {
+            return false;
+        }
+        if (actual == desired) {
+            return true;
+        }
+        return switch (desired) {
+            case MID -> actual == Position.WNG || actual == Position.ATT;
+            case WNG -> actual == Position.MID || actual == Position.ATT;
+            case ATT -> actual == Position.WNG || actual == Position.MID;
+            case DEF -> actual == Position.MID;
+            default -> false;
+        };
+    }
+
+    private static int selectionPriority(Player player) {
+        return switch (player.getPosition()) {
+            case GK -> 0;
+            case DEF -> 1;
+            case MID -> 2;
+            case WNG -> 3;
+            case ATT -> 4;
+            default -> 5;
+        };
+    }
+
+    private static List<Position> fallbackOutfieldOrder(String formationName) {
+        return switch (formationName == null ? "4-4-2" : formationName.trim()) {
+            case "4-3-3" -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.WNG, Position.ATT, Position.WNG);
+            case "4-2-3-1" -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.WNG, Position.MID, Position.WNG, Position.ATT);
+            case "4-1-4-1", "4-5-1" -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.MID, Position.MID, Position.ATT);
+            case "3-5-2" -> List.of(Position.DEF, Position.DEF, Position.DEF,
+                    Position.WNG, Position.MID, Position.MID, Position.MID, Position.WNG, Position.ATT, Position.ATT);
+            case "3-4-3" -> List.of(Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.MID, Position.WNG, Position.ATT, Position.WNG);
+            case "3-4-2-1" -> List.of(Position.DEF, Position.DEF, Position.DEF,
+                    Position.WNG, Position.MID, Position.MID, Position.WNG, Position.MID, Position.MID, Position.ATT);
+            case "5-3-2" -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.ATT, Position.ATT);
+            case "5-4-1" -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.MID, Position.ATT);
+            default -> List.of(Position.DEF, Position.DEF, Position.DEF, Position.DEF,
+                    Position.MID, Position.MID, Position.MID, Position.MID, Position.ATT, Position.ATT);
+        };
+    }
+
     public Match createMatch(Team userTeam) {
         GameClock clock = seasonService.getOrCreateClock();
         int seasonYear = seasonService.getActiveSeasonYear();
@@ -177,16 +307,15 @@ public class MatchEngine {
 
         Competition superLiga = competitionRepository.findById(1L)
                 .orElseThrow(() -> new RuntimeException("Superliga not found"));
+        Competition activeLeague = userTeam.getCompetition() != null ? userTeam.getCompetition() : superLiga;
 
-        SeasonCompetition sc = seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(superLiga, seasonYear)
-                .orElseThrow(() -> new RuntimeException("SeasonCompetition not found"));
-        seasonService.ensureEntriesForSeasonCompetition(superLiga, seasonYear);
-        seasonService.ensureDoubleRoundRobinSchedule(superLiga, seasonYear);
-        if (week == SeasonService.PLAYOFF_WEEK) {
-            seasonService.ensurePlayoffWeekFixtures(superLiga, seasonYear);
+        SeasonCompetition sc = seasonService.ensureSeasonCompetition(activeLeague, seasonYear);
+        seasonService.ensureEntriesForSeasonCompetition(activeLeague, seasonYear);
+        seasonService.ensureDoubleRoundRobinSchedule(activeLeague, seasonYear);
+        if (week == SeasonService.PLAYOFF_WEEK && Objects.equals(activeLeague.getTier(), 1)) {
+            seasonService.ensurePlayoffWeekFixtures(activeLeague, seasonYear);
         } else if (week == SeasonService.FRIENDLY_WEEK) {
-            seasonService.ensureFriendlyWeekFixtures(superLiga, seasonYear);
+            seasonService.ensureFriendlyWeekFixtures(activeLeague, seasonYear);
         }
 
         List<CompetitionEntry> leagueEntries = competitionEntryRepository.findBySeasonCompetition(sc);
@@ -206,7 +335,7 @@ public class MatchEngine {
 
         // Find fixture for user's team in this week
         List<MatchFixture> weekFixtures = matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
-                superLiga.getId(), seasonYear, week
+                activeLeague.getId(), seasonYear, week
         );
         MatchFixture userFixture = weekFixtures.stream()
                 .filter(f -> f.getHomeTeam() != null && f.getAwayTeam() != null)
@@ -225,7 +354,7 @@ public class MatchEngine {
             match = new Match();
             match.setHomeTeam(homeTeam);
             match.setAwayTeam(awayTeam);
-            match.setCompetition(superLiga);
+            match.setCompetition(activeLeague);
             match.setSeasonYear(seasonYear);
             match.setRoundNumber(userFixture.getRoundNumber());
             match.setWeekNumber(userFixture.getWeekNumber());
@@ -248,7 +377,7 @@ public class MatchEngine {
             awayTeam = userTeamHome ? opponent : userTeam;
             
             match = new Match();
-            match.setCompetition(superLiga);
+            match.setCompetition(activeLeague);
             match.setSeasonYear(seasonYear);
             match.setRoundNumber(week);
             match.setWeekNumber(week);
@@ -286,7 +415,7 @@ public class MatchEngine {
             LocalDateTime currentCET = LocalDateTime.now(zone);
             match.setMatchDate(currentCET);
         }
-        match.setCompetition(superLiga);
+        match.setCompetition(activeLeague);
         match.setSeasonYear(seasonYear);
         if (match.getRoundNumber() == null) match.setRoundNumber(week);
         if (match.getWeekNumber() == null) match.setWeekNumber(week);
@@ -1109,7 +1238,9 @@ public class MatchEngine {
         GameClock clock = gameClockRepository.findById(1L).orElseThrow();
 
         int currentWeek = seasonService.getCurrentWeek();
-        if (currentWeek == SeasonService.PLAYOFF_WEEK) {
+        boolean countForStandings = currentWeek <= SeasonService.LEAGUE_ROUNDS;
+        boolean requireWinner = currentWeek == SeasonService.PLAYOFF_WEEK;
+        if (currentWeek == SeasonService.PLAYOFF_WEEK && Objects.equals(league.getTier(), 1)) {
             seasonService.ensurePlayoffWeekFixtures(league, season.getSeasonYear());
         } else if (currentWeek == SeasonService.FRIENDLY_WEEK) {
             seasonService.ensureFriendlyWeekFixtures(league, season.getSeasonYear());
@@ -1127,95 +1258,124 @@ public class MatchEngine {
                         || (Objects.equals(home.getId(), alreadyPlayedAway.getId()) && Objects.equals(away.getId(), alreadyPlayedHome.getId()));
                 if (isUserFixture) continue;
             }
-
-            List<Player> homePlayers = playerRepository.findByTeam(home);
-            List<Player> awayPlayers = playerRepository.findByTeam(away);
-            if (homePlayers.isEmpty()) {
-                playerFactory.createRandomTeamPlayers(home.getName(), home);
-                homePlayers = playerRepository.findByTeam(home);
-            }
-            if (awayPlayers.isEmpty()) {
-                playerFactory.createRandomTeamPlayers(away.getName(), away);
-                awayPlayers = playerRepository.findByTeam(away);
-            }
-            Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
-            Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
-            QuickSimScore quickSimScore = simulateQuickScore(homeLineup, awayLineup);
-            int homeGoals = quickSimScore.homeGoals();
-            int awayGoals = quickSimScore.awayGoals();
-
-            Match simulatedMatch = new Match();
-            simulatedMatch.setHomeTeam(home);
-            simulatedMatch.setAwayTeam(away);
-            simulatedMatch.setStadium(home.getStadium());
-            simulatedMatch.setCompetition(league);
-            simulatedMatch.setSeasonYear(season.getSeasonYear());
-            simulatedMatch.setRoundNumber(fixture.getRoundNumber());
-            simulatedMatch.setWeekNumber(fixture.getWeekNumber());
-            simulatedMatch.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : clock.getCurrentDate());
-            simulatedMatch.setHomeGoals(homeGoals);
-            simulatedMatch.setAwayGoals(awayGoals);
-            attendanceService.ensureAttendance(simulatedMatch);
-            simulatedMatch.setPlayed(true);
-            simulatedMatch.setStarted(true);
-
-            simulatedMatch.setHomeLineup(homeLineup);
-            simulatedMatch.setAwayLineup(awayLineup);
-            simulatedMatch.setHomeFormation(homeLineup.getFormation());
-            simulatedMatch.setAwayFormation(awayLineup.getFormation());
-            simulatedMatch.setHomeGoals(homeGoals);
-            simulatedMatch.setAwayGoals(awayGoals);
-            simulatedMatch = matchRepository.save(simulatedMatch);
-            fixture.setPlayed(true);
-            fixture.setPlayedMatch(simulatedMatch);
-            matchFixtureRepository.save(fixture);
-
-            generateSimulatedMatchEvents(simulatedMatch, homeGoals, awayGoals);
-            List<GoalEvent> goals = matchEventRepository.findGoalsByMatch(simulatedMatch);
-            List<YellowCardEvent> yellows = matchEventRepository.findYellowCardsByMatch(simulatedMatch);
-            List<RedCardEvent> reds = matchEventRepository.findRedCardsByMatch(simulatedMatch);
-
-            List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getOrderedStartingPlayers()), goals);
-            List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getOrderedStartingPlayers()), goals);
-            Map<Long, Integer> defaultMinutes = new HashMap<>();
-            ratedHome.forEach(p -> defaultMinutes.put(p.getId(), 90));
-            ratedAway.forEach(p -> defaultMinutes.put(p.getId(), 90));
-            matchStatisticEngine.savePlayerStats(simulatedMatch, ratedHome, goals, yellows, reds, defaultMinutes);
-            matchStatisticEngine.savePlayerStats(simulatedMatch, ratedAway, goals, yellows, reds, defaultMinutes);
-
-            CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
-                    .stream().findFirst()
-                    .orElseThrow(() -> new RuntimeException("Team " + home.getName() + " is not in the league"));
-
-            CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
-                    .stream().findFirst()
-                    .orElseThrow(() -> new RuntimeException("Team " + away.getName() + " is not in the league"));
-
-            homeEntry.setPoints(homeEntry.getPoints() + (homeGoals > awayGoals ? 3 : homeGoals == awayGoals ? 1 : 0));
-            homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeGoals);
-            homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayGoals);
-
-            awayEntry.setPoints(awayEntry.getPoints() + (awayGoals > homeGoals ? 3 : awayGoals == homeGoals ? 1 : 0));
-            awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
-            awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
-
-            homeEntry.setWins((homeEntry.getWins() != null ? homeEntry.getWins() : 0) + (homeGoals > awayGoals ? 1 : 0));
-            homeEntry.setDraws((homeEntry.getDraws() != null ? homeEntry.getDraws() : 0) + (homeGoals == awayGoals ? 1 : 0));
-            homeEntry.setLosses((homeEntry.getLosses() != null ? homeEntry.getLosses() : 0) + (homeGoals < awayGoals ? 1 : 0));
-
-            awayEntry.setWins((awayEntry.getWins() != null ? awayEntry.getWins() : 0) + (awayGoals > homeGoals ? 1 : 0));
-            awayEntry.setDraws((awayEntry.getDraws() != null ? awayEntry.getDraws() : 0) + (awayGoals == homeGoals ? 1 : 0));
-            awayEntry.setLosses((awayEntry.getLosses() != null ? awayEntry.getLosses() : 0) + (awayGoals < homeGoals ? 1 : 0));
-
-            competitionEntryRepository.save(homeEntry);
-            competitionEntryRepository.save(awayEntry);
-
-            log.info("Simulated match: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
-                    home.getName(), homeGoals, awayGoals, away.getName(),
-                    homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
-                    awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
+            simulateFixture(fixture, league, season, sc, clock, countForStandings, requireWinner);
         }
-        log.info("Round finished - standings updated for league {}", league.getName());
+        if (countForStandings) {
+            log.info("Round finished - standings updated for league {}", league.getName());
+        } else {
+            log.info("Special round finished for league {} without standings update", league.getName());
+        }
+    }
+
+    private void simulateFixture(MatchFixture fixture,
+                                 Competition league,
+                                 Season season,
+                                 SeasonCompetition sc,
+                                 GameClock clock,
+                                 boolean updateStandings,
+                                 boolean requireWinner) {
+        Team home = fixture.getHomeTeam();
+        Team away = fixture.getAwayTeam();
+        if (home == null || away == null) {
+            return;
+        }
+
+        List<Player> homePlayers = ensureTeamPlayers(home);
+        List<Player> awayPlayers = ensureTeamPlayers(away);
+        Lineup homeLineup = createLineupForMatch(home, homePlayers, "4-4-2");
+        Lineup awayLineup = createLineupForMatch(away, awayPlayers, "4-4-2");
+        QuickSimScore quickSimScore = simulateQuickScore(homeLineup, awayLineup);
+        int homeGoals = quickSimScore.homeGoals();
+        int awayGoals = quickSimScore.awayGoals();
+
+        if (requireWinner && homeGoals == awayGoals) {
+            if (pickDecisiveWinner(home, away).equals(home)) {
+                homeGoals++;
+            } else {
+                awayGoals++;
+            }
+        }
+
+        Match simulatedMatch = new Match();
+        simulatedMatch.setHomeTeam(home);
+        simulatedMatch.setAwayTeam(away);
+        simulatedMatch.setStadium(home.getStadium());
+        simulatedMatch.setCompetition(league);
+        simulatedMatch.setSeasonYear(season.getSeasonYear());
+        simulatedMatch.setRoundNumber(fixture.getRoundNumber());
+        simulatedMatch.setWeekNumber(fixture.getWeekNumber());
+        simulatedMatch.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : clock.getCurrentDate());
+        simulatedMatch.setHomeGoals(homeGoals);
+        simulatedMatch.setAwayGoals(awayGoals);
+        attendanceService.ensureAttendance(simulatedMatch);
+        simulatedMatch.setPlayed(true);
+        simulatedMatch.setStarted(true);
+        simulatedMatch.setHomeLineup(homeLineup);
+        simulatedMatch.setAwayLineup(awayLineup);
+        simulatedMatch.setHomeFormation(homeLineup.getFormation());
+        simulatedMatch.setAwayFormation(awayLineup.getFormation());
+        simulatedMatch = matchRepository.save(simulatedMatch);
+
+        fixture.setPlayed(true);
+        fixture.setPlayedMatch(simulatedMatch);
+        matchFixtureRepository.save(fixture);
+
+        generateSimulatedMatchEvents(simulatedMatch, homeGoals, awayGoals);
+        List<GoalEvent> goals = matchEventRepository.findGoalsByMatch(simulatedMatch);
+        List<YellowCardEvent> yellows = matchEventRepository.findYellowCardsByMatch(simulatedMatch);
+        List<RedCardEvent> reds = matchEventRepository.findRedCardsByMatch(simulatedMatch);
+
+        List<Player> ratedHome = matchStatisticEngine.assignRatings(new ArrayList<>(homeLineup.getOrderedStartingPlayers()), goals);
+        List<Player> ratedAway = matchStatisticEngine.assignRatings(new ArrayList<>(awayLineup.getOrderedStartingPlayers()), goals);
+        Map<Long, Integer> defaultMinutes = new HashMap<>();
+        ratedHome.forEach(p -> defaultMinutes.put(p.getId(), 90));
+        ratedAway.forEach(p -> defaultMinutes.put(p.getId(), 90));
+        matchStatisticEngine.savePlayerStats(simulatedMatch, ratedHome, goals, yellows, reds, defaultMinutes);
+        matchStatisticEngine.savePlayerStats(simulatedMatch, ratedAway, goals, yellows, reds, defaultMinutes);
+
+        if (!updateStandings) {
+            log.info("Simulated special match: {} {}:{} {}", home.getName(), homeGoals, awayGoals, away.getName());
+            return;
+        }
+
+        CompetitionEntry homeEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, home)
+                .stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("Team " + home.getName() + " is not in the league"));
+
+        CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, away)
+                .stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("Team " + away.getName() + " is not in the league"));
+
+        homeEntry.setPoints(homeEntry.getPoints() + (homeGoals > awayGoals ? 3 : homeGoals == awayGoals ? 1 : 0));
+        homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeGoals);
+        homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayGoals);
+
+        awayEntry.setPoints(awayEntry.getPoints() + (awayGoals > homeGoals ? 3 : awayGoals == homeGoals ? 1 : 0));
+        awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
+        awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
+
+        homeEntry.setWins((homeEntry.getWins() != null ? homeEntry.getWins() : 0) + (homeGoals > awayGoals ? 1 : 0));
+        homeEntry.setDraws((homeEntry.getDraws() != null ? homeEntry.getDraws() : 0) + (homeGoals == awayGoals ? 1 : 0));
+        homeEntry.setLosses((homeEntry.getLosses() != null ? homeEntry.getLosses() : 0) + (homeGoals < awayGoals ? 1 : 0));
+
+        awayEntry.setWins((awayEntry.getWins() != null ? awayEntry.getWins() : 0) + (awayGoals > homeGoals ? 1 : 0));
+        awayEntry.setDraws((awayEntry.getDraws() != null ? awayEntry.getDraws() : 0) + (awayGoals == homeGoals ? 1 : 0));
+        awayEntry.setLosses((awayEntry.getLosses() != null ? awayEntry.getLosses() : 0) + (awayGoals < homeGoals ? 1 : 0));
+
+        competitionEntryRepository.save(homeEntry);
+        competitionEntryRepository.save(awayEntry);
+
+        log.info("Simulated match: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
+                home.getName(), homeGoals, awayGoals, away.getName(),
+                homeEntry.getWins(), homeEntry.getDraws(), homeEntry.getLosses(),
+                awayEntry.getWins(), awayEntry.getDraws(), awayEntry.getLosses());
+    }
+
+    private Team pickDecisiveWinner(Team home, Team away) {
+        double homeReputation = home.getReputation() != null ? home.getReputation() : 50.0;
+        double awayReputation = away.getReputation() != null ? away.getReputation() : 50.0;
+        double homeChance = Math.max(0.38, Math.min(0.72, (homeReputation + 6.0) / (homeReputation + awayReputation + 6.0)));
+        return random.nextDouble() < homeChance ? home : away;
     }
     private void processSpecialEvents(MatchEvent event, MatchRuntime rt, Match match) {
 

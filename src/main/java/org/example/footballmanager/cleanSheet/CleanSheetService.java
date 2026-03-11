@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.cleanSheet.engine.CSLeagueManager;
 import org.example.footballmanager.cleanSheet.engine.CSMatchSimulator;
 import org.example.footballmanager.cleanSheet.engine.CSMatchReportGenerator;
+import org.example.footballmanager.cleanSheet.engine.CSInboxGenerator;
 import org.example.footballmanager.cleanSheet.model.*;
 import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
 import org.example.footballmanager.model.*;
@@ -30,6 +31,7 @@ public class CleanSheetService {
     private final CSMatchSimulator matchSimulator = new CSMatchSimulator();
     private final CSLeagueManager leagueManager = new CSLeagueManager();
     private final CSMatchReportGenerator reportGenerator = new CSMatchReportGenerator();
+    private final CSInboxGenerator inboxGenerator = new CSInboxGenerator();
     private final Random random = new Random();
     private final AtomicLong generatedTeamId = new AtomicLong(-10_000);
     private final AtomicLong generatedPlayerId = new AtomicLong(-500_000);
@@ -113,7 +115,13 @@ public class CleanSheetService {
         state.setLeagueTable(leagueManager.initializeTable(csTeams));
 
         // 7. Generisi raspored
-        state.setSchedule(leagueManager.generateSchedule(csTeams));
+        // 7. Generate derby rivalries before schedule
+        Map<Long, Set<Long>> derbyRivalries = leagueManager.generateDerbyRivalries(csTeams);
+        // Generate schedule
+        List<CSFixture> schedule = leagueManager.generateSchedule(csTeams);
+        // Apply derby flags
+        leagueManager.applyDerbyFlags(schedule, derbyRivalries);
+        state.setSchedule(schedule);
 
         // 8. Welcome poruka
         state.addInboxMessage("welcome", buildWelcomeMessage(state, userTeam, csTeams.size()));
@@ -194,6 +202,9 @@ public class CleanSheetService {
 
             userResult = matchSimulator.simulate(home, homeStarters, homeBench, away, awayStarters, awayBench,
                     homeTactics, awayTactics, round);
+            if (userFixture != null) {
+                userResult.setDerby(userFixture.isDerby());
+            }
 
             userFixture.setPlayed(true);
             userFixture.setResult(userResult);
@@ -203,6 +214,24 @@ public class CleanSheetService {
             userResult.setReport(detailedReport);
             state.addInboxMessage("match", buildMatchInboxText(round, userResult, state.getUserTeam().getId()));
             state.addInboxMessage("report", detailedReport);
+            
+            // Update season stats and club mood
+            state.updateSeasonStats(userResult);
+            int leaguePosition = findLeaguePosition(state, state.getUserTeam().getId());
+            state.updateClubMood(userResult, leaguePosition, state.getAllTeams().size());
+            // Calculate financial health and update mood label
+            int financialHealth = calculateFinancialHealth(state);
+            state.getClubMood().setFinancialHealth(financialHealth);
+            updateMoodLabel(state);
+            
+            // Determine result type for additional messages
+            boolean userHome = Objects.equals(userResult.getHomeTeamId(), state.getUserTeam().getId());
+            int goalsFor = userHome ? userResult.getHomeGoals() : userResult.getAwayGoals();
+            int goalsAgainst = userHome ? userResult.getAwayGoals() : userResult.getHomeGoals();
+            String resultType = goalsFor > goalsAgainst ? "WIN" : goalsFor < goalsAgainst ? "LOSS" : "DRAW";
+            
+            // Generate rich inbox messages
+            generatePostMatchInbox(state, userResult, resultType, round);
         }
 
         // Simuliraj ostale meceve
@@ -215,6 +244,9 @@ public class CleanSheetService {
         state.addInboxMessage("round-report", reportGenerator.buildRoundReport(round, allResults, state.getUserTeam().getId()));
         generateInternationalInbox(state, round);
         generateRumorInbox(state, round);
+        
+        // Generate periodic special messages
+        generatePeriodicInbox(state, round);
 
         // Oporavi fatigue izmedju kola
         recoverFatigueBetweenRounds(state);
@@ -225,6 +257,8 @@ public class CleanSheetService {
         if (state.isSeasonOver()) {
             CSTableEntry champion = state.getLeagueTable().get(0);
             state.addInboxMessage("info", buildSeasonFinishMessage(state, champion));
+            // Generate end of season board assessment
+            state.addInboxMessage("board", inboxGenerator.generateBoardMeeting(state, "season_end"));
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -236,7 +270,94 @@ public class CleanSheetService {
         // Return updated roster so frontend can refresh goals/assists
         response.put("roster", state.getRoster());
         response.put("leagueName", state.getLeagueName());
+        // Include new data
+        response.put("clubMood", state.getClubMood());
+        response.put("seasonStats", state.getSeasonStats());
         return response;
+    }
+    
+    /**
+     * Generate post-match inbox messages (press conference, fan reaction, media)
+     */
+    private void generatePostMatchInbox(CleanSheetGameState state, CSMatchResult result, String resultType, int round) {
+        // Post-match press conference (always)
+        state.addInboxMessage("press", inboxGenerator.generatePostMatchPressConference(state, result));
+        
+        // Fan reaction (70% chance)
+        if (random.nextDouble() < 0.70) {
+            state.addInboxMessage("fans", inboxGenerator.generateFanReaction(state, result, resultType));
+        }
+        
+        // Media headlines (60% chance, higher for big results)
+        boolean bigResult = Math.abs(result.getHomeGoals() - result.getAwayGoals()) >= 3;
+        if (random.nextDouble() < (bigResult ? 0.85 : 0.60)) {
+            state.addInboxMessage("media", inboxGenerator.generateMediaHeadlines(state, result, resultType));
+        }
+        
+        // Board message on poor/good runs
+        CSSeasonStats stats = state.getSeasonStats();
+        if (stats != null) {
+            if (stats.getCurrentLossStreak() >= 3) {
+                state.addInboxMessage("board", inboxGenerator.generateBoardMeeting(state, "poor_run"));
+            } else if (stats.getCurrentWinStreak() >= 4) {
+                state.addInboxMessage("board", inboxGenerator.generateBoardMeeting(state, "good_run"));
+            }
+        }
+        // Derby match banter
+        if (result.isDerby()) {
+            state.addInboxMessage("derby", inboxGenerator.generatePostMatchDerbyBanter(result, resultType));
+        }
+    }
+    
+    /**
+     * Generate periodic inbox messages (scout reports, youth academy, etc.)
+     */
+    private void generatePeriodicInbox(CleanSheetGameState state, int round) {
+        int totalRounds = state.getTotalRounds();
+        
+        // Mid-season board review
+        if (round == totalRounds / 2) {
+            state.addInboxMessage("board", inboxGenerator.generateBoardMeeting(state, "mid_season"));
+        }
+        
+        // Scout report (every 3-5 rounds, 40% chance)
+        if (round % (3 + random.nextInt(3)) == 0 && random.nextDouble() < 0.40) {
+            String scoutReport = inboxGenerator.generateScoutReport(state);
+            if (scoutReport != null) {
+                state.addInboxMessage("scout", scoutReport);
+            }
+        }
+        
+        // Youth academy update (every 5-7 rounds, 35% chance)
+        if (round % (5 + random.nextInt(3)) == 0 && random.nextDouble() < 0.35) {
+            state.addInboxMessage("youth", inboxGenerator.generateYouthAcademyUpdate(state));
+        }
+        
+        // Pre-match press conference for next fixture (30% chance)
+        if (random.nextDouble() < 0.30) {
+            CSFixture nextFixture = state.getSchedule().stream()
+                    .filter(f -> f.getRound() == round + 1)
+                    .filter(f -> f.getHomeTeamId().equals(state.getUserTeam().getId())
+                            || f.getAwayTeamId().equals(state.getUserTeam().getId()))
+                    .findFirst()
+                    .orElse(null);
+            if (nextFixture != null) {
+                state.addInboxMessage("press", inboxGenerator.generatePreMatchPressConference(state, nextFixture));
+            }
+        }
+    }
+    
+    /**
+     * Find league position for a team
+     */
+    private int findLeaguePosition(CleanSheetGameState state, Long teamId) {
+        List<CSTableEntry> table = state.getLeagueTable();
+        for (int i = 0; i < table.size(); i++) {
+            if (Objects.equals(table.get(i).getTeamId(), teamId)) {
+                return i + 1;
+            }
+        }
+        return table.size();
     }
 
     public CleanSheetGameState getState(Long userId) {
@@ -851,4 +972,71 @@ public class CleanSheetService {
         CSPlayer p = pickRandomLeaguePlayer(state);
         return p != null ? p.getName() : null;
     }
+
+    // ========== CLUB MOOD & FINANCIAL HEALTH HELPERS ==========
+    
+    /**
+     * Calculate financial health score (0-100) based on budget size and recent performance.
+     * Healthy budget > 1.5M gives 100, struggling < 500k gives low scores.
+     */
+    private int calculateFinancialHealth(CleanSheetGameState state) {
+        CSTeam team = state.getUserTeam();
+        if (team == null) return 50;
+        
+        double budget = team.getBudget();
+        CSSeasonStats stats = state.getSeasonStats();
+        
+        // Base score from budget: 0-2M scale
+        // 2M+ = 100 points, 0 = 0 points
+        int baseScore = (int) Math.min(100, (budget / 2_000_000.0) * 100);
+        
+        // Recent performance affects income (wins = more revenue)
+        if (stats != null) {
+            int winStreak = Math.min(5, stats.getCurrentWinStreak());
+            baseScore += winStreak * 5; // +25 max
+            
+            int lossStreak = Math.min(5, stats.getCurrentLossStreak());
+            baseScore -= lossStreak * 8; // -40 max
+        }
+        
+        // Position bonus: top 3 = +10, bottom 3 = -10
+        CSTableEntry entry = state.getLeagueTable().stream()
+            .filter(t -> t.getTeamId().equals(team.getId()))
+            .findFirst()
+            .orElse(null);
+        if (entry != null) {
+            int position = entry.getPosition();
+            int totalTeams = state.getLeagueTable().size();
+            if (position <= 3) baseScore += 10;
+            else if (position > totalTeams - 3) baseScore -= 10;
+        }
+        
+        return clamp(baseScore, 0, 100);
+    }
+    
+    /**
+     * Update the moodLabel based on overall club mood scores.
+     */
+    private void updateMoodLabel(CleanSheetGameState state) {
+        CSClubMood mood = state.getClubMood();
+        if (mood == null) return;
+        
+        int avg = (mood.getBoardConfidence() + mood.getFanMood() + 
+                   mood.getMediaPressure() + mood.getSquadMorale() + 
+                   mood.getFinancialHealth()) / 5;
+        
+        String label;
+        if (avg >= 85) label = "Excellent";
+        else if (avg >= 70) label = "Good";
+        else if (avg >= 50) label = "Stable";
+        else if (avg >= 30) label = "Concerning";
+        else label = "Crisis";
+        
+        mood.setMoodLabel(label);
+    }
+    
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
 }

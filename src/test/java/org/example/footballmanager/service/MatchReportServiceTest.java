@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +70,30 @@ class MatchReportServiceTest {
         assertEquals("Luka", motm.get("playerName"));
         assertEquals("OFK Omladinac", motm.get("teamName"));
         assertEquals(8.6, motm.get("rating10"));
+    }
+
+    @Test
+    void buildMatchReportHidesRedundantConvertedPenaltyMomentWhenGoalAlreadyShowsScore() {
+        Match match = new Match();
+        match.setId(44L);
+        match.setHomeTeam(team("OFK Omladinac"));
+        match.setAwayTeam(team("RFK Bor"));
+        match.setHomeGoals(2);
+        match.setAwayGoals(0);
+
+        when(matchRepository.findById(44L)).thenReturn(Optional.of(match));
+        when(matchDetailService.getMatchEventsFlat(44L)).thenReturn(List.of(
+                goal(27, "OFK Omladinac", "Šumenko Dabić", null, "1 - 0"),
+                goal(44, "OFK Omladinac", "Nenad Kačar", null, "2 - 0"),
+                penalty(44, "OFK Omladinac", "Nenad Kačar", true)
+        ));
+        when(matchPlayerStatsRepository.findByMatchId(44L)).thenReturn(List.of());
+
+        Map<String, Object> payload = matchReportService.buildMatchReport(44L);
+        String report = String.valueOf(payload.get("report"));
+
+        assertTrue(report.contains("44' Goal: Nenad Kačar (2 - 0)"));
+        assertFalse(report.contains("44' Penalty for OFK Omladinac - Nenad Kačar scored"));
     }
 
     private Team team(String name) {
@@ -137,6 +162,16 @@ class MatchReportServiceTest {
         dto.setSubstitutionTeam(team);
         dto.setPlayerOutName(out);
         dto.setPlayerInName(in);
+        return dto;
+    }
+
+    private MatchEventFlatDTO penalty(int minute, String team, String taker, boolean scored) {
+        MatchEventFlatDTO dto = new MatchEventFlatDTO();
+        dto.setMatchMinute(minute);
+        dto.setEventType("PenaltyEvent");
+        dto.setPenaltyTeam(team);
+        dto.setPenaltyTaker(taker);
+        dto.setPenaltyScored(scored);
         return dto;
     }
 }

@@ -23,9 +23,11 @@ public class CSMatchResult {
     private List<CSMatchEvent> events;
     private String summary;
     private String report;
-
+    
     @Builder.Default
     private List<CSPlayerMatchStats> homePlayerStats = new ArrayList<>();
     @Builder.Default
     private List<CSPlayerMatchStats> awayPlayerStats = new ArrayList<>();
+    @Builder.Default
+    private boolean derby = false;
 }

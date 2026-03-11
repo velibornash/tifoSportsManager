@@ -474,3 +474,15 @@
         display: none !important;
     }
 }
+
+.cs-derby-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #ff9800;
+    color: #000;
+    font-weight: bold;
+    font-size: 0.75em;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}

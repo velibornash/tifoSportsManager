@@ -53,7 +53,7 @@ public class SimulationController {
 
     @SneakyThrows
     @GetMapping("/start-realistic-demo")
-    public ResponseEntity<Map<String, String>> startRealisticDemo(@AuthenticationPrincipal User user) {
+    public ResponseEntity<Map<String, Object>> startRealisticDemo(@AuthenticationPrincipal User user) {
         if (user == null || user.getTeam() == null) {
             // Fallback: use Omladinac for backward compatibility if no user is authenticated
             Team omladinacFallback = teamRepository.findByName("OFK Omladinac").orElse(null);
@@ -63,22 +63,39 @@ public class SimulationController {
             return startRealisticDemoInternal(omladinacFallback);
         }
 
-        return startRealisticDemoInternal(user.getTeam());
+        Team freshTeam = teamRepository.findById(user.getTeam().getId()).orElse(user.getTeam());
+        return startRealisticDemoInternal(freshTeam);
     }
 
-    private ResponseEntity<Map<String, String>> startRealisticDemoInternal(Team userTeam) {
+    private ResponseEntity<Map<String, Object>> startRealisticDemoInternal(Team userTeam) {
         Competition superLiga = competitionRepository.findById(1L).orElse(null);
         if (superLiga == null) {
             log.error("Cannot find league");
             return ResponseEntity.badRequest().body(Map.of("error", "League not found"));
         }
+        Competition activeLeague = userTeam.getCompetition() != null ? userTeam.getCompetition() : superLiga;
         int activeSeasonYear = seasonService.getActiveSeasonYear();
         Season currentSeason = seasonRepository.findBySeasonYear(activeSeasonYear)
                 .orElseGet(seasonService::ensureActiveSeasonEntity);
 
         seasonService.ensureEntriesForSeasonCompetition(superLiga, activeSeasonYear);
         seasonService.ensureDoubleRoundRobinSchedule(superLiga, activeSeasonYear);
-        
+        seasonService.ensureEntriesForSeasonCompetition(activeLeague, activeSeasonYear);
+        seasonService.ensureDoubleRoundRobinSchedule(activeLeague, activeSeasonYear);
+
+        int currentWeek = seasonService.getCurrentWeek();
+        if (currentWeek == SeasonService.PLAYOFF_WEEK) {
+            matchEngine.simulateRestOfMatchDay(superLiga, currentSeason, null, null);
+            Map<String, Object> playoffSummary = seasonService.buildPlayoffSummary(superLiga, activeSeasonYear);
+            seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
+            return ResponseEntity.ok(Map.of(
+                    "status", "prepared",
+                    "action", "SHOW_PLAYOFF_SUMMARY",
+                    "message", "Playoff results are ready. Next click starts the friendly week.",
+                    "summary", playoffSummary
+            ));
+        }
+
         // Create match using user's actual team (not assuming home)
         Match demoMatch = matchEngine.createMatch(userTeam);
 
@@ -90,12 +107,12 @@ public class SimulationController {
                 userTeam.getId().equals(homeTeam.getId()) ? "HOME" : "AWAY");
 
         // Simulate rest of matchday for other teams
-        matchEngine.simulateRestOfMatchDay(superLiga, currentSeason, homeTeam, awayTeam);
+        matchEngine.simulateRestOfMatchDay(activeLeague, currentSeason, homeTeam, awayTeam);
 
         simulationService.startRealisticSimulation(demoMatch.getId())
                 .thenAccept(played -> {
                     log.info("Realistic demo simulation completed for match ID: {}", demoMatch.getId());
-                    matchStatisticEngine.updateLeagueTableForMatchDay(superLiga, currentSeason);
+                    matchStatisticEngine.updateLeagueTableForMatchDay(activeLeague, currentSeason);
                     try {
                         trainingProgressionService.runWeeklyTraining(userTeam.getId());
                         log.info("Auto weekly training completed for team {}", userTeam.getId());
@@ -111,6 +128,7 @@ public class SimulationController {
 
         return ResponseEntity.ok(Map.of(
                 "status", "prepared",
+                "action", "START_MATCH",
                 "message", "Realistic simulation started - replay data will be available shortly",
                 "position_socket", "/demo-position-updates",
                 "event_socket", "/demo-match-events",

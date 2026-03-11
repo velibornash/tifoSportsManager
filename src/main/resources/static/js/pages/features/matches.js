@@ -11,9 +11,11 @@ export function createMatchesFeature(deps) {
 
     async function loadFixtures() {
         const teamId = getTeamId();
-        const response = await authFetch(`/demo/matches/teams/${teamId}/fixtures`);
-        const fixtures = await response.json();
-        renderFixtures(fixtures, 'Fixtures', { currentPage: 'schedule' });
+        const response = await authFetch(`/teams/${teamId}/schedule`);
+        const schedule = await response.json();
+        const fixtures = (Array.isArray(schedule) ? schedule : [])
+            .sort((a, b) => new Date(a?.matchDate || 0) - new Date(b?.matchDate || 0));
+        renderFixtures(fixtures, 'Schedule', { currentPage: 'schedule' });
     }
 
     return { loadResults, loadFixtures };

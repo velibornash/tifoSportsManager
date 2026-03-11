@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.*;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.match.MatchRatingCalculator;
 import org.springframework.stereotype.Component;
 import java.util.*;
@@ -212,6 +213,7 @@ public class MatchStatisticEngine {
                 .stream()
                 .filter(Match::isPlayed)
                 .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
+                .filter(m -> m.getRoundNumber() == null || m.getRoundNumber() <= SeasonService.LEAGUE_ROUNDS)
                 .toList();
 
         log.info("Recalculating table from {} played matches in league {}", playedMatches.size(), league.getName());

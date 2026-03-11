@@ -4,10 +4,12 @@ import lombok.Data;
 import org.example.footballmanager.dto.JwtResponseDTO;
 import org.example.footballmanager.dto.LoginRequestDTO;
 import org.example.footballmanager.dto.RegisterRequestDTO;
+import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
 import org.example.footballmanager.repository.UserRepository;
+import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.JwtUtil;
 import org.example.footballmanager.util.teams.TeamFactory;
 import org.springframework.http.ResponseEntity;
@@ -26,14 +28,16 @@ public class UserController {
     private final TeamFactory teamFactory;
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
+    private final SeasonService seasonService;
 
     public UserController(UserRepository userRepo, PasswordEncoder encoder, TeamFactory teamFactory,
-                          AuthenticationManager authManager, JwtUtil jwtUtil) {
+                          AuthenticationManager authManager, JwtUtil jwtUtil, SeasonService seasonService) {
         this.userRepo = userRepo;
         this.encoder = encoder;
         this.teamFactory = teamFactory;
         this.authManager = authManager;
         this.jwtUtil = jwtUtil;
+        this.seasonService = seasonService;
     }
 
     @PostMapping("/register")
@@ -80,9 +84,16 @@ public class UserController {
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
         dto.setRole(user.getRole().name());
+        dto.setSeasonYear(seasonService.getActiveSeasonYear());
         if (user.getTeam() != null) {
             dto.setTeamId(user.getTeam().getId());
             dto.setTeamName(user.getTeam().getName());
+            Competition competition = user.getTeam().getCompetition();
+            if (competition != null) {
+                dto.setCompetitionId(competition.getId());
+                dto.setCompetitionName(competition.getName());
+                dto.setCompetitionTier(competition.getTier());
+            }
         }
 
         return ResponseEntity.ok(dto);
@@ -96,6 +107,10 @@ public class UserController {
         private String role;
         private Long teamId;
         private String teamName;
+        private Long competitionId;
+        private String competitionName;
+        private Integer competitionTier;
+        private Integer seasonYear;
     }
 }
 

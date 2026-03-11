@@ -80,6 +80,8 @@ public class SecurityConfig {
                                 "/start-realistic-demo",
                                 "/teams/**",
                                 "/players/**",
+                                "/matches/**",
+                                "/match-stats/**",
                                 "/demo-position-updates/**",
                                 "/training/**",
                                 "/demo-match-events/**",

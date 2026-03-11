@@ -20,6 +20,11 @@ public class CSMatchSimulator {
                                   CSTactics homeTactics, CSTactics awayTactics,
                                   int round) {
 
+        // Create mutable copies to track on-field players
+        List<CSPlayer> homeOnField = new ArrayList<>(homePlayers);
+        List<CSPlayer> awayOnField = new ArrayList<>(awayPlayers);
+
+        // Snaga se racuna na osnovu startnih 11 i taktike (formacija + stil)
         double homeStrength = calculateStrength(homePlayers, homeTactics, true);
         double awayStrength = calculateStrength(awayPlayers, awayTactics, false);
         double total = homeStrength + awayStrength;
@@ -35,14 +40,39 @@ public class CSMatchSimulator {
                 .description("Kick-off: " + home.getName() + " vs " + away.getName())
                 .build());
 
-        generateGoalEvents(events, home, homePlayers, away, awayPlayers, homeGoals, awayGoals);
-        generateStats(events, home, homePlayers, away, awayPlayers, homeGoals, awayGoals);
+        // Initialize minutes tracking for all potential players
         Map<Long, Integer> homeMinutes = new java.util.HashMap<>();
         Map<Long, Integer> awayMinutes = new java.util.HashMap<>();
-        homePlayers.forEach(p -> homeMinutes.put(p.getId(), 90));
-        awayPlayers.forEach(p -> awayMinutes.put(p.getId(), 90));
-        applySubstitutions(events, home, homePlayers, homeBench, homeMinutes);
-        applySubstitutions(events, away, awayPlayers, awayBench, awayMinutes);
+        
+        // Track who is currently on field (true = on field initially)
+        Map<Long, Boolean> homeOnFieldStatus = new java.util.HashMap<>();
+        Map<Long, Boolean> awayOnFieldStatus = new java.util.HashMap<>();
+        
+        homePlayers.forEach(p -> {
+            homeMinutes.put(p.getId(), 90);
+            homeOnFieldStatus.put(p.getId(), true);
+        });
+        homeBench.forEach(p -> {
+            homeMinutes.put(p.getId(), 0);
+            homeOnFieldStatus.put(p.getId(), false);
+        });
+        
+        awayPlayers.forEach(p -> {
+            awayMinutes.put(p.getId(), 90);
+            awayOnFieldStatus.put(p.getId(), true);
+        });
+        awayBench.forEach(p -> {
+            awayMinutes.put(p.getId(), 0);
+            awayOnFieldStatus.put(p.getId(), false);
+        });
+
+        // Apply substitutions BEFORE generating events
+        applySubstitutions(events, home, homeOnField, homeBench, homeMinutes, homeOnFieldStatus);
+        applySubstitutions(events, away, awayOnField, awayBench, awayMinutes, awayOnFieldStatus);
+
+        // Generate goals and stats with the final on-field players
+        generateGoalEvents(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals);
+        generateStats(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals);
 
         events.add(CSMatchEvent.builder()
                 .minute(90)
@@ -52,6 +82,7 @@ public class CSMatchSimulator {
 
         events.sort((a, b) -> Integer.compare(a.getMinute(), b.getMinute()));
 
+        // Create full player lists for rating assignment (includes bench players who never played)
         List<CSPlayer> homeAll = new ArrayList<>(homePlayers);
         homeAll.addAll(homeBench);
         List<CSPlayer> awayAll = new ArrayList<>(awayPlayers);
@@ -203,6 +234,10 @@ public class CSMatchSimulator {
     /**
      * Dodeljuje ocene igracima na osnovu dogadjaja u mecu.
      * Bazna ocena 6.0-7.0 + bonus za gol/asist, mali random.
+     * VAZNO: Samo igraci koji su stvarno igrali (minutesPlayed > 0) dobijaju rating.
+     * Igraci sa klupe koji nisu usli u igru imaju minutesPlayed = 0 i NE dobijaju rating.
+     * Igraci koji su izasli (substituted out) i igraci koji su usli (substituted in) 
+     * DOBIJAJU rating i upisuju im se golovi/asistencije.
      */
     private List<CSPlayerMatchStats> assignRatings(List<CSPlayer> players,
                                                    List<CSMatchEvent> events,
@@ -218,52 +253,107 @@ public class CSMatchSimulator {
         boolean cleanSheet = concededGoals == 0;
 
         for (CSPlayer p : players) {
-            long goalsInMatch = events.stream()
-                    .filter(e -> e.getEventType() == CSEventType.GOAL
-                            && p.getName().equals(e.getPlayerName())
-                            && teamName.equals(e.getTeamName()))
-                    .count();
-            long assistsInMatch = events.stream()
-                    .filter(e -> e.getEventType() == CSEventType.GOAL
-                            && p.getName().equals(e.getAssistName())
-                            && teamName.equals(e.getTeamName()))
-                    .count();
-
-            // Wider baseline variance for less flat match grades.
-            double base = 5.8 + rnd.nextDouble() * 1.2; // 5.8 - 7.0
-            // Stronger attacking impact.
-            base += goalsInMatch * 1.2;
-            base += assistsInMatch * 0.6;
-            // Form impact.
-            base += (p.getForm() - 5.0) * 0.12;
-
-            if (goalsInMatch >= 3) {
-                base += 0.4; // Hat-trick bonus
-            } else if (goalsInMatch == 2) {
-                base += 0.2;
-            }
-
-            // Defensive contribution
-            if (cleanSheet) {
-                if ("GK".equals(p.getPosition())) {
-                    base += 0.8;
-                } else if ("DEF".equals(p.getPosition())) {
-                    base += 0.5;
+            int goalsInMatch = 0;
+            int assistsInMatch = 0;
+            if (events != null) {
+                for (CSMatchEvent e : events) {
+                    if (e.getEventType() == CSEventType.GOAL) {
+                        if (p.getName().equals(e.getPlayerName())) {
+                            goalsInMatch++;
+                        }
+                        if (p.getName().equals(e.getAssistName())) {
+                            assistsInMatch++;
+                        }
+                    }
                 }
             }
-            if (concededGoals >= 3) {
-                if ("GK".equals(p.getPosition())) {
-                    base -= 0.6;
-                } else if ("DEF".equals(p.getPosition())) {
-                    base -= 0.4;
+            int minutesPlayed = minutesByPlayer.getOrDefault(p.getId(), 0);
+
+            double base;
+            if (goalsInMatch >= 2 || assistsInMatch >= 2) {
+                base = 7.0 + rnd.nextDouble() * 1.5;
+            } else if (goalsInMatch >= 1 || assistsInMatch >= 1) {
+                base = 6.5 + rnd.nextDouble() * 1.2;
+            } else {
+                base = 5.5 + rnd.nextDouble() * 1.0;
+            }
+
+            if ("GK".equals(p.getPosition())) {
+                base += cleanSheet ? 1.0 : -0.5;
+            } else if ("DEF".equals(p.getPosition())) {
+                base += cleanSheet ? 0.5 : 0.0;
+            }
+
+            if (minutesPlayed >= 60) base += 0.2;
+            else if (minutesPlayed <= 30) base -= 0.3;
+
+            if (goalsInMatch >= 3) base += 0.4;
+            else if (goalsInMatch == 2) base += 0.2;
+
+            if (minutesPlayed >= 45) {
+                if (cleanSheet) {
+                    if ("GK".equals(p.getPosition())) base += 0.8;
+                    else if ("DEF".equals(p.getPosition())) base += 0.5;
+                }
+                if (concededGoals >= 3) {
+                    if ("GK".equals(p.getPosition())) base -= 0.6;
+                    else if ("DEF".equals(p.getPosition())) base -= 0.4;
                 }
             }
 
-            // Small team result modifier
-            if (teamGoals > concededGoals) {
-                base += 0.1;
-            } else if (teamGoals < concededGoals) {
-                base -= 0.1;
+            if (teamGoals > concededGoals) base += 0.1;
+            else if (teamGoals < concededGoals) base -= 0.1;
+
+            // Extended stats
+            int passesAttempted = 0, passesCompleted = 0, tackles = 0, interceptions = 0;
+            int duelsWon = 0, duelsLost = 0, aerialDuelsWon = 0, keyPasses = 0;
+            int dribblesCompleted = 0, dribblesLost = 0, saves = 0;
+            double distanceCovered = 0.0;
+
+            if (minutesPlayed > 0) {
+                passesAttempted = (int) (minutesPlayed * (0.4 + rnd.nextDouble() * 0.4));
+                passesCompleted = (int) (passesAttempted * (0.65 + rnd.nextDouble() * 0.25));
+                distanceCovered = Math.round(minutesPlayed * (0.08 + rnd.nextDouble() * 0.04) * 10.0) / 10.0;
+
+                switch (p.getPosition()) {
+                    case "GK" -> {
+                        saves = (int) (concededGoals == 0 ? rnd.nextInt(3) : rnd.nextInt(5) + 2);
+                        duelsWon = (int) (rnd.nextDouble() * 2);
+                        aerialDuelsWon = (int) (rnd.nextDouble() * 2);
+                    }
+                    case "DEF" -> {
+                        tackles = (int) (minutesPlayed / 15.0 + rnd.nextInt(3));
+                        interceptions = (int) (minutesPlayed / 20.0 + rnd.nextInt(2));
+                        duelsWon = (int) (minutesPlayed / 10.0 + rnd.nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 20.0 + rnd.nextInt(3));
+                        aerialDuelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(3));
+                    }
+                    case "MID" -> {
+                        tackles = (int) (minutesPlayed / 20.0 + rnd.nextInt(3));
+                        interceptions = (int) (minutesPlayed / 18.0 + rnd.nextInt(3));
+                        duelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 15.0 + rnd.nextInt(4));
+                        keyPasses = (int) (minutesPlayed / 25.0 + rnd.nextInt(3));
+                        dribblesCompleted = (int) (minutesPlayed / 30.0 + rnd.nextInt(4));
+                        dribblesLost = (int) (minutesPlayed / 40.0 + rnd.nextInt(3));
+                    }
+                    case "WNG" -> {
+                        tackles = (int) (minutesPlayed / 25.0 + rnd.nextInt(2));
+                        duelsWon = (int) (minutesPlayed / 10.0 + rnd.nextInt(5));
+                        duelsLost = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
+                        keyPasses = (int) (minutesPlayed / 20.0 + rnd.nextInt(4));
+                        dribblesCompleted = (int) (minutesPlayed / 15.0 + rnd.nextInt(5));
+                        dribblesLost = (int) (minutesPlayed / 20.0 + rnd.nextInt(4));
+                    }
+                    case "ATT" -> {
+                        tackles = (int) (rnd.nextDouble() * 1);
+                        duelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 15.0 + rnd.nextInt(3));
+                        keyPasses = (int) (minutesPlayed / 30.0 + rnd.nextInt(2));
+                        dribblesCompleted = (int) (minutesPlayed / 18.0 + rnd.nextInt(4));
+                        dribblesLost = (int) (minutesPlayed / 25.0 + rnd.nextInt(3));
+                    }
+                }
             }
 
             double rating = Math.min(10.0, Math.max(1.0, Math.round(base * 10.0) / 10.0));
@@ -275,7 +365,21 @@ public class CSMatchSimulator {
                     .rating(rating)
                     .goals((int) goalsInMatch)
                     .assists((int) assistsInMatch)
-                    .minutesPlayed(Math.max(0, minutesByPlayer.getOrDefault(p.getId(), 0)))
+                    .minutesPlayed(minutesPlayed)
+                    .passesAttempted(passesAttempted)
+                    .passesCompleted(passesCompleted)
+                    .tackles(tackles)
+                    .interceptions(interceptions)
+                    .duelsWon(duelsWon)
+                    .duelsLost(duelsLost)
+                    .aerialDuelsWon(aerialDuelsWon)
+                    .keyPasses(keyPasses)
+                    .dribblesCompleted(dribblesCompleted)
+                    .dribblesLost(dribblesLost)
+                    .distanceCovered(distanceCovered)
+                    .saves(saves)
+                    .cleanSheet(cleanSheet)
+                    .goalsConceded((int) concededGoals)
                     .build());
         }
         return stats;
@@ -283,23 +387,33 @@ public class CSMatchSimulator {
 
     private void applySubstitutions(List<CSMatchEvent> events,
                                     CSTeam team,
-                                    List<CSPlayer> starters,
+                                    List<CSPlayer> onField,
                                     List<CSPlayer> bench,
-                                    java.util.Map<Long, Integer> minutesByPlayer) {
-        if (starters.isEmpty() || bench.isEmpty()) return;
+                                    java.util.Map<Long, Integer> minutesByPlayer,
+                                    java.util.Map<Long, Boolean> onFieldStatus) {
+        if (onField.isEmpty() || bench.isEmpty()) return;
         int maxSubs = Math.min(3, bench.size());
         int subs = rnd.nextDouble() < 0.55 ? rnd.nextInt(maxSubs + 1) : 0;
         for (int i = 0; i < subs; i++) {
             int minute = 55 + rnd.nextInt(31);
-            CSPlayer out = pickMostTired(starters);
+            CSPlayer out = pickMostTired(onField);
             if (out == null) break;
             CSPlayer in = pickLikeForLike(bench, out.getPosition());
             if (in == null) break;
-            starters.removeIf(p -> p.getId().equals(out.getId()));
-            starters.add(in);
+            onField.removeIf(p -> p.getId().equals(out.getId()));
+            onField.add(in);
             bench.removeIf(p -> p.getId().equals(in.getId()));
+            
+            // Update minutes for substituted players
             minutesByPlayer.put(out.getId(), Math.max(1, minute));
             minutesByPlayer.put(in.getId(), Math.max(0, 91 - minute));
+            
+            // Update on-field status
+            if (onFieldStatus != null) {
+                onFieldStatus.put(out.getId(), false);
+                onFieldStatus.put(in.getId(), true);
+            }
+            
             events.add(CSMatchEvent.builder()
                     .minute(minute)
                     .eventType(CSEventType.SUBSTITUTION)

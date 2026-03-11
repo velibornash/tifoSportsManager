@@ -4,13 +4,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
+import org.example.footballmanager.dto.TacticsSlotDTO;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.model.event.FreeKickEvent;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.PenaltyEvent;
 import org.example.footballmanager.model.event.VARReviewEvent;
 import org.example.footballmanager.repository.*;
+import org.example.footballmanager.service.FormationSlotCatalog;
 import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.TeamTacticsService;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -41,6 +44,7 @@ public class RealisticMatchEngine {
     private final PlayerRepository playerRepository;
     private final LineupRepository lineupRepository;
     private final SeasonService seasonService;
+    private final TeamTacticsService teamTacticsService;
     
     private final AIDecisionMaker aiDecisionMaker;
     private final PositionalDefense positionalDefense;
@@ -56,18 +60,50 @@ public class RealisticMatchEngine {
     private static final double LOOSE_BALL_PICKUP_RADIUS = 1.0; // TIGHTER PICKUP
     private static final double LOOSE_BALL_STEP = 9.0;
     private static final double SUPPORT_STEP = 6.0;
-    private static final double SHOT_TRIGGER_DISTANCE = 21.0;
+    private static final double SHOT_TRIGGER_DISTANCE = 24.5;
     private static final double CARRIER_CONTROL_RADIUS = 0.5; // VERY TIGHT CONTROL
     private static final double PENDING_RECEIVER_LOCK_DISTANCE = 20.0;
     private static final double RECEIVER_PRIORITY_MARGIN = 2.2;
-    private static final int MAX_RETREAT_TICKS = 8;
-    private static final double RETREAT_FORCE = 12.0;
-    private static final double DEEP_RETREAT_FORCE = 25.0;
+    private static final int MAX_RETREAT_TICKS = 6;
+    private static final int OFFSIDE_RETREAT_TRIGGER_STREAK = 2;
+    private static final double RETREAT_FORCE = 15.0;
+    private static final double DEEP_RETREAT_FORCE = 28.0;
     private static final double ONSIDE_BUFFER = 1.8;
     private static final double CENTER_BACK_ENGAGE_DISTANCE = 16.0;
+    private static final double TACTICAL_DISCIPLINE = 1.0;
+    private static final double DEFENSIVE_LINE_GAP = 10.0;
+    private static final double DEFENSIVE_COVER_GAP = 4.5;
+    private static final double VAR_GOAL_REVIEW_CHANCE = 0.42;
+    private static final double VAR_PENALTY_REVIEW_CHANCE = 0.72;
     private static final int SHOT_WINDOW_TICKS = 3;
-    private static final double DUEL_FOUL_CHANCE = 0.08;
-    private static final double PENALTY_FOUL_CHANCE = 0.14;
+    private static final double DUEL_FOUL_CHANCE = 0.034;
+    private static final double PENALTY_FOUL_CHANCE = 0.022;
+    private static final double RECKLESS_DUEL_CARD_CHANCE = 0.012;
+    private static final double OVERLAP_DUEL_DISTANCE = 1.55;
+    private static final double DEFENSIVE_MARK_RADIUS = 8.5;
+    private static final double DANGER_PRESS_DISTANCE_TO_GOAL = 32.0;
+    private static final double RESTART_BLEND_RATIO = 0.62;
+    private static final double KICKOFF_RESTART_BLEND_RATIO = 0.56;
+    private static final double RESTART_BLEND_MAX_X_SHIFT = 18.0;
+    private static final double RESTART_BLEND_MAX_Y_SHIFT = 14.0;
+    private static final double PENALTY_AREA_MIN_Y = 22.0;
+    private static final double PENALTY_AREA_MAX_Y = 78.0;
+    private static final double GOAL_KICK_EXIT_X = 22.0;
+    private static final double PENALTY_SPOT_X = 88.0;
+    private static final double PENALTY_KEEPER_X = 96.0;
+    private static final int PENALTY_PRE_SHOT_PAUSE_TICKS = 4;
+    private static final int PENALTY_POST_SHOT_PAUSE_TICKS = 4;
+    private static final int RESTART_PAUSE_TICKS = 3;
+    private static final int CORNER_TAKER_APPROACH_TICKS = 4;
+    private static final int CORNER_PRE_CROSS_PAUSE_TICKS = 3;
+    private static final double CORNER_TAKER_APPROACH_STEP = 2.3;
+    private static final double GOALKEEPER_TACTICAL_MAX_X_DRIFT = 5.5;
+    private static final double GOALKEEPER_TACTICAL_MAX_Y_DRIFT = 6.0;
+    private static final double GOALKEEPER_SHOT_COVERAGE_X = 7.5;
+    private static final double GOALKEEPER_SHOT_COVERAGE_Y = 9.5;
+    private static final double[] ANCHOR_X_CENTERS = {10.0, 22.0, 38.0, 52.0, 66.0};
+    private static final double[] TARGET_X_CENTERS = {10.0, 30.0, 50.0, 70.0, 90.0};
+    private static final double[] BAND_Y_CENTERS = {18.0, 34.0, 50.0, 66.0, 82.0};
 
     /**
      * Simulates a full 90-minute realistic match
@@ -128,6 +164,8 @@ public class RealisticMatchEngine {
                 rt.playerTeamSide.put(player.getId(), "AWAY");
             }
         });
+
+        initializeTacticalProfiles(rt, match);
         
         // Initialize player positions
         initializePlayerPositions(rt);
@@ -168,47 +206,10 @@ public class RealisticMatchEngine {
      * Initializes player positions on the pitch (4-4-2 vs 4-2-3-1)
      */
     private void initializePlayerPositions(MatchRuntime rt) {
-        // HOME team: 4-4-2
         List<PlayerPositionDTO> homePositions = new ArrayList<>();
-        double[] homeFormation = getHomeFormationPositions();
-        
-        List<Player> homeSorted = rt.homePlayers.stream()
-                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), "HOME")))
-                .toList();
-        
-        for (int i = 0; i < homeSorted.size(); i++) {
-            Player p = homeSorted.get(i);
-            double x = homeFormation[i * 2];
-            double y = homeFormation[i * 2 + 1];
-            homePositions.add(new PlayerPositionDTO(
-                    Math.toIntExact(p.getId()),
-                    "HOME",
-                    x + (random.nextDouble() - 0.5) * 2,
-                    y + (random.nextDouble() - 0.5) * 2,
-                    0, 0
-            ));
-        }
-        
-        // AWAY team: 4-2-3-1
         List<PlayerPositionDTO> awayPositions = new ArrayList<>();
-        double[] awayFormation = getAwayFormationPositions();
-        
-        List<Player> awaySorted = rt.awayPlayers.stream()
-                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), "AWAY")))
-                .toList();
-        
-        for (int i = 0; i < awaySorted.size(); i++) {
-            Player p = awaySorted.get(i);
-            double x = awayFormation[i * 2];
-            double y = awayFormation[i * 2 + 1];
-            awayPositions.add(new PlayerPositionDTO(
-                    Math.toIntExact(p.getId()),
-                    "AWAY",
-                    x + (random.nextDouble() - 0.5) * 2,
-                    y + (random.nextDouble() - 0.5) * 2,
-                    0, 0
-            ));
-        }
+        placeTeamInFormation(homePositions, rt.homePlayers, "HOME", rt.homeSlots, getHomeFormationPositions());
+        placeTeamInFormation(awayPositions, rt.awayPlayers, "AWAY", rt.awaySlots, getAwayFormationPositions());
         
         rt.players = new ArrayList<>();
         rt.players.addAll(homePositions);
@@ -296,35 +297,38 @@ public class RealisticMatchEngine {
             resolveLooseBall(rt);
         } else {
             refreshCurrentCarrier(rt, ballCarrier);
-            
-            // PAUSE LOGIC: If player just passed, they stay still for 1 tick to show the action
-            PlayerPositionDTO carrierPos = getPlayerPosition(rt, ballCarrier);
-            if (carrierPos != null && carrierPos.getOffsideTicksRemaining() > 0 && carrierPos.getOffsideTicksRemaining() < 2) {
-                // We reuse offsideTicksRemaining as a generic 'action pause' counter for simplicity
-                // but only if it was just set during a pass
-                log.debug("Player {} is pausing after action", ballCarrier.getName());
-                // Do nothing else, just record tick
+
+            Player forcedDefender = findImmediateBallPressureDefender(rt, ballCarrier);
+            if (forcedDefender != null) {
+                handleDuel(rt, match, minute, ballCarrier, forcedDefender);
             } else {
-                AIDecisionMaker.Decision decision = aiDecisionMaker.makeDecision(ballCarrier, rt, match, minute);
-                String ballTeam = getTeam(ballCarrier, rt);
+                // PAUSE LOGIC: If player just passed, they stay still for 1 tick to show the action
+                PlayerPositionDTO carrierPos = getPlayerPosition(rt, ballCarrier);
+                if (carrierPos != null && carrierPos.getOffsideTicksRemaining() > 0 && carrierPos.getOffsideTicksRemaining() < 2) {
+                    // We reuse offsideTicksRemaining as a generic 'action pause' counter for simplicity
+                    // but only if it was just set during a pass
+                    log.debug("Player {} is pausing after action", ballCarrier.getName());
+                    // Do nothing else, just record tick
+                } else {
+                    AIDecisionMaker.Decision decision = aiDecisionMaker.makeDecision(ballCarrier, rt, match, minute);
+                    String ballTeam = getTeam(ballCarrier, rt);
 
-                // Log decision for debugging
-                if (decision.getAction() == AIDecisionMaker.ActionType.SHOT) {
-                    log.info("[MIN {}, PHASE {}] SHOT by {} ({}) at ({}, {})", 
-                            minute, phase, ballCarrier.getName(), ballTeam,
-                            Math.round(rt.currentCarrier.getX()), Math.round(rt.currentCarrier.getY()));
-                }
-
-                switch (decision.getAction()) {
-                    case PASS -> {
-                        handlePass(rt, match, minute, ballCarrier, decision, ballTeam);
+                    // Log decision for debugging
+                    if (decision.getAction() == AIDecisionMaker.ActionType.SHOT) {
+                        log.info("[MIN {}, PHASE {}] SHOT by {} ({}) at ({}, {})",
+                                minute, phase, ballCarrier.getName(), ballTeam,
+                                Math.round(rt.currentCarrier.getX()), Math.round(rt.currentCarrier.getY()));
                     }
-                    case SHOT -> handleShot(rt, match, minute, ballCarrier, decision, ballTeam);
-                    case DRIBBLE -> handleDribble(rt, match, minute, ballCarrier, decision, ballTeam);
-                }
 
-                if (rt.currentCarrier != null && random.nextDouble() < 0.06) {
-                    handleBallOutOfBounds(rt, match, minute);
+                    switch (decision.getAction()) {
+                        case PASS -> handlePass(rt, match, minute, ballCarrier, decision, ballTeam);
+                        case SHOT -> handleShot(rt, match, minute, ballCarrier, decision, ballTeam);
+                        case DRIBBLE -> handleDribble(rt, match, minute, ballCarrier, decision, ballTeam);
+                    }
+
+                    if (rt.currentCarrier != null && shouldTriggerCarrierOutOfBounds(rt, ballCarrier, ballTeam)) {
+                        handleBallOutOfBounds(rt, match, minute);
+                    }
                 }
             }
         }
@@ -366,7 +370,7 @@ public class RealisticMatchEngine {
             // RESET POSITIONS FOR DEFENSIVE RESTART
             resetPositionsForRestart(rt, defendingTeam);
             
-            Player restartPlayer = selectRestartPlayer(rt, defendingTeam);
+            Player restartPlayer = selectRestartPlayer(rt, defendingTeam, "DEFENSIVE_RESTART");
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
             rt.pendingReceiverId = null;
@@ -419,20 +423,44 @@ public class RealisticMatchEngine {
             }
         }
 
-        Player goalkeeper = getGoalkeeper(rt, ballTeam.equals("HOME") ? "AWAY" : "HOME");
-        if (goalkeeper == null) {
-            handleDribble(rt, match, minute, shooter, decision, ballTeam);
-            return;
-        }
-
+        PlayerPositionDTO shooterPos = getPlayerPosition(rt, shooter);
+        List<Player> nearbyDefenders = getNearbyDefenders(rt, shooter, ballTeam);
+        Player shotBlocker = nearbyDefenders.isEmpty() ? null : nearbyDefenders.getFirst();
         if (isDangerousAttackingPosition(rt, shooter, ballTeam)) {
             eventGenerator.createChanceEvent(rt, match, minute, shooter, true);
         }
 
-        PlayerPositionDTO shooterPos = getPlayerPosition(rt, shooter);
-        DuelResolver.DuelResult duelResult = duelResolver.resolveShotDuel(shooter, goalkeeper, 
-                shooterPos != null ? shooterPos.getX() : 85.0, 
-                shooterPos != null ? shooterPos.getY() : 50.0);
+        String defendingTeam = ballTeam.equals("HOME") ? "AWAY" : "HOME";
+        Player goalkeeper = getGoalkeeper(rt, defendingTeam);
+        boolean openGoal = !isGoalkeeperProtectingGoal(rt, goalkeeper, defendingTeam);
+        DuelResolver.DuelResult duelResult = openGoal
+                ? duelResolver.resolveOpenGoalShot(
+                        shooter,
+                        shooterPos != null ? shooterPos.getX() : 85.0,
+                        shooterPos != null ? shooterPos.getY() : 50.0)
+                : duelResolver.resolveShotDuel(
+                        shooter,
+                        goalkeeper,
+                        shooterPos != null ? shooterPos.getX() : 85.0,
+                        shooterPos != null ? shooterPos.getY() : 50.0);
+
+        if (shotBlocker != null && shouldTriggerShotDeflection(rt, shooter, shotBlocker, openGoal)) {
+            PlayerPositionDTO blockerPos = getPlayerPosition(rt, shotBlocker);
+            eventGenerator.createShotMissedEvent(rt, match, minute, shooter, duelResult.getXG());
+            log.info("🪃 DEFLECTION! {}'s shot is blocked by {}", shooter.getName(), shotBlocker.getName());
+            movePlayerTowardsBall(rt, shotBlocker, 2.4);
+            startRandomDeflection(
+                    rt,
+                    shotBlocker,
+                    blockerPos != null ? blockerPos.getX() : (shooterPos != null ? shooterPos.getX() : 50.0),
+                    blockerPos != null ? blockerPos.getY() : (shooterPos != null ? shooterPos.getY() : 50.0),
+                    5.5,
+                    15.0
+            );
+            rt.pendingPasserId = null;
+            rt.pendingPassTeam = null;
+            return;
+        }
 
         if (duelResult.isGoal()) {
             if (ballTeam.equals("HOME")) {
@@ -448,31 +476,36 @@ public class RealisticMatchEngine {
             
             // KICK-OFF RESTART
             String restartTeam = ballTeam.equals("HOME") ? "AWAY" : "HOME";
-            resetPositionsForRestart(rt, restartTeam);
+            resetPositionsForRestart(rt, restartTeam, "KICKOFF");
             
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
-            Player kickoffPlayer = selectRestartPlayer(rt, restartTeam);
+            Player kickoffPlayer = selectRestartPlayer(rt, restartTeam, "KICKOFF");
             rt.ball = new BallPositionDTO(50, 50);
             rt.currentCarrier = null;
             rt.pendingReceiverId = kickoffPlayer != null ? Math.toIntExact(kickoffPlayer.getId()) : null;
             rt.lastTouchTeam = restartTeam;
-        } else if (duelResult.isSaved()) {
+        } else if (!openGoal && goalkeeper != null && duelResult.isSaved()) {
             movePlayerTowardsGoal(rt, shooter, ballTeam, 6.0);
             eventGenerator.createShotSavedEvent(rt, match, minute, shooter, goalkeeper, duelResult.getXG());
             log.info("🧤 SAVE! {} saved by {} (xG: {:.2f})", shooter.getName(), goalkeeper.getName(), duelResult.getXG());
-            
-            // Chance for corner instead of always catching
-            if (random.nextDouble() < 0.45) {
+
+            PlayerPositionDTO goalkeeperPos = getPlayerPosition(rt, goalkeeper);
+            double saveOutcomeRoll = random.nextDouble();
+            if (saveOutcomeRoll < 0.22) {
+                startRandomDeflection(
+                        rt,
+                        goalkeeper,
+                        goalkeeperPos != null ? goalkeeperPos.getX() : (ballTeam.equals("HOME") ? 94.0 : 6.0),
+                        goalkeeperPos != null ? goalkeeperPos.getY() : 50.0,
+                        4.5,
+                        10.5
+                );
+            } else if (saveOutcomeRoll < 0.57) {
+                // Chance for corner instead of always catching
                 String restartTeam = ballTeam; // attacking team keeps ball for corner
-                resetPositionsForRestart(rt, restartTeam);
                 boolean upperSide = shooterPos != null ? shooterPos.getY() < 50.0 : random.nextBoolean();
-                Player cornerTaker = selectWideRestartPlayer(rt, restartTeam, upperSide);
-                eventGenerator.createCornerEvent(rt, match, minute, restartTeam, cornerTaker);
-                rt.ball = new BallPositionDTO(ballTeam.equals("HOME") ? 98.5 : 1.5, upperSide ? 6.0 : 94.0);
-                if (cornerTaker != null) {
-                    releaseBall(rt, cornerTaker, restartTeam, Math.toIntExact(cornerTaker.getId()), null, 2.0);
-                }
+                setupCornerRestart(rt, match, minute, restartTeam, upperSide);
             } else {
                 releaseBall(rt, goalkeeper, getTeam(goalkeeper, rt), Math.toIntExact(goalkeeper.getId()), null, 1.2);
             }
@@ -481,19 +514,15 @@ public class RealisticMatchEngine {
         } else {
             movePlayerTowardsGoal(rt, shooter, ballTeam, 8.0);
             eventGenerator.createShotMissedEvent(rt, match, minute, shooter, duelResult.getXG());
-            log.info("❌ MISS! {} missed (xG: {:.2f})", shooter.getName(), duelResult.getXG());
+            log.info(openGoal ? "🚨 OPEN GOAL MISS! {} missed (xG: {:.2f})" : "❌ MISS! {} missed (xG: {:.2f})",
+                    shooter.getName(), duelResult.getXG());
             
             // GOAL KICK RESTART
             String restartTeam = ballTeam.equals("HOME") ? "AWAY" : "HOME";
-            resetPositionsForRestart(rt, restartTeam);
-            
-            Player goalkeeperRestart = getGoalkeeper(rt, restartTeam);
-            if (goalkeeperRestart != null) {
-                eventGenerator.createGoalKickEvent(rt, match, minute, restartTeam, goalkeeperRestart);
-                PlayerPositionDTO gkPos = getPlayerPosition(rt, goalkeeperRestart);
-                if (gkPos != null) rt.ball = new BallPositionDTO(gkPos.getX(), gkPos.getY());
-                releaseBall(rt, goalkeeperRestart, restartTeam, Math.toIntExact(goalkeeperRestart.getId()), null, 5.0);
-            } else {
+            resetPositionsForRestart(rt, restartTeam, "GOAL_KICK");
+            boolean upperSide = shooterPos != null ? shooterPos.getY() < 50.0 : random.nextBoolean();
+            Player restartPlayer = setupGoalKickRestart(rt, match, minute, restartTeam, "HOME".equals(restartTeam), upperSide);
+            if (restartPlayer == null) {
                 rt.currentCarrier = null;
             }
             rt.pendingPasserId = null;
@@ -507,9 +536,16 @@ public class RealisticMatchEngine {
     private void handleDribble(MatchRuntime rt, Match match, int minute,
                               Player dribbler, AIDecisionMaker.Decision decision,
                               String ballTeam) {
-        List<Player> nearbyDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
+        Player forcedDefender = findImmediateBallPressureDefender(rt, dribbler);
+        if (forcedDefender != null) {
+            handleDuel(rt, match, minute, dribbler, forcedDefender);
+            return;
+        }
 
-        if (!nearbyDefenders.isEmpty() && random.nextDouble() < 0.22) {
+        List<Player> nearbyDefenders = getNearbyDefenders(rt, dribbler, ballTeam);
+        PlayerPositionDTO dribblerPos = getPlayerPosition(rt, dribbler);
+
+        if (!nearbyDefenders.isEmpty() && (isCloseContactDefender(rt, dribblerPos, nearbyDefenders.get(0)) || random.nextDouble() < 0.22)) {
             Player defender = nearbyDefenders.get(0);
             handleDuel(rt, match, minute, dribbler, defender);
         } else {
@@ -530,7 +566,9 @@ public class RealisticMatchEngine {
             boolean cleanBreak = refreshedDefenders.isEmpty()
                     || (refreshedDefenders.size() == 1 && goalDistance <= 16.0);
             double immediateShotChance = goalDistance <= 12.0 ? 0.60
-                    : goalDistance <= 16.0 ? 0.26
+                    : goalDistance <= 16.0 ? 0.34
+                    : goalDistance <= 20.0 ? 0.16
+                    : goalDistance <= SHOT_TRIGGER_DISTANCE ? 0.07
                     : 0.0;
             if (goalDistance <= SHOT_TRIGGER_DISTANCE &&
                     cleanBreak &&
@@ -560,15 +598,23 @@ public class RealisticMatchEngine {
         if (result.isWon()) {
             rt.lastTouchTeam = getTeam(attacker, rt);
             setCurrentCarrier(rt, attacker, "duel");
+            applyDuelFreeze(rt, defender, 4);
         } else {
             releaseBall(rt, defender, getTeam(defender, rt), Math.toIntExact(defender.getId()), null, 2.0);
             rt.pendingPasserId = null;
             rt.pendingPassTeam = null;
+            applyDuelFreeze(rt, attacker, 4);
         }
 
-        if (random.nextDouble() < 0.1) {
-            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+        maybeIssueRecklessDuelCard(rt, match, minute, attacker, defender, result);
+    }
+
+    private void applyDuelFreeze(MatchRuntime rt, Player player, int ticks) {
+        PlayerPositionDTO position = getPlayerPosition(rt, player);
+        if (position == null) {
+            return;
         }
+        position.setOffsideTicksRemaining(Math.max(position.getOffsideTicksRemaining(), Math.max(3, ticks)));
     }
 
     private boolean shouldCallFoul(MatchRuntime rt, Player attacker, Player defender) {
@@ -577,11 +623,75 @@ public class RealisticMatchEngine {
             return false;
         }
         boolean attacksRight = "HOME".equals(getTeam(attacker, rt));
-        double foulChance = isInPenaltyBox(attackerPos, attacksRight) ? PENALTY_FOUL_CHANCE : DUEL_FOUL_CHANCE;
+        boolean inPenaltyBox = isInPenaltyBox(attackerPos, attacksRight);
+        if (inPenaltyBox && !isPenaltyFoulLocation(attackerPos, attacksRight)) {
+            return false;
+        }
+
+        double foulChance = inPenaltyBox ? PENALTY_FOUL_CHANCE : DUEL_FOUL_CHANCE;
         if (defender.getPosition() == Position.DEF) {
-            foulChance += 0.03;
+            foulChance += inPenaltyBox ? 0.006 : 0.012;
+        } else if (defender.getPosition() == Position.MID) {
+            foulChance += inPenaltyBox ? 0.004 : 0.008;
+        }
+        if (isDangerousAttackingPosition(rt, attacker, getTeam(attacker, rt))) {
+            foulChance += inPenaltyBox ? 0.004 : 0.002;
         }
         return random.nextDouble() < foulChance;
+    }
+
+    private void maybeIssueRecklessDuelCard(MatchRuntime rt,
+                                            Match match,
+                                            int minute,
+                                            Player attacker,
+                                            Player defender,
+                                            DuelResolver.DuelResult result) {
+        if (defender == null || defender.getId() == null) {
+            return;
+        }
+
+        double chance = RECKLESS_DUEL_CARD_CHANCE;
+        if (result != null && result.isWon()) {
+            chance += 0.006;
+        }
+        if (defender.getPosition() == Position.DEF) {
+            chance += 0.004;
+        }
+        if (isDangerousAttackingPosition(rt, attacker, getTeam(attacker, rt))) {
+            chance += 0.006;
+        }
+
+        if (random.nextDouble() < chance) {
+            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+        }
+    }
+
+    private void maybeIssueFoulCard(MatchRuntime rt,
+                                    Match match,
+                                    int minute,
+                                    Player attacker,
+                                    Player defender,
+                                    boolean penaltyFoul) {
+        if (defender == null || defender.getId() == null) {
+            return;
+        }
+
+        String attackingTeam = getTeam(attacker, rt);
+        double goalDistance = estimateDistanceToGoal(rt, attacker, attackingTeam);
+        boolean dangerous = goalDistance <= 24.0 || isDangerousAttackingPosition(rt, attacker, attackingTeam);
+        double chance = penaltyFoul ? 0.28 : dangerous ? 0.22 : 0.12;
+
+        if (defender.getPosition() == Position.DEF) {
+            chance += 0.04;
+        } else if (defender.getPosition() == Position.MID) {
+            chance += 0.02;
+        } else if (defender.getPosition() == Position.GK && penaltyFoul) {
+            chance += 0.03;
+        }
+
+        if (random.nextDouble() < chance) {
+            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+        }
     }
 
     private void handleFoul(MatchRuntime rt, Match match, int minute, Player attacker, Player defender) {
@@ -593,6 +703,12 @@ public class RealisticMatchEngine {
         }
 
         if (isInPenaltyBox(attackerPos, attacksRight)) {
+            String defendingTeam = attacksRight ? "AWAY" : "HOME";
+            Player goalkeeper = getGoalkeeper(rt, defendingTeam);
+
+            preparePenaltySetup(rt, attacker, goalkeeper, attackingTeam, attacksRight);
+            recordStoppagePause(rt, MatchRuntime.StoppageType.PENALTY, PENALTY_PRE_SHOT_PAUSE_TICKS);
+
             PenaltyEvent penalty = new PenaltyEvent();
             penalty.setMinute(minute);
             penalty.setTick(rt.tick);
@@ -600,9 +716,7 @@ public class RealisticMatchEngine {
             penalty.setTeam("HOME".equals(attackingTeam) ? match.getHomeTeam() : match.getAwayTeam());
             penalty.setTaker(attacker);
 
-            Player goalkeeper = getGoalkeeper(rt, attacksRight ? "AWAY" : "HOME");
-            DuelResolver.DuelResult penResult = duelResolver.resolveShotDuel(attacker, goalkeeper, 
-                    attacksRight ? 88.0 : 12.0, 50.0); // Penalty spot approx
+            DuelResolver.DuelResult penResult = duelResolver.resolvePenalty(attacker, goalkeeper);
             penalty.setScored(penResult.isGoal());
             rt.runtimeEvents.add(penalty);
 
@@ -615,29 +729,52 @@ public class RealisticMatchEngine {
                 }
                 goalEvent = eventGenerator.createGoalEvent(rt, match, minute, attacker, null, penResult.getXG());
                 log.info("⚽ PENALTY GOAL! {} scores for {} (xG: {:.2f})", attacker.getName(), attackingTeam, penResult.getXG());
-                
+
+                rt.currentCarrier = null;
+                rt.ball = new BallPositionDTO(attacksRight ? MAX_X : MIN_X, 50.0);
+                recordStoppagePause(rt, MatchRuntime.StoppageType.PENALTY, PENALTY_POST_SHOT_PAUSE_TICKS);
+
                 // RESTART POSITION AFTER PENALTY GOAL
-                String restartTeam = attacksRight ? "AWAY" : "HOME";
-                resetPositionsForRestart(rt, restartTeam);
-                
+                String restartTeam = defendingTeam;
+                resetPositionsForRestart(rt, restartTeam, "KICKOFF");
+
                 rt.ball = new BallPositionDTO(50, 50);
                 rt.currentCarrier = null;
-                Player kickoffPlayer = selectRestartPlayer(rt, restartTeam);
+                Player kickoffPlayer = selectRestartPlayer(rt, restartTeam, "KICKOFF");
                 rt.pendingReceiverId = kickoffPlayer != null ? Math.toIntExact(kickoffPlayer.getId()) : null;
                 rt.lastTouchTeam = restartTeam;
-            } else if (goalkeeper != null) {
-                if (penResult.isSaved()) {
-                    eventGenerator.createShotSavedEvent(rt, match, minute, attacker, goalkeeper, penResult.getXG());
-                    log.info("🧤 PENALTY SAVED! {} by {}", attacker.getName(), goalkeeper.getName());
-                } else {
-                    eventGenerator.createShotMissedEvent(rt, match, minute, attacker, penResult.getXG());
-                    log.info("❌ PENALTY MISSED! {} (xG: {:.2f})", attacker.getName(), penResult.getXG());
-                }
-                releaseBall(rt, goalkeeper, getTeam(goalkeeper, rt), Math.toIntExact(goalkeeper.getId()), null, 1.2);
+            } else if (goalkeeper != null && penResult.isSaved()) {
+                eventGenerator.createShotSavedEvent(rt, match, minute, attacker, goalkeeper, penResult.getXG());
+                log.info("🧤 PENALTY SAVED! {} by {}", attacker.getName(), goalkeeper.getName());
+
+                setCurrentCarrier(rt, goalkeeper, "carry");
+                recordStoppagePause(rt, MatchRuntime.StoppageType.PENALTY, PENALTY_POST_SHOT_PAUSE_TICKS);
+                releaseBall(rt, goalkeeper, defendingTeam, Math.toIntExact(goalkeeper.getId()), null, 1.2);
+            } else {
+                eventGenerator.createShotMissedEvent(rt, match, minute, attacker, penResult.getXG());
+                log.info("❌ PENALTY MISSED! {} (xG: {:.2f})", attacker.getName(), penResult.getXG());
+
+                rt.currentCarrier = null;
+                rt.pendingReceiverId = null;
+                rt.ballInTransit = false;
+                rt.ballTransitCanBeIntercepted = false;
+                rt.ballTransitTicks = 0;
+                rt.ballTransitMaxTicks = 0;
+                rt.ballTransitMode = "CONTROLLED";
+                rt.ball = new BallPositionDTO(
+                        attacksRight ? MAX_X : MIN_X,
+                        clamp(50.0 + (random.nextDouble() - 0.5) * 8.0, MIN_Y + 2.0, MAX_Y - 2.0)
+                );
+                recordStoppagePause(rt, MatchRuntime.StoppageType.PENALTY, PENALTY_POST_SHOT_PAUSE_TICKS);
+
+                resetPositionsForRestart(rt, defendingTeam, "GOAL_KICK");
+                setupGoalKickRestart(rt, match, minute, defendingTeam, "HOME".equals(defendingTeam), rt.ball.getY() < 50.0);
             }
 
+            rt.pendingPasserId = null;
+            rt.pendingPassTeam = null;
             maybeCreateVarReview(goalEvent, penalty, rt, match, minute);
-            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
+            maybeIssueFoulCard(rt, match, minute, attacker, defender, true);
             return;
         }
 
@@ -653,9 +790,7 @@ public class RealisticMatchEngine {
         rt.runtimeEvents.add(fk);
         rt.lastTouchTeam = attackingTeam;
         setCurrentCarrier(rt, attacker, "duel");
-        if (random.nextDouble() < 0.6) {
-            eventGenerator.createYellowCardEvent(rt, match, minute, defender);
-        }
+        maybeIssueFoulCard(rt, match, minute, attacker, defender, false);
     }
 
     /**
@@ -677,25 +812,12 @@ public class RealisticMatchEngine {
             boolean isCorner = Objects.equals(lastTouchTeam, defendingTeam);
             restartTeam = isCorner ? oppositeTeam(defendingTeam) : defendingTeam;
 
-            resetPositionsForRestart(rt, restartTeam);
+            resetPositionsForRestart(rt, restartTeam, isCorner ? "CORNER" : "GOAL_KICK");
 
             if (isCorner) {
-                restartPlayer = selectWideRestartPlayer(rt, restartTeam, upperSide);
-                eventGenerator.createCornerEvent(rt, match, minute, restartTeam, restartPlayer);
-                rt.ball = new BallPositionDTO(homeGoalSide ? 1.5 : 98.5, upperSide ? 6.0 : 94.0);
-                if (restartPlayer != null) {
-                    releaseBall(rt, restartPlayer, restartTeam, Math.toIntExact(restartPlayer.getId()), null, 2.0);
-                }
+                restartPlayer = setupCornerRestart(rt, match, minute, restartTeam, upperSide);
             } else {
-                restartPlayer = getGoalkeeper(rt, restartTeam);
-                eventGenerator.createGoalKickEvent(rt, match, minute, restartTeam, restartPlayer);
-                if (restartPlayer != null) {
-                    PlayerPositionDTO gkPos = getPlayerPosition(rt, restartPlayer);
-                    if (gkPos != null) {
-                        rt.ball = new BallPositionDTO(gkPos.getX(), gkPos.getY());
-                    }
-                    releaseBall(rt, restartPlayer, restartTeam, Math.toIntExact(restartPlayer.getId()), null, 5.0);
-                }
+                restartPlayer = setupGoalKickRestart(rt, match, minute, restartTeam, homeGoalSide, upperSide);
             }
         } else {
             resetPositionsForRestart(rt, restartTeam);
@@ -704,6 +826,7 @@ public class RealisticMatchEngine {
             double throwInX = clamp(ball.getX(), 8.0, 92.0);
             double throwInY = ball.getY() <= 50.0 ? 6.5 : 93.5;
             rt.ball = new BallPositionDTO(throwInX, throwInY);
+            recordStoppagePause(rt, MatchRuntime.StoppageType.THROW_IN, RESTART_PAUSE_TICKS);
             if (restartPlayer != null) {
                 releaseBall(rt, restartPlayer, restartTeam, Math.toIntExact(restartPlayer.getId()), null, 2.0);
             }
@@ -712,6 +835,123 @@ public class RealisticMatchEngine {
         rt.lastTouchTeam = restartTeam;
         rt.pendingPasserId = null;
         rt.pendingPassTeam = null;
+    }
+
+    private void preparePenaltySetup(MatchRuntime rt,
+                                     Player taker,
+                                     Player goalkeeper,
+                                     String attackingTeam,
+                                     boolean attacksRight) {
+        double takerX = attacksRight ? PENALTY_SPOT_X : 100.0 - PENALTY_SPOT_X;
+        double keeperX = attacksRight ? PENALTY_KEEPER_X : 100.0 - PENALTY_KEEPER_X;
+
+        PlayerPositionDTO takerPos = getPlayerPosition(rt, taker);
+        if (takerPos != null) {
+            takerPos.setX(takerX);
+            takerPos.setY(50.0);
+        }
+
+        PlayerPositionDTO goalkeeperPos = goalkeeper != null ? getPlayerPosition(rt, goalkeeper) : null;
+        if (goalkeeperPos != null) {
+            goalkeeperPos.setX(keeperX);
+            goalkeeperPos.setY(50.0);
+        }
+
+        anchorNonInvolvedGoalkeepersForPenalty(rt, taker, goalkeeper);
+        positionPenaltySupportPlayers(rt, taker, goalkeeper, attackingTeam, attacksRight);
+
+        rt.lastTouchTeam = attackingTeam;
+        refreshCurrentCarrier(rt, taker);
+        rt.ball = new BallPositionDTO(takerX, 50.0);
+    }
+
+    private void positionPenaltySupportPlayers(MatchRuntime rt,
+                                               Player taker,
+                                               Player goalkeeper,
+                                               String attackingTeam,
+                                               boolean attacksRight) {
+        List<Player> attackingPlayers = "HOME".equals(attackingTeam) ? rt.homePlayers : rt.awayPlayers;
+        List<Player> defendingPlayers = "HOME".equals(attackingTeam) ? rt.awayPlayers : rt.homePlayers;
+
+        placePenaltySupportPlayers(rt, attackingPlayers, taker, goalkeeper, attacksRight ? 79.2 : 20.8);
+        placePenaltySupportPlayers(rt, defendingPlayers, taker, goalkeeper, attacksRight ? 75.2 : 24.8);
+    }
+
+    private void placePenaltySupportPlayers(MatchRuntime rt,
+                                            List<Player> players,
+                                            Player taker,
+                                            Player goalkeeper,
+                                            double targetX) {
+        double[] lanes = {30.0, 38.0, 46.0, 54.0, 62.0, 70.0};
+        int laneIndex = 0;
+
+        for (Player player : players) {
+            if (player == null || player.getId() == null) {
+                continue;
+            }
+            if (player.getPosition() == Position.GK || samePlayer(player, taker) || samePlayer(player, goalkeeper)) {
+                continue;
+            }
+
+            PlayerPositionDTO pos = getPlayerPosition(rt, player);
+            if (pos == null) {
+                continue;
+            }
+
+            double offsetX = laneIndex % 2 == 0 ? -1.1 : 1.1;
+            double laneY = lanes[laneIndex % lanes.length];
+            pos.setX(clamp(targetX + offsetX, MIN_X + 1.0, MAX_X - 1.0));
+            pos.setY(clamp(laneY, MIN_Y + 1.0, MAX_Y - 1.0));
+            laneIndex++;
+        }
+    }
+
+    private void anchorNonInvolvedGoalkeepersForPenalty(MatchRuntime rt,
+                                                         Player taker,
+                                                         Player defendingGoalkeeper) {
+        Stream.concat(rt.homePlayers.stream(), rt.awayPlayers.stream())
+                .filter(player -> player != null
+                        && player.getPosition() == Position.GK
+                        && !samePlayer(player, taker)
+                        && !samePlayer(player, defendingGoalkeeper))
+                .forEach(goalkeeper -> {
+                    PlayerPositionDTO goalkeeperPos = getPlayerPosition(rt, goalkeeper);
+                    if (goalkeeperPos == null) {
+                        return;
+                    }
+                    String team = getTeam(goalkeeper, rt);
+                    goalkeeperPos.setX("HOME".equals(team) ? 8.5 : 91.5);
+                    goalkeeperPos.setY(50.0);
+                });
+    }
+
+    private void recordStoppagePause(MatchRuntime rt, MatchRuntime.StoppageType stoppageType, int pauseTicks) {
+        recordProgressiveStoppagePause(rt, stoppageType, pauseTicks, null);
+    }
+
+    private void recordProgressiveStoppagePause(MatchRuntime rt,
+                                                MatchRuntime.StoppageType stoppageType,
+                                                int pauseTicks,
+                                                Runnable tickAction) {
+        if (pauseTicks <= 0) {
+            return;
+        }
+
+        MatchRuntime.StoppageType previousStoppage = rt.activeStoppage;
+        int previousTicks = rt.stoppageTicks;
+        rt.activeStoppage = stoppageType;
+
+        for (int i = 0; i < pauseTicks; i++) {
+            if (tickAction != null) {
+                tickAction.run();
+            }
+            rt.tick++;
+            rt.stoppageTicks = pauseTicks - i;
+            rt.recordTick();
+        }
+
+        rt.activeStoppage = previousStoppage;
+        rt.stoppageTicks = previousTicks;
     }
 
     /**
@@ -951,6 +1191,7 @@ public class RealisticMatchEngine {
         replacePlayerReference(onPitch, playerOut, playerIn);
         replacePlayerReference(runtimeSquad, playerOut, playerIn);
         replacePlayerPosition(rt, playerOut, playerIn);
+        reassignTacticalSlot(rt, playerOut, playerIn);
 
         rt.playerMinutes.put(playerOut.getId(), Math.max(1, minute));
         rt.playerMinutes.put(playerIn.getId(), Math.max(0, 91 - minute));
@@ -1101,6 +1342,7 @@ public class RealisticMatchEngine {
         rt.ballTransitCanBeIntercepted = false;
         rt.ballTransitTicks = 0;
         rt.ballTransitMaxTicks = 0;
+        rt.ballTransitMode = "CONTROLLED";
         rt.lastControllerId = Math.toIntExact(player.getId());
         rt.lastControlTick = rt.tick;
         rt.lastControlSource = controlSource;
@@ -1150,6 +1392,7 @@ public class RealisticMatchEngine {
         rt.ballTransitCanBeIntercepted = false;
         rt.ballTransitTicks = 0;
         rt.ballTransitMaxTicks = 0;
+        rt.ballTransitMode = "CONTROLLED";
     }
 
     private void syncBallState(MatchRuntime rt) {
@@ -1198,33 +1441,14 @@ public class RealisticMatchEngine {
         List<Player> outfield = Stream.concat(rt.homePlayers.stream(), rt.awayPlayers.stream())
                 .filter(player -> player.getPosition() != Position.GK || isBallInsidePenaltyArea(rt, getTeam(player, rt)))
                 .toList();
+        if (outfield.isEmpty() || rt.ball == null) {
+            return null;
+        }
 
         Player intended = rt.pendingReceiverId != null ? findPlayerById(rt, rt.pendingReceiverId) : null;
-        if (intended != null) {
-            PlayerPositionDTO intendedPos = getPlayerPosition(rt, intended);
-            double intendedDistance = distanceBetween(intendedPos, new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0));
-            if (intendedDistance <= PENDING_RECEIVER_LOCK_DISTANCE) {
-                Player nearestOpponent = outfield.stream()
-                        .filter(player -> !Objects.equals(getTeam(player, rt), getTeam(intended, rt)))
-                        .min(Comparator.comparingDouble(player -> distanceBetween(
-                                getPlayerPosition(rt, player),
-                                new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)
-                        )))
-                        .orElse(null);
-                if (nearestOpponent == null) {
-                    return intended;
-                }
-                double opponentDistance = distanceBetween(
-                        getPlayerPosition(rt, nearestOpponent),
-                        new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0)
-                );
-                if (intendedDistance <= opponentDistance + RECEIVER_PRIORITY_MARGIN) {
-                    return intended;
-                }
-            }
-            if (intendedDistance <= 12.0) {
-                return intended;
-            }
+        Player zoneFirstTarget = findZonePriorityLooseBallTarget(rt, outfield, intended);
+        if (zoneFirstTarget != null) {
+            return zoneFirstTarget;
         }
 
         return outfield.stream()
@@ -1246,11 +1470,25 @@ public class RealisticMatchEngine {
         // Linear interpolation for ball position
         double startX = rt.ballTransitStartX;
         double startY = rt.ballTransitStartY;
-        rt.ball.setX(clamp(startX + (rt.ballTransitTargetX - startX) * progress, MIN_X, MAX_X));
-        rt.ball.setY(clamp(startY + (rt.ballTransitTargetY - startY) * progress, MIN_Y, MAX_Y));
+        double rawX = startX + (rt.ballTransitTargetX - startX) * progress;
+        double rawY = startY + (rt.ballTransitTargetY - startY) * progress;
+        rt.ball.setX(rawX);
+        rt.ball.setY(rawY);
+
+        if (isOutsidePlayableBounds(rawX, rawY)) {
+            handleBallOutOfBounds(rt, match, minute);
+            return;
+        }
+
+        if (isLockedCrossTransit(rt) && rt.ballTransitTicks >= rt.ballTransitMaxTicks) {
+            rt.ball.setX(rt.ballTransitTargetX);
+            rt.ball.setY(rt.ballTransitTargetY);
+            resolveCrossArrival(rt, match, minute);
+            return;
+        }
 
         PlayerPositionDTO ballPosDTO = new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0);
-        if (rt.ballTransitCanBeIntercepted) {
+        if (!isLockedCrossTransit(rt) && rt.ballTransitCanBeIntercepted) {
             Player interceptor = findTransitInterceptor(rt, ballPosDTO);
             if (interceptor != null) {
                 PlayerPositionDTO intPos = getPlayerPosition(rt, interceptor);
@@ -1258,6 +1496,10 @@ public class RealisticMatchEngine {
                     // Ball must be CLOSE to interceptor's position to be intercepted
                     double dist = distanceBetween(intPos, ballPosDTO);
                     if (dist <= 0.8) { // Tighter pickup
+                        if (shouldDeflectTransit(rt, interceptor)) {
+                            startRandomDeflection(rt, interceptor, intPos.getX(), intPos.getY(), 4.0, 13.5);
+                            return;
+                        }
                         Player passer = rt.pendingPasserId != null ? findPlayerById(rt, rt.pendingPasserId) : null;
                         eventGenerator.createInterceptionEvent(rt, match, minute, passer, interceptor);
                         rt.ballInTransit = false;
@@ -1274,7 +1516,7 @@ public class RealisticMatchEngine {
         }
 
         Player intended = rt.pendingReceiverId != null ? findPlayerById(rt, rt.pendingReceiverId) : null;
-        if (intended != null) {
+        if (!isLockedCrossTransit(rt) && intended != null) {
             // Give receiver a speed boost to reach the ball
             movePlayerTowardsBall(rt, intended, LOOSE_BALL_STEP + 1.2);
             PlayerPositionDTO intendedPos = getPlayerPosition(rt, intended);
@@ -1341,7 +1583,46 @@ public class RealisticMatchEngine {
         movePosition(pos, rt.ball.getX(), rt.ball.getY(), step);
     }
 
+    private void holdPendingReceiverPosition(MatchRuntime rt, PlayerPositionDTO pos, Player player) {
+        boolean inPossession = Objects.equals(pos.getTeam(), rt.lastTouchTeam);
+        double[] tacticalTarget = resolveTacticalTarget(rt, pos, player, inPossession);
+        if (tacticalTarget == null) {
+            return;
+        }
+
+        PlayerPositionDTO targetPos = new PlayerPositionDTO(-1, pos.getTeam(), tacticalTarget[0], tacticalTarget[1], 0, 0);
+        if (distanceBetween(pos, targetPos) > 6.0) {
+            movePosition(pos, tacticalTarget[0], tacticalTarget[1], 2.4);
+        }
+    }
+
+    private boolean isCloseContactDefender(MatchRuntime rt, PlayerPositionDTO attackerPos, Player defender) {
+        PlayerPositionDTO defenderPos = getPlayerPosition(rt, defender);
+        return distanceBetween(attackerPos, defenderPos) <= OVERLAP_DUEL_DISTANCE + 1.1;
+    }
+
+    private Player findImmediateBallPressureDefender(MatchRuntime rt, Player attacker) {
+        PlayerPositionDTO attackerPos = getPlayerPosition(rt, attacker);
+        if (attackerPos == null) {
+            return null;
+        }
+
+        String attackingTeam = getTeam(attacker, rt);
+        List<Player> defenders = "HOME".equals(attackingTeam) ? rt.awayPlayers : rt.homePlayers;
+        return defenders.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .filter(player -> distanceBetween(attackerPos, getPlayerPosition(rt, player)) <= OVERLAP_DUEL_DISTANCE)
+                .sorted(Comparator
+                        .comparingInt((Player player) -> defensivePressurePriority(player.getPosition()))
+                        .thenComparingDouble(player -> distanceBetween(attackerPos, getPlayerPosition(rt, player))))
+                .findFirst()
+                .orElse(null);
+    }
+
     private void updateSupportingMovement(MatchRuntime rt) {
+        if (isLockedCrossTransit(rt)) {
+            return;
+        }
         rt.players.forEach(pos -> {
             Player player = findPlayerById(rt, pos.getId());
             if (player == null) {
@@ -1355,9 +1636,151 @@ public class RealisticMatchEngine {
             if (pos.getOffsideTicksRemaining() > 0) {
                 return;
             }
+            if (rt.ballInTransit && Objects.equals(rt.pendingReceiverId, pos.getId())) {
+                holdPendingReceiverPosition(rt, pos, player);
+                return;
+            }
             applyRoleMovement(rt, pos, player);
         });
         spreadSameTeamPlayers(rt);
+    }
+
+    private boolean isLockedCrossTransit(MatchRuntime rt) {
+        return rt != null && rt.ballInTransit && "CROSS".equals(rt.ballTransitMode);
+    }
+
+    private void resolveCrossArrival(MatchRuntime rt, Match match, int minute) {
+        double targetX = rt.ballTransitTargetX;
+        double targetY = rt.ballTransitTargetY;
+        String attackingTeam = rt.pendingPassTeam != null ? rt.pendingPassTeam : rt.lastTouchTeam;
+        if (attackingTeam == null) {
+            settleLooseTransitAtTarget(rt, targetX, targetY);
+            return;
+        }
+
+        String defendingTeam = oppositeTeam(attackingTeam);
+        Player attacker = selectCrossContestant(rt, attackingTeam, targetX, targetY, true);
+        Player defender = selectCrossContestant(rt, defendingTeam, targetX, targetY, false);
+
+        if (attacker != null && defender != null) {
+            DuelResolver.DuelResult result = duelResolver.resolveTackleDuel(attacker, defender);
+            eventGenerator.createDuelEvent(rt, match, minute, attacker, defender, result);
+            if (result.isWon()) {
+                clearPendingPassContext(rt);
+                placePlayerAt(rt, attacker, targetX, targetY);
+                rt.lastTouchTeam = attackingTeam;
+                setCurrentCarrier(rt, attacker, "duel");
+                applyDuelFreeze(rt, defender, 4);
+                handleShot(rt, match, minute, attacker,
+                        new AIDecisionMaker.Decision(AIDecisionMaker.ActionType.SHOT, null), attackingTeam);
+            } else {
+                applyDuelFreeze(rt, attacker, 4);
+                startClearanceTransit(rt, defender, defendingTeam, targetX, targetY);
+            }
+            return;
+        }
+
+        if (attacker != null) {
+            clearPendingPassContext(rt);
+            placePlayerAt(rt, attacker, targetX, targetY);
+            rt.lastTouchTeam = attackingTeam;
+            setCurrentCarrier(rt, attacker, "duel");
+            handleShot(rt, match, minute, attacker,
+                    new AIDecisionMaker.Decision(AIDecisionMaker.ActionType.SHOT, null), attackingTeam);
+            return;
+        }
+
+        if (defender != null) {
+            startClearanceTransit(rt, defender, defendingTeam, targetX, targetY);
+            return;
+        }
+
+        settleLooseTransitAtTarget(rt, targetX, targetY);
+    }
+
+    private Player selectCrossContestant(MatchRuntime rt,
+                                         String team,
+                                         double targetX,
+                                         double targetY,
+                                         boolean attacking) {
+        PlayerPositionDTO target = new PlayerPositionDTO(-1, team, targetX, targetY, 0, 0);
+        return ("HOME".equals(team) ? rt.homePlayers : rt.awayPlayers).stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> player.getPosition() != Position.GK)
+                .filter(player -> {
+                    PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                    return pos != null && distanceBetween(pos, target) <= 18.0;
+                })
+                .min(Comparator
+                        .comparingDouble((Player player) -> distanceBetween(getPlayerPosition(rt, player), target))
+                        .thenComparingInt(player -> attacking
+                                ? cornerAttackPriority(player.getPosition())
+                                : cornerDefensePriority(player.getPosition())))
+                .orElse(null);
+    }
+
+    private void placePlayerAt(MatchRuntime rt, Player player, double x, double y) {
+        PlayerPositionDTO pos = getPlayerPosition(rt, player);
+        if (pos == null) {
+            return;
+        }
+        pos.setX(x);
+        pos.setY(y);
+        rt.ball = new BallPositionDTO(x, y);
+    }
+
+    private void startClearanceTransit(MatchRuntime rt,
+                                       Player defender,
+                                       String defendingTeam,
+                                       double startX,
+                                       double startY) {
+        if (defender == null || defender.getId() == null) {
+            settleLooseTransitAtTarget(rt, startX, startY);
+            return;
+        }
+
+        placePlayerAt(rt, defender, startX, startY);
+        clearPendingPassContext(rt);
+        rt.lastTouchTeam = defendingTeam;
+
+        double travel = 18.0 + random.nextDouble() * 12.0;
+        double targetX = "HOME".equals(defendingTeam)
+                ? clamp(startX + travel, MIN_X + 2.0, MAX_X - 2.0)
+                : clamp(startX - travel, MIN_X + 2.0, MAX_X - 2.0);
+        double targetY = clamp(startY + (random.nextDouble() - 0.5) * 28.0, MIN_Y + 2.0, MAX_Y - 2.0);
+
+        beginBallTransit(
+                rt,
+                startX,
+                startY,
+                targetX,
+                targetY,
+                null,
+                Math.toIntExact(defender.getId()),
+                null,
+                defendingTeam,
+                "CLEARANCE",
+                false
+        );
+        clearRecentControlHints(rt);
+    }
+
+    private void settleLooseTransitAtTarget(MatchRuntime rt, double targetX, double targetY) {
+        clearPendingPassContext(rt);
+        rt.currentCarrier = null;
+        rt.ball = new BallPositionDTO(targetX, targetY);
+        rt.ballInTransit = false;
+        rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = 0;
+        rt.ballTransitMode = "CONTROLLED";
+    }
+
+    private void clearPendingPassContext(MatchRuntime rt) {
+        rt.pendingReceiverId = null;
+        rt.pendingPasserId = null;
+        rt.pendingPassTeam = null;
     }
 
     private void movePosition(PlayerPositionDTO pos, double targetX, double targetY, double maxStep) {
@@ -1419,6 +1842,46 @@ public class RealisticMatchEngine {
         double roamingX = Math.sin(rt.tick * 0.15 + player.getId()) * 2.5;
         double roamingY = Math.cos(rt.tick * 0.12 + player.getId() * 0.7) * 3.5;
 
+        double[] tacticalTarget = resolveTacticalTarget(rt, pos, player, inPossession);
+        if (tacticalTarget != null) {
+            if (player.getPosition() == Position.GK) {
+                movePosition(
+                        pos,
+                        tacticalTarget[0] + roamingX * 0.08,
+                        tacticalTarget[1] + roamingY * 0.08,
+                        SUPPORT_STEP * 0.45
+                );
+                return;
+            }
+            Player pressureThreat = !inPossession ? findDefensivePressureThreat(rt, pos, player, tacticalTarget) : null;
+            if (pressureThreat != null) {
+                PlayerPositionDTO threatPos = getPlayerPosition(rt, pressureThreat);
+                if (threatPos != null) {
+                    double reactionWeight = defensiveReactionWeight(player.getPosition());
+                    if (rt.currentCarrier != null && pressureThreat.getId() != null && rt.currentCarrier.getId() == Math.toIntExact(pressureThreat.getId())) {
+                        reactionWeight = Math.min(0.92, reactionWeight + 0.14);
+                    }
+                    targetX = tacticalTarget[0] * (1.0 - reactionWeight) + threatPos.getX() * reactionWeight;
+                    if (player.getPosition() == Position.DEF) {
+                        targetX = applyDefensiveLineDiscipline(rt, pos, player, targetX, inPossession, home);
+                    }
+                    targetY = tacticalTarget[1] * (1.0 - reactionWeight) + threatPos.getY() * reactionWeight;
+                    movePosition(pos, targetX + roamingX * 0.18, targetY + roamingY * 0.18, SUPPORT_STEP + 0.8);
+                    return;
+                }
+            }
+            targetX = tacticalTarget[0] + (random.nextDouble() - 0.5) * 1.2;
+            targetY = tacticalTarget[1] + (random.nextDouble() - 0.5) * 1.8;
+            if (player.getPosition() == Position.DEF) {
+                targetX = applyDefensiveLineDiscipline(rt, pos, player, targetX, inPossession, home);
+            }
+            if (player.getPosition() == Position.ATT || player.getPosition() == Position.WNG) {
+                targetX = applyOffsideTolerance(rt, pos, targetX, home);
+            }
+            movePosition(pos, targetX + roamingX * 0.45, targetY + roamingY * 0.45, SUPPORT_STEP);
+            return;
+        }
+
         switch (player.getPosition()) {
             case GK -> {
                 double goalX = home ? 8.0 : 92.0;
@@ -1454,6 +1917,7 @@ public class RealisticMatchEngine {
                     }
                     targetX = clamp(targetX, home ? 10.0 : 65.0, home ? 45.0 : 90.0);
                 }
+                targetX = applyDefensiveLineDiscipline(rt, pos, player, targetX, inPossession, home);
             }
             case WNG -> {
                 double wingY = upperLane ? 8.0 : 92.0;
@@ -1611,22 +2075,30 @@ public class RealisticMatchEngine {
         rt.ballTransitStartX = rt.ball.getX();
         rt.ballTransitStartY = rt.ball.getY();
 
-        double targetX = clamp(receiverPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X);
-        double targetY = clamp(receiverPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y);
-        double distance = Math.hypot(targetX - rt.ball.getX(), targetY - rt.ball.getY());
+        String transitMode = classifyPassTransitMode(passerPos, receiverPos, team);
+        double scatterScale = switch (transitMode) {
+            case "CROSS" -> 3.2;
+            case "LOFTED_PASS" -> 1.9;
+            default -> 1.0;
+        };
+        double rawTargetX = receiverPos.getX() + (random.nextDouble() - 0.5) * scatter * scatterScale;
+        double rawTargetY = receiverPos.getY() + (random.nextDouble() - 0.5) * scatter * ("CROSS".equals(transitMode) ? 5.0 : scatterScale * 1.4);
+        double targetX = boundTransitTarget(rawTargetX, MIN_X, MAX_X, transitMode);
+        double targetY = boundTransitTarget(rawTargetY, MIN_Y, MAX_Y, transitMode);
 
-        rt.currentCarrier = null; // No carrier while in flight
-        rt.ballInTransit = true;
-        rt.ballTransitCanBeIntercepted = true;
-        rt.ballTransitTargetX = targetX;
-        rt.ballTransitTargetY = targetY;
-        rt.ballTransitTicks = 0;
-        // Adjust ticks based on distance to make it look natural
-        rt.ballTransitMaxTicks = Math.max(2, Math.min(6, (int) Math.round(distance / 6.5)));
-        rt.pendingReceiverId = Math.toIntExact(receiver.getId());
-        rt.pendingPasserId = Math.toIntExact(passer.getId());
-        rt.pendingPassTeam = team;
-        rt.lastTouchTeam = team;
+        beginBallTransit(
+                rt,
+                rt.ball.getX(),
+                rt.ball.getY(),
+                targetX,
+                targetY,
+                Math.toIntExact(receiver.getId()),
+                Math.toIntExact(passer.getId()),
+                team,
+                team,
+                transitMode,
+                true
+        );
     }
 
     private void releaseBall(MatchRuntime rt, Player target, String recoveringTeam, Integer pendingReceiverId, Integer pendingPasserId, double scatter) {
@@ -1638,24 +2110,191 @@ public class RealisticMatchEngine {
         double startY = rt.ball != null ? rt.ball.getY() : targetPos.getY();
         double intendedX = clamp(targetPos.getX() + (random.nextDouble() - 0.5) * scatter, MIN_X, MAX_X);
         double intendedY = clamp(targetPos.getY() + (random.nextDouble() - 0.5) * scatter, MIN_Y, MAX_Y);
-        double dx = intendedX - startX;
-        double dy = intendedY - startY;
-        double distance = Math.hypot(dx, dy);
-        double maxTravel = pendingReceiverId != null ? 10.0 : 8.0;
-        double factor = distance > 0.01 ? Math.min(1.0, maxTravel / distance) : 0.0;
 
-        rt.currentCarrier = null;
-        rt.ballInTransit = true;
-        rt.ballTransitCanBeIntercepted = false;
-        rt.ballTransitStartX = startX;
-        rt.ballTransitStartY = startY;
-        rt.ballTransitTargetX = intendedX;
-        rt.ballTransitTargetY = intendedY;
-        rt.ballTransitTicks = 0;
-        rt.ballTransitMaxTicks = Math.max(2, Math.min(5, (int) Math.round(distance / 5.0)));
-        rt.pendingReceiverId = pendingReceiverId;
-        rt.pendingPasserId = pendingPasserId;
-        rt.lastTouchTeam = recoveringTeam;
+        beginBallTransit(
+                rt,
+                startX,
+                startY,
+                intendedX,
+                intendedY,
+                pendingReceiverId,
+                pendingPasserId,
+                null,
+                recoveringTeam,
+                "RESTART",
+                false
+        );
+        clearRecentControlHints(rt);
+    }
+
+    private Player setupCornerRestart(MatchRuntime rt,
+                                      Match match,
+                                      int minute,
+                                      String restartTeam,
+                                      boolean upperSide) {
+        resetPositionsForRestart(rt, restartTeam, "CORNER");
+        Player cornerTaker = selectWideRestartPlayer(rt, restartTeam, upperSide);
+        double cornerX = "HOME".equals(restartTeam) ? 98.5 : 1.5;
+        double cornerY = upperSide ? 6.0 : 94.0;
+        rt.ball = new BallPositionDTO(cornerX, cornerY);
+        prepareCornerActors(rt, restartTeam, upperSide, cornerTaker, cornerX, cornerY);
+        positionCornerTakerForApproach(rt, cornerTaker, restartTeam, upperSide, cornerX, cornerY);
+        eventGenerator.createCornerEvent(rt, match, minute, restartTeam, cornerTaker);
+        if (cornerTaker != null) {
+            setCurrentCarrier(rt, cornerTaker, "restart");
+            PlayerPositionDTO takerPos = getPlayerPosition(rt, cornerTaker);
+            recordProgressiveStoppagePause(
+                    rt,
+                    MatchRuntime.StoppageType.CORNER,
+                    CORNER_TAKER_APPROACH_TICKS,
+                    () -> updateCornerTakerApproach(rt, takerPos, cornerX, cornerY)
+            );
+            settleCornerTakerAtSpot(rt, takerPos, cornerX, cornerY);
+        }
+        recordStoppagePause(rt, MatchRuntime.StoppageType.CORNER, CORNER_PRE_CROSS_PAUSE_TICKS);
+        deliverCorner(rt, cornerTaker, restartTeam, upperSide);
+        return cornerTaker;
+    }
+
+    private void positionCornerTakerForApproach(MatchRuntime rt,
+                                                Player cornerTaker,
+                                                String restartTeam,
+                                                boolean upperSide,
+                                                double cornerX,
+                                                double cornerY) {
+        PlayerPositionDTO takerPos = cornerTaker != null ? getPlayerPosition(rt, cornerTaker) : null;
+        if (takerPos == null) {
+            return;
+        }
+
+        double approachX = clamp(cornerX + ("HOME".equals(restartTeam) ? -4.8 : 4.8), MIN_X + 1.0, MAX_X - 1.0);
+        double approachY = clamp(cornerY + (upperSide ? 7.0 : -7.0), MIN_Y + 1.0, MAX_Y - 1.0);
+        takerPos.setX(approachX);
+        takerPos.setY(approachY);
+        rt.ball = new BallPositionDTO(approachX, approachY);
+    }
+
+    private void updateCornerTakerApproach(MatchRuntime rt,
+                                           PlayerPositionDTO takerPos,
+                                           double cornerX,
+                                           double cornerY) {
+        if (takerPos == null || rt.ball == null) {
+            return;
+        }
+
+        movePosition(takerPos, cornerX, cornerY, CORNER_TAKER_APPROACH_STEP);
+        rt.ball.setX(takerPos.getX());
+        rt.ball.setY(takerPos.getY());
+        if (rt.currentCarrier != null) {
+            rt.currentCarrier.setX(takerPos.getX());
+            rt.currentCarrier.setY(takerPos.getY());
+        }
+    }
+
+    private void settleCornerTakerAtSpot(MatchRuntime rt,
+                                         PlayerPositionDTO takerPos,
+                                         double cornerX,
+                                         double cornerY) {
+        if (takerPos == null) {
+            return;
+        }
+
+        takerPos.setX(cornerX);
+        takerPos.setY(cornerY);
+        rt.ball = new BallPositionDTO(cornerX, cornerY);
+        if (rt.currentCarrier != null) {
+            rt.currentCarrier.setX(cornerX);
+            rt.currentCarrier.setY(cornerY);
+        }
+    }
+
+    private void prepareCornerActors(MatchRuntime rt,
+                                     String restartTeam,
+                                     boolean upperSide,
+                                     Player cornerTaker,
+                                     double cornerX,
+                                     double cornerY) {
+        PlayerPositionDTO takerPos = cornerTaker != null ? getPlayerPosition(rt, cornerTaker) : null;
+        if (takerPos != null) {
+            takerPos.setX(cornerX);
+            takerPos.setY(cornerY);
+        }
+
+        boolean attacksRight = "HOME".equals(restartTeam);
+        double spotX = attacksRight ? PENALTY_SPOT_X : 100.0 - PENALTY_SPOT_X;
+        double[] attackX = attacksRight
+                ? new double[]{spotX - 4.0, spotX - 2.0, spotX - 5.5, spotX - 1.0}
+                : new double[]{spotX + 4.0, spotX + 2.0, spotX + 5.5, spotX + 1.0};
+        double[] defendX = attacksRight
+                ? new double[]{spotX - 0.8, spotX + 1.6, spotX - 2.5, spotX + 3.2}
+                : new double[]{spotX + 0.8, spotX - 1.6, spotX + 2.5, spotX - 3.2};
+        double[] attackY = upperSide
+                ? new double[]{40.0, 47.0, 54.0, 61.0}
+                : new double[]{60.0, 53.0, 46.0, 39.0};
+        double[] defendY = upperSide
+                ? new double[]{42.0, 49.0, 56.0, 63.0}
+                : new double[]{58.0, 51.0, 44.0, 37.0};
+
+        List<Player> attackers = ("HOME".equals(restartTeam) ? rt.homePlayers : rt.awayPlayers).stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> player.getPosition() != Position.GK)
+                .filter(player -> !samePlayer(player, cornerTaker))
+                .sorted(Comparator.comparingInt(player -> cornerAttackPriority(player.getPosition())))
+                .toList();
+        for (int i = 0; i < Math.min(attackers.size(), attackX.length); i++) {
+            PlayerPositionDTO pos = getPlayerPosition(rt, attackers.get(i));
+            if (pos != null) {
+                pos.setX(attackX[i]);
+                pos.setY(attackY[i]);
+            }
+        }
+
+        List<Player> defenders = ("HOME".equals(restartTeam) ? rt.awayPlayers : rt.homePlayers).stream()
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> player.getPosition() != Position.GK)
+                .sorted(Comparator.comparingInt(player -> cornerDefensePriority(player.getPosition())))
+                .toList();
+        for (int i = 0; i < Math.min(defenders.size(), defendX.length); i++) {
+            PlayerPositionDTO pos = getPlayerPosition(rt, defenders.get(i));
+            if (pos != null) {
+                pos.setX(defendX[i]);
+                pos.setY(defendY[i]);
+            }
+        }
+    }
+
+    private void deliverCorner(MatchRuntime rt, Player cornerTaker, String restartTeam, boolean upperSide) {
+        PlayerPositionDTO takerPos = cornerTaker != null ? getPlayerPosition(rt, cornerTaker) : null;
+        if (takerPos == null || cornerTaker.getId() == null) {
+            return;
+        }
+
+        double startX = rt.ball != null ? rt.ball.getX() : takerPos.getX();
+        double startY = rt.ball != null ? rt.ball.getY() : takerPos.getY();
+        double attacksRightSpotX = "HOME".equals(restartTeam) ? PENALTY_SPOT_X : 100.0 - PENALTY_SPOT_X;
+        double targetX = clamp(attacksRightSpotX + (random.nextDouble() - 0.5) * 4.0, MIN_X + 2.0, MAX_X - 2.0);
+        double targetYBase = upperSide ? 48.0 : 52.0;
+        double targetY = clamp(targetYBase + (random.nextDouble() - 0.5) * 10.0, PENALTY_AREA_MIN_Y + 2.0, PENALTY_AREA_MAX_Y - 2.0);
+
+        beginBallTransit(
+                rt,
+                startX,
+                startY,
+                targetX,
+                targetY,
+                null,
+                Math.toIntExact(cornerTaker.getId()),
+                restartTeam,
+                restartTeam,
+                "CROSS",
+                true
+        );
+        clearRecentControlHints(rt);
+    }
+
+    private void clearRecentControlHints(MatchRuntime rt) {
         rt.lastPassReceiverId = null;
         rt.lastPassReceiveTick = -100;
         rt.lastPassReceiveTeam = null;
@@ -1665,10 +2304,201 @@ public class RealisticMatchEngine {
         rt.lastRecoveryPlayerId = null;
         rt.lastRecoveryTick = -100;
         rt.lastRecoveryTeam = null;
-        rt.ball = new BallPositionDTO(
-                clamp(startX + dx * factor, MIN_X, MAX_X),
-                clamp(startY + dy * factor, MIN_Y, MAX_Y)
-        );
+    }
+
+    private int cornerAttackPriority(Position position) {
+        return switch (position) {
+            case ATT -> 0;
+            case DEF -> 1;
+            case MID -> 2;
+            case WNG -> 3;
+            default -> 4;
+        };
+    }
+
+    private int cornerDefensePriority(Position position) {
+        return switch (position) {
+            case DEF -> 0;
+            case MID -> 1;
+            case ATT, WNG -> 2;
+            default -> 3;
+        };
+    }
+
+    private Player findZonePriorityLooseBallTarget(MatchRuntime rt, List<Player> outfield, Player intended) {
+        int[] ballBands = resolveSpatialBands(rt.ball.getX(), rt.ball.getY());
+        PlayerPositionDTO ballPos = new PlayerPositionDTO(-1, "", rt.ball.getX(), rt.ball.getY(), 0, 0);
+        for (int radius = 0; radius <= 4; radius++) {
+            int finalRadius = radius;
+            List<Player> ringCandidates = outfield.stream()
+                    .filter(player -> {
+                        PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                        return pos != null && zoneDistance(resolveSpatialBands(pos.getX(), pos.getY()), ballBands) == finalRadius;
+                    })
+                    .sorted(Comparator.comparingDouble(player -> distanceBetween(getPlayerPosition(rt, player), ballPos)))
+                    .toList();
+            if (ringCandidates.isEmpty()) {
+                continue;
+            }
+            if (intended != null && ringCandidates.stream().anyMatch(player -> Objects.equals(player.getId(), intended.getId()))) {
+                PlayerPositionDTO intendedPos = getPlayerPosition(rt, intended);
+                if (distanceBetween(intendedPos, ballPos) <= PENDING_RECEIVER_LOCK_DISTANCE + RECEIVER_PRIORITY_MARGIN) {
+                    return intended;
+                }
+            }
+            return ringCandidates.getFirst();
+        }
+        return null;
+    }
+
+    private Player findDefensivePressureThreat(MatchRuntime rt, PlayerPositionDTO pos, Player player, double[] tacticalTarget) {
+        double reactionWeight = defensiveReactionWeight(player.getPosition());
+        if (reactionWeight <= 0.0) {
+            return null;
+        }
+
+        String defenderTeam = pos.getTeam();
+        List<Player> opponents = "HOME".equals(defenderTeam) ? rt.awayPlayers : rt.homePlayers;
+        int[] ownBands = resolveSpatialBands(tacticalTarget[0], tacticalTarget[1]);
+        Player bestThreat = null;
+        double bestScore = defensiveReactionThreshold(player.getPosition());
+
+        for (Player opponent : opponents) {
+            if (opponent == null || opponent.getPosition() == Position.GK) {
+                continue;
+            }
+            PlayerPositionDTO opponentPos = getPlayerPosition(rt, opponent);
+            if (opponentPos == null) {
+                continue;
+            }
+
+            int zoneGap = zoneDistance(ownBands, resolveSpatialBands(opponentPos.getX(), opponentPos.getY()));
+            boolean carrierThreat = rt.currentCarrier != null && opponent.getId() != null
+                    && rt.currentCarrier.getId() == Math.toIntExact(opponent.getId());
+            boolean nearGoalCarrierThreat = carrierThreat && isThreatNearOwnGoal(opponentPos, defenderTeam);
+            int maxZoneGap = nearGoalCarrierThreat ? 2 : 1;
+            if (zoneGap > maxZoneGap) {
+                continue;
+            }
+
+            int nearbyMarkers = countNearbyDefenders(
+                    rt,
+                    defenderTeam,
+                    opponentPos,
+                    pos.getId(),
+                    nearGoalCarrierThreat ? DEFENSIVE_MARK_RADIUS + 2.5 : DEFENSIVE_MARK_RADIUS
+            );
+            if (nearbyMarkers > 0 && !carrierThreat) {
+                continue;
+            }
+
+            double distancePenalty = Math.min(nearGoalCarrierThreat ? 30.0 : 24.0, distanceBetween(pos, opponentPos))
+                    * (nearGoalCarrierThreat ? 0.014 : 0.018);
+            double score = reactionWeight
+                    + (carrierThreat ? (nearGoalCarrierThreat ? 0.92 : 0.58) : 0.18)
+                    + (nearbyMarkers == 0 ? 0.20 : 0.0)
+                    + (nearGoalCarrierThreat ? 0.22 : 0.0)
+                    - zoneGap * (nearGoalCarrierThreat ? 0.08 : 0.16)
+                    - distancePenalty;
+
+            if (nearGoalCarrierThreat && player.getPosition() == Position.MID) {
+                score += 0.10;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestThreat = opponent;
+            }
+        }
+
+        return bestThreat;
+    }
+
+    private int countNearbyDefenders(MatchRuntime rt, String defenderTeam, PlayerPositionDTO opponentPos, int excludePlayerId) {
+        return countNearbyDefenders(rt, defenderTeam, opponentPos, excludePlayerId, DEFENSIVE_MARK_RADIUS);
+    }
+
+    private int countNearbyDefenders(MatchRuntime rt,
+                                     String defenderTeam,
+                                     PlayerPositionDTO opponentPos,
+                                     int excludePlayerId,
+                                     double radius) {
+        List<Player> defenders = "HOME".equals(defenderTeam) ? rt.homePlayers : rt.awayPlayers;
+        return (int) defenders.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .filter(player -> player.getId() != null && Math.toIntExact(player.getId()) != excludePlayerId)
+                .map(player -> getPlayerPosition(rt, player))
+                .filter(Objects::nonNull)
+                .filter(defPos -> distanceBetween(defPos, opponentPos) <= radius)
+                .count();
+    }
+
+    private boolean isThreatNearOwnGoal(PlayerPositionDTO opponentPos, String defenderTeam) {
+        double distanceToGoal = "HOME".equals(defenderTeam) ? opponentPos.getX() : 100.0 - opponentPos.getX();
+        return distanceToGoal <= DANGER_PRESS_DISTANCE_TO_GOAL;
+    }
+
+    private double defensiveReactionWeight(Position position) {
+        return switch (position) {
+            case DEF -> 0.78;
+            case MID -> 0.58;
+            case WNG -> 0.16;
+            case ATT -> 0.08;
+            default -> 0.0;
+        };
+    }
+
+    private double defensiveReactionThreshold(Position position) {
+        return switch (position) {
+            case DEF -> 0.50;
+            case MID -> 0.58;
+            case WNG -> 0.92;
+            case ATT -> 1.06;
+            default -> Double.MAX_VALUE;
+        };
+    }
+
+    private double applyDefensiveLineDiscipline(MatchRuntime rt,
+                                                PlayerPositionDTO pos,
+                                                Player player,
+                                                double targetX,
+                                                boolean inPossession,
+                                                boolean homeTeam) {
+        if (player.getPosition() != Position.DEF || inPossession || rt.ball == null) {
+            return targetX;
+        }
+
+        double disciplinedGap = DEFENSIVE_LINE_GAP * TACTICAL_DISCIPLINE;
+        double minLine = homeTeam ? 18.0 : 58.0;
+        double maxLine = homeTeam ? 42.0 : 82.0;
+        double disciplinedLine = homeTeam
+                ? clamp(rt.ball.getX() - disciplinedGap, minLine, maxLine)
+                : clamp(rt.ball.getX() + disciplinedGap, minLine, maxLine);
+
+        Player strikerThreat = findCenterBackThreat(rt, pos, pos.getTeam());
+        if (strikerThreat != null) {
+            PlayerPositionDTO threatPos = getPlayerPosition(rt, strikerThreat);
+            if (threatPos != null) {
+                double coverLine = homeTeam
+                        ? clamp(threatPos.getX() - (DEFENSIVE_COVER_GAP * TACTICAL_DISCIPLINE), minLine, maxLine)
+                        : clamp(threatPos.getX() + (DEFENSIVE_COVER_GAP * TACTICAL_DISCIPLINE), minLine, maxLine);
+                disciplinedLine = homeTeam
+                        ? Math.min(disciplinedLine, coverLine)
+                        : Math.max(disciplinedLine, coverLine);
+            }
+        }
+
+        return homeTeam ? Math.max(targetX, disciplinedLine) : Math.min(targetX, disciplinedLine);
+    }
+
+    private int defensivePressurePriority(Position position) {
+        return switch (position) {
+            case DEF -> 0;
+            case MID -> 1;
+            case WNG -> 2;
+            case ATT -> 3;
+            default -> 4;
+        };
     }
 
     private double baseAnchorX(Player player, String team, boolean inPossession) {
@@ -1714,6 +2544,15 @@ public class RealisticMatchEngine {
             return carrier.getX() >= 84.0 && carrier.getY() >= 22.0 && carrier.getY() <= 78.0;
         }
         return carrier.getX() <= 16.0 && carrier.getY() >= 22.0 && carrier.getY() <= 78.0;
+    }
+
+    private boolean isPenaltyFoulLocation(PlayerPositionDTO carrier, boolean attacksRight) {
+        if (!isInPenaltyBox(carrier, attacksRight)) {
+            return false;
+        }
+        double canonicalX = attacksRight ? carrier.getX() : 100.0 - carrier.getX();
+        double centralGap = Math.abs(carrier.getY() - 50.0);
+        return canonicalX >= 86.5 && centralGap <= 20.0;
     }
 
     private double estimateDistanceToGoal(MatchRuntime rt, Player player, String team) {
@@ -1789,7 +2628,35 @@ public class RealisticMatchEngine {
                 && (rt.tick - rt.lastRecoveryTick) <= SHOT_WINDOW_TICKS
                 && isOnOpponentHalf(ballTeam, rt.lastRecoveryX);
 
-        return receivedShotPass || wonDuelHigh || recoveredHigh;
+        return receivedShotPass || wonDuelHigh || recoveredHigh
+                || hasCloseRangeCarryShotWindow(rt, shooter, ballTeam, goalDistance, nearbyDefenders);
+    }
+
+    private boolean hasCloseRangeCarryShotWindow(MatchRuntime rt,
+                                                 Player shooter,
+                                                 String ballTeam,
+                                                 double goalDistance,
+                                                 List<Player> nearbyDefenders) {
+        if (shooter == null || shooter.getPosition() == Position.GK) {
+            return false;
+        }
+        if (goalDistance <= 17.5) {
+            return true;
+        }
+        if (goalDistance <= 21.5) {
+            return nearbyDefenders.size() <= 1;
+        }
+        return goalDistance <= SHOT_TRIGGER_DISTANCE
+                && nearbyDefenders.isEmpty()
+                && isCentralShootingLane(rt, shooter, ballTeam);
+    }
+
+    private boolean isCentralShootingLane(MatchRuntime rt, Player shooter, String ballTeam) {
+        PlayerPositionDTO pos = getPlayerPosition(rt, shooter);
+        if (pos == null || !isDangerousAttackingPosition(rt, shooter, ballTeam)) {
+            return false;
+        }
+        return Math.abs(pos.getY() - 50.0) <= 18.0;
     }
 
     private boolean isOnOpponentHalf(MatchRuntime rt, Player player, String team) {
@@ -1812,12 +2679,13 @@ public class RealisticMatchEngine {
         if (goal == null && penalty == null) {
             return;
         }
-        if (random.nextDouble() >= 0.20) {
+        double reviewChance = goal != null ? VAR_GOAL_REVIEW_CHANCE : VAR_PENALTY_REVIEW_CHANCE;
+        if (random.nextDouble() >= reviewChance) {
             return;
         }
 
         rt.activeStoppage = MatchRuntime.StoppageType.VAR_REVIEW;
-        rt.stoppageTicks = Math.max(rt.stoppageTicks, 4);
+        rt.stoppageTicks = Math.max(rt.stoppageTicks, penalty != null ? 5 : 4);
 
         VARReviewEvent var = new VARReviewEvent();
         var.setMinute(minute);
@@ -1880,15 +2748,34 @@ public class RealisticMatchEngine {
 
         boolean homeAttack = "HOME".equals(attackingTeam);
         double offsideLine = calculateOffsideLine(rt, attackingTeam);
-        boolean aheadOfBall = homeAttack
-                ? receiverPos.getX() > passerPos.getX() + 1.0
-                : receiverPos.getX() < passerPos.getX() - 1.0;
+        double forwardProgress = homeAttack
+                ? receiverPos.getX() - passerPos.getX()
+                : passerPos.getX() - receiverPos.getX();
+        double lateralGap = Math.abs(receiverPos.getY() - passerPos.getY());
+        if (!isLikelyOffsideTargetLane(forwardProgress, lateralGap)) {
+            return false;
+        }
+
+        boolean aheadOfBall = forwardProgress > 1.0;
         boolean inOppositionHalf = homeAttack ? receiverPos.getX() > 50.0 : receiverPos.getX() < 50.0;
         boolean beyondLine = homeAttack
                 ? receiverPos.getX() > offsideLine + 1.0
                 : receiverPos.getX() < offsideLine - 1.0;
 
         return aheadOfBall && inOppositionHalf && beyondLine;
+    }
+
+    private boolean isLikelyOffsideTargetLane(double forwardProgress, double lateralGap) {
+        if (forwardProgress <= 2.4) {
+            return false;
+        }
+        if (lateralGap <= 18.0) {
+            return true;
+        }
+        if (lateralGap >= 30.0 && forwardProgress <= 12.0) {
+            return false;
+        }
+        return (lateralGap / Math.max(1.0, forwardProgress)) <= 2.4;
     }
 
     private double calculateOffsideLine(MatchRuntime rt, String attackingTeam) {
@@ -1914,7 +2801,7 @@ public class RealisticMatchEngine {
     private double applyOffsideTolerance(MatchRuntime rt, PlayerPositionDTO pos, double targetX, boolean homeTeam) {
         String possessionTeam = resolvePossessionTeam(rt);
         if (!Objects.equals(possessionTeam, pos.getTeam())) {
-            pos.setOffsideTicksRemaining(0);
+            rt.offsideStreak.remove(pos.getId());
             pos.setRetreatTicksRemaining(0);
             return targetX;
         }
@@ -1924,12 +2811,15 @@ public class RealisticMatchEngine {
         double safeLine = homeTeam ? line - ONSIDE_BUFFER : line + ONSIDE_BUFFER;
         boolean isOffside = homeTeam ? pos.getX() > line + tolerance : pos.getX() < line - tolerance;
         if (!isOffside) {
-            pos.setOffsideTicksRemaining(0);
+            rt.offsideStreak.remove(pos.getId());
             pos.setRetreatTicksRemaining(0);
             return homeTeam ? Math.min(targetX, safeLine) : Math.max(targetX, safeLine);
         }
 
-        if (pos.getOffsideTicksRemaining() >= 2) {
+        int streak = rt.offsideStreak.getOrDefault(pos.getId(), 0) + 1;
+        rt.offsideStreak.put(pos.getId(), streak);
+
+        if (streak >= OFFSIDE_RETREAT_TRIGGER_STREAK) {
             if (pos.getRetreatTicksRemaining() < MAX_RETREAT_TICKS) {
                 pos.setRetreatTicksRemaining(pos.getRetreatTicksRemaining() + 1);
             }
@@ -1940,7 +2830,6 @@ public class RealisticMatchEngine {
             targetX = homeTeam ? Math.min(targetX, safeLine) : Math.max(targetX, safeLine);
         }
 
-        pos.setOffsideTicksRemaining(pos.getOffsideTicksRemaining() + 1);
         return targetX;
     }
 
@@ -1985,87 +2874,166 @@ public class RealisticMatchEngine {
     }
 
     /**
-     * Resets players to their formation zones for a restart (Goal, Offside, Goal Kick)
-     * Now performs a smooth transition over multiple ticks instead of teleporting.
+     * Resets players to restart targets without synthetic replay ticks.
+     * The restart team snaps into shape while the non-restarting side blends on ordinary restarts
+     * so transitions look less teleport-like.
      */
     private void resetPositionsForRestart(MatchRuntime rt, String teamInPossession) {
-        // 1. Determine target positions for all players
-        Map<Integer, double[]> targetMap = new HashMap<>();
-        
-        double[] homeFormation = getHomeFormationPositions();
-        List<Player> homeSorted = rt.homePlayers.stream()
-                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), "HOME")))
-                .toList();
-        for (int i = 0; i < homeSorted.size(); i++) {
-            targetMap.put(Math.toIntExact(homeSorted.get(i).getId()), 
-                    new double[]{homeFormation[i * 2], homeFormation[i * 2 + 1]});
-        }
-        
-        double[] awayFormation = getAwayFormationPositions();
-        List<Player> awaySorted = rt.awayPlayers.stream()
-                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), "AWAY")))
-                .toList();
-        for (int i = 0; i < awaySorted.size(); i++) {
-            targetMap.put(Math.toIntExact(awaySorted.get(i).getId()), 
-                    new double[]{awayFormation[i * 2], awayFormation[i * 2 + 1]});
-        }
-        
-        // 2. Transition over multiple ticks
-        int transitionTicks = 12; // About 1.5 - 2 seconds of smooth movement
-        for (int t = 0; t < transitionTicks; t++) {
-            rt.tick++; // Advance game clock during transition
-            final int remainingSteps = transitionTicks - t;
-            
-            rt.players.forEach(pos -> {
-                double[] target = targetMap.get(pos.getId());
-                if (target != null) {
-                    double dx = target[0] - pos.getX();
-                    double dy = target[1] - pos.getY();
-                    double dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist > 0.1) {
-                        // Move a fraction of the remaining distance
-                        double step = dist / remainingSteps;
-                        pos.setX(pos.getX() + dx * (step / dist));
-                        pos.setY(pos.getY() + dy * (step / dist));
-                    }
-                }
-            });
-            
-            // Move ball slowly towards the center if needed, or just let it stay
-            if (rt.ball != null && rt.currentCarrier == null) {
-               // Optional: move ball towards center or restart spot
+        resetPositionsForRestart(rt, teamInPossession, "STANDARD");
+    }
+
+    private void resetPositionsForRestart(MatchRuntime rt, String teamInPossession, String restartType) {
+        Map<Integer, double[]> targetMap = buildRestartTargetMap(rt, teamInPossession, restartType);
+        rt.players.forEach(pos -> {
+            double[] target = targetMap.get(pos.getId());
+            if (target == null) {
+                return;
             }
-            
-            rt.recordTick();
+            if (shouldBlendRestartPosition(restartType, teamInPossession, pos)) {
+                double blendRatio = "KICKOFF".equals(restartType) ? KICKOFF_RESTART_BLEND_RATIO : RESTART_BLEND_RATIO;
+                pos.setX(blendRestartCoordinate(pos.getX(), target[0], blendRatio, RESTART_BLEND_MAX_X_SHIFT));
+                pos.setY(blendRestartCoordinate(pos.getY(), target[1], blendRatio, RESTART_BLEND_MAX_Y_SHIFT));
+            } else {
+                pos.setX(target[0]);
+                pos.setY(target[1]);
+            }
+            pos.setOffsideTicksRemaining(0);
+            pos.setRetreatTicksRemaining(0);
+        });
+
+        rt.currentCarrier = null;
+        rt.ballInTransit = false;
+        rt.ballTransitCanBeIntercepted = false;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = 0;
+        rt.ballTransitMode = "CONTROLLED";
+        log.debug("Applied immediate restart positioning for {}", restartType);
+    }
+
+    private boolean shouldBlendRestartPosition(String restartType, String teamInPossession, PlayerPositionDTO pos) {
+        if (pos == null || teamInPossession == null) {
+            return false;
         }
-        
-        log.debug("Smooth transition finished for restart ({} ticks)", transitionTicks);
+        if ("GOAL_KICK".equals(restartType) || "CORNER".equals(restartType)) {
+            return false;
+        }
+        return !Objects.equals(teamInPossession, pos.getTeam());
+    }
+
+    private double blendRestartCoordinate(double current, double target, double blendRatio, double maxShift) {
+        double delta = target - current;
+        if (Math.abs(delta) <= 2.5) {
+            return target;
+        }
+        double blended = current + clamp(delta * blendRatio, -maxShift, maxShift);
+        return Math.abs(target - blended) <= 1.5 ? target : blended;
     }
 
     private Player selectRestartPlayer(MatchRuntime rt, String team) {
+        return selectRestartPlayer(rt, team, "STANDARD");
+    }
+
+    private Player selectRestartPlayer(MatchRuntime rt, String team, String restartType) {
         List<Player> players = "HOME".equals(team) ? rt.homePlayers : rt.awayPlayers;
-        
-        // 1. Prefer Goalkeeper
-        Player gk = players.stream()
-                .filter(p -> p.getPosition() == Position.GK)
+        List<Player> fieldPlayers = players.stream()
+                .filter(player -> player.getPosition() != Position.GK)
+                .toList();
+        if (fieldPlayers.isEmpty()) {
+            return players.isEmpty() ? null : players.getFirst();
+        }
+
+        List<Position> preferenceOrder = switch (restartType) {
+            case "KICKOFF" -> List.of(Position.MID, Position.ATT, Position.WNG, Position.DEF);
+            case "DEFENSIVE_RESTART" -> List.of(Position.DEF, Position.MID, Position.WNG, Position.ATT);
+            default -> List.of(Position.DEF, Position.MID, Position.WNG, Position.ATT);
+        };
+
+        for (Position preferredPosition : preferenceOrder) {
+            List<Player> candidates = fieldPlayers.stream()
+                    .filter(player -> player.getPosition() == preferredPosition)
+                    .toList();
+            if (!candidates.isEmpty()) {
+                return candidates.get(random.nextInt(candidates.size()));
+            }
+        }
+
+        return fieldPlayers.getFirst();
+    }
+
+    private Player selectGoalKickTaker(MatchRuntime rt, String team, double preferredY) {
+        List<Player> players = "HOME".equals(team) ? rt.homePlayers : rt.awayPlayers;
+
+        Player defender = players.stream()
+                .filter(player -> player.getPosition() == Position.DEF)
+                .min(Comparator.comparingDouble(player -> {
+                    PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                    double laneDistance = pos != null ? Math.abs(pos.getY() - preferredY) : 100.0;
+                    double depthPenalty = pos != null
+                            ? Math.abs(pos.getX() - ("HOME".equals(team) ? 18.0 : 82.0)) * 0.2
+                            : 8.0;
+                    return laneDistance + depthPenalty;
+                }))
+                .orElse(null);
+        if (defender != null) {
+            return defender;
+        }
+
+        return players.stream()
+                .filter(player -> player.getPosition() != Position.GK)
                 .findFirst()
                 .orElse(null);
-        if (gk != null && random.nextDouble() < 0.7) return gk;
+    }
 
-        // 2. Prefer Defenders
-        List<Player> defenders = players.stream()
-                .filter(p -> p.getPosition() == Position.DEF)
-                .toList();
-                
-        if (!defenders.isEmpty()) {
-            return defenders.get(random.nextInt(defenders.size()));
+    private Player setupGoalKickRestart(MatchRuntime rt,
+                                        Match match,
+                                        int minute,
+                                        String restartTeam,
+                                        boolean homeGoalSide,
+                                        boolean upperSide) {
+        double goalKickX = homeGoalSide ? 8.8 : 91.2;
+        double goalKickY = upperSide ? 38.0 : 62.0;
+        Player restartPlayer = selectGoalKickTaker(rt, restartTeam, goalKickY);
+
+        positionGoalKickActors(rt, restartTeam, restartPlayer, goalKickX, goalKickY);
+        eventGenerator.createGoalKickEvent(rt, match, minute, restartTeam, restartPlayer);
+        recordStoppagePause(rt, MatchRuntime.StoppageType.GOAL_KICK, RESTART_PAUSE_TICKS);
+
+        if (restartPlayer != null && restartPlayer.getId() != null) {
+            releaseBall(rt, restartPlayer, restartTeam, Math.toIntExact(restartPlayer.getId()), null, 5.0);
         }
-        
-        // 3. Last resort: any non-striker
-        return players.stream()
-                .filter(p -> p.getPosition() != Position.ATT && p.getPosition() != Position.WNG)
-                .findFirst()
-                .orElse(players.isEmpty() ? null : players.getFirst());
+        return restartPlayer;
+    }
+
+    private void positionGoalKickActors(MatchRuntime rt,
+                                        String restartTeam,
+                                        Player restartPlayer,
+                                        double ballX,
+                                        double ballY) {
+        rt.ball = new BallPositionDTO(ballX, ballY);
+
+        if (restartPlayer != null) {
+            PlayerPositionDTO takerPos = getPlayerPosition(rt, restartPlayer);
+            if (takerPos != null) {
+                takerPos.setX(ballX);
+                takerPos.setY(ballY);
+            }
+        }
+
+        Player goalkeeper = getGoalkeeper(rt, restartTeam);
+        if (goalkeeper != null && !samePlayer(goalkeeper, restartPlayer)) {
+            PlayerPositionDTO goalkeeperPos = getPlayerPosition(rt, goalkeeper);
+            if (goalkeeperPos != null) {
+                goalkeeperPos.setX("HOME".equals(restartTeam) ? 8.5 : 91.5);
+                goalkeeperPos.setY(50.0);
+            }
+        }
+    }
+
+    private boolean samePlayer(Player first, Player second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        return Objects.equals(first.getId(), second.getId());
     }
 
     private Player selectWideRestartPlayer(MatchRuntime rt, String team, boolean upperSide) {
@@ -2090,6 +3058,502 @@ public class RealisticMatchEngine {
 
     private String oppositeTeam(String team) {
         return "HOME".equals(team) ? "AWAY" : "HOME";
+    }
+
+    private void initializeTacticalProfiles(MatchRuntime rt, Match match) {
+        String homeFormation = match.getHomeLineup() != null ? match.getHomeLineup().getFormation() : null;
+        String awayFormation = match.getAwayLineup() != null ? match.getAwayLineup().getFormation() : null;
+
+        rt.homeSlots = new ArrayList<>(teamTacticsService.getSlotDefinitions(homeFormation));
+        rt.awaySlots = new ArrayList<>(teamTacticsService.getSlotDefinitions(awayFormation));
+        rt.homeTacticalTargets = match.getHomeTeam() != null && match.getHomeTeam().getId() != null
+                ? new HashMap<>(teamTacticsService.getRuntimeRuleMap(match.getHomeTeam().getId(), homeFormation))
+                : new HashMap<>();
+        rt.awayTacticalTargets = match.getAwayTeam() != null && match.getAwayTeam().getId() != null
+                ? new HashMap<>(teamTacticsService.getRuntimeRuleMap(match.getAwayTeam().getId(), awayFormation))
+                : new HashMap<>();
+
+        mapPlayerSlots(rt, match.getHomeLineup() != null ? match.getHomeLineup().getOrderedStartingPlayers() : rt.homePlayers, rt.homeSlots);
+        mapPlayerSlots(rt, match.getAwayLineup() != null ? match.getAwayLineup().getOrderedStartingPlayers() : rt.awayPlayers, rt.awaySlots);
+    }
+
+    private void mapPlayerSlots(MatchRuntime rt, List<Player> orderedPlayers, List<TacticsSlotDTO> slots) {
+        if (orderedPlayers == null || slots == null) {
+            return;
+        }
+        int limit = Math.min(orderedPlayers.size(), slots.size());
+        for (int i = 0; i < limit; i++) {
+            Player player = orderedPlayers.get(i);
+            if (player != null && player.getId() != null && slots.get(i) != null) {
+                rt.playerSlotKeys.put(Math.toIntExact(player.getId()), slots.get(i).getSlotKey());
+            }
+        }
+    }
+
+    private void placeTeamInFormation(List<PlayerPositionDTO> targetPositions,
+                                      List<Player> orderedPlayers,
+                                      String team,
+                                      List<TacticsSlotDTO> slots,
+                                      double[] fallbackFormation) {
+        if (orderedPlayers == null || orderedPlayers.isEmpty()) {
+            return;
+        }
+
+        if (slots != null && !slots.isEmpty()) {
+            int limit = Math.min(orderedPlayers.size(), slots.size());
+            for (int i = 0; i < limit; i++) {
+                Player player = orderedPlayers.get(i);
+                if (player == null || player.getId() == null) {
+                    continue;
+                }
+                double[] anchor = anchorCellToPitch(slots.get(i).getAnchorCellKey(), team);
+                targetPositions.add(new PlayerPositionDTO(
+                        Math.toIntExact(player.getId()),
+                        team,
+                        anchor[0] + (random.nextDouble() - 0.5) * 2,
+                        anchor[1] + (random.nextDouble() - 0.5) * 2,
+                        0, 0
+                ));
+            }
+            return;
+        }
+
+        List<Player> sorted = orderedPlayers.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), team)))
+                .toList();
+        int limit = Math.min(sorted.size(), fallbackFormation.length / 2);
+        for (int i = 0; i < limit; i++) {
+            Player player = sorted.get(i);
+            targetPositions.add(new PlayerPositionDTO(
+                    Math.toIntExact(player.getId()),
+                    team,
+                    fallbackFormation[i * 2] + (random.nextDouble() - 0.5) * 2,
+                    fallbackFormation[i * 2 + 1] + (random.nextDouble() - 0.5) * 2,
+                    0, 0
+            ));
+        }
+    }
+
+    private void reassignTacticalSlot(MatchRuntime rt, Player playerOut, Player playerIn) {
+        if (playerOut == null || playerOut.getId() == null || playerIn == null || playerIn.getId() == null) {
+            return;
+        }
+        String slotKey = rt.playerSlotKeys.remove(Math.toIntExact(playerOut.getId()));
+        if (slotKey != null) {
+            rt.playerSlotKeys.put(Math.toIntExact(playerIn.getId()), slotKey);
+        }
+    }
+
+    private double[] resolveTacticalTarget(MatchRuntime rt, PlayerPositionDTO pos, Player player, boolean inPossession) {
+        String team = pos.getTeam();
+        String slotKey = rt.playerSlotKeys.get(pos.getId());
+        if (slotKey == null) {
+            return null;
+        }
+        Map<String, String> targetMap = "HOME".equals(team) ? rt.homeTacticalTargets : rt.awayTacticalTargets;
+        if (targetMap == null || targetMap.isEmpty()) {
+            return null;
+        }
+        String possessionContext = inPossession ? FormationSlotCatalog.WE_HAVE_BALL : FormationSlotCatalog.OPPONENT_HAS_BALL;
+        String ballStateKey = resolveBallStateKey(rt, team);
+        String targetCellKey = targetMap.get(slotKey + "|" + ballStateKey + "|" + possessionContext);
+        if (targetCellKey == null) {
+            return null;
+        }
+
+        double[] target = tacticalCellToPitch(targetCellKey, team);
+        if (player.getPosition() == Position.GK) {
+            double goalX = "HOME".equals(team) ? 8.0 : 92.0;
+            double tacticalX = goalX + (target[0] - goalX) * 0.16;
+            double trackedX = goalX + (rt.ball.getX() - goalX) * 0.06;
+            double tacticalY = 50.0 + (target[1] - 50.0) * 0.12;
+            double trackedY = 50.0 + (rt.ball.getY() - 50.0) * 0.10;
+            double minX = "HOME".equals(team) ? goalX - 0.5 : goalX - GOALKEEPER_TACTICAL_MAX_X_DRIFT;
+            double maxX = "HOME".equals(team) ? goalX + GOALKEEPER_TACTICAL_MAX_X_DRIFT : goalX + 0.5;
+            target[0] = clamp((tacticalX * 0.45) + (trackedX * 0.55), minX, maxX);
+            target[1] = clamp((tacticalY * 0.45) + (trackedY * 0.55),
+                    50.0 - GOALKEEPER_TACTICAL_MAX_Y_DRIFT,
+                    50.0 + GOALKEEPER_TACTICAL_MAX_Y_DRIFT);
+        }
+        return target;
+    }
+
+    private boolean isGoalkeeperProtectingGoal(MatchRuntime rt, Player goalkeeper, String defendingTeam) {
+        if (goalkeeper == null) {
+            return false;
+        }
+
+        PlayerPositionDTO goalkeeperPos = getPlayerPosition(rt, goalkeeper);
+        if (goalkeeperPos == null) {
+            return false;
+        }
+
+        double goalX = "HOME".equals(defendingTeam) ? 8.0 : 92.0;
+        double xGap = Math.abs(goalkeeperPos.getX() - goalX);
+        double yGap = Math.abs(goalkeeperPos.getY() - 50.0);
+        return xGap <= GOALKEEPER_SHOT_COVERAGE_X && yGap <= GOALKEEPER_SHOT_COVERAGE_Y;
+    }
+
+    private String resolveBallStateKey(MatchRuntime rt, String team) {
+        BallPositionDTO ball = rt.ball != null ? rt.ball : new BallPositionDTO(50, 50);
+        double canonicalX = "HOME".equals(team) ? ball.getX() : 100.0 - ball.getX();
+        double canonicalY = "HOME".equals(team) ? ball.getY() : 100.0 - ball.getY();
+
+        if (canonicalX >= 88.0 && canonicalY <= 18.0) return "ATTACK_LEFT_CORNER";
+        if (canonicalX >= 88.0 && canonicalY >= 82.0) return "ATTACK_RIGHT_CORNER";
+        if (canonicalX <= 12.0 && canonicalY <= 18.0) return "DEFEND_LEFT_CORNER";
+        if (canonicalX <= 12.0 && canonicalY >= 82.0) return "DEFEND_RIGHT_CORNER";
+
+        int progressBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(canonicalX, 0.0, 99.999) / 20.0)));
+        int widthBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(canonicalY, 0.0, 99.999) / 20.0)));
+        return "CELL_" + progressBand + "_" + widthBand;
+    }
+
+    private Map<Integer, double[]> buildRestartTargetMap(MatchRuntime rt) {
+        return buildRestartTargetMap(rt, null, "STANDARD");
+    }
+
+    private Map<Integer, double[]> buildRestartTargetMap(MatchRuntime rt, String teamInPossession, String restartType) {
+        Map<Integer, double[]> targetMap = new HashMap<>();
+        populateFormationTargets(targetMap, rt.homePlayers, "HOME", rt.homeSlots, getHomeFormationPositions());
+        populateFormationTargets(targetMap, rt.awayPlayers, "AWAY", rt.awaySlots, getAwayFormationPositions());
+        anchorGoalkeeperRestartPosition(targetMap, rt.homePlayers, "HOME");
+        anchorGoalkeeperRestartPosition(targetMap, rt.awayPlayers, "AWAY");
+        if ("KICKOFF".equals(restartType) && teamInPossession != null) {
+            applyKickoffSpacing(targetMap, rt, teamInPossession);
+        }
+        if ("GOAL_KICK".equals(restartType) && teamInPossession != null) {
+            applyGoalKickSpacing(targetMap, rt, teamInPossession);
+        }
+        return targetMap;
+    }
+
+    private void anchorGoalkeeperRestartPosition(Map<Integer, double[]> targetMap, List<Player> players, String team) {
+        if (players == null) {
+            return;
+        }
+        players.stream()
+                .filter(player -> player != null && player.getPosition() == Position.GK && player.getId() != null)
+                .findFirst()
+                .ifPresent(goalkeeper -> targetMap.put(
+                        Math.toIntExact(goalkeeper.getId()),
+                        new double[]{"HOME".equals(team) ? 8.5 : 91.5, 50.0}
+                ));
+    }
+
+    private void applyKickoffSpacing(Map<Integer, double[]> targetMap, MatchRuntime rt, String restartTeam) {
+        List<Player> inPossession = "HOME".equals(restartTeam) ? rt.homePlayers : rt.awayPlayers;
+        List<Player> kickoffCandidates = inPossession.stream()
+                .filter(player -> player != null && player.getId() != null && player.getPosition() != Position.GK)
+                .sorted(Comparator.comparingInt(player -> switch (player.getPosition()) {
+                    case MID -> 0;
+                    case ATT -> 1;
+                    case WNG -> 2;
+                    case DEF -> 3;
+                    default -> 4;
+                }))
+                .toList();
+
+        if (!kickoffCandidates.isEmpty()) {
+            targetMap.put(Math.toIntExact(kickoffCandidates.getFirst().getId()), new double[]{50.0, 50.0});
+        }
+        if (kickoffCandidates.size() > 1) {
+            double supportX = "HOME".equals(restartTeam) ? 47.0 : 53.0;
+            targetMap.put(Math.toIntExact(kickoffCandidates.get(1).getId()), new double[]{supportX, 50.0});
+        }
+    }
+
+    private void applyGoalKickSpacing(Map<Integer, double[]> targetMap, MatchRuntime rt, String restartTeam) {
+        List<Player> inPossession = "HOME".equals(restartTeam) ? rt.homePlayers : rt.awayPlayers;
+        List<Player> opponents = "HOME".equals(restartTeam) ? rt.awayPlayers : rt.homePlayers;
+
+        double defenderLaneX = "HOME".equals(restartTeam) ? 16.0 : 84.0;
+        double midfielderLaneX = "HOME".equals(restartTeam) ? 22.0 : 78.0;
+
+        List<Player> defenders = inPossession.stream()
+                .filter(player -> player != null && player.getId() != null && player.getPosition() == Position.DEF)
+                .sorted(Comparator.comparingDouble(player -> {
+                    PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                    return pos != null ? pos.getY() : 50.0;
+                }))
+                .toList();
+        for (int i = 0; i < Math.min(2, defenders.size()); i++) {
+            targetMap.put(Math.toIntExact(defenders.get(i).getId()), new double[]{defenderLaneX, i == 0 ? 36.0 : 64.0});
+        }
+
+        List<Player> midfielders = inPossession.stream()
+                .filter(player -> player != null && player.getId() != null && player.getPosition() == Position.MID)
+                .sorted(Comparator.comparingDouble(player -> {
+                    PlayerPositionDTO pos = getPlayerPosition(rt, player);
+                    return pos != null ? pos.getY() : 50.0;
+                }))
+                .toList();
+        for (int i = 0; i < Math.min(2, midfielders.size()); i++) {
+            targetMap.put(Math.toIntExact(midfielders.get(i).getId()), new double[]{midfielderLaneX, i == 0 ? 42.0 : 58.0});
+        }
+
+        for (Player player : opponents) {
+            if (player == null || player.getId() == null) {
+                continue;
+            }
+            double[] currentTarget = targetMap.getOrDefault(
+                    Math.toIntExact(player.getId()),
+                    positionToArray(getPlayerPosition(rt, player))
+            );
+            if (currentTarget == null) {
+                continue;
+            }
+            if (!isInsidePenaltyArea(currentTarget[0], currentTarget[1], restartTeam)) {
+                PlayerPositionDTO currentPos = getPlayerPosition(rt, player);
+                if (currentPos == null || !isInsidePenaltyArea(currentPos.getX(), currentPos.getY(), restartTeam)) {
+                    continue;
+                }
+            }
+
+            double exitX = "HOME".equals(restartTeam) ? GOAL_KICK_EXIT_X : 100.0 - GOAL_KICK_EXIT_X;
+            double laneOffset = ((Math.toIntExact(player.getId()) % 5) - 2) * 3.5;
+            double targetY = clamp(currentTarget[1] + laneOffset, MIN_Y + 1.0, MAX_Y - 1.0);
+            targetMap.put(Math.toIntExact(player.getId()), new double[]{exitX, targetY});
+        }
+    }
+
+    private void beginBallTransit(MatchRuntime rt,
+                                  double startX,
+                                  double startY,
+                                  double targetX,
+                                  double targetY,
+                                  Integer pendingReceiverId,
+                                  Integer pendingPasserId,
+                                  String pendingPassTeam,
+                                  String lastTouchTeam,
+                                  String transitMode,
+                                  boolean canBeIntercepted) {
+        double distance = Math.hypot(targetX - startX, targetY - startY);
+        rt.currentCarrier = null;
+        rt.ballInTransit = true;
+        rt.ballTransitCanBeIntercepted = canBeIntercepted;
+        rt.ballTransitStartX = startX;
+        rt.ballTransitStartY = startY;
+        rt.ballTransitTargetX = targetX;
+        rt.ballTransitTargetY = targetY;
+        rt.ballTransitTicks = 0;
+        rt.ballTransitMaxTicks = Math.max(2, Math.min(canBeIntercepted ? 6 : 5, (int) Math.round(distance / (canBeIntercepted ? 6.2 : 5.0))));
+        rt.pendingReceiverId = pendingReceiverId;
+        rt.pendingPasserId = pendingPasserId;
+        rt.pendingPassTeam = pendingPassTeam;
+        rt.lastTouchTeam = lastTouchTeam;
+        rt.ballTransitMode = transitMode;
+        rt.ball = new BallPositionDTO(startX, startY);
+    }
+
+    private String classifyPassTransitMode(PlayerPositionDTO passerPos, PlayerPositionDTO receiverPos, String team) {
+        double distance = distanceBetween(passerPos, receiverPos);
+        double progress = "HOME".equals(team)
+                ? receiverPos.getX() - passerPos.getX()
+                : passerPos.getX() - receiverPos.getX();
+        boolean wideDelivery = Math.abs(passerPos.getY() - 50.0) >= 24.0
+                && Math.abs(receiverPos.getY() - 50.0) <= 18.0
+                && progress >= 8.0;
+        if (wideDelivery && distance >= 15.0) {
+            return "CROSS";
+        }
+        if (distance >= 18.0) {
+            return "LOFTED_PASS";
+        }
+        return "GROUND_PASS";
+    }
+
+    private double boundTransitTarget(double value, double min, double max, String transitMode) {
+        double buffer = switch (transitMode) {
+            case "CROSS" -> 6.5;
+            case "LOFTED_PASS" -> 3.5;
+            case "GROUND_PASS" -> 1.6;
+            case "DEFLECTION" -> 7.5;
+            default -> 0.0;
+        };
+        return clamp(value, min - buffer, max + buffer);
+    }
+
+    private boolean shouldTriggerCarrierOutOfBounds(MatchRuntime rt, Player ballCarrier, String ballTeam) {
+        PlayerPositionDTO carrierPos = getPlayerPosition(rt, ballCarrier);
+        if (carrierPos == null) {
+            return false;
+        }
+        boolean nearBoundary = carrierPos.getX() <= MIN_X + 4.0
+                || carrierPos.getX() >= MAX_X - 4.0
+                || carrierPos.getY() <= MIN_Y + 4.0
+                || carrierPos.getY() >= MAX_Y - 4.0;
+        if (!nearBoundary) {
+            return false;
+        }
+        double pressureBoost = Math.min(0.16, getNearbyDefenders(rt, ballCarrier, ballTeam).size() * 0.05);
+        return random.nextDouble() < 0.05 + pressureBoost;
+    }
+
+    private boolean shouldTriggerShotDeflection(MatchRuntime rt, Player shooter, Player blocker, boolean openGoal) {
+        PlayerPositionDTO shooterPos = getPlayerPosition(rt, shooter);
+        PlayerPositionDTO blockerPos = getPlayerPosition(rt, blocker);
+        if (shooterPos == null || blockerPos == null) {
+            return false;
+        }
+        double distance = distanceBetween(shooterPos, blockerPos);
+        double chance = openGoal ? 0.16 : 0.12;
+        if (blocker.getPosition() == Position.DEF) {
+            chance += 0.08;
+        }
+        if (distance <= 3.5) {
+            chance += 0.10;
+        } else if (distance <= 5.5) {
+            chance += 0.05;
+        }
+        return random.nextDouble() < chance;
+    }
+
+    private boolean shouldDeflectTransit(MatchRuntime rt, Player interceptor) {
+        double baseChance = switch (rt.ballTransitMode) {
+            case "CROSS" -> 0.36;
+            case "LOFTED_PASS" -> 0.24;
+            case "GROUND_PASS" -> 0.14;
+            default -> 0.18;
+        };
+        if (interceptor.getPosition() == Position.DEF) {
+            baseChance += 0.07;
+        }
+        return random.nextDouble() < baseChance;
+    }
+
+    private void startRandomDeflection(MatchRuntime rt,
+                                       Player deflector,
+                                       double startX,
+                                       double startY,
+                                       double minTravel,
+                                       double maxTravel) {
+        double angle = random.nextDouble() * Math.PI * 2.0;
+        double travel = minTravel + random.nextDouble() * Math.max(0.1, maxTravel - minTravel);
+        double targetX = startX + Math.cos(angle) * travel;
+        double targetY = startY + Math.sin(angle) * travel;
+        beginBallTransit(
+                rt,
+                startX,
+                startY,
+                boundTransitTarget(targetX, MIN_X, MAX_X, "DEFLECTION"),
+                boundTransitTarget(targetY, MIN_Y, MAX_Y, "DEFLECTION"),
+                null,
+                null,
+                null,
+                getTeam(deflector, rt),
+                "DEFLECTION",
+                false
+        );
+    }
+
+    private boolean isOutsidePlayableBounds(double x, double y) {
+        return x < MIN_X || x > MAX_X || y < MIN_Y || y > MAX_Y;
+    }
+
+    private boolean isInsidePenaltyArea(double x, double y, String defendingTeam) {
+        if (y < PENALTY_AREA_MIN_Y || y > PENALTY_AREA_MAX_Y) {
+            return false;
+        }
+        return "HOME".equals(defendingTeam) ? x <= 18.0 : x >= 82.0;
+    }
+
+    private double[] positionToArray(PlayerPositionDTO position) {
+        if (position == null) {
+            return null;
+        }
+        return new double[]{position.getX(), position.getY()};
+    }
+
+    private void populateFormationTargets(Map<Integer, double[]> targetMap,
+                                          List<Player> orderedPlayers,
+                                          String team,
+                                          List<TacticsSlotDTO> slots,
+                                          double[] fallbackFormation) {
+        if (orderedPlayers == null || orderedPlayers.isEmpty()) {
+            return;
+        }
+
+        if (slots != null && !slots.isEmpty()) {
+            int limit = Math.min(orderedPlayers.size(), slots.size());
+            for (int i = 0; i < limit; i++) {
+                Player player = orderedPlayers.get(i);
+                if (player != null && player.getId() != null) {
+                    targetMap.put(Math.toIntExact(player.getId()), anchorCellToPitch(slots.get(i).getAnchorCellKey(), team));
+                }
+            }
+            return;
+        }
+
+        List<Player> sorted = orderedPlayers.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingInt(p -> positionPriority(p.getPosition(), team)))
+                .toList();
+        int limit = Math.min(sorted.size(), fallbackFormation.length / 2);
+        for (int i = 0; i < limit; i++) {
+            targetMap.put(Math.toIntExact(sorted.get(i).getId()), new double[]{fallbackFormation[i * 2], fallbackFormation[i * 2 + 1]});
+        }
+    }
+
+    private double[] anchorCellToPitch(String cellKey, String team) {
+        return pitchCoordinatesFromCell(cellKey, team, true);
+    }
+
+    private double[] tacticalCellToPitch(String cellKey, String team) {
+        return pitchCoordinatesFromCell(cellKey, team, false);
+    }
+
+    private double[] pitchCoordinatesFromCell(String cellKey, String team, boolean anchorScale) {
+        int[] bands = parseCellBands(cellKey);
+        int progressBand = bands[0];
+        int widthBand = bands[1];
+        if (!"HOME".equals(team)) {
+            progressBand = 4 - progressBand;
+            widthBand = 4 - widthBand;
+        }
+        double[] xCenters = anchorScale ? ANCHOR_X_CENTERS : TARGET_X_CENTERS;
+        return new double[]{xCenters[progressBand], BAND_Y_CENTERS[widthBand]};
+    }
+
+    private int[] resolveSpatialBands(double x, double y) {
+        if (x >= 88.0 && y <= 18.0) {
+            return new int[]{4, 0};
+        }
+        if (x >= 88.0 && y >= 82.0) {
+            return new int[]{4, 4};
+        }
+        if (x <= 12.0 && y <= 18.0) {
+            return new int[]{0, 0};
+        }
+        if (x <= 12.0 && y >= 82.0) {
+            return new int[]{0, 4};
+        }
+
+        int progressBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(x, 0.0, 99.999) / 20.0)));
+        int widthBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(y, 0.0, 99.999) / 20.0)));
+        return new int[]{progressBand, widthBand};
+    }
+
+    private int zoneDistance(int[] first, int[] second) {
+        return Math.max(Math.abs(first[0] - second[0]), Math.abs(first[1] - second[1]));
+    }
+
+    private int[] parseCellBands(String cellKey) {
+        if (cellKey == null || !cellKey.startsWith("CELL_")) {
+            return new int[]{2, 2};
+        }
+        String[] parts = cellKey.split("_");
+        if (parts.length != 3) {
+            return new int[]{2, 2};
+        }
+        try {
+            int progressBand = Math.max(0, Math.min(4, Integer.parseInt(parts[1])));
+            int widthBand = Math.max(0, Math.min(4, Integer.parseInt(parts[2])));
+            return new int[]{progressBand, widthBand};
+        } catch (NumberFormatException ex) {
+            return new int[]{2, 2};
+        }
     }
 
     private double clamp(double value, double min, double max) {

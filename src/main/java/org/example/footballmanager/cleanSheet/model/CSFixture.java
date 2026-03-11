@@ -17,4 +17,6 @@ public class CSFixture {
     private String awayTeamName;
     private boolean played;
     private CSMatchResult result;
+    @Builder.Default
+    private boolean derby = false;
 }

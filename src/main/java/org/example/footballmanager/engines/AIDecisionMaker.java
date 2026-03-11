@@ -76,6 +76,11 @@ public class AIDecisionMaker {
             dribbleScore *= 0.90;
         }
 
+        if (isAggressiveFinalThirdPlayer(player) && goalDistance <= 24.5 && isCentralGoalThreat(player, rt)) {
+            shotScore *= goalDistance <= 18.0 ? 1.24 : 1.40;
+            passScore *= goalDistance <= 20.0 ? 0.82 : 0.90;
+        }
+
         double totalScore = passScore + shotScore + dribbleScore;
         if (totalScore <= 0.0) {
             return new Decision(ActionType.DRIBBLE, null);
@@ -91,10 +96,11 @@ public class AIDecisionMaker {
         ActionType action;
         Player targetPlayer = null;
 
-        double shotDecisionThreshold = goalDistance <= 16.0 ? 0.22
-                : goalDistance <= 20.0 ? 0.26
-                : 0.33;
-        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > shotDecisionThreshold && goalDistance < 26.0) {
+        double shotDecisionThreshold = goalDistance <= 16.0 ? 0.20
+                : goalDistance <= 20.0 ? 0.23
+                : goalDistance <= 24.0 ? 0.27
+                : 0.32;
+        if (shotScore >= passScore && shotScore >= dribbleScore && shotScore > shotDecisionThreshold && goalDistance < 26.5) {
             action = ActionType.SHOT;
         } else if (passScore >= dribbleScore && bestPassTarget != null) {
             action = ActionType.PASS;
@@ -145,9 +151,9 @@ public class AIDecisionMaker {
         } else if (goalDistance < 19) {
             baseScore = 0.62;
         } else if (goalDistance < 23) {
-            baseScore = 0.24;
+            baseScore = 0.42;
         } else if (goalDistance < 27) {
-            baseScore = 0.05;
+            baseScore = 0.17;
         } else {
             return 0.0;
         }
@@ -171,6 +177,9 @@ public class AIDecisionMaker {
             baseScore *= 1.10;
         } else if (defensivePressure > 0.55) {
             baseScore *= 0.64;
+        }
+        if (goalDistance <= 24.5 && isCentralGoalThreat(player, rt)) {
+            baseScore *= goalDistance <= 18.0 ? 1.10 : 1.22;
         }
 
         return Math.max(0.0, baseScore);
@@ -364,7 +373,7 @@ public class AIDecisionMaker {
             return false;
         }
         double x = getPlayerX(player, rt);
-        return isInShotZone(team, x) && goalDistance <= 18.0 && defensivePressure <= 0.38;
+        return isInShotZone(team, x) && goalDistance <= 19.5 && defensivePressure <= 0.42;
     }
 
     private boolean isHardShotZone(Player player, MatchRuntime rt, String team, double goalDistance) {
@@ -467,6 +476,11 @@ public class AIDecisionMaker {
         double dx = goalX - position.getX();
         double dy = goalY - position.getY();
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private boolean isCentralGoalThreat(Player player, MatchRuntime rt) {
+        PlayerPositionDTO position = getPlayerPosition(player, rt);
+        return position != null && Math.abs(position.getY() - 50.0) <= 18.0;
     }
 
     private List<Player> getTeammates(Player player, MatchRuntime rt) {

@@ -434,7 +434,12 @@ public class ZoxReplayService {
             return "Player";
         }
         String[] parts = fullName.trim().split("\\s+");
-        return parts[parts.length - 1];
+        if (parts.length == 1) {
+            return parts[0];
+        }
+        String first = parts[0];
+        String last = parts[parts.length - 1];
+        return first.charAt(0) + ". " + last;
     }
 
     private String resolveTeamSide(String teamName, Match match) {

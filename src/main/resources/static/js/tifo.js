@@ -508,9 +508,19 @@ function renderClubInfo(el) {
     const form = buildRecentForm();
     const tactics = gameState?.tactics || {};
     const positionLabel = tableEntry ? ordinal(getPosition(t.id)) : 'Unplaced';
+    const mood = gameState?.clubMood;  // NEW
     const nextOpponent = nextFixture
         ? (Number(nextFixture.homeTeamId) === Number(t.id) ? nextFixture.awayTeamName : nextFixture.homeTeamName)
         : null;
+    
+    // Helper for mood color
+    const getMoodColor = (val) => {
+        if (val == null) return '#aaa';
+        if (val >= 70) return '#4caf50';
+        if (val >= 40) return '#ff9800';
+        return '#f44336';
+    };
+    
     el.innerHTML = `
         <h2>Club Info</h2>
         <div class="cs-club-hero">
@@ -553,6 +563,15 @@ function renderClubInfo(el) {
                 <div class="cs-note-title">${lastMatch ? `${escapeHtml(lastMatch.homeTeamName)} ${lastMatch.homeGoals}:${lastMatch.awayGoals} ${escapeHtml(lastMatch.awayTeamName)}` : 'No result on file yet'}</div>
                 <div class="cs-note-text">${lastMatch ? `Round ${lastMatch.round} finished as a ${lastOutcome?.code === 'W' ? 'win' : lastOutcome?.code === 'D' ? 'draw' : 'loss'} for ${escapeHtml(t.name)}.` : 'Open the inbox or play the next round to start building the season story.'}</div>
             </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Club Atmosphere</div>
+                <div class="cs-note-title">Overall: <span style="color:${mood ? (mood.moodLabel === 'Excellent' || mood.moodLabel === 'Good' ? '#4caf50' : mood.moodLabel === 'Crisis' ? '#f44336' : '#ff9800') : '#aaa'}">${mood?.moodLabel || 'N/A'}</span></div>
+                <div class="cs-note-text">
+                    Board: <span style="color:${getMoodColor(mood?.boardConfidence)}">${mood?.boardConfidence ?? '--'}%</span><br>
+                    Fans: <span style="color:${getMoodColor(mood?.fanMood)}">${mood?.fanMood ?? '--'}%</span><br>
+                    Finances: <span style="color:${getMoodColor(mood?.financialHealth)}">${mood?.financialHealth ?? '--'}%</span>
+                </div>
+            </div>
         </div>
         <div class="cs-note-card cs-club-milestones">
             <div class="cs-section-label">Milestone board</div>
@@ -576,16 +595,22 @@ function renderInbox(el) {
         .slice(0, 4)
         .map(([type, count]) => `<span class="cs-pill-summary"><span class="cs-inbox-badge ${type}">${type.toUpperCase()}</span>${count}</span>`)
         .join('');
-    let html = `<h2>Inbox (${inbox.length})</h2>`;
+    let html = `<h2>📬 Inbox (${inbox.length})</h2>`;
     html += `<div class="cs-inbox-toolbar"><div class="cs-note-text">Latest items from the chairman, scouting desk and match-day press box.</div><div class="cs-pill-wrap">${summary || '<span class="cs-note-text">No messages logged.</span>'}</div></div>`;
-    if (inbox.length === 0) { html += '<p style="color:#aaa;">No messages.</p>'; }
+    if (inbox.length === 0) { html += '<p style="color:#aaa;">No messages. Check back after next round.</p>'; }
     else {
         inbox.slice().reverse().forEach((msg, idx) => {
             const realIdx = inbox.length - 1 - idx;
+            const typeIcons = {
+                'welcome': '👔', 'match': '⚽', 'report': '📊', 'round-report': '📈',
+                'international': '🌍', 'message': '💬', 'info': 'ℹ️', 'error': '⚠️', 'transfer': '♻️'
+            };
+            const icon = typeIcons[msg.type] || '📬';
             html += `<div class="cs-inbox-item cs-clickable" onclick="tifoOpenInbox(${realIdx})">
                 <div class="cs-inbox-topline">
                     <span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>
-                    <span class="cs-inbox-time">${escapeHtml(msg.timestamp || '')}</span>
+                    <span style="margin-left:6px; font-size:1.1em;">${icon}</span>
+                    <span class="cs-inbox-time" style="margin-left:auto;">${escapeHtml(msg.timestamp || '')}</span>
                 </div>
                 <div class="cs-inbox-subject">${escapeHtml(getInboxHeadline(msg))}</div>
                 <div class="cs-inbox-preview">${escapeHtml(getInboxPreview(msg))}</div>
@@ -678,31 +703,57 @@ async function openInboxMessage(index) {
     if (msg.type === 'report' || msg.type === 'round-report') {
         await ensurePlayerIndexLoaded();
     }
+    
+    const typeIcons = {
+        'welcome': '👔',
+        'match': '⚽',
+        'report': '📊',
+        'round-report': '📈',
+        'international': '🌍',
+        'message': '💬',
+        'info': 'ℹ️',
+        'error': '⚠️',
+        'transfer': '♻️'
+    };
+    const icon = typeIcons[msg.type] || '📬';
+    
     const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>`;
     const linkedText = injectEntityLinks(msg.text || '');
+    
+    let content = '';
+    
     if (msg.type === 'international') {
         const lines = (msg.text || "").split('\n').filter(Boolean);
         const header = lines.shift() || "International update";
         const rows = lines.length
             ? lines.map(line => `<div class="cs-match-card cs-message-card"><div class="cs-match-teams">${injectEntityLinks(line)}</div></div>`).join("")
             : `<p style="color:#aaa;">No fixtures in this update.</p>`;
-        showModal(badgeHtml + ' Message', `
+        content = `
             <div class="cs-message-shell">
                 <div class="cs-message-headline">${escapeHtml(header)}</div>
                 <div>${rows}</div>
                 <div class="cs-message-timestamp">${escapeHtml(msg.timestamp || '')}</div>
             </div>
-        `);
-        return;
+        `;
+    } else {
+        const bodyClass = (msg.type === 'report' || msg.type === 'round-report') ? 'cs-report-body' : 'cs-message-body';
+        content = `
+            <div class="cs-message-shell">
+                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+                    <div style="flex:1;">
+                        <div style="font-size:2em; margin-bottom:8px;">${icon}</div>
+                        <div class="cs-message-headline">${escapeHtml(getInboxHeadline(msg))}</div>
+                    </div>
+                    <div style="color:#7e8b92; font-size:0.85em; text-align:right;">${escapeHtml(msg.timestamp || '')}</div>
+                </div>
+                <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
+                    <div class="${bodyClass}">${linkedText}</div>
+                </div>
+            </div>
+        `;
     }
-    const bodyClass = (msg.type === 'report' || msg.type === 'round-report') ? 'cs-report-body' : 'cs-message-body';
-    showModal(badgeHtml + ' Message', `
-        <div class="cs-message-shell">
-            <div class="cs-message-headline">${escapeHtml(getInboxHeadline(msg))}</div>
-            <div class="${bodyClass}">${linkedText}</div>
-            <div class="cs-message-timestamp">${escapeHtml(msg.timestamp || '')}</div>
-        </div>
-    `);
+    
+    showModal(icon + ' ' + badgeHtml + ' Message', content);
 }
 
 // --- Players ---
@@ -985,7 +1036,7 @@ function renderMatches(el) {
         matches.slice().reverse().forEach(m => {
             html += `<div class="cs-match-card cs-clickable" onclick="tifoMatchDetail(${m.round})">
                 <div class="cs-match-teams">
-                    <strong>Round ${m.round}</strong> &nbsp; ${m.homeTeamName} vs ${m.awayTeamName}
+                    <strong>Round ${m.round}</strong>${m.isDerby ? ' <span class="cs-derby-badge">DERBY</span>' : ''} &nbsp; ${m.homeTeamName} vs ${m.awayTeamName}
                 </div>
                 <div class="cs-match-score">${m.homeGoals} : ${m.awayGoals}</div>
             </div>`;
@@ -1022,7 +1073,7 @@ function renderMatchDetailFull(match, backFn) {
             <div class="cs-match-topline">
                 <span class="cs-clickable" onclick="tifoNav('leagueTable')">${leagueName}</span>
                 &middot;
-                <span class="cs-clickable" onclick="tifoNav('schedule')">Round ${match.round}</span>
+                <span class="cs-clickable" onclick="tifoNav('schedule')">Round ${match.round}</span>${match.isDerby ? ' <span class="cs-derby-badge">DERBY</span>' : ''}
                 &middot; ${resultTone}
             </div>
             <div class="cs-match-scoreboard">
@@ -1053,11 +1104,11 @@ function renderMatchDetailFull(match, backFn) {
         </div>
         <div id="matchTabContent"></div>
     </div>`;
-
     main.innerHTML = html;
     window._currentMatch = match;
     window._tifoMatchBack = backFn || (() => renderPage('matches'));
     showMatchTab('lineups');
+
 }
 
 function showMatchTab(tab) {
@@ -1185,6 +1236,9 @@ function buildLineupsHtml(match) {
                 <div class="cs-lineup-stat">&#9917;</div>
                 <div class="cs-lineup-stat">A</div>
                 <div class="cs-lineup-stat">Min</div>
+                <div class="cs-lineup-stat">P%</div>
+                <div class="cs-lineup-stat">Tkl</div>
+                <div class="cs-lineup-stat">KP</div>
             </div>`;
         sorted.forEach(p => {
             const ratingValue = Number(p.rating);
@@ -1203,6 +1257,9 @@ function buildLineupsHtml(match) {
                 <div class="cs-lineup-stat">${p.goals || ''}</div>
                 <div class="cs-lineup-stat">${p.assists || ''}</div>
                 <div class="cs-lineup-stat">${p.minutesPlayed || 0}</div>
+                <div class="cs-lineup-stat">${p.passesAttempted > 0 ? Math.round(p.passesCompleted / p.passesAttempted * 100) + '%' : '-'}</div>
+                <div class="cs-lineup-stat">${p.tackles || 0}</div>
+                <div class="cs-lineup-stat">${p.keyPasses || 0}</div>
             </div>`;
         });
         if (subs.length > 0) {
@@ -1386,6 +1443,10 @@ function renderTactics(el) {
         return false;
     };
 
+    const isEligibleForRole = (player, role) => {
+        return canPlayRole(player, role);
+    };
+
     const allSelected = () => new Set([
         ...state.starterIds.filter(Boolean).map(Number),
         ...state.benchIds.filter(Boolean).map(Number)
@@ -1401,13 +1462,7 @@ function renderTactics(el) {
             return id;
         });
 
-        slots.forEach((slot, idx) => {
-            if (state.starterIds[idx]) return;
-            const p = roster.find(x => !used.has(Number(x.id)) && canPlayRole(x, slot.role));
-            if (!p) return;
-            state.starterIds[idx] = Number(p.id);
-            used.add(Number(p.id));
-        });
+        // NO AUTO-FILL - let user choose players explicitly
 
         state.benchIds = state.benchIds.filter(id => {
             const num = Number(id);
@@ -1415,20 +1470,13 @@ function renderTactics(el) {
         }).slice(0, 7).map(Number);
 
         state.benchIds.forEach(id => used.add(Number(id)));
-        roster.forEach(p => {
-            const id = Number(p.id);
-            if (state.benchIds.length < 7 && !used.has(id)) {
-                state.benchIds.push(id);
-                used.add(id);
-            }
-        });
     };
     ensureState();
 
     const starterOptions = (role, current) => {
         const used = allSelected();
         if (current) used.delete(Number(current));
-        return roster.filter(p => !used.has(Number(p.id)) && canPlayRole(p, role));
+        return roster.filter(p => !used.has(Number(p.id)));
     };
 
     const benchOptions = (current) => {
@@ -1437,49 +1485,85 @@ function renderTactics(el) {
         return roster.filter(p => !used.has(Number(p.id)));
     };
 
-    const renderDesktop = () => {
-        const pool = roster.filter(p => !allSelected().has(Number(p.id))).map(p => `
-            <div class="cs-draggable" draggable="true" data-player-id="${p.id}" data-zone="pool" style="padding:6px; margin-bottom:6px; background:#223545; border-radius:6px; cursor:grab;">${p.name} (${p.position}, R ${p.rating})</div>
-        `).join('');
+    // =====================================================================
+    // NOVA LOGIKA: Svaki slot prikazuje SVE igrače koji zadovoljavaju uslove
+    // za tu poziciju (uključujući igrače iz klupe i drugih slotova).
+    // Kada se izabere igrač koji je već u nekom drugom slotu/klupi,
+    // automatski se swapuju (stari igrač se skida s tog mesta).
+    // =====================================================================
 
+    const renderStarterSlotOptions = (slot, slotIdx) => {
+        // Prikazi sve igrače koji mogu igrati na ovoj poziciji
+        // (bez obzira da li su vec selektovani negde)
+        const eligiblePlayers = roster.filter(p => canPlayRole(p, slot.role));
+        const current = Number(state.starterIds[slotIdx] || 0);
+        return eligiblePlayers.map(p => {
+            const pid = Number(p.id);
+            let label = `${p.name} (${p.position}, R ${p.rating})`;
+            // Oznaci gde je igrac trenutno
+            const inStarterSlot = state.starterIds.findIndex((id, i) => Number(id) === pid && i !== slotIdx);
+            const inBenchSlot = state.benchIds.findIndex(id => Number(id) === pid);
+            if (inStarterSlot >= 0) label += ` [${slots[inStarterSlot].label}]`;
+            else if (inBenchSlot >= 0) label += ` [Bench ${inBenchSlot + 1}]`;
+            return `<option value="${pid}" ${pid === current ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+    };
+
+    const renderBenchSlotOptions = (benchIdx) => {
+        // Klupa: prikazi sve igrače koji nisu GK (ili bilo koji slobodan)
+        const current = Number(state.benchIds[benchIdx] || 0);
+        return roster.map(p => {
+            const pid = Number(p.id);
+            let label = `${p.name} (${p.position}, R ${p.rating})`;
+            const inStarterSlot = state.starterIds.findIndex(id => Number(id) === pid);
+            const inBenchSlot = state.benchIds.findIndex((id, i) => Number(id) === pid && i !== benchIdx);
+            if (inStarterSlot >= 0) label += ` [${slots[inStarterSlot].label}]`;
+            else if (inBenchSlot >= 0) label += ` [Bench ${inBenchSlot + 1}]`;
+            return `<option value="${pid}" ${pid === current ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+    };
+
+    const renderDesktop = () => {
         const starters = slots.map((slot, idx) => {
-            const id = state.starterIds[idx];
-            const p = byId(id);
-            return `<div class="cs-drop-zone" data-target="starter" data-index="${idx}" data-role="${slot.role}" style="padding:8px; border:1px dashed #466; border-radius:8px; min-height:56px;">
-                <div style="font-size:0.78em; color:#95a0a7;">${slot.label}</div>
-                ${p ? `<div class="cs-draggable" draggable="true" data-player-id="${p.id}" data-zone="starter" data-index="${idx}" style="padding:6px; background:#1f2d3a; border-radius:6px; cursor:grab;">${p.name} (${p.position})</div>` : `<div style="color:#687b84; font-size:0.82em;">Drop ${slot.role}</div>`}
-            </div>`;
+            const current = Number(state.starterIds[idx] || 0);
+            const currentPlayer = byId(current);
+            const roleOk = currentPlayer ? canPlayRole(currentPlayer, slot.role) : true;
+            const warningStyle = current && !roleOk ? 'border:1px solid #f44336;' : '';
+            return `<label class="training-group-row"><span class="group-tag">${slot.label}</span><select class="cs-starter-select" data-slot="${idx}" style="${warningStyle}"><option value="">-- Empty --</option>${renderStarterSlotOptions(slot, idx)}</select></label>`;
         }).join('');
 
         const bench = Array.from({ length: 7 }).map((_, idx) => {
-            const id = state.benchIds[idx];
-            const p = byId(id);
-            return `<div class="cs-drop-zone" data-target="bench" data-index="${idx}" style="padding:8px; border:1px dashed #665; border-radius:8px; min-height:56px;">
-                <div style="font-size:0.78em; color:#95a0a7;">Bench ${idx + 1}</div>
-                ${p ? `<div class="cs-draggable" draggable="true" data-player-id="${p.id}" data-zone="bench" data-index="${idx}" style="padding:6px; background:#302f1f; border-radius:6px; cursor:grab;">${p.name} (${p.position})</div>` : `<div style="color:#687b84; font-size:0.82em;">Drop player</div>`}
-            </div>`;
+            const current = Number(state.benchIds[idx] || 0);
+            return `<label class="training-group-row"><span class="group-tag">Bench ${idx + 1}</span><select class="cs-bench-select" data-slot="${idx}"><option value="">-- Empty --</option>${renderBenchSlotOptions(idx)}</select></label>`;
         }).join('');
 
-        return `<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div><h4>Starting XI (DnD)</h4><div style="display:grid; gap:8px;">${starters}</div></div>
-            <div><h4>Bench (7)</h4><div style="display:grid; gap:8px; margin-bottom:8px;">${bench}</div><h4>Pool</h4><div class="cs-drop-zone" data-target="pool" data-index="-1" style="border:1px dashed #344; border-radius:8px; padding:8px; min-height:100px; max-height:260px; overflow:auto;">${pool || '<div style="color:#687b84;">No free players.</div>'}</div></div>
+        return `<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <div>
+                <h3>Starting XI</h3>
+                <p style="color:#9aa0a6; font-size:0.82em; margin:0 0 8px;">Možeš izabrati igrača iz klupe ili drugog slota — automatski će se zameniti.</p>
+                <div style="display:grid; gap:8px;">${starters}</div>
+            </div>
+            <div>
+                <h3>Bench (7)</h3>
+                <div style="display:grid; gap:8px;">${bench}</div>
+            </div>
         </div>`;
     };
 
     const renderMobile = () => {
         const starters = slots.map((slot, idx) => {
             const current = Number(state.starterIds[idx] || 0);
-            const options = starterOptions(slot.role, current);
-            return `<label class="training-group-row"><span class="group-tag">${slot.label}</span><select class="cs-starter-select" data-slot="${idx}"><option value="">-- Empty --</option>${options.map(p => `<option value="${p.id}" ${Number(p.id) === current ? 'selected' : ''}>${p.name} (${p.position}, R ${p.rating})</option>`).join('')}</select></label>`;
+            return `<label class="training-group-row"><span class="group-tag">${slot.label}</span><select class="cs-starter-select" data-slot="${idx}"><option value="">-- Empty --</option>${renderStarterSlotOptions(slot, idx)}</select></label>`;
         }).join('');
 
         const bench = Array.from({ length: 7 }).map((_, idx) => {
             const current = Number(state.benchIds[idx] || 0);
-            const options = benchOptions(current);
-            return `<label class="training-group-row"><span class="group-tag">Bench ${idx + 1}</span><select class="cs-bench-select" data-slot="${idx}"><option value="">-- Empty --</option>${options.map(p => `<option value="${p.id}" ${Number(p.id) === current ? 'selected' : ''}>${p.name} (${p.position}, R ${p.rating})</option>`).join('')}</select></label>`;
+            return `<label class="training-group-row"><span class="group-tag">Bench ${idx + 1}</span><select class="cs-bench-select" data-slot="${idx}"><option value="">-- Empty --</option>${renderBenchSlotOptions(idx)}</select></label>`;
         }).join('');
 
-        return `<h3 style="margin-top:20px;">Starting XI</h3>${starters}<h3 style="margin-top:18px;">Bench</h3>${bench}`;
+        return `<h3 style="margin-top:20px;">Starting XI</h3>
+            <p style="color:#9aa0a6; font-size:0.82em;">Možeš izabrati igrača iz klupe ili drugog slota — automatski će se zameniti.</p>
+            ${starters}<h3 style="margin-top:18px;">Bench</h3>${bench}`;
     };
 
     let html = `<h2>Tactics</h2>
@@ -1533,42 +1617,30 @@ function renderTactics(el) {
         return;
     }
 
-    let drag = null;
-    document.querySelectorAll('.cs-draggable').forEach(elDrag => {
-        elDrag.addEventListener('dragstart', () => {
-            drag = {
-                id: Number(elDrag.dataset.playerId),
-                zone: elDrag.dataset.zone,
-                index: Number(elDrag.dataset.index || -1)
-            };
+    // Desktop: Handle selects
+    document.querySelectorAll('.cs-starter-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const slot = Number(sel.dataset.slot);
+            const id = Number(sel.value || 0) || null;
+            if (id) {
+                state.starterIds = state.starterIds.map((v, i) => i !== slot && Number(v) === id ? null : v);
+                state.benchIds = state.benchIds.map(v => Number(v) === id ? null : v);
+            }
+            state.starterIds[slot] = id;
+            gameState.tactics = { ...gameState.tactics, starterIds: state.starterIds, benchIds: state.benchIds, formation: state.formation, style: state.style };
+            renderPage('tactics');
         });
     });
 
-    document.querySelectorAll('.cs-drop-zone').forEach(zone => {
-        zone.addEventListener('dragover', e => e.preventDefault());
-        zone.addEventListener('drop', e => {
-            e.preventDefault();
-            if (!drag?.id) return;
-
-            const p = byId(drag.id);
-            const target = zone.dataset.target;
-            const idx = Number(zone.dataset.index || -1);
-            const role = zone.dataset.role;
-
-            if (target === 'starter') {
-                if (!canPlayRole(p, role)) return;
-                state.benchIds = state.benchIds.map(v => Number(v) === drag.id ? null : v);
-                state.starterIds = state.starterIds.map((v, i) => i !== idx && Number(v) === drag.id ? null : v);
-                state.starterIds[idx] = drag.id;
-            } else if (target === 'bench') {
-                state.starterIds = state.starterIds.map(v => Number(v) === drag.id ? null : v);
-                state.benchIds = state.benchIds.map((v, i) => i !== idx && Number(v) === drag.id ? null : v);
-                state.benchIds[idx] = drag.id;
-            } else if (target === 'pool') {
-                if (drag.zone === 'starter' && drag.index >= 0) state.starterIds[drag.index] = null;
-                if (drag.zone === 'bench' && drag.index >= 0) state.benchIds[drag.index] = null;
+    document.querySelectorAll('.cs-bench-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const slot = Number(sel.dataset.slot);
+            const id = Number(sel.value || 0) || null;
+            if (id) {
+                state.starterIds = state.starterIds.map(v => Number(v) === id ? null : v);
+                state.benchIds = state.benchIds.map((v, i) => i !== slot && Number(v) === id ? null : v);
             }
-
+            state.benchIds[slot] = id;
             gameState.tactics = { ...gameState.tactics, starterIds: state.starterIds, benchIds: state.benchIds, formation: state.formation, style: state.style };
             renderPage('tactics');
         });

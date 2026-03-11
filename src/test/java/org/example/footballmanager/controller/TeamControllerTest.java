@@ -2,21 +2,33 @@ package org.example.footballmanager.controller;
 
 import org.example.footballmanager.dto.LeagueMilestonesDTO;
 import org.example.footballmanager.dto.PlayerDTO;
+import org.example.footballmanager.dto.TacticsEditorDTO;
+import org.example.footballmanager.dto.TacticsEditorSaveRequest;
 import org.example.footballmanager.dto.TeamMedicalOverviewDTO;
+import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.Lineup;
+import org.example.footballmanager.model.Match;
+import org.example.footballmanager.model.MatchFixture;
 import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
+import org.example.footballmanager.model.SeasonCompetition;
 import org.example.footballmanager.model.Skills;
+import org.example.footballmanager.model.Stadium;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.LineupRepository;
+import org.example.footballmanager.repository.MatchFixtureRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.LeagueMilestoneService;
+import org.example.footballmanager.service.ScheduleInsightService;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.TeamMedicalService;
+import org.example.footballmanager.service.TeamTacticsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,11 +58,15 @@ class TeamControllerTest {
     @Mock private TeamRepository teamRepository;
     @Mock private PlayerRepository playerRepository;
     @Mock private MatchRepository matchRepository;
+    @Mock private MatchFixtureRepository matchFixtureRepository;
     @Mock private LineupRepository lineupRepository;
     @Mock private MatchPlayerStatsRepository matchPlayerStatsRepository;
+    @Mock private CompetitionEntryRepository competitionEntryRepository;
     @Mock private LeagueMilestoneService leagueMilestoneService;
+    @Mock private ScheduleInsightService scheduleInsightService;
     @Mock private SeasonService seasonService;
     @Mock private TeamMedicalService teamMedicalService;
+    @Mock private TeamTacticsService teamTacticsService;
 
     @InjectMocks private TeamController teamController;
 
@@ -163,6 +180,267 @@ class TeamControllerTest {
     }
 
     @Test
+    void getScheduleReturnsUpcomingFixtureWithHeadToHeadSummary() {
+        Competition competition = new Competition();
+        competition.setId(2L);
+        competition.setName("Prva Liga");
+
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("OFK Omladinac");
+        team.setCompetition(competition);
+
+        Team opponent = new Team();
+        opponent.setId(2L);
+        opponent.setName("FK Rival");
+        opponent.setCompetition(competition);
+
+        Stadium stadium = new Stadium();
+        stadium.setName("Livadice");
+        team.setStadium(stadium);
+
+        MatchFixture fixture = new MatchFixture();
+        fixture.setId(90L);
+        fixture.setCompetition(competition);
+        fixture.setSeasonYear(2026);
+        fixture.setRoundNumber(4);
+        fixture.setWeekNumber(4);
+        fixture.setMatchDate(java.time.LocalDateTime.of(2026, 3, 15, 17, 0));
+        fixture.setHomeTeam(team);
+        fixture.setAwayTeam(opponent);
+        fixture.setPlayed(false);
+
+        Match previousWin = new Match();
+        previousWin.setPlayed(true);
+        previousWin.setHomeTeam(team);
+        previousWin.setAwayTeam(opponent);
+        previousWin.setHomeGoals(2);
+        previousWin.setAwayGoals(1);
+        previousWin.setMatchDate(java.time.LocalDateTime.of(2025, 10, 1, 15, 0));
+
+        Match previousDraw = new Match();
+        previousDraw.setPlayed(true);
+        previousDraw.setHomeTeam(opponent);
+        previousDraw.setAwayTeam(team);
+        previousDraw.setHomeGoals(1);
+        previousDraw.setAwayGoals(1);
+        previousDraw.setMatchDate(java.time.LocalDateTime.of(2025, 8, 11, 15, 0));
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(matchFixtureRepository.findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(2L, 2026, 1L))
+                .thenReturn(List.of(fixture));
+        when(matchRepository.findByHomeTeamIdOrAwayTeamId(1L, 1L)).thenReturn(List.of(previousWin, previousDraw));
+        when(scheduleInsightService.buildTeamSnapshots(any())).thenReturn(Map.of(
+                1L, new ScheduleInsightService.TeamSnapshot(73, 7.4, 2),
+                2L, new ScheduleInsightService.TeamSnapshot(68, 6.8, 2)
+        ));
+        when(scheduleInsightService.buildFixtureInsights(any(Team.class), any(Team.class), any())).thenReturn(
+                new ScheduleInsightService.FixtureInsights(
+                        73,
+                        68,
+                        7.4,
+                        6.8,
+                        new ScheduleInsightService.Prediction(46, 28, 26, 1.72, 1.18, "HOME_WIN", 67, "Home edge · OVR 73:68 · form 7.4:6.8")
+                )
+        );
+
+        ResponseEntity<List<Map<String, Object>>> response = teamController.getSchedule(1L, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+
+        Map<String, Object> row = response.getBody().getFirst();
+        assertEquals(90L, row.get("fixtureId"));
+        assertEquals("FK Rival", row.get("opponentName"));
+        assertEquals("Prva Liga", row.get("competitionName"));
+        assertEquals("Livadice", row.get("stadium"));
+        assertEquals(73, row.get("homeTeamStrength"));
+        assertEquals(68, row.get("awayTeamStrength"));
+        assertEquals(7.4, row.get("homeTeamForm"));
+        assertEquals(6.8, row.get("awayTeamForm"));
+
+        Map<String, Object> prediction = (Map<String, Object>) row.get("prediction");
+        assertEquals(46, prediction.get("homeWinProbability"));
+        assertEquals(28, prediction.get("drawProbability"));
+        assertEquals(26, prediction.get("awayWinProbability"));
+        assertEquals(1.72, prediction.get("expectedHomeGoals"));
+        assertEquals(1.18, prediction.get("expectedAwayGoals"));
+        assertEquals("HOME_WIN", prediction.get("mostLikelyResult"));
+
+        Map<String, Object> h2h = (Map<String, Object>) row.get("h2h");
+        assertEquals(2, h2h.get("played"));
+        assertEquals(1, h2h.get("wins"));
+        assertEquals(1, h2h.get("draws"));
+        assertEquals(0, h2h.get("losses"));
+        assertEquals("H2H 1-1-0 · Goals 3:2", h2h.get("summary"));
+        assertEquals("Last meeting: 2:1 vs FK Rival (at home)", h2h.get("lastMeetingSummary"));
+    }
+
+    @Test
+    void getScheduleEnsuresFriendlyWeekFixturesForActiveSeason() {
+        Competition competition = new Competition();
+        competition.setId(2L);
+        competition.setName("Prva Liga");
+
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("OFK Omladinac");
+        team.setCompetition(competition);
+
+        Team opponent = new Team();
+        opponent.setId(2L);
+        opponent.setName("FK Rival");
+        opponent.setCompetition(competition);
+
+        MatchFixture friendly = new MatchFixture();
+        friendly.setId(190L);
+        friendly.setCompetition(competition);
+        friendly.setSeasonYear(2026);
+        friendly.setRoundNumber(SeasonService.FRIENDLY_WEEK);
+        friendly.setWeekNumber(SeasonService.FRIENDLY_WEEK);
+        friendly.setMatchDate(java.time.LocalDateTime.of(2026, 6, 1, 18, 0));
+        friendly.setHomeTeam(team);
+        friendly.setAwayTeam(opponent);
+        friendly.setPlayed(false);
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(seasonService.getCurrentWeek()).thenReturn(SeasonService.FRIENDLY_WEEK);
+        when(matchFixtureRepository.findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(2L, 2026, 1L))
+                .thenReturn(List.of(friendly));
+        when(matchRepository.findByHomeTeamIdOrAwayTeamId(1L, 1L)).thenReturn(List.of());
+        when(scheduleInsightService.buildTeamSnapshots(any())).thenReturn(Map.of());
+        when(scheduleInsightService.buildFixtureInsights(any(Team.class), any(Team.class), any())).thenReturn(
+                new ScheduleInsightService.FixtureInsights(
+                        70,
+                        66,
+                        6.5,
+                        6.1,
+                        new ScheduleInsightService.Prediction(44, 30, 26, 1.61, 1.09, "HOME_WIN", 61, "Home edge · OVR 70:66 · form 6.5:6.1")
+                )
+        );
+
+        ResponseEntity<List<Map<String, Object>>> response = teamController.getSchedule(1L, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+        verify(seasonService).ensureFriendlyWeekFixtures(competition, 2026);
+    }
+
+    @Test
+    void getScheduleFallsBackToSeasonFixturesWhenTeamCompetitionIsMissing() {
+        Competition fixtureCompetition = new Competition();
+        fixtureCompetition.setId(2L);
+        fixtureCompetition.setName("Prva Liga");
+
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("OFK Omladinac");
+
+        Team opponent = new Team();
+        opponent.setId(2L);
+        opponent.setName("FK Rival");
+        opponent.setCompetition(fixtureCompetition);
+
+        MatchFixture fixture = new MatchFixture();
+        fixture.setId(91L);
+        fixture.setCompetition(fixtureCompetition);
+        fixture.setSeasonYear(2026);
+        fixture.setRoundNumber(5);
+        fixture.setWeekNumber(5);
+        fixture.setMatchDate(java.time.LocalDateTime.of(2026, 3, 21, 15, 0));
+        fixture.setHomeTeam(team);
+        fixture.setAwayTeam(opponent);
+        fixture.setPlayed(false);
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(competitionEntryRepository.findByTeam(team)).thenReturn(List.of());
+        when(matchFixtureRepository.findTeamScheduleBySeasonYearOrderByRoundNumberAscMatchDateAsc(2026, 1L))
+                .thenReturn(List.of(fixture));
+        when(matchRepository.findByHomeTeamIdOrAwayTeamId(1L, 1L)).thenReturn(List.of());
+        when(scheduleInsightService.buildTeamSnapshots(any())).thenReturn(Map.of());
+        when(scheduleInsightService.buildFixtureInsights(eq(team), eq(opponent), any())).thenReturn(
+                new ScheduleInsightService.FixtureInsights(
+                        71,
+                        66,
+                        6.9,
+                        6.3,
+                        new ScheduleInsightService.Prediction(45, 29, 26, 1.54, 1.04, "HOME_WIN", 63, "Home edge · OVR 71:66 · form 6.9:6.3")
+                )
+        );
+
+        ResponseEntity<List<Map<String, Object>>> response = teamController.getSchedule(1L, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+        assertEquals(91L, response.getBody().getFirst().get("fixtureId"));
+        assertEquals("Prva Liga", response.getBody().getFirst().get("competitionName"));
+        verify(matchFixtureRepository).findTeamScheduleBySeasonYearOrderByRoundNumberAscMatchDateAsc(2026, 1L);
+    }
+
+    @Test
+    void getScheduleInfersCompetitionFromEntryWhenTeamCompetitionIsMissing() {
+        Competition inferredCompetition = new Competition();
+        inferredCompetition.setId(7L);
+        inferredCompetition.setName("Serbian Superliga");
+
+        SeasonCompetition seasonCompetition = new SeasonCompetition();
+        seasonCompetition.setSeasonYear(2026);
+        seasonCompetition.setCompetition(inferredCompetition);
+
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("OFK Omladinac");
+
+        Team opponent = new Team();
+        opponent.setId(3L);
+        opponent.setName("FK Radnik");
+        opponent.setCompetition(inferredCompetition);
+
+        CompetitionEntry entry = new CompetitionEntry();
+        entry.setTeam(team);
+        entry.setSeasonCompetition(seasonCompetition);
+
+        MatchFixture fixture = new MatchFixture();
+        fixture.setId(301L);
+        fixture.setCompetition(inferredCompetition);
+        fixture.setSeasonYear(2026);
+        fixture.setRoundNumber(2);
+        fixture.setWeekNumber(2);
+        fixture.setMatchDate(java.time.LocalDateTime.of(2026, 3, 17, 18, 0));
+        fixture.setHomeTeam(team);
+        fixture.setAwayTeam(opponent);
+        fixture.setPlayed(false);
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(competitionEntryRepository.findByTeam(team)).thenReturn(List.of(entry));
+        when(matchFixtureRepository.findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(7L, 2026, 1L))
+                .thenReturn(List.of(fixture));
+        when(matchRepository.findByHomeTeamIdOrAwayTeamId(1L, 1L)).thenReturn(List.of());
+        when(scheduleInsightService.buildTeamSnapshots(any())).thenReturn(Map.of());
+        when(scheduleInsightService.buildFixtureInsights(eq(team), eq(opponent), any())).thenReturn(
+                new ScheduleInsightService.FixtureInsights(
+                        72,
+                        69,
+                        7.0,
+                        6.6,
+                        new ScheduleInsightService.Prediction(43, 30, 27, 1.48, 1.12, "HOME_WIN", 60, "Home edge · OVR 72:69 · form 7.0:6.6")
+                )
+        );
+
+        ResponseEntity<List<Map<String, Object>>> response = teamController.getSchedule(1L, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+        assertEquals(301L, response.getBody().getFirst().get("fixtureId"));
+        assertEquals("Serbian Superliga", response.getBody().getFirst().get("competitionName"));
+        verify(matchFixtureRepository).findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(7L, 2026, 1L);
+    }
+
+    @Test
     void getTeamMilestonesUsesActiveSeasonFallback() {
         Team team = new Team();
         team.setId(1L);
@@ -212,5 +490,38 @@ class TeamControllerTest {
         assertEquals(200, response.getStatusCode().value());
         assertSame(dto, response.getBody());
         verify(teamMedicalService).applyRecovery(1L, 5L);
+    }
+
+    @Test
+    void getTacticsEditorDelegatesToTacticsService() {
+        TacticsEditorDTO dto = new TacticsEditorDTO();
+        dto.setTeamId(1L);
+        dto.setFormation("4-3-3");
+
+        when(teamTacticsService.getTacticsEditor(1L, "4-3-3")).thenReturn(dto);
+
+        ResponseEntity<TacticsEditorDTO> response = teamController.getTacticsEditor(1L, "4-3-3");
+
+        assertEquals(200, response.getStatusCode().value());
+        assertSame(dto, response.getBody());
+        verify(teamTacticsService).getTacticsEditor(1L, "4-3-3");
+    }
+
+    @Test
+    void saveTacticsEditorDelegatesToTacticsService() {
+        TacticsEditorSaveRequest request = new TacticsEditorSaveRequest();
+        request.setFormation("4-2-3-1");
+
+        TacticsEditorDTO dto = new TacticsEditorDTO();
+        dto.setTeamId(1L);
+        dto.setFormation("4-2-3-1");
+
+        when(teamTacticsService.saveTacticsEditor(1L, request)).thenReturn(dto);
+
+        ResponseEntity<TacticsEditorDTO> response = teamController.saveTacticsEditor(1L, request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertSame(dto, response.getBody());
+        verify(teamTacticsService).saveTacticsEditor(1L, request);
     }
 }

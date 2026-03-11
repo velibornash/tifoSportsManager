@@ -95,6 +95,8 @@ public class MatchPlayerStatsController {
                 Math.round(grade * 10.0) / 10.0,
                 stats.getGoals(),
                 stats.getAssists(),
+                stats.getYellowCards(),
+                stats.getRedCards(),
                 stats.getMinutesPlayed()
         );
     }

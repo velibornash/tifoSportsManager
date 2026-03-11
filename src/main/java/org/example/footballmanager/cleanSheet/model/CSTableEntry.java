@@ -19,6 +19,7 @@ public class CSTableEntry {
     private int goalsScored;
     private int goalsConceded;
     private int played;
+    private int position;
 
     public int getGoalDifference() {
         return goalsScored - goalsConceded;

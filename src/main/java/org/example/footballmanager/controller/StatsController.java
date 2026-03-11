@@ -8,6 +8,7 @@ import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.SeasonCompetition;
+import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.LeagueMilestoneService;
@@ -37,6 +38,7 @@ public class StatsController {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final GoalEventRepository goalEventRepository;
+    private final TeamRepository teamRepository;
     private final SeasonService seasonService;
     private final LeagueMilestoneService leagueMilestoneService;
 
@@ -45,12 +47,14 @@ public class StatsController {
                            SeasonCompetitionRepository seasonCompetitionRepository,
                            CompetitionEntryRepository competitionEntryRepository,
                            GoalEventRepository goalEventRepository,
+                           TeamRepository teamRepository,
                            SeasonService seasonService,
                            LeagueMilestoneService leagueMilestoneService) {
         this.competitionRepository = competitionRepository;
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
         this.goalEventRepository = goalEventRepository;
+        this.teamRepository = teamRepository;
         this.seasonService = seasonService;
         this.leagueMilestoneService = leagueMilestoneService;
     }
@@ -62,6 +66,15 @@ public class StatsController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
         int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         return ResponseEntity.ok(leagueMilestoneService.buildLeagueMilestones(league, activeSeasonYear));
+    }
+
+    @GetMapping("/teams/{teamId}/milestones")
+    public ResponseEntity<LeagueMilestonesDTO> getTeamMilestones(@PathVariable Long teamId,
+                                                                 @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Team not found"));
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+        return ResponseEntity.ok(leagueMilestoneService.buildTeamMilestones(team, activeSeasonYear));
     }
 
     @GetMapping("/leagues/{leagueId}/topscorers")

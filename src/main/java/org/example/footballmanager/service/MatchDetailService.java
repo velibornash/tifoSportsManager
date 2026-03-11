@@ -50,6 +50,7 @@ public class MatchDetailService {
         redCardPlayer.name ReadCardPlayer, yellowCardPlayer.name YellowCardPlayer,
         shotOnTarget.name ShotOnTargetPlayer, shotOffTarget.name ShotOffTargetPlayer,
         shotOnTargetTeam.name ShotOnTargetTeam, shotOffTargetTeam.name ShotOffTargetTeam,
+        COALESCE(ge.xg, shone.xg, shoffe.xg) EventXg,
         substitutionTeam.name SubstitutionTeam, playerOut.name PlayerOutName, playerIn.name PlayerInName,
         injuryTeam.name InjuryTeam, injuryPlayer.name InjuryPlayer
         
@@ -96,7 +97,7 @@ public class MatchDetailService {
         left join player injuryPlayer on injuryPlayer.id=ie.player_id
         left join team injuryTeam on injuryTeam.id=injuryPlayer.team_id
         WHERE m.id = :matchId
-        ORDER BY me.event_minute asc
+        ORDER BY me.event_minute asc, me.id asc
         """)
                 .setParameter("matchId", matchId)
                 .getResultList();
@@ -153,6 +154,7 @@ public class MatchDetailService {
                 dto.setShotOffTargetPlayer(safeString(row[i++]));
                 dto.setShotOnTargetTeam(safeString(row[i++]));
                 dto.setShotOffTargetTeam(safeString(row[i++]));
+                dto.setXG(safeDouble(row[i++]));
                 dto.setSubstitutionTeam(safeString(row[i++]));
                 dto.setPlayerOutName(safeString(row[i++]));
                 dto.setPlayerInName(safeString(row[i++]));
@@ -213,6 +215,7 @@ public class MatchDetailService {
     // Helper metode (ostaju iste)
     private Long safeLong(Object obj) { return obj != null ? ((Number) obj).longValue() : null; }
     private Integer safeInt(Object obj) { return obj != null ? ((Number) obj).intValue() : null; }
+    private Double safeDouble(Object obj) { return obj != null ? ((Number) obj).doubleValue() : null; }
     private String safeString(Object obj) { return obj != null ? obj.toString() : null; }
     private Boolean safeBoolean(Object obj) {
         if (obj == null) {

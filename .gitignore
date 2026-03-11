@@ -40,3 +40,6 @@ build/
 
 /src/main/resources/application-dev.properties
 /src/main/java/org/example/footballmanager/zox/open-football-master/
+
+# Stakpak session files
+.stakpak/session*

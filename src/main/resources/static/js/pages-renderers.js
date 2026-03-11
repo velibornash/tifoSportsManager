@@ -35,6 +35,198 @@ function buildStars(score) {
     return `<div class="fm-stars">${Array.from({ length: 5 }, (_, index) => `<span class="star${index < filled ? ' on' : ''}"></span>`).join('')}</div>`;
 }
 
+function buildEmptyStars() {
+    return `<div class="fm-stars is-empty">${Array.from({ length: 5 }, () => '<span class="star"></span>').join('')}</div>`;
+}
+
+function formatDecimal(value, digits = 1, fallback = '—') {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(digits) : fallback;
+}
+
+function formatPercentLabel(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${clampPercent(numeric)}%` : '—';
+}
+
+function resolveFixtureVenue(fixture) {
+    return fixture?.stadium || fixture?.stadiumName || 'N/A';
+}
+
+function resolveFixtureIdentifier(fixture, fallback = '') {
+    return fixture?.fixtureId ?? fixture?.id ?? fallback;
+}
+
+function buildFixtureSnapshotHtml(teamName, sideLabel, strength, form, safe = htmlEscape) {
+    const numericStrength = Number(strength);
+    const hasStrength = Number.isFinite(numericStrength);
+    const numericForm = Number(form);
+    const stars = hasStrength ? buildStars(numericStrength) : buildEmptyStars();
+
+    return `
+        <div class="fx-snapshot">
+            <div class="fx-snapshot-kicker">${safe(sideLabel)}</div>
+            <div class="fx-snapshot-team">${safe(teamName || sideLabel)}</div>
+            <div class="fx-snapshot-stars">${stars}</div>
+            <div class="fx-snapshot-meta">
+                <span>OVR <strong>${hasStrength ? Math.round(numericStrength) : '—'}</strong></span>
+                <span>Form <strong>${Number.isFinite(numericForm) ? numericForm.toFixed(1) : '—'}</strong></span>
+            </div>
+        </div>`;
+}
+
+function buildFixturePredictionHtml(prediction, safe = htmlEscape) {
+    if (!prediction) return '';
+
+    const confidence = Number(prediction?.confidence);
+    return `
+        <div class="fx-prediction">
+            <div class="fx-prediction-head">
+                <span class="fx-prediction-title">Match preview</span>
+                <span class="fx-confidence">${Number.isFinite(confidence) ? `${Math.round(confidence)}% conf` : 'Heuristic'}</span>
+            </div>
+            <div class="fx-prob-grid">
+                <div class="fx-prob"><span class="fx-prob-label">1</span><strong>${formatPercentLabel(prediction.homeWinProbability)}</strong></div>
+                <div class="fx-prob"><span class="fx-prob-label">X</span><strong>${formatPercentLabel(prediction.drawProbability)}</strong></div>
+                <div class="fx-prob"><span class="fx-prob-label">2</span><strong>${formatPercentLabel(prediction.awayWinProbability)}</strong></div>
+            </div>
+            <div class="fx-xg">xG ${formatDecimal(prediction.expectedHomeGoals, 2)} : ${formatDecimal(prediction.expectedAwayGoals, 2)}</div>
+            ${prediction.analysis ? `<div class="fx-prediction-note">${safe(prediction.analysis)}</div>` : ''}
+        </div>`;
+}
+
+function buildResultBadgeHtml(label, className) {
+    if (!label) return '';
+    return `<span class="result-badge ${className}">${htmlEscape(label)}</span>`;
+}
+
+function resolveLeagueResultBadge(match) {
+    const homeGoals = Number(match?.homeGoals);
+    const awayGoals = Number(match?.awayGoals);
+    if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) return null;
+    if (homeGoals > awayGoals) return { label: '1', className: 'win' };
+    if (homeGoals < awayGoals) return { label: '2', className: 'loss' };
+    return { label: 'X', className: 'draw' };
+}
+
+function resolveClubResultBadge(match, currentTeamName = '') {
+    const homeGoals = Number(match?.homeGoals);
+    const awayGoals = Number(match?.awayGoals);
+    if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) return null;
+
+    const normalizedTeamName = String(currentTeamName || '').trim().toLowerCase();
+    const normalizedHomeName = String(match?.homeTeam || '').trim().toLowerCase();
+    const normalizedAwayName = String(match?.awayTeam || '').trim().toLowerCase();
+
+    let goalDiff = homeGoals - awayGoals;
+    if (normalizedTeamName && normalizedTeamName === normalizedAwayName) {
+        goalDiff = awayGoals - homeGoals;
+    } else if (normalizedTeamName && normalizedTeamName !== normalizedHomeName) {
+        return null;
+    }
+
+    if (goalDiff > 0) return { label: 'W', className: 'win' };
+    if (goalDiff < 0) return { label: 'L', className: 'loss' };
+    return { label: 'D', className: 'draw' };
+}
+
+export function buildScheduleFixtureCardHtml(match, options = {}) {
+    const safe = options.safe || htmlEscape;
+    const matchCaller = options.matchCaller || 'leagueMatches';
+    const pendingLabel = options.pendingLabel || 'VS';
+    const allowFixtureClick = options.allowFixtureClick !== false;
+    const showPlayedInsights = options.showPlayedInsights === true;
+    const allowInsights = options.showInsights !== false;
+    const seasonYear = options.seasonYear ?? '';
+    const fixtureId = resolveFixtureIdentifier(match, '');
+    const venue = resolveFixtureVenue(match);
+    const hasSnapshotData = [match?.homeTeamStrength, match?.awayTeamStrength, match?.homeTeamForm, match?.awayTeamForm]
+        .some(value => Number.isFinite(Number(value)));
+    const showInsights = allowInsights && (hasSnapshotData || match?.prediction) && (!match?.played || showPlayedInsights);
+    const classes = ['fm-fixture'];
+
+    if (match?.played && match?.id) classes.push('js-load-match', 'is-played');
+    if (!match?.played && allowFixtureClick && fixtureId) classes.push('js-load-fixture');
+    if (showInsights) classes.push('has-insights');
+
+    const h2h = match?.h2h;
+    const playedBadge = match?.played ? resolveLeagueResultBadge(match) : null;
+    const h2hSummary = Number(h2h?.played || 0) > 0
+        ? `<div class="fx-h2h"><strong>${safe(h2h.summary || 'H2H')}</strong>${h2h.lastMeetingSummary ? `<span>${safe(h2h.lastMeetingSummary)}</span>` : ''}</div>`
+        : '';
+
+    return `
+        <div class="${classes.join(' ')}"
+             data-match-id="${match?.played && match?.id ? match.id : ''}"
+             data-caller="${safe(matchCaller)}"
+             data-fixture-id="${!match?.played && allowFixtureClick ? fixtureId : ''}">
+            <div class="fx-topline">
+                <span class="fx-date">${safe(match?.matchDate || 'TBD')}</span>
+                <span class="fx-venue">${safe(venue)}</span>
+            </div>
+            <div class="fx-main">
+                <span class="fx-home ${match?.homeTeamId ? 'js-load-team' : ''}" data-team-id="${match?.homeTeamId || ''}" data-team-name="${safe(match?.homeTeam || 'Home')}" data-season-year="${seasonYear}">${safe(match?.homeTeam || 'Home')}</span>
+                <span class="fx-score ${match?.played ? '' : 'pending'}">${match?.played ? `${match?.homeGoals ?? 0} – ${match?.awayGoals ?? 0}` : safe(pendingLabel)}</span>
+                <span class="fx-away ${match?.awayTeamId ? 'js-load-team' : ''}" data-team-id="${match?.awayTeamId || ''}" data-team-name="${safe(match?.awayTeam || 'Away')}" data-season-year="${seasonYear}">${safe(match?.awayTeam || 'Away')}</span>
+            </div>
+            ${playedBadge ? `<div class="fx-result-chip">${buildResultBadgeHtml(playedBadge.label, playedBadge.className)}</div>` : ''}
+            ${showInsights ? `
+                <div class="fx-insights">
+                    ${buildFixtureSnapshotHtml(match?.homeTeam, 'Home', match?.homeTeamStrength, match?.homeTeamForm, safe)}
+                    ${buildFixturePredictionHtml(match?.prediction, safe)}
+                    ${buildFixtureSnapshotHtml(match?.awayTeam, 'Away', match?.awayTeamStrength, match?.awayTeamForm, safe)}
+                </div>` : ''}
+            ${h2hSummary}
+        </div>`;
+}
+
+function buildFixtureGroupsHtml(groups, options = {}) {
+    const safe = options.safe || htmlEscape;
+    const fixtureGroups = Array.isArray(groups) ? groups : [];
+    if (!fixtureGroups.length) {
+        return '<div class="fm-empty">No schedule available yet.</div>';
+    }
+
+    return fixtureGroups.map(group => `
+        <div class="fm-fixture-group${group.isFocusRound ? ' is-focus-round' : ''}"${group.isFocusRound ? ' data-fixture-focus="current"' : ''}>
+            <div class="fm-matchday-hd">Round ${group.round}${group.label ? ` <span class="fm-round-label">${safe(group.label)}</span>` : ''}</div>
+            ${(group.matches || []).map(match => buildScheduleFixtureCardHtml(match, options)).join('')}
+        </div>`).join('');
+}
+
+export function bindScheduleInteractions(container, handlers = {}) {
+    if (!container) return;
+
+    const onLoadTeam = handlers.loadLeagueTeam || window.loadLeagueTeam;
+    const onLoadMatch = handlers.loadMatch || window.loadMatch;
+    const onLoadFixture = handlers.loadFixture || window.loadFixture;
+
+    container.querySelectorAll('.js-load-team').forEach(node => {
+        node.addEventListener('click', event => {
+            event.stopPropagation();
+            const teamId = Number(node.dataset.teamId);
+            const teamName = node.dataset.teamName || 'Team';
+            const seasonYear = node.dataset.seasonYear ? Number(node.dataset.seasonYear) : null;
+            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, seasonYear);
+        });
+    });
+
+    container.querySelectorAll('.js-load-match').forEach(node => {
+        node.addEventListener('click', () => {
+            const matchId = Number(node.dataset.matchId);
+            const caller = node.dataset.caller || 'leagueMatches';
+            if (matchId && typeof onLoadMatch === 'function') onLoadMatch(matchId, caller);
+        });
+    });
+
+    container.querySelectorAll('.js-load-fixture').forEach(node => {
+        node.addEventListener('click', () => {
+            const fixtureId = Number(node.dataset.fixtureId);
+            if (fixtureId && typeof onLoadFixture === 'function') onLoadFixture(fixtureId);
+        });
+    });
+}
+
 function moraleMeta(player) {
     const form = Number(player?.form);
     if (Number.isFinite(form) && form >= 7.8) return { icon: '&#9650;', label: 'High', className: 'up' };
@@ -152,6 +344,7 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'Medical Center', page: 'medicalCenter' },
         { label: 'Juniors', page: 'juniors' },
         { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
+        { label: 'Tactic Editor', page: 'tacticEditor', currentPages: ['tacticEditor'] },
         { label: 'Staff', page: 'staff' },
         { label: 'Finances', page: 'finances' },
         { label: 'Transfers', page: 'transfers' },
@@ -306,7 +499,7 @@ export function renderPlayersView(players, title, options = {}) {
     });
 }
 
-export function renderMatchesView(matches, title, { loadMatch, currentPage = 'schedule' } = {}) {
+export function renderMatchesView(matches, title, { loadMatch, currentPage = 'schedule', currentTeamName = '' } = {}) {
     const mainContent = document.getElementById('main-content');
     const matchRows = Array.isArray(matches) ? matches : [];
     const completedMatches = matchRows.filter(match => Number.isFinite(Number(match?.homeGoals)) && Number.isFinite(Number(match?.awayGoals)));
@@ -349,6 +542,7 @@ export function renderMatchesView(matches, title, { loadMatch, currentPage = 'sc
         matchRows.forEach(match => {
             const homeEsc = String(match.homeTeam || '').replace(/'/g, "\\'");
             const awayEsc = String(match.awayTeam || '').replace(/'/g, "\\'");
+            const clubResultBadge = resolveClubResultBadge(match, currentTeamName);
             html += `
             <div class="match-row" data-match-id="${match.id}" data-caller="match">
                 <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">Date: ${match.matchDate || 'N/A'}</div>
@@ -357,6 +551,7 @@ export function renderMatchesView(matches, title, { loadMatch, currentPage = 'sc
                     <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
                     <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${match.awayTeam}</span></span>
                 </div>
+                ${clubResultBadge ? buildResultBadgeHtml(clubResultBadge.label, clubResultBadge.className) : ''}
             </div>`;
         });
     }
@@ -376,6 +571,11 @@ export function renderMatchesView(matches, title, { loadMatch, currentPage = 'sc
 export function renderFixturesView(fixtures, title, { currentPage = 'schedule' } = {}) {
     const mainContent = document.getElementById('main-content');
     const fixtureRows = Array.isArray(fixtures) ? fixtures : [];
+    const playedCount = fixtureRows.filter(fixture => fixture?.played).length;
+    const upcomingCount = fixtureRows.filter(fixture => !fixture?.played).length;
+    const venueCount = fixtureRows.filter(fixture => resolveFixtureVenue(fixture) !== 'N/A').length;
+    const predictionCount = fixtureRows.filter(fixture => !fixture?.played && fixture?.prediction).length;
+    const h2hCount = fixtureRows.filter(fixture => Number(fixture?.h2h?.played || 0) > 0).length;
 
     let html = `
     <div class="fm-page fm-page--club">
@@ -390,49 +590,39 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
                 ${buildClubActionsHtml(currentPage)}
             </div>
             <div class="fm-medical-stat-grid team-summary-grid">
-                <div><strong>${fixtureRows.length}</strong><span>Fixtures</span></div>
-                <div><strong>${fixtureRows.filter(fixture => fixture?.stadiumName).length}</strong><span>Venues set</span></div>
-                <div><strong>${fixtureRows.filter(fixture => fixture?.matchTime).length}</strong><span>Kick-off set</span></div>
-                <div><strong>${htmlEscape(title)}</strong><span>View</span></div>
+                <div><strong>${fixtureRows.length}</strong><span>Total</span></div>
+                <div><strong>${playedCount}</strong><span>Played</span></div>
+                <div><strong>${upcomingCount}</strong><span>Upcoming</span></div>
+                <div><strong>${h2hCount}</strong><span>H2H notes</span></div>
             </div>
         </section>
         <section class="fm-panel">
             <div class="fm-panel-head">
                 <div>
-                    <h3>Upcoming fixtures</h3>
-                    <p class="fm-subtle">Open a row to see the detailed fixture card.</p>
+                    <h3>Schedule timeline</h3>
+                    <p class="fm-subtle">Played matches open match details, while upcoming fixtures keep the OVR/form/prediction preview.</p>
                 </div>
-                <span class="fm-panel-action">${fixtureRows.length} items</span>
+                <span class="fm-panel-action">${predictionCount} preview${predictionCount === 1 ? '' : 's'} · ${venueCount} venues</span>
             </div>
-            <div class="match-list">`;
+            <div class="fm-fixtures">`;
 
     if (fixtureRows.length === 0) {
-        html += `<div class="fm-empty">No fixtures to display.</div>`;
+        html += `<div class="fm-empty">No schedule entries to display.</div>`;
     }
 
-    fixtureRows.forEach((fixture, idx) => {
-        const fixtureId = fixture.id || idx;
-        const homeEsc = String(fixture.homeTeam || '').replace(/'/g, "\\'");
-        const awayEsc = String(fixture.awayTeam || '').replace(/'/g, "\\'");
-        html += `
-        <div class="match-row upcoming-match" data-fixture-id="${fixtureId}">
-            <div style="font-size:0.9em; color:#aaa; margin-bottom:4px;">Date: ${fixture.matchDate || 'N/A'} ${fixture.matchTime || ''}</div>
-            <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${fixture.homeTeam}</span></span>
-            <span class="score">VS</span>
-            <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${fixture.awayTeam}</span></span>
-            <div style="font-size:0.85em; color:#888; margin-top:6px;">Stadium: ${fixture.stadiumName || 'N/A'}</div>
-        </div>`;
-    });
+    html += fixtureRows
+        .map((fixture, idx) => buildScheduleFixtureCardHtml(fixture, {
+            matchCaller: 'match',
+            pendingLabel: 'VS',
+            allowFixtureClick: true,
+            safe: htmlEscape,
+            fallbackFixtureId: idx
+        }))
+        .join('');
 
     html += `</div></section></div>`;
     mainContent.innerHTML = html;
-
-    mainContent.querySelectorAll('.upcoming-match[data-fixture-id]').forEach(row => {
-        row.addEventListener('click', () => {
-            const fixtureId = Number(row.dataset.fixtureId);
-            if (fixtureId && typeof window.loadFixture === 'function') window.loadFixture(fixtureId);
-        });
-    });
+    bindScheduleInteractions(mainContent);
 }
 
 export function renderLeagueMatchesView(matches, title = 'League Results', { loadMatch }) {
@@ -491,7 +681,7 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
     };
 }
 
-export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, escapeHtml, formatGoalDiff }) {
+export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml, formatGoalDiff }) {
     const mainContent = document.getElementById('main-content');
     const safe = escapeHtml || htmlEscape;
     const data = Array.isArray(payload) ? { table: payload } : (payload || {});
@@ -500,11 +690,13 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     const topScorers = Array.isArray(data.topScorers) ? data.topScorers : [];
     const topAssists = Array.isArray(data.topAssists) ? data.topAssists : [];
     const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+    const selectedSeason = data.selectedSeason ?? null;
     const milestones = data.milestones || {};
+    const seasonSummary = data.seasonSummary || {};
 
     function zoneClass(rank, total) {
-        if (rank <= 4) return 'zone-ucl';
-        if (rank <= 6) return 'zone-uel';
+        if (rank === 1) return 'zone-title';
+        if (rank <= Math.min(4, total)) return 'zone-top';
         if (rank >= Math.max(1, total - 1)) return 'zone-rel';
         return '';
     }
@@ -518,7 +710,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             const played = wins + draws + losses;
             const gd = Number(team.goalDifference || 0);
             return `
-                <tr class="${zoneClass(rank, rows.length)} ${team.teamId ? 'js-load-team' : ''}" data-team-id="${team.teamId || ''}" data-team-name="${safe(team.name)}">
+                <tr class="${zoneClass(rank, rows.length)} ${team.teamId ? 'js-load-team' : ''}" data-team-id="${team.teamId || ''}" data-team-name="${safe(team.name)}" data-season-year="${selectedSeason ?? ''}">
                     <td class="st-pos">${rank}</td>
                     <td class="st-club">${team.teamId ? `<span class="fm-team-link">${safe(team.name)}</span>` : safe(team.name)}</td>
                     <td>${played}</td>
@@ -534,23 +726,15 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     }
 
     function fixturesHtml() {
-        if (!fixtures.length) {
-            return '<div class="fm-empty">No schedule available yet.</div>';
-        }
-
-        return fixtures.map(group => `
-            <div class="fm-fixture-group${group.isFocusRound ? ' is-focus-round' : ''}"${group.isFocusRound ? ' data-fixture-focus="current"' : ''}>
-                <div class="fm-matchday-hd">Round ${group.round}${group.label ? ` <span class="fm-round-label">${safe(group.label)}</span>` : ''}</div>
-                ${(group.matches || []).map(match => `
-                    <div class="fm-fixture ${match.played && match.id ? 'js-load-match is-played' : ''}" data-match-id="${match.id || ''}">
-                        <div class="fx-date">${safe(match.matchDate || 'TBD')}</div>
-                        <div class="fx-main">
-                            <span class="fx-home ${match.homeTeamId ? 'js-load-team' : ''}" data-team-id="${match.homeTeamId || ''}" data-team-name="${safe(match.homeTeam)}">${safe(match.homeTeam)}</span>
-                            <span class="fx-score ${match.played ? '' : 'pending'}">${match.played ? `${match.homeGoals ?? 0} – ${match.awayGoals ?? 0}` : '–'}</span>
-                            <span class="fx-away ${match.awayTeamId ? 'js-load-team' : ''}" data-team-id="${match.awayTeamId || ''}" data-team-name="${safe(match.awayTeam)}">${safe(match.awayTeam)}</span>
-                        </div>
-                    </div>`).join('')}
-            </div>`).join('');
+        return buildFixtureGroupsHtml(fixtures, {
+            safe,
+            matchCaller: 'leagueMatches',
+            pendingLabel: '–',
+            allowFixtureClick: true,
+            showInsights: true,
+            showPlayedInsights: false,
+            seasonYear: selectedSeason
+        });
     }
 
     function statTableHtml(items, type) {
@@ -572,9 +756,9 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                             <td class="ps-pos">${index + 1}</td>
                             <td class="ps-name">
                                 ${item.playerId && item.teamId
-                                    ? `<span class="fm-player-link js-load-league-player" data-player-id="${item.playerId}" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName || 'Team')}">${safe(item.playerName || item.name || 'Unknown')}</span>`
+                                    ? `<span class="fm-player-link js-load-league-player" data-player-id="${item.playerId}" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName || 'Team')}" data-season-year="${selectedSeason ?? ''}">${safe(item.playerName || item.name || 'Unknown')}</span>`
                                     : safe(item.playerName || item.name || 'Unknown')}
-                                <span class="ps-team">${item.teamId ? `<span class="fm-team-link js-load-team" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName)}">${safe(item.teamName)}</span>` : safe(item.teamName || 'No Team')}</span>
+                                <span class="ps-team">${item.teamId ? `<span class="fm-team-link js-load-team" data-team-id="${item.teamId}" data-team-name="${safe(item.teamName)}" data-season-year="${selectedSeason ?? ''}">${safe(item.teamName)}</span>` : safe(item.teamName || 'No Team')}</span>
                             </td>
                             <td class="ps-val">${type === 'goals' ? (item.goals ?? 0) : (item.assists ?? 0)}</td>
                         </tr>`).join('')}
@@ -636,6 +820,68 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             </div>`;
     }
 
+    function summaryListHtml(items, emptyText, formatter) {
+        if (!Array.isArray(items) || !items.length) {
+            return `<div class="fm-subtle fm-season-summary-empty">${safe(emptyText)}</div>`;
+        }
+        return items.map(item => formatter(item)).join('');
+    }
+
+    function seasonSummaryBoardHtml() {
+        const directPromotions = Array.isArray(seasonSummary.directPromotions) ? seasonSummary.directPromotions : [];
+        const directRelegations = Array.isArray(seasonSummary.directRelegations) ? seasonSummary.directRelegations : [];
+        const playoffResults = Array.isArray(seasonSummary.playoffResults) ? seasonSummary.playoffResults : [];
+        if (!directPromotions.length && !directRelegations.length && !playoffResults.length) {
+            return '';
+        }
+
+        const latestSeasonYear = seasons[seasons.length - 1]?.seasonYear ?? selectedSeason;
+        const isArchive = latestSeasonYear != null && selectedSeason != null && Number(selectedSeason) < Number(latestSeasonYear);
+
+        return `
+            <section class="fm-panel fm-season-summary-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>${isArchive ? 'Promotion & Relegation Archive' : 'Promotion & Relegation'}</h3>
+                        <p class="fm-subtle">${isArchive ? 'Who went up, who went down, and how the playoff ended in this archived season.' : 'Current snapshot of direct movement and playoff outcome for the selected season.'}</p>
+                    </div>
+                    <span class="fm-panel-action">${isArchive ? 'Archive' : 'Season flow'}</span>
+                </div>
+                <div class="fm-milestone-grid fm-season-summary-grid">
+                    <article class="fm-milestone-card fm-season-summary-card">
+                        <div class="fm-milestone-kicker">Direct up</div>
+                        <div class="fm-season-summary-list">
+                            ${summaryListHtml(directPromotions, 'No direct promotion data yet.', item => `
+                                <div class="fm-season-summary-row">
+                                    <strong>${safe(item.team || 'Unknown')}</strong>
+                                    <span>${safe(item.fromLeague || 'Tier 2')}</span>
+                                </div>`)}
+                        </div>
+                    </article>
+                    <article class="fm-milestone-card fm-season-summary-card">
+                        <div class="fm-milestone-kicker">Direct down</div>
+                        <div class="fm-season-summary-list">
+                            ${summaryListHtml(directRelegations, 'No direct relegation data yet.', item => `
+                                <div class="fm-season-summary-row">
+                                    <strong>${safe(item.team || 'Unknown')}</strong>
+                                    <span>${safe(item.toLeague || 'Tier 2')}</span>
+                                </div>`)}
+                        </div>
+                    </article>
+                    <article class="fm-milestone-card fm-season-summary-card">
+                        <div class="fm-milestone-kicker">Playoff</div>
+                        <div class="fm-season-summary-list">
+                            ${summaryListHtml(playoffResults, 'No playoff fixtures logged yet.', item => `
+                                <div class="fm-season-summary-row">
+                                    <strong>${safe(item.homeTeam || 'Home')} ${Number(item.homeGoals ?? 0)}:${Number(item.awayGoals ?? 0)} ${safe(item.awayTeam || 'Away')}</strong>
+                                    <span>Winner: ${safe(item.winner || 'TBD')}</span>
+                                </div>`)}
+                        </div>
+                    </article>
+                </div>
+            </section>`;
+    }
+
     mainContent.innerHTML = `
     <div class="fm-page fm-page--league">
         <div class="fm-page-toolbar">
@@ -677,8 +923,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     <tbody>${standingsRowsHtml()}</tbody>
                 </table>
                 <div class="fm-legend">
-                    <span><i class="legend-dot ucl"></i> Europe</span>
-                    <span><i class="legend-dot uel"></i> Playoff race</span>
+                    <span><i class="legend-dot ucl"></i> Title pace</span>
+                    <span><i class="legend-dot uel"></i> Top places</span>
                     <span><i class="legend-dot rel"></i> Relegation zone</span>
                 </div>
             </section>
@@ -702,6 +948,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             ${milestoneBoardHtml()}
         </section>
 
+        ${seasonSummaryBoardHtml()}
+
         <div class="fm-grid-bottom">
             <section class="fm-panel">
                 <div class="fm-panel-head"><h3>Top Scorers</h3></div>
@@ -714,13 +962,10 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         </div>
     </div>`;
 
-    mainContent.querySelectorAll('.js-load-team').forEach(node => {
-        node.addEventListener('click', event => {
-            event.stopPropagation();
-            const teamId = Number(node.dataset.teamId);
-            const teamName = node.dataset.teamName || 'Team';
-            if (teamId) loadLeagueTeam(teamId, teamName);
-        });
+    bindScheduleInteractions(mainContent, {
+        loadLeagueTeam: (teamId, teamName, seasonYear) => loadLeagueTeam(teamId, teamName, { seasonYear: seasonYear ?? selectedSeason }),
+        loadMatch,
+        loadFixture
     });
 
     mainContent.querySelectorAll('.js-load-league-player').forEach(node => {
@@ -729,20 +974,103 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             const playerId = Number(node.dataset.playerId);
             const teamId = Number(node.dataset.teamId);
             const teamName = node.dataset.teamName || 'Team';
-            if (playerId && teamId) loadLeagueTeamPlayer(playerId, teamId, teamName);
-        });
-    });
-
-    mainContent.querySelectorAll('.js-load-match').forEach(node => {
-        node.addEventListener('click', () => {
-            const matchId = Number(node.dataset.matchId);
-            if (matchId) loadMatch(matchId, 'leagueMatches');
+            const seasonYear = node.dataset.seasonYear ? Number(node.dataset.seasonYear) : selectedSeason;
+            if (playerId && teamId) loadLeagueTeamPlayer(playerId, teamId, teamName, { seasonYear });
         });
     });
 
     const seasonSelect = document.getElementById('league-overview-season-select');
     if (seasonSelect) {
         seasonSelect.addEventListener('change', () => loadLeagueTable(Number(seasonSelect.value)));
+    }
+
+    const fixturesScroll = mainContent.querySelector('.fm-fixtures-scroll');
+    const focusGroup = mainContent.querySelector('[data-fixture-focus="current"]');
+    if (fixturesScroll && focusGroup) {
+        requestAnimationFrame(() => {
+            const targetTop = Math.max(0, focusGroup.offsetTop - Math.max(24, Math.round(fixturesScroll.clientHeight * 0.28)));
+            fixturesScroll.scrollTop = targetTop;
+        });
+    }
+}
+
+export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatch, loadLeagueTeam, loadFixture } = {}) {
+    const mainContent = document.getElementById('main-content');
+    const data = payload || {};
+    const rounds = Array.isArray(data.rounds) ? data.rounds : [];
+    const seasons = Array.isArray(data.seasons) ? data.seasons : [];
+    const selectedSeason = data.selectedSeason ?? null;
+    const selectedSeasonNumber = data.selectedSeasonNumber ?? null;
+    const totalFixtures = rounds.reduce((sum, group) => sum + (group.matches || []).length, 0);
+    const upcomingCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played).length, 0);
+    const focusRound = rounds.find(group => group.isFocusRound)?.round ?? '—';
+    const predictedCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played && match?.prediction).length, 0);
+
+    mainContent.innerHTML = `
+        <div class="fm-page fm-page--league">
+            <div class="fm-page-toolbar">
+                ${backButtonHtml('Back', 'dashboard')}
+                <div class="fm-page-title-block">
+                    <div class="fm-eyebrow">League schedule</div>
+                    <h2 class="league-table-title">Serbian Superliga${selectedSeasonNumber ? ` · Season ${selectedSeasonNumber}` : ''}</h2>
+                </div>
+                ${seasons.length ? `
+                <label class="fm-season-select-wrap">
+                    <span>Season</span>
+                    <select id="league-schedule-season-select" class="fm-season-select">
+                        ${seasons.map(season => `<option value="${season.seasonYear}" ${season.seasonYear === selectedSeason ? 'selected' : ''}>Season ${season.seasonNumber}</option>`).join('')}
+                    </select>
+                </label>` : ''}
+            </div>
+
+            <div class="fm-grid-top">
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Schedule overview</h3>
+                            <p class="fm-subtle">Open a fixture or played match for the deeper preview, while the round list stays compact and readable.</p>
+                        </div>
+                        <span class="fm-panel-action">League-wide</span>
+                    </div>
+                    <div class="fm-medical-stat-grid team-summary-grid">
+                        <div><strong>${totalFixtures}</strong><span>Fixtures</span></div>
+                        <div><strong>${upcomingCount}</strong><span>Upcoming</span></div>
+                        <div><strong>${predictedCount}</strong><span>Predictions</span></div>
+                        <div><strong>${focusRound}</strong><span>Focus round</span></div>
+                    </div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <h3>Rounds</h3>
+                        <span class="fm-panel-action">Current focus</span>
+                    </div>
+                    <div class="fm-fixtures-scroll">
+                        <div class="fm-fixtures">
+                            ${buildFixtureGroupsHtml(rounds, {
+                                safe: htmlEscape,
+                                matchCaller: 'leagueMatches',
+                                pendingLabel: 'VS',
+                                allowFixtureClick: true,
+                                showInsights: true,
+                                showPlayedInsights: false,
+                                seasonYear: selectedSeason
+                            })}
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>`;
+
+    bindScheduleInteractions(mainContent, {
+        loadLeagueTeam: (teamId, teamName, seasonYear) => loadLeagueTeam(teamId, teamName, { seasonYear: seasonYear ?? selectedSeason }),
+        loadMatch,
+        loadFixture
+    });
+
+    const seasonSelect = document.getElementById('league-schedule-season-select');
+    if (seasonSelect) {
+        seasonSelect.addEventListener('change', () => loadLeagueSchedule(Number(seasonSelect.value)));
     }
 
     const fixturesScroll = mainContent.querySelector('.fm-fixtures-scroll');

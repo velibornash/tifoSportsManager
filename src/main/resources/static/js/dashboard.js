@@ -3,6 +3,79 @@ import { authFetch } from './auth.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
+let currentUserCompetitionId = null;
+let currentUserCompetitionName = null;
+let currentSeasonYear = null;
+
+function getCurrentTeamImagePath() {
+    return currentUserTeamName === 'OFK Omladinac' ? '/images/omladinac.png' : '/images/default-team.png';
+}
+
+function getCurrentLeagueId() {
+    const leagueId = Number(currentUserCompetitionId);
+    return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : 1;
+}
+
+function getCurrentLeagueName() {
+    return currentUserCompetitionName || 'League';
+}
+
+function formatSeasonLabel(seasonYear) {
+    const startYear = Number(seasonYear);
+    if (!Number.isFinite(startYear)) return 'Current season';
+    return `${startYear}/${String((startYear + 1) % 100).padStart(2, '0')}`;
+}
+
+function buildDashboardSubtitle() {
+    const seasonLabel = currentSeasonYear ? `Season ${formatSeasonLabel(currentSeasonYear)}` : 'Current season';
+    return `<span class="cs-clickable" onclick="loadLeagueTable()">${escapeHtml(getCurrentLeagueName())}</span> · ${escapeHtml(seasonLabel)}`;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function parseDashboardDate(value) {
+    if (!value || value === 'N/A') return null;
+    const normalized = String(value).includes('T') ? String(value) : String(value).replace(' ', 'T');
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDashboardDate(value) {
+    const parsed = parseDashboardDate(value);
+    if (!parsed) return value || 'Date TBD';
+    const date = parsed.toLocaleDateString('sr-RS');
+    const time = parsed.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
+    return `${date} - ${time}`;
+}
+
+function renderNextMatchCard(bodyHtml) {
+    const host = document.getElementById('next-match-card');
+    if (!host) return null;
+    host.innerHTML = `<h3>Next Match</h3>${bodyHtml}`;
+    return host;
+}
+
+function renderNextMatchEmpty(message, meta) {
+    renderNextMatchCard(`
+        <div class="match-info">
+            <div class="empty-badge-wrap"><span class="empty-badge">${escapeHtml(message)}</span></div>
+        </div>
+        <div class="match-date">${escapeHtml(meta || 'The next fixture will appear here once the schedule is ready.')}</div>`);
+}
+
+function buildHeadToHeadText(h2h) {
+    if (!h2h) return escapeHtml('No head-to-head data yet.');
+    const summary = escapeHtml(h2h.summary || 'No head-to-head data yet.');
+    const lastMeeting = h2h.lastMeetingSummary ? `<br>${escapeHtml(h2h.lastMeetingSummary)}` : '';
+    return `${summary}${lastMeeting}`;
+}
 
 function extractTeamId(team) {
     if (team === null || team === undefined) return null;
@@ -50,7 +123,10 @@ window.addEventListener('load', async () => {
 
         currentUserTeamId = user.teamId;
         currentUserTeamName = user.teamName;
-        console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName);
+        currentUserCompetitionId = user.competitionId ?? null;
+        currentUserCompetitionName = user.competitionName ?? null;
+        currentSeasonYear = user.seasonYear ?? null;
+        console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
         loadDashboard();
     } catch (err) {
@@ -67,7 +143,7 @@ function loadDashboard() {
     }
 
     const teamName = currentUserTeamName || 'Your Team';
-    const teamImagePath = currentUserTeamName === 'OFK Omladinac' ? '/images/omladinac.png' : '/images/default-team.png';
+    const teamImagePath = getCurrentTeamImagePath();
 
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
@@ -77,7 +153,7 @@ function loadDashboard() {
             <div class="team-name-wrapper">
                 <div class="fm-eyebrow">Club overview</div>
                 <h1>${teamName}</h1>
-                <p class="team-subtitle"><span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> · Season 2025/26</p>
+                <p class="team-subtitle">${buildDashboardSubtitle()}</p>
             </div>
         </div>
 
@@ -100,30 +176,12 @@ function loadDashboard() {
             </div>
         </div>
 
-        <div class="next-match">
+        <div class="next-match" id="next-match-card">
             <h3>Next Match</h3>
-            <div class="match-info clickable" onclick="loadFixture(1)">
-                <div class="team-away-home">
-                    <img src="/images/sremac.jpg" class="match-team-logo small">
-                    <span>Sremac Berkasovo</span>
-                </div>
-                <span class="vs">VS</span>
-                <div class="team-away-home" id="nextMatchHome">
-                    <img src="${teamImagePath}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
-                    <span>${teamName}</span>
-                </div>
+            <div class="match-info">
+                <div class="loading">Loading next match...</div>
             </div>
-            <div class="match-date">
-                15.03.2026 - 17:00<br>
-                Stadion Livadice
-            </div>
-        </div>
-
-        <div class="recent-matches-section fm-milestone-board">
-            <h3>Milestones</h3>
-            <div id="dashboard-milestones" class="fm-milestone-grid">
-                <div class="fm-milestone-card"><div class="fm-milestone-kicker">Season board</div><div class="fm-milestone-value">Loading...</div><div class="fm-milestone-meta">Collecting current league milestones.</div></div>
-            </div>
+            <div class="match-date">Preparing your live club schedule…</div>
         </div>
 
         <div class="recent-matches-section">
@@ -133,12 +191,19 @@ function loadDashboard() {
             </div>
         </div>
 
-        <div class="recent-matches-section">
+        <div class="recent-matches-section fm-milestone-board">
+            <h3>Club Milestones</h3>
+            <div id="dashboard-milestones" class="fm-milestone-grid">
+                <div class="fm-milestone-card"><div class="fm-milestone-kicker">Season board</div><div class="fm-milestone-value">Loading...</div><div class="fm-milestone-meta">Collecting current season milestones for your club.</div></div>
+            </div>
+        </div>
+
+<!--        <div class="recent-matches-section">
             <h3>Recent League Results</h3>
             <div id="recent-league-matches-list" class="match-list">
                 <div class="loading">Loading recent league matches...</div>
             </div>
-        </div>
+        </div>-->
 
         <div class="dashboard-actions">
 <!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
@@ -148,9 +213,77 @@ function loadDashboard() {
     </div>`;
 
     loadRecentMatches();
-    loadRecentLeagueMatches();
+//    loadRecentLeagueMatches();
     loadHomeTeamStats();
     loadDashboardMilestones();
+    loadNextMatch();
+}
+
+async function loadNextMatch() {
+    try {
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule`);
+        if (!response.ok) throw new Error(`Failed to load schedule: ${response.status}`);
+
+        const schedule = await response.json();
+        const nextMatch = (Array.isArray(schedule) ? schedule : [])
+            .filter(match => !match.played)
+            .sort((a, b) => {
+                const left = parseDashboardDate(a.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                const right = parseDashboardDate(b.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                return left - right;
+            })[0];
+
+        if (!nextMatch) {
+            renderNextMatchEmpty('Schedule updating', 'Your next fixture will appear here as soon as the current season calendar is ready.');
+            return;
+        }
+
+        const teamImagePath = getCurrentTeamImagePath();
+        const clickableClass = nextMatch.fixtureId ? 'clickable' : '';
+        const venueLabel = nextMatch.stadium || 'Venue TBD';
+        const detailBits = [
+            nextMatch.competitionName || 'Competition',
+            nextMatch.round ? `Round ${nextMatch.round}` : null,
+            nextMatch.isHome ? 'Home' : 'Away'
+        ].filter(Boolean).join(' · ');
+        const homeOvr = Number(nextMatch.homeTeamStrength);
+        const awayOvr = Number(nextMatch.awayTeamStrength);
+        const ovrLine = Number.isFinite(homeOvr) || Number.isFinite(awayOvr)
+            ? `OVR ${Number.isFinite(homeOvr) ? Math.round(homeOvr) : '—'} · ${Number.isFinite(awayOvr) ? Math.round(awayOvr) : '—'}`
+            : '';
+
+        const host = renderNextMatchCard(`
+            <div class="match-info ${clickableClass}" data-fixture-id="${escapeHtml(nextMatch.fixtureId ?? '')}">
+                <div class="team-away-home">
+                    <img src="${nextMatch.isHome ? teamImagePath : '/images/default-team.png'}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
+                    <span>${escapeHtml(nextMatch.homeTeam || 'Home')}</span>
+                </div>
+                <span class="vs">VS</span>
+                <div class="team-away-home" id="nextMatchHome">
+                    <img src="${nextMatch.isHome ? '/images/default-team.png' : teamImagePath}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
+                    <span>${escapeHtml(nextMatch.awayTeam || 'Away')}</span>
+                </div>
+            </div>
+            <div class="match-date">
+                ${escapeHtml(formatDashboardDate(nextMatch.matchDate))}<br>
+                ${escapeHtml(venueLabel)}<br>
+                ${escapeHtml(detailBits)}<br>
+                ${ovrLine ? `${escapeHtml(ovrLine)}<br>` : ''}
+                ${buildHeadToHeadText(nextMatch.h2h || {})}
+            </div>`);
+
+        const clickable = host?.querySelector('[data-fixture-id]');
+        if (clickable && nextMatch.fixtureId) {
+            clickable.addEventListener('click', () => {
+                if (typeof window.loadFixture === 'function') {
+                    window.loadFixture(Number(nextMatch.fixtureId));
+                }
+            });
+        }
+    } catch (err) {
+        console.error('Error loading next match:', err);
+        renderNextMatchEmpty('Schedule unavailable', 'We could not refresh your club schedule right now.');
+    }
 }
 
 function formatMilestoneAttendance(value) {
@@ -172,8 +305,8 @@ async function loadDashboardMilestones() {
     if (!host) return;
 
     try {
-        const response = await authFetch('/stats/leagues/1/milestones');
-        if (!response.ok) throw new Error(`Failed to load milestones: ${response.status}`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/milestones`);
+        if (!response.ok) throw new Error(`Failed to load club milestones: ${response.status}`);
 
         const data = await response.json();
         const attendance = data?.attendance || {};
@@ -208,8 +341,8 @@ async function loadDashboardMilestones() {
             )
         ].join('');
     } catch (err) {
-        console.error('Error loading dashboard milestones:', err);
-        host.innerHTML = milestoneCard('Milestones', 'Unavailable', 'Could not load the current season board.');
+        console.error('Error loading club milestones:', err);
+        host.innerHTML = milestoneCard('Club Milestones', 'Unavailable', 'Could not load the current season milestones for your club.');
     }
 }
 
@@ -364,8 +497,8 @@ async function loadRecentLeagueMatches() {
     };
 
     try {
-        const leagueId = 1;
-        const response = await fetch(`/countries/leagues/${leagueId}/matches`);
+        const leagueId = getCurrentLeagueId();
+        const response = await authFetch(`/countries/leagues/${leagueId}/matches`);
         if (!response.ok) {
             renderEmpty();
             return;
@@ -421,8 +554,9 @@ async function loadRecentLeagueMatches() {
 
 async function loadHomeTeamStats() {
     try {
-        const leagueId = 1;
-        const response = await fetch(`/countries/leagues/${leagueId}/table`);
+        const leagueId = getCurrentLeagueId();
+        const seasonParam = currentSeasonYear ? `?seasonYear=${currentSeasonYear}` : '';
+        const response = await authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`);
         if (!response.ok) throw new Error('Failed to load league table');
 
         const table = await response.json();
@@ -435,7 +569,7 @@ async function loadHomeTeamStats() {
         }
 
         document.querySelector('.team-name-wrapper h1').textContent = entry.name;
-        document.querySelector('.team-subtitle').innerHTML = `<span class="cs-clickable" onclick="loadLeagueTable()">Serbian Superliga</span> · Season 2025/26`;
+        document.querySelector('.team-subtitle').innerHTML = buildDashboardSubtitle();
 
         const statValues = document.querySelectorAll('.stat-value');
         statValues[0].textContent = entry.position || '?';

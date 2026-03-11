@@ -1,6 +1,6 @@
 ﻿// pages.js
 import { authFetch } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
@@ -8,11 +8,16 @@ import { createClubManagementFeature } from './pages/features/club-management.js
 import { createCommunityFeature } from './pages/features/community.js';
     let currentUserTeamId = null;
     let currentUserTeamName = '';
+	let currentUserCompetitionId = null;
+	let currentUserCompetitionName = '';
+	let currentUserCompetitionTier = null;
+	let currentSeasonYear = null;
     let currentPageId = 'dashboard';
     let currentNavState = { type: 'dashboard' };
     const navHistoryStack = [];
     let navReplayMode = false;
     let navBusy = false;
+    let currentLeagueSeasonYear = null;
 
     function sameNavState(a, b) {
         if (!a || !b) return false;
@@ -52,11 +57,11 @@ import { createCommunityFeature } from './pages/features/community.js';
             return;
         }
         if (state.type === 'leagueTeam') {
-            await loadLeagueTeam(state.teamId, state.teamName, { pushHistory: false });
+            await loadLeagueTeam(state.teamId, state.teamName, { pushHistory: false, seasonYear: state.seasonYear ?? null });
             return;
         }
         if (state.type === 'leagueTeamPlayer') {
-            await loadLeagueTeamPlayer(state.playerId, state.teamId, state.teamName, { pushHistory: false });
+            await loadLeagueTeamPlayer(state.playerId, state.teamId, state.teamName, { pushHistory: false, seasonYear: state.seasonYear ?? null });
         }
     }
     async function goBackSmart(fallback = 'dashboard') {
@@ -92,7 +97,12 @@ import { createCommunityFeature } from './pages/features/community.js';
             const user = await res.json();
             currentUserTeamId = user.teamId;
             currentUserTeamName = user.teamName || '';
-            console.log("Team ID loaded:", currentUserTeamId);
+	        currentUserCompetitionId = user.competitionId ?? null;
+	        currentUserCompetitionName = user.competitionName || '';
+	        currentUserCompetitionTier = user.competitionTier ?? null;
+	        currentSeasonYear = user.seasonYear ?? null;
+	        currentLeagueSeasonYear = currentSeasonYear || currentLeagueSeasonYear;
+	        console.log("Team ID loaded:", currentUserTeamId, "League:", currentUserCompetitionName || currentUserCompetitionId);
             return currentUserTeamId;
         } catch (err) {
             console.error("Error /auth/me:", err);
@@ -105,6 +115,16 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (currentUserTeamId) return currentUserTeamId;
         return await loadUserTeamId();
     }
+
+	async function ensureCurrentLeagueId() {
+	    if (!await ensureUserTeamId()) return null;
+	    const leagueId = Number(currentUserCompetitionId);
+	    return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : 1;
+	}
+
+	function getCurrentLeagueName() {
+	    return currentUserCompetitionName || 'League';
+	}
 
     // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
    document.addEventListener('click', function(e) {
@@ -158,6 +178,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                     await loadFormations();
                     break;
 
+                case "tacticEditor":
+                    await loadTacticEditor();
+                    break;
+
                 case "staff":
                     await loadStaff();
                     break;
@@ -196,7 +220,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                     break;
 
                 case "schedule":
-                    await loadResults();
+                    await loadFixtures();
                     break;
 
                 case "fixtures":
@@ -304,7 +328,9 @@ import { createCommunityFeature } from './pages/features/community.js';
     }
     async function openTeamByName(teamName) {
         try {
-            const res = await authFetch('/countries/leagues/1/teams');
+	        const leagueId = await ensureCurrentLeagueId();
+	        if (!leagueId) return;
+	        const res = await authFetch(`/countries/leagues/${leagueId}/teams`);
             if (!res.ok) return;
             const teams = await res.json();
             const key = normalizeTeamKey(teamName);
@@ -447,6 +473,46 @@ import { createCommunityFeature } from './pages/features/community.js';
         const value = Number(ratingValue);
         if (!Number.isFinite(value)) return `<span style="color:#9aa0a6;">-</span>`;
         return `<span style="color:${getRatingColor(value)}; font-weight:700;">${value.toFixed(1)}</span>`;
+    }
+    function formatCompactPlayerName(value) {
+        const safeName = String(value ?? '').trim();
+        if (!safeName) return 'Unknown';
+        const parts = safeName.split(/\s+/).filter(Boolean);
+        if (parts.length <= 1) return safeName;
+        return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
+    }
+    function buildRepeatedLineupBadge(count, badgeClass, icon, label) {
+        const total = Math.max(0, Number(count) || 0);
+        return Array.from({ length: total }, () => (
+            `<span class="fm-badge fm-badge-icon ${badgeClass}" title="${label}" aria-label="${label}">${icon}</span>`
+        )).join('');
+    }
+    function buildLineupEventBadges(player) {
+        const goals = Number(player?.goals || 0);
+        const assists = Number(player?.assists || 0);
+        const rawYellowCards = Math.max(0, Number(player?.yellowCards || 0));
+        const rawRedCards = Math.max(0, Number(player?.redCards || 0));
+        let yellowCards = Math.min(rawYellowCards, 1);
+        let redCards = Math.min(rawRedCards, 1);
+
+        if (rawYellowCards >= 2 && redCards === 0) {
+            yellowCards = 1;
+            redCards = 1;
+        }
+
+        if (redCards > 0) {
+            yellowCards = Math.min(yellowCards, 1);
+        }
+
+        const badges = [
+            buildRepeatedLineupBadge(goals, 'fm-badge-goal', '⚽', 'Goal'),
+            buildRepeatedLineupBadge(assists, 'fm-badge-ast', '🎯', 'Assist'),
+            buildRepeatedLineupBadge(yellowCards, 'fm-badge-card-yellow', '🟨', 'Yellow card'),
+            buildRepeatedLineupBadge(redCards, 'fm-badge-card-red', '🟥', 'Red card')
+        ].filter(Boolean);
+        return badges.length
+            ? `<div class="fm-match-lineup-badges">${badges.join('')}</div>`
+            : `<span class="fm-match-lineup-badges is-empty">—</span>`;
     }
     function getPendingJuniorReveal(playerId) {
         try {
@@ -1218,6 +1284,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 </div>
 
                 <div id="match-buttons-container" class="fm-match-actions">
+                    <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
                     <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn">Lineups</button>
                     <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn">Stats</button>
                     <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn">Goals</button>
@@ -1254,7 +1321,94 @@ import { createCommunityFeature } from './pages/features/community.js';
             backButton.style.display = 'inline-block';
 
              const infoDiv = document.getElementById("match-info");
+             let cachedMatchPreview = null;
              let cachedMatchReport = null;
+
+            function renderMatchPreview(previewPayload) {
+                const prediction = previewPayload?.prediction || {};
+                const h2h = previewPayload?.h2h || {};
+                const meetings = Array.isArray(previewPayload?.meetings) ? previewPayload.meetings : [];
+
+                const homeWin = Number(prediction.homeWinProbability ?? 0);
+                const draw = Number(prediction.drawProbability ?? 0);
+                const awayWin = Number(prediction.awayWinProbability ?? 0);
+                const confidence = Number(prediction.confidence ?? 0);
+                const expectedHomeGoals = Number(prediction.expectedHomeGoals ?? 0);
+                const expectedAwayGoals = Number(prediction.expectedAwayGoals ?? 0);
+                const homeStrength = Number(previewPayload?.homeTeamStrength ?? 0);
+                const awayStrength = Number(previewPayload?.awayTeamStrength ?? 0);
+                const homeForm = Number(previewPayload?.homeTeamForm ?? 0);
+                const awayForm = Number(previewPayload?.awayTeamForm ?? 0);
+                const analysis = escapeHtml(String(prediction.analysis || 'No extra preview analysis available.'));
+                const h2hSummary = escapeHtml(String(h2h.summary || 'No head-to-head history yet.'));
+                const lastMeetingSummary = escapeHtml(String(h2h.lastMeetingSummary || 'First recorded meeting.'));
+                const lastMeetingDate = escapeHtml(String(h2h.lastMeetingDate || 'N/A'));
+
+                const meetingsHtml = meetings.length
+                    ? meetings.map(meeting => {
+                        const meetingId = Number(meeting?.matchId ?? 0);
+                        const line = `${escapeHtml(String(meeting.homeTeam || 'Home'))} ${Number(meeting.homeGoals ?? 0)} - ${Number(meeting.awayGoals ?? 0)} ${escapeHtml(String(meeting.awayTeam || 'Away'))}`;
+                        const meta = `${escapeHtml(formatDateTimeLabel(meeting.matchDate))} · ${escapeHtml(String(meeting.summary || ''))}`;
+                        if (meetingId) {
+                            return `<button type="button" class="fm-action-btn secondary" style="width:100%; text-align:left; justify-content:space-between; gap:12px; margin-bottom:10px;" onclick="loadMatch(${meetingId}, 'match')"><span>${line}</span><span style="color:#9aa0a6; font-size:0.9em;">${meta}</span></button>`;
+                        }
+                        return `<div style="padding:10px 12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05);"><div>${line}</div><div style="color:#9aa0a6; font-size:0.9em; margin-top:4px;">${meta}</div></div>`;
+                    }).join('')
+                    : `<div style="color:#aaa; text-align:center; padding:14px 0;">No previous meetings recorded.</div>`;
+
+                infoDiv.innerHTML = `
+                    <div class="fm-match-report-shell">
+                        <h3 style="text-align:center; margin:0 0 16px; color:#4CAF50;">Match Preview</h3>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:16px;">
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05); text-align:center;">
+                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:8px;">Prediction</div>
+                                <div style="font-size:0.92em; color:#cfd8dc; margin-bottom:8px;">${confidence}% confidence</div>
+                                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">1</div><div style="font-size:1.35em; font-weight:700;">${homeWin}%</div></div>
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">X</div><div style="font-size:1.35em; font-weight:700;">${draw}%</div></div>
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">2</div><div style="font-size:1.35em; font-weight:700;">${awayWin}%</div></div>
+                                </div>
+                                <div style="font-size:0.92em; color:#dfe6eb;">xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}</div>
+                                <div style="font-size:0.88em; color:#9aa0a6; margin-top:8px;">${analysis}</div>
+                            </div>
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05);">
+                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:10px;">Team edge</div>
+                                <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:10px;">
+                                    <div><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(homeTeamName)}</div><div style="font-weight:700;">OVR ${homeStrength}</div><div style="color:#9aa0a6; font-size:0.88em;">Form ${homeForm.toFixed(1)}</div></div>
+                                    <div style="text-align:right;"><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(awayTeamName)}</div><div style="font-weight:700;">OVR ${awayStrength}</div><div style="color:#9aa0a6; font-size:0.88em;">Form ${awayForm.toFixed(1)}</div></div>
+                                </div>
+                                <div style="padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); font-size:0.92em; color:#dfe6eb;">${h2hSummary}</div>
+                                <div style="margin-top:8px; color:#9aa0a6; font-size:0.88em;">${lastMeetingSummary}</div>
+                                <div style="margin-top:4px; color:#7f8c8d; font-size:0.82em;">${lastMeetingDate}</div>
+                            </div>
+                        </div>
+                        <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                            <h4 style="margin:0 0 12px; color:#dfe6eb;">Recent H2H meetings</h4>
+                            ${meetingsHtml}
+                        </div>
+                    </div>`;
+            }
+
+            async function showPreview() {
+                if (cachedMatchPreview) {
+                    renderMatchPreview(cachedMatchPreview);
+                    return;
+                }
+
+                infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading preview...</p>`;
+
+                try {
+                    const response = await authFetch(`/matches/${matchId}/preview`);
+                    if (!response.ok) {
+                        throw new Error(`Preview unavailable (${response.status})`);
+                    }
+                    cachedMatchPreview = await response.json();
+                    renderMatchPreview(cachedMatchPreview);
+                } catch (error) {
+                    console.error('Failed to load match preview:', error);
+                    infoDiv.innerHTML = `<p style="color:#ffb3b3; text-align:center; padding:30px;">Match preview is not available for this match.</p>`;
+                }
+            }
 
             function renderMatchReport(reportPayload) {
                 const headline = escapeHtml(String(reportPayload?.headline || 'Match Report'));
@@ -1343,6 +1497,34 @@ import { createCommunityFeature } from './pages/features/community.js';
                 const homePenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === homeTeamName).length;
                 const awayPenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === awayTeamName).length;
 
+                const extractEventXg = event => {
+                    const rawValue = Number(event?.xG ?? event?.xg ?? 0);
+                    return Number.isFinite(rawValue) ? rawValue : 0;
+                };
+
+                const isXgEvent = event =>
+                    event.eventType === "ShotOnTargetEvent" ||
+                    event.eventType === "ShotOffTargetEvent" ||
+                    (event.eventType === "GoalEvent" && event.goalScored !== false);
+
+                const resolveXgTeam = event => {
+                    if (event.eventType === "GoalEvent") return event.scoreTeam || event.eventTeam;
+                    if (event.eventType === "ShotOnTargetEvent") return event.shotOnTargetTeam || event.eventTeam;
+                    if (event.eventType === "ShotOffTargetEvent") return event.shotOffTargetTeam || event.eventTeam;
+                    return event.eventTeam;
+                };
+
+                const sumTeamXg = teamName =>
+                    events.reduce((sum, event) => {
+                        if (!isXgEvent(event) || resolveXgTeam(event) !== teamName) {
+                            return sum;
+                        }
+                        return sum + extractEventXg(event);
+                    }, 0);
+
+                const homeXg = sumTeamXg(homeTeamName);
+                const awayXg = sumTeamXg(awayTeamName);
+
                 const countTeamEvents = (type, teamName) =>
                     events.filter(e => e.eventType === type && e.eventTeam === teamName).length;
 
@@ -1386,7 +1568,8 @@ import { createCommunityFeature } from './pages/features/community.js';
                     </thead>
                     <tbody>
                         <tr><td style="padding:10px;">Possession</td><td style="text-align:center;font-weight:bold;">${homePossPct}%</td><td style="text-align:center;font-weight:bold;">${awayPossPct}%</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
+                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">xG</td><td style="text-align:center;">${homeXg.toFixed(2)}</td><td style="text-align:center;">${awayXg.toFixed(2)}</td></tr>
+                        <tr><td style="padding:10px;">Shots</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
                         <tr><td style="padding:10px;">Shots on target</td><td style="text-align:center;">${adjHomeShotsOn}</td><td style="text-align:center;">${adjAwayShotsOn}</td></tr>
                         <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots off target</td><td style="text-align:center;">${homeShotsOff}</td><td style="text-align:center;">${awayShotsOff}</td></tr>
                         <tr><td style="padding:10px;">Corners</td><td style="text-align:center;">${homeCorners}</td><td style="text-align:center;">${awayCorners}</td></tr>
@@ -1399,56 +1582,77 @@ import { createCommunityFeature } from './pages/features/community.js';
                 infoDiv.innerHTML = html;
             }
 
-            // Automatski prikaÅ¾i statistiku odmah
-            showStats();
+            // Automatski prikaÅ¾i preview odmah
+            void showPreview();
 
             // Listener-i za ostala dugmad
+            document.getElementById("view-preview").addEventListener("click", () => {
+                void showPreview();
+            });
             document.getElementById("view-lineups").addEventListener("click", () => {
                 if (!lineupsPayload || (!lineupsPayload.homeLineup && !lineupsPayload.awayLineup)) {
                     infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Lineups are not available for this match.</p>`;
                     return;
                 }
 
-                const renderLineup = (teamName, players) => {
+                const seasonYear = currentLeagueSeasonYear;
+                const renderLineup = (teamName, teamId, players) => {
                     const sorted = [...(players || [])].sort((a, b) => {
                         const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
                         return (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9);
                     });
-                    if (sorted.length === 0) return `<p style="color:#aaa;">No lineup data.</p>`;
+                    if (sorted.length === 0) return `<p class="fm-subtle">No lineup data.</p>`;
 
                     let html = `
-                        <h4 style="margin: 16px 0 8px; color:#ddd;">${teamName}</h4>
-                        <div style="display:flex; gap:10px; padding:4px 10px; color:#888; font-size:0.82em;">
-                            <div style="width:42px; text-align:center;">POS</div>
-                            <div style="flex:1;">Name</div>
-                            <div style="width:56px; text-align:center;">Grade</div>
-                            <div style="width:42px; text-align:center;">G</div>
-                            <div style="width:42px; text-align:center;">A</div>
-                            <div style="width:64px; text-align:center;">Min</div>
-                        </div>`;
-                    sorted.forEach((p, i) => {
-                        const rowBg = i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent";
+                        <section class="fm-match-lineup-team">
+                            <h4 class="fm-match-lineup-title">${escapeHtml(teamName)}</h4>
+                            <div class="fm-match-lineup-head">
+                                <div>POS</div>
+                                <div>Player</div>
+                                <div>Rate</div>
+                                <div>Impact</div>
+                                <div>Min</div>
+                            </div>
+                            <div class="fm-match-lineup-body">`;
+                    sorted.forEach(p => {
                         const gradeValue = Number(p.grade);
-                        const gradeText = Number.isFinite(gradeValue) ? gradeValue.toFixed(1) : "-";
-                        const gradeColor = getRatingColor(gradeValue);
+                        const compactName = escapeHtml(formatCompactPlayerName(p.playerName));
                         html += `
-                            <div style="display:flex; gap:10px; padding:8px 10px; border-radius:6px; background:${rowBg};">
-                                <div style="width:42px; text-align:center; color:#2a8c4a; font-weight:700;">${p.position}</div>
-                                <div style="flex:1;">${p.playerId ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${p.playerId}, ${teamName === (lineupsPayload.homeTeam || homeTeamName) ? (lineupsPayload.homeTeamId || 0) : (lineupsPayload.awayTeamId || 0)}, '${escapeHtml(teamName)}')">${p.playerName}</span>` : p.playerName}</div>
-                                <div style="width:56px; text-align:center; font-weight:700; color:${gradeColor};">${gradeText}</div>
-                                <div style="width:42px; text-align:center;">${p.goals ?? 0}</div>
-                                <div style="width:42px; text-align:center;">${p.assists ?? 0}</div>
-                                <div style="width:64px; text-align:center;">${p.minutesPlayed ?? 0}</div>
+                            <div class="fm-match-lineup-row">
+                                <div class="fm-match-lineup-pos">${escapeHtml(p.position || '-')}</div>
+                                <div class="fm-match-lineup-player-cell">
+                                    ${p.playerId && teamId
+                                        ? `<button type="button" class="fm-match-lineup-player js-load-lineup-player" data-player-id="${p.playerId}" data-team-id="${teamId}" data-team-name="${escapeHtml(teamName)}" data-season-year="${seasonYear ?? ''}">${compactName}</button>`
+                                        : `<span class="fm-match-lineup-player is-static">${compactName}</span>`}
+                                </div>
+                                <div class="fm-match-lineup-grade">${formatRatingBadge(gradeValue)}</div>
+                                <div class="fm-match-lineup-badge-cell">${buildLineupEventBadges(p)}</div>
+                                <div class="fm-match-lineup-min">${Number(p.minutesPlayed ?? 0)}</div>
                             </div>`;
                     });
-                    return html;
+                    return `${html}</div></section>`;
                 };
 
                 infoDiv.innerHTML = `
-                    <h3 style="text-align:center; margin:0 0 16px; color:#4CAF50;">Lineups & Grades</h3>
-                    ${renderLineup(lineupsPayload.homeTeam || homeTeamName, lineupsPayload.homeLineup || [])}
-                    ${renderLineup(lineupsPayload.awayTeam || awayTeamName, lineupsPayload.awayLineup || [])}
+                    <div class="fm-match-lineups">
+                        <h3 class="fm-match-lineups-title">Lineups & Grades</h3>
+                        <div class="fm-match-lineups-grid">
+                            ${renderLineup(lineupsPayload.homeTeam || homeTeamName, lineupsPayload.homeTeamId || 0, lineupsPayload.homeLineup || [])}
+                            ${renderLineup(lineupsPayload.awayTeam || awayTeamName, lineupsPayload.awayTeamId || 0, lineupsPayload.awayLineup || [])}
+                        </div>
+                    </div>
                 `;
+                infoDiv.querySelectorAll('.js-load-lineup-player').forEach(node => {
+                    node.addEventListener('click', () => {
+                        const playerId = Number(node.dataset.playerId);
+                        const teamId = Number(node.dataset.teamId);
+                        const teamName = node.dataset.teamName || 'Team';
+                        const lineupSeasonYear = node.dataset.seasonYear ? Number(node.dataset.seasonYear) : currentLeagueSeasonYear;
+                        if (playerId && teamId) {
+                            loadLeagueTeamPlayer(playerId, teamId, teamName, { seasonYear: lineupSeasonYear });
+                        }
+                    });
+                });
             });
             document.getElementById("view-stats").addEventListener("click", showStats);
             document.getElementById("view-replay").addEventListener("click", () => {
@@ -2032,10 +2236,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Club tactics</div>
-                            <h2>Formations</h2>
-                            <p class="fm-subtle">Desktop uses drag & drop. Mobile uses filtered dropdowns with unique player lock.</p>
+                            <h2>Tactic Editor</h2>
+                            <p class="fm-subtle">Manage the base shape, XI, bench, and the advanced tactics editor flow from one club screen.</p>
                         </div>
-                        ${buildClubActionsHtml('formations')}
+                        ${buildClubActionsHtml(currentPageId === 'tacticEditor' ? 'tacticEditor' : 'formations')}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">
                         <div><strong>${state.starterIds.filter(Boolean).length}/11</strong><span>Starting XI</span></div>
@@ -2142,6 +2346,560 @@ import { createCommunityFeature } from './pages/features/community.js';
 
         render();
     }
+    async function loadTacticEditor() {
+        const mainContent = document.getElementById("main-content");
+        const DRAFT_KEY = `te_draft_${currentUserTeamId}`;
+        const FORMATION_KEY = `te_requested_formation_${currentUserTeamId}`;
+        const POSSESSION_OPTS = ['WE_HAVE_BALL', 'OPPONENT_HAS_BALL'];
+        const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"];
+        const availableFormations = ["4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "4-5-1", "3-5-2", "3-4-3", "3-4-2-1", "5-3-2", "5-4-1"];
+        const requestedFormation = localStorage.getItem(FORMATION_KEY) || '';
+        const editorUrl = requestedFormation
+            ? `/teams/${currentUserTeamId}/tactics-editor?formation=${encodeURIComponent(requestedFormation)}`
+            : `/teams/${currentUserTeamId}/tactics-editor`;
+
+        const editorRes = await authFetch(editorUrl);
+        if (!editorRes.ok) {
+            mainContent.innerHTML = `<div class="fm-page"><section class="fm-panel"><div class="fm-empty">Failed to load tactic editor data.</div></section></div>`;
+            return;
+        }
+        const editor = await editorRes.json();
+
+        let draft = null;
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (raw) draft = JSON.parse(raw);
+        } catch (_) {
+            draft = null;
+        }
+
+        const slots = Array.isArray(editor.slotDefinitions) ? editor.slotDefinitions : [];
+        const slotKeys = slots.map(slot => slot.slotKey);
+        const slotByKey = new Map(slots.map(slot => [slot.slotKey, slot]));
+        const ballStates = Array.isArray(editor.supportedBallStates) ? editor.supportedBallStates : [];
+        const targetCells = Array.isArray(editor.supportedTargetCells) ? editor.supportedTargetCells : [];
+        const cornerStates = [
+            'ATTACK_LEFT_CORNER',
+            'ATTACK_RIGHT_CORNER',
+            'DEFEND_LEFT_CORNER',
+            'DEFEND_RIGHT_CORNER'
+        ].filter(stateKey => ballStates.includes(stateKey));
+        const centerBallState = ballStates.includes('CELL_2_2') ? 'CELL_2_2' : (ballStates[0] || 'CELL_2_2');
+        const currentStarterIds = Array.isArray(editor.starterIds) ? editor.starterIds : [];
+        const currentBenchIds = Array.isArray(editor.benchIds) ? editor.benchIds : [];
+
+        const buildRulesMap = (rules) => {
+            const map = {};
+            (rules || []).forEach(rule => {
+                if (rule?.slotKey && rule?.ballStateKey && rule?.possessionContext && rule?.targetCellKey) {
+                    map[`${rule.slotKey}|${rule.ballStateKey}|${rule.possessionContext}`] = rule.targetCellKey;
+                }
+            });
+            return map;
+        };
+
+        const useDraft = !!(draft
+            && draft.formation === editor.formation
+            && typeof draft.draftVersion === 'number'
+            && draft.draftVersion >= (editor.version || 0));
+
+        const setPiecesSource = useDraft
+            ? (draft.setPieceAssignments || editor.setPieceAssignments || {})
+            : (editor.setPieceAssignments || {});
+
+        const state = {
+            formation: useDraft ? (draft.formation || editor.formation) : editor.formation,
+            style: useDraft ? (draft.style || editor.style) : editor.style,
+            rulesMap: buildRulesMap(useDraft ? draft.movementRules : editor.movementRules),
+            setPieces: {
+                penaltyTakerSlot: setPiecesSource.penaltyTakerSlot || '',
+                freeKickLeftTakerSlot: setPiecesSource.freeKickLeftTakerSlot || '',
+                freeKickRightTakerSlot: setPiecesSource.freeKickRightTakerSlot || '',
+                cornerLeftTakerSlot: setPiecesSource.cornerLeftTakerSlot || '',
+                cornerRightTakerSlot: setPiecesSource.cornerRightTakerSlot || '',
+            },
+            draftVersion: useDraft ? draft.draftVersion : (editor.version || 0),
+            activePossession: useDraft && POSSESSION_OPTS.includes(draft.activePossession) ? draft.activePossession : 'WE_HAVE_BALL',
+            activeBallState: useDraft && ballStates.includes(draft.activeBallState) ? draft.activeBallState : centerBallState,
+            focusedSlot: useDraft && slotKeys.includes(draft.focusedSlot) ? draft.focusedSlot : (slotKeys[0] || ''),
+        };
+
+        const serializeRules = () => Object.entries(state.rulesMap).map(([compoundKey, targetCellKey]) => {
+            const [slotKey, ballStateKey, possessionContext] = compoundKey.split('|');
+            return { slotKey, ballStateKey, possessionContext, targetCellKey };
+        });
+
+        const saveDraft = () => {
+            try {
+                localStorage.setItem(DRAFT_KEY, JSON.stringify({
+                    formation: state.formation,
+                    style: state.style,
+                    movementRules: serializeRules(),
+                    setPieceAssignments: state.setPieces,
+                    draftVersion: state.draftVersion,
+                    activePossession: state.activePossession,
+                    activeBallState: state.activeBallState,
+                    focusedSlot: state.focusedSlot,
+                }));
+            } catch (_) {
+                // ignore localStorage failures
+            }
+        };
+
+        const getRule = (slotKey, ballStateKey, possessionContext) => state.rulesMap[`${slotKey}|${ballStateKey}|${possessionContext}`] || '';
+        const getSlotTarget = (slotKey, ballStateKey, possessionContext) => getRule(slotKey, ballStateKey, possessionContext)
+            || slotByKey.get(slotKey)?.anchorCellKey
+            || 'CELL_2_2';
+        const setRule = (slotKey, ballStateKey, possessionContext, targetCellKey) => {
+            const key = `${slotKey}|${ballStateKey}|${possessionContext}`;
+            if (targetCellKey) state.rulesMap[key] = targetCellKey;
+            else delete state.rulesMap[key];
+            saveDraft();
+        };
+
+        const clearFocusedRule = () => {
+            if (!state.focusedSlot || !state.activeBallState) return;
+            setRule(state.focusedSlot, state.activeBallState, state.activePossession, '');
+        };
+
+        const clearFocusedSlotRules = () => {
+            if (!state.focusedSlot) return;
+            Object.keys(state.rulesMap).forEach(key => {
+                if (key.startsWith(`${state.focusedSlot}|`)) delete state.rulesMap[key];
+            });
+            saveDraft();
+        };
+
+        const hasDraft = () => useDraft;
+        const parseCellKey = (cellKey) => {
+            const match = String(cellKey || '').match(/^CELL_([0-4])_([0-4])$/);
+            return match ? [Number(match[1]), Number(match[2])] : [2, 2];
+        };
+        const cellLabel = (key) => {
+            if (!key) return '—';
+            if (key === 'ATTACK_LEFT_CORNER') return 'Attack left corner';
+            if (key === 'ATTACK_RIGHT_CORNER') return 'Attack right corner';
+            if (key === 'DEFEND_LEFT_CORNER') return 'Defend left corner';
+            if (key === 'DEFEND_RIGHT_CORNER') return 'Defend right corner';
+            const [progress, width] = parseCellKey(key);
+            return `${['DEF', 'DEF+', 'MID', 'ATK+', 'ATK'][progress]} · ${['L', 'CL', 'C', 'CR', 'R'][width]}`;
+        };
+        const toPitchPosition = (cellKey) => {
+            const [progress, width] = parseCellKey(cellKey);
+            return {
+                left: `${(width + 0.5) * 20}%`,
+                top: `${(4.5 - progress) * 20}%`
+            };
+        };
+        const focusedSlotMeta = () => slotByKey.get(state.focusedSlot) || null;
+
+        const buildCellZonesHtml = () => targetCells.map(cellKey => {
+            const [progress, width] = parseCellKey(cellKey);
+            const row = 4 - progress;
+            const isActiveBall = state.activeBallState === cellKey;
+            return `
+                <div class="te-drop-cell ${isActiveBall ? 'is-ball-active' : ''}"
+                     data-te-drop="cell"
+                     data-ball-state="${cellKey}"
+                     data-target-cell="${cellKey}"
+                     style="--te-col:${width}; --te-row:${row};">
+                    <span class="te-cell-label">${escapeHtml(cellLabel(cellKey))}</span>
+                </div>`;
+        }).join('');
+
+        const cornerMeta = {
+            ATTACK_LEFT_CORNER: { title: 'Atk left corner', cls: 'is-attack-left' },
+            ATTACK_RIGHT_CORNER: { title: 'Atk right corner', cls: 'is-attack-right' },
+            DEFEND_LEFT_CORNER: { title: 'Def left corner', cls: 'is-defend-left' },
+            DEFEND_RIGHT_CORNER: { title: 'Def right corner', cls: 'is-defend-right' },
+        };
+
+        const buildCornerZonesHtml = () => cornerStates.map(ballStateKey => `
+            <div class="te-corner-zone ${cornerMeta[ballStateKey]?.cls || ''} ${state.activeBallState === ballStateKey ? 'is-ball-active' : ''}"
+                 data-te-drop="corner"
+                 data-ball-state="${ballStateKey}">
+                <span>${escapeHtml(cornerMeta[ballStateKey]?.title || ballStateKey)}</span>
+                ${state.activeBallState === ballStateKey ? `<div class="te-ball-marker" draggable="true" data-te-ball="true" title="Drag ball to change ball state"></div>` : ''}
+            </div>`).join('');
+
+        const buildMarkerOffsets = (memberCount, reserveCenter) => {
+            const defaultOffsets = {
+                1: [{ x: 0, y: 0 }],
+                2: [{ x: -18, y: 0 }, { x: 18, y: 0 }],
+                3: [{ x: 0, y: -16 }, { x: -18, y: 14 }, { x: 18, y: 14 }],
+                4: [{ x: -18, y: -14 }, { x: 18, y: -14 }, { x: -18, y: 14 }, { x: 18, y: 14 }],
+                many: [
+                    { x: 0, y: 0 },
+                    { x: -18, y: 0 },
+                    { x: 18, y: 0 },
+                    { x: 0, y: -18 },
+                    { x: 0, y: 18 },
+                    { x: -18, y: -18 },
+                    { x: 18, y: -18 },
+                    { x: -18, y: 18 },
+                    { x: 18, y: 18 },
+                    { x: -30, y: 0 },
+                    { x: 30, y: 0 },
+                ],
+            };
+            const ballSafeOffsets = {
+                1: [{ x: -18, y: 0 }],
+                2: [{ x: -18, y: 0 }, { x: 18, y: 0 }],
+                3: [{ x: -18, y: -12 }, { x: 18, y: -12 }, { x: 0, y: 18 }],
+                4: [{ x: -18, y: -12 }, { x: 18, y: -12 }, { x: -18, y: 16 }, { x: 18, y: 16 }],
+                many: [
+                    { x: -18, y: 0 },
+                    { x: 18, y: 0 },
+                    { x: -18, y: 16 },
+                    { x: 18, y: 16 },
+                    { x: -18, y: -16 },
+                    { x: 18, y: -16 },
+                    { x: 0, y: 24 },
+                    { x: 0, y: -24 },
+                    { x: -30, y: 0 },
+                    { x: 30, y: 0 },
+                    { x: 0, y: 36 },
+                ],
+            };
+            const source = reserveCenter ? ballSafeOffsets : defaultOffsets;
+            return source[memberCount] || source.many.slice(0, memberCount);
+        };
+
+        const buildBallMarkerHtml = () => {
+            if (!targetCells.includes(state.activeBallState)) return '';
+            const pos = toPitchPosition(state.activeBallState);
+            return `
+                <div class="te-ball-marker"
+                     draggable="true"
+                     data-te-ball="true"
+                     style="left:${pos.left}; top:${pos.top};"
+                     title="Drag ball to change ball state"></div>`;
+        };
+
+        const buildPlayerMarkersHtml = () => {
+            const byCell = {};
+            slots.forEach(slot => {
+                const cellKey = getSlotTarget(slot.slotKey, state.activeBallState, state.activePossession);
+                if (!byCell[cellKey]) byCell[cellKey] = [];
+                byCell[cellKey].push(slot);
+            });
+            return Object.entries(byCell).flatMap(([cellKey, members]) => {
+                const pos = toPitchPosition(cellKey);
+                const offsets = buildMarkerOffsets(members.length, cellKey === state.activeBallState);
+                return members
+                    .sort((left, right) => Number(left.order || 0) - Number(right.order || 0))
+                    .map((slot, idx) => {
+                        const offset = offsets[idx] || { x: idx % 2 === 0 ? -30 : 30, y: 18 * Math.floor(idx / 2) };
+                        const isFocused = slot.slotKey === state.focusedSlot;
+                        return `
+                            <button type="button"
+                                    class="te-player-marker ${isFocused ? 'is-focused' : ''}"
+                                    draggable="true"
+                                    data-te-slot-marker="${slot.slotKey}"
+                                    style="left:${pos.left}; top:${pos.top}; --te-offset-x:${offset.x}px; --te-offset-y:${offset.y}px;"
+                                    title="${escapeHtml(slot.slotKey)} · ${escapeHtml(cellLabel(cellKey))}">
+                                <span class="te-player-marker-label">${escapeHtml(slot.slotKey)}</span>
+                            </button>`;
+                    });
+            }).join('');
+        };
+
+        const renderSetPieceSelects = () => {
+            const renderSelect = (field, label) => {
+                const options = ['', ...slotKeys].map(slotKey => {
+                    const selected = state.setPieces[field] === slotKey ? 'selected' : '';
+                    return `<option value="${escapeHtml(slotKey)}" ${selected}>${escapeHtml(slotKey || '-- None --')}</option>`;
+                }).join('');
+                return `<label class="te-sp-label">${escapeHtml(label)}<select class="te-sp-select" data-sp-field="${field}">${options}</select></label>`;
+            };
+            return `
+                <div class="te-sp-grid">
+                    ${renderSelect('penaltyTakerSlot', 'Penalty')}
+                    ${renderSelect('freeKickLeftTakerSlot', 'FK Left')}
+                    ${renderSelect('freeKickRightTakerSlot', 'FK Right')}
+                    ${renderSelect('cornerLeftTakerSlot', 'Corner Left')}
+                    ${renderSelect('cornerRightTakerSlot', 'Corner Right')}
+                </div>`;
+        };
+
+        const readDragPayload = (event) => {
+            try {
+                return JSON.parse(event.dataTransfer?.getData('text/plain') || '{}');
+            } catch (_) {
+                return null;
+            }
+        };
+
+        const bindEvents = () => {
+            mainContent.querySelectorAll('[data-te-formation]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const nextFormation = btn.getAttribute('data-te-formation') || state.formation;
+                    localStorage.setItem(FORMATION_KEY, nextFormation);
+                    await loadTacticEditor();
+                });
+            });
+
+            mainContent.querySelectorAll('[data-te-style]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.style = btn.getAttribute('data-te-style') || state.style;
+                    saveDraft();
+                    render();
+                });
+            });
+
+            mainContent.querySelectorAll('[data-te-possession]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.activePossession = btn.getAttribute('data-te-possession') || state.activePossession;
+                    saveDraft();
+                    render();
+                });
+            });
+
+            mainContent.querySelectorAll('[data-te-slot-marker]').forEach(marker => {
+                marker.addEventListener('click', () => {
+                    state.focusedSlot = marker.getAttribute('data-te-slot-marker') || state.focusedSlot;
+                    render();
+                });
+                marker.addEventListener('dragstart', event => {
+                    state.focusedSlot = marker.getAttribute('data-te-slot-marker') || state.focusedSlot;
+                    event.dataTransfer?.setData('text/plain', JSON.stringify({
+                        type: 'slot',
+                        slotKey: state.focusedSlot,
+                    }));
+                });
+            });
+
+            mainContent.querySelectorAll('[data-te-ball="true"]').forEach(ball => {
+                ball.addEventListener('dragstart', event => {
+                    event.dataTransfer?.setData('text/plain', JSON.stringify({ type: 'ball' }));
+                });
+            });
+
+            mainContent.querySelectorAll('[data-te-drop]').forEach(zone => {
+                zone.addEventListener('click', () => {
+                    const ballStateKey = zone.getAttribute('data-ball-state');
+                    if (ballStateKey) {
+                        state.activeBallState = ballStateKey;
+                        saveDraft();
+                        render();
+                    }
+                });
+                zone.addEventListener('dragover', event => {
+                    event.preventDefault();
+                    zone.classList.add('is-drag-over');
+                });
+                zone.addEventListener('dragleave', () => zone.classList.remove('is-drag-over'));
+                zone.addEventListener('drop', event => {
+                    event.preventDefault();
+                    zone.classList.remove('is-drag-over');
+                    const payload = readDragPayload(event);
+                    if (!payload?.type) return;
+                    const ballStateKey = zone.getAttribute('data-ball-state') || '';
+                    const targetCellKey = zone.getAttribute('data-target-cell') || '';
+                    if (payload.type === 'ball' && ballStateKey) {
+                        state.activeBallState = ballStateKey;
+                        saveDraft();
+                        render();
+                        return;
+                    }
+                    if (payload.type === 'slot' && payload.slotKey && targetCellKey) {
+                        state.focusedSlot = payload.slotKey;
+                        setRule(payload.slotKey, state.activeBallState, state.activePossession, targetCellKey);
+                        render();
+                    }
+                });
+            });
+
+            mainContent.querySelectorAll('[data-sp-field]').forEach(select => {
+                select.addEventListener('change', () => {
+                    const field = select.getAttribute('data-sp-field');
+                    if (!field) return;
+                    state.setPieces[field] = select.value || '';
+                    saveDraft();
+                });
+            });
+
+            const clearActiveBtn = document.getElementById('te-clear-active');
+            if (clearActiveBtn) {
+                clearActiveBtn.addEventListener('click', () => {
+                    clearFocusedRule();
+                    render();
+                });
+            }
+
+            const clearSlotBtn = document.getElementById('te-clear-slot');
+            if (clearSlotBtn) {
+                clearSlotBtn.addEventListener('click', () => {
+                    clearFocusedSlotRules();
+                    render();
+                });
+            }
+
+            const discardDraftBtn = document.getElementById('te-discard-draft');
+            if (discardDraftBtn) {
+                discardDraftBtn.addEventListener('click', async () => {
+                    localStorage.removeItem(DRAFT_KEY);
+                    await loadTacticEditor();
+                });
+            }
+
+            const saveBtn = document.getElementById('te-save-btn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    saveBtn.disabled = true;
+                    try {
+                        await authFetch(`/teams/${currentUserTeamId}/tactics-editor`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                formation: state.formation,
+                                style: state.style,
+                                starterIds: currentStarterIds,
+                                benchIds: currentBenchIds,
+                                movementRules: serializeRules(),
+                                setPieceAssignments: state.setPieces,
+                            })
+                        });
+                        localStorage.removeItem(DRAFT_KEY);
+                        localStorage.setItem(FORMATION_KEY, state.formation);
+                        saveBtn.textContent = 'Saved';
+                        await loadTacticEditor();
+                    } catch (error) {
+                        console.error('Failed to save tactic editor', error);
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save failed';
+                        setTimeout(() => { saveBtn.textContent = 'Save Tactic Editor'; }, 1400);
+                    }
+                });
+            }
+        };
+
+        const render = () => {
+            const draftLoaded = hasDraft();
+            const focusedMeta = focusedSlotMeta();
+            const focusedTarget = state.focusedSlot
+                ? getSlotTarget(state.focusedSlot, state.activeBallState, state.activePossession)
+                : '';
+            const ruleCount = Object.keys(state.rulesMap).length;
+            const formationButtons = availableFormations.map(formation => `
+                <button type="button" class="cs-tactics-btn ${formation === state.formation ? 'active' : ''}" data-te-formation="${escapeHtml(formation)}">${escapeHtml(formation)}</button>`).join('');
+            const styleButtons = availableStyles.map(style => `
+                <button type="button" class="cs-tactics-btn ${style === state.style ? 'active' : ''}" data-te-style="${escapeHtml(style)}">${escapeHtml(style)}</button>`).join('');
+            const possessionButtons = POSSESSION_OPTS.map(ctx => `
+                <button type="button" class="te-toggle ${ctx === state.activePossession ? 'active' : ''}" data-te-possession="${ctx}">${ctx === 'WE_HAVE_BALL' ? 'We have ball' : 'Opponent has ball'}</button>`).join('');
+
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Club tactics</div>
+                                <h2>Tactic Editor</h2>
+                                <p class="fm-subtle">Drag the ball to any 5x5 zone or corner state, then drag slot circles to redraw the team shape for that exact situation.</p>
+                            </div>
+                            ${buildClubActionsHtml('tacticEditor')}
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid">
+                            <div><strong>${escapeHtml(state.formation || '4-4-2')}</strong><span>Shape</span></div>
+                            <div><strong>${slots.length}</strong><span>Slots</span></div>
+                            <div><strong>${ruleCount}</strong><span>Rules</span></div>
+                            <div><strong>${draftLoaded ? 'Draft' : `v${editor.version || 0}`}</strong><span>Status</span></div>
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Base setup</h3>
+                                <p class="fm-subtle">Changing formation reloads slot anchors from the backend. Style and visual edits autosave locally until you press Save.</p>
+                            </div>
+                            <span class="fm-panel-action">${escapeHtml(state.style || 'BALANCED')}</span>
+                        </div>
+                        <div class="cs-tactics-grid">${formationButtons}</div>
+                        <div class="cs-tactics-grid te-style-grid">${styleButtons}</div>
+                    </section>
+
+                    <div class="te-board-layout">
+                        <section class="fm-panel te-pitch-card">
+                            <div class="fm-panel-head">
+                                <div>
+                                    <h3>Visual movement editor</h3>
+                                    <p class="fm-subtle">Attack corners are on top, defend corners at the bottom. Multiple slots may share one zone.</p>
+                                </div>
+                                <span class="fm-panel-action">${escapeHtml(cellLabel(state.activeBallState))}</span>
+                            </div>
+
+                            <div class="te-toggle-row te-toggle-row--top">${possessionButtons}</div>
+
+                            <div class="te-info-strip">
+                                <div class="te-info-pill"><strong>Ball state</strong><span>${escapeHtml(cellLabel(state.activeBallState))}</span></div>
+                                <div class="te-info-pill"><strong>Focused slot</strong><span>${escapeHtml(state.focusedSlot || '—')}</span></div>
+                                <div class="te-info-pill"><strong>Focused target</strong><span>${escapeHtml(cellLabel(focusedTarget))}</span></div>
+                            </div>
+
+                            <div class="te-pitch-stage">
+                                ${buildCornerZonesHtml()}
+                                <div class="te-pitch-board">
+                                    <div class="te-pitch-surface">
+                                        <div class="te-pitch-lines te-pitch-line--mid"></div>
+                                        <div class="te-pitch-lines te-pitch-line--circle"></div>
+                                        <div class="te-pitch-lines te-pitch-line--top-box"></div>
+                                        <div class="te-pitch-lines te-pitch-line--top-six"></div>
+                                        <div class="te-pitch-lines te-pitch-line--bottom-box"></div>
+                                        <div class="te-pitch-lines te-pitch-line--bottom-six"></div>
+                                    </div>
+                                    <div class="te-drop-grid">${buildCellZonesHtml()}</div>
+                                    <div class="te-player-layer">${buildPlayerMarkersHtml()}</div>
+                                    <div class="te-ball-layer">${buildBallMarkerHtml()}</div>
+                                </div>
+                            </div>
+
+                            <div class="te-instruction-row">
+                                <span><strong>Ball:</strong> drag to 25 zones + 4 corners</span>
+                                <span><strong>Slots:</strong> drag any circle to a new 5x5 zone for the active ball state</span>
+                                <span><strong>Focus:</strong> click a slot circle to inspect / clear it</span>
+                            </div>
+                        </section>
+
+                        <section class="fm-panel te-side-card">
+                            <div class="fm-panel-head">
+                                <div>
+                                    <h3>Focused slot & save</h3>
+                                    <p class="fm-subtle">Slot-based set-pieces stay separate from the visual pitch editor.</p>
+                                </div>
+                                <span class="fm-panel-action">${draftLoaded ? 'Local draft loaded' : 'Server profile'}</span>
+                            </div>
+
+                            <div class="te-note-box">
+                                <strong>Focused slot:</strong> ${escapeHtml(focusedMeta?.slotKey || '—')}<br>
+                                <strong>Line / role:</strong> ${escapeHtml(focusedMeta?.line || '—')} / ${escapeHtml(focusedMeta?.role || '—')}<br>
+                                <strong>Anchor:</strong> ${escapeHtml(focusedMeta?.anchorCellKey || '—')}<br>
+                                <strong>Current target:</strong> ${escapeHtml(cellLabel(focusedTarget))}
+                            </div>
+
+                            <div class="training-actions te-actions-stack">
+                                <button type="button" id="te-clear-active" class="fm-action-btn secondary">Clear focused slot in this ball state</button>
+                                <button type="button" id="te-clear-slot" class="fm-action-btn secondary">Clear all rules for focused slot</button>
+                            </div>
+
+                            <div class="te-side-divider"></div>
+                            ${renderSetPieceSelects()}
+
+                            <div class="training-actions te-actions-stack">
+                                <button type="button" id="te-save-btn" class="big-button">Save Tactic Editor</button>
+                                <button type="button" id="te-discard-draft" class="fm-action-btn secondary">Discard local draft</button>
+                            </div>
+                        </section>
+                    </div>
+                </div>`;
+
+            bindEvents();
+        };
+
+        render();
+    }
+
     async function loadStaff() {
         return clubManagementFeature.loadStaff();
     }
@@ -3096,10 +3854,10 @@ import { createCommunityFeature } from './pages/features/community.js';
             <div class="fm-grid-top fm-grid-top--club-profile">
                 <section class="fm-panel club-profile-brand-card">
                     <div class="club-profile-brand-mark">
-                        <img src="${profile.logo || '/images/omladinac.png'}"
+                        <img src="${profile.logo || '/images/logoside.jpg'}"
                              class="club-logo"
                              alt="${escapeHtml(profile.name)}"
-                             onerror="this.src='/images/omladinac.png'">
+                             onerror="this.src='/images/logoside.jpg'">
                     </div>
                     <h3>${escapeHtml(profile.name || 'Club')}</h3>
                     <p class="fm-subtle">Serbian club profile with open-football-inspired presentation and our existing app data.</p>
@@ -3152,6 +3910,44 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (!await ensureUserTeamId()) return;
         return matchesFeature.loadFixtures();
     }
+    function resolveFixtureStadiumImage(fixture) {
+        const venueKey = String(fixture?.stadium || fixture?.stadiumName || '').toLowerCase();
+        if (venueKey.includes('livadice')) return '/images/livadice.png';
+        if (venueKey.includes('dunjareal')) return '/images/dunjareal.png';
+        if (venueKey.includes('bilino')) return '/images/bilinopolje.png';
+        return '/images/default-stadium.png';
+    }
+    async function findFixtureRow(fixtureId) {
+        const numericFixtureId = Number(fixtureId);
+        if (!Number.isFinite(numericFixtureId)) return null;
+
+        const scheduleLoaders = [
+            async () => {
+                const response = await authFetch(`/teams/${currentUserTeamId}/schedule`);
+                return response.ok ? response.json() : [];
+            },
+            async () => {
+	            const leagueId = await ensureCurrentLeagueId();
+	            if (!leagueId) return [];
+                const seasonParam = currentLeagueSeasonYear ? `?seasonYear=${currentLeagueSeasonYear}` : '';
+	            const response = await authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`);
+                return response.ok ? response.json() : [];
+            }
+        ];
+
+        for (const loadSchedule of scheduleLoaders) {
+            try {
+                const rows = await loadSchedule();
+                const fixture = (Array.isArray(rows) ? rows : [])
+                    .find(row => Number(row?.fixtureId ?? row?.id) === numericFixtureId);
+                if (fixture) return fixture;
+            } catch (err) {
+                console.warn(`Fixture lookup failed for ${numericFixtureId}:`, err);
+            }
+        }
+
+        return null;
+    }
     async function loadFixture(fixtureId, options = {}) {
         const pushHistory = options.pushHistory !== false;
         if (pushHistory) pushNavState({ type: 'fixture', fixtureId });
@@ -3160,20 +3956,8 @@ import { createCommunityFeature } from './pages/features/community.js';
         console.log(`Loading fixture ID: ${fixtureId}`);
 
         try {
-            const response = await authFetch(`/demo/matches/teams/${currentUserTeamId}/fixtures/${fixtureId}`);
-            console.log(`Response status: ${response.status}`);
-        // Fixture to stadium image mapping (extend as needed)
-            let stadiumImage = "/images/default-stadium.png"; // fallback
-            if (fixtureId == 1) {
-                stadiumImage = "/images/livadice.png";
-            } else if (fixtureId == 2) {
-                stadiumImage = "/images/dunjareal.png";
-            } else if (fixtureId == 3) {
-                stadiumImage = "/images/bilinopolje.png";
-            }
-            if (!response.ok) {
-                const text = await response.text();
-                console.error(`Error ${response.status}: ${text}`);
+            const fixture = await findFixtureRow(fixtureId);
+            if (!fixture) {
                 mainContent.innerHTML = `
                     <div class="fm-page fm-page--club">
                         <section class="fm-panel fm-club-hero">
@@ -3192,14 +3976,35 @@ import { createCommunityFeature } from './pages/features/community.js';
                 return;
             }
 
-            const fixture = await response.json();
-
+            const parsedMatchDate = fixture?.matchDate
+                ? new Date(String(fixture.matchDate).includes('T') ? String(fixture.matchDate) : String(fixture.matchDate).replace(' ', 'T'))
+                : null;
+            const hasParsedDate = parsedMatchDate instanceof Date && !Number.isNaN(parsedMatchDate.getTime());
             const homeTeamName = fixture.homeTeam || "Home";
             const awayTeamName = fixture.awayTeam || "Away";
-            const matchDate = fixture.matchDate || 'N/A';
-            const matchTime = fixture.matchTime || 'TBD';
-            const matchDateTime = `${matchDate}${matchTime ? ` • ${matchTime}` : ''}`;
-            const venue = fixture.stadiumName || "N/A";
+            const matchDate = hasParsedDate ? parsedMatchDate.toLocaleDateString('sr-RS') : (fixture.matchDate || 'N/A');
+            const matchTime = hasParsedDate
+                ? parsedMatchDate.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' })
+                : 'TBD';
+            const matchDateTime = hasParsedDate ? `${matchDate} • ${matchTime}` : escapeHtml(formatDateTimeLabel(fixture.matchDate));
+            const venue = fixture.stadium || fixture.stadiumName || "N/A";
+            const homeStrength = Number(fixture.homeTeamStrength);
+            const awayStrength = Number(fixture.awayTeamStrength);
+            const homeForm = Number(fixture.homeTeamForm);
+            const awayForm = Number(fixture.awayTeamForm);
+            const prediction = fixture.prediction || {};
+            const confidence = Number(prediction.confidence);
+            const expectedHomeGoals = Number(prediction.expectedHomeGoals);
+            const expectedAwayGoals = Number(prediction.expectedAwayGoals);
+            const h2h = fixture.h2h || {};
+            const statusLabel = fixture.played ? 'Played' : 'Scheduled';
+            const previewLabel = prediction.mostLikelyResult
+                ? `${prediction.mostLikelyResult.replace(/_/g, ' ')}${Number.isFinite(confidence) ? ` · ${Math.round(confidence)}% conf` : ''}`
+                : 'Preview pending';
+            const mostLikelyLabel = prediction.mostLikelyResult
+                ? prediction.mostLikelyResult.replace(/_/g, ' ')
+                : 'Pending';
+            const previewAnalysis = escapeHtml(String(prediction.analysis || 'No extra preview analysis available yet.'));
 
             mainContent.innerHTML = `
             <div class="fm-page fm-page--club">
@@ -3207,33 +4012,26 @@ import { createCommunityFeature } from './pages/features/community.js';
                     <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
                     <div class="fm-club-hero-main">
                         <div>
-                            <div class="fm-eyebrow">Club schedule</div>
-                            <h2>Upcoming Fixture</h2>
-                            <p class="fm-subtle">Detailed fixture view now stays inside the same Club shell instead of falling back to a back-only page.</p>
+                            <div class="fm-eyebrow">Fixture preview</div>
+                            <h2>${escapeHtml(homeTeamName)} vs ${escapeHtml(awayTeamName)}</h2>
+                            <p class="fm-subtle">Fixture detail now resolves from the real schedule payload, so club and league schedule clicks stay in-app.</p>
                         </div>
                         ${buildClubActionsHtml('schedule')}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${escapeHtml(homeTeamName)}</strong><span>Home</span></div>
-                        <div><strong>${escapeHtml(awayTeamName)}</strong><span>Away</span></div>
                         <div><strong>${escapeHtml(matchDate)}</strong><span>Date</span></div>
                         <div><strong>${escapeHtml(matchTime)}</strong><span>Kick-off</span></div>
+                        <div><strong>${escapeHtml(fixture.competitionName || 'Competition')}</strong><span>Competition</span></div>
+                        <div><strong>${fixture.round ? `Round ${escapeHtml(String(fixture.round))}` : '—'}</strong><span>Status · ${escapeHtml(statusLabel)}</span></div>
                     </div>
                 </section>
-                <div class="fm-grid-top fm-grid-top--club-profile">
-                    <section class="fm-panel club-profile-brand-card">
-                        <div class="club-profile-brand-mark">
-                            <img src="${stadiumImage}" class="club-logo" alt="${escapeHtml(venue)}" onerror="this.src='/images/default-stadium.png'">
-                        </div>
-                        <h3>${escapeHtml(venue)}</h3>
-                        <p class="fm-subtle">Venue preview for the next scheduled match.</p>
-                        <button type="button" class="fm-action-btn secondary fixture-stadium-btn" data-stadium-image="${escapeHtml(stadiumImage)}" data-stadium-name="${escapeHtml(venue)}">Open Stadium View</button>
-                    </section>
+                <div class="fm-grid-top fm-grid-top--fixture-preview">
+                    <!-- Stadium preview panel intentionally hidden for now. -->
                     <section class="fm-panel club-profile-detail-card">
                         <div class="fm-panel-head">
                             <div>
                                 <h3>Fixture details</h3>
-                                <p class="fm-subtle">Full preview, lineups, and deeper statistics can continue to plug into this card later.</p>
+                                <p class="fm-subtle">Core schedule metadata, OVR edge, and preview summary for the selected fixture.</p>
                             </div>
                             <span class="fm-panel-action">Preview</span>
                         </div>
@@ -3242,18 +4040,45 @@ import { createCommunityFeature } from './pages/features/community.js';
                             <div class="club-profile-detail-row"><span>Away team</span><strong>${escapeHtml(awayTeamName)}</strong></div>
                             <div class="club-profile-detail-row"><span>Date & time</span><strong>${escapeHtml(matchDateTime)}</strong></div>
                             <div class="club-profile-detail-row"><span>Venue</span><strong>${escapeHtml(venue)}</strong></div>
-                            <div class="club-profile-detail-row"><span>Status</span><strong>Scheduled</strong></div>
+                            <div class="club-profile-detail-row"><span>Status</span><strong>${escapeHtml(statusLabel)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Home OVR / form</span><strong>${Number.isFinite(homeStrength) ? Math.round(homeStrength) : '—'} · ${Number.isFinite(homeForm) ? homeForm.toFixed(1) : '—'}</strong></div>
+                            <div class="club-profile-detail-row"><span>Away OVR / form</span><strong>${Number.isFinite(awayStrength) ? Math.round(awayStrength) : '—'} · ${Number.isFinite(awayForm) ? awayForm.toFixed(1) : '—'}</strong></div>
+                            <div class="club-profile-detail-row"><span>Model lean</span><strong>${escapeHtml(previewLabel)}</strong></div>
+                        </div>
+                    </section>
+                    <section class="fm-panel club-profile-detail-card fm-fixture-preview-card">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Match preview</h3>
+                                <p class="fm-subtle">Prediction, projected xG, and head-to-head summary from the real schedule insight flow.</p>
+                            </div>
+                            <span class="fm-panel-action">${Number.isFinite(confidence) ? `${Math.round(confidence)}%` : 'Heuristic'}</span>
+                        </div>
+                        <div class="fm-fixture-preview-hero fx-prediction">
+                            <div class="fx-prediction-head">
+                                <div>
+                                    <div class="fx-prediction-title">Prediction</div>
+                                    <div class="fm-fixture-preview-result">${escapeHtml(mostLikelyLabel)}</div>
+                                </div>
+                                <span class="fx-confidence">${Number.isFinite(confidence) ? `${Math.round(confidence)}% conf` : 'Heuristic lean'}</span>
+                            </div>
+                            <div class="fm-fixture-preview-xg-chip">xG ${Number.isFinite(expectedHomeGoals) ? expectedHomeGoals.toFixed(2) : '—'} : ${Number.isFinite(expectedAwayGoals) ? expectedAwayGoals.toFixed(2) : '—'}</div>
+                            <div class="fx-prediction-note">${previewAnalysis}</div>
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid fm-fixture-preview-stats">
+                            <div><strong>${Number.isFinite(homeStrength) ? Math.round(homeStrength) : '—'}</strong><span>${escapeHtml(homeTeamName)} OVR</span></div>
+                            <div><strong>${Number.isFinite(awayStrength) ? Math.round(awayStrength) : '—'}</strong><span>${escapeHtml(awayTeamName)} OVR</span></div>
+                            <div><strong>${Number.isFinite(homeForm) ? homeForm.toFixed(1) : '—'}</strong><span>${escapeHtml(homeTeamName)} form</span></div>
+                            <div><strong>${Number.isFinite(awayForm) ? awayForm.toFixed(1) : '—'}</strong><span>${escapeHtml(awayTeamName)} form</span></div>
+                        </div>
+                        <div class="club-profile-detail-list">
+                            <div class="club-profile-detail-row fm-fixture-preview-row--accent"><span>Model lean</span><strong>${escapeHtml(previewLabel)}</strong></div>
+                            <div class="club-profile-detail-row"><span>Head-to-head</span><strong>${escapeHtml(String(h2h.summary || 'No head-to-head history yet.'))}</strong></div>
+                            <div class="club-profile-detail-row"><span>Last meeting</span><strong>${escapeHtml(String(h2h.lastMeetingSummary || 'First recorded meeting.'))}</strong></div>
                         </div>
                     </section>
                 </div>
             </div>`;
-
-            const stadiumButton = mainContent.querySelector('.fixture-stadium-btn');
-            if (stadiumButton) {
-                stadiumButton.addEventListener('click', () => {
-                    showStadiumModal(stadiumButton.dataset.stadiumImage, stadiumButton.dataset.stadiumName);
-                });
-            }
         } catch (err) {
             console.error("Error loading fixture:", err);
             mainContent.innerHTML = `
@@ -3281,22 +4106,25 @@ import { createCommunityFeature } from './pages/features/community.js';
         renderMatches(matches, "Friendlies");
     }
     async function loadLeagueTable(seasonYear = null) {
-        const leagueId = 1;
         try {
+	        const leagueId = await ensureCurrentLeagueId();
+	        if (!leagueId) return;
             const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
             const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
-            const selectedSeason = seasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+            currentLeagueSeasonYear = selectedSeason;
             const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber
                 || (selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : 1);
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
 
-            const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse, milestonesResponse] = await Promise.all([
+            const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse, milestonesResponse, seasonSummaryResponse] = await Promise.all([
                 authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`),
-                authFetch(`/countries/leagues/${leagueId}/teams`),
+                authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`),
                 authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`),
                 authFetch(`/stats/leagues/${leagueId}/topscorers${seasonParam}`),
                 authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
-                authFetch(`/stats/leagues/${leagueId}/milestones${seasonParam}`)
+                authFetch(`/stats/leagues/${leagueId}/milestones${seasonParam}`),
+                authFetch(`/countries/leagues/${leagueId}/season-summary${seasonParam}`)
             ]);
             if (!tableResponse.ok) throw new Error(`League table load failed: ${tableResponse.status}`);
             if (!teamsResponse.ok) throw new Error(`League teams load failed: ${teamsResponse.status}`);
@@ -3307,6 +4135,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             const scorers = scorersResponse.ok ? await scorersResponse.json() : [];
             const assists = assistsResponse.ok ? await assistsResponse.json() : [];
             const milestones = milestonesResponse.ok ? await milestonesResponse.json() : null;
+            const seasonSummary = seasonSummaryResponse.ok ? await seasonSummaryResponse.json() : null;
             const teamIdByName = new Map();
             leagueTeams.forEach(team => {
                 teamIdByName.set(normalizeTeamKey(team.name), team.id);
@@ -3374,11 +4203,14 @@ import { createCommunityFeature } from './pages/features/community.js';
             }));
 
             renderTable({
+	            leagueId,
+	            leagueName: getCurrentLeagueName(),
                 table: enhancedTable,
                 fixtures: visibleRounds,
                 topScorers: mappedScorers,
                 topAssists: mappedAssists,
                 milestones,
+                seasonSummary,
                 seasons,
                 selectedSeason,
                 selectedSeasonNumber
@@ -3394,17 +4226,21 @@ import { createCommunityFeature } from './pages/features/community.js';
         }
     }
     async function loadLeagueMatches(seasonYear = null) {
-        const leagueId = 1; // Superliga, can be parameterized later
         try {
+	        const leagueId = await ensureCurrentLeagueId();
+	        if (!leagueId) return;
             console.log(`Loading league matches...`);
-            const seasonParam = seasonYear ? `?seasonYear=${seasonYear}` : "";
+	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || null;
+	        currentLeagueSeasonYear = selectedSeason ?? currentLeagueSeasonYear;
+	        const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
             const response = await authFetch(`/countries/leagues/${leagueId}/matches${seasonParam}`);
             console.log(`Response status: ${response.status}`);
             if (!response.ok) throw new Error("Failed to load league matches");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
-            const seasonNumber = seasonYear ? Math.max(1, seasonYear - 2025 + 1) : null;
-            renderLeagueMatches(results, seasonNumber ? `League Results - Season ${seasonNumber}` : "League Results");
+	        const seasonNumber = selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : null;
+	        const titleBase = `${getCurrentLeagueName()} Results`;
+	        renderLeagueMatches(results, seasonNumber ? `${titleBase} - Season ${seasonNumber}` : titleBase);
         } catch (err) {
             console.error(err);
             document.getElementById("main-content").innerHTML = `
@@ -3416,12 +4252,13 @@ import { createCommunityFeature } from './pages/features/community.js';
         }
     }
     async function loadLeagueSchedule(seasonYear = null) {
-        const mainContent = document.getElementById("main-content");
-        const leagueId = 1;
         try {
+	        const leagueId = await ensureCurrentLeagueId();
+	        if (!leagueId) return;
             const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
             const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
-            const selectedSeason = seasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+            currentLeagueSeasonYear = selectedSeason;
             const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber || 1;
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
             const response = await authFetch(`/countries/leagues/${leagueId}/schedule${seasonParam}`);
@@ -3439,63 +4276,31 @@ import { createCommunityFeature } from './pages/features/community.js';
             const rounds = [...byRound.keys()].sort((a, b) => a - b);
             const firstUnplayed = rounds.find(r => byRound.get(r).some(m => !m.played));
             if (firstUnplayed) currentRound = firstUnplayed;
-
-            let html = `
-            <div class="manager-card">
-                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                <h2>League Schedule ${selectedSeason ? `- Season ${selectedSeasonNumber}` : ""}</h2>
-                ${seasons.length ? `
-                <div style="margin:8px 0 14px;">
-                    <label for="season-select">Season:</label>
-                    <select id="season-select" style="margin-left:8px;">
-                        ${seasons.map(s => `<option value="${s.seasonYear}" ${s.seasonYear === selectedSeason ? "selected" : ""}>Season ${s.seasonNumber}</option>`).join("")}
-                    </select>
-                </div>` : ""}
-                <div id="schedule-rounds">`;
-
-            rounds.forEach(round => {
-                const matches = byRound.get(round) || [];
-                const currentTag = round === currentRound ? `<span style="color:#4caf50; font-size:0.9em;">(Current)</span>` : "";
-                html += `<div id="round-${round}" style="margin:14px 0 18px;"><h3 style="margin-bottom:8px;">Round ${round} ${currentTag}</h3>`;
-                matches.forEach(match => {
-                    const score = match.played ? `${match.homeGoals} : ${match.awayGoals}` : "vs";
-                    const playedClass = match.played ? "" : "opacity:0.86; cursor:default;";
-                    const homeEsc = String(match.homeTeam || "").replace(/'/g, "\\'");
-                    const awayEsc = String(match.awayTeam || "").replace(/'/g, "\\'");
-                    const matchIdAttr = match.played && match.id ? `data-match-id="${match.id}"` : "";
-                    html += `
-                        <div class="match-row" style="${playedClass}" ${matchIdAttr} data-caller="leagueMatches">
-                            <div style="font-size:0.88em; color:#aaa;">${match.matchDate || "N/A"}</div>
-                            <div class="match-teams">
-                                <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${escapeHtml(match.homeTeam)}</span></span>
-                                <span class="score">${score}</span>
-                                <span class="team-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${escapeHtml(match.awayTeam)}</span></span>
-                            </div>
-                        </div>`;
-                });
-                html += `</div>`;
+            renderLeagueScheduleView({
+                rounds: rounds.map(round => ({
+                    round,
+                    label: round === currentRound
+                        ? 'Current focus'
+                        : round === currentRound - 1
+                            ? 'Latest results'
+                            : round === currentRound + 1
+                                ? 'Next fixtures'
+                                : '',
+                    isFocusRound: round === currentRound,
+                    matches: byRound.get(round) || []
+                })),
+                seasons,
+                selectedSeason,
+                selectedSeasonNumber
+            }, {
+                loadLeagueSchedule,
+                loadMatch,
+                loadLeagueTeam,
+                loadFixture
             });
-
-            html += `</div></div>`;
-            mainContent.innerHTML = html;
-            mainContent.querySelectorAll('.match-row[data-match-id]').forEach(row => {
-                row.addEventListener('click', () => {
-                    const matchId = row.getAttribute('data-match-id');
-                    if (matchId) loadMatch(matchId, 'leagueMatches');
-                });
-            });
-            const seasonSelect = document.getElementById('season-select');
-            if (seasonSelect) {
-                seasonSelect.addEventListener('change', () => loadLeagueSchedule(Number(seasonSelect.value)));
-            }
-
-            setTimeout(() => {
-                const currentEl = document.getElementById(`round-${currentRound}`);
-                if (currentEl) currentEl.scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 20);
         } catch (err) {
             console.error("Failed to load league schedule:", err);
-            mainContent.innerHTML = `
+            document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
                     <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
@@ -3555,11 +4360,15 @@ import { createCommunityFeature } from './pages/features/community.js';
     async function loadTopScorersAndAssists(mode = "both") {
         try {
             console.log(`Loading top scorers for ${currentUserTeamId}`);
-            const leagueId = 1;
+	        const leagueId = await ensureCurrentLeagueId();
+	        if (!leagueId) return;
+	        const seasonParam = currentLeagueSeasonYear || currentSeasonYear
+	            ? `?seasonYear=${currentLeagueSeasonYear || currentSeasonYear}`
+	            : '';
             const [scorersRes, assistsRes, leagueTeamsRes] = await Promise.all([
-                authFetch(`/stats/leagues/${leagueId}/topscorers`),
-                authFetch(`/stats/leagues/${leagueId}/topassists`),
-                authFetch(`/countries/leagues/${leagueId}/teams`)
+	            authFetch(`/stats/leagues/${leagueId}/topscorers${seasonParam}`),
+	            authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
+	            authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`)
             ]);
             console.log(`Response status: ${scorersRes.status}`);
             console.log(`Response status: ${assistsRes.status}`);
@@ -3683,14 +4492,16 @@ import { createCommunityFeature } from './pages/features/community.js';
         });
     }
         function renderMatches(matches, title, options = {}) {
-        renderMatchesView(matches, title, { loadMatch, ...options });
+        renderMatchesView(matches, title, { loadMatch, currentTeamName: currentUserTeamName, ...options });
     }
     function renderTable(table) {
-        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, escapeHtml, formatGoalDiff });
+        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml, formatGoalDiff });
     }
     async function loadLeagueTeam(teamId, teamName, options = {}) {
+        const seasonYear = options.seasonYear ?? currentLeagueSeasonYear ?? null;
         const pushHistory = options.pushHistory !== false;
-        if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName });
+        currentLeagueSeasonYear = seasonYear ?? currentLeagueSeasonYear;
+        if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName, seasonYear });
         const mainContent = document.getElementById("main-content");
         try {
             const [response, transferOverview, milestones] = await Promise.all([
@@ -3730,7 +4541,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             let html = `
             <div class="fm-page fm-page--team-detail">
                 <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
+                    <button class="back-to-dashboard" onclick="goBackSmart('leagueTable')">Back</button>
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Team overview</div>
@@ -3793,14 +4604,15 @@ import { createCommunityFeature } from './pages/features/community.js';
                 const playerId = Number(row.dataset.playerId);
                 const playerTeamId = Number(row.dataset.teamId);
                 const playerTeamName = row.dataset.teamName || "Team";
-                loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName);
+                loadLeagueTeamPlayer(playerId, playerTeamId, playerTeamName, { seasonYear });
             });
             mainContent.querySelectorAll('[data-team-transfer-player-id]').forEach(button => {
                 button.addEventListener('click', () => {
                     loadLeagueTeamPlayer(
                         Number(button.dataset.teamTransferPlayerId || 0),
                         Number(button.dataset.teamTransferTeamId || teamId),
-                        button.dataset.teamTransferTeamName || teamName || 'Team'
+                        button.dataset.teamTransferTeamName || teamName || 'Team',
+                        { seasonYear }
                     );
                 });
             });
@@ -3808,15 +4620,17 @@ import { createCommunityFeature } from './pages/features/community.js';
             console.error("Failed to load team details:", err);
             mainContent.innerHTML = `
             <div class="manager-card">
-                <button class="back-to-dashboard" onclick="loadLeagueTable()">Back</button>
+                <button class="back-to-dashboard" onclick="goBackSmart('leagueTable')">Back</button>
                 <h2>Error</h2>
                 <p>Could not load team details.</p>
             </div>`;
         }
     }
     async function loadLeagueTeamPlayer(playerId, teamId, teamName, options = {}) {
+        const seasonYear = options.seasonYear ?? currentLeagueSeasonYear ?? null;
         const pushHistory = options.pushHistory !== false;
-        if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName });
+        currentLeagueSeasonYear = seasonYear ?? currentLeagueSeasonYear;
+        if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName, seasonYear });
         const mainContent = document.getElementById("main-content");
         try {
             const [playerResponse, ratingSummary, transferStatus] = await Promise.all([
@@ -3839,7 +4653,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 onBack: () => goBackSmart('leagueTable'),
                 onTransferAction: (action, button) => handlePlayerTransferAction(action, button, {
                     playerId,
-                    reloadCurrent: () => loadLeagueTeamPlayer(playerId, teamId, teamName, { pushHistory: false }),
+                    reloadCurrent: () => loadLeagueTeamPlayer(playerId, teamId, teamName, { pushHistory: false, seasonYear }),
                     reloadOwned: () => loadPlayer(playerId, 'leagueTable', { pushHistory: false })
                 })
             });
@@ -3909,6 +4723,7 @@ import { createCommunityFeature } from './pages/features/community.js';
     window.loadResults = loadResults;
     window.loadJuniors = loadJuniors;
     window.loadFormations = loadFormations;
+    window.loadTacticEditor = loadTacticEditor;
     window.loadStaff = loadStaff;
     window.loadFinances = loadFinances;
     window.loadTransfers = loadTransfers;

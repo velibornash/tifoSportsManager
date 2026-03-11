@@ -322,9 +322,12 @@ public class SeasonService {
 
         int nextSeasonYear = getActiveSeasonYear();
         ensureActiveSeasonEntity();
-        ensureEntriesForSeasonCompetition(superLiga, nextSeasonYear);
-        ensureDoubleRoundRobinSchedule(superLiga, nextSeasonYear);
-        resetCompetitionEntriesForSeason(superLiga, nextSeasonYear);
+
+        for (Competition league : findSerbianLeagues()) {
+            ensureEntriesForSeasonCompetition(league, nextSeasonYear);
+            ensureDoubleRoundRobinSchedule(league, nextSeasonYear);
+            resetCompetitionEntriesForSeason(league, nextSeasonYear);
+        }
 
         log.info("Season rollover complete. New season year={}, week=1", nextSeasonYear);
     }
@@ -389,10 +392,12 @@ public class SeasonService {
         if (promotedDirect.size() < 2 || playoffLower.size() < 2) return;
 
         List<Team> playoffWinners = new ArrayList<>();
-        playoffWinners.add(resolvePlayoffWinner(playoffTop.get(0), playoffLower.get(0)));
-        playoffWinners.add(resolvePlayoffWinner(playoffTop.get(1), playoffLower.get(1)));
+        playoffWinners.add(resolvePlayoffWinner(superLiga, seasonYear, playoffTop.get(0), playoffLower.get(0)));
+        playoffWinners.add(resolvePlayoffWinner(superLiga, seasonYear, playoffTop.get(1), playoffLower.get(1)));
 
-        for (Team t : relegated) t.setCompetition(tier2Leagues.get(random.nextInt(2)));
+        for (int i = 0; i < relegated.size() && i < tier2Leagues.size(); i++) {
+            relegated.get(i).setCompetition(tier2Leagues.get(i));
+        }
         for (Team t : promotedDirect) t.setCompetition(superLiga);
         for (int i = 0; i < 2; i++) {
             Team topCandidate = playoffTop.get(i);
@@ -412,6 +417,82 @@ public class SeasonService {
         teamRepository.saveAll(playoffLower);
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> buildPlayoffSummary(Competition superLiga, int seasonYear) {
+        SeasonCompetition topSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, seasonYear).orElse(null);
+        if (topSc == null) {
+            return Map.of(
+                    "seasonYear", seasonYear,
+                    "directPromotions", List.of(),
+                    "directRelegations", List.of(),
+                    "playoffResults", List.of()
+            );
+        }
+
+        List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
+        List<Competition> tier2Leagues = findTier2Leagues();
+        if (top.size() < 10 || tier2Leagues.size() < 2) {
+            return Map.of(
+                    "seasonYear", seasonYear,
+                    "directPromotions", List.of(),
+                    "directRelegations", List.of(),
+                    "playoffResults", List.of()
+            );
+        }
+
+        List<Map<String, Object>> directRelegations = new ArrayList<>();
+        directRelegations.add(Map.of(
+                "team", top.get(8).getTeam().getName(),
+                "toLeague", tier2Leagues.get(0).getName()
+        ));
+        directRelegations.add(Map.of(
+                "team", top.get(9).getTeam().getName(),
+                "toLeague", tier2Leagues.get(1).getName()
+        ));
+
+        List<Map<String, Object>> directPromotions = new ArrayList<>();
+        for (Competition lowerLeague : tier2Leagues.subList(0, 2)) {
+            SeasonCompetition lowerSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(lowerLeague, seasonYear).orElse(null);
+            if (lowerSc == null) {
+                continue;
+            }
+            List<CompetitionEntry> lowerTable = sortTable(competitionEntryRepository.findBySeasonCompetition(lowerSc));
+            if (lowerTable.isEmpty()) {
+                continue;
+            }
+            directPromotions.add(Map.of(
+                    "team", lowerTable.getFirst().getTeam().getName(),
+                    "fromLeague", lowerLeague.getName()
+            ));
+        }
+
+        SeasonCompetition nextTopSc = seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(superLiga, seasonYear + 1)
+                .orElse(null);
+        Set<Long> nextSeasonSuperLigaTeamIds = nextTopSc == null
+                ? Set.of()
+                : competitionEntryRepository.findBySeasonCompetition(nextTopSc).stream()
+                .map(CompetitionEntry::getTeam)
+                .filter(Objects::nonNull)
+                .map(Team::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<Map<String, Object>> playoffResults = matchFixtureRepository
+                .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(superLiga.getId(), seasonYear, PLAYOFF_WEEK)
+                .stream()
+                .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
+                .map(fixture -> toPlayoffResultSummary(fixture, nextSeasonSuperLigaTeamIds))
+                .toList();
+
+        return Map.of(
+                "seasonYear", seasonYear,
+                "directPromotions", directPromotions,
+                "directRelegations", directRelegations,
+                "playoffResults", playoffResults
+        );
+    }
+
     private Team resolvePlayoffWinner(Team topTeam, Team lowerTeam) {
         double topRep = topTeam.getReputation() != null ? topTeam.getReputation() : 50.0;
         double lowerRep = lowerTeam.getReputation() != null ? lowerTeam.getReputation() : 45.0;
@@ -419,11 +500,93 @@ public class SeasonService {
         return random.nextDouble() < topChance ? topTeam : lowerTeam;
     }
 
+    private Team resolvePlayoffWinner(Competition superLiga, int seasonYear, Team topTeam, Team lowerTeam) {
+        MatchFixture playedFixture = matchFixtureRepository
+                .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(superLiga.getId(), seasonYear, PLAYOFF_WEEK)
+                .stream()
+                .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
+                .filter(fixture -> Objects.equals(fixture.getHomeTeam().getId(), topTeam.getId()))
+                .filter(fixture -> Objects.equals(fixture.getAwayTeam().getId(), lowerTeam.getId()))
+                .findFirst()
+                .orElse(null);
+
+        if (playedFixture != null && playedFixture.getPlayedMatch() != null) {
+            Match playedMatch = playedFixture.getPlayedMatch();
+            if (playedMatch.getHomeGoals() > playedMatch.getAwayGoals()) {
+                return topTeam;
+            }
+            if (playedMatch.getAwayGoals() > playedMatch.getHomeGoals()) {
+                return lowerTeam;
+            }
+        }
+        return resolvePlayoffWinner(topTeam, lowerTeam);
+    }
+
+    private List<Competition> findTier2Leagues() {
+        return findSerbianLeagues().stream()
+                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
+                .filter(c -> Objects.equals(c.getTier(), 2))
+                .toList();
+    }
+
+    private List<Competition> findSerbianLeagues() {
+        return competitionRepository.findAll().stream()
+                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
+                .filter(c -> c.getType() == CompetitionType.LEAGUE)
+                .sorted(Comparator
+                        .comparing(Competition::getTier, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(Competition::getDivisionLevel, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(Competition::getId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+    }
+
+    private Map<String, Object> toPlayoffResultSummary(MatchFixture fixture, Set<Long> nextSeasonSuperLigaTeamIds) {
+        Match playedMatch = fixture.getPlayedMatch();
+        Team winner = determineArchivedPlayoffWinner(fixture, nextSeasonSuperLigaTeamIds);
+
+        return Map.of(
+                "homeTeam", fixture.getHomeTeam().getName(),
+                "awayTeam", fixture.getAwayTeam().getName(),
+                "homeGoals", playedMatch != null ? playedMatch.getHomeGoals() : 0,
+                "awayGoals", playedMatch != null ? playedMatch.getAwayGoals() : 0,
+                "winner", winner != null ? winner.getName() : "TBD"
+        );
+    }
+
+    private Team determineArchivedPlayoffWinner(MatchFixture fixture, Set<Long> nextSeasonSuperLigaTeamIds) {
+        Match playedMatch = fixture.getPlayedMatch();
+        if (playedMatch != null) {
+            if (playedMatch.getHomeGoals() > playedMatch.getAwayGoals()) {
+                return fixture.getHomeTeam();
+            }
+            if (playedMatch.getAwayGoals() > playedMatch.getHomeGoals()) {
+                return fixture.getAwayTeam();
+            }
+        }
+
+        Long homeId = fixture.getHomeTeam() != null ? fixture.getHomeTeam().getId() : null;
+        Long awayId = fixture.getAwayTeam() != null ? fixture.getAwayTeam().getId() : null;
+        boolean homeStayedOrPromoted = homeId != null && nextSeasonSuperLigaTeamIds.contains(homeId);
+        boolean awayStayedOrPromoted = awayId != null && nextSeasonSuperLigaTeamIds.contains(awayId);
+
+        if (homeStayedOrPromoted ^ awayStayedOrPromoted) {
+            return homeStayedOrPromoted ? fixture.getHomeTeam() : fixture.getAwayTeam();
+        }
+
+        if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
+            return null;
+        }
+
+        return resolvePlayoffWinner(fixture.getHomeTeam(), fixture.getAwayTeam());
+    }
+
     private List<CompetitionEntry> sortTable(List<CompetitionEntry> entries) {
         return entries.stream()
-                .sorted(Comparator.comparing(CompetitionEntry::getPoints, Comparator.nullsFirst(Integer::compareTo)).reversed()
-                        .thenComparing(e -> safe(e.getGoalsScored()) - safe(e.getGoalsConceded()), Comparator.reverseOrder())
-                        .thenComparing(CompetitionEntry::getGoalsScored, Comparator.nullsFirst(Integer::compareTo)).reversed())
+                .sorted(Comparator
+                        .comparingInt((CompetitionEntry e) -> safe(e.getPoints())).reversed()
+                        .thenComparing(Comparator.comparingInt((CompetitionEntry e) -> safe(e.getGoalsScored()) - safe(e.getGoalsConceded())).reversed())
+                        .thenComparing(Comparator.comparingInt((CompetitionEntry e) -> safe(e.getGoalsScored())).reversed())
+                        .thenComparing(e -> e.getTeam() != null ? e.getTeam().getId() : Long.MAX_VALUE))
                 .toList();
     }
 

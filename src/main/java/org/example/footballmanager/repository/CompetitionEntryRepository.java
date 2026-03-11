@@ -23,6 +23,8 @@ public interface CompetitionEntryRepository extends JpaRepository<CompetitionEnt
     // Pronađi entry za određeni tim u određenoj sezoni lige
     Optional<CompetitionEntry> findBySeasonCompetitionAndTeam(SeasonCompetition sc, Team team);
 
+    List<CompetitionEntry> findByTeam(Team team);
+
     // Svi timovi u određenoj sezoni (nebitno koja liga)
     List<CompetitionEntry> findBySeasonCompetition(SeasonCompetition sc);
 }

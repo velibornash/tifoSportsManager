@@ -6,7 +6,12 @@ import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 /**
  * Upravljanje ligom — raspored, tabela, simulacija ostalih meceva.
@@ -15,6 +20,7 @@ import java.util.List;
 public class CSLeagueManager {
 
     private final CSMatchSimulator simulator = new CSMatchSimulator();
+    private final Random random = new Random();
 
     /**
      * Generise round-robin raspored (svako sa svakim, kuca i gost).
@@ -81,6 +87,40 @@ public class CSLeagueManager {
     }
 
     /**
+     * Generise random rivalstva izmedju timova (1-3 rivala po timu).
+     * Ovo se koristi da oznaci derbi meceve.
+     */
+    public Map<Long, Set<Long>> generateDerbyRivalries(List<CSTeam> teams) {
+        Map<Long, Set<Long>> rivalMap = new HashMap<>();
+        List<CSTeam> others = new ArrayList<>(teams);
+
+        for (CSTeam team : teams) {
+            Set<Long> rivals = new HashSet<>();
+            List<CSTeam> available = others.stream()
+                    .filter(t -> !t.getId().equals(team.getId()))
+                    .toList();
+            Collections.shuffle(available, random);
+            int count = 1 + random.nextInt(3);
+            for (int i = 0; i < Math.min(count, available.size()); i++) {
+                rivals.add(available.get(i).getId());
+                rivalMap.computeIfAbsent(available.get(i).getId(), key -> new HashSet<>()).add(team.getId());
+            }
+            rivalMap.put(team.getId(), rivals);
+        }
+        return rivalMap;
+    }
+
+    /**
+     * Postavlja derby flag na sve fixture-e na osnovu mape rivala.
+     */
+    public void applyDerbyFlags(List<CSFixture> fixtures, Map<Long, Set<Long>> derbyRivalries) {
+        for (CSFixture fixture : fixtures) {
+            Set<Long> homeRivals = derbyRivalries.getOrDefault(fixture.getHomeTeamId(), Set.of());
+            fixture.setDerby(homeRivals.contains(fixture.getAwayTeamId()));
+        }
+    }
+
+    /**
      * Inicijalizuje tabelu za sve timove (sve na nuli).
      */
     public List<CSTableEntry> initializeTable(List<CSTeam> teams) {
@@ -135,7 +175,6 @@ public class CSLeagueManager {
             homeEntry.setLosses(homeEntry.getLosses() + 1);
         }
 
-        // Sortiraj tabelu: bodovi desc, gol razlika desc, golovi desc
         table.sort(Comparator
                 .comparingInt(CSTableEntry::getPoints).reversed()
                 .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalDifference).reversed())
@@ -147,25 +186,22 @@ public class CSLeagueManager {
      * Korisnikov mec se obradjuje odvojeno (sa punom simulacijom).
      */
     public List<CSMatchResult> simulateRound(CleanSheetGameState state, int round,
-                                              CSMatchResult userMatchResult) {
+                                             CSMatchResult userMatchResult) {
         List<CSMatchResult> roundResults = new ArrayList<>();
 
-        // Dodaj korisnikov rezultat
         if (userMatchResult != null) {
             roundResults.add(userMatchResult);
             updateTable(state.getLeagueTable(), userMatchResult);
         }
 
-        // Simuliraj ostale meceve u istom kolu
         List<CSFixture> roundFixtures = state.getSchedule().stream()
                 .filter(f -> f.getRound() == round && !f.isPlayed())
                 .toList();
 
         for (CSFixture fixture : roundFixtures) {
-            // Preskoci korisnikov mec (vec obradjen)
-            if (userMatchResult != null &&
-                    fixture.getHomeTeamId().equals(userMatchResult.getHomeTeamId()) &&
-                    fixture.getAwayTeamId().equals(userMatchResult.getAwayTeamId())) {
+            if (userMatchResult != null
+                    && fixture.getHomeTeamId().equals(userMatchResult.getHomeTeamId())
+                    && fixture.getAwayTeamId().equals(userMatchResult.getAwayTeamId())) {
                 fixture.setPlayed(true);
                 fixture.setResult(userMatchResult);
                 continue;
@@ -180,10 +216,8 @@ public class CSLeagueManager {
 
             if (home == null || away == null) continue;
 
-            List<CSPlayer> homePlayers = state.getAllTeamRosters()
-                    .getOrDefault(home.getId(), List.of());
-            List<CSPlayer> awayPlayers = state.getAllTeamRosters()
-                    .getOrDefault(away.getId(), List.of());
+            List<CSPlayer> homePlayers = state.getAllTeamRosters().getOrDefault(home.getId(), List.of());
+            List<CSPlayer> awayPlayers = state.getAllTeamRosters().getOrDefault(away.getId(), List.of());
 
             List<Long> userStarterIds = state.getTactics() != null ? state.getTactics().getStarterIds() : List.of();
             List<Long> userBenchIds = state.getTactics() != null ? state.getTactics().getBenchIds() : List.of();

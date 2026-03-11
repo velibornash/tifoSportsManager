@@ -8,5 +8,7 @@ public record MatchLineupPlayerDTO(
         double grade,
         int goals,
         int assists,
+        int yellowCards,
+        int redCards,
         int minutesPlayed
 ) {}

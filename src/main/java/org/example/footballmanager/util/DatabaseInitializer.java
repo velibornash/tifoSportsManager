@@ -48,7 +48,7 @@ public class DatabaseInitializer {
         resetService.sanitizeLegacyLineupOrderSchema();
     }
 
-
+    @PostConstruct
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();

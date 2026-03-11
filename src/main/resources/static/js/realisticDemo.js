@@ -8,6 +8,7 @@ let bannerTimeout = null;
 let animationFrame = null;
 let activeAnimation = null;
 let goalGifTimeout = null;
+let pitchStampTimeout = null;
 let playbackFrame = null;
 let highlightTimeout = null;
 let replayMetadata = null;
@@ -16,7 +17,7 @@ let chunkDurationMs = 30_000;
 let totalChunks = 0;
 let currentTime = 0;
 let isPlaying = true;
-let playbackRate = 1;
+let playbackRate = 0.75;
 let lastFrameTs = 0;
 let lastBallIdx = 0;
 let lastEventIdx = 0;
@@ -89,7 +90,7 @@ async function initializeReplay() {
     setReplayStatus('Preparing match replay...');
     const metadata = await waitForReplayMetadata();
     hydrateReplayMetadata(metadata);
-    renderSquads(resolveMetadataPlayers(metadata));
+    refreshSquads();
     renderGoalMarkers(isReplayMode() ? resolveMetadataGoals(metadata) : []);
     updateTimelineBounds();
 
@@ -97,7 +98,7 @@ async function initializeReplay() {
     void ensureChunkLoaded(1);
 
     await rebuildReplayFromTime(0, { animate: false });
-    setReplayStatus(isReplayMode() ? 'Replay ready • 10s = 1 match minute' : 'Live match view • timeline hidden');
+    setReplayStatus(isReplayMode() ? `Replay ready • ${describeReplayMinutePacing(playbackRate)} = 1 match minute` : 'Live match view • timeline hidden');
     setPlaybackToggleLabel();
     startPlaybackLoop();
 }
@@ -159,9 +160,13 @@ function registerPlayerSlot(player) {
     const playerId = Number(player.playerId ?? player.id);
     if (!Number.isFinite(playerId)) return;
 
+    const fullName = player.name || player.fullName || player.last_name || `Player ${playerId}`;
+    const shortName = player.shortName || buildPlayerShortName(fullName);
+
     const normalized = {
         id: playerId,
-        name: player.name || player.fullName || player.last_name || `Player ${playerId}`,
+        name: fullName,
+        shortName,
         position: player.position || 'N/A',
         squadNumber: player.squadNumber ?? player.shirt_number ?? null,
         teamSide: player.teamSide || (player.is_home ? 'HOME' : 'AWAY'),
@@ -171,6 +176,9 @@ function registerPlayerSlot(player) {
     playerSlots.set(playerId, normalized);
     if (normalized.name) {
         playerNames.set(normalize(normalized.name), playerId);
+    }
+    if (normalized.shortName) {
+        playerNames.set(normalize(normalized.shortName), playerId);
     }
 }
 
@@ -207,6 +215,11 @@ function bindPlaybackControls() {
     if (controlsBound) return;
     controlsBound = true;
 
+    const speedSelect = document.getElementById('playback-speed');
+    if (speedSelect) {
+        speedSelect.value = String(playbackRate);
+    }
+
     document.getElementById('playback-toggle')?.addEventListener('click', () => {
         isPlaying = !isPlaying;
         if (isPlaying) {
@@ -225,9 +238,9 @@ function bindPlaybackControls() {
         setPlaybackToggleLabel();
     });
 
-    document.getElementById('playback-speed')?.addEventListener('change', event => {
+    speedSelect?.addEventListener('change', event => {
         playbackRate = Number(event.target.value) || 1;
-        setReplayStatus(`Replay speed ${playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 2)}x`);
+        setReplayStatus(`Replay speed ${playbackRate.toFixed(playbackRate % 1 === 0 ? 0 : 2)}x • ${describeReplayMinutePacing(playbackRate)} / match minute`);
     });
 
     const range = document.getElementById('timeline-range');
@@ -279,6 +292,7 @@ async function rebuildReplayFromTime(timeMs, options = {}) {
     }
 
     updateReplayFrame(currentTime, options);
+    refreshSquads();
     updateTimelineUi();
 }
 
@@ -314,14 +328,20 @@ function startPlaybackLoop() {
 }
 
 function advanceEventsToTime(timeMs) {
+    let advanced = false;
     while (lastEventIdx < replayEvents.length && getTimestamp(replayEvents[lastEventIdx]) <= timeMs) {
         applyReplayEvent(replayEvents[lastEventIdx], { animate: true });
         lastEventIdx += 1;
+        advanced = true;
+    }
+    if (advanced) {
+        refreshSquads();
     }
 }
 
 function applyReplayEvent(event, options = {}) {
     const animate = Boolean(options.animate);
+    const type = normalizeEventType(event?.type);
     applyEventState(event);
     renderEvent(event);
     appendKeyMoment(event);
@@ -337,7 +357,7 @@ function applyReplayEvent(event, options = {}) {
         }, resolveEventDelay(event));
     }
 
-    if (animate && isPitchKeyEvent(event)) {
+    if (animate && (isPitchKeyEvent(event) || isRestartCueEvent(type))) {
         renderPitchEvent(event);
     } else if (!animate) {
         hidePitchBanner();
@@ -511,6 +531,12 @@ function mergeChunkData(chunk) {
 
     ballData = mergeSortedSeries(ballData, ball);
     replayEvents = mergeSortedSeries(replayEvents, events);
+    refreshSquads();
+}
+
+function refreshSquads() {
+    if (!replayMetadata) return;
+    renderSquads(resolveMetadataPlayers(replayMetadata));
 }
 
 function mergeSortedSeries(existing, incoming) {
@@ -571,13 +597,14 @@ function compareSeriesItems(left, right) {
 }
 
 function renderSquads(players) {
-    renderSquadList('home-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && Boolean(player.starter ?? player.is_starter)));
-    renderSquadList('home-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && !Boolean(player.starter ?? player.is_starter)));
-    renderSquadList('away-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && Boolean(player.starter ?? player.is_starter)));
-    renderSquadList('away-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && !Boolean(player.starter ?? player.is_starter)));
+    const replayBadgeIndex = buildReplayBadgeIndex(currentTime);
+    renderSquadList('home-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && Boolean(player.starter ?? player.is_starter)), replayBadgeIndex);
+    renderSquadList('home-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'HOME' && !Boolean(player.starter ?? player.is_starter)), replayBadgeIndex);
+    renderSquadList('away-starters-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && Boolean(player.starter ?? player.is_starter)), replayBadgeIndex);
+    renderSquadList('away-bench-list', players.filter(player => resolveTeamSideForPlayer(player) === 'AWAY' && !Boolean(player.starter ?? player.is_starter)), replayBadgeIndex);
 }
 
-function renderSquadList(elementId, players) {
+function renderSquadList(elementId, players, replayBadgeIndex = { byId: new Map(), byName: new Map() }) {
     const container = document.getElementById(elementId);
     if (!container) return;
     if (!players.length) {
@@ -586,19 +613,105 @@ function renderSquadList(elementId, players) {
     }
 
     container.innerHTML = players.map(player => {
-        const name = player.name || player.fullName || player.last_name || 'Unknown';
+        const fullName = player.name || player.fullName || player.last_name || 'Unknown';
+        const name = player.shortName || buildPlayerShortName(fullName);
         const squadNumber = player.squadNumber ?? player.shirt_number ?? '?';
         const position = player.position || 'N/A';
+        const badgeStats = resolveReplayBadgeStats(player, replayBadgeIndex);
         return `
             <div class="squad-player-row">
                 <span class="squad-num">${escapeHtml(String(squadNumber))}</span>
                 <div>
-                    <div class="squad-player-name">${escapeHtml(name)}</div>
+                    <div class="squad-player-head">
+                        <div class="squad-player-name">${escapeHtml(name)}</div>
+                        ${buildReplayBadgesHtml(badgeStats)}
+                    </div>
                     <div class="squad-player-meta">${escapeHtml(position)}</div>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+function buildReplayBadgeIndex(timeLimitMs = currentTime) {
+    const byId = new Map();
+    const byName = new Map();
+
+    const touch = (playerId, playerName) => {
+        const numericId = Number(playerId);
+        let bucket = Number.isFinite(numericId) ? byId.get(numericId) : null;
+        if (!bucket) {
+            bucket = { goals: 0, assists: 0, yellowCards: 0, redCards: 0 };
+            if (Number.isFinite(numericId)) byId.set(numericId, bucket);
+        }
+        const normalizedName = normalize(playerName);
+        if (normalizedName) byName.set(normalizedName, bucket);
+        return bucket;
+    };
+
+    for (const event of replayEvents || []) {
+        if (getTimestamp(event) > timeLimitMs) break;
+        const type = normalizeEventType(event?.type);
+        if (type === 'goal') {
+            touch(event.playerId, event.scorerName || event.playerName).goals += 1;
+            if (event.secondaryPlayerId != null || event.assistantName || event.secondaryPlayerName) {
+                touch(event.secondaryPlayerId, event.assistantName || event.secondaryPlayerName).assists += 1;
+            }
+        } else if (type === 'yellowcard') {
+            touch(event.playerId, event.playerName).yellowCards += 1;
+        } else if (type === 'redcard') {
+            touch(event.playerId, event.playerName).redCards += 1;
+        }
+    }
+
+    return { byId, byName };
+}
+
+function resolveReplayBadgeStats(player, replayBadgeIndex) {
+    const playerId = Number(player.playerId ?? player.id);
+    if (Number.isFinite(playerId) && replayBadgeIndex.byId.has(playerId)) {
+        return replayBadgeIndex.byId.get(playerId);
+    }
+
+    const candidates = [
+        player.name,
+        player.fullName,
+        player.shortName,
+        player.last_name
+    ].map(normalize).filter(Boolean);
+
+    for (const candidate of candidates) {
+        if (replayBadgeIndex.byName.has(candidate)) {
+            return replayBadgeIndex.byName.get(candidate);
+        }
+    }
+
+    return { goals: 0, assists: 0, yellowCards: 0, redCards: 0 };
+}
+
+function buildRepeatedReplayBadge(count, className, icon, label) {
+    const total = Math.max(0, Number(count) || 0);
+    return Array.from({ length: total }, () => (
+        `<span class="squad-badge icon ${className}" title="${label}" aria-label="${label}">${icon}</span>`
+    )).join('');
+}
+
+function buildReplayBadgesHtml(stats) {
+    const badges = [
+        buildRepeatedReplayBadge(stats.goals, 'goal', '⚽', 'Goal'),
+        buildRepeatedReplayBadge(stats.assists, 'assist', '🎯', 'Assist'),
+        buildRepeatedReplayBadge(stats.yellowCards, 'yellow', '🟨', 'Yellow card'),
+        buildRepeatedReplayBadge(stats.redCards, 'red', '🟥', 'Red card')
+    ].filter(Boolean);
+    return badges.length ? `<div class="squad-player-badges">${badges.join('')}</div>` : '';
+}
+
+function buildPlayerShortName(fullName) {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return 'Unknown';
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0];
+    return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
 }
 
 function renderGoalMarkers(goals) {
@@ -650,6 +763,14 @@ function setReplayStatus(text) {
     if (status) {
         status.textContent = text;
     }
+}
+
+function describeReplayMinutePacing(rate) {
+    if (!Number.isFinite(rate) || rate <= 0) {
+        return '10s';
+    }
+    const secondsPerMinute = 10 / rate;
+    return `${(Math.round(secondsPerMinute * 10) / 10).toFixed(1)}s`;
 }
 
 function resetReplayUi() {
@@ -788,13 +909,17 @@ function buildEventHtml(event) {
     const xgBadge = formatXgBadge(event);
 
     return `
-        <div class="event-meta">
+        <div class="event-row">
             <span class="event-clock">${escapeHtml(resolveEventClockLabel(event))}</span>
-            <span class="event-label">${escapeHtml(resolveEventTypeLabel(event))}</span>
-            ${xgBadge ? `<span class="event-badge">${escapeHtml(xgBadge)}</span>` : ''}
+            <div class="event-copy">
+                <div class="event-meta">
+                    <span class="event-label">${escapeHtml(resolveEventTypeLabel(event))}</span>
+                    ${xgBadge ? `<span class="event-badge">${escapeHtml(xgBadge)}</span>` : ''}
+                </div>
+                <div class="event-main">${escapeHtml(headline)}</div>
+                ${description ? `<div class="event-sub">${description}</div>` : ''}
+            </div>
         </div>
-        <div class="event-main">${escapeHtml(headline)}</div>
-        ${description ? `<div class="event-sub">${description}</div>` : ''}
     `;
 }
 
@@ -810,15 +935,16 @@ function renderPitchEvent(event) {
 
     if (mainEl) mainEl.classList.add('involved-primary');
     if (secondaryEl) secondaryEl.classList.add('involved-secondary');
+    showPitchEventStampForEvent(event);
 
     if (type === 'duel' || type === 'interception') {
         if (mainEl) {
             mainEl.classList.add('duel-clash');
-            setTimeout(() => mainEl.classList.remove('duel-clash'), 600);
+            setTimeout(() => mainEl.classList.remove('duel-clash'), 950);
         }
         if (secondaryEl) {
             secondaryEl.classList.add('duel-clash');
-            setTimeout(() => secondaryEl.classList.remove('duel-clash'), 600);
+            setTimeout(() => secondaryEl.classList.remove('duel-clash'), 950);
         }
     }
 
@@ -851,6 +977,18 @@ function buildPitchBannerText(event) {
             return `${clock} • Goal • ${player}`;
         case 'penalty':
             return `${clock} • Penalty • ${player}`;
+        case 'corner':
+            return `${clock} • Corner • ${player || event.teamName || 'Attacking side'}`;
+        case 'throwin':
+            return `${clock} • Throw-in • ${player || event.teamName || 'Restart'}`;
+        case 'goalkick':
+            return `${clock} • Goal kick • ${player || event.teamName || 'Restart'}`;
+        case 'offside':
+            return `${clock} • Offside • ${player}`;
+        case 'duel':
+            return `${clock} • Duel • ${player}`;
+        case 'interception':
+            return `${clock} • Interception • ${player}`;
         case 'shotontarget':
             return `${clock} • Shot on target • ${player}`;
         case 'shotofftarget':
@@ -908,16 +1046,74 @@ function showGoalCelebration(event) {
     }, 1800);
 }
 
+function showPitchEventStampForEvent(event) {
+    const type = normalizeEventType(event.type);
+
+    if (type === 'offside') {
+        const point = resolveOffsideStampPoint(event);
+        if (point) {
+            showPitchEventStamp('/images/offside_flag.jpg', point.x, point.y, 'Offside flag', 1500);
+        }
+        return;
+    }
+
+    if (type === 'corner') {
+        const point = resolveCornerStampPoint(event);
+        if (point) {
+            showPitchEventStamp('/images/corner.jpg', point.x, point.y, 'Corner', 2000);
+        }
+        return;
+    }
+
+    if (type === 'penalty') {
+        const spot = getPenaltySpot(getAttackDirection(event));
+        showPitchEventStamp('/images/penalty.jpg', spot.x, clampPx(spot.y - 56, 42), 'Penalty', 1600);
+    }
+}
+
+function showPitchEventStamp(src, x, y, alt, duration = 1400) {
+    const stamp = document.getElementById('pitch-event-stamp');
+    const overlay = document.getElementById('pitch-overlay');
+    if (!stamp || !overlay || !src || !Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    hidePitchEventStamp();
+    stamp.src = src;
+    stamp.alt = alt || 'Pitch event';
+    stamp.style.left = `${clamp(x, 42, Math.max(42, overlay.width - 42))}px`;
+    stamp.style.top = `${clamp(y, 42, Math.max(42, overlay.height - 42))}px`;
+    stamp.classList.add('visible');
+    pitchStampTimeout = setTimeout(() => {
+        stamp.classList.remove('visible');
+    }, duration);
+}
+
+function hidePitchEventStamp() {
+    const stamp = document.getElementById('pitch-event-stamp');
+    if (!stamp) return;
+    if (pitchStampTimeout) {
+        clearTimeout(pitchStampTimeout);
+        pitchStampTimeout = null;
+    }
+    stamp.classList.remove('visible');
+}
+
 function clearPitchHighlights() {
     for (const el of playerElements.values()) {
-        el.classList.remove('involved-primary', 'involved-secondary');
+        el.classList.remove('involved-primary', 'involved-secondary', 'duel-clash');
     }
+    hidePitchEventStamp();
 }
 
 function findPlayerElementByName(name) {
     if (!name) return null;
     const playerId = playerNames.get(normalize(name));
     return playerId != null ? playerElements.get(String(playerId)) || null : null;
+}
+
+function getRuntimePlayerStateByName(name) {
+    if (!name) return null;
+    const playerId = playerNames.get(normalize(name));
+    return playerId != null ? latestPositions.get(Number(playerId)) || null : null;
 }
 
 function renderPlayers(state) {
@@ -1013,14 +1209,22 @@ function isShotAnimationEvent(type) {
 }
 
 function isCanvasAnimationEvent(type) {
-    return isShotAnimationEvent(type) || type === 'varreview' || type === 'substitution' || type === 'matchended' || type === 'injury';
+    return isShotAnimationEvent(type)
+        || isRestartCueEvent(type)
+        || type === 'offside'
+        || type === 'duel'
+        || type === 'interception'
+        || type === 'varreview'
+        || type === 'substitution'
+        || type === 'matchended'
+        || type === 'injury';
 }
 
 function startCanvasAnimation(event) {
     clearCanvasAnimation();
     syncPitchOverlaySize();
 
-    const type = (event.type || '').toLowerCase();
+    const type = normalizeEventType(event.type);
     if (isShotAnimationEvent(type)) {
         const direction = getAttackDirection(event);
         const shooter = resolveShooterPoint(event, direction, type);
@@ -1036,6 +1240,35 @@ function startCanvasAnimation(event) {
             startTs: performance.now(),
             duration: type === 'goal' || type === 'penalty' ? 1200 : 950
         };
+    } else if (type === 'offside') {
+        const path = resolveOffsideAnimationPath(event);
+        activeAnimation = {
+            type,
+            event,
+            source: path.source,
+            target: path.target,
+            startTs: performance.now(),
+            duration: 980
+        };
+    } else if (type === 'duel' || type === 'interception') {
+        activeAnimation = {
+            type,
+            event,
+            primary: resolvePrimaryEventPoint(event),
+            secondary: resolveSecondaryEventPoint(event),
+            startTs: performance.now(),
+            duration: 900
+        };
+    } else if (isRestartCueEvent(type)) {
+        const path = resolveRestartExitPath(event);
+        activeAnimation = {
+            type,
+            event,
+            source: path?.source || null,
+            target: path?.target || null,
+            startTs: performance.now(),
+            duration: 1900
+        };
     } else {
         activeAnimation = {
             type,
@@ -1046,7 +1279,7 @@ function startCanvasAnimation(event) {
     }
 
     const ballEl = document.getElementById('ball');
-    if (ballEl && isShotAnimationEvent(type)) {
+    if (ballEl && (isShotAnimationEvent(type) || type === 'offside')) {
         ballEl.style.opacity = '0';
     }
 
@@ -1082,6 +1315,12 @@ function drawAnimationFrame(timestamp) {
     if (isShotAnimationEvent(activeAnimation.type)) {
         drawShotMarkers(ctx, activeAnimation, progress);
         drawAnimatedBall(ctx, activeAnimation, progress);
+    } else if (isRestartCueEvent(activeAnimation.type)) {
+        drawRestartExitAnimation(ctx, activeAnimation, progress);
+    } else if (activeAnimation.type === 'offside') {
+        drawOffsideAnimation(ctx, activeAnimation, progress);
+    } else if (activeAnimation.type === 'duel' || activeAnimation.type === 'interception') {
+        drawDuelAnimation(ctx, activeAnimation, progress);
     } else if (activeAnimation.type === 'varreview') {
         drawVarAnimation(ctx, overlay, activeAnimation, progress);
     } else if (activeAnimation.type === 'substitution') {
@@ -1115,9 +1354,13 @@ function drawAnimatedBall(ctx, anim, progress) {
     const eased = 1 - Math.pow(1 - progress, 3);
     const x = anim.shooter.x + (anim.target.x - anim.shooter.x) * eased;
     const y = anim.shooter.y + (anim.target.y - anim.shooter.y) * eased;
+    drawCanvasBall(ctx, x, y, 7);
+}
+
+function drawCanvasBall(ctx, x, y, radius = 7) {
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#1b1b1b';
     ctx.lineWidth = 1.2;
@@ -1130,6 +1373,126 @@ function drawPulseCircle(ctx, x, y, radius, color, alpha) {
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawOffsideAnimation(ctx, anim, progress) {
+    if (!anim.source || !anim.target) return;
+
+    const ballProgress = Math.min(0.88, 1 - Math.pow(1 - progress, 2.1));
+    const x = anim.source.x + (anim.target.x - anim.source.x) * ballProgress;
+    const y = anim.source.y + (anim.target.y - anim.source.y) * ballProgress;
+
+    ctx.save();
+    ctx.setLineDash([12, 8]);
+    ctx.strokeStyle = 'rgba(255, 110, 110, 0.82)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(anim.source.x, anim.source.y);
+    ctx.lineTo(anim.target.x, anim.target.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    drawPulseCircle(ctx, anim.source.x, anim.source.y, 10, anim.source.color || '#7bc4ff', 0.45);
+    drawPulseCircle(ctx, anim.target.x, anim.target.y, 14 + Math.sin(progress * Math.PI) * 3, '#ff6969', 0.3 + (1 - progress) * 0.22);
+    drawCanvasBall(ctx, x, y, 6.5);
+
+    ctx.strokeStyle = 'rgba(255, 105, 105, 0.75)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(anim.target.x, anim.target.y, 22 + progress * 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawDuelAnimation(ctx, anim, progress) {
+    const primary = anim.primary;
+    const secondary = anim.secondary;
+    if (!primary || !secondary) return;
+
+    const pulse = 0.55 + Math.abs(Math.sin(progress * Math.PI * 5)) * 0.35;
+    const clashX = (primary.x + secondary.x) / 2;
+    const clashY = (primary.y + secondary.y) / 2;
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 215, 70, ${pulse})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(primary.x, primary.y);
+    ctx.lineTo(secondary.x, secondary.y);
+    ctx.stroke();
+
+    drawPulseCircle(ctx, primary.x, primary.y, 14, primary.color || '#4ECDC4', 0.6);
+    drawPulseCircle(ctx, secondary.x, secondary.y, 14, secondary.color || '#FF6B6B', 0.6);
+
+    ctx.strokeStyle = `rgba(255, 220, 120, ${Math.min(0.95, pulse + 0.08)})`;
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(clashX - 16, clashY - 16);
+    ctx.lineTo(clashX + 16, clashY + 16);
+    ctx.moveTo(clashX + 16, clashY - 16);
+    ctx.lineTo(clashX - 16, clashY + 16);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(clashX, clashY, 18 + pulse * 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 236, 170, 0.92)';
+    ctx.font = '700 15px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('DUEL', clashX, clashY - 22);
+    ctx.textAlign = 'start';
+    ctx.restore();
+}
+
+function drawRestartExitAnimation(ctx, anim, progress) {
+    if (!anim.source || !anim.target) return;
+
+    const alpha = 0.88 - progress * 0.22;
+    const pulse = 0.5 + Math.abs(Math.sin(progress * Math.PI * 4)) * 0.25;
+    const label = anim.type === 'corner' ? 'CORNER'
+        : anim.type === 'throwin' ? 'OUT'
+        : 'GOAL KICK';
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 213, 79, ${alpha})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(anim.source.x, anim.source.y);
+    ctx.lineTo(anim.target.x, anim.target.y);
+    ctx.stroke();
+
+    drawArrowHead(ctx, anim.source.x, anim.source.y, anim.target.x, anim.target.y, 15, alpha);
+    drawPulseCircle(ctx, anim.source.x, anim.source.y, 10, anim.source.color || '#7bc4ff', 0.28 + pulse * 0.1);
+    drawPulseCircle(ctx, anim.target.x, anim.target.y, 14 + pulse * 8, '#ffd54f', 0.22 + pulse * 0.24);
+
+    const midX = (anim.source.x + anim.target.x) / 2;
+    const midY = (anim.source.y + anim.target.y) / 2;
+    ctx.fillStyle = `rgba(255, 243, 205, ${alpha})`;
+    ctx.font = '700 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, midX, midY - 10);
+    ctx.textAlign = 'start';
+    ctx.restore();
+}
+
+function drawArrowHead(ctx, fromX, fromY, toX, toY, size, alpha) {
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 213, 79, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(
+        toX - Math.cos(angle - Math.PI / 6) * size,
+        toY - Math.sin(angle - Math.PI / 6) * size
+    );
+    ctx.lineTo(
+        toX - Math.cos(angle + Math.PI / 6) * size,
+        toY - Math.sin(angle + Math.PI / 6) * size
+    );
+    ctx.closePath();
     ctx.fill();
     ctx.restore();
 }
@@ -1349,11 +1712,167 @@ function getPlayerPointByName(name) {
     };
 }
 
+function resolvePrimaryEventPoint(event) {
+    const name = event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName || event.playerInName;
+    return getPlayerPointByName(name) || resolveFallbackEventPoint(event);
+}
+
+function resolveSecondaryEventPoint(event) {
+    const name = event.targetPlayerName || event.secondaryPlayerName || event.assistantName || event.playerInName;
+    return getPlayerPointByName(name) || resolveFallbackEventPoint(event, 8);
+}
+
+function resolveFallbackEventPoint(event, lateralOffset = 0) {
+    const direction = getAttackDirection(event);
+    return {
+        x: pitchPercentToX(direction === 1 ? 70 : 30),
+        y: pitchPercentToY(clamp(50 + lateralOffset, 18, 82)),
+        color: resolveTeamColorForEvent(event)
+    };
+}
+
+function resolveOffsideAnimationPath(event) {
+    const target = getPlayerPointByName(event.playerName) || resolveFallbackEventPoint(event);
+    const source = findLikelyOffsidePassSource(event) || {
+        x: clamp(target.x - getAttackDirection(event) * 120, 20, pitchPercentToX(100) - 20),
+        y: clampPx(target.y + 6, 20),
+        color: resolveTeamColorForEvent(event)
+    };
+    return { source, target };
+}
+
+function findLikelyOffsidePassSource(event) {
+    const receiverState = getRuntimePlayerStateByName(event.playerName);
+    const receiverId = playerNames.get(normalize(event.playerName));
+    const teamSide = resolveTeamSide(event.teamName);
+    const direction = getAttackDirection(event);
+    if (!receiverState || receiverId == null || !teamSide) return null;
+
+    let best = null;
+    let bestScore = Infinity;
+    for (const [playerId, pos] of latestPositions.entries()) {
+        if (Number(playerId) === Number(receiverId) || pos.team !== teamSide) continue;
+        const slot = playerSlots.get(Number(playerId));
+        if ((slot?.position || '').toUpperCase() === 'GK') continue;
+
+        const progressGap = direction === 1 ? receiverState.x - pos.x : pos.x - receiverState.x;
+        if (progressGap < 2.5) continue;
+
+        const laneGap = Math.abs(receiverState.y - pos.y);
+        const score = laneGap + Math.abs(progressGap - 12.0) * 0.7;
+        if (score < bestScore) {
+            bestScore = score;
+            best = {
+                x: pitchPercentToX(pos.x),
+                y: pitchPercentToY(pos.y),
+                color: pos.team === 'HOME' ? '#FF6B6B' : '#4ECDC4'
+            };
+        }
+    }
+    return best;
+}
+
+function resolveOffsideStampPoint(event) {
+    const receiver = getPlayerPointByName(event.playerName);
+    const overlay = document.getElementById('pitch-overlay');
+    if (!receiver || !overlay) return null;
+    return {
+        x: clamp(receiver.x + getAttackDirection(event) * 36, 42, Math.max(42, overlay.width - 42)),
+        y: clamp(receiver.y - 34, 42, Math.max(42, overlay.height - 42))
+    };
+}
+
 function getPenaltySpot(direction) {
     return {
         x: pitchPercentToX(direction === 1 ? 88 : 12),
         y: pitchPercentToY(50),
         color: direction === 1 ? '#FF6B6B' : '#4ECDC4'
+    };
+}
+
+function isRestartCueEvent(type) {
+    return type === 'corner' || type === 'throwin' || type === 'goalkick';
+}
+
+function resolveCornerStampPoint(event) {
+    const overlay = document.getElementById('pitch-overlay');
+    if (!overlay) return null;
+
+    const source = resolveBallPointBeforeTimestamp(getTimestamp(event));
+    const upperSide = source ? source.y < 50 : true;
+    const x = pitchPercentToX(getAttackDirection(event) === 1 ? 97 : 3);
+    const y = pitchPercentToY(upperSide ? 7 : 93);
+    return {
+        x: clamp(x + (getAttackDirection(event) === 1 ? -28 : 28), 42, Math.max(42, overlay.width - 42)),
+        y: clamp(y + (upperSide ? 28 : -28), 42, Math.max(42, overlay.height - 42))
+    };
+}
+
+function resolveRestartExitPath(event) {
+    const type = normalizeEventType(event?.type);
+    const source = resolveBallPointBeforeTimestamp(getTimestamp(event));
+    const fallback = resolveFallbackEventPoint(event);
+    const start = source
+        ? {
+            x: pitchPercentToX(source.x),
+            y: pitchPercentToY(source.y),
+            color: resolveTeamColorForEvent(event)
+        }
+        : fallback;
+    const targetPercent = resolveRestartExitTarget(type, event, source);
+    if (!targetPercent) {
+        return { source: start, target: null };
+    }
+
+    return {
+        source: start,
+        target: {
+            x: pitchPercentToX(targetPercent.x),
+            y: pitchPercentToY(targetPercent.y),
+            color: resolveTeamColorForEvent(event)
+        }
+    };
+}
+
+function resolveRestartExitTarget(type, event, source) {
+    const sourceX = source?.x ?? 50;
+    const sourceY = source?.y ?? 50;
+    const upperSide = sourceY < 50;
+    const direction = getAttackDirection(event);
+
+    if (type === 'corner') {
+        return {
+            x: direction === 1 ? 100 : 0,
+            y: upperSide ? 0 : 100
+        };
+    }
+
+    if (type === 'throwin') {
+        return {
+            x: clamp(sourceX, 5, 95),
+            y: upperSide ? 0 : 100
+        };
+    }
+
+    if (type === 'goalkick') {
+        return {
+            x: direction === 1 ? 0 : 100,
+            y: clamp(sourceY, 10, 90)
+        };
+    }
+
+    return null;
+}
+
+function resolveBallPointBeforeTimestamp(timeMs) {
+    if (!Array.isArray(ballData) || ballData.length === 0) return null;
+    const idx = findIndexNear(ballData, Math.max(0, Number(timeMs || 0) - 1));
+    if (idx < 0) return null;
+    const point = getPointTuple(ballData[idx]);
+    return {
+        x: Number(point?.[0] ?? 50),
+        y: Number(point?.[1] ?? 50),
+        z: Number(point?.[2] ?? 0)
     };
 }
 
@@ -1431,7 +1950,10 @@ function shouldQueueEvent(event) {
 }
 
 function isPitchKeyEvent(event) {
-    return Boolean(event.keyEvent) || ['key', 'system'].includes(resolveEventCategory(event));
+    const type = normalizeEventType(event.type);
+    return Boolean(event.keyEvent)
+        || ['key', 'system'].includes(resolveEventCategory(event))
+        || ['offside', 'duel', 'interception'].includes(type);
 }
 
 function resolveEventDelay(event) {
@@ -1441,6 +1963,8 @@ function resolveEventDelay(event) {
     if (type === 'varreview') return 2700;
     if (type === 'matchended') return 2500;
     if (type === 'goal') return GOAL_DELAY;
+    if (type === 'offside') return 1700;
+    if (type === 'duel' || type === 'interception') return 1250;
     if (isCanvasAnimationEvent(type)) return 2200;
     if (importance === 'critical') return 1800;
     if (importance === 'high') return 1500;
@@ -1495,6 +2019,10 @@ function resolveEventTypeLabel(event) {
     switch (type) {
         case 'matchstarted': return 'Kick-off';
         case 'matchended': return 'Full time';
+        case 'pass': return 'Pass';
+        case 'dribble': return 'Dribble';
+        case 'duel': return 'Duel';
+        case 'interception': return 'Interception';
         case 'goal': return 'Goal';
         case 'penalty': return 'Penalty';
         case 'chance': return event.dangerous ? 'Big chance' : 'Attack';
@@ -1522,6 +2050,14 @@ function buildEventHeadline(event) {
     switch (type) {
         case 'matchstarted':
             return `${matchData.homeTeam} vs ${matchData.awayTeam}`;
+        case 'pass':
+            return `${player} finds ${event.targetPlayerName || 'a teammate'}`;
+        case 'dribble':
+            return `${player} carries the ball forward`;
+        case 'duel':
+            return `${player} wins the duel${event.secondaryPlayerName ? ` vs ${event.secondaryPlayerName}` : ''}`;
+        case 'interception':
+            return `${player} intercepts the move${event.secondaryPlayerName ? ` after ${event.secondaryPlayerName}` : ''}`;
         case 'goal':
             return `${player} scores${event.assistantName ? `, assisted by ${event.assistantName}` : ''} for ${team}`;
         case 'penalty':

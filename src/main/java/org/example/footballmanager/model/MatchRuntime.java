@@ -2,6 +2,7 @@ package org.example.footballmanager.model;
 
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
+import org.example.footballmanager.dto.TacticsSlotDTO;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
 import org.example.footballmanager.model.tactics.Tactics;
@@ -38,6 +39,7 @@ public class MatchRuntime {
     public double ballTransitStartY = 50.0;
     public int ballTransitTicks = 0;
     public int ballTransitMaxTicks = 0;
+    public String ballTransitMode = "CONTROLLED";
     public Integer lastControllerId = null;
     public int lastControlTick = -100;
     public String lastControlSource = null;
@@ -99,6 +101,11 @@ public class MatchRuntime {
     public Match matchRef;
     public Map<Long, Integer> playerMinutes = new HashMap<>();
     public Map<Long, String> playerTeamSide = new HashMap<>();
+    public Map<Integer, String> playerSlotKeys = new HashMap<>();
+    public Map<String, String> homeTacticalTargets = new HashMap<>();
+    public Map<String, String> awayTacticalTargets = new HashMap<>();
+    public List<TacticsSlotDTO> homeSlots = new ArrayList<>();
+    public List<TacticsSlotDTO> awaySlots = new ArrayList<>();
     public int homeSubstitutionsUsed = 0;
     public int awaySubstitutionsUsed = 0;
 
