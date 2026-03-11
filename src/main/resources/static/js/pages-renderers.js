@@ -341,6 +341,8 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'First Team', page: 'firstTeam', variant: 'primary' },
         { label: 'Schedule', page: 'schedule' },
         { label: 'Club Profile', page: 'profile' },
+        { label: 'National Team', page: 'nationalTeam' },
+        { label: 'U-21', page: 'u21Team' },
         { label: 'Medical Center', page: 'medicalCenter' },
         { label: 'Juniors', page: 'juniors' },
         { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
@@ -693,6 +695,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     const selectedSeason = data.selectedSeason ?? null;
     const milestones = data.milestones || {};
     const seasonSummary = data.seasonSummary || {};
+    const leagueTitle = safe(data.leagueName || 'League');
 
     function zoneClass(rank, total) {
         if (rank === 1) return 'zone-title';
@@ -888,7 +891,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             ${backButtonHtml('Back', 'dashboard')}
             <div class="fm-page-title-block">
                 <div class="fm-eyebrow">Open-football inspired league view</div>
-                <h2 class="league-table-title">Serbian Superliga${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
+                <h2 class="league-table-title">${leagueTitle}${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
             </div>
             ${seasons.length ? `
             <label class="fm-season-select-wrap">
@@ -1001,6 +1004,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
     const seasons = Array.isArray(data.seasons) ? data.seasons : [];
     const selectedSeason = data.selectedSeason ?? null;
     const selectedSeasonNumber = data.selectedSeasonNumber ?? null;
+    const leagueTitle = htmlEscape(data.leagueName || 'League');
     const totalFixtures = rounds.reduce((sum, group) => sum + (group.matches || []).length, 0);
     const upcomingCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played).length, 0);
     const focusRound = rounds.find(group => group.isFocusRound)?.round ?? '—';
@@ -1012,7 +1016,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
                 ${backButtonHtml('Back', 'dashboard')}
                 <div class="fm-page-title-block">
                     <div class="fm-eyebrow">League schedule</div>
-                    <h2 class="league-table-title">Serbian Superliga${selectedSeasonNumber ? ` · Season ${selectedSeasonNumber}` : ''}</h2>
+                    <h2 class="league-table-title">${leagueTitle}${selectedSeasonNumber ? ` · Season ${selectedSeasonNumber}` : ''}</h2>
                 </div>
                 ${seasons.length ? `
                 <label class="fm-season-select-wrap">

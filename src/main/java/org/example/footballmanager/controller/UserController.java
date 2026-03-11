@@ -5,6 +5,7 @@ import org.example.footballmanager.dto.JwtResponseDTO;
 import org.example.footballmanager.dto.LoginRequestDTO;
 import org.example.footballmanager.dto.RegisterRequestDTO;
 import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.Country;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
@@ -88,11 +89,19 @@ public class UserController {
         if (user.getTeam() != null) {
             dto.setTeamId(user.getTeam().getId());
             dto.setTeamName(user.getTeam().getName());
+            Country country = user.getTeam().getCountry();
             Competition competition = user.getTeam().getCompetition();
             if (competition != null) {
                 dto.setCompetitionId(competition.getId());
                 dto.setCompetitionName(competition.getName());
                 dto.setCompetitionTier(competition.getTier());
+                if (country == null) {
+                    country = competition.getCountry();
+                }
+            }
+            if (country != null) {
+                dto.setCountryName(country.getName());
+                dto.setCountryIsoCode(country.getIsoCode());
             }
         }
 
@@ -110,6 +119,8 @@ public class UserController {
         private Long competitionId;
         private String competitionName;
         private Integer competitionTier;
+        private String countryName;
+        private String countryIsoCode;
         private Integer seasonYear;
     }
 }
