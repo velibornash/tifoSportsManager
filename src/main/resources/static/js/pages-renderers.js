@@ -133,6 +133,7 @@ function resolveClubResultBadge(match, currentTeamName = '') {
 export function buildScheduleFixtureCardHtml(match, options = {}) {
     const safe = options.safe || htmlEscape;
     const matchCaller = options.matchCaller || 'leagueMatches';
+    const backTarget = options.backTarget || 'leagueTable';
     const pendingLabel = options.pendingLabel || 'VS';
     const allowFixtureClick = options.allowFixtureClick !== false;
     const showPlayedInsights = options.showPlayedInsights === true;
@@ -159,6 +160,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
         <div class="${classes.join(' ')}"
              data-match-id="${match?.played && match?.id ? match.id : ''}"
              data-caller="${safe(matchCaller)}"
+             data-back-target="${safe(backTarget)}"
              data-fixture-id="${!match?.played && allowFixtureClick ? fixtureId : ''}">
             <div class="fx-topline">
                 <span class="fx-date">${safe(match?.matchDate || 'TBD')}</span>
@@ -222,7 +224,8 @@ export function bindScheduleInteractions(container, handlers = {}) {
     container.querySelectorAll('.js-load-fixture').forEach(node => {
         node.addEventListener('click', () => {
             const fixtureId = Number(node.dataset.fixtureId);
-            if (fixtureId && typeof onLoadFixture === 'function') onLoadFixture(fixtureId);
+            const backTarget = node.dataset.backTarget || 'leagueTable';
+            if (fixtureId && typeof onLoadFixture === 'function') onLoadFixture(fixtureId, { backTarget });
         });
     });
 }
@@ -627,12 +630,12 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
     bindScheduleInteractions(mainContent);
 }
 
-export function renderLeagueMatchesView(matches, title = 'League Results', { loadMatch }) {
+export function renderLeagueMatchesView(matches, title = 'League Results', { loadMatch, backTarget = 'dashboard', caller = 'leagueMatches' } = {}) {
     const mainContent = document.getElementById('main-content');
 
     let html = `
     <div class="manager-card">
-        ${backButtonHtml('Back', 'dashboard')}
+        ${backButtonHtml('Back', backTarget)}
         <h2>${title}</h2>
         <div class="match-list">`;
 
@@ -659,7 +662,7 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
             }
 
             html += `
-            <div class="match-row" data-match-id="${match.id}" data-caller="leagueMatches">
+            <div class="match-row" data-match-id="${match.id}" data-caller="${caller}">
                 <div style="font-size:0.9em; color:#aaa;">${match.matchDate || 'N/A'}</div>
                 <div class="match-teams">
                     <span class="team-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${match.homeTeam}</span></span>
@@ -696,6 +699,9 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     const milestones = data.milestones || {};
     const seasonSummary = data.seasonSummary || {};
     const leagueTitle = safe(data.leagueName || 'League');
+    const backTarget = data.backTarget || 'dashboard';
+    const fixtureBackTarget = data.fixtureBackTarget || 'leagueTable';
+    const matchCaller = data.matchCaller || 'leagueTable';
 
     function zoneClass(rank, total) {
         if (rank === 1) return 'zone-title';
@@ -731,7 +737,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     function fixturesHtml() {
         return buildFixtureGroupsHtml(fixtures, {
             safe,
-            matchCaller: 'leagueMatches',
+            matchCaller,
+            backTarget: fixtureBackTarget,
             pendingLabel: '–',
             allowFixtureClick: true,
             showInsights: true,
@@ -888,7 +895,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     mainContent.innerHTML = `
     <div class="fm-page fm-page--league">
         <div class="fm-page-toolbar">
-            ${backButtonHtml('Back', 'dashboard')}
+            ${backButtonHtml('Back', backTarget)}
             <div class="fm-page-title-block">
                 <div class="fm-eyebrow">Open-football inspired league view</div>
                 <h2 class="league-table-title">${leagueTitle}${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
@@ -1005,6 +1012,9 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
     const selectedSeason = data.selectedSeason ?? null;
     const selectedSeasonNumber = data.selectedSeasonNumber ?? null;
     const leagueTitle = htmlEscape(data.leagueName || 'League');
+    const backTarget = data.backTarget || 'dashboard';
+    const matchCaller = data.matchCaller || 'leagueSchedule';
+    const fixtureBackTarget = data.fixtureBackTarget || 'leagueSchedule';
     const totalFixtures = rounds.reduce((sum, group) => sum + (group.matches || []).length, 0);
     const upcomingCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played).length, 0);
     const focusRound = rounds.find(group => group.isFocusRound)?.round ?? '—';
@@ -1013,7 +1023,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
     mainContent.innerHTML = `
         <div class="fm-page fm-page--league">
             <div class="fm-page-toolbar">
-                ${backButtonHtml('Back', 'dashboard')}
+                ${backButtonHtml('Back', backTarget)}
                 <div class="fm-page-title-block">
                     <div class="fm-eyebrow">League schedule</div>
                     <h2 class="league-table-title">${leagueTitle}${selectedSeasonNumber ? ` · Season ${selectedSeasonNumber}` : ''}</h2>
@@ -1053,7 +1063,8 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
                         <div class="fm-fixtures">
                             ${buildFixtureGroupsHtml(rounds, {
                                 safe: htmlEscape,
-                                matchCaller: 'leagueMatches',
+                                matchCaller,
+                                backTarget: fixtureBackTarget,
                                 pendingLabel: 'VS',
                                 allowFixtureClick: true,
                                 showInsights: true,

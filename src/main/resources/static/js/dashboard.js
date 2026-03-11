@@ -70,6 +70,100 @@ function renderNextMatchEmpty(message, meta) {
         <div class="match-date">${escapeHtml(meta || 'The next fixture will appear here once the schedule is ready.')}</div>`);
 }
 
+function buildImportantUpdateCard(update) {
+    const severity = update?.severity || 'info';
+    const chip = severity === 'alert' ? 'Urgent' : severity === 'warning' ? 'Watch' : 'Info';
+    return `
+        <article class="fm-update-card fm-update-card--${severity}">
+            <div class="fm-update-topline">
+                <div class="fm-update-title">${escapeHtml(update?.title || 'Update')}</div>
+                <span class="fm-update-pill">${chip}</span>
+            </div>
+            <div class="fm-update-meta">${escapeHtml(update?.meta || 'No extra context available.')}</div>
+        </article>`;
+}
+
+function buildImportantUpdates(medical, lineupTemplate, transferOverview) {
+    const updates = [];
+    const recoveryQueue = Array.isArray(medical?.recoveryQueue) ? medical.recoveryQueue.filter(Boolean) : [];
+    const starterIds = Array.isArray(lineupTemplate?.starterIds) ? lineupTemplate.starterIds.filter(Boolean) : [];
+    const benchIds = Array.isArray(lineupTemplate?.benchIds) ? lineupTemplate.benchIds.filter(Boolean) : [];
+    const listedPlayers = Array.isArray(transferOverview?.listedPlayers) ? transferOverview.listedPlayers : [];
+    const interestedListings = listedPlayers.filter(player => Array.isArray(player?.interestedTeams) && player.interestedTeams.length > 0);
+
+    if (lineupTemplate?.saved === false) {
+        updates.push({
+            severity: 'alert',
+            title: 'Lineup template not saved',
+            meta: `Current setup is still draft-only (${starterIds.length}/11 starters, ${benchIds.length}/7 bench).`
+        });
+    }
+    if (starterIds.length < 11) {
+        updates.push({
+            severity: 'alert',
+            title: 'Starting XI is incomplete',
+            meta: `You currently have ${starterIds.length}/11 starters selected in the saved lineup template.`
+        });
+    }
+    if (benchIds.length < 7) {
+        updates.push({
+            severity: 'warning',
+            title: 'Bench depth missing',
+            meta: `Only ${benchIds.length}/7 bench slots are filled right now.`
+        });
+    }
+    if (Number(medical?.injuredCount || 0) > 0) {
+        const recoverySample = recoveryQueue.slice(0, 2)
+            .map(player => `${player?.name || 'Player'}${player?.injuryDaysRemaining ? ` (${player.injuryDaysRemaining}d)` : ''}`)
+            .join(', ');
+        updates.push({
+            severity: Number(medical?.criticalInjuryCount || 0) > 0 ? 'alert' : 'warning',
+            title: `${Number(medical?.injuredCount || 0)} player${Number(medical?.injuredCount || 0) === 1 ? '' : 's'} unavailable`,
+            meta: recoverySample || 'Medical Center has active injury cases and recovery work pending.'
+        });
+    }
+    if (interestedListings.length > 0) {
+        const topListing = interestedListings[0];
+        updates.push({
+            severity: 'info',
+            title: 'Transfer interest received',
+            meta: `${topListing?.playerName || 'Listed player'} has ${topListing?.interestedTeams?.length || 0} interested club${(topListing?.interestedTeams?.length || 0) === 1 ? '' : 's'} on the market.`
+        });
+    } else if (Number(transferOverview?.listedCount || 0) > 0) {
+        updates.push({
+            severity: 'info',
+            title: 'Players active on the market',
+            meta: `${Number(transferOverview?.listedCount || 0)} player${Number(transferOverview?.listedCount || 0) === 1 ? '' : 's'} currently listed in your Transfer Centre.`
+        });
+    }
+
+    return updates.slice(0, 4);
+}
+
+async function loadImportantUpdates() {
+    const host = document.getElementById('dashboard-important-updates');
+    if (!host) return;
+
+    try {
+        const [medical, lineupTemplate, transferOverview] = await Promise.all([
+            authFetch(`/teams/${currentUserTeamId}/medical`).then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch(`/teams/${currentUserTeamId}/lineup-template`).then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null)
+        ]);
+
+        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview);
+        if (!updates.length) {
+            host.innerHTML = '<div class="fm-empty">No urgent club updates right now.</div>';
+            return;
+        }
+
+        host.innerHTML = updates.map(buildImportantUpdateCard).join('');
+    } catch (err) {
+        console.error('Error loading important updates:', err);
+        host.innerHTML = '<div class="fm-empty">Important updates are temporarily unavailable.</div>';
+    }
+}
+
 function buildHeadToHeadText(h2h) {
     if (!h2h) return escapeHtml('No head-to-head data yet.');
     const summary = escapeHtml(h2h.summary || 'No head-to-head data yet.');
@@ -184,6 +278,22 @@ function loadDashboard() {
             <div class="match-date">Preparing your live club schedule…</div>
         </div>
 
+	        <div class="recent-matches-section fm-important-updates-section">
+	            <div class="fm-important-updates-head">
+	                <h3>Important Updates</h3>
+	                <span class="fm-panel-action">Lightweight hub</span>
+	            </div>
+	            <div id="dashboard-important-updates" class="fm-important-updates-list">
+	                <div class="fm-update-card fm-update-card--info">
+	                    <div class="fm-update-topline">
+	                        <div class="fm-update-title">Loading important updates</div>
+	                        <span class="fm-update-pill">Info</span>
+	                    </div>
+	                    <div class="fm-update-meta">Checking lineup, medical status, and transfer-list signals for urgent items.</div>
+	                </div>
+	            </div>
+	        </div>
+
         <div class="recent-matches-section">
             <h3>Recent Matches</h3>
             <div id="recent-matches-list" class="match-list">
@@ -217,6 +327,7 @@ function loadDashboard() {
     loadHomeTeamStats();
     loadDashboardMilestones();
     loadNextMatch();
+	loadImportantUpdates();
 }
 
 async function loadNextMatch() {

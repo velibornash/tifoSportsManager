@@ -1,6 +1,7 @@
 package org.example.footballmanager.controller;
 
 import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.Country;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
@@ -35,15 +36,21 @@ class UserControllerTest {
 
     @Test
     void getCurrentUserReturnsTeamLeagueContext() {
+        Country country = new Country();
+        country.setName("Serbia");
+        country.setIsoCode("SRB");
+
         Competition competition = new Competition();
         competition.setId(2L);
         competition.setName("Prva Liga Srbije");
         competition.setTier(2);
+        competition.setCountry(country);
 
         Team team = new Team();
         team.setId(10L);
         team.setName("OFK Omladinac");
         team.setCompetition(competition);
+        team.setCountry(country);
 
         User user = new User();
         user.setId(5L);
@@ -62,6 +69,8 @@ class UserControllerTest {
         assertEquals(2L, response.getBody().getCompetitionId());
         assertEquals("Prva Liga Srbije", response.getBody().getCompetitionName());
         assertEquals(2, response.getBody().getCompetitionTier());
+        assertEquals("Serbia", response.getBody().getCountryName());
+        assertEquals("SRB", response.getBody().getCountryIsoCode());
         assertEquals(2026, response.getBody().getSeasonYear());
     }
 

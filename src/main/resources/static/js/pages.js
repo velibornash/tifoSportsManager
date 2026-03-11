@@ -12,12 +12,78 @@ import { createCommunityFeature } from './pages/features/community.js';
 	let currentUserCompetitionName = '';
 	let currentUserCompetitionTier = null;
 	let currentSeasonYear = null;
+		let currentUserCountryName = '';
+		let currentUserCountryIsoCode = '';
     let currentPageId = 'dashboard';
     let currentNavState = { type: 'dashboard' };
     const navHistoryStack = [];
     let navReplayMode = false;
     let navBusy = false;
     let currentLeagueSeasonYear = null;
+	    let activeLeagueId = null;
+	    let activeLeagueName = '';
+	    let activeLeagueCountryIsoCode = '';
+	    let activeLeagueBackTarget = 'dashboard';
+
+	    function normalizeLeagueId(value) {
+	        const numeric = Number(value);
+	        return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+	    }
+
+	    function isLeaguePage(page) {
+	        return page === 'leagueTable' || page === 'leagueSchedule' || page === 'leagueMatches';
+	    }
+
+	    function setActiveLeagueContext({ leagueId = null, leagueName = '', countryIsoCode = '', backTarget = 'dashboard', seasonYear } = {}) {
+	        activeLeagueId = normalizeLeagueId(leagueId);
+	        activeLeagueName = leagueName || '';
+	        activeLeagueCountryIsoCode = countryIsoCode || '';
+	        activeLeagueBackTarget = backTarget || 'dashboard';
+	        if (seasonYear !== undefined) currentLeagueSeasonYear = seasonYear ?? null;
+	    }
+
+	    function syncUserLeagueContext() {
+	        setActiveLeagueContext({
+	            leagueId: currentUserCompetitionId,
+	            leagueName: currentUserCompetitionName || 'League',
+	            countryIsoCode: currentUserCountryIsoCode || '',
+	            backTarget: 'dashboard',
+	            seasonYear: currentSeasonYear ?? currentLeagueSeasonYear ?? null
+	        });
+	    }
+
+	    function getActiveLeagueNavState() {
+	        return {
+	            leagueId: activeLeagueId,
+	            leagueName: activeLeagueName,
+	            leagueCountryIsoCode: activeLeagueCountryIsoCode,
+	            leagueBackTarget: activeLeagueBackTarget,
+	            seasonYear: currentLeagueSeasonYear ?? null
+	        };
+	    }
+
+	    function restoreLeagueNavState(state) {
+	        if (!state) return;
+	        if (state.leagueId || state.leagueName || state.leagueCountryIsoCode || state.leagueBackTarget) {
+	            setActiveLeagueContext({
+	                leagueId: state.leagueId,
+	                leagueName: state.leagueName,
+	                countryIsoCode: state.leagueCountryIsoCode,
+	                backTarget: state.leagueBackTarget,
+	                seasonYear: state.seasonYear ?? null
+	            });
+	        }
+	    }
+
+	    function buildPageNavState(page) {
+	        if (!isLeaguePage(page)) return { type: 'page', page };
+	        return {
+	            type: 'page',
+	            page,
+	            preserveLeagueContext: true,
+	            ...getActiveLeagueNavState()
+	        };
+	    }
 
     function sameNavState(a, b) {
         if (!a || !b) return false;
@@ -41,7 +107,12 @@ import { createCommunityFeature } from './pages/features/community.js';
             return;
         }
         if (state.type === 'page') {
-            await loadPage(state.page, { pushHistory: false });
+	            if (isLeaguePage(state.page) && state.preserveLeagueContext) {
+	                restoreLeagueNavState(state);
+	                await loadPage(state.page, { pushHistory: false, preserveLeagueContext: true });
+	                return;
+	            }
+	            await loadPage(state.page, { pushHistory: false });
             return;
         }
         if (state.type === 'player') {
@@ -49,18 +120,22 @@ import { createCommunityFeature } from './pages/features/community.js';
             return;
         }
         if (state.type === 'match') {
+	            restoreLeagueNavState(state);
             await loadMatch(state.matchId, state.caller, { pushHistory: false });
             return;
         }
         if (state.type === 'fixture') {
-            await loadFixture(state.fixtureId, { pushHistory: false });
+	            restoreLeagueNavState(state);
+	            await loadFixture(state.fixtureId, { pushHistory: false, backTarget: state.backTarget || 'fixtures' });
             return;
         }
         if (state.type === 'leagueTeam') {
+	            restoreLeagueNavState(state);
             await loadLeagueTeam(state.teamId, state.teamName, { pushHistory: false, seasonYear: state.seasonYear ?? null });
             return;
         }
         if (state.type === 'leagueTeamPlayer') {
+	            restoreLeagueNavState(state);
             await loadLeagueTeamPlayer(state.playerId, state.teamId, state.teamName, { pushHistory: false, seasonYear: state.seasonYear ?? null });
         }
     }
@@ -85,7 +160,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             if (typeof window.loadDashboard === 'function') window.loadDashboard();
             return;
         }
-        await loadPage(fallback, { pushHistory: false });
+	        await loadPage(fallback, { pushHistory: false, preserveLeagueContext: isLeaguePage(fallback) });
         } finally {
             navBusy = false;
         }
@@ -101,7 +176,12 @@ import { createCommunityFeature } from './pages/features/community.js';
 	        currentUserCompetitionName = user.competitionName || '';
 	        currentUserCompetitionTier = user.competitionTier ?? null;
 	        currentSeasonYear = user.seasonYear ?? null;
+	            currentUserCountryName = user.countryName || '';
+	            currentUserCountryIsoCode = user.countryIsoCode || '';
 	        currentLeagueSeasonYear = currentSeasonYear || currentLeagueSeasonYear;
+	            if (!normalizeLeagueId(activeLeagueId)) {
+	                syncUserLeagueContext();
+	            }
 	        console.log("Team ID loaded:", currentUserTeamId, "League:", currentUserCompetitionName || currentUserCompetitionId);
             return currentUserTeamId;
         } catch (err) {
@@ -118,12 +198,15 @@ import { createCommunityFeature } from './pages/features/community.js';
 
 	async function ensureCurrentLeagueId() {
 	    if (!await ensureUserTeamId()) return null;
-	    const leagueId = Number(currentUserCompetitionId);
-	    return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : 1;
+		    return normalizeLeagueId(activeLeagueId) || normalizeLeagueId(currentUserCompetitionId) || 1;
 	}
 
 	function getCurrentLeagueName() {
-	    return currentUserCompetitionName || 'League';
+		    return activeLeagueName || currentUserCompetitionName || 'League';
+		}
+
+		function getCurrentLeagueBackTarget() {
+		    return activeLeagueBackTarget || 'dashboard';
 	}
 
     // Event delegation za back-button (radi i posle svakog innerHTML overwrite-a)
@@ -148,15 +231,256 @@ import { createCommunityFeature } from './pages/features/community.js';
                     <h2>${message}</h2>
                 </div>`;
     }
+
+	    function formatSeasonShortLabel(seasonYear) {
+	        const startYear = Number(seasonYear);
+	        if (!Number.isFinite(startYear)) return 'Current season';
+	        return `${startYear}/${String((startYear + 1) % 100).padStart(2, '0')}`;
+	    }
+
+	    function sortCountryLeagues(leagues) {
+	        return [...(Array.isArray(leagues) ? leagues : [])].sort((left, right) => {
+	            const tierDiff = Number(left?.tier || 999) - Number(right?.tier || 999);
+	            if (tierDiff !== 0) return tierDiff;
+	            const divisionDiff = Number(left?.divisionLevel || 999) - Number(right?.divisionLevel || 999);
+	            if (divisionDiff !== 0) return divisionDiff;
+	            return String(left?.name || '').localeCompare(String(right?.name || ''), undefined, { sensitivity: 'base' });
+	        });
+	    }
+
+	    function buildLeagueMetaLabel(league) {
+	        const bits = [];
+	        const tier = Number(league?.tier);
+	        const divisionLevel = Number(league?.divisionLevel);
+	        if (Number.isFinite(tier)) bits.push(`Tier ${tier}`);
+	        if (Number.isFinite(divisionLevel) && divisionLevel > 1) bits.push(`Division ${divisionLevel}`);
+	        return bits.join(' · ') || 'League';
+	    }
+
+	    async function openCountryLeague(leagueId, leagueName) {
+	        setActiveLeagueContext({
+	            leagueId,
+	            leagueName,
+	            countryIsoCode: currentUserCountryIsoCode || activeLeagueCountryIsoCode || '',
+	            backTarget: 'country'
+	        });
+	        await loadPage('leagueTable', { preserveLeagueContext: true });
+	    }
+
+	    async function loadCountryPage() {
+	        const mainContent = document.getElementById('main-content');
+	        if (!currentUserCountryIsoCode) {
+	            mainContent.innerHTML = buildEmptyState('Country data is not available for this manager yet.');
+	            return;
+	        }
+
+	        try {
+	            const countryIso = String(currentUserCountryIsoCode).toUpperCase();
+	            const [countriesResponse, leaguesResponse] = await Promise.all([
+	                authFetch('/countries'),
+	                authFetch(`/countries/${encodeURIComponent(countryIso)}/leagues`)
+	            ]);
+
+	            if (!leaguesResponse.ok) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
+
+	            const countries = countriesResponse.ok ? await countriesResponse.json() : [];
+	            const leagues = await leaguesResponse.json();
+	            const sortedLeagues = sortCountryLeagues(leagues);
+	            const quickLeagues = sortedLeagues.slice(0, 2);
+	            const country = (Array.isArray(countries) ? countries : []).find(item => String(item?.isoCode || '').toUpperCase() === countryIso) || {
+	                name: currentUserCountryName || countryIso,
+	                isoCode: countryIso,
+	                flagImagePath: '',
+	                currencyCode: '',
+	                reputation: null,
+	                youthRating: null,
+	                seniorNationalTeam: null,
+	                u21NationalTeam: null
+	            };
+
+	            mainContent.innerHTML = `
+	                <div class="fm-page fm-page--country">
+	                    <div class="fm-page-toolbar">
+	                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+	                        <div class="fm-page-title-block">
+	                            <div class="fm-eyebrow">Country overview</div>
+	                            <h2>${escapeHtml(country?.name || currentUserCountryName || 'Country')}</h2>
+	                            <div class="fm-subtle">Browse your federation, open its league pyramid, and jump into any league table without changing what the main `League` button means.</div>
+	                        </div>
+	                    </div>
+
+	                    <div class="fm-grid-top fm-grid-top--country">
+	                        <section class="fm-panel fm-country-hero">
+	                            <div class="fm-country-hero-main">
+	                                <div class="fm-country-flag-wrap">
+	                                    <img src="${escapeHtml(country?.flagImagePath || '/images/default-team.png')}" alt="${escapeHtml(country?.name || 'Country')}" class="fm-country-flag" onerror="this.src='/images/default-team.png'">
+	                                </div>
+	                                <div class="fm-country-meta">
+	                                    <div class="fm-eyebrow">Federation</div>
+	                                    <h3>${escapeHtml(country?.name || currentUserCountryName || countryIso)}</h3>
+	                                    <div class="fm-subtle">ISO ${escapeHtml(country?.isoCode || countryIso)}${country?.currencyCode ? ` · Currency ${escapeHtml(country.currencyCode)}` : ''}</div>
+	                                    <div class="fm-country-note">Season ${escapeHtml(formatSeasonShortLabel(currentSeasonYear))}</div>
+	                                </div>
+	                            </div>
+	                            <div class="fm-medical-stat-grid team-summary-grid fm-country-stat-grid">
+	                                <div><strong>${country?.reputation ?? '—'}</strong><span>Reputation</span></div>
+	                                <div><strong>${country?.youthRating ?? '—'}</strong><span>Youth rating</span></div>
+	                                <div><strong>${sortedLeagues.length}</strong><span>Leagues</span></div>
+	                                <div><strong>${escapeHtml(country?.currencyCode || '—')}</strong><span>Currency</span></div>
+	                            </div>
+	                        </section>
+
+	                        <section class="fm-panel">
+	                            <div class="fm-panel-head">
+	                                <div>
+	                                    <h3>Quick leagues</h3>
+	                                    <p class="fm-subtle">Fast access for the top levels, plus a dropdown for the full pyramid.</p>
+	                                </div>
+	                                <span class="fm-panel-action">Country browse</span>
+	                            </div>
+	                            <div class="fm-country-league-grid">
+	                                ${quickLeagues.map(league => `
+	                                    <article class="fm-country-league-card">
+	                                        <div class="fm-milestone-kicker">${escapeHtml(buildLeagueMetaLabel(league))}</div>
+	                                        <div class="fm-update-title">${escapeHtml(league?.name || 'League')}</div>
+	                                        <div class="fm-update-meta">Open the same standings/fixtures/scorers shell used for your main league view.</div>
+	                                        <button type="button" class="fm-action-btn secondary" data-country-league-id="${league?.id || ''}" data-country-league-name="${escapeHtml(league?.name || 'League')}">Open table</button>
+	                                    </article>`).join('') || `<div class="fm-empty">No leagues found for this country yet.</div>`}
+	                            </div>
+	                            ${sortedLeagues.length ? `
+	                                <div class="fm-country-select-row">
+	                                    <label class="fm-season-select-wrap fm-country-select-control">
+	                                        <span>All leagues</span>
+	                                        <select id="country-league-select" class="fm-season-select">
+	                                            ${sortedLeagues.map(league => `<option value="${league?.id || ''}" data-league-name="${escapeHtml(league?.name || 'League')}">${escapeHtml(league?.name || 'League')} · ${escapeHtml(buildLeagueMetaLabel(league))}</option>`).join('')}
+	                                        </select>
+	                                    </label>
+	                                    <button type="button" id="country-open-selected-league" class="fm-action-btn">Open selected league</button>
+	                                </div>` : ''}
+	                        </section>
+	                    </div>
+
+	                    <div class="fm-grid-bottom">
+	                        <section class="fm-panel">
+	                            <div class="fm-panel-head">
+	                                <div>
+	                                    <h3>National teams</h3>
+	                                    <p class="fm-subtle">Navigation placeholders are ready now; backend data can be connected later.</p>
+	                                </div>
+	                                <span class="fm-panel-action">Placeholder</span>
+	                            </div>
+	                            <div class="fm-country-team-grid">
+	                                <article class="fm-country-team-card">
+	                                    <div class="fm-milestone-kicker">Senior</div>
+	                                    <div class="fm-update-title">${escapeHtml(country?.seniorNationalTeam?.name || `${country?.name || currentUserCountryName || 'Country'} National Team`)}</div>
+	                                    <div class="fm-update-meta">Top-level squad hub placeholder.</div>
+	                                    <button type="button" class="fm-action-btn secondary" data-country-placeholder="nationalTeam">Open</button>
+	                                </article>
+	                                <article class="fm-country-team-card">
+	                                    <div class="fm-milestone-kicker">U-21</div>
+	                                    <div class="fm-update-title">${escapeHtml(country?.u21NationalTeam?.name || `${country?.name || currentUserCountryName || 'Country'} U-21`)}</div>
+	                                    <div class="fm-update-meta">Youth national setup placeholder.</div>
+	                                    <button type="button" class="fm-action-btn secondary" data-country-placeholder="u21Team">Open</button>
+	                                </article>
+	                            </div>
+	                        </section>
+
+	                        <section class="fm-panel">
+	                            <div class="fm-panel-head">
+	                                <div>
+	                                    <h3>League pyramid</h3>
+	                                    <p class="fm-subtle">Full country list ordered by tier, so you can jump straight into any division.</p>
+	                                </div>
+	                                <span class="fm-panel-action">${sortedLeagues.length} total</span>
+	                            </div>
+	                            <div class="fm-country-league-grid">
+	                                ${sortedLeagues.map(league => `
+	                                    <article class="fm-country-league-card compact">
+	                                        <div class="fm-milestone-kicker">${escapeHtml(buildLeagueMetaLabel(league))}</div>
+	                                        <div class="fm-update-title">${escapeHtml(league?.name || 'League')}</div>
+	                                        <button type="button" class="fm-action-btn secondary" data-country-league-id="${league?.id || ''}" data-country-league-name="${escapeHtml(league?.name || 'League')}">Open table</button>
+	                                    </article>`).join('')}
+	                            </div>
+	                        </section>
+	                    </div>
+	                </div>`;
+
+	            mainContent.querySelectorAll('[data-country-league-id]').forEach(button => {
+	                button.addEventListener('click', () => {
+	                    openCountryLeague(Number(button.dataset.countryLeagueId), button.dataset.countryLeagueName || 'League');
+	                });
+	            });
+
+	            const countryLeagueSelect = document.getElementById('country-league-select');
+	            const openSelectedLeagueButton = document.getElementById('country-open-selected-league');
+	            if (countryLeagueSelect && openSelectedLeagueButton) {
+	                openSelectedLeagueButton.addEventListener('click', () => {
+	                    const selectedOption = countryLeagueSelect.options[countryLeagueSelect.selectedIndex];
+	                    const selectedLeagueId = Number(countryLeagueSelect.value);
+	                    if (!selectedLeagueId) return;
+	                    openCountryLeague(selectedLeagueId, selectedOption?.dataset?.leagueName || selectedOption?.textContent || 'League');
+	                });
+	            }
+
+	            mainContent.querySelectorAll('[data-country-placeholder]').forEach(button => {
+	                button.addEventListener('click', () => loadPage(button.dataset.countryPlaceholder || 'nationalTeam'));
+	            });
+	        } catch (err) {
+	            console.error('Failed to load country page:', err);
+	            mainContent.innerHTML = `
+	                <div class="manager-card">
+	                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+	                    <h2>Error</h2>
+	                    <p>Could not load your country overview.</p>
+	                </div>`;
+	        }
+	    }
+
+	    async function loadNationalTeamPlaceholder(level = 'senior') {
+	        const isU21 = level === 'u21';
+	        const mainContent = document.getElementById('main-content');
+	        const title = isU21
+	            ? `${currentUserCountryName || 'Country'} U-21`
+	            : `${currentUserCountryName || 'Country'} National Team`;
+	        const currentActionPage = isU21 ? 'u21Team' : 'nationalTeam';
+
+	        mainContent.innerHTML = `
+	            <div class="fm-page fm-page--club">
+	                <section class="fm-panel fm-club-hero fm-placeholder-hero">
+	                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+	                    <div class="fm-club-hero-main">
+	                        <div>
+	                            <div class="fm-eyebrow">National setup</div>
+	                            <h2>${escapeHtml(title)}</h2>
+	                            <p class="fm-subtle">This route is intentionally a frontend placeholder for now, so the action-row buttons already have a clean destination before BE national-team payloads are wired.</p>
+	                        </div>
+	                        ${buildClubActionsHtml(currentActionPage)}
+	                    </div>
+	                    <div class="fm-medical-stat-grid team-summary-grid">
+	                        <div><strong>${escapeHtml(currentUserCountryName || '—')}</strong><span>Country</span></div>
+	                        <div><strong>${isU21 ? 'U-21' : 'Senior'}</strong><span>Level</span></div>
+	                        <div><strong>Placeholder</strong><span>Status</span></div>
+	                        <div><strong>Later</strong><span>Backend data</span></div>
+	                    </div>
+	                </section>
+	                <section class="fm-panel">
+	                    <div class="fm-empty">National-team squad, schedule, call-ups, and staff will be added here once backend endpoints are ready.</div>
+	                </section>
+	            </div>`;
+	    }
     async function loadPage(page, options = {}) {
         const pushHistory = options.pushHistory !== false;
         const mainContent = document.getElementById("main-content");
         currentPageId = page;
-        if (pushHistory) pushNavState({ type: 'page', page });
     if (!currentUserTeamId) {
             await loadUserTeamId();
             if (!currentUserTeamId) return;
         }
+	        const preserveLeagueContext = options.preserveLeagueContext === true;
+	        if (isLeaguePage(page) && !preserveLeagueContext) {
+	            syncUserLeagueContext();
+	        }
+	        if (pushHistory) pushNavState(buildPageNavState(page));
         try {
 
             switch(page) {
@@ -252,6 +576,18 @@ import { createCommunityFeature } from './pages/features/community.js';
                     await loadFriendlies();
                     break;
 
+	                case "country":
+	                    await loadCountryPage();
+	                    break;
+
+	                case "nationalTeam":
+	                    await loadNationalTeamPlaceholder('senior');
+	                    break;
+
+	                case "u21Team":
+	                    await loadNationalTeamPlaceholder('u21');
+	                    break;
+
                 // COMMUNITY
                 case "forum":
                     await loadForum();
@@ -330,7 +666,8 @@ import { createCommunityFeature } from './pages/features/community.js';
         try {
 	        const leagueId = await ensureCurrentLeagueId();
 	        if (!leagueId) return;
-	        const res = await authFetch(`/countries/leagues/${leagueId}/teams`);
+		        const seasonParam = currentLeagueSeasonYear ? `?seasonYear=${encodeURIComponent(currentLeagueSeasonYear)}` : '';
+		        const res = await authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`);
             if (!res.ok) return;
             const teams = await res.json();
             const key = normalizeTeamKey(teamName);
@@ -1214,7 +1551,7 @@ import { createCommunityFeature } from './pages/features/community.js';
     }
     async function loadMatch(matchId, caller, options = {}) {
         const pushHistory = options.pushHistory !== false;
-        if (pushHistory) pushNavState({ type: 'match', matchId, caller });
+	        if (pushHistory) pushNavState({ type: 'match', matchId, caller, ...getActiveLeagueNavState() });
         const mainContent = document.getElementById("main-content");
         console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if(caller==="undefined"){
@@ -1312,6 +1649,12 @@ import { createCommunityFeature } from './pages/features/community.js';
             } else if (caller === 'leagueMatches') {
                 backTarget = 'leagueMatches';
                 backButton.textContent = 'Back';
+	            } else if (caller === 'leagueTable') {
+	                backTarget = 'leagueTable';
+	                backButton.textContent = 'Back';
+	            } else if (caller === 'leagueSchedule') {
+	                backTarget = 'leagueSchedule';
+	                backButton.textContent = 'Back';
             } else {
                 console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
             }
@@ -3950,7 +4293,8 @@ import { createCommunityFeature } from './pages/features/community.js';
     }
     async function loadFixture(fixtureId, options = {}) {
         const pushHistory = options.pushHistory !== false;
-        if (pushHistory) pushNavState({ type: 'fixture', fixtureId });
+	        const backTarget = options.backTarget || 'fixtures';
+	        if (pushHistory) pushNavState({ type: 'fixture', fixtureId, backTarget, ...getActiveLeagueNavState() });
         const mainContent = document.getElementById("main-content");
         if (!await ensureUserTeamId()) return;
         console.log(`Loading fixture ID: ${fixtureId}`);
@@ -3961,7 +4305,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 mainContent.innerHTML = `
                     <div class="fm-page fm-page--club">
                         <section class="fm-panel fm-club-hero">
-                            <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+	                            <button class="back-to-dashboard" data-nav-back="${backTarget}">Back</button>
                             <div class="fm-club-hero-main">
                                 <div>
                                     <div class="fm-eyebrow">Club schedule</div>
@@ -4009,7 +4353,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             mainContent.innerHTML = `
             <div class="fm-page fm-page--club">
                 <section class="fm-panel fm-club-hero">
-                    <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+	                    <button class="back-to-dashboard" data-nav-back="${backTarget}">Back</button>
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Fixture preview</div>
@@ -4084,7 +4428,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--club">
                     <section class="fm-panel fm-club-hero">
-                        <button class="back-to-dashboard" data-nav-back="fixtures">Back</button>
+	                        <button class="back-to-dashboard" data-nav-back="${backTarget}">Back</button>
                         <div class="fm-club-hero-main">
                             <div>
                                 <div class="fm-eyebrow">Club schedule</div>
@@ -4109,6 +4453,8 @@ import { createCommunityFeature } from './pages/features/community.js';
         try {
 	        const leagueId = await ensureCurrentLeagueId();
 	        if (!leagueId) return;
+	            const backTarget = getCurrentLeagueBackTarget();
+	            const leagueName = getCurrentLeagueName();
             const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
             const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
 	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || seasons[seasons.length - 1]?.seasonYear || null;
@@ -4204,7 +4550,10 @@ import { createCommunityFeature } from './pages/features/community.js';
 
             renderTable({
 	            leagueId,
-	            leagueName: getCurrentLeagueName(),
+		            leagueName,
+	                backTarget,
+	                fixtureBackTarget: 'leagueTable',
+	                matchCaller: 'leagueTable',
                 table: enhancedTable,
                 fixtures: visibleRounds,
                 topScorers: mappedScorers,
@@ -4219,7 +4568,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             console.error("Failed to load league table:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+	                    <button class="back-to-dashboard" data-nav-back="${backTarget}">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league table.</p>
                 </div>`;
@@ -4229,6 +4578,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         try {
 	        const leagueId = await ensureCurrentLeagueId();
 	        if (!leagueId) return;
+	            const backTarget = getCurrentLeagueBackTarget();
             console.log(`Loading league matches...`);
 	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || null;
 	        currentLeagueSeasonYear = selectedSeason ?? currentLeagueSeasonYear;
@@ -4240,12 +4590,12 @@ import { createCommunityFeature } from './pages/features/community.js';
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
 	        const seasonNumber = selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : null;
 	        const titleBase = `${getCurrentLeagueName()} Results`;
-	        renderLeagueMatches(results, seasonNumber ? `${titleBase} - Season ${seasonNumber}` : titleBase);
+		        renderLeagueMatches(results, seasonNumber ? `${titleBase} - Season ${seasonNumber}` : titleBase, { backTarget, caller: 'leagueMatches' });
         } catch (err) {
             console.error(err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button data-nav-back="dashboard">Back</button>
+	                    <button data-nav-back="${getCurrentLeagueBackTarget()}">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league matches.</p>
                 </div>`;
@@ -4255,9 +4605,20 @@ import { createCommunityFeature } from './pages/features/community.js';
         try {
 	        const leagueId = await ensureCurrentLeagueId();
 	        if (!leagueId) return;
-            const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
+	            const backTarget = getCurrentLeagueBackTarget();
+	            const selectedSeasonParam = seasonYear || currentLeagueSeasonYear || currentSeasonYear || null;
+	            const teamsSeasonParam = selectedSeasonParam ? `?seasonYear=${encodeURIComponent(selectedSeasonParam)}` : '';
+	            const [seasonsResponse, teamsResponse] = await Promise.all([
+	                authFetch(`/countries/leagues/${leagueId}/seasons`),
+	                authFetch(`/countries/leagues/${leagueId}/teams${teamsSeasonParam}`)
+	            ]);
             const seasons = seasonsResponse.ok ? await seasonsResponse.json() : [];
-	        const selectedSeason = seasonYear || currentLeagueSeasonYear || currentSeasonYear || seasons[seasons.length - 1]?.seasonYear || null;
+	            const leagueTeams = teamsResponse.ok ? await teamsResponse.json() : [];
+	            const teamIdByName = new Map();
+	            leagueTeams.forEach(team => {
+	                teamIdByName.set(normalizeTeamKey(team.name), team.id);
+	            });
+		        const selectedSeason = selectedSeasonParam || seasons[seasons.length - 1]?.seasonYear || null;
             currentLeagueSeasonYear = selectedSeason;
             const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber || 1;
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
@@ -4270,7 +4631,11 @@ import { createCommunityFeature } from './pages/features/community.js';
             schedule.forEach(m => {
                 const round = Number(m.round || 1);
                 if (!byRound.has(round)) byRound.set(round, []);
-                byRound.get(round).push(m);
+	                byRound.get(round).push({
+	                    ...m,
+	                    homeTeamId: teamIdByName.get(normalizeTeamKey(m.homeTeam)) ?? null,
+	                    awayTeamId: teamIdByName.get(normalizeTeamKey(m.awayTeam)) ?? null
+	                });
                 if (!m.played && round < currentRound) currentRound = round;
             });
             const rounds = [...byRound.keys()].sort((a, b) => a - b);
@@ -4289,6 +4654,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                     isFocusRound: round === currentRound,
                     matches: byRound.get(round) || []
                 })),
+	                leagueName: getCurrentLeagueName(),
+	                backTarget,
+	                fixtureBackTarget: 'leagueSchedule',
+	                matchCaller: 'leagueSchedule',
                 seasons,
                 selectedSeason,
                 selectedSeasonNumber
@@ -4302,7 +4671,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             console.error("Failed to load league schedule:", err);
             document.getElementById("main-content").innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+	                    <button class="back-to-dashboard" data-nav-back="${getCurrentLeagueBackTarget()}">Back</button>
                     <h2>Error</h2>
                     <p>Could not load league schedule.</p>
                 </div>`;
@@ -4501,7 +4870,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         const seasonYear = options.seasonYear ?? currentLeagueSeasonYear ?? null;
         const pushHistory = options.pushHistory !== false;
         currentLeagueSeasonYear = seasonYear ?? currentLeagueSeasonYear;
-        if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName, seasonYear });
+	        if (pushHistory) pushNavState({ type: 'leagueTeam', teamId, teamName, seasonYear, ...getActiveLeagueNavState() });
         const mainContent = document.getElementById("main-content");
         try {
             const [response, transferOverview, milestones] = await Promise.all([
@@ -4630,7 +4999,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         const seasonYear = options.seasonYear ?? currentLeagueSeasonYear ?? null;
         const pushHistory = options.pushHistory !== false;
         currentLeagueSeasonYear = seasonYear ?? currentLeagueSeasonYear;
-        if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName, seasonYear });
+	        if (pushHistory) pushNavState({ type: 'leagueTeamPlayer', playerId, teamId, teamName, seasonYear, ...getActiveLeagueNavState() });
         const mainContent = document.getElementById("main-content");
         try {
             const [playerResponse, ratingSummary, transferStatus] = await Promise.all([
@@ -4674,8 +5043,8 @@ import { createCommunityFeature } from './pages/features/community.js';
         function renderFixtures(fixtures, title, options = {}) {
         renderFixturesView(fixtures, title, options);
     }
-    function renderLeagueMatches(matches, title = "League Results") {
-        renderLeagueMatchesView(matches, title, { loadMatch });
+	    function renderLeagueMatches(matches, title = "League Results", options = {}) {
+	        renderLeagueMatchesView(matches, title, { loadMatch, ...options });
     }
     function openStadiumImage(imageUrl) {
         // Otvara sliku u novom tabu ili modalu
@@ -4740,6 +5109,7 @@ import { createCommunityFeature } from './pages/features/community.js';
     window.loadLeagueTable = loadLeagueTable;
     window.loadLeagueSchedule = loadLeagueSchedule;
     window.loadLeagueMatches = loadLeagueMatches;
+	    window.openCountryLeague = openCountryLeague;
     window.renderLeagueMatches = renderLeagueMatches;
     window.loadCup = loadCup;
     window.loadInternational = loadInternational;
