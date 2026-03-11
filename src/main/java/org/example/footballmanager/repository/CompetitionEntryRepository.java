@@ -4,10 +4,10 @@ import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.SeasonCompetition;
 import org.example.footballmanager.model.Team;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +22,13 @@ public interface CompetitionEntryRepository extends JpaRepository<CompetitionEnt
 
     // Pronađi entry za određeni tim u određenoj sezoni lige
     Optional<CompetitionEntry> findBySeasonCompetitionAndTeam(SeasonCompetition sc, Team team);
+
+    @EntityGraph(attributePaths = {
+            "seasonCompetition",
+            "seasonCompetition.competition",
+            "seasonCompetition.competition.country"
+    })
+    Optional<CompetitionEntry> findFirstByTeamAndSeasonCompetitionSeasonYearOrderByIdDesc(Team team, Integer seasonYear);
 
     List<CompetitionEntry> findByTeam(Team team);
 

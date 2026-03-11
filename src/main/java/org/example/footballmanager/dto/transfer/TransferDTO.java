@@ -28,4 +28,6 @@ public class TransferDTO {
     private boolean ownedByViewer;
     private boolean buyableByViewer;
     private boolean removalAllowed;
+    private Boolean offerAccepted;
+    private String actionMessage;
 }

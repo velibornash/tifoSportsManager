@@ -11,13 +11,20 @@ import org.example.footballmanager.model.TransferStatus;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.repository.TransferRepository;
+import org.example.footballmanager.repository.UserRepository;
 import org.example.footballmanager.util.players.SquadNumberAssigner;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class TransferService {
@@ -25,15 +32,19 @@ public class TransferService {
     private final TransferRepository transferRepository;
     private final PlayerRepository playerRepository;
     private final TeamRepository teamRepository;
+    private final UserRepository userRepository;
     private final SquadNumberAssigner squadNumberAssigner;
+    private final Random random = new Random();
 
     public TransferService(TransferRepository transferRepository,
                            PlayerRepository playerRepository,
                            TeamRepository teamRepository,
+                           UserRepository userRepository,
                            SquadNumberAssigner squadNumberAssigner) {
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
+        this.userRepository = userRepository;
         this.squadNumberAssigner = squadNumberAssigner;
     }
 
@@ -88,6 +99,7 @@ public class TransferService {
         Long currentTeamId = player.getTeam() != null ? player.getTeam().getId() : null;
         boolean ownedByViewer = viewerTeamId != null && Objects.equals(currentTeamId, viewerTeamId);
         boolean listed = isActiveListing(transfer);
+        boolean openOffer = hasOpenOffer(transfer);
 
         PlayerTransferStatusDTO dto = new PlayerTransferStatusDTO();
         dto.setPlayerId(player.getId());
@@ -95,9 +107,9 @@ public class TransferService {
         dto.setCurrentTeamName(player.getTeam() != null ? player.getTeam().getName() : null);
         dto.setListed(listed);
         dto.setStatus(transfer != null && transfer.getStatus() != null ? transfer.getStatus().name() : (listed ? TransferStatus.LISTED.name() : null));
-        dto.setAskingPrice(transfer != null ? transfer.getAskingPrice() : null);
-        dto.setAgreedPrice(transfer != null ? transfer.getAgreedPrice() : null);
-        dto.setListedAt(transfer != null ? transfer.getListedAt() : null);
+        dto.setAskingPrice(listed && transfer != null ? transfer.getAskingPrice() : null);
+        dto.setAgreedPrice(transfer != null && transfer.getStatus() == TransferStatus.COMPLETED ? transfer.getAgreedPrice() : null);
+        dto.setListedAt((listed || openOffer || transfer != null && transfer.getStatus() == TransferStatus.COMPLETED) && transfer != null ? transfer.getListedAt() : null);
         dto.setCompletedAt(transfer != null ? transfer.getCompletedAt() : null);
         dto.setSellerTeamId(transfer != null && transfer.getSellerTeam() != null ? transfer.getSellerTeam().getId() : currentTeamId);
         dto.setSellerTeamName(transfer != null && transfer.getSellerTeam() != null ? transfer.getSellerTeam().getName() : dto.getCurrentTeamName());
@@ -108,7 +120,7 @@ public class TransferService {
         dto.setCanList(ownedByViewer && !listed);
         dto.setCanRemove(ownedByViewer && listed && sortedInterests(transfer).isEmpty());
         dto.setCanBuyListed(listed && viewerTeamId != null && !ownedByViewer);
-        dto.setCanDirectBuy(viewerTeamId != null && !ownedByViewer);
+        dto.setCanDirectBuy(viewerTeamId != null && !ownedByViewer && !listed);
         dto.setSummary(buildPlayerSummary(dto));
         return dto;
     }
@@ -162,11 +174,67 @@ public class TransferService {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("Player not found"));
         Team buyerTeam = loadTeam(buyerTeamId);
+        Team sellerTeam = requirePlayerTeam(player);
         Transfer transfer = transferRepository.findByPlayerId(playerId).orElseGet(Transfer::new);
+        if (Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
+            throw new RuntimeException("Buyer club must be different from seller club");
+        }
+
         transfer.setPlayer(player);
         double fallbackPrice = transfer.getAskingPrice() > 0 ? transfer.getAskingPrice() : Math.max(1.0, player.getPlayerValue());
         double price = normalizePrice(offeredPrice, fallbackPrice);
-        return toTransferDto(completeTransfer(player, buyerTeam, price, transfer), buyerTeamId);
+
+        double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
+        if (buyerBudget + 0.0001 < price) {
+            throw new RuntimeException("Buyer club does not have enough budget");
+        }
+
+        if (isActiveListing(transfer)) {
+            TransferDTO dto = toTransferDto(completeTransfer(player, buyerTeam, price, transfer), buyerTeamId);
+            dto.setOfferAccepted(true);
+            dto.setActionMessage("Offer accepted by " + sellerTeam.getName() + ". Transfer completed for €" + Math.round(price) + ".");
+            return dto;
+        }
+
+        boolean accepted = isOfferAccepted(player, sellerTeam, buyerTeam, price);
+        if (!accepted) {
+            TransferDTO dto = buildOfferResponseDto(player, sellerTeam, buyerTeam, price, transfer, buyerTeamId, false,
+                    sellerTeam.getName() + " rejected the offer of €" + Math.round(price) + ".");
+            return dto;
+        }
+
+        TransferDTO dto = toTransferDto(completeTransfer(player, buyerTeam, price, transfer), buyerTeamId);
+        dto.setOfferAccepted(true);
+        dto.setActionMessage("Offer accepted by " + sellerTeam.getName() + ". Transfer completed for €" + Math.round(price) + ".");
+        return dto;
+    }
+
+    @Transactional
+    public void simulateWeeklyMarketActivity() {
+        List<Team> allTeams = teamRepository.findAll().stream()
+                .filter(Objects::nonNull)
+                .filter(team -> team.getId() != null)
+                .toList();
+        if (allTeams.isEmpty()) {
+            return;
+        }
+
+        Set<Long> humanManagedTeamIds = userRepository.findAll().stream()
+                .map(user -> user.getTeam() != null ? user.getTeam().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, Transfer> transferByPlayerId = transferRepository.findAll().stream()
+                .filter(Objects::nonNull)
+                .filter(transfer -> transfer.getPlayer() != null && transfer.getPlayer().getId() != null)
+                .collect(Collectors.toMap(transfer -> transfer.getPlayer().getId(), Function.identity(), (left, right) -> right));
+
+        List<Team> aiTeams = allTeams.stream()
+                .filter(team -> !humanManagedTeamIds.contains(team.getId()))
+                .toList();
+
+        maybeCreateAiListing(aiTeams, transferByPlayerId);
+        maybeCreateIncomingOffer(humanManagedTeamIds, aiTeams, transferByPlayerId);
     }
 
     private Transfer listPlayerForTransferEntity(Player player, Long actingTeamId, double askingPrice) {
@@ -242,10 +310,20 @@ public class TransferService {
         if (transfer == null || transfer.getPlayer() == null) {
             return false;
         }
-        if (transfer.getStatus() == TransferStatus.CANCELLED || transfer.getStatus() == TransferStatus.COMPLETED) {
+        if (transfer.getStatus() != TransferStatus.LISTED) {
             return false;
         }
         return transfer.getBuyerTeam() == null;
+    }
+
+    private boolean hasOpenOffer(Transfer transfer) {
+        if (transfer == null || transfer.getPlayer() == null) {
+            return false;
+        }
+        if (transfer.getStatus() != TransferStatus.OFFER_RECEIVED) {
+            return false;
+        }
+        return transfer.getBuyerTeam() == null && !sortedInterests(transfer).isEmpty();
     }
 
     private Team loadTeam(Long teamId) {
@@ -284,11 +362,215 @@ public class TransferService {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    private void maybeCreateAiListing(List<Team> aiTeams, Map<Long, Transfer> transferByPlayerId) {
+        if (aiTeams.isEmpty() || nextRandomDouble() > 0.42) {
+            return;
+        }
+
+        List<Team> eligibleTeams = aiTeams.stream()
+                .filter(team -> countOpenTransfersForSeller(team.getId(), transferByPlayerId) < 2)
+                .filter(team -> playerRepository.countByTeam(team) >= 14)
+                .toList();
+        if (eligibleTeams.isEmpty()) {
+            return;
+        }
+
+        Team sellerTeam = randomItem(eligibleTeams);
+        List<Player> candidates = playerRepository.findByTeam(sellerTeam).stream()
+                .filter(player -> player.getId() != null)
+                .filter(player -> player.getAge() >= 18)
+                .filter(player -> !hasOpenTransferRecord(transferByPlayerId.get(player.getId())))
+                .toList();
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        Player player = randomItem(candidates);
+        double baseValue = Math.max(1.0, player.getPlayerValue());
+        double askingPrice = round2(baseValue * (0.88 + nextRandomDouble() * 0.24));
+        Transfer created = listPlayerForTransferEntity(player, sellerTeam.getId(), askingPrice);
+        transferByPlayerId.put(player.getId(), created);
+    }
+
+    private void maybeCreateIncomingOffer(Set<Long> humanManagedTeamIds, List<Team> aiTeams, Map<Long, Transfer> transferByPlayerId) {
+        if (humanManagedTeamIds.isEmpty() || aiTeams.isEmpty() || nextRandomDouble() > 0.68) {
+            return;
+        }
+
+        List<Player> humanPlayers = humanManagedTeamIds.stream()
+                .flatMap(teamId -> playerRepository.findByTeamId(teamId).stream())
+                .filter(Objects::nonNull)
+                .filter(player -> player.getId() != null)
+                .filter(player -> player.getTeam() != null && player.getTeam().getId() != null)
+                .toList();
+        if (humanPlayers.isEmpty()) {
+            return;
+        }
+
+        List<Player> listedPlayers = humanPlayers.stream()
+                .filter(player -> isActiveListing(transferByPlayerId.get(player.getId())))
+                .toList();
+        List<Player> nonListedPlayers = humanPlayers.stream()
+                .filter(player -> !isActiveListing(transferByPlayerId.get(player.getId())))
+                .toList();
+
+        Player targetPlayer;
+        if (!listedPlayers.isEmpty() && (nonListedPlayers.isEmpty() || nextRandomDouble() < 0.78)) {
+            targetPlayer = randomItem(listedPlayers);
+        } else if (!nonListedPlayers.isEmpty()) {
+            targetPlayer = randomItem(nonListedPlayers);
+        } else {
+            return;
+        }
+
+        Team sellerTeam = requirePlayerTeam(targetPlayer);
+        List<Team> candidateBuyers = aiTeams.stream()
+                .filter(team -> !Objects.equals(team.getId(), sellerTeam.getId()))
+                .toList();
+        if (candidateBuyers.isEmpty()) {
+            return;
+        }
+
+        Team buyerTeam = randomItem(candidateBuyers);
+        double offerPrice = round2(Math.max(1.0, targetPlayer.getPlayerValue()) * (0.80 + nextRandomDouble() * 0.40));
+        Transfer transfer = transferByPlayerId.get(targetPlayer.getId());
+        Transfer updated;
+        if (isActiveListing(transfer)) {
+            updated = transfer;
+        } else {
+            updated = transfer == null || transfer.getStatus() == TransferStatus.COMPLETED || transfer.getStatus() == TransferStatus.CANCELLED
+                    ? new Transfer()
+                    : transfer;
+            updated.setPlayer(targetPlayer);
+            updated.setSellerTeam(sellerTeam);
+            updated.setBuyerTeam(null);
+            updated.setStatus(TransferStatus.OFFER_RECEIVED);
+            updated.setAgreedPrice(null);
+            updated.setCompletedAt(null);
+            updated.setAskingPrice(Math.max(1.0, targetPlayer.getPlayerValue()));
+            if (updated.getListedAt() == null) {
+                updated.setListedAt(LocalDateTime.now());
+            }
+            if (updated.getInterestedTeams() == null) {
+                updated.setInterestedTeams(new HashSet<>());
+            }
+        }
+
+        replaceInterestFromClub(updated, buyerTeam.getName(), offerPrice);
+        Transfer saved = transferRepository.save(updated);
+        transferByPlayerId.put(targetPlayer.getId(), saved);
+    }
+
+    private int countOpenTransfersForSeller(Long sellerTeamId, Map<Long, Transfer> transferByPlayerId) {
+        if (sellerTeamId == null) {
+            return 0;
+        }
+        return (int) transferByPlayerId.values().stream()
+                .filter(Objects::nonNull)
+                .filter(transfer -> transfer.getSellerTeam() != null && Objects.equals(transfer.getSellerTeam().getId(), sellerTeamId))
+                .filter(this::hasOpenTransferRecord)
+                .count();
+    }
+
+    private boolean hasOpenTransferRecord(Transfer transfer) {
+        if (transfer == null || transfer.getPlayer() == null) {
+            return false;
+        }
+        if (transfer.getBuyerTeam() != null) {
+            return false;
+        }
+        return transfer.getStatus() == TransferStatus.LISTED || transfer.getStatus() == TransferStatus.OFFER_RECEIVED;
+    }
+
+    private void replaceInterestFromClub(Transfer transfer, String clubName, double price) {
+        if (transfer.getInterestedTeams() == null) {
+            transfer.setInterestedTeams(new HashSet<>());
+        }
+        String normalizedClub = String.valueOf(clubName == null ? "" : clubName).trim();
+        transfer.getInterestedTeams().removeIf(existing -> {
+            String value = existing == null ? "" : existing.trim();
+            return !normalizedClub.isBlank() && value.regionMatches(true, 0, normalizedClub, 0, normalizedClub.length());
+        });
+        transfer.getInterestedTeams().add(normalizedClub + " offered €" + Math.round(price));
+    }
+
+    private boolean isOfferAccepted(Player player, Team sellerTeam, Team buyerTeam, double price) {
+        double baseValue = Math.max(1.0, player.getPlayerValue());
+        double ratio = price / baseValue;
+        double acceptanceChance = 0.18;
+        if (ratio >= 0.85) acceptanceChance += 0.16;
+        if (ratio >= 1.0) acceptanceChance += 0.22;
+        if (ratio >= 1.1) acceptanceChance += 0.14;
+        if (ratio >= 1.2) acceptanceChance += 0.08;
+        if (player.getAge() <= 21) acceptanceChance -= 0.05;
+
+        double sellerRep = sellerTeam.getReputation() == null ? 50.0 : sellerTeam.getReputation();
+        double buyerRep = buyerTeam.getReputation() == null ? 50.0 : buyerTeam.getReputation();
+        if (buyerRep + 6.0 < sellerRep) {
+            acceptanceChance -= 0.06;
+        }
+
+        acceptanceChance = Math.max(0.12, Math.min(0.82, acceptanceChance));
+        return nextRandomDouble() < acceptanceChance;
+    }
+
+    private TransferDTO buildOfferResponseDto(Player player,
+                                              Team sellerTeam,
+                                              Team buyerTeam,
+                                              double price,
+                                              Transfer transfer,
+                                              Long viewerTeamId,
+                                              boolean accepted,
+                                              String actionMessage) {
+        TransferDTO dto;
+        if (transfer != null && transfer.getPlayer() != null) {
+            dto = toTransferDto(transfer, viewerTeamId);
+        } else {
+            dto = new TransferDTO();
+            dto.setPlayerId(player.getId());
+            dto.setPlayerName(player.getName());
+            dto.setPosition(player.getPosition() != null ? player.getPosition().name() : null);
+            dto.setAge(player.getAge());
+            dto.setRating(player.getRating());
+            dto.setPlayerValue(player.getPlayerValue());
+            dto.setSellerTeamId(sellerTeam.getId());
+            dto.setSellerTeamName(sellerTeam.getName());
+            dto.setBuyerTeamId(buyerTeam.getId());
+            dto.setBuyerTeamName(buyerTeam.getName());
+        }
+        dto.setAgreedPrice(price);
+        dto.setOfferAccepted(accepted);
+        dto.setActionMessage(actionMessage);
+        return dto;
+    }
+
+    private <T> T randomItem(List<T> items) {
+        return items.get(nextRandomInt(items.size()));
+    }
+
+    protected double nextRandomDouble() {
+        return random.nextDouble();
+    }
+
+    protected int nextRandomInt(int bound) {
+        return random.nextInt(bound);
+    }
+
     private String buildPlayerSummary(PlayerTransferStatusDTO dto) {
         if (dto.isListed()) {
-            return dto.getAskingPrice() == null
+            String base = dto.getAskingPrice() == null
                     ? "Player is on the transfer list."
                     : "Player is on the transfer list for €" + Math.round(dto.getAskingPrice()) + ".";
+            if (!dto.getInterestedTeams().isEmpty()) {
+                return base + " Active interest: " + dto.getInterestedTeams().size() + " offer(s).";
+            }
+            return base;
+        }
+        if (TransferStatus.OFFER_RECEIVED.name().equals(dto.getStatus()) && !dto.getInterestedTeams().isEmpty()) {
+            if (dto.getInterestedTeams().size() == 1) {
+                return "Incoming offer received: " + dto.getInterestedTeams().get(0) + ".";
+            }
+            return dto.getInterestedTeams().size() + " incoming offers received.";
         }
         if (TransferStatus.COMPLETED.name().equals(dto.getStatus()) && dto.getBuyerTeamName() != null && dto.getAgreedPrice() != null) {
             return "Last move: sold to " + dto.getBuyerTeamName() + " for €" + Math.round(dto.getAgreedPrice()) + ".";

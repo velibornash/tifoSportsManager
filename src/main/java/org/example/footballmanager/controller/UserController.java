@@ -5,10 +5,12 @@ import org.example.footballmanager.dto.JwtResponseDTO;
 import org.example.footballmanager.dto.LoginRequestDTO;
 import org.example.footballmanager.dto.RegisterRequestDTO;
 import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.Country;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
+import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.UserRepository;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.JwtUtil;
@@ -30,15 +32,18 @@ public class UserController {
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
     private final SeasonService seasonService;
+    private final CompetitionEntryRepository competitionEntryRepository;
 
     public UserController(UserRepository userRepo, PasswordEncoder encoder, TeamFactory teamFactory,
-                          AuthenticationManager authManager, JwtUtil jwtUtil, SeasonService seasonService) {
+                          AuthenticationManager authManager, JwtUtil jwtUtil, SeasonService seasonService,
+                          CompetitionEntryRepository competitionEntryRepository) {
         this.userRepo = userRepo;
         this.encoder = encoder;
         this.teamFactory = teamFactory;
         this.authManager = authManager;
         this.jwtUtil = jwtUtil;
         this.seasonService = seasonService;
+        this.competitionEntryRepository = competitionEntryRepository;
     }
 
     @PostMapping("/register")
@@ -82,17 +87,27 @@ public class UserController {
 
 	        User resolvedUser = userRepo.findById(user.getId()).orElse(user);
 
+        int activeSeasonYear = seasonService.getActiveSeasonYear();
+
         UserDTO dto = new UserDTO();
 	        dto.setId(resolvedUser.getId());
 	        dto.setUsername(resolvedUser.getUsername());
 	        dto.setEmail(resolvedUser.getEmail());
 	        dto.setRole(resolvedUser.getRole().name());
-        dto.setSeasonYear(seasonService.getActiveSeasonYear());
+	        dto.setSeasonYear(activeSeasonYear);
 	        if (resolvedUser.getTeam() != null) {
 	            dto.setTeamId(resolvedUser.getTeam().getId());
 	            dto.setTeamName(resolvedUser.getTeam().getName());
 	            Country country = resolvedUser.getTeam().getCountry();
 	            Competition competition = resolvedUser.getTeam().getCompetition();
+            if (competition == null) {
+                CompetitionEntry activeEntry = competitionEntryRepository
+                        .findFirstByTeamAndSeasonCompetitionSeasonYearOrderByIdDesc(resolvedUser.getTeam(), activeSeasonYear)
+                        .orElse(null);
+                if (activeEntry != null && activeEntry.getSeasonCompetition() != null) {
+                    competition = activeEntry.getSeasonCompetition().getCompetition();
+                }
+            }
             if (competition != null) {
                 dto.setCompetitionId(competition.getId());
                 dto.setCompetitionName(competition.getName());

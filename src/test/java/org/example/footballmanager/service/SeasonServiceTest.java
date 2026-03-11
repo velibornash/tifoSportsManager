@@ -38,6 +38,7 @@ class SeasonServiceTest {
     @Mock private PlayerRepository playerRepository;
     @Mock private JuniorRepository juniorRepository;
     @Mock private YouthAcademyService youthAcademyService;
+    @Mock private TransferService transferService;
 
     @InjectMocks private SeasonService seasonService;
 
@@ -233,6 +234,25 @@ class SeasonServiceTest {
         assertEquals(2, playoffResults.size());
         assertEquals("Runner A", playoffResults.get(0).get("winner"));
         assertEquals("Top 8", playoffResults.get(1).get("winner"));
+    }
+
+    @Test
+    void advanceWeekAndHandleSeasonTransitionRunsWeeklyTransferActivity() {
+        GameClock clock = new GameClock();
+        clock.setId(1L);
+        clock.setCurrentSeason(1);
+        clock.setCurrentWeek(5);
+        clock.setCurrentDate(LocalDateTime.of(2026, 2, 1, 12, 0));
+
+        when(gameClockRepository.findById(1L)).thenReturn(Optional.of(clock));
+        when(gameClockRepository.save(any(GameClock.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Competition superLiga = league(1L, "Superliga Srbije", new Country(), 1, 1);
+
+        seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
+
+        assertEquals(6, clock.getCurrentWeek());
+        verify(transferService).simulateWeeklyMarketActivity();
     }
 
     private Competition league(Long id, String name, Country country, Integer tier, Integer divisionLevel) {

@@ -32,6 +32,7 @@ public class SeasonService {
     private final PlayerRepository playerRepository;
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
+    private final TransferService transferService;
     private final Random random = new Random();
 
     @Transactional
@@ -283,6 +284,7 @@ public class SeasonService {
             } else {
                 youthAcademyService.progressActiveJuniorsWeekly(seasonNumber, newWeek);
             }
+            transferService.simulateWeeklyMarketActivity();
             return;
         }
         performPromotionRelegationAndNewSeason(superLiga);

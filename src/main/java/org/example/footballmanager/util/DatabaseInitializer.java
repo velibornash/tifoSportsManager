@@ -48,7 +48,7 @@ public class DatabaseInitializer {
         resetService.sanitizeLegacyLineupOrderSchema();
     }
 
-    @PostConstruct
+
     public void init() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
@@ -340,19 +340,38 @@ public class DatabaseInitializer {
     }
 
     private String getRandomTeamName() {
-        String[] prefixes = {"FK", "OFK", "RFK", "SK", "TSK", "NK"};
-        String[] suffixes = {
+        String[] prefixes = {"FK", "OFK", "RFK", "SK", "TSK", "NK", "ŽFK", "GFK"};
+        String[] cities = {
                 "Beograd", "Novi Sad", "Niš", "Kragujevac", "Subotica", "Zrenjanin", "Čačak", "Kraljevo",
                 "Smederevo", "Leskovac", "Užice", "Valjevo", "Vranje", "Šabac", "Zaječar", "Pančevo",
-                "Požarevac", "Surdulica", "Loznica", "Bor", "Prokuplje", "Gornji Milanovac"
+                "Požarevac", "Surdulica", "Loznica", "Bor", "Prokuplje", "Gornji Milanovac", "Jagodina",
+                "Vrbas", "Sombor", "Kikinda", "Pirot", "Kruševac", "Sremska Mitrovica", "Inđija",
+                "Ruma", "Aranđelovac", "Paraćin", "Kovin", "Apatin", "Prijepolje", "Pirot", "Negotin",
+                "Ćuprija", "Svilajnac", "Bajina Bašta", "Nova Pazova", "Zemun", "Bačka Palanka", "Bečej",
+                "Temerin", "Vrnjačka Banja", "Trstenik", "Kladovo", "Ivanjica"
         };
-        String[] extras = {"United", "City", "1893", "1919", "Sport", "Metalac", "Radnički", "Sloga"};
+        String[] clubWords = {
+                "Radnički", "Metalac", "Sloga", "Mladost", "Napredak", "Jedinstvo", "Budućnost", "Proleter",
+                "Borac", "Sloboda", "Rudar", "Železničar", "Dinamo", "Hajduk", "Sinđelić", "Timok",
+                "Morava", "Tamiš", "Kolubara", "Javor", "Balkan", "Pobeda", "Bratstvo", "Partizan",
+                "Teleoptik", "Grafičar", "Omladinac", "Car Konstantin", "Mlava", "Zlatibor", "Borski", "Podunavac"
+        };
+        String[] localityExtras = {
+                "United", "City", "Sport", "1901", "1912", "1913", "1919", "1923", "1928", "1931", "1945", "1950"
+        };
 
-        String base = prefixes[random.nextInt(prefixes.length)] + " " + suffixes[random.nextInt(suffixes.length)];
-        if (random.nextBoolean()) {
-            base += " " + extras[random.nextInt(extras.length)];
-        }
-        return base;
+        String prefix = prefixes[random.nextInt(prefixes.length)];
+        String city = cities[random.nextInt(cities.length)];
+        String clubWord = clubWords[random.nextInt(clubWords.length)];
+        String extra = localityExtras[random.nextInt(localityExtras.length)];
+
+        return switch (random.nextInt(5)) {
+            case 0 -> prefix + " " + city;
+            case 1 -> prefix + " " + clubWord + " " + city;
+            case 2 -> prefix + " " + city + " " + extra;
+            case 3 -> prefix + " " + clubWord + " " + extra;
+            default -> prefix + " " + clubWord + " " + city + " " + extra;
+        };
     }
 
     private void addPromotionRulesForLeagues(Season season) {

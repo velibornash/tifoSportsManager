@@ -6,6 +6,16 @@ let currentUserTeamName = null;
 let currentUserCompetitionId = null;
 let currentUserCompetitionName = null;
 let currentSeasonYear = null;
+let currentUserCountryName = null;
+
+function updateCountryMenuLabels() {
+    const countryLabel = currentUserCountryName || 'Country';
+    const desktopButton = document.getElementById('country-menu-button');
+    const mobileButton = document.getElementById('country-mobile-button');
+
+    if (desktopButton) desktopButton.textContent = `🌎 ${countryLabel}`;
+    if (mobileButton) mobileButton.textContent = `🌎 ${countryLabel}`;
+}
 
 function getCurrentTeamImagePath() {
     return currentUserTeamName === 'OFK Omladinac' ? '/images/omladinac.png' : '/images/default-team.png';
@@ -70,17 +80,18 @@ function renderNextMatchEmpty(message, meta) {
         <div class="match-date">${escapeHtml(meta || 'The next fixture will appear here once the schedule is ready.')}</div>`);
 }
 
-function buildImportantUpdateCard(update) {
-    const severity = update?.severity || 'info';
-    const chip = severity === 'alert' ? 'Urgent' : severity === 'warning' ? 'Watch' : 'Info';
-    return `
-        <article class="fm-update-card fm-update-card--${severity}">
-            <div class="fm-update-topline">
-                <div class="fm-update-title">${escapeHtml(update?.title || 'Update')}</div>
-                <span class="fm-update-pill">${chip}</span>
-            </div>
-            <div class="fm-update-meta">${escapeHtml(update?.meta || 'No extra context available.')}</div>
-        </article>`;
+function buildImportantTickerMarkup(message) {
+    const safeMessage = escapeHtml(message || 'No urgent club updates right now.');
+    return `<div class="fm-dashboard-ticker-move"><span>${safeMessage}</span></div>`;
+}
+
+function buildImportantTickerLine(updates) {
+    return updates.map(update => {
+        const severity = update?.severity === 'alert' ? 'Urgent' : update?.severity === 'warning' ? 'Watch' : 'Info';
+        const title = update?.title || 'Update';
+        const meta = update?.meta || 'No extra context available.';
+        return `${severity}: ${title} — ${meta}`;
+    }).join(' ✦ ');
 }
 
 function buildImportantUpdates(medical, lineupTemplate, transferOverview) {
@@ -153,14 +164,14 @@ async function loadImportantUpdates() {
 
         const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview);
         if (!updates.length) {
-            host.innerHTML = '<div class="fm-empty">No urgent club updates right now.</div>';
+            host.innerHTML = buildImportantTickerMarkup('No urgent club updates right now.');
             return;
         }
 
-        host.innerHTML = updates.map(buildImportantUpdateCard).join('');
+        host.innerHTML = buildImportantTickerMarkup(buildImportantTickerLine(updates));
     } catch (err) {
         console.error('Error loading important updates:', err);
-        host.innerHTML = '<div class="fm-empty">Important updates are temporarily unavailable.</div>';
+        host.innerHTML = buildImportantTickerMarkup('Important updates are temporarily unavailable.');
     }
 }
 
@@ -220,6 +231,8 @@ window.addEventListener('load', async () => {
         currentUserCompetitionId = user.competitionId ?? null;
         currentUserCompetitionName = user.competitionName ?? null;
         currentSeasonYear = user.seasonYear ?? null;
+        currentUserCountryName = user.countryName ?? null;
+        updateCountryMenuLabels();
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
         loadDashboard();
@@ -241,84 +254,77 @@ function loadDashboard() {
 
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
-    <div class="team-card fm-panel fm-dashboard-shell">
-        <div class="team-header">
-            <img src="${teamImagePath}" class="team-logo" onerror="this.src='/images/default-team.png'">
-            <div class="team-name-wrapper">
-                <div class="fm-eyebrow">Club overview</div>
-                <h1>${teamName}</h1>
-                <p class="team-subtitle">${buildDashboardSubtitle()}</p>
+    <div class="fm-dashboard-view">
+        <section class="fm-dashboard-ticker" aria-label="Important updates">
+            <div class="fm-dashboard-ticker-label">Important updates</div>
+            <div id="dashboard-important-updates" class="fm-dashboard-ticker-host">
+                ${buildImportantTickerMarkup('Loading important updates — checking lineup, medical status, and transfer signals.')}
             </div>
-        </div>
+        </section>
 
-        <div class="stats-grid clickable" onclick="loadLeagueTable()">
-            <div class="stat-item">
-                <div class="stat-value">1</div>
-                <div class="stat-label">Position</div>
+        <div class="team-card fm-panel fm-dashboard-shell">
+            <div class="team-header">
+                <img src="${teamImagePath}" class="team-logo" onerror="this.src='/images/default-team.png'">
+                <div class="team-name-wrapper">
+                    <div class="fm-eyebrow">Club overview</div>
+                    <h1>${teamName}</h1>
+                    <p class="team-subtitle">${buildDashboardSubtitle()}</p>
+                </div>
             </div>
-            <div class="stat-item">
-                <div class="stat-value">0</div>
-                <div class="stat-label">Points</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">0-0-0</div>
-                <div class="stat-label">W-D-L</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">0</div>
-                <div class="stat-label">Goal Diff</div>
-            </div>
-        </div>
 
-        <div class="next-match" id="next-match-card">
-            <h3>Next Match</h3>
-            <div class="match-info">
-                <div class="loading">Loading next match...</div>
+            <div class="stats-grid clickable" onclick="loadLeagueTable()">
+                <div class="stat-item">
+                    <div class="stat-value">1</div>
+                    <div class="stat-label">Position</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Points</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0-0-0</div>
+                    <div class="stat-label">W-D-L</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Goal Diff</div>
+                </div>
             </div>
-            <div class="match-date">Preparing your live club schedule…</div>
-        </div>
 
-	        <div class="recent-matches-section fm-important-updates-section">
-	            <div class="fm-important-updates-head">
-	                <h3>Important Updates</h3>
-	                <span class="fm-panel-action">Lightweight hub</span>
-	            </div>
-	            <div id="dashboard-important-updates" class="fm-important-updates-list">
-	                <div class="fm-update-card fm-update-card--info">
-	                    <div class="fm-update-topline">
-	                        <div class="fm-update-title">Loading important updates</div>
-	                        <span class="fm-update-pill">Info</span>
-	                    </div>
-	                    <div class="fm-update-meta">Checking lineup, medical status, and transfer-list signals for urgent items.</div>
-	                </div>
-	            </div>
-	        </div>
-
-        <div class="recent-matches-section">
-            <h3>Recent Matches</h3>
-            <div id="recent-matches-list" class="match-list">
-                <div class="loading">Loading recent matches...</div>
+            <div class="next-match" id="next-match-card">
+                <h3>Next Match</h3>
+                <div class="match-info">
+                    <div class="loading">Loading next match...</div>
+                </div>
+                <div class="match-date">Preparing your live club schedule…</div>
             </div>
-        </div>
 
-        <div class="recent-matches-section fm-milestone-board">
-            <h3>Club Milestones</h3>
-            <div id="dashboard-milestones" class="fm-milestone-grid">
-                <div class="fm-milestone-card"><div class="fm-milestone-kicker">Season board</div><div class="fm-milestone-value">Loading...</div><div class="fm-milestone-meta">Collecting current season milestones for your club.</div></div>
+            <div class="recent-matches-section">
+                <h3>Recent Matches</h3>
+                <div id="recent-matches-list" class="match-list">
+                    <div class="loading">Loading recent matches...</div>
+                </div>
             </div>
-        </div>
 
-<!--        <div class="recent-matches-section">
-            <h3>Recent League Results</h3>
-            <div id="recent-league-matches-list" class="match-list">
-                <div class="loading">Loading recent league matches...</div>
+            <div class="recent-matches-section fm-milestone-board">
+                <h3>Club Milestones</h3>
+                <div id="dashboard-milestones" class="fm-milestone-grid">
+                    <div class="fm-milestone-card"><div class="fm-milestone-kicker">Season board</div><div class="fm-milestone-value">Loading...</div><div class="fm-milestone-meta">Collecting current season milestones for your club.</div></div>
+                </div>
             </div>
-        </div>-->
 
-        <div class="dashboard-actions">
-<!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
-            <button id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Realistic Match</button>
-<!--            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>-->
+    <!--        <div class="recent-matches-section">
+                <h3>Recent League Results</h3>
+                <div id="recent-league-matches-list" class="match-list">
+                    <div class="loading">Loading recent league matches...</div>
+                </div>
+            </div>-->
+
+            <div class="dashboard-actions">
+    <!--            <button id="start-demo-btn" onclick="startDemoTest()" disabled style="opacity:0.6; cursor:not-allowed;">Start Full match (SOON)</button>-->
+                <button id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Realistic Match</button>
+    <!--            <button id="start-key-events-btn" onclick="startKeyEventsTest()" style="background:#135f3d;">Simulate Key Events</button>-->
+            </div>
         </div>
     </div>`;
 

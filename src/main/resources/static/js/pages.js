@@ -238,6 +238,29 @@ import { createCommunityFeature } from './pages/features/community.js';
 	        return `${startYear}/${String((startYear + 1) % 100).padStart(2, '0')}`;
 	    }
 
+		    const alpha3ToAlpha2CountryCode = {
+		        SRB: 'RS',
+		        BIH: 'BA',
+		        MNE: 'ME',
+		        HRV: 'HR',
+		        SVN: 'SI',
+		        MKD: 'MK',
+		        DEU: 'DE',
+		        GBR: 'GB',
+		        BRA: 'BR'
+		    };
+
+		    function countryFlagEmojiFromIso(isoCode) {
+		        const normalized = String(isoCode || '').trim().toUpperCase();
+		        const alpha2 = /^[A-Z]{2}$/.test(normalized)
+		            ? normalized
+		            : alpha3ToAlpha2CountryCode[normalized] || '';
+		        if (!/^[A-Z]{2}$/.test(alpha2)) return '';
+		        return Array.from(alpha2)
+		            .map(letter => String.fromCodePoint(127397 + letter.charCodeAt(0)))
+		            .join('');
+		    }
+
 	    function sortCountryLeagues(leagues) {
 	        return [...(Array.isArray(leagues) ? leagues : [])].sort((left, right) => {
 	            const tierDiff = Number(left?.tier || 999) - Number(right?.tier || 999);
@@ -297,6 +320,9 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                seniorNationalTeam: null,
 	                u21NationalTeam: null
 	            };
+		            const countryName = country?.name || currentUserCountryName || countryIso;
+		            const flagEmoji = countryFlagEmojiFromIso(country?.isoCode || countryIso);
+		            const countryTitle = `${flagEmoji ? `${flagEmoji} ` : ''}${escapeHtml(countryName)}`;
 
 	            mainContent.innerHTML = `
 	                <div class="fm-page fm-page--country">
@@ -304,20 +330,18 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
 	                        <div class="fm-page-title-block">
 	                            <div class="fm-eyebrow">Country overview</div>
-	                            <h2>${escapeHtml(country?.name || currentUserCountryName || 'Country')}</h2>
-	                            <div class="fm-subtle">Browse your federation, open its league pyramid, and jump into any league table without changing what the main `League` button means.</div>
+		                            <h2>${countryTitle}</h2>
+			                            <div class="fm-subtle">Browse your federation, jump into any league table, and keep the main League button tied to your club context.</div>
 	                        </div>
 	                    </div>
 
 	                    <div class="fm-grid-top fm-grid-top--country">
 	                        <section class="fm-panel fm-country-hero">
 	                            <div class="fm-country-hero-main">
-	                                <div class="fm-country-flag-wrap">
-	                                    <img src="${escapeHtml(country?.flagImagePath || '/images/default-team.png')}" alt="${escapeHtml(country?.name || 'Country')}" class="fm-country-flag" onerror="this.src='/images/default-team.png'">
-	                                </div>
+		                                <div class="fm-country-badge">${flagEmoji || '🌍'}</div>
 	                                <div class="fm-country-meta">
 	                                    <div class="fm-eyebrow">Federation</div>
-	                                    <h3>${escapeHtml(country?.name || currentUserCountryName || countryIso)}</h3>
+		                                    <h3>${countryTitle}</h3>
 	                                    <div class="fm-subtle">ISO ${escapeHtml(country?.isoCode || countryIso)}${country?.currencyCode ? ` · Currency ${escapeHtml(country.currencyCode)}` : ''}</div>
 	                                    <div class="fm-country-note">Season ${escapeHtml(formatSeasonShortLabel(currentSeasonYear))}</div>
 	                                </div>
@@ -334,7 +358,7 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                            <div class="fm-panel-head">
 	                                <div>
 	                                    <h3>Quick leagues</h3>
-	                                    <p class="fm-subtle">Fast access for the top levels, plus a dropdown for the full pyramid.</p>
+		                                    <p class="fm-subtle">Fast access for the top levels, plus a dropdown for the full league list.</p>
 	                                </div>
 	                                <span class="fm-panel-action">Country browse</span>
 	                            </div>
@@ -360,7 +384,7 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                        </section>
 	                    </div>
 
-	                    <div class="fm-grid-bottom">
+		                    <div class="fm-grid-bottom fm-grid-bottom--single">
 	                        <section class="fm-panel">
 	                            <div class="fm-panel-head">
 	                                <div>
@@ -382,24 +406,6 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                                    <div class="fm-update-meta">Youth national setup placeholder.</div>
 	                                    <button type="button" class="fm-action-btn secondary" data-country-placeholder="u21Team">Open</button>
 	                                </article>
-	                            </div>
-	                        </section>
-
-	                        <section class="fm-panel">
-	                            <div class="fm-panel-head">
-	                                <div>
-	                                    <h3>League pyramid</h3>
-	                                    <p class="fm-subtle">Full country list ordered by tier, so you can jump straight into any division.</p>
-	                                </div>
-	                                <span class="fm-panel-action">${sortedLeagues.length} total</span>
-	                            </div>
-	                            <div class="fm-country-league-grid">
-	                                ${sortedLeagues.map(league => `
-	                                    <article class="fm-country-league-card compact">
-	                                        <div class="fm-milestone-kicker">${escapeHtml(buildLeagueMetaLabel(league))}</div>
-	                                        <div class="fm-update-title">${escapeHtml(league?.name || 'League')}</div>
-	                                        <button type="button" class="fm-action-btn secondary" data-country-league-id="${league?.id || ''}" data-country-league-name="${escapeHtml(league?.name || 'League')}">Open table</button>
-	                                    </article>`).join('')}
 	                            </div>
 	                        </section>
 	                    </div>
@@ -1164,7 +1170,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="buy-listed" data-player-id="${player.id}" data-default-price="${Math.max(1, Math.round(Number(transferStatus.askingPrice || defaultValue)))}">Buy listed</button>`);
         }
         if (transferStatus.canDirectBuy && !transferStatus.listed) {
-            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="direct-buy" data-player-id="${player.id}" data-default-price="${defaultValue}">Direct buy</button>`);
+	            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="direct-buy" data-player-id="${player.id}" data-default-price="${defaultValue}">Send offer</button>`);
         }
 
         return `
@@ -1483,9 +1489,12 @@ import { createCommunityFeature } from './pages/features/community.js';
                     return;
                 }
                 case 'direct-buy': {
-                    const price = promptTransferActionPrice('Enter direct-buy fee for this player:', button?.dataset?.defaultPrice || 1);
+	                    const price = promptTransferActionPrice('Enter transfer offer fee for this player:', button?.dataset?.defaultPrice || 1);
                     if (price == null) return;
-                    await performTransferJsonAction(`/transfers/direct-buy/${resolvedPlayerId}`, { teamId: currentUserTeamId, price });
+	                    const result = await performTransferJsonAction(`/transfers/direct-buy/${resolvedPlayerId}`, { teamId: currentUserTeamId, price });
+	                    if (result?.actionMessage) {
+	                        window.alert(result.actionMessage);
+	                    }
                     await (reloadOwned || reloadCurrent)?.();
                     return;
                 }

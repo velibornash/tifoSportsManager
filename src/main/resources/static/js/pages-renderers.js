@@ -143,7 +143,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
     const venue = resolveFixtureVenue(match);
     const hasSnapshotData = [match?.homeTeamStrength, match?.awayTeamStrength, match?.homeTeamForm, match?.awayTeamForm]
         .some(value => Number.isFinite(Number(value)));
-    const showInsights = allowInsights && (hasSnapshotData || match?.prediction) && (!match?.played || showPlayedInsights);
+    const showInsights = allowInsights && hasSnapshotData && (!match?.played || showPlayedInsights);
     const classes = ['fm-fixture'];
 
     if (match?.played && match?.id) classes.push('js-load-match', 'is-played');
@@ -175,7 +175,6 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
             ${showInsights ? `
                 <div class="fx-insights">
                     ${buildFixtureSnapshotHtml(match?.homeTeam, 'Home', match?.homeTeamStrength, match?.homeTeamForm, safe)}
-                    ${buildFixturePredictionHtml(match?.prediction, safe)}
                     ${buildFixtureSnapshotHtml(match?.awayTeam, 'Away', match?.awayTeamStrength, match?.awayTeamForm, safe)}
                 </div>` : ''}
             ${h2hSummary}
@@ -344,8 +343,6 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'First Team', page: 'firstTeam', variant: 'primary' },
         { label: 'Schedule', page: 'schedule' },
         { label: 'Club Profile', page: 'profile' },
-        { label: 'National Team', page: 'nationalTeam' },
-        { label: 'U-21', page: 'u21Team' },
         { label: 'Medical Center', page: 'medicalCenter' },
         { label: 'Juniors', page: 'juniors' },
         { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
@@ -579,7 +576,6 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
     const playedCount = fixtureRows.filter(fixture => fixture?.played).length;
     const upcomingCount = fixtureRows.filter(fixture => !fixture?.played).length;
     const venueCount = fixtureRows.filter(fixture => resolveFixtureVenue(fixture) !== 'N/A').length;
-    const predictionCount = fixtureRows.filter(fixture => !fixture?.played && fixture?.prediction).length;
     const h2hCount = fixtureRows.filter(fixture => Number(fixture?.h2h?.played || 0) > 0).length;
 
     let html = `
@@ -605,9 +601,9 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
             <div class="fm-panel-head">
                 <div>
                     <h3>Schedule timeline</h3>
-                    <p class="fm-subtle">Played matches open match details, while upcoming fixtures keep the OVR/form/prediction preview.</p>
+                    <p class="fm-subtle">Played matches open match details, while upcoming fixtures keep a lighter OVR/form snapshot.</p>
                 </div>
-                <span class="fm-panel-action">${predictionCount} preview${predictionCount === 1 ? '' : 's'} · ${venueCount} venues</span>
+                <span class="fm-panel-action">${venueCount} venues · ${h2hCount} H2H notes</span>
             </div>
             <div class="fm-fixtures">`;
 
@@ -1018,7 +1014,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
     const totalFixtures = rounds.reduce((sum, group) => sum + (group.matches || []).length, 0);
     const upcomingCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played).length, 0);
     const focusRound = rounds.find(group => group.isFocusRound)?.round ?? '—';
-    const predictedCount = rounds.reduce((sum, group) => sum + (group.matches || []).filter(match => !match?.played && match?.prediction).length, 0);
+    const roundCount = rounds.length;
 
     mainContent.innerHTML = `
         <div class="fm-page fm-page--league">
@@ -1049,7 +1045,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
                     <div class="fm-medical-stat-grid team-summary-grid">
                         <div><strong>${totalFixtures}</strong><span>Fixtures</span></div>
                         <div><strong>${upcomingCount}</strong><span>Upcoming</span></div>
-                        <div><strong>${predictedCount}</strong><span>Predictions</span></div>
+                        <div><strong>${roundCount}</strong><span>Rounds</span></div>
                         <div><strong>${focusRound}</strong><span>Focus round</span></div>
                     </div>
                 </section>

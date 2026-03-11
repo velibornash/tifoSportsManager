@@ -1,10 +1,13 @@
 package org.example.footballmanager.controller;
 
 import org.example.footballmanager.model.Competition;
+import org.example.footballmanager.model.CompetitionEntry;
 import org.example.footballmanager.model.Country;
+import org.example.footballmanager.model.SeasonCompetition;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
+import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.UserRepository;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.util.JwtUtil;
@@ -33,6 +36,7 @@ class UserControllerTest {
     @Mock private AuthenticationManager authenticationManager;
     @Mock private JwtUtil jwtUtil;
     @Mock private SeasonService seasonService;
+    @Mock private CompetitionEntryRepository competitionEntryRepository;
 
     @InjectMocks private UserController userController;
 
@@ -75,6 +79,53 @@ class UserControllerTest {
         assertEquals("Serbia", response.getBody().getCountryName());
         assertEquals("SRB", response.getBody().getCountryIsoCode());
         assertEquals(2026, response.getBody().getSeasonYear());
+    }
+
+    @Test
+    void getCurrentUserFallsBackToActiveSeasonCompetitionEntry() {
+        Country country = new Country();
+        country.setName("Serbia");
+        country.setIsoCode("SRB");
+
+        Competition competition = new Competition();
+        competition.setId(3L);
+        competition.setName("Srpska Liga Beograd");
+        competition.setTier(3);
+        competition.setCountry(country);
+
+        SeasonCompetition seasonCompetition = new SeasonCompetition();
+        seasonCompetition.setSeasonYear(2026);
+        seasonCompetition.setCompetition(competition);
+
+        CompetitionEntry entry = new CompetitionEntry();
+        entry.setSeasonCompetition(seasonCompetition);
+
+        Team team = new Team();
+        team.setId(10L);
+        team.setName("OFK Omladinac");
+        team.setCompetition(null);
+        team.setCountry(null);
+
+        User user = new User();
+        user.setId(5L);
+        user.setUsername("velman");
+        user.setEmail("velman@test.rs");
+        user.setRole(UserRole.REGULAR);
+        user.setTeam(team);
+
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(seasonService.getActiveSeasonYear()).thenReturn(2026);
+        when(competitionEntryRepository.findFirstByTeamAndSeasonCompetitionSeasonYearOrderByIdDesc(team, 2026))
+                .thenReturn(Optional.of(entry));
+
+        ResponseEntity<UserController.UserDTO> response = userController.getCurrentUser(user);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(3L, response.getBody().getCompetitionId());
+        assertEquals("Srpska Liga Beograd", response.getBody().getCompetitionName());
+        assertEquals(3, response.getBody().getCompetitionTier());
+        assertEquals("Serbia", response.getBody().getCountryName());
+        assertEquals("SRB", response.getBody().getCountryIsoCode());
     }
 
     @Test
