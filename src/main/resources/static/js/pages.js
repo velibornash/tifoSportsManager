@@ -1589,6 +1589,7 @@ import { createCommunityFeature } from './pages/features/community.js';
         const pushHistory = options.pushHistory !== false;
 	        if (pushHistory) pushNavState({ type: 'match', matchId, caller, ...getActiveLeagueNavState() });
         const mainContent = document.getElementById("main-content");
+        const initialTab = options.initialTab === 'report' ? 'report' : 'preview';
         console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if(caller==="undefined"){
            console.log(`Match not found.`);
@@ -1702,6 +1703,14 @@ import { createCommunityFeature } from './pages/features/community.js';
              const infoDiv = document.getElementById("match-info");
              let cachedMatchPreview = null;
              let cachedMatchReport = null;
+
+            async function revealMatchResultIfAllowed() {
+                try {
+                    await authFetch(`/matches/${matchId}/reveal`, { method: 'POST' });
+                } catch (error) {
+                    console.warn(`Reveal skipped for match ${matchId}:`, error);
+                }
+            }
 
             function renderMatchPreview(previewPayload) {
                 const prediction = previewPayload?.prediction || {};
@@ -1830,6 +1839,8 @@ import { createCommunityFeature } from './pages/features/community.js';
             }
 
             async function showMatchReport() {
+                await revealMatchResultIfAllowed();
+
                 if (cachedMatchReport) {
                     renderMatchReport(cachedMatchReport);
                     return;
@@ -1961,8 +1972,11 @@ import { createCommunityFeature } from './pages/features/community.js';
                 infoDiv.innerHTML = html;
             }
 
-            // Automatski prikaÅ¾i preview odmah
-            void showPreview();
+            if (initialTab === 'report') {
+                void showMatchReport();
+            } else {
+                void showPreview();
+            }
 
             // Listener-i za ostala dugmad
             document.getElementById("view-preview").addEventListener("click", () => {
@@ -2035,7 +2049,10 @@ import { createCommunityFeature } from './pages/features/community.js';
             });
             document.getElementById("view-stats").addEventListener("click", showStats);
             document.getElementById("view-replay").addEventListener("click", () => {
-                window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(matchId)}&mode=replay`;
+                void (async () => {
+                    await revealMatchResultIfAllowed();
+                    window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(matchId)}&mode=replay`;
+                })();
             });
             document.getElementById("view-report").addEventListener("click", () => {
                 void showMatchReport();

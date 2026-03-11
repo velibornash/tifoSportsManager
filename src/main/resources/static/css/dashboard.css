@@ -3605,6 +3605,16 @@ body {
     transform: translateY(-1px);
 }
 
+.recent-match.is-clickable {
+    cursor: pointer;
+}
+
+.recent-match.is-hidden-result:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.07);
+    transform: none;
+}
+
 .match-date-small {
     min-width: 112px;
     color: var(--fm-legacy-muted);
@@ -3665,6 +3675,30 @@ body {
 .result-badge.loss {
     background: rgba(239, 83, 80, 0.16);
     color: #ffb0ae;
+}
+
+.fm-hidden-score {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #d7e2f2;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.fm-recent-match-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.fm-recent-match-actions .fm-action-btn {
+    padding: 7px 10px;
+    font-size: 0.76rem;
+    border-radius: 10px;
 }
 
 .training-setup-card .training-block,
@@ -3826,6 +3860,15 @@ body {
     .match-date-small,
     .team-away {
         text-align: left;
+    }
+
+    .fm-recent-match-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .fm-recent-match-actions .fm-action-btn {
+        flex: 1 1 150px;
     }
 }
 

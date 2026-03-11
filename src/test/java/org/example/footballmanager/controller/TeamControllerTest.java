@@ -1,6 +1,7 @@
 package org.example.footballmanager.controller;
 
 import org.example.footballmanager.dto.LeagueMilestonesDTO;
+import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.dto.TacticsEditorDTO;
 import org.example.footballmanager.dto.TacticsEditorSaveRequest;
@@ -17,6 +18,7 @@ import org.example.footballmanager.model.SeasonCompetition;
 import org.example.footballmanager.model.Skills;
 import org.example.footballmanager.model.Stadium;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.User;
 import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.LineupRepository;
 import org.example.footballmanager.repository.MatchFixtureRepository;
@@ -177,6 +179,38 @@ class TeamControllerTest {
         assertEquals(1, response.getBody().size());
         assertEquals(2, response.getBody().getFirst().getMatchesPlayed());
         assertEquals(8.1, response.getBody().getFirst().getAverageRating10());
+    }
+
+    @Test
+    void getMatchesHidesUnrevealedResultForAuthenticatedUsersTeam() {
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("OFK Omladinac");
+
+        Team opponent = new Team();
+        opponent.setId(2L);
+        opponent.setName("FK Rival");
+
+        Match match = new Match();
+        match.setId(44L);
+        match.setHomeTeam(team);
+        match.setAwayTeam(opponent);
+        match.setHomeGoals(2);
+        match.setAwayGoals(1);
+        match.setPlayed(true);
+        match.setHomeResultRevealed(false);
+        match.setAwayResultRevealed(true);
+
+        User user = new User();
+        user.setTeam(team);
+
+        when(matchRepository.findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(1L, 1L)).thenReturn(List.of(match));
+
+        ResponseEntity<List<MatchDTO>> response = teamController.getMatches(1L, user);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody().getFirst().isResultHidden());
+        assertFalse(response.getBody().getFirst().isResultRevealed());
     }
 
     @Test

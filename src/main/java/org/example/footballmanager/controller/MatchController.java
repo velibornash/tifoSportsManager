@@ -9,6 +9,7 @@ import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.InjuryEvent;
 import org.example.footballmanager.model.event.MatchEndedEvent;
@@ -29,6 +30,7 @@ import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.events.MatchEventMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -187,6 +189,44 @@ public class MatchController {
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    @PostMapping("/{matchId}/reveal")
+    public ResponseEntity<MatchDTO> revealMatchResult(@PathVariable Long matchId,
+                                                      @AuthenticationPrincipal User user) {
+        if (user == null || user.getTeam() == null || user.getTeam().getId() == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Match match = matchRepository.findWithTeamsById(matchId).orElse(null);
+        if (match == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!match.isPlayed()) {
+            return ResponseEntity.status(409).build();
+        }
+
+        Long viewerTeamId = user.getTeam().getId();
+        boolean isHomeTeam = match.getHomeTeam() != null && Objects.equals(match.getHomeTeam().getId(), viewerTeamId);
+        boolean isAwayTeam = match.getAwayTeam() != null && Objects.equals(match.getAwayTeam().getId(), viewerTeamId);
+        if (!isHomeTeam && !isAwayTeam) {
+            return ResponseEntity.status(403).build();
+        }
+
+        boolean changed = false;
+        if (isHomeTeam && !match.isHomeResultRevealed()) {
+            match.setHomeResultRevealed(true);
+            changed = true;
+        }
+        if (isAwayTeam && !match.isAwayResultRevealed()) {
+            match.setAwayResultRevealed(true);
+            changed = true;
+        }
+        if (changed) {
+            match = matchRepository.save(match);
+        }
+
+        return ResponseEntity.ok(MatchDTO.from(match, viewerTeamId));
     }
 
     private Map<String, Object> toLineupPlayer(Player player) {

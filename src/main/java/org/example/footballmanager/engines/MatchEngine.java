@@ -1325,6 +1325,8 @@ public class MatchEngine {
         attendanceService.ensureAttendance(simulatedMatch);
         simulatedMatch.setPlayed(true);
         simulatedMatch.setStarted(true);
+        simulatedMatch.setHomeResultRevealed(false);
+        simulatedMatch.setAwayResultRevealed(false);
         simulatedMatch.setHomeLineup(homeLineup);
         simulatedMatch.setAwayLineup(awayLineup);
         simulatedMatch.setHomeFormation(homeLineup.getFormation());
@@ -1458,6 +1460,8 @@ public class MatchEngine {
         attendanceService.ensureAttendance(match);
         match.setPlayed(true);
         match.setStarted(true);
+        match.setHomeResultRevealed(false);
+        match.setAwayResultRevealed(false);
         match.setHomeLineup(homeLineup);
         match.setAwayLineup(awayLineup);
         match.setHomeFormation(homeLineup.getFormation());

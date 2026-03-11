@@ -13,6 +13,7 @@ import org.example.footballmanager.model.MatchFixture;
 import org.example.footballmanager.model.MatchPlayerStats;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.User;
 import org.example.footballmanager.repository.CompetitionEntryRepository;
 import org.example.footballmanager.repository.LineupRepository;
 import org.example.footballmanager.repository.MatchFixtureRepository;
@@ -26,6 +27,7 @@ import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.TeamMedicalService;
 import org.example.footballmanager.service.TeamTacticsService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -130,10 +132,13 @@ public class TeamController {
     }
 
     @GetMapping("/{teamId}/matches")
-    public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId) {
+    public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId,
+                                                     @AuthenticationPrincipal User user) {
+        Long viewerTeamId = user != null && user.getTeam() != null ? user.getTeam().getId() : null;
+        Long dtoViewerTeamId = Objects.equals(viewerTeamId, teamId) ? viewerTeamId : null;
         List<MatchDTO> matches = matchRepository.findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(teamId, teamId)
                 .stream()
-                .map(MatchDTO::from)
+                .map(match -> MatchDTO.from(match, dtoViewerTeamId))
                 .toList();
         return ResponseEntity.ok(matches);
     }

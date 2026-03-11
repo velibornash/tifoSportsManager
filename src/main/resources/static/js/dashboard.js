@@ -630,7 +630,7 @@ async function initializeDatabase() {
 
 async function loadRecentMatches() {
     try {
-        const response = await fetch(`/teams/${currentUserTeamId}/matches`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
         if (!response.ok) throw new Error('Failed to load matches');
 
         const matches = await response.json();
@@ -652,13 +652,16 @@ async function loadRecentMatches() {
 
         let html = '';
         recent.forEach(match => {
+            const isHiddenResult = Boolean(match.resultHidden);
             const isHomeTeam = isCurrentUserTeam(match.homeTeam);
             const isAwayTeam = isCurrentUserTeam(match.awayTeam);
+            const homeTeamLabel = escapeHtml(match.homeTeam?.name || match.homeTeam || 'Home');
+            const awayTeamLabel = escapeHtml(match.awayTeam?.name || match.awayTeam || 'Away');
 
             let resultBadge = '';
             let badgeText = '';
 
-            if (isHomeTeam || isAwayTeam) {
+            if (!isHiddenResult && (isHomeTeam || isAwayTeam)) {
                 const myTeamGoals = isHomeTeam ? match.homeGoals : match.awayGoals;
                 const opponentGoals = isHomeTeam ? match.awayGoals : match.homeGoals;
 
@@ -673,23 +676,76 @@ async function loadRecentMatches() {
                 badgeText = resultBadge === 'win' ? 'W' : resultBadge === 'draw' ? 'D' : 'L';
             }
 
-            html += `
-            <div class="match-row recent-match" onclick="loadMatch(${match.id}, 'match')">
+            if (isHiddenResult) {
+                html += `
+            <div class="match-row recent-match is-hidden-result" data-match-id="${match.id}">
                 <div class="match-date-small">${match.matchDate || 'N/A'}</div>
                 <div class="match-teams">
-                    <span class="team-home">${match.homeTeam?.name || match.homeTeam}</span>
+                    <span class="team-home">${homeTeamLabel}</span>
+                    <span class="score fm-hidden-score">Result hidden</span>
+                    <span class="team-away">${awayTeamLabel}</span>
+                </div>
+                <div class="fm-recent-match-actions">
+                    <button type="button" class="fm-action-btn secondary js-open-hidden-report" data-match-id="${match.id}">Open report</button>
+                    <button type="button" class="fm-action-btn secondary js-watch-hidden-match" data-match-id="${match.id}">Watch match</button>
+                </div>
+            </div>`;
+                return;
+            }
+
+            html += `
+            <div class="match-row recent-match is-clickable" data-match-id="${match.id}">
+                <div class="match-date-small">${match.matchDate || 'N/A'}</div>
+                <div class="match-teams">
+                    <span class="team-home">${homeTeamLabel}</span>
                     <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
                     ${badgeText ? `<span class="result-badge ${resultBadge}">${badgeText}</span>` : ''}
-                    <span class="team-away">${match.awayTeam?.name || match.awayTeam}</span>
+                    <span class="team-away">${awayTeamLabel}</span>
                 </div>
             </div>`;
         });
 
         list.innerHTML = html;
+        list.querySelectorAll('.recent-match.is-clickable').forEach(row => {
+            row.addEventListener('click', () => {
+                const matchId = Number(row.dataset.matchId);
+                if (matchId && typeof window.loadMatch === 'function') {
+                    window.loadMatch(matchId, 'match');
+                }
+            });
+        });
+        list.querySelectorAll('.js-open-hidden-report').forEach(button => {
+            button.addEventListener('click', async event => {
+                event.preventDefault();
+                const matchId = Number(button.dataset.matchId);
+                if (!matchId) return;
+                await revealMatchResult(matchId);
+                if (typeof window.loadMatch === 'function') {
+                    await window.loadMatch(matchId, 'match', { initialTab: 'report' });
+                }
+            });
+        });
+        list.querySelectorAll('.js-watch-hidden-match').forEach(button => {
+            button.addEventListener('click', async event => {
+                event.preventDefault();
+                const matchId = Number(button.dataset.matchId);
+                if (!matchId) return;
+                await revealMatchResult(matchId);
+                window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(matchId)}&mode=replay`;
+            });
+        });
     } catch (err) {
         console.error('Error loading recent matches:', err);
         document.getElementById('recent-matches-list').innerHTML =
             '<p style="text-align:center; color:#f44336;">Failed to load recent matches.</p>';
+    }
+}
+
+async function revealMatchResult(matchId) {
+    try {
+        await authFetch(`/matches/${matchId}/reveal`, { method: 'POST' });
+    } catch (error) {
+        console.warn(`Result reveal skipped for match ${matchId}:`, error);
     }
 }
 

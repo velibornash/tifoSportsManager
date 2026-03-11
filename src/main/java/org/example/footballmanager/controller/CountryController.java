@@ -157,16 +157,7 @@ public class CountryController {
 
         // Mapiraj u DTO
         return matches.stream()
-                .map(m -> new MatchDTO(
-                        m.getId(),
-                        m.getHomeTeam().getName(),
-                        m.getAwayTeam().getName(),
-                        m.getHomeGoals(),
-                        m.getAwayGoals(),
-                        m.getMatchDate() != null
-                                ? m.getMatchDate().toString().substring(0, 16).replace("T", " ")  // npr. "2026-02-20 12:00"
-                                : "N/A"
-                ))
+                .map(MatchDTO::from)
                 .collect(Collectors.toList());
     }
 

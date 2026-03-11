@@ -52,6 +52,8 @@ public class Match {
 
     private boolean played;
     private boolean started;
+    private boolean homeResultRevealed = true;
+    private boolean awayResultRevealed = true;
     private String homeFormation;
     private String awayFormation;
 

@@ -4,6 +4,7 @@ import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.model.User;
 import org.example.footballmanager.repository.MatchEventRepository;
 import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.service.MatchDetailService;
@@ -21,6 +22,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,6 +80,35 @@ class MatchControllerTest {
         assertEquals("OFK Omladinac", response.getBody().get("homeTeam"));
         assertEquals(1, ((List<?>) response.getBody().get("homeLineup")).size());
         assertEquals(List.of(), response.getBody().get("awayLineup"));
+    }
+
+    @Test
+    void revealMatchResultMarksOnlyAuthenticatedUsersSide() {
+        Team home = team(1L, "OFK Omladinac");
+        Team away = team(2L, "Rival");
+
+        Match match = new Match();
+        match.setId(88L);
+        match.setHomeTeam(home);
+        match.setAwayTeam(away);
+        match.setPlayed(true);
+        match.setHomeResultRevealed(false);
+        match.setAwayResultRevealed(false);
+
+        User user = new User();
+        user.setTeam(home);
+
+        when(matchRepository.findWithTeamsById(88L)).thenReturn(Optional.of(match));
+        when(matchRepository.save(match)).thenReturn(match);
+
+        var response = matchController.revealMatchResult(88L, user);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(match.isHomeResultRevealed());
+        assertFalse(match.isAwayResultRevealed());
+        assertFalse(response.getBody().isResultHidden());
+        assertTrue(response.getBody().isResultRevealed());
+        verify(matchRepository).save(match);
     }
 
     private Team team(Long id, String name) {
