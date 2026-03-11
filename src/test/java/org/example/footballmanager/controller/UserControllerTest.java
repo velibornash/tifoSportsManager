@@ -18,6 +18,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+	import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.when;
@@ -59,6 +61,7 @@ class UserControllerTest {
         user.setRole(UserRole.REGULAR);
         user.setTeam(team);
 
+	        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
         when(seasonService.getActiveSeasonYear()).thenReturn(2026);
 
         ResponseEntity<UserController.UserDTO> response = userController.getCurrentUser(user);

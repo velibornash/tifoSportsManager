@@ -3,7 +3,9 @@ package org.example.footballmanager.cleanSheet;
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.cleanSheet.model.*;
 import org.example.footballmanager.cleanSheet.state.CleanSheetGameState;
+	import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
+	import org.example.footballmanager.repository.TeamRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -18,13 +20,15 @@ import java.util.Map;
 public class CleanSheetController {
 
     private final CleanSheetService cleanSheetService;
+	    private final TeamRepository teamRepository;
 
     @PostMapping("/start")
     public ResponseEntity<?> startGame(@AuthenticationPrincipal User user) {
         if (user == null || user.getTeam() == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
         }
-        CleanSheetGameState state = cleanSheetService.startNewGame(user.getId(), user.getTeam());
+	        Team team = teamRepository.findById(user.getTeam().getId()).orElse(user.getTeam());
+	        CleanSheetGameState state = cleanSheetService.startNewGame(user.getId(), team);
         return ResponseEntity.ok(buildStateResponse(state));
     }
 

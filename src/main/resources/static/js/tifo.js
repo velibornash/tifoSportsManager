@@ -1,5 +1,4 @@
 ﻿// tifo.js - Clean Sheet Text Mode (in-memory)
-import { authFetch } from './auth.js';
 
 let gameState = null;
 // Store all round results (keyed by round) so schedule fixtures can link to any match
@@ -42,7 +41,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         const startRes = await csApi('/api/cs/start', { method: 'POST' });
         if (!startRes || !startRes.ok) {
-            document.getElementById('main-content').innerHTML = `<div class="manager-card"><h2>Error starting game</h2></div>`;
+	            let errorMessage = 'Could not start Clean Sheet mode.';
+	            try {
+	                const payload = startRes ? await startRes.json() : null;
+	                errorMessage = payload?.error || payload?.message || errorMessage;
+	            } catch {
+	                // keep fallback copy
+	            }
+	            document.getElementById('main-content').innerHTML = `<div class="manager-card"><h2>Error starting game</h2><p>${escapeHtml(errorMessage)}</p></div>`;
             return;
         }
         gameState = await startRes.json();
@@ -2068,7 +2074,7 @@ async function closeCsSession() {
     if (csSessionClosed) return;
     csSessionClosed = true;
     try {
-        await authFetch('/api/cs/reset', { method: 'POST', keepalive: true });
+	        await csApi('/api/cs/reset', { method: 'POST', keepalive: true });
     } catch (e) {
         console.warn('CS reset on exit failed:', e);
     }

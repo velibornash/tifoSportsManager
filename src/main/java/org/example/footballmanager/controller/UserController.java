@@ -80,17 +80,19 @@ public class UserController {
             return ResponseEntity.status(401).build();
         }
 
+	        User resolvedUser = userRepo.findById(user.getId()).orElse(user);
+
         UserDTO dto = new UserDTO();
-        dto.setId(user.getId());
-        dto.setUsername(user.getUsername());
-        dto.setEmail(user.getEmail());
-        dto.setRole(user.getRole().name());
+	        dto.setId(resolvedUser.getId());
+	        dto.setUsername(resolvedUser.getUsername());
+	        dto.setEmail(resolvedUser.getEmail());
+	        dto.setRole(resolvedUser.getRole().name());
         dto.setSeasonYear(seasonService.getActiveSeasonYear());
-        if (user.getTeam() != null) {
-            dto.setTeamId(user.getTeam().getId());
-            dto.setTeamName(user.getTeam().getName());
-            Country country = user.getTeam().getCountry();
-            Competition competition = user.getTeam().getCompetition();
+	        if (resolvedUser.getTeam() != null) {
+	            dto.setTeamId(resolvedUser.getTeam().getId());
+	            dto.setTeamName(resolvedUser.getTeam().getName());
+	            Country country = resolvedUser.getTeam().getCountry();
+	            Competition competition = resolvedUser.getTeam().getCompetition();
             if (competition != null) {
                 dto.setCompetitionId(competition.getId());
                 dto.setCompetitionName(competition.getName());

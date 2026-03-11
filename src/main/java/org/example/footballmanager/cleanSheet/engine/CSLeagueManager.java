@@ -96,9 +96,9 @@ public class CSLeagueManager {
 
         for (CSTeam team : teams) {
             Set<Long> rivals = new HashSet<>();
-            List<CSTeam> available = others.stream()
-                    .filter(t -> !t.getId().equals(team.getId()))
-                    .toList();
+	            List<CSTeam> available = new ArrayList<>(others.stream()
+	                    .filter(t -> !t.getId().equals(team.getId()))
+	                    .toList());
             Collections.shuffle(available, random);
             int count = 1 + random.nextInt(3);
             for (int i = 0; i < Math.min(count, available.size()); i++) {
