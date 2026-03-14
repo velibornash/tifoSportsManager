@@ -56,13 +56,9 @@ public class DatabaseInitializer {
     public void resetAndInitializeDatabase() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         resetService.resetDatabase();
-        // 1. Ako baza nema zemalja – pokreni punu inicijalizaciju strukture
-        if (countryRepository.count() == 0) {
-            log.info("Baza je prazna – pokrećem punu inicijalizaciju strukture...");
-            initSerbianFootballStructure();
-        } else {
-            log.info("Baza već ima podatke – preskačem inicijalizaciju strukture.");
-        }
+        // 1. Always run structure init after a full reset.
+        log.info("Pokrecem punu inicijalizaciju strukture...");
+        initSerbianFootballStructure();
 
         // 2. Kreiraj Owner korisnika ako ne postoji (sada baza ima strukturu, timovi postoje)
         Team ownerTeam = createOwnerUserIfNotExists();
@@ -437,5 +433,7 @@ public class DatabaseInitializer {
         return cup;
     }
 }
+
+
 
 
