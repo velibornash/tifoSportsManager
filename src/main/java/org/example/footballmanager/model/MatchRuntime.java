@@ -58,6 +58,10 @@ public class MatchRuntime {
     public int previousPassPairTick = -100;
     public Integer homeLastReceiverId = null;
     public Integer awayLastReceiverId = null;
+    public Integer recentAssistPasserId = null;
+    public Integer recentAssistReceiverId = null;
+    public String recentAssistTeam = null;
+    public int recentAssistTick = -100;
 
     public Integer lastDuelWinnerId = null;
     public int lastDuelWinTick = -100;

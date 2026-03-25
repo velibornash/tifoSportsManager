@@ -17,6 +17,8 @@ import org.example.footballmanager.repository.MatchRepository;
 import org.example.footballmanager.repository.SeasonRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.AdvanceWeekAsyncService;
+import org.example.footballmanager.service.RoundSimulationAsyncService;
 import org.example.footballmanager.service.SimulationService;
 import org.example.footballmanager.service.TrainingProgressionService;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +44,8 @@ public class SimulationController {
     private final MatchEngine matchEngine;
     private final MatchStatisticEngine matchStatisticEngine;
     private final SeasonService seasonService;
+    private final RoundSimulationAsyncService roundSimulationAsyncService;
+    private final AdvanceWeekAsyncService advanceWeekAsyncService;
     private final TrainingProgressionService trainingProgressionService;
     private final TeamRepository teamRepository;
     private final MatchFixtureRepository matchFixtureRepository;
@@ -75,71 +79,21 @@ public class SimulationController {
         if (userTeam == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
         }
+        RoundSimulationAsyncService.RoundSimulationSnapshot snapshot =
+                roundSimulationAsyncService.startOrGetRunningJob(userTeam.getId());
+        return ResponseEntity.accepted().body(toRoundSimulationResponse(snapshot));
+    }
 
-        Competition superLiga = competitionRepository.findById(1L).orElse(null);
-        if (superLiga == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "League not found"));
+    @GetMapping("/simulation/current-round/status")
+    public ResponseEntity<Map<String, Object>> getCurrentRoundSimulationStatus(@AuthenticationPrincipal User user) {
+        Team userTeam = resolveUserTeamOrFallback(user);
+        if (userTeam == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
         }
 
-        Competition activeLeague = userTeam.getCompetition() != null ? userTeam.getCompetition() : superLiga;
-        int seasonYear = seasonService.getActiveSeasonYear();
-        int currentWeek = seasonService.getCurrentWeek();
-        Season currentSeason = seasonRepository.findBySeasonYear(seasonYear)
-                .orElseGet(seasonService::ensureActiveSeasonEntity);
-
-        MatchFixture userFixture = findUserFixture(activeLeague, seasonYear, currentWeek, userTeam.getId());
-        Match preparedUserMatch = findPreparedUserMatch(activeLeague, seasonYear, currentWeek, userTeam.getId());
-        Team excludedHome = preparedUserMatch != null ? preparedUserMatch.getHomeTeam() : (userFixture != null ? userFixture.getHomeTeam() : null);
-        Team excludedAway = preparedUserMatch != null ? preparedUserMatch.getAwayTeam() : (userFixture != null ? userFixture.getAwayTeam() : null);
-
-        List<Competition> leagues = seasonService.getSerbianLeaguesInOrder();
-        List<Map<String, Object>> leagueResults = new ArrayList<>();
-        int simulatedCount = 0;
-
-        for (Competition league : leagues) {
-            prepareLeagueForCurrentWeek(league, seasonYear, currentWeek);
-            int pendingBefore = countRemainingFixtures(league, seasonYear, currentWeek);
-            Team skipHome = Objects.equals(league.getId(), activeLeague.getId()) ? excludedHome : null;
-            Team skipAway = Objects.equals(league.getId(), activeLeague.getId()) ? excludedAway : null;
-
-            matchEngine.simulateRestOfMatchDay(league, currentSeason, skipHome, skipAway);
-
-            int pendingAfter = countRemainingFixtures(league, seasonYear, currentWeek);
-            int simulatedForLeague = Math.max(0, pendingBefore - pendingAfter);
-            if (currentWeek <= SeasonService.LEAGUE_ROUNDS && (pendingBefore > 0 || simulatedForLeague > 0)) {
-                matchStatisticEngine.updateLeagueTableForMatchDay(league, currentSeason);
-            }
-            simulatedCount += simulatedForLeague;
-
-            if (pendingBefore > 0 || simulatedForLeague > 0) {
-                leagueResults.add(Map.of(
-                        "league", league.getName(),
-                        "remainingBefore", pendingBefore,
-                        "remainingAfter", pendingAfter,
-                        "simulated", simulatedForLeague
-                ));
-            }
-        }
-
-        boolean playoffWeekComplete = currentWeek == SeasonService.PLAYOFF_WEEK
-                && countRemainingFixtures(superLiga, seasonYear, currentWeek) == 0;
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("status", "ok");
-        payload.put("action", playoffWeekComplete ? "SHOW_PLAYOFF_SUMMARY" : "ROUND_SIMULATED");
-        payload.put("simulatedCount", simulatedCount);
-        payload.put("leaguesProcessed", leagues.size());
-        payload.put("leagueResults", leagueResults);
-        payload.put(
-                "message",
-                simulatedCount > 0
-                        ? "Simulated remaining fixtures across all Serbian leagues for the current round."
-                        : "No other remaining fixtures were found for the current round."
-        );
-        if (playoffWeekComplete) {
-            payload.put("summary", seasonService.buildPlayoffSummary(superLiga, seasonYear));
-        }
-        return ResponseEntity.ok(payload);
+        RoundSimulationAsyncService.RoundSimulationSnapshot snapshot =
+                roundSimulationAsyncService.getJobSnapshot(userTeam.getId());
+        return ResponseEntity.ok(toRoundSimulationResponse(snapshot));
     }
 
     @PostMapping("/simulation/week/advance")
@@ -148,46 +102,21 @@ public class SimulationController {
         if (userTeam == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
         }
+        AdvanceWeekAsyncService.AdvanceWeekSnapshot snapshot =
+                advanceWeekAsyncService.startOrGetRunningJob(userTeam.getId());
+        return ResponseEntity.accepted().body(toAdvanceWeekResponse(snapshot));
+    }
 
-        Competition superLiga = competitionRepository.findById(1L).orElse(null);
-        if (superLiga == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "League not found"));
+    @GetMapping("/simulation/week/advance/status")
+    public ResponseEntity<Map<String, Object>> getAdvanceWeekStatus(@AuthenticationPrincipal User user) {
+        Team userTeam = resolveUserTeamOrFallback(user);
+        if (userTeam == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User or team not found"));
         }
 
-        int currentWeek = seasonService.getCurrentWeek();
-        int currentSeasonYear = seasonService.getActiveSeasonYear();
-        int remainingFixtures = countRemainingFixturesAcrossLeagues(currentSeasonYear, currentWeek);
-        if (remainingFixtures > 0) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "blocked",
-                    "action", "ROUND_NOT_COMPLETE",
-                    "message", "Current week still has unfinished fixtures. Play your match and simulate the remaining results before advancing the calendar.",
-                    "remainingFixtures", remainingFixtures
-            ));
-        }
-
-        boolean trainingRan = currentWeek != SeasonService.PLAYOFF_WEEK && userTeam.getId() != null;
-        if (trainingRan) {
-            trainingProgressionService.runWeeklyTraining(userTeam.getId());
-        }
-        seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
-
-        int nextWeek = seasonService.getCurrentWeek();
-        int nextSeasonYear = seasonService.getActiveSeasonYear();
-        String message = nextSeasonYear != currentSeasonYear
-                ? "Week advanced and a new season has started."
-                : "Week advanced successfully.";
-        if (trainingRan) {
-            message = "Weekly training completed. " + message;
-        }
-
-        return ResponseEntity.ok(Map.of(
-                "status", "ok",
-                "action", "WEEK_ADVANCED",
-                "message", message,
-                "currentWeek", nextWeek,
-                "seasonYear", nextSeasonYear
-        ));
+        AdvanceWeekAsyncService.AdvanceWeekSnapshot snapshot =
+                advanceWeekAsyncService.getJobSnapshot(userTeam.getId());
+        return ResponseEntity.ok(toAdvanceWeekResponse(snapshot));
     }
 
     private ResponseEntity<Map<String, Object>> startRealisticDemoInternal(Team userTeam) {
@@ -364,6 +293,35 @@ public class SimulationController {
         payload.put("replay_metadata", "/api/zox/replay/" + match.getId() + "/metadata");
         payload.put("replay_chunk_template", "/api/zox/replay/" + match.getId() + "/chunks/{chunkIndex}");
         payload.put("matchId", match.getId().toString());
+        return payload;
+    }
+
+    private Map<String, Object> toRoundSimulationResponse(RoundSimulationAsyncService.RoundSimulationSnapshot snapshot) {
+        if (snapshot.payload() != null && ("completed".equals(snapshot.status()) || "failed".equals(snapshot.status()))) {
+            return snapshot.payload();
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("status", snapshot.status());
+        payload.put("action", snapshot.action());
+        payload.put("jobId", snapshot.jobId());
+        payload.put("message", snapshot.message());
+        payload.put("processedLeagues", snapshot.processedLeagues());
+        payload.put("leaguesProcessed", snapshot.totalLeagues());
+        payload.put("currentLeague", snapshot.currentLeague());
+        return payload;
+    }
+
+    private Map<String, Object> toAdvanceWeekResponse(AdvanceWeekAsyncService.AdvanceWeekSnapshot snapshot) {
+        if (snapshot.payload() != null && ("completed".equals(snapshot.status()) || "failed".equals(snapshot.status()))) {
+            return snapshot.payload();
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("status", snapshot.status());
+        payload.put("action", snapshot.action());
+        payload.put("jobId", snapshot.jobId());
+        payload.put("message", snapshot.message());
         return payload;
     }
 }

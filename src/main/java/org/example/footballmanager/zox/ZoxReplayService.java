@@ -30,7 +30,7 @@ import java.util.Optional;
 public class ZoxReplayService {
 
     private static final int DEFAULT_TICKS_PER_MINUTE = 27;
-    private static final int TICK_DURATION_MS = 370;
+    private static final int TICK_DURATION_MS = 620;
     private static final int CHUNK_DURATION_MS = 30_000;
 
     private final MatchRepository matchRepository;

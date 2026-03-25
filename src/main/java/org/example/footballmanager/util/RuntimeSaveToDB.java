@@ -66,6 +66,7 @@ public class RuntimeSaveToDB {
     }
 
     private void batchSaveMatchEvents(Match match, List<MatchEvent> events, List<Player> homePlayers, List<Player> awayPlayers) {
+        LinkedHashMap<Long, Player> updatedPlayers = new LinkedHashMap<>();
         for (MatchEvent event : events) {
             event.setMatch(match);
             if (event instanceof GoalEvent goal) {
@@ -76,17 +77,24 @@ public class RuntimeSaveToDB {
                 if (goal.getScorer() != null) {
                     Player scorer = goal.getScorer();
                     scorer.setTotalGoals(scorer.getTotalGoals() + 1);
-                    playerRepository.save(scorer);
+                    if (scorer.getId() != null) {
+                        updatedPlayers.put(scorer.getId(), scorer);
+                    }
                 }
                 if (goal.getAssistant() != null) {
                     Player assistant = goal.getAssistant();
                     assistant.setTotalAssists(assistant.getTotalAssists() + 1);
-                    playerRepository.save(assistant);
+                    if (assistant.getId() != null) {
+                        updatedPlayers.put(assistant.getId(), assistant);
+                    }
                 }
             }
             em.persist(event);
         }
 
+        if (!updatedPlayers.isEmpty()) {
+            playerRepository.saveAll(updatedPlayers.values());
+        }
         em.flush();
     }
 
@@ -117,7 +125,8 @@ public class RuntimeSaveToDB {
                 rt.runtimeGoals,
                 rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
                 rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList(),
-                rt.playerMinutes
+                rt.playerMinutes,
+                rt.runtimeEvents
         );
 
         matchStatisticEngineHandling.savePlayerStats(
@@ -126,7 +135,8 @@ public class RuntimeSaveToDB {
                 rt.runtimeGoals,
                 rt.runtimeEvents.stream().filter(e -> e instanceof YellowCardEvent).map(e -> (YellowCardEvent) e).toList(),
                 rt.runtimeEvents.stream().filter(e -> e instanceof RedCardEvent).map(e -> (RedCardEvent) e).toList(),
-                rt.playerMinutes
+                rt.playerMinutes,
+                rt.runtimeEvents
         );
 
         persistPlayerState(homePlayers, awayPlayers);
@@ -222,7 +232,6 @@ public class RuntimeSaveToDB {
             homeEntry.setPoints(homeEntry.getPoints() + points);
             homeEntry.setGoalsScored(homeEntry.getGoalsScored() + rt.homeGoals);
             homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + rt.awayGoals);
-            competitionEntryRepository.save(homeEntry);
         }
 
         CompetitionEntry awayEntry = competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, match.getAwayTeam()).orElse(null);
@@ -233,7 +242,17 @@ public class RuntimeSaveToDB {
             awayEntry.setPoints(awayEntry.getPoints() + points);
             awayEntry.setGoalsScored(awayEntry.getGoalsScored() + rt.awayGoals);
             awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + rt.homeGoals);
-            competitionEntryRepository.save(awayEntry);
+        }
+
+        List<CompetitionEntry> entriesToSave = new ArrayList<>(2);
+        if (homeEntry != null) {
+            entriesToSave.add(homeEntry);
+        }
+        if (awayEntry != null) {
+            entriesToSave.add(awayEntry);
+        }
+        if (!entriesToSave.isEmpty()) {
+            competitionEntryRepository.saveAll(entriesToSave);
         }
     }
 

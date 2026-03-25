@@ -771,7 +771,9 @@ function describeReplayMinutePacing(rate) {
     if (!Number.isFinite(rate) || rate <= 0) {
         return '10s';
     }
-    const secondsPerMinute = 10 / rate;
+    const ticksPerMinute = Number(replayMetadata?.ticksPerMinute ?? replayMetadata?.ticks_per_minute ?? 12);
+    const tickDurationMs = Number(replayMetadata?.tickDurationMs ?? replayMetadata?.tick_duration_ms ?? 620);
+    const secondsPerMinute = ((ticksPerMinute * tickDurationMs) / 1000) / rate;
     return `${(Math.round(secondsPerMinute * 10) / 10).toFixed(1)}s`;
 }
 
@@ -889,6 +891,9 @@ function rollbackGoalFromVar(event) {
     }
 }
 function renderEvent(event) {
+    if (normalize(event?.displayCategory) === 'micro') {
+        return;
+    }
     const eventsList = document.getElementById('events-list');
     const loading = eventsList.querySelector('.loading');
     if (loading) loading.remove();

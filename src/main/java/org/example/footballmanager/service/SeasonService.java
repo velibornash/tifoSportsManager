@@ -71,6 +71,12 @@ public class SeasonService {
         return getOrCreateClock().getCurrentWeek();
     }
 
+    public int countRemainingFixturesForWeek(Long leagueId, int seasonYear, int currentWeek) {
+        return matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
+                leagueId, seasonYear, currentWeek
+        ).size();
+    }
+
     @Transactional
     public Season ensureActiveSeasonEntity() {
         int year = getActiveSeasonYear();
@@ -105,6 +111,7 @@ public class SeasonService {
         List<Team> currentLeagueTeams = teamRepository.findAll().stream()
                 .filter(t -> t.getCompetition() != null && Objects.equals(t.getCompetition().getId(), competition.getId()))
                 .toList();
+        List<CompetitionEntry> entriesToCreate = new ArrayList<>(currentLeagueTeams.size());
         for (Team t : currentLeagueTeams) {
             CompetitionEntry entry = new CompetitionEntry();
             entry.setSeasonCompetition(sc);
@@ -115,7 +122,10 @@ public class SeasonService {
             entry.setWins(0);
             entry.setDraws(0);
             entry.setLosses(0);
-            competitionEntryRepository.save(entry);
+            entriesToCreate.add(entry);
+        }
+        if (!entriesToCreate.isEmpty()) {
+            competitionEntryRepository.saveAll(entriesToCreate);
         }
     }
 
@@ -360,7 +370,9 @@ public class SeasonService {
             e.setWins(0);
             e.setDraws(0);
             e.setLosses(0);
-            competitionEntryRepository.save(e);
+        }
+        if (!entries.isEmpty()) {
+            competitionEntryRepository.saveAll(entries);
         }
     }
 

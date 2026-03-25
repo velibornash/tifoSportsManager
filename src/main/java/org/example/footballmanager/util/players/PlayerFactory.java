@@ -26,6 +26,14 @@ public class PlayerFactory {
      */
     public List<Player> createOmladinacPlayers(Team team) {
         List<Player> players = new ArrayList<>();
+        Map<String, Player> existingByName = playerRepository.findByTeam(team).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Player::getName,
+                        player -> player,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        List<Player> missingPlayers = new ArrayList<>();
 
         // Podaci o igračima Omladinca (ime, pozicija, godine, itd.)
         Object[][] data = {
@@ -65,18 +73,20 @@ public class PlayerFactory {
             int squadNumber = (int) row[17];
 
             // === KLJUČNA LOGIKA: FIND OR CREATE ===
-            Player player = playerRepository.findByNameAndTeam(name, team)
-                    .orElseGet(() -> {
-                        Player newPlayer = createPlayer(name, age, team, value, earnings,
-                                height, weight, form, 10, stamina, keeper, defender,
-                                pace, technique, playmaker, passing, striker, position, squadNumber);
-
-                        Player saved = playerRepository.save(newPlayer);
-                        System.out.println("→ Kreiran novi igrač u bazi: " + name);
-                        return saved;
-                    });
+            Player player = existingByName.get(name);
+            if (player == null) {
+                player = createPlayer(name, age, team, value, earnings,
+                        height, weight, form, 10, stamina, keeper, defender,
+                        pace, technique, playmaker, passing, striker, position, squadNumber);
+                missingPlayers.add(player);
+                existingByName.put(name, player);
+            }
 
             players.add(player);
+        }
+
+        if (!missingPlayers.isEmpty()) {
+            playerRepository.saveAll(missingPlayers);
         }
 
         System.out.println("Omladinac igrači učitani/kreirani: " + players.size());
@@ -123,9 +133,10 @@ public class PlayerFactory {
                     position, null
             );
 
-            Player saved = playerRepository.save(newPlayer);
-            players.add(saved);
+            players.add(newPlayer);
         }
+
+        playerRepository.saveAll(players);
 
         System.out.println("→ Kreirani random igrači za tim: " + teamName);
         return players;

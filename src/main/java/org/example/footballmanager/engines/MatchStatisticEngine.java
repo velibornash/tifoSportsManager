@@ -52,14 +52,34 @@ public class MatchStatisticEngine {
                                 List<YellowCardEvent> allYellows,
                                 List<RedCardEvent> allReds,
                                 Map<Long, Integer> minutesByPlayerId) {
+        savePlayerStats(match, players, allGoals, allYellows, allReds, minutesByPlayerId, null);
+    }
+
+    public void savePlayerStats(Match match,
+                                List<Player> players,
+                                List<GoalEvent> allGoals,
+                                List<YellowCardEvent> allYellows,
+                                List<RedCardEvent> allReds,
+                                Map<Long, Integer> minutesByPlayerId,
+                                List<MatchEvent> preloadedMatchEvents) {
         if (players == null || players.isEmpty()) {
             return;
         }
 
         Team team = players.stream().findFirst().map(Player::getTeam).orElse(null);
-        List<MatchEvent> matchEvents = matchEventRepository.findByMatch(match);
+        List<MatchEvent> matchEvents = preloadedMatchEvents != null ? preloadedMatchEvents : matchEventRepository.findByMatch(match);
         Map<Long, Integer> interceptionsByPlayerId = buildInterceptionsByPlayer(matchEvents);
         Map<Long, Integer> shotsOnTargetByTeamId = buildShotsOnTargetByTeam(matchEvents);
+        Map<Long, MatchPlayerStats> existingStatsByPlayerId = Optional.ofNullable(matchPlayerStatsRepository.findByMatchId(match.getId()))
+                .orElseGet(List::of)
+                .stream()
+                .filter(stats -> stats.getPlayer() != null && stats.getPlayer().getId() != null)
+                .collect(Collectors.toMap(
+                        stats -> stats.getPlayer().getId(),
+                        stats -> stats,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
         Map<Long, Integer> goalkeeperMinutes = players.stream()
                 .filter(player -> player.getPositionEnum() == Position.GK)
                 .collect(Collectors.toMap(
@@ -84,6 +104,7 @@ public class MatchStatisticEngine {
         Long opponentTeamId = resolveOpponentTeamId(match, teamId);
         int opponentShotsOnTarget = opponentTeamId == null ? 0 : shotsOnTargetByTeamId.getOrDefault(opponentTeamId, 0);
         int totalGoalkeeperMinutes = goalkeeperMinutes.values().stream().mapToInt(Integer::intValue).sum();
+        List<MatchPlayerStats> statsToSave = new ArrayList<>(players.size());
 
         for (Player player : players) {
             long goals = allGoals.stream()
@@ -116,8 +137,7 @@ public class MatchStatisticEngine {
 
             player.setRating(calculatedRating);
 
-            MatchPlayerStats stats = Optional.ofNullable(matchPlayerStatsRepository.findByMatchAndPlayer(match, player))
-                    .orElseGet(MatchPlayerStats::new);
+            MatchPlayerStats stats = existingStatsByPlayerId.getOrDefault(player.getId(), new MatchPlayerStats());
             stats.setMatch(match);
             stats.setPlayer(player);
             stats.setGoals((int) goals);
@@ -129,7 +149,11 @@ public class MatchStatisticEngine {
             stats.setSaves(saves);
             stats.setCleanSheet(cleanSheet);
             stats.setRating(calculatedRating);
-            matchPlayerStatsRepository.save(stats);
+            statsToSave.add(stats);
+        }
+
+        if (!statsToSave.isEmpty()) {
+            matchPlayerStatsRepository.saveAll(statsToSave);
         }
     }
     public String generateMatchReport(Match match, MatchRuntime rt, List<Player> homePlayers, List<Player> awayPlayers) {
@@ -534,4 +558,3 @@ public class MatchStatisticEngine {
         return Math.max(0, (int) Math.round(totalSaves * share));
     }
 }
-

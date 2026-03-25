@@ -273,8 +273,7 @@ public class TransferService {
         buyerTeam.setBudget(round2(buyerBudget - price));
         double sellerBudget = sellerTeam.getBudget() == null ? 0.0 : sellerTeam.getBudget();
         sellerTeam.setBudget(round2(sellerBudget + price));
-        teamRepository.save(sellerTeam);
-        teamRepository.save(buyerTeam);
+        teamRepository.saveAll(List.of(sellerTeam, buyerTeam));
 
         player.setTeam(buyerTeam);
         player.setSquadNumber(squadNumberAssigner.nextNumberForTeam(buyerTeam, player.getPosition()));

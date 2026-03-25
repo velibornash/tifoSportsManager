@@ -90,6 +90,22 @@
             box-shadow: 0 20px 36px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
         }
 
+        .mobile-rotate-hint {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            padding: 8px 12px;
+            width: min(100%, 420px);
+            border-radius: 999px;
+            background: rgba(10, 22, 34, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.84);
+            font-size: 0.75em;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
         #players-container {
             position: absolute;
             inset: 0;
@@ -1065,24 +1081,29 @@
             }
 
             .player {
-                width: 54px;
-                height: 54px;
+                width: 40px;
+                height: 40px;
             }
 
             .player-marker {
-                width: 30px;
-                height: 30px;
-                font-size: 0.72em;
+                width: 22px;
+                height: 22px;
+                border-width: 2px;
+                font-size: 0.62em;
             }
 
             .player-label {
-                top: 34px;
-                max-width: 80px;
-                font-size: 0.56em;
+                display: none;
             }
 
             .pitch {
-                aspect-ratio: 80 / 64;
+                aspect-ratio: 100 / 60;
+            }
+
+            .ball {
+                width: 12px;
+                height: 12px;
+                border-width: 1.5px;
             }
 
             .playback-toolbar {
@@ -1118,6 +1139,125 @@
 
             .events-panel {
                 max-height: 420px;
+            }
+        }
+
+        @media (max-width: 932px) and (orientation: landscape) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 14px;
+            }
+
+            .playback-stage {
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                grid-template-areas:
+                    "main main"
+                    "home away";
+            }
+
+            .pitch {
+                max-width: min(100%, 760px);
+            }
+
+            .pitch-side-squad {
+                position: static;
+                max-height: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 10px;
+                border-radius: 12px;
+            }
+
+            .match-info {
+                padding: 14px 12px;
+            }
+
+            .minute-display {
+                font-size: 1.55em;
+                margin-bottom: 12px;
+            }
+
+            .score {
+                font-size: 2.1em;
+            }
+
+            .team-name {
+                font-size: 1.15em;
+            }
+
+            .pitch {
+                max-width: 100%;
+                aspect-ratio: 100 / 56;
+                border-radius: 14px;
+            }
+
+            .player {
+                width: 30px;
+                height: 30px;
+            }
+
+            .player-marker {
+                width: 18px;
+                height: 18px;
+                font-size: 0.54em;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.28);
+            }
+
+            .player.carrier .player-marker {
+                box-shadow: 0 0 0 3px rgba(255, 214, 74, 0.22), 0 0 12px rgba(255, 214, 74, 0.42);
+            }
+
+            .ball {
+                width: 10px;
+                height: 10px;
+            }
+
+            .goal-celebration {
+                width: 90px;
+                height: 62px;
+            }
+
+            .pitch-event-stamp {
+                width: 54px;
+                height: 54px;
+            }
+
+            .pitch-event-banner {
+                top: 8px;
+                padding: 6px 10px;
+                font-size: 0.72em;
+                max-width: min(92%, 320px);
+            }
+
+            .playback-toolbar,
+            .timeline-card,
+            .panel-card,
+            .squad-panel {
+                padding: 12px;
+            }
+
+            .controls {
+                margin-top: 14px;
+            }
+
+            .btn {
+                padding: 10px 18px;
+            }
+        }
+
+        @media (max-width: 480px) and (orientation: portrait) {
+            .mobile-rotate-hint {
+                display: flex;
             }
         }
     </style>
@@ -1192,6 +1332,7 @@
 
                 <div class="playback-main">
                     <div class="minute-display" id="minute">0'</div>
+                    <div class="mobile-rotate-hint">Rotate to landscape for a wider match view</div>
 
                     <div class="pitch">
                         <canvas class="pitch-overlay" id="pitch-overlay"></canvas>
@@ -1286,4 +1427,3 @@
     <script type="module" src="/js/realisticDemo.js"></script>
 </body>
 </html>
-

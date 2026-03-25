@@ -1379,8 +1379,7 @@ public class MatchEngine {
         awayEntry.setDraws((awayEntry.getDraws() != null ? awayEntry.getDraws() : 0) + (awayGoals == homeGoals ? 1 : 0));
         awayEntry.setLosses((awayEntry.getLosses() != null ? awayEntry.getLosses() : 0) + (awayGoals < homeGoals ? 1 : 0));
 
-        competitionEntryRepository.save(homeEntry);
-        competitionEntryRepository.save(awayEntry);
+        competitionEntryRepository.saveAll(List.of(homeEntry, awayEntry));
 
         log.info("Simulated match: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
                 home.getName(), homeGoals, awayGoals, away.getName(),
@@ -1508,8 +1507,7 @@ public class MatchEngine {
         awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
         awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
 
-        competitionEntryRepository.save(homeEntry);
-        competitionEntryRepository.save(awayEntry);
+        competitionEntryRepository.saveAll(List.of(homeEntry, awayEntry));
 
         log.info("Simulated match: {} {}:{} {} | Home W/D/L: {}/{}/{} | Away W/D/L: {}/{}/{}",
                 home.getName(), homeGoals, awayGoals, away.getName(),

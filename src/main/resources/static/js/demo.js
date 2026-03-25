@@ -2,8 +2,12 @@
 import { authFetch } from './auth.js';
 
 let currentUserTeamId = null;
+let roundSimulationPollTimer = null;
+let advanceWeekPollTimer = null;
 
 const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
+const DASHBOARD_ROUND_SIM_JOB_KEY = 'dashboardRoundSimulationJob';
+const DASHBOARD_ADVANCE_WEEK_JOB_KEY = 'dashboardAdvanceWeekJob';
 
 function resetButton(button, label) {
     if (!button) return;
@@ -126,6 +130,58 @@ function persistDashboardFlowFlash(message, tone = 'info') {
     }
 }
 
+function persistRoundSimulationJob(jobId) {
+    if (!jobId) return;
+    try {
+        sessionStorage.setItem(DASHBOARD_ROUND_SIM_JOB_KEY, jobId);
+    } catch (err) {
+        console.warn('Failed to persist round simulation job:', err);
+    }
+}
+
+function clearRoundSimulationJob() {
+    try {
+        sessionStorage.removeItem(DASHBOARD_ROUND_SIM_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to clear round simulation job:', err);
+    }
+}
+
+function hasPersistedRoundSimulationJob() {
+    try {
+        return !!sessionStorage.getItem(DASHBOARD_ROUND_SIM_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to read round simulation job:', err);
+        return false;
+    }
+}
+
+function persistAdvanceWeekJob(jobId) {
+    if (!jobId) return;
+    try {
+        sessionStorage.setItem(DASHBOARD_ADVANCE_WEEK_JOB_KEY, jobId);
+    } catch (err) {
+        console.warn('Failed to persist advance week job:', err);
+    }
+}
+
+function clearAdvanceWeekJob() {
+    try {
+        sessionStorage.removeItem(DASHBOARD_ADVANCE_WEEK_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to clear advance week job:', err);
+    }
+}
+
+function hasPersistedAdvanceWeekJob() {
+    try {
+        return !!sessionStorage.getItem(DASHBOARD_ADVANCE_WEEK_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to read advance week job:', err);
+        return false;
+    }
+}
+
 function setSeasonFlowStatus(message, tone = 'info', options = {}) {
     const host = document.getElementById('dashboard-season-flow-status');
     if (host) {
@@ -203,20 +259,58 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
     }
 
     if (action === 'ROUND_SIMULATED') {
+        stopRoundSimulationPolling();
+        clearRoundSimulationJob();
         resetButton(button, defaultLabel);
         setSeasonFlowStatus(data.message || 'Other fixtures for the current round were simulated.', 'success');
         showRoundSimulationSummary(data);
         return;
     }
 
+    if (action === 'ROUND_SIMULATION_RUNNING') {
+        persistRoundSimulationJob(data.jobId);
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Simulation running...';
+        }
+        const processed = Number(data?.processedLeagues || 0);
+        const total = Number(data?.leaguesProcessed || 0);
+        const leagueLabel = data?.currentLeague ? ` ${data.currentLeague}` : '';
+        const progressLabel = total > 0 ? ` (${processed}/${total})` : '';
+        setSeasonFlowStatus(data.message || `Simulating other fixtures in background${leagueLabel}${progressLabel}.`, 'info');
+        return;
+    }
+
+    if (action === 'ROUND_SIMULATION_FAILED') {
+        stopRoundSimulationPolling();
+        clearRoundSimulationJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Background round simulation failed.', 'error');
+        return;
+    }
+
     if (action === 'ROUND_NOT_COMPLETE') {
+        stopAdvanceWeekPolling();
+        clearAdvanceWeekJob();
         resetButton(button, defaultLabel);
         const remaining = Number(data?.remainingFixtures || 0);
         setSeasonFlowStatus(data.message || `Current round still has ${remaining} unfinished fixture${remaining === 1 ? '' : 's'}.`, 'warning');
         return;
     }
 
+    if (action === 'WEEK_ADVANCE_RUNNING') {
+        persistAdvanceWeekJob(data.jobId);
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Advancing week...';
+        }
+        setSeasonFlowStatus(data.message || 'Advancing week in the background.', 'info');
+        return;
+    }
+
     if (action === 'WEEK_ADVANCED') {
+        stopAdvanceWeekPolling();
+        clearAdvanceWeekJob();
         const message = data.message || 'Calendar advanced to the next week.';
         setSeasonFlowStatus(message, 'success', { persist: true });
         const shouldRefreshDashboard = !!button?.closest('.fm-dashboard-view') && typeof window.loadDashboard === 'function';
@@ -228,10 +322,95 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
         return;
     }
 
+    if (action === 'WEEK_ADVANCE_FAILED') {
+        stopAdvanceWeekPolling();
+        clearAdvanceWeekJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Advance week failed.', 'error');
+        return;
+    }
+
     resetButton(button, defaultLabel);
     if (data?.message) {
         setSeasonFlowStatus(data.message, 'info');
     }
+}
+
+function stopRoundSimulationPolling() {
+    if (roundSimulationPollTimer) {
+        window.clearInterval(roundSimulationPollTimer);
+        roundSimulationPollTimer = null;
+    }
+}
+
+async function pollRoundSimulationStatus(buttonId, fallbackLabel) {
+    const button = buttonId ? document.getElementById(buttonId) : null;
+    const defaultLabel = getButtonDefaultLabel(button, fallbackLabel || '🧮 Simulate Other Results');
+
+    try {
+        const response = await authFetch('/simulation/current-round/status');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+            throw new Error(data?.message || data?.error || 'Failed to fetch round simulation status.');
+        }
+
+        if (data.action === 'ROUND_SIMULATION_RUNNING') {
+            handleSeasonFlowResponse(data, button, defaultLabel);
+            return;
+        }
+
+        handleSeasonFlowResponse(data, button, defaultLabel);
+    } catch (error) {
+        console.error('Failed to poll round simulation status:', error);
+        stopRoundSimulationPolling();
+        clearRoundSimulationJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(error.message || 'Failed to fetch round simulation status.', 'error');
+    }
+}
+
+function startRoundSimulationPolling(buttonId, fallbackLabel) {
+    stopRoundSimulationPolling();
+    pollRoundSimulationStatus(buttonId, fallbackLabel);
+    roundSimulationPollTimer = window.setInterval(() => {
+        pollRoundSimulationStatus(buttonId, fallbackLabel);
+    }, 1500);
+}
+
+function stopAdvanceWeekPolling() {
+    if (advanceWeekPollTimer) {
+        window.clearInterval(advanceWeekPollTimer);
+        advanceWeekPollTimer = null;
+    }
+}
+
+async function pollAdvanceWeekStatus(buttonId, fallbackLabel) {
+    const button = buttonId ? document.getElementById(buttonId) : null;
+    const defaultLabel = getButtonDefaultLabel(button, fallbackLabel || '📅 Advance Week');
+
+    try {
+        const response = await authFetch('/simulation/week/advance/status');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+            throw new Error(data?.message || data?.error || 'Failed to fetch week advance status.');
+        }
+
+        handleSeasonFlowResponse(data, button, defaultLabel);
+    } catch (error) {
+        console.error('Failed to poll advance week status:', error);
+        stopAdvanceWeekPolling();
+        clearAdvanceWeekJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(error.message || 'Failed to fetch week advance status.', 'error');
+    }
+}
+
+function startAdvanceWeekPolling(buttonId, fallbackLabel) {
+    stopAdvanceWeekPolling();
+    pollAdvanceWeekStatus(buttonId, fallbackLabel);
+    advanceWeekPollTimer = window.setInterval(() => {
+        pollAdvanceWeekStatus(buttonId, fallbackLabel);
+    }, 1500);
 }
 
 async function runSeasonFlowAction(buttonId, requestUrl, loadingLabel, fallbackLabel, requestOptions = {}) {
@@ -254,6 +433,11 @@ async function runSeasonFlowAction(buttonId, requestUrl, loadingLabel, fallbackL
         }
 
         handleSeasonFlowResponse(data || {}, button, defaultLabel);
+        if (data?.action === 'ROUND_SIMULATION_RUNNING') {
+            startRoundSimulationPolling(buttonId, fallbackLabel);
+        } else if (data?.action === 'WEEK_ADVANCE_RUNNING') {
+            startAdvanceWeekPolling(buttonId, fallbackLabel);
+        }
     } catch (error) {
         console.error(`Failed season flow action for ${requestUrl}:`, error);
         resetButton(button, defaultLabel);
@@ -276,61 +460,14 @@ window.addEventListener('load', async () => {
     } catch (err) {
         console.error('Failed to load /auth/me:', err);
     }
+
+    if (hasPersistedRoundSimulationJob()) {
+        startRoundSimulationPolling('simulate-current-round-btn', '🧮 Simulate Other Results');
+    }
+    if (hasPersistedAdvanceWeekJob()) {
+        startAdvanceWeekPolling('advance-week-btn', '📅 Advance Week');
+    }
 });
-
-async function startDemoTest() {
-    const button = document.getElementById('start-demo-btn');
-    if (!button) {
-        console.error('Start demo button not found');
-        return;
-    }
-
-    button.disabled = true;
-    button.textContent = 'Starting demo simulation...';
-
-    try {
-        const response = await authFetch('/start-demo');
-        if (!response.ok) throw new Error('Server error');
-
-        const data = await response.json();
-        const matchId = data.matchId;
-        if (!matchId) throw new Error('Missing matchId in response');
-
-        window.location.href = `/demo.html?matchId=${matchId}`;
-    } catch (error) {
-        console.error('Failed to start demo:', error);
-        alert('Failed to start demo simulation.');
-        button.disabled = false;
-        button.textContent = 'Simulate Next Round';
-    }
-}
-
-async function startKeyEventsTest() {
-    const button = document.getElementById('start-key-events-btn');
-    if (!button) {
-        console.error('Key events button not found');
-        return;
-    }
-
-    button.disabled = true;
-    button.textContent = 'Preparing key events...';
-
-    try {
-        const response = await authFetch('/start-demo-key-events');
-        if (!response.ok) throw new Error('Server error');
-
-        const data = await response.json();
-        const matchId = data.matchId;
-        if (!matchId) throw new Error('Missing matchId in response');
-
-        window.location.href = `/key-events.html?matchId=${matchId}`;
-    } catch (error) {
-        console.error('Failed to start key events simulation:', error);
-        alert('Failed to start key events simulation.');
-        button.disabled = false;
-        button.textContent = 'Simulate Key Events';
-    }
-}
 
 async function startRealisticDemoTest() {
     await runSeasonFlowAction(
@@ -361,8 +498,6 @@ async function advanceWeekTest() {
     );
 }
 
-window.startDemoTest = startDemoTest;
-window.startKeyEventsTest = startKeyEventsTest;
 window.startRealisticDemoTest = startRealisticDemoTest;
 window.simulateCurrentRoundTest = simulateCurrentRoundTest;
 window.advanceWeekTest = advanceWeekTest;

@@ -78,6 +78,7 @@ public class TrainingProgressionService {
                 .collect(Collectors.toMap(AdvancedAssignmentDTO::getPlayerId, a -> normalizeRole(a.getRole()), (a, b) -> a));
 
         List<Player> players = playerRepository.findByTeamId(teamId);
+        List<Player> updatedPlayers = new ArrayList<>(players.size());
         TrainingWeekReportDTO report = new TrainingWeekReportDTO();
         report.setTeamId(teamId);
         report.setSeasonNumber(season);
@@ -95,7 +96,7 @@ public class TrainingProgressionService {
             applyWeeklyGrowth(player, skills, directSkill, advanced, season, week);
             skills.syncVisibleFromExact();
             player.setSkills(skills);
-            playerRepository.save(player);
+            updatedPlayers.add(player);
             Map<SkillName, Double> after = snapshotSkills(skills);
 
             PlayerTrainingReportDTO playerRow = new PlayerTrainingReportDTO();
@@ -106,6 +107,10 @@ public class TrainingProgressionService {
             playerRow.setAdvancedTraining(advanced);
             playerRow.setSkills(buildSkillDeltas(before, after));
             report.getPlayers().add(playerRow);
+        }
+
+        if (!updatedPlayers.isEmpty()) {
+            playerRepository.saveAll(updatedPlayers);
         }
 
         TrainingWeekReport dbReport = trainingWeekReportRepository
