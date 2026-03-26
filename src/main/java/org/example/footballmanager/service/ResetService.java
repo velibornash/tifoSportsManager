@@ -25,6 +25,10 @@ public class ResetService {
         dropLegacyColumnIfExists("lineup_substitutes", "bench_order");
     }
 
+    /**
+     * Full reset: clears everything and rebuilds from scratch (used by initialize-db).
+     * Preserves only the owner account row during truncation.
+     */
     @Transactional
     public void resetDatabase() {
         log.warn("RESET DATABASE STARTED - preserving owner account and resetting football data");
@@ -55,36 +59,12 @@ public class ResetService {
                 "season",
                 "country",
                 "game_clock",
-                "app_user",
                 "user"
         );
 
-        List<String> existing = entityManager.createNativeQuery("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                """).getResultList();
+        truncateTables(desiredOrder);
 
-        List<String> existingNormalized = existing.stream()
-                .map(String::valueOf)
-                .map(String::toLowerCase)
-                .toList();
-
-        List<String> toTruncate = new ArrayList<>();
-        for (String t : desiredOrder) {
-            if (existingNormalized.contains(t.toLowerCase())) {
-                if ("match".equals(t) || "user".equals(t)) {
-                    toTruncate.add("\"" + t + "\"");
-                } else {
-                    toTruncate.add(t);
-                }
-            }
-        }
-
-        for (String tableName : toTruncate) {
-            entityManager.createNativeQuery("TRUNCATE TABLE " + tableName + " RESTART IDENTITY").executeUpdate();
-        }
-
+        List<String> existingNormalized = getExistingTableNames();
         if (existingNormalized.contains("app_user")) {
             entityManager.createNativeQuery("""
                     DELETE FROM app_user
@@ -96,18 +76,53 @@ public class ResetService {
         log.warn("RESET DATABASE FINISHED - football data cleared, owner account preserved");
     }
 
+    /**
+     * Soft reset: clears only match/season/player/team data.
+     * Preserves: all users (app_user, user), tactics profiles, countries, game_clock.
+     */
+    @Transactional
+    public void resetFootballDataOnly() {
+        log.warn("SOFT RESET STARTED - preserving users, tactics profiles, countries and game clock");
+        sanitizeLegacyLineupOrderSchema();
+
+        List<String> desiredOrder = List.of(
+                "community_message",
+                "registration_request",
+                "training_week_report",
+                "team_training_setup",
+                "training",
+                "match_tick_states",
+                "match_player_stats",
+                "match_event",
+                "lineup_starting_players",
+                "lineup_substitutes",
+                "lineup",
+                "match_fixture",
+                "match",
+                "promotion_rule",
+                "competition_entry",
+                "season_competition",
+                "junior",
+                "player",
+                "team",
+                "competition",
+                "season"
+                // deliberately excluded: team_tactics_profile, app_user, user, country, game_clock
+        );
+
+        truncateTables(desiredOrder);
+
+        // Detach all users from their teams (teams are gone after reset)
+        List<String> existingNormalized = getExistingTableNames();
+        if (existingNormalized.contains("app_user")) {
+            entityManager.createNativeQuery("UPDATE app_user SET team_id = NULL").executeUpdate();
+        }
+
+        log.warn("SOFT RESET FINISHED - users, tactics profiles and base structure preserved");
+    }
+
     private void preserveOwnerAccount() {
-        List<String> existing = entityManager.createNativeQuery("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                """).getResultList();
-
-        List<String> existingNormalized = existing.stream()
-                .map(String::valueOf)
-                .map(String::toLowerCase)
-                .toList();
-
+        List<String> existingNormalized = getExistingTableNames();
         if (existingNormalized.contains("app_user")) {
             entityManager.createNativeQuery("""
                     UPDATE app_user
@@ -115,6 +130,35 @@ public class ResetService {
                     WHERE lower(coalesce(username, '')) = 'velibor@example.com'
                        OR lower(coalesce(email, '')) = 'velibor@example.com'
                     """).executeUpdate();
+        }
+    }
+
+    private List<String> getExistingTableNames() {
+        List<String> existing = entityManager.createNativeQuery("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                """).getResultList();
+        return existing.stream()
+                .map(String::valueOf)
+                .map(String::toLowerCase)
+                .toList();
+    }
+
+    private void truncateTables(List<String> desiredOrder) {
+        List<String> existingNormalized = getExistingTableNames();
+        List<String> toTruncate = new ArrayList<>();
+        for (String t : desiredOrder) {
+            if (existingNormalized.contains(t.toLowerCase())) {
+                if ("match".equals(t) || "user".equals(t)) {
+                    toTruncate.add("\"" + t + "\"");
+                } else {
+                    toTruncate.add(t);
+                }
+            }
+        }
+        for (String tableName : toTruncate) {
+            entityManager.createNativeQuery("TRUNCATE TABLE " + tableName + " RESTART IDENTITY CASCADE").executeUpdate();
         }
     }
 

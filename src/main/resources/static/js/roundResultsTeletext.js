@@ -7,7 +7,8 @@ const state = {
     matchStates: new Map(),
     feedItems: [],
     lastClockTick: 0,
-    visibleLeagueKeys: new Set()
+    visibleLeagueKeys: new Set(),
+    filtersCollapsed: false
 };
 
 window.addEventListener('load', async () => {
@@ -99,16 +100,23 @@ function bootstrapLeagueFilters(data) {
     const leagues = getOrderedLeagues(data.leagues || []);
     const userLeague = leagues.find(league => league.userLeague);
     state.visibleLeagueKeys = new Set(userLeague ? [leagueKey(userLeague)] : leagues.slice(0, 1).map(league => leagueKey(league)));
+    state.filtersCollapsed = window.matchMedia('(max-width: 920px)').matches;
     ensureVisibleLeagueSelection(leagues);
     bindLeagueFilterActions(leagues);
     renderLeagueFilters(leagues);
 }
 
 function bindLeagueFilterActions(leagues) {
+    document.getElementById('ttFilterToggleBtn')?.addEventListener('click', () => {
+        state.filtersCollapsed = !state.filtersCollapsed;
+        syncFilterPanelState();
+    });
+
     document.getElementById('ttSelectAllBtn')?.addEventListener('click', () => {
         state.visibleLeagueKeys = new Set(leagues.map(league => leagueKey(league)));
         renderLeagueFilters(leagues);
         renderBoard();
+        renderFeed();
     });
 
     document.getElementById('ttDeselectAllBtn')?.addEventListener('click', () => {
@@ -117,6 +125,7 @@ function bindLeagueFilterActions(leagues) {
         ensureVisibleLeagueSelection(leagues);
         renderLeagueFilters(leagues);
         renderBoard();
+        renderFeed();
     });
 }
 
@@ -124,6 +133,12 @@ function renderLeagueFilters(leagues) {
     const host = document.getElementById('ttFilterList');
     if (!host) return;
     ensureVisibleLeagueSelection(leagues);
+    syncFilterPanelState();
+    const selectedCount = leagues.filter(league => state.visibleLeagueKeys.has(leagueKey(league))).length;
+    const summary = document.getElementById('ttFilterSummary');
+    if (summary) {
+        summary.textContent = `${selectedCount}/${leagues.length || 0} leagues shown`;
+    }
     host.innerHTML = leagues.map(league => {
         const checked = state.visibleLeagueKeys.has(leagueKey(league)) ? 'checked' : '';
         const badge = league.userLeague ? 'YOUR' : `${(league.matches || []).length}M`;
@@ -149,8 +164,12 @@ function renderLeagueFilters(leagues) {
             }
             ensureVisibleLeagueSelection(leagues);
             renderBoard();
+            renderFeed();
+            updateFilterSummary(leagues);
         });
     });
+
+    updateFilterSummary(leagues);
 }
 
 function animate(now = 0) {
@@ -180,7 +199,7 @@ function animate(now = 0) {
                 tracker.awayGoals = Number(incident.awayGoals || tracker.awayGoals || 0);
                 tracker.flashUntil = performance.now() + 2600;
                 tracker.lastScoringSide = resolveScoringSide(match, incident);
-                pushFeedItem(match, incident);
+                pushFeedItem(league, match, incident);
                 tracker.eventIndex += 1;
                 changed = true;
             }
@@ -256,14 +275,18 @@ function renderMatchRow(match) {
 function renderFeed() {
     const host = document.getElementById('ttFeed');
     if (!host) return;
-    if (!state.feedItems.length) {
-        host.innerHTML = '<div class="tt-feed-item">Watching the service desk for the first change...</div>';
+    const filteredItems = state.feedItems.filter(item => state.visibleLeagueKeys.has(item.leagueKey));
+    if (!filteredItems.length) {
+        host.innerHTML = state.feedItems.length
+            ? '<div class="tt-feed-item">No service messages for the selected leagues yet.</div>'
+            : '<div class="tt-feed-item">Watching the service desk for the first change...</div>';
         return;
     }
-    host.innerHTML = state.feedItems.slice(0, 18).map(item => `
+    host.innerHTML = filteredItems.slice(0, 18).map(item => `
         <div class="tt-feed-item">
             <span class="tt-feed-time">${escapeHtml(item.minute)}'</span>
             <span class="tt-feed-code">${escapeHtml(item.code)}</span>
+            <span class="tt-feed-icon" aria-hidden="true">${escapeHtml(item.icon || '•')}</span>
             ${escapeHtml(item.line)}
         </div>
     `).join('');
@@ -280,14 +303,53 @@ function refreshFlashState() {
     });
 }
 
-function pushFeedItem(match, incident) {
+function pushFeedItem(league, match, incident) {
     const score = `${incident.homeGoals || 0}-${incident.awayGoals || 0}`;
     const player = incident.playerName ? ` ${incident.playerName}` : '';
     state.feedItems.unshift({
         minute: Number(incident.minute || 0),
         code: incident.code || 'INFO',
+        icon: feedIconForCode(incident.code),
+        leagueKey: leagueKey(league),
         line: `${match.homeTeam} ${score} ${match.awayTeam}${player ? ` // ${player}` : ''}`
     });
+}
+
+function feedIconForCode(code) {
+    switch (String(code || '').toUpperCase()) {
+        case 'GOAL':
+            return '⚽';
+        case 'PEN':
+            return '◎';
+        case 'RC':
+            return '🟥';
+        case 'YC':
+            return '🟨';
+        case 'VAR':
+            return '📺';
+        case 'SUB':
+            return '⇄';
+        case 'INJ':
+            return '✚';
+        default:
+            return '•';
+    }
+}
+
+function syncFilterPanelState() {
+    const panel = document.getElementById('ttFiltersPanel');
+    const toggle = document.getElementById('ttFilterToggleBtn');
+    if (!panel || !toggle) return;
+    panel.classList.toggle('collapsed', state.filtersCollapsed);
+    toggle.setAttribute('aria-expanded', String(!state.filtersCollapsed));
+    toggle.textContent = state.filtersCollapsed ? 'Show filters' : 'Hide filters';
+}
+
+function updateFilterSummary(leagues) {
+    const summary = document.getElementById('ttFilterSummary');
+    if (!summary) return;
+    const selectedCount = (leagues || []).filter(league => state.visibleLeagueKeys.has(leagueKey(league))).length;
+    summary.textContent = `${selectedCount}/${(leagues || []).length} leagues shown`;
 }
 
 function deriveMinute(elapsedMs) {

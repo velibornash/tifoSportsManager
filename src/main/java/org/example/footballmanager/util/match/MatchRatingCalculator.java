@@ -55,10 +55,8 @@ public class MatchRatingCalculator {
         double skillScore = player.getSkills().getRatingScore(pos);
         double maxScore = getMaxScore(pos);
         double normalizedSkill = Math.max(0.0, Math.min(1.0, skillScore / maxScore));
-        double minuteFactor = Math.max(0.45, Math.min(1.0, minutesPlayed / 90.0));
-
-        double base = 48.0 + normalizedSkill * 18.0 + (player.getForm() - 6.0) * 1.5;
-        base *= minuteFactor;
+        double base = 54.0 + normalizedSkill * 14.0 + (player.getForm() - 6.0) * 1.2;
+        double participationModifier = participationModifier(minutesPlayed);
 
         double attackingContribution = goals * 11.0 + assists * 6.5;
         if (goals >= 3) {
@@ -84,10 +82,20 @@ public class MatchRatingCalculator {
         }
 
         double disciplinePenalty = yellowCards * 3.5 + redCards * 12.0;
-        double rating = base + attackingContribution + defensiveContribution + teamResultModifier - disciplinePenalty;
+        double rating = base + participationModifier + attackingContribution + defensiveContribution + teamResultModifier - disciplinePenalty;
         rating = Math.max(10, Math.min(100, rating));
 
         return (int) Math.round(rating);
+    }
+
+    private static double participationModifier(int minutesPlayed) {
+        if (minutesPlayed >= 75) return 0.8;
+        if (minutesPlayed >= 60) return 0.4;
+        if (minutesPlayed >= 45) return 0.0;
+        if (minutesPlayed >= 25) return -0.8;
+        if (minutesPlayed >= 10) return -1.6;
+        if (minutesPlayed > 0) return -2.2;
+        return -4.0;
     }
 
 

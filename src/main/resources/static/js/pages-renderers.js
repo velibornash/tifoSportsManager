@@ -912,7 +912,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         </div>
 
         <div class="fm-grid-top">
-            <section class="fm-panel">
+            <section class="fm-panel fm-panel--league-table">
                 <div class="fm-panel-head">
                     <h3>League Table</h3>
                     <span class="fm-panel-action">Clubs clickable</span>
@@ -941,7 +941,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                 </div>
             </section>
 
-            <section class="fm-panel">
+            <section class="fm-panel fm-panel--league-fixtures">
                 <div class="fm-panel-head">
                     <h3>Fixtures & Results</h3>
                     <span class="fm-panel-action">Current focus</span>
@@ -952,7 +952,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             </section>
         </div>
 
-        <section class="fm-panel fm-milestone-board-panel">
+        <section class="fm-panel fm-milestone-board-panel fm-panel--league-milestones">
             <div class="fm-panel-head">
                 <h3>Milestones</h3>
                 <span class="fm-panel-action">Season board</span>
@@ -963,11 +963,11 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         ${seasonSummaryBoardHtml()}
 
         <div class="fm-grid-bottom">
-            <section class="fm-panel">
+            <section class="fm-panel fm-panel--league-topscorers">
                 <div class="fm-panel-head"><h3>Top Scorers</h3></div>
                 ${statTableHtml(topScorers, 'goals')}
             </section>
-            <section class="fm-panel">
+            <section class="fm-panel fm-panel--league-topassists">
                 <div class="fm-panel-head"><h3>Top Assisters</h3></div>
                 ${statTableHtml(topAssists, 'assists')}
             </section>

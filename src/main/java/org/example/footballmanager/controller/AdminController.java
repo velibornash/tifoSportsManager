@@ -5,35 +5,46 @@ import org.example.footballmanager.dto.MessageResponseDTO;
 import org.example.footballmanager.dto.RegistrationReviewRequestDTO;
 import org.example.footballmanager.model.RegistrationRequest;
 import org.example.footballmanager.model.User;
+import org.example.footballmanager.service.AdminDatabaseAsyncService;
 import org.example.footballmanager.service.RegistrationService;
-import org.example.footballmanager.util.DatabaseInitializer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
 public class AdminController {
 
-    private final DatabaseInitializer databaseInitializer;
+    private final AdminDatabaseAsyncService adminDatabaseAsyncService;
     private final RegistrationService registrationService;
 
     @PostMapping("/initialize-db")
-    public ResponseEntity<String> initializeDatabase() {
-        databaseInitializer.resetAndInitializeDatabase();
-        return ResponseEntity.ok("Database successfully initialized.");
+    public ResponseEntity<Map<String, Object>> initializeDatabase() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("initialize")
+        ));
     }
 
     @PostMapping("/reset-db")
-    public ResponseEntity<String> resetDatabase() {
-        databaseInitializer.resetAndInitializeDatabase();
-        return ResponseEntity.ok("Database successfully reset and rebuilt. Owner user has been restored.");
+    public ResponseEntity<Map<String, Object>> resetDatabase() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("reset")
+        ));
+    }
+
+    @GetMapping("/database-job/status")
+    public ResponseEntity<Map<String, Object>> getDatabaseJobStatus() {
+        return ResponseEntity.ok(toDatabaseJobResponse(adminDatabaseAsyncService.getJobSnapshot()));
     }
 
     @PostMapping("/registration-requests/{requestId}/approve")
@@ -68,5 +79,19 @@ public class AdminController {
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new MessageResponseDTO("CONFLICT", ex.getMessage()));
         }
+    }
+
+    private Map<String, Object> toDatabaseJobResponse(AdminDatabaseAsyncService.AdminDatabaseSnapshot snapshot) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (snapshot.payload() != null && ("completed".equals(snapshot.status()) || "failed".equals(snapshot.status()))) {
+            payload.putAll(snapshot.payload());
+        }
+        payload.put("status", snapshot.status());
+        payload.put("action", snapshot.action());
+        payload.put("jobId", snapshot.jobId());
+        payload.put("message", snapshot.message());
+        payload.put("completedSteps", snapshot.completedSteps());
+        payload.put("totalSteps", snapshot.totalSteps());
+        return payload;
     }
 }

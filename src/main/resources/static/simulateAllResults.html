@@ -94,7 +94,7 @@
 
         .tt-layout {
             display: grid;
-            grid-template-columns: minmax(230px, 0.52fr) minmax(0, 1.45fr) minmax(280px, 0.72fr);
+            grid-template-columns: minmax(180px, 0.34fr) minmax(0, 1.6fr) minmax(250px, 0.68fr);
             gap: 0;
         }
 
@@ -102,19 +102,64 @@
             padding: 12px 14px 18px;
             border-right: 1px solid rgba(255,255,255,0.18);
             background: rgba(255,255,255,0.03);
+            min-width: 0;
+        }
+
+        .tt-filter-shell {
+            display: grid;
+            gap: 10px;
+            position: sticky;
+            top: 74px;
+        }
+
+        .tt-filter-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
         }
 
         .tt-filter-head {
             color: var(--tt-yellow);
             text-transform: uppercase;
-            margin-bottom: 10px;
             font-weight: 700;
+        }
+
+        .tt-filter-summary {
+            color: var(--tt-cyan);
+            font-size: 0.8rem;
+        }
+
+        .tt-filter-toggle {
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.06);
+            color: var(--tt-white);
+            padding: 6px 10px;
+            font: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .tt-filter-toggle:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        .tt-filter-panel {
+            display: grid;
+            gap: 10px;
+            max-height: calc(100vh - 180px);
+            overflow: hidden;
+            transition: max-height 0.22s ease, opacity 0.18s ease;
+        }
+
+        .tt-filter-panel.collapsed {
+            max-height: 0;
+            opacity: 0;
         }
 
         .tt-filter-actions {
             display: flex;
             gap: 8px;
-            margin-bottom: 10px;
         }
 
         .tt-filter-btn {
@@ -134,6 +179,9 @@
         .tt-filter-list {
             display: grid;
             gap: 8px;
+            max-height: min(58vh, 520px);
+            overflow-y: auto;
+            padding-right: 3px;
         }
 
         .tt-filter-item {
@@ -167,6 +215,7 @@
         .tt-board {
             padding: 12px 14px 18px;
             border-right: 1px solid rgba(255,255,255,0.18);
+            min-width: 0;
         }
 
         .tt-league {
@@ -242,6 +291,7 @@
 
         .tt-side {
             padding: 12px 14px 18px;
+            min-width: 0;
         }
 
         .tt-side-head {
@@ -266,6 +316,14 @@
             color: var(--tt-yellow);
             font-weight: 700;
             margin-right: 6px;
+        }
+
+        .tt-feed-icon {
+            display: inline-block;
+            width: 1.35em;
+            text-align: center;
+            margin-right: 8px;
+            color: var(--tt-white);
         }
 
         .tt-feed-time {
@@ -320,8 +378,17 @@
                 border-bottom: 1px solid rgba(255,255,255,0.18);
             }
 
+            .tt-filter-shell {
+                position: static;
+            }
+
+            .tt-filter-panel {
+                max-height: none;
+            }
+
             .tt-filter-list {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
+                max-height: none;
             }
         }
 
@@ -417,12 +484,22 @@
     </div>
     <div class="tt-layout">
         <div class="tt-filters">
-            <div class="tt-filter-head">League Filters</div>
-            <div class="tt-filter-actions">
-                <button id="ttSelectAllBtn" class="tt-filter-btn" type="button">Select all</button>
-                <button id="ttDeselectAllBtn" class="tt-filter-btn" type="button">Deselect all</button>
+            <div class="tt-filter-shell">
+                <div class="tt-filter-bar">
+                    <div>
+                        <div class="tt-filter-head">League Filters</div>
+                        <div class="tt-filter-summary" id="ttFilterSummary">Loading leagues...</div>
+                    </div>
+                    <button id="ttFilterToggleBtn" class="tt-filter-toggle" type="button" aria-expanded="true">Hide filters</button>
+                </div>
+                <div class="tt-filter-panel" id="ttFiltersPanel">
+                    <div class="tt-filter-actions">
+                        <button id="ttSelectAllBtn" class="tt-filter-btn" type="button">Select all</button>
+                        <button id="ttDeselectAllBtn" class="tt-filter-btn" type="button">Deselect all</button>
+                    </div>
+                    <div class="tt-filter-list" id="ttFilterList"></div>
+                </div>
             </div>
-            <div class="tt-filter-list" id="ttFilterList"></div>
         </div>
         <div class="tt-board" id="ttBoard"></div>
         <div class="tt-side">

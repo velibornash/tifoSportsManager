@@ -571,23 +571,17 @@ async function resetDatabase() {
     const confirmReset = confirm('This will delete the entire database. Continue?');
     if (!confirmReset) return;
 
-    try {
-        const response = await authFetch('/admin/reset-db', { method: 'POST' });
-
-        const message = await response.text();
-        localStorage.removeItem('token');
-        alert(`${message}\n\nPlease log in again.`);
-        window.location.href = '/login.html';
-    } catch (err) {
-        console.error('Reset error:', err);
-        alert('Database reset failed.');
-    }
+    await startAdminDatabaseJob('/admin/reset-db', 'Database reset and rebuild in progress...');
 }
 
 async function initializeDatabase() {
     const confirmInit = confirm('Initialize database now? This may take a few seconds.');
     if (!confirmInit) return;
 
+    await startAdminDatabaseJob('/admin/initialize-db', 'Database initialization in progress...');
+}
+
+function createDatabaseLoadingPopup(title) {
     const loadingPopup = document.createElement('div');
     loadingPopup.id = 'loading-popup';
     loadingPopup.style.position = 'fixed';
@@ -611,34 +605,67 @@ async function initializeDatabase() {
             box-shadow: 0 22px 48px rgba(0,0,0,0.34);
             text-align: center;
             font-family: Arial, sans-serif;
+            min-width: min(92vw, 440px);
         ">
             <div style="margin: 0 0 8px 0; color: #8fd3ff; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;">Database</div>
-            <h2 style="margin: 0 0 15px 0; color: #eef4ff;">Database initialization in progress...</h2>
-            <div style="font-size: 1.05em; color: #99a6bb;">Please wait and keep this page open.</div>
+            <h2 id="loading-popup-title" style="margin: 0 0 15px 0; color: #eef4ff;">${escapeHtml(title)}</h2>
+            <div id="loading-popup-message" style="font-size: 1.05em; color: #99a6bb;">Please wait and keep this page open.</div>
+            <div id="loading-popup-progress" style="margin-top: 14px; color: #8fd3ff; font-size: 0.95rem;">Starting...</div>
             <div style="margin-top: 20px; font-size: 2em; color: #8fd3ff;">...</div>
         </div>
     `;
+    return loadingPopup;
+}
 
+function updateDatabaseLoadingPopup(loadingPopup, snapshot) {
+    if (!loadingPopup) return;
+    const messageNode = loadingPopup.querySelector('#loading-popup-message');
+    const progressNode = loadingPopup.querySelector('#loading-popup-progress');
+    if (messageNode) {
+        messageNode.textContent = snapshot?.message || 'Please wait and keep this page open.';
+    }
+    if (progressNode) {
+        const completed = Number(snapshot?.completedSteps || 0);
+        const total = Number(snapshot?.totalSteps || 0);
+        progressNode.textContent = total > 0
+            ? `Step ${Math.min(completed, total)}/${total}`
+            : 'Working...';
+    }
+}
+
+async function startAdminDatabaseJob(endpoint, title) {
+    const loadingPopup = createDatabaseLoadingPopup(title);
     document.body.appendChild(loadingPopup);
-
     try {
-        const response = await authFetch('/admin/initialize-db', { method: 'POST' });
-
-        if (document.body.contains(loadingPopup)) {
-            document.body.removeChild(loadingPopup);
-        }
-
-        const message = await response.text();
-        alert(`${message}\n\nThe page will reload now.`);
+        const response = await authFetch(endpoint, { method: 'POST' });
+        const startPayload = await response.json();
+        updateDatabaseLoadingPopup(loadingPopup, startPayload);
+        const finalPayload = await pollAdminDatabaseJob(loadingPopup);
+        if (document.body.contains(loadingPopup)) document.body.removeChild(loadingPopup);
+        alert(`${finalPayload.message || 'Database rebuild completed.'}\n\nThe page will reload now.`);
         window.location.reload();
     } catch (err) {
-        if (document.body.contains(loadingPopup)) {
-            document.body.removeChild(loadingPopup);
-        }
-
+        if (document.body.contains(loadingPopup)) document.body.removeChild(loadingPopup);
         console.error('DB init error:', err);
-        alert(`Database initialization failed.\n\nError: ${err.message}`);
+        alert(`Database operation failed.\n\nError: ${err.message}`);
     }
+}
+
+async function pollAdminDatabaseJob(loadingPopup) {
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await authFetch('/admin/database-job/status');
+        const snapshot = await response.json();
+        updateDatabaseLoadingPopup(loadingPopup, snapshot);
+
+        if (snapshot.status === 'completed') {
+            return snapshot;
+        }
+        if (snapshot.status === 'failed') {
+            throw new Error(snapshot.message || 'Database rebuild failed.');
+        }
+    }
+    throw new Error('Database rebuild timed out.');
 }
 
 async function loadRecentMatches() {
@@ -711,8 +738,10 @@ async function loadRecentMatches() {
                 <div class="match-date-small">${match.matchDate || 'N/A'}</div>
                 <div class="match-teams">
                     <span class="team-home">${homeTeamLabel}</span>
-                    <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
-                    ${badgeText ? `<span class="result-badge ${resultBadge}">${badgeText}</span>` : ''}
+                    <span class="match-score-stack">
+                        <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
+                        ${badgeText ? `<span class="result-badge ${resultBadge}">${badgeText}</span>` : '<span class="result-badge result-badge--placeholder" aria-hidden="true">&nbsp;</span>'}
+                    </span>
                     <span class="team-away">${awayTeamLabel}</span>
                 </div>
             </div>`;

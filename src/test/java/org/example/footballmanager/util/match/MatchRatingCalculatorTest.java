@@ -6,6 +6,7 @@ import org.example.footballmanager.model.Skills;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
 class MatchRatingCalculatorTest {
 
@@ -29,6 +30,19 @@ class MatchRatingCalculatorTest {
 
         assertTrue(strongPerformance > poorPerformance,
                 () -> "Expected interceptions/clean sheet to beat cards + concessions, got " + strongPerformance + " vs " + poorPerformance);
+    }
+
+    @Test
+    void shortSubstituteAppearanceStaysInAcceptableRangeUnlessDisastrous() {
+        Player midfielder = player("Impact Sub", Position.MID, 8, 12, 11, 4, 10, 6.9);
+
+        int cameoRating = MatchRatingCalculator.calculate(midfielder, 0, 0, 1, 0, false, 0, 0, 1, 1, 18);
+        int disasterRating = MatchRatingCalculator.calculate(midfielder, 0, 0, 0, 0, false, 1, 1, 0, 2, 18);
+
+        assertAll(
+                () -> assertTrue(cameoRating >= 50, () -> "Expected neutral short cameo to stay at 5.0+ but got " + cameoRating),
+                () -> assertTrue(disasterRating < cameoRating, () -> "Expected red-card disaster to rate below neutral cameo, got " + disasterRating + " vs " + cameoRating)
+        );
     }
 
     private Player player(String name,

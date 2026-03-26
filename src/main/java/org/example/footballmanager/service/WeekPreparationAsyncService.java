@@ -193,9 +193,9 @@ public class WeekPreparationAsyncService {
     }
 
     private int countRemainingFixtures(Competition league, int seasonYear, int currentWeek) {
-        return matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
+        return Math.toIntExact(matchFixtureRepository.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
                 league.getId(), seasonYear, currentWeek
-        ).size();
+        ));
     }
 
     private int countRemainingFixturesAcrossLeagues(int seasonYear, int currentWeek) {

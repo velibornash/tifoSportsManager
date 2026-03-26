@@ -2937,6 +2937,40 @@ button.training-week-item {
         padding-right: 0;
     }
 
+    .fm-page--league {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .fm-page--league .fm-grid-top,
+    .fm-page--league .fm-grid-bottom {
+        display: contents;
+    }
+
+    .fm-page--league .fm-panel--league-table {
+        order: 1;
+    }
+
+    .fm-page--league .fm-panel--league-milestones {
+        order: 2;
+    }
+
+    .fm-page--league .fm-season-summary-panel {
+        order: 3;
+    }
+
+    .fm-page--league .fm-panel--league-topscorers {
+        order: 4;
+    }
+
+    .fm-page--league .fm-panel--league-topassists {
+        order: 5;
+    }
+
+    .fm-page--league .fm-panel--league-fixtures {
+        order: 6;
+    }
+
     .fx-away,
     .fx-score,
     .fm-standings td,
@@ -3623,10 +3657,18 @@ body {
 
 .match-teams {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 10px;
     align-items: center;
     flex: 1;
+}
+
+.match-score-stack {
+    display: grid;
+    justify-items: center;
+    align-items: center;
+    min-width: 58px;
+    gap: 4px;
 }
 
 .team-home,
@@ -3660,6 +3702,10 @@ body {
     letter-spacing: 0.04em;
     background: rgba(255, 255, 255, 0.08);
     color: var(--fm-legacy-text);
+}
+
+.result-badge--placeholder {
+    visibility: hidden;
 }
 
 .result-badge.win {

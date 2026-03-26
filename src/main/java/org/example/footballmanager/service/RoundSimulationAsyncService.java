@@ -50,9 +50,7 @@ public class RoundSimulationAsyncService {
             }
 
             RoundSimulationJob created = RoundSimulationJob.running();
-            CompletableFuture.runAsync(() ->
-                    transactionTemplate.executeWithoutResult(status -> runSimulation(id, created))
-            );
+            CompletableFuture.runAsync(() -> runSimulation(id, created));
             return created;
         });
         return job.toSnapshot();
@@ -65,7 +63,7 @@ public class RoundSimulationAsyncService {
 
     private void runSimulation(Long teamId, RoundSimulationJob job) {
         try {
-            Team userTeam = teamRepository.findById(teamId).orElse(null);
+            Team userTeam = transactionTemplate.execute(status -> teamRepository.findById(teamId).orElse(null));
             if (userTeam == null) {
                 job.fail("User team not found.");
                 return;
@@ -83,8 +81,10 @@ public class RoundSimulationAsyncService {
             Season currentSeason = seasonRepository.findBySeasonYear(seasonYear)
                     .orElseGet(seasonService::ensureActiveSeasonEntity);
 
-            MatchFixture userFixture = findUserFixture(activeLeague, seasonYear, currentWeek, userTeam.getId());
-            Match preparedUserMatch = findPreparedUserMatch(activeLeague, seasonYear, currentWeek, userTeam.getId());
+            MatchFixture userFixture = transactionTemplate.execute(status ->
+                    findUserFixture(activeLeague, seasonYear, currentWeek, userTeam.getId()));
+            Match preparedUserMatch = transactionTemplate.execute(status ->
+                    findPreparedUserMatch(activeLeague, seasonYear, currentWeek, userTeam.getId()));
             Team excludedHome = preparedUserMatch != null ? preparedUserMatch.getHomeTeam() : (userFixture != null ? userFixture.getHomeTeam() : null);
             Team excludedAway = preparedUserMatch != null ? preparedUserMatch.getAwayTeam() : (userFixture != null ? userFixture.getAwayTeam() : null);
 
@@ -96,17 +96,21 @@ public class RoundSimulationAsyncService {
                 Competition league = leagues.get(index);
                 job.updateProgress(index + 1, leagues.size(), league.getName());
 
-                prepareLeagueForCurrentWeek(league, seasonYear, currentWeek);
-                int pendingBefore = countRemainingFixtures(league, seasonYear, currentWeek);
+                transactionTemplate.executeWithoutResult(status -> prepareLeagueForCurrentWeek(league, seasonYear, currentWeek));
+                int pendingBefore = transactionTemplate.execute(status -> countRemainingFixtures(league, seasonYear, currentWeek));
                 Team skipHome = Objects.equals(league.getId(), activeLeague.getId()) ? excludedHome : null;
                 Team skipAway = Objects.equals(league.getId(), activeLeague.getId()) ? excludedAway : null;
 
-                matchEngine.simulateRestOfMatchDay(league, currentSeason, skipHome, skipAway);
+                transactionTemplate.executeWithoutResult(status ->
+                        matchEngine.simulateRestOfMatchDay(league, currentSeason, skipHome, skipAway)
+                );
 
-                int pendingAfter = countRemainingFixtures(league, seasonYear, currentWeek);
+                int pendingAfter = transactionTemplate.execute(status -> countRemainingFixtures(league, seasonYear, currentWeek));
                 int simulatedForLeague = Math.max(0, pendingBefore - pendingAfter);
                 if (currentWeek <= SeasonService.LEAGUE_ROUNDS && (pendingBefore > 0 || simulatedForLeague > 0)) {
-                    matchStatisticEngine.updateLeagueTableForMatchDay(league, currentSeason);
+                    transactionTemplate.executeWithoutResult(status ->
+                            matchStatisticEngine.updateLeagueTableForMatchDay(league, currentSeason)
+                    );
                 }
                 simulatedCount += simulatedForLeague;
 
@@ -121,7 +125,7 @@ public class RoundSimulationAsyncService {
             }
 
             boolean playoffWeekComplete = currentWeek == SeasonService.PLAYOFF_WEEK
-                    && countRemainingFixtures(superLiga, seasonYear, currentWeek) == 0;
+                    && transactionTemplate.execute(status -> countRemainingFixtures(superLiga, seasonYear, currentWeek)) == 0;
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("status", "ok");
@@ -175,9 +179,9 @@ public class RoundSimulationAsyncService {
     }
 
     private int countRemainingFixtures(Competition league, int seasonYear, int currentWeek) {
-        return matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(
+        return Math.toIntExact(matchFixtureRepository.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
                 league.getId(), seasonYear, currentWeek
-        ).size();
+        ));
     }
 
     public record RoundSimulationSnapshot(
