@@ -383,76 +383,179 @@ public class SeasonService {
 
     @Transactional
     public void applyPromotionRelegation(Competition superLiga, int seasonYear) {
-        SeasonCompetition topSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, seasonYear).orElse(null);
-        if (topSc == null) return;
-        List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
-        if (top.size() < 10) return;
+        List<Competition> serbianLeagues = findSerbianLeagues();
+        if (serbianLeagues.isEmpty()) {
+            return;
+        }
 
-        List<Competition> tier2Leagues = competitionRepository
-                .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE, 2);
-        if (tier2Leagues.size() < 2) return;
+        Map<Integer, List<Competition>> leaguesByTier = serbianLeagues.stream()
+                .filter(competition -> competition.getTier() != null)
+                .collect(Collectors.groupingBy(Competition::getTier, TreeMap::new,
+                        Collectors.collectingAndThen(Collectors.toList(), list -> list.stream()
+                                .sorted(Comparator.comparing((Competition c) -> c.getDivisionLevel() == null ? Integer.MAX_VALUE : c.getDivisionLevel())
+                                        .thenComparing(Competition::getId))
+                                .toList())));
 
-        List<Team> stayingTop = List.of(
-                top.get(0).getTeam(),
-                top.get(1).getTeam(),
-                top.get(2).getTeam(),
-                top.get(3).getTeam(),
-                top.get(4).getTeam(),
-                top.get(5).getTeam()
-        );
-        List<Team> relegated = List.of(top.get(8).getTeam(), top.get(9).getTeam());
-        List<Team> playoffTop = List.of(top.get(6).getTeam(), top.get(7).getTeam());
+        Map<Long, Competition> targetCompetitionByTeamId = new HashMap<>();
+        Map<Long, Team> teamsById = new HashMap<>();
+        for (Competition league : serbianLeagues) {
+            SeasonCompetition seasonCompetition = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, seasonYear).orElse(null);
+            if (seasonCompetition == null) {
+                continue;
+            }
+            for (CompetitionEntry entry : competitionEntryRepository.findBySeasonCompetition(seasonCompetition)) {
+                Team team = entry.getTeam();
+                if (team == null || team.getId() == null) {
+                    continue;
+                }
+                targetCompetitionByTeamId.putIfAbsent(team.getId(), league);
+                teamsById.putIfAbsent(team.getId(), team);
+            }
+        }
+
+        List<Integer> tiers = new ArrayList<>(leaguesByTier.keySet());
+        Collections.sort(tiers);
+        for (Integer tier : tiers) {
+            if (tier == null) {
+                continue;
+            }
+            List<Competition> parentLeagues = leaguesByTier.getOrDefault(tier, List.of());
+            List<Competition> childLeagues = leaguesByTier.getOrDefault(tier + 1, List.of());
+            if (parentLeagues.isEmpty() || childLeagues.isEmpty()) {
+                continue;
+            }
+
+            for (int parentIndex = 0; parentIndex < parentLeagues.size(); parentIndex++) {
+                Competition parentLeague = parentLeagues.get(parentIndex);
+                List<Competition> assignedChildLeagues = assignChildLeagues(parentIndex, parentLeagues.size(), childLeagues);
+                applyPromotionRelegationForLeague(parentLeague, assignedChildLeagues, seasonYear, targetCompetitionByTeamId, teamsById);
+            }
+        }
+
+        List<Team> updatedTeams = targetCompetitionByTeamId.entrySet().stream()
+                .map(entry -> {
+                    Team team = teamsById.get(entry.getKey());
+                    Competition targetCompetition = entry.getValue();
+                    if (team == null || targetCompetition == null) {
+                        return null;
+                    }
+                    team.setCompetition(targetCompetition);
+                    return team;
+                })
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (!updatedTeams.isEmpty()) {
+            teamRepository.saveAll(updatedTeams);
+        }
+
+        for (Competition league : serbianLeagues) {
+            long leagueCount = teamRepository.countByCompetition(league);
+            log.info("Promotion/relegation applied for season {}. League {} now has {} teams.", seasonYear, league.getName(), leagueCount);
+        }
+    }
+
+    private void applyPromotionRelegationForLeague(Competition parentLeague,
+                                                   List<Competition> childLeagues,
+                                                   int seasonYear,
+                                                   Map<Long, Competition> targetCompetitionByTeamId,
+                                                   Map<Long, Team> teamsById) {
+        if (parentLeague == null || childLeagues == null || childLeagues.isEmpty()) {
+            return;
+        }
+
+        SeasonCompetition parentSeasonCompetition = seasonCompetitionRepository.findByCompetitionAndSeasonYear(parentLeague, seasonYear).orElse(null);
+        if (parentSeasonCompetition == null) {
+            return;
+        }
+
+        List<CompetitionEntry> parentTable = sortTable(competitionEntryRepository.findBySeasonCompetition(parentSeasonCompetition));
+        int expectedTeams = parentLeague.getTeamsPerCompetition() != null ? parentLeague.getTeamsPerCompetition() : parentTable.size();
+        int movementSlots = childLeagues.size();
+        int safeCount = expectedTeams - (movementSlots * 2);
+        if (parentTable.size() < expectedTeams || safeCount < 1) {
+            return;
+        }
+
+        List<Team> playoffTop = new ArrayList<>();
+        List<Team> relegatedDirect = new ArrayList<>();
+        for (int i = safeCount; i < safeCount + movementSlots; i++) {
+            Team team = parentTable.get(i).getTeam();
+            if (team != null) {
+                playoffTop.add(team);
+                teamsById.putIfAbsent(team.getId(), team);
+            }
+        }
+        for (int i = safeCount + movementSlots; i < safeCount + movementSlots * 2; i++) {
+            Team team = parentTable.get(i).getTeam();
+            if (team != null) {
+                relegatedDirect.add(team);
+                teamsById.putIfAbsent(team.getId(), team);
+            }
+        }
+        if (playoffTop.size() < movementSlots || relegatedDirect.size() < movementSlots) {
+            return;
+        }
 
         List<Team> promotedDirect = new ArrayList<>();
         List<Team> playoffLower = new ArrayList<>();
-        for (Competition lowerLeague : tier2Leagues.subList(0, 2)) {
-            SeasonCompetition lowerSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(lowerLeague, seasonYear).orElse(null);
-            if (lowerSc == null) continue;
-            List<CompetitionEntry> lowerTable = sortTable(competitionEntryRepository.findBySeasonCompetition(lowerSc));
-            if (!lowerTable.isEmpty()) promotedDirect.add(lowerTable.get(0).getTeam());
-            if (lowerTable.size() > 1) playoffLower.add(lowerTable.get(1).getTeam());
-        }
-        if (promotedDirect.size() < 2 || playoffLower.size() < 2) return;
+        for (Competition childLeague : childLeagues) {
+            SeasonCompetition childSeasonCompetition = seasonCompetitionRepository.findByCompetitionAndSeasonYear(childLeague, seasonYear).orElse(null);
+            if (childSeasonCompetition == null) {
+                return;
+            }
+            List<CompetitionEntry> childTable = sortTable(competitionEntryRepository.findBySeasonCompetition(childSeasonCompetition));
+            if (childTable.size() < 2) {
+                return;
+            }
 
-        Team playoffWinnerA = resolvePlayoffWinner(superLiga, seasonYear, playoffTop.get(0), playoffLower.get(0));
-        Team playoffWinnerB = resolvePlayoffWinner(superLiga, seasonYear, playoffTop.get(1), playoffLower.get(1));
-
-        for (int i = 0; i < relegated.size() && i < tier2Leagues.size(); i++) {
-            relegated.get(i).setCompetition(tier2Leagues.get(i));
-        }
-
-        for (Team team : stayingTop) {
-            team.setCompetition(superLiga);
-        }
-        for (Team team : promotedDirect) {
-            team.setCompetition(superLiga);
+            Team champion = childTable.get(0).getTeam();
+            Team runnerUp = childTable.get(1).getTeam();
+            if (champion == null || runnerUp == null) {
+                return;
+            }
+            promotedDirect.add(champion);
+            playoffLower.add(runnerUp);
+            teamsById.putIfAbsent(champion.getId(), champion);
+            teamsById.putIfAbsent(runnerUp.getId(), runnerUp);
         }
 
-        if (Objects.equals(playoffWinnerA.getId(), playoffLower.get(0).getId())) {
-            playoffTop.get(0).setCompetition(tier2Leagues.get(0));
-            playoffLower.get(0).setCompetition(superLiga);
-        } else {
-            playoffTop.get(0).setCompetition(superLiga);
-            playoffLower.get(0).setCompetition(tier2Leagues.get(0));
+        for (int i = 0; i < movementSlots; i++) {
+            Team directPromoted = promotedDirect.get(i);
+            Team directRelegated = relegatedDirect.get(i);
+            Team topPlayoffTeam = playoffTop.get(i);
+            Team lowerPlayoffTeam = playoffLower.get(i);
+            Competition childLeague = childLeagues.get(i);
+
+            targetCompetitionByTeamId.put(directPromoted.getId(), parentLeague);
+            targetCompetitionByTeamId.put(directRelegated.getId(), childLeague);
+
+            Team playoffWinner = resolvePlayoffWinner(parentLeague, seasonYear, topPlayoffTeam, lowerPlayoffTeam);
+            if (Objects.equals(playoffWinner.getId(), lowerPlayoffTeam.getId())) {
+                targetCompetitionByTeamId.put(lowerPlayoffTeam.getId(), parentLeague);
+                targetCompetitionByTeamId.put(topPlayoffTeam.getId(), childLeague);
+            } else {
+                targetCompetitionByTeamId.put(topPlayoffTeam.getId(), parentLeague);
+                targetCompetitionByTeamId.put(lowerPlayoffTeam.getId(), childLeague);
+            }
         }
-        if (Objects.equals(playoffWinnerB.getId(), playoffLower.get(1).getId())) {
-            playoffTop.get(1).setCompetition(tier2Leagues.get(1));
-            playoffLower.get(1).setCompetition(superLiga);
-        } else {
-            playoffTop.get(1).setCompetition(superLiga);
-            playoffLower.get(1).setCompetition(tier2Leagues.get(1));
+    }
+
+    private List<Competition> assignChildLeagues(int parentIndex, int parentCount, List<Competition> childLeagues) {
+        if (childLeagues.isEmpty() || parentCount <= 0 || parentIndex < 0 || parentIndex >= parentCount) {
+            return List.of();
         }
 
-        List<Team> updatedTeams = new ArrayList<>();
-        updatedTeams.addAll(stayingTop);
-        updatedTeams.addAll(relegated);
-        updatedTeams.addAll(promotedDirect);
-        updatedTeams.addAll(playoffTop);
-        updatedTeams.addAll(playoffLower);
-        teamRepository.saveAll(updatedTeams);
-
-        long superLigaCount = teamRepository.countByCompetition(superLiga);
-        log.info("Promotion/relegation applied for season {}. Superliga now has {} teams.", seasonYear, superLigaCount);
+        int baseSize = childLeagues.size() / parentCount;
+        int remainder = childLeagues.size() % parentCount;
+        int start = parentIndex * baseSize + Math.min(parentIndex, remainder);
+        int length = baseSize + (parentIndex < remainder ? 1 : 0);
+        int end = Math.min(childLeagues.size(), start + length);
+        if (start >= end) {
+            return List.of();
+        }
+        return childLeagues.subList(start, end);
     }
 
     @Transactional(readOnly = true)
