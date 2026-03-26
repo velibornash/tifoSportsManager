@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.model.MatchFixture;
@@ -458,7 +459,6 @@ public class TifoBackendIntegrationTest extends BaseTest {
 
     @Test
     @DisplayName("Integration-023: Current Round Feed Returns Teletext Structure")
-    @SuppressWarnings("unchecked")
     public void testCurrentRoundFeedReturnsTeletextStructure() throws Exception {
         String authHeader = createAuthHeaderForUserWithCurrentFixture();
 
@@ -475,14 +475,14 @@ public class TifoBackendIntegrationTest extends BaseTest {
             .andExpect(jsonPath("$.leagues").isArray())
             .andReturn();
 
-        Map<String, Object> payload = objectMapper.readValue(feedResult.getResponse().getContentAsString(), Map.class);
-        List<Map<String, Object>> leagues = (List<Map<String, Object>>) payload.get("leagues");
+        Map<String, Object> payload = readMap(feedResult.getResponse().getContentAsString());
+        List<Map<String, Object>> leagues = readListOfMaps(payload.get("leagues"));
         assertThat(leagues).isNotEmpty();
 
         Map<String, Object> firstLeague = leagues.getFirst();
         assertThat(firstLeague).containsKeys("leagueName", "userLeague", "matches");
 
-        List<Map<String, Object>> matches = (List<Map<String, Object>>) firstLeague.get("matches");
+        List<Map<String, Object>> matches = readListOfMaps(firstLeague.get("matches"));
         assertThat(matches).isNotEmpty();
         assertThat(matches).allSatisfy(match -> assertThat(match).containsKeys(
                 "fixtureId", "homeTeam", "awayTeam", "homeGoals", "awayGoals", "played", "events"
@@ -505,7 +505,7 @@ public class TifoBackendIntegrationTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-            Map<String, Object> payload = objectMapper.readValue(statusResult.getResponse().getContentAsString(), Map.class);
+            Map<String, Object> payload = readMap(statusResult.getResponse().getContentAsString());
             Object action = payload.get("action");
             if ("WEEK_PREPARED".equals(action)) {
                 return payload;
@@ -517,6 +517,14 @@ public class TifoBackendIntegrationTest extends BaseTest {
         }
         fail("Week preparation did not finish in time");
         return Map.of();
+    }
+
+    private Map<String, Object> readMap(String json) throws Exception {
+        return objectMapper.readValue(json, new TypeReference<>() {});
+    }
+
+    private List<Map<String, Object>> readListOfMaps(Object value) {
+        return objectMapper.convertValue(value, new TypeReference<>() {});
     }
 
     private String createAuthHeaderForUserWithCurrentFixture() {

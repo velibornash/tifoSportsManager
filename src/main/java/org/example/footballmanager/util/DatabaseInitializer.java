@@ -8,6 +8,8 @@ import org.example.footballmanager.model.tactics.TeamTacticsProfile;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.ResetService;
 import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.service.TacticsProfileBackupEntry;
+import org.example.footballmanager.service.TacticsProfileBackupService;
 import org.example.footballmanager.service.YouthAcademyService;
 import org.example.footballmanager.util.players.PlayerFactory;
 import org.example.footballmanager.util.players.SquadNumberAssigner;
@@ -46,6 +48,7 @@ public class DatabaseInitializer {
     private final SeasonService seasonService;
     private final YouthAcademyService youthAcademyService;
     private final SquadNumberAssigner squadNumberAssigner;
+    private final TacticsProfileBackupService tacticsProfileBackupService;
 
     @EventListener(ApplicationReadyEvent.class)
     public void sanitizeLegacySchemaOnStartup() {
@@ -165,7 +168,9 @@ public class DatabaseInitializer {
     }
 
     private List<TacticsProfileSnapshot> snapshotTacticsProfiles() {
-        return teamTacticsProfileRepository.findAll().stream()
+        Map<String, TacticsProfileSnapshot> merged = new LinkedHashMap<>();
+
+        teamTacticsProfileRepository.findAll().stream()
                 .map(profile -> {
                     Team team = profile.getTeam();
                     if (team == null || team.getName() == null || team.getName().isBlank()) {
@@ -181,7 +186,14 @@ public class DatabaseInitializer {
                     return snapshot;
                 })
                 .filter(Objects::nonNull)
-                .toList();
+                .forEach(snapshot -> merged.put(snapshot.teamName, snapshot));
+
+        tacticsProfileBackupService.loadAll().stream()
+                .map(this::toTacticsSnapshot)
+                .filter(Objects::nonNull)
+                .forEach(snapshot -> merged.putIfAbsent(snapshot.teamName, snapshot));
+
+        return new ArrayList<>(merged.values());
     }
 
     private void restoreTacticsProfiles(List<TacticsProfileSnapshot> snapshots) {
@@ -207,6 +219,20 @@ public class DatabaseInitializer {
             restored++;
         }
         log.info("Restored {} tactics editor profiles after reset.", restored);
+    }
+
+    private TacticsProfileSnapshot toTacticsSnapshot(TacticsProfileBackupEntry entry) {
+        if (entry == null || entry.getTeamName() == null || entry.getTeamName().isBlank()) {
+            return null;
+        }
+        TacticsProfileSnapshot snapshot = new TacticsProfileSnapshot();
+        snapshot.teamName = entry.getTeamName();
+        snapshot.formation = entry.getFormation();
+        snapshot.style = entry.getStyle();
+        snapshot.rulesJson = entry.getRulesJson();
+        snapshot.setPiecesJson = entry.getSetPiecesJson();
+        snapshot.version = entry.getVersion();
+        return snapshot;
     }
 
     private void seedInitialJuniorsForOwnerIfMissing(Team ownerTeam) {

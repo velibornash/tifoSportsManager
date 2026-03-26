@@ -294,7 +294,7 @@ class TeamControllerTest {
         assertEquals(7.4, row.get("homeTeamForm"));
         assertEquals(6.8, row.get("awayTeamForm"));
 
-        Map<String, Object> prediction = (Map<String, Object>) row.get("prediction");
+        Map<?, ?> prediction = (Map<?, ?>) row.get("prediction");
         assertEquals(46, prediction.get("homeWinProbability"));
         assertEquals(28, prediction.get("drawProbability"));
         assertEquals(26, prediction.get("awayWinProbability"));
@@ -302,7 +302,7 @@ class TeamControllerTest {
         assertEquals(1.18, prediction.get("expectedAwayGoals"));
         assertEquals("HOME_WIN", prediction.get("mostLikelyResult"));
 
-        Map<String, Object> h2h = (Map<String, Object>) row.get("h2h");
+        Map<?, ?> h2h = (Map<?, ?>) row.get("h2h");
         assertEquals(2, h2h.get("played"));
         assertEquals(1, h2h.get("wins"));
         assertEquals(1, h2h.get("draws"));

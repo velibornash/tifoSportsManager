@@ -3,6 +3,8 @@ package org.example.footballmanager.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import org.example.footballmanager.dto.ApiErrorResponseDTO;
 import org.example.footballmanager.exception.ApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +15,8 @@ import java.time.LocalDateTime;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleApiException(ApiException ex, HttpServletRequest request) {
@@ -39,7 +43,14 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleRuntime(RuntimeException ex, HttpServletRequest request) {
-        return buildResponse(HttpStatus.BAD_REQUEST, "REQUEST_FAILED", safeMessage(ex.getMessage(), "Request could not be completed."), request);
+        log.error("Unhandled runtime exception for {}", request != null ? request.getRequestURI() : "unknown path", ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", safeMessage(ex.getMessage(), "Request could not be completed."), request);
+    }
+
+    @ExceptionHandler(Throwable.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleThrowable(Throwable ex, HttpServletRequest request) {
+        log.error("Unhandled throwable for {}", request != null ? request.getRequestURI() : "unknown path", ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error.", request);
     }
 
     private ResponseEntity<ApiErrorResponseDTO> buildResponse(HttpStatus status,

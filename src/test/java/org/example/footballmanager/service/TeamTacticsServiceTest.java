@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,6 +37,7 @@ class TeamTacticsServiceTest {
     @Mock private PlayerRepository playerRepository;
     @Mock private LineupRepository lineupRepository;
     @Mock private TeamTacticsProfileRepository teamTacticsProfileRepository;
+    @Mock private TacticsProfileBackupService tacticsProfileBackupService;
 
     private TeamTacticsService teamTacticsService;
 
@@ -47,7 +49,8 @@ class TeamTacticsServiceTest {
                 lineupRepository,
                 teamTacticsProfileRepository,
                 new ObjectMapper(),
-                new FormationSlotCatalog()
+                new FormationSlotCatalog(),
+                tacticsProfileBackupService
         );
     }
 
@@ -103,5 +106,66 @@ class TeamTacticsServiceTest {
         assertTrue(existingLineup.getStartingPlayers() instanceof ArrayList);
         assertTrue(existingLineup.getSubstitutes() instanceof ArrayList);
         verify(lineupRepository).save(existingLineup);
+    }
+
+    @Test
+    void saveTacticsEditorMirrorsWeHaveBallRulesIntoOpponentHaveBallIncludingCorners() {
+        Team team = new Team();
+        team.setId(1L);
+        team.setName("Omladinac");
+
+        List<Player> players = new ArrayList<>();
+        for (long id = 1; id <= 18; id++) {
+            Player player = new Player();
+            player.setId(id);
+            player.setName("P" + id);
+            player.setRating((int) (90 - id));
+            player.setInjured(false);
+            players.add(player);
+        }
+
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(team));
+        when(playerRepository.findByTeamId(1L)).thenReturn(players);
+        when(lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(1L)).thenReturn(Optional.of(new Lineup()));
+        when(lineupRepository.save(any(Lineup.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        AtomicReference<TeamTacticsProfile> savedProfile = new AtomicReference<>();
+        when(teamTacticsProfileRepository.findByTeamId(1L)).thenAnswer(invocation -> Optional.ofNullable(savedProfile.get()));
+        when(teamTacticsProfileRepository.save(any(TeamTacticsProfile.class))).thenAnswer(invocation -> {
+            TeamTacticsProfile profile = invocation.getArgument(0);
+            savedProfile.set(profile);
+            return profile;
+        });
+
+        TacticsEditorSaveRequest request = new TacticsEditorSaveRequest();
+        request.setFormation("4-4-2");
+        request.setStyle("BALANCED");
+        request.setStarterIds(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L));
+        request.setBenchIds(List.of(12L, 13L, 14L, 15L, 16L, 17L, 18L));
+        request.setMovementRules(List.of(
+                new org.example.footballmanager.dto.TacticsRuleDTO("STL", "CELL_4_2", "WE_HAVE_BALL", "CELL_4_3"),
+                new org.example.footballmanager.dto.TacticsRuleDTO("STL", "ATTACK_LEFT_CORNER", "WE_HAVE_BALL", "CELL_4_4")
+        ));
+
+        TacticsEditorDTO result = teamTacticsService.saveTacticsEditor(1L, request);
+
+        String mirrored = result.getMovementRules().stream()
+                .filter(rule -> "STL".equals(rule.getSlotKey()))
+                .filter(rule -> "CELL_4_2".equals(rule.getBallStateKey()))
+                .filter(rule -> "OPPONENT_HAS_BALL".equals(rule.getPossessionContext()))
+                .map(rule -> rule.getTargetCellKey())
+                .findFirst()
+                .orElse(null);
+
+        String cornerMirrored = result.getMovementRules().stream()
+                .filter(rule -> "STL".equals(rule.getSlotKey()))
+                .filter(rule -> "ATTACK_LEFT_CORNER".equals(rule.getBallStateKey()))
+                .filter(rule -> "OPPONENT_HAS_BALL".equals(rule.getPossessionContext()))
+                .map(rule -> rule.getTargetCellKey())
+                .findFirst()
+                .orElse(null);
+
+        assertEquals("CELL_4_3", mirrored);
+        assertEquals("CELL_4_4", cornerMirrored);
+        verify(tacticsProfileBackupService).saveOrUpdate(any(Team.class), any(TeamTacticsProfile.class));
     }
 }

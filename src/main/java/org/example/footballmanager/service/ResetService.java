@@ -134,7 +134,8 @@ public class ResetService {
     }
 
     private List<String> getExistingTableNames() {
-        List<String> existing = entityManager.createNativeQuery("""
+        @SuppressWarnings("unchecked")
+        List<Object> existing = entityManager.createNativeQuery("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'

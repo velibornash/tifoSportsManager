@@ -1,7 +1,7 @@
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('token');
     if (!token) {
-        throw new Error("No token found - redirecting to login");
+        throw new Error("No active session.");
     }
 
     options.headers = {
@@ -12,7 +12,7 @@ async function authFetch(url, options = {}) {
 
     const response = await fetch(url, options);
     if (!response.ok) {
-        if (response.status === 403 || response.status === 401) {
+        if (response.status === 401) {
             localStorage.removeItem('token');
             window.location.href = '/login.html';
         }
@@ -90,4 +90,3 @@ setInterval(syncWithServerTime, 5 * 60 * 1000);
 setInterval(syncGameClock, 20 * 1000);
 updateLiveClock();
 setInterval(updateLiveClock, 1000);
-

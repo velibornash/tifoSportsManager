@@ -195,7 +195,7 @@ class CountryControllerTest {
         assertEquals(74, row.get("homeTeamStrength"));
         assertEquals(69, row.get("awayTeamStrength"));
 
-        Map<String, Object> prediction = (Map<String, Object>) row.get("prediction");
+        Map<?, ?> prediction = (Map<?, ?>) row.get("prediction");
         assertEquals(47, prediction.get("homeWinProbability"));
         assertEquals(27, prediction.get("drawProbability"));
         assertEquals(26, prediction.get("awayWinProbability"));

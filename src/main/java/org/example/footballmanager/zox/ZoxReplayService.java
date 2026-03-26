@@ -150,16 +150,16 @@ public class ZoxReplayService {
         try {
             List<PlayerPositionDTO> players = objectMapper.readValue(state.getPlayerPositionsJson(), new TypeReference<List<PlayerPositionDTO>>() {});
             BallPositionDTO ball = objectMapper.readValue(state.getBallPositionJson(), BallPositionDTO.class);
-            return ZoxReplayFrameDTO.builder()
-                    .timestampMs(toTimestampMs(state.getTick()))
-                    .tick(state.getTick())
-                    .minute(state.getMinute())
-                    .players(players)
-                    .ball(ball)
-                    .carrierPlayerId(state.getCurrentCarrierId())
-                    .ballInTransit(state.isBallInTransit())
-                    .pendingReceiverId(state.getPendingReceiverId())
-                    .build();
+            return new ZoxReplayFrameDTO(
+                    toTimestampMs(state.getTick()),
+                    state.getTick(),
+                    state.getMinute(),
+                    players,
+                    ball,
+                    state.getCurrentCarrierId(),
+                    state.isBallInTransit(),
+                    state.getPendingReceiverId()
+            );
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse replay frame for tick " + state.getTick(), e);
         }

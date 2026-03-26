@@ -49,17 +49,17 @@ public class DuelResolver {
                 + goalkeeper.getSkills().getDefender() * 0.40;
         double finisherEdge = shooterAccuracy / Math.max(1.0, shooterAccuracy + goalkeeperDefense);
 
-        double onTargetChance = 0.10
-                + xG * 0.34
-                + (shooter.getSkills().getTechnique() / 260.0)
-                + (shooter.getSkills().getStriker() / 310.0)
-                - (goalkeeper.getSkills().getGoalkeeper() / 290.0);
-        onTargetChance = clampChance(onTargetChance + (random.nextDouble() - 0.5) * 0.045, 0.13, 0.49);
+        double onTargetChance = 0.18
+                + xG * 0.78
+                + (shooter.getSkills().getTechnique() / 210.0)
+                + (shooter.getSkills().getStriker() / 260.0)
+                - (goalkeeper.getSkills().getGoalkeeper() / 420.0);
+        onTargetChance = clampChance(onTargetChance + (random.nextDouble() - 0.5) * 0.035, 0.28, 0.78);
 
         boolean isOnTarget = random.nextDouble() < onTargetChance;
 
-        double desiredGoalChance = xG * (0.66 + finisherEdge * 0.10);
-        desiredGoalChance = clampChance(desiredGoalChance + (random.nextDouble() - 0.5) * 0.02, 0.015, 0.34);
+        double desiredGoalChance = xG * (0.78 + finisherEdge * 0.14);
+        desiredGoalChance = clampChance(desiredGoalChance + (random.nextDouble() - 0.5) * 0.018, 0.02, 0.42);
         double goalChanceWhenOnTarget = clampChance(
                 desiredGoalChance / Math.max(onTargetChance, 0.16),
                 0.05,
@@ -119,7 +119,7 @@ public class DuelResolver {
         double xG = estimateShotXg(shooter, x, y, true);
         double variation = (random.nextDouble() - 0.5) * 0.05;
         double finishingBonus = (shooter.getSkills().getStriker() + shooter.getSkills().getTechnique()) / 270.0;
-        double finalChance = clampChance(0.34 + (xG * 0.42) + finishingBonus + variation, 0.66, 0.93);
+        double finalChance = clampChance(0.50 + (xG * 0.45) + (finishingBonus * 0.92) + variation, 0.82, 0.97);
         boolean isGoal = random.nextDouble() < finalChance;
 
         log.debug("Open-goal shot: {} (xG: {:.2f}), chance={:.2f}, result={}",

@@ -234,15 +234,13 @@ public class TransferService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can accept incoming offers.");
         }
 
-        OfferDetails bestOffer = extractBestOffer(transfer);
-        Team buyerTeam = teamRepository.findByName(bestOffer.clubName())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BUYER_NOT_FOUND",
-                        "The club behind this offer could not be found."));
+        OfferResolution bestOffer = resolveBestAcceptableOffer(transfer);
+        Team buyerTeam = bestOffer.buyerTeam();
 
-        TransferDTO dto = toTransferDto(completeTransfer(transfer.getPlayer(), buyerTeam, bestOffer.price(), transfer), actingTeamId);
+        TransferDTO dto = toTransferDto(completeTransfer(transfer.getPlayer(), buyerTeam, bestOffer.offer().price(), transfer), actingTeamId);
         dto.setOfferAccepted(true);
         dto.setActionMessage("Offer accepted. " + transfer.getPlayer().getName()
-                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(bestOffer.price()) + ".");
+                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(bestOffer.offer().price()) + ".");
         return dto;
     }
 
@@ -499,6 +497,13 @@ public class TransferService {
 
         Team buyerTeam = randomItem(candidateBuyers);
         double offerPrice = round2(Math.max(1.0, targetPlayer.getPlayerValue()) * (0.80 + nextRandomDouble() * 0.40));
+        double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
+        if (buyerBudget + 0.0001 < offerPrice) {
+            offerPrice = round2(Math.min(buyerBudget, Math.max(1.0, offerPrice)));
+        }
+        if (buyerBudget + 0.0001 < offerPrice) {
+            return;
+        }
         Transfer transfer = transferByPlayerId.get(targetPlayer.getId());
         if (transfer == null && targetPlayer.getId() != null) {
             transfer = transferRepository.findByPlayerId(targetPlayer.getId()).orElse(null);
@@ -569,6 +574,68 @@ public class TransferService {
                 .max(Comparator.comparingDouble(OfferDetails::price))
                 .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_VALID_OFFERS",
                         "There are no valid incoming offers to accept."));
+    }
+
+    private OfferResolution resolveBestAcceptableOffer(Transfer transfer) {
+        List<OfferResolution> validOffers = sortedInterests(transfer).stream()
+                .filter(this::isOfferEntry)
+                .map(this::parseOfferDetails)
+                .filter(Objects::nonNull)
+                .map(offer -> resolveOffer(transfer, offer))
+                .filter(Objects::nonNull)
+                .filter(offer -> canBuyerAfford(offer.buyerTeam(), offer.offer().price()))
+                .sorted(Comparator.comparingDouble((OfferResolution value) -> value.offer().price()).reversed())
+                .toList();
+
+        if (!validOffers.isEmpty()) {
+            return validOffers.getFirst();
+        }
+
+        purgeInvalidOffers(transfer);
+        throw new ApiException(HttpStatus.CONFLICT, "BUYER_BUDGET_CHANGED",
+                "None of the current offers can be completed because the buying club no longer has enough budget.");
+    }
+
+    private OfferResolution resolveOffer(Transfer transfer, OfferDetails offer) {
+        Team buyerTeam = teamRepository.findByName(offer.clubName()).orElse(null);
+        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
+        if (buyerTeam == null || Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
+            return null;
+        }
+        return new OfferResolution(offer, buyerTeam);
+    }
+
+    private boolean canBuyerAfford(Team buyerTeam, double price) {
+        double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
+        return buyerBudget + 0.0001 >= price;
+    }
+
+    private void purgeInvalidOffers(Transfer transfer) {
+        if (transfer.getInterestedTeams() == null || transfer.getInterestedTeams().isEmpty()) {
+            return;
+        }
+
+        Set<String> validEntries = transfer.getInterestedTeams().stream()
+                .filter(Objects::nonNull)
+                .filter(raw -> {
+                    if (!isOfferEntry(raw)) {
+                        return true;
+                    }
+                    OfferDetails offer = parseOfferDetails(raw);
+                    if (offer == null) {
+                        return false;
+                    }
+                    OfferResolution resolution = resolveOffer(transfer, offer);
+                    return resolution != null && canBuyerAfford(resolution.buyerTeam(), resolution.offer().price());
+                })
+                .collect(Collectors.toCollection(HashSet::new));
+
+        transfer.setInterestedTeams(validEntries);
+        if (!hasOpenOffer(transfer) && transfer.getStatus() == TransferStatus.OFFER_RECEIVED) {
+            transfer.setStatus(TransferStatus.CANCELLED);
+            transfer.setCompletedAt(LocalDateTime.now());
+        }
+        transferRepository.save(transfer);
     }
 
     private OfferDetails parseOfferDetails(String rawValue) {
@@ -713,5 +780,8 @@ public class TransferService {
     }
 
     private record OfferDetails(String clubName, double price) {
+    }
+
+    private record OfferResolution(OfferDetails offer, Team buyerTeam) {
     }
 }

@@ -1,7 +1,6 @@
 package org.example.footballmanager.zox;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.footballmanager.dto.BallPositionDTO;
@@ -10,7 +9,6 @@ import org.example.footballmanager.dto.PlayerPositionDTO;
 import java.util.List;
 
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ZoxReplayFrameDTO {

@@ -35,6 +35,7 @@ public class TeamTacticsService {
     private final TeamTacticsProfileRepository teamTacticsProfileRepository;
     private final ObjectMapper objectMapper;
     private final FormationSlotCatalog formationSlotCatalog;
+    private final TacticsProfileBackupService tacticsProfileBackupService;
 
     @Transactional(readOnly = true)
     public TacticsEditorDTO getTacticsEditor(Long teamId, String requestedFormation) {
@@ -44,7 +45,7 @@ public class TeamTacticsService {
         }
 
         Lineup lineup = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(teamId).orElse(null);
-        TeamTacticsProfile profile = teamTacticsProfileRepository.findByTeamId(teamId).orElse(null);
+        TeamTacticsProfile profile = resolveProfile(team);
 
         String formation = formationSlotCatalog.normalizeFormation(firstNonBlank(
                 requestedFormation,
@@ -112,6 +113,7 @@ public class TeamTacticsService {
         profile.setVersion(profile.getVersion() == null ? 1L : profile.getVersion() + 1L);
         profile.setUpdatedAt(LocalDateTime.now());
         teamTacticsProfileRepository.save(profile);
+        tacticsProfileBackupService.saveOrUpdate(team, profile);
 
         TacticsEditorDTO dto = getTacticsEditor(teamId, formation);
         if (dto != null) {
@@ -130,7 +132,8 @@ public class TeamTacticsService {
     public Map<String, String> getRuntimeRuleMap(Long teamId, String formation) {
         String normalizedFormation = formationSlotCatalog.normalizeFormation(formation);
         List<TacticsRuleDTO> defaults = formationSlotCatalog.buildDefaultRules(normalizedFormation);
-        TeamTacticsProfile profile = teamTacticsProfileRepository.findByTeamId(teamId).orElse(null);
+        Team team = teamRepository.findById(teamId).orElse(null);
+        TeamTacticsProfile profile = resolveProfile(team);
         List<TacticsRuleDTO> rules = mergeWithDefaults(
                 profile != null && Objects.equals(profile.getFormation(), normalizedFormation)
                         ? parseRules(profile.getRulesJson()) : List.of(),
@@ -143,7 +146,8 @@ public class TeamTacticsService {
     public TacticsSetPieceDTO getRuntimeSetPieces(Long teamId, String formation) {
         String normalizedFormation = formationSlotCatalog.normalizeFormation(formation);
         List<TacticsSlotDTO> slots = formationSlotCatalog.getSlots(normalizedFormation);
-        TeamTacticsProfile profile = teamId != null ? teamTacticsProfileRepository.findByTeamId(teamId).orElse(null) : null;
+        Team team = teamId != null ? teamRepository.findById(teamId).orElse(null) : null;
+        TeamTacticsProfile profile = resolveProfile(team);
         TacticsSetPieceDTO configured = profile != null && Objects.equals(profile.getFormation(), normalizedFormation)
                 ? parseSetPieces(profile.getSetPiecesJson())
                 : defaultSetPieces(slots);
@@ -220,6 +224,7 @@ public class TeamTacticsService {
             }
             sanitized.put(ruleKey(rule), new TacticsRuleDTO(rule.getSlotKey(), rule.getBallStateKey(), rule.getPossessionContext(), rule.getTargetCellKey()));
         }
+        mirrorWeHaveBallRules(sanitized);
 
         List<TacticsRuleDTO> merged = new ArrayList<>();
         for (TacticsRuleDTO fallback : defaults) {
@@ -235,12 +240,55 @@ public class TeamTacticsService {
                 byKey.put(ruleKey(rule), rule);
             }
         }
+        mirrorWeHaveBallRules(byKey);
         List<TacticsRuleDTO> merged = new ArrayList<>();
         for (TacticsRuleDTO fallback : defaults) {
             TacticsRuleDTO rule = byKey.getOrDefault(ruleKey(fallback), fallback);
             merged.add(new TacticsRuleDTO(rule.getSlotKey(), rule.getBallStateKey(), rule.getPossessionContext(), rule.getTargetCellKey()));
         }
         return merged;
+    }
+
+    private void mirrorWeHaveBallRules(Map<String, TacticsRuleDTO> rulesByKey) {
+        List<TacticsRuleDTO> sourceRules = new ArrayList<>(rulesByKey.values());
+        for (TacticsRuleDTO rule : sourceRules) {
+            if (rule == null
+                    || !FormationSlotCatalog.WE_HAVE_BALL.equals(rule.getPossessionContext())) {
+                continue;
+            }
+            TacticsRuleDTO mirrored = new TacticsRuleDTO(
+                    rule.getSlotKey(),
+                    rule.getBallStateKey(),
+                    FormationSlotCatalog.OPPONENT_HAS_BALL,
+                    rule.getTargetCellKey()
+            );
+            rulesByKey.put(ruleKey(mirrored), mirrored);
+        }
+    }
+
+    private TeamTacticsProfile resolveProfile(Team team) {
+        if (team == null || team.getId() == null) {
+            return null;
+        }
+        TeamTacticsProfile persisted = teamTacticsProfileRepository.findByTeamId(team.getId()).orElse(null);
+        if (persisted != null) {
+            return persisted;
+        }
+        return tacticsProfileBackupService.findByTeamName(team.getName())
+                .map(entry -> toVirtualProfile(team, entry))
+                .orElse(null);
+    }
+
+    private TeamTacticsProfile toVirtualProfile(Team team, TacticsProfileBackupEntry entry) {
+        TeamTacticsProfile profile = new TeamTacticsProfile();
+        profile.setTeam(team);
+        profile.setFormation(entry.getFormation());
+        profile.setStyle(entry.getStyle());
+        profile.setRulesJson(entry.getRulesJson());
+        profile.setSetPiecesJson(entry.getSetPiecesJson());
+        profile.setVersion(entry.getVersion() != null ? entry.getVersion() : 1L);
+        profile.setUpdatedAt(entry.getUpdatedAt());
+        return profile;
     }
 
     private TacticsSetPieceDTO sanitizeSetPieces(TacticsSetPieceDTO input, List<TacticsSlotDTO> slots) {

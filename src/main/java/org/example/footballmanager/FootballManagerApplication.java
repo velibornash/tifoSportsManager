@@ -4,7 +4,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableAsync;
-import java.awt.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -29,19 +29,18 @@ public class FootballManagerApplication implements CommandLineRunner {
 
     private void openBrowser(String url) throws IOException {
         String os = System.getProperty("os.name").toLowerCase();
-        Runtime rt = Runtime.getRuntime();
 
         if (os.contains("win")) {
-            rt.exec("rundll32 url.dll,FileProtocolHandler " + url);
+            new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
         } else if (os.contains("mac")) {
-            rt.exec("open " + url);
+            new ProcessBuilder("open", url).start();
         } else if (os.contains("nix") || os.contains("nux")) {
             String[] browsers = { "xdg-open", "google-chrome", "firefox" };
             String browser = Arrays.stream(browsers)
                     .filter(cmd -> new File("/usr/bin/" + cmd).exists())
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("No browser found"));
-            rt.exec(new String[]{browser, url});
+            new ProcessBuilder(browser, url).start();
         } else {
             throw new UnsupportedOperationException("Unsupported OS: " + os);
         }

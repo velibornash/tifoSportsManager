@@ -1,5 +1,5 @@
 // cleanSheet.js
-import { authFetch } from './auth.js';
+import { authFetch, handleAuthFailure } from './auth.js';
 
 let gameState = null;
 let currentUserTeamId = null;
@@ -53,8 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initGame();
     } catch (err) {
         logMessage(`Authentication failed: ${err.message}`, 'error');
-        localStorage.removeItem('token');
-        window.location.href = '/login.html';
+        handleAuthFailure(err, 'Clean Sheet session expired.');
     }
 
     document.getElementById('startGameBtn')?.addEventListener('click', initGame);

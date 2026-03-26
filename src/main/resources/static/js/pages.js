@@ -1,5 +1,5 @@
 ﻿// pages.js
-import { authFetch } from './auth.js';
+import { authFetch, handleAuthFailure } from './auth.js';
 import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
@@ -192,8 +192,7 @@ import { createCommunityFeature } from './pages/features/community.js';
             return currentUserTeamId;
         } catch (err) {
             console.error("Error /auth/me:", err);
-            localStorage.removeItem('token');
-            window.location.href = '/login.html';
+            handleAuthFailure(err, 'Session expired while loading user context.');
             return null;
         }
     }
@@ -2456,15 +2455,49 @@ import { createCommunityFeature } from './pages/features/community.js';
             return previous;
         };
 
+        const buildPitchCoordinates = (slots) => {
+            const grouped = {
+                ATT: [],
+                MID: [],
+                DEF: [],
+                GK: []
+            };
+            slots.forEach((slot, idx) => {
+                if (grouped[slot.role]) grouped[slot.role].push({ slot, idx });
+            });
+
+            const rows = [
+                { role: "ATT", top: 15 },
+                { role: "MID", top: 38 },
+                { role: "DEF", top: 63 },
+                { role: "GK", top: 84 }
+            ];
+
+            return rows.flatMap(({ role, top }) => {
+                const rowSlots = grouped[role] || [];
+                return rowSlots.map((entry, rowIndex) => {
+                    const left = ((rowIndex + 1) / (rowSlots.length + 1)) * 100;
+                    return {
+                        ...entry,
+                        left,
+                        top
+                    };
+                });
+            });
+        };
+
         const renderDesktopDnD = (slots) => {
-            const slotCards = slots.map((slot, idx) => {
+            const pitchSlots = buildPitchCoordinates(slots).map(({ slot, idx, left, top }) => {
                 const selected = Number(state.starterIds[idx] || 0);
                 const p = getPlayerById(selected);
                 return `
-                    <div class="lineup-slot-drop" data-zone="starter" data-index="${idx}" data-role="${slot.role}" style="padding:10px; border:1px dashed #466; border-radius:8px; background:rgba(255,255,255,0.03); min-height:62px;">
-                        <div style="font-size:0.8em; color:#97a6a9; margin-bottom:6px;">${slot.label}</div>
-                        ${p ? `<div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="starter" data-from-index="${idx}" style="padding:7px; border-radius:6px; background:#1f2d3a; cursor:grab;">${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</div>`
-                    : `<div style="color:#6f8188; font-size:0.86em;">Drop ${slot.role} player</div>`}
+                    <div class="lineup-slot-drop club-lineup-pitch-slot" data-zone="starter" data-index="${idx}" data-role="${slot.role}" style="--club-slot-left:${left}%; --club-slot-top:${top}%;">
+                        <div class="club-lineup-slot-label">${slot.label}</div>
+                        ${p ? `<div class="lineup-draggable club-lineup-player-chip" draggable="true" data-player-id="${p.id}" data-from-zone="starter" data-from-index="${idx}">
+                                <span class="club-lineup-player-name">${escapeHtml(p.name)}</span>
+                                <span class="club-lineup-player-meta">${escapeHtml(p.position)}, OVR ${p.overall ?? "-"}</span>
+                            </div>`
+                    : `<div class="club-lineup-slot-placeholder">Drop ${slot.role}</div>`}
                     </div>
                 `;
             }).join("");
@@ -2473,31 +2506,67 @@ import { createCommunityFeature } from './pages/features/community.js';
                 const selected = Number(state.benchIds[idx] || 0);
                 const p = getPlayerById(selected);
                 return `
-                    <div class="lineup-slot-drop" data-zone="bench" data-index="${idx}" style="padding:10px; border:1px dashed #5a5a4a; border-radius:8px; background:rgba(255,255,255,0.03); min-height:62px;">
-                        <div style="font-size:0.8em; color:#97a6a9; margin-bottom:6px;">Bench ${idx + 1}</div>
-                        ${p ? `<div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="bench" data-from-index="${idx}" style="padding:7px; border-radius:6px; background:#2a2d1f; cursor:grab;">${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})</div>`
-                    : `<div style="color:#6f8188; font-size:0.86em;">Drop player</div>`}
+                    <div class="lineup-slot-drop club-lineup-bench-slot" data-zone="bench" data-index="${idx}">
+                        <div class="club-lineup-slot-label">Bench ${idx + 1}</div>
+                        ${p ? `<div class="lineup-draggable club-lineup-player-chip club-lineup-player-chip--bench" draggable="true" data-player-id="${p.id}" data-from-zone="bench" data-from-index="${idx}">
+                                <span class="club-lineup-player-name">${escapeHtml(p.name)}</span>
+                                <span class="club-lineup-player-meta">${escapeHtml(p.position)}, OVR ${p.overall ?? "-"}</span>
+                            </div>`
+                    : `<div class="club-lineup-slot-placeholder">Drop player</div>`}
                     </div>
                 `;
             }).join("");
 
             const pool = poolCandidates().map(p => `
-                <div class="lineup-draggable" draggable="true" data-player-id="${p.id}" data-from-zone="pool" data-from-index="-1" style="padding:7px; border-radius:6px; background:#25303d; cursor:grab; margin-bottom:6px;">
-                    ${escapeHtml(p.name)} (${escapeHtml(p.position)}, OVR ${p.overall ?? "-"})
+                <div class="lineup-draggable club-lineup-player-chip club-lineup-player-chip--pool" draggable="true" data-player-id="${p.id}" data-from-zone="pool" data-from-index="-1">
+                    <span class="club-lineup-player-name">${escapeHtml(p.name)}</span>
+                    <span class="club-lineup-player-meta">${escapeHtml(p.position)}, OVR ${p.overall ?? "-"}</span>
                 </div>
             `).join("");
 
             return `
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-                    <div class="training-block">
-                        <h4>Starting XI (Drag and drop)</h4>
-                        <div style="display:grid; gap:8px;">${slotCards}</div>
+                <div class="club-lineup-desktop-shell">
+                    <div class="training-block club-lineup-pitch-card">
+                        <div class="club-lineup-panel-head">
+                            <div>
+                                <h4>Starting XI</h4>
+                                <p class="fm-subtle">Drag directly onto the pitch. Each role stays visible, so bench-to-XI swaps no longer need page scrolling.</p>
+                            </div>
+                            <span class="fm-panel-action">Drag & drop</span>
+                        </div>
+                        <div class="club-lineup-pitch-stage">
+                            <div class="club-lineup-pitch-board">
+                                <div class="club-lineup-pitch-surface">
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--mid"></span>
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--circle"></span>
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--top-box"></span>
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--bottom-box"></span>
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--top-six"></span>
+                                    <span class="club-lineup-pitch-line club-lineup-pitch-line--bottom-six"></span>
+                                </div>
+                                <div class="club-lineup-pitch-layer">${pitchSlots}</div>
+                            </div>
+                        </div>
+                        <div class="lineup-slot-drop club-lineup-pool-strip" data-zone="pool" data-index="-1">
+                            <strong>Unassign area</strong>
+                            <span>Drop a starter or bench player here to remove them from the active selection.</span>
+                        </div>
                     </div>
-                    <div class="training-block">
-                        <h4>Bench (7)</h4>
-                        <div style="display:grid; gap:8px; margin-bottom:10px;">${benchSlots}</div>
-                        <h4>Available pool</h4>
-                        <div class="lineup-slot-drop" data-zone="pool" data-index="-1" style="padding:10px; border:1px dashed #344; border-radius:8px; min-height:120px; max-height:320px; overflow:auto;">${pool || `<div style="color:#6f8188; font-size:0.86em;">No available players</div>`}</div>
+                    <div class="club-lineup-side-rail">
+                        <div class="training-block club-lineup-side-card">
+                            <div class="club-lineup-panel-head">
+                                <div>
+                                    <h4>Selection Dock</h4>
+                                    <p class="fm-subtle">Bench stays next to the pitch, with the remaining squad immediately below it.</p>
+                                </div>
+                            </div>
+                            <div class="club-lineup-bench-grid">${benchSlots}</div>
+                            <div class="club-lineup-pool-head">
+                                <h4>Available pool</h4>
+                                <span>${poolCandidates().length} ready</span>
+                            </div>
+                            <div class="lineup-slot-drop club-lineup-pool-list" data-zone="pool" data-index="-1">${pool || `<div class="club-lineup-pool-empty">No available players</div>`}</div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -2873,6 +2942,11 @@ import { createCommunityFeature } from './pages/features/community.js';
             const key = `${slotKey}|${ballStateKey}|${possessionContext}`;
             if (targetCellKey) state.rulesMap[key] = targetCellKey;
             else delete state.rulesMap[key];
+            if (possessionContext === 'WE_HAVE_BALL') {
+                const mirrorKey = `${slotKey}|${ballStateKey}|OPPONENT_HAS_BALL`;
+                if (targetCellKey) state.rulesMap[mirrorKey] = targetCellKey;
+                else delete state.rulesMap[mirrorKey];
+            }
             saveDraft();
         };
 
@@ -5213,10 +5287,6 @@ import { createCommunityFeature } from './pages/features/community.js';
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
-
-
-
-
 
 
 

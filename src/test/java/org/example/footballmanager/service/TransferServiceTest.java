@@ -3,9 +3,9 @@ package org.example.footballmanager.service;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Position;
 import org.example.footballmanager.model.Team;
-import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.Transfer;
 import org.example.footballmanager.model.TransferStatus;
+import org.example.footballmanager.exception.ApiException;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.repository.TransferRepository;
@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
@@ -76,7 +77,6 @@ class TransferServiceTest {
         when(transferRepository.findByPlayerId(10L)).thenReturn(Optional.of(transfer));
         when(teamRepository.findById(2L)).thenReturn(Optional.of(buyer));
         when(squadNumberAssigner.nextNumberForTeam(buyer, Position.ATT)).thenReturn(19);
-        when(teamRepository.save(any(Team.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(playerRepository.save(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -159,6 +159,7 @@ class TransferServiceTest {
         Team aiTeam = new Team();
         aiTeam.setId(2L);
         aiTeam.setName("AI FC");
+        aiTeam.setBudget(900.0);
 
         Player player = new Player();
         player.setId(10L);
@@ -167,16 +168,15 @@ class TransferServiceTest {
         player.setPosition(Position.MID);
         player.setTeam(aiTeam);
 
-        when(userRepository.findAll()).thenReturn(List.of());
-        when(teamRepository.findAll()).thenReturn(List.of(aiTeam));
-        when(transferRepository.findAll()).thenReturn(List.of());
+        when(userRepository.findDistinctManagedTeamIds()).thenReturn(List.of());
+        when(teamRepository.findClubTeamsForOperations()).thenReturn(List.of(aiTeam));
+        when(transferRepository.findByStatusInAndBuyerTeamIsNull(any())).thenReturn(List.of());
         when(playerRepository.countByTeam(aiTeam)).thenReturn(18);
         when(playerRepository.findByTeam(aiTeam)).thenReturn(List.of(player));
-        when(transferRepository.findByPlayerId(10L)).thenReturn(Optional.empty());
         when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         TransferService spyService = spy(transferService);
-        doReturn(0.10, 0.50, 0.99).when(spyService).nextRandomDouble();
+        doReturn(0.10, 0.50).when(spyService).nextRandomDouble();
         doReturn(0).when(spyService).nextRandomInt(anyInt());
 
         spyService.simulateWeeklyMarketActivity();
@@ -193,6 +193,7 @@ class TransferServiceTest {
         Team aiTeam = new Team();
         aiTeam.setId(2L);
         aiTeam.setName("AI FC");
+        aiTeam.setBudget(1_000.0);
 
         Player player = new Player();
         player.setId(10L);
@@ -208,14 +209,12 @@ class TransferServiceTest {
         listedTransfer.setStatus(TransferStatus.LISTED);
         listedTransfer.setAskingPrice(520.0);
         listedTransfer.setListedAt(LocalDateTime.now().minusDays(1));
+        listedTransfer.setInterestedTeams(new HashSet<>());
 
-        User user = new User();
-        user.setTeam(humanTeam);
-
-        when(userRepository.findAll()).thenReturn(List.of(user));
-        when(teamRepository.findAll()).thenReturn(List.of(humanTeam, aiTeam));
-        when(transferRepository.findAll()).thenReturn(List.of(listedTransfer));
-        when(playerRepository.findByTeamId(1L)).thenReturn(List.of(player));
+        when(userRepository.findDistinctManagedTeamIds()).thenReturn(List.of(1L));
+        when(teamRepository.findClubTeamsForOperations()).thenReturn(List.of(humanTeam, aiTeam));
+        when(transferRepository.findByStatusInAndBuyerTeamIsNull(any())).thenReturn(List.of(listedTransfer));
+        when(playerRepository.findByTeamIdIn(List.of(1L))).thenReturn(List.of(player));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         TransferService spyService = spy(transferService);
@@ -226,6 +225,88 @@ class TransferServiceTest {
 
         assertEquals(1, listedTransfer.getInterestedTeams().size());
         assertTrue(listedTransfer.getInterestedTeams().iterator().next().contains("AI FC offered €"));
+        verify(transferRepository).save(listedTransfer);
+    }
+
+    @Test
+    void acceptBestOfferRejectsStaleUnaffordableBuyerOfferWithClearMessage() {
+        Team seller = new Team();
+        seller.setId(1L);
+        seller.setName("Seller FC");
+        seller.setBudget(1_000.0);
+
+        Team buyer = new Team();
+        buyer.setId(2L);
+        buyer.setName("Buyer FC");
+        buyer.setBudget(150.0);
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setName("Marko");
+        player.setPosition(Position.ATT);
+        player.setTeam(seller);
+
+        Transfer transfer = new Transfer();
+        transfer.setId(88L);
+        transfer.setPlayer(player);
+        transfer.setSellerTeam(seller);
+        transfer.setStatus(TransferStatus.OFFER_RECEIVED);
+        transfer.setInterestedTeams(new HashSet<>(Set.of("Buyer FC offered €400")));
+
+        when(transferRepository.findByPlayerId(10L)).thenReturn(Optional.of(transfer));
+        when(teamRepository.findByName("Buyer FC")).thenReturn(Optional.of(buyer));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ApiException ex = assertThrows(ApiException.class, () -> transferService.acceptBestOffer(10L, 1L));
+
+        assertEquals("BUYER_BUDGET_CHANGED", ex.getCode());
+        assertTrue(ex.getMessage().contains("buying club"));
+        assertTrue(transfer.getInterestedTeams().isEmpty());
+        assertEquals(TransferStatus.CANCELLED, transfer.getStatus());
+        assertNull(transfer.getBuyerTeam());
+        verify(transferRepository).save(transfer);
+    }
+
+    @Test
+    void simulateWeeklyMarketActivityCapsAiOfferToBuyerBudget() {
+        Team humanTeam = new Team();
+        humanTeam.setId(1L);
+        humanTeam.setName("OFK Omladinac");
+
+        Team aiTeam = new Team();
+        aiTeam.setId(2L);
+        aiTeam.setName("AI FC");
+        aiTeam.setBudget(150.0);
+
+        Player player = new Player();
+        player.setId(10L);
+        player.setAge(22);
+        player.setPlayerValue(500.0);
+        player.setPosition(Position.ATT);
+        player.setTeam(humanTeam);
+
+        Transfer listedTransfer = new Transfer();
+        listedTransfer.setId(77L);
+        listedTransfer.setPlayer(player);
+        listedTransfer.setSellerTeam(humanTeam);
+        listedTransfer.setStatus(TransferStatus.LISTED);
+        listedTransfer.setAskingPrice(520.0);
+        listedTransfer.setListedAt(LocalDateTime.now().minusDays(1));
+        listedTransfer.setInterestedTeams(new HashSet<>());
+
+        when(userRepository.findDistinctManagedTeamIds()).thenReturn(List.of(1L));
+        when(teamRepository.findClubTeamsForOperations()).thenReturn(List.of(humanTeam, aiTeam));
+        when(transferRepository.findByStatusInAndBuyerTeamIsNull(any())).thenReturn(List.of(listedTransfer));
+        when(playerRepository.findByTeamIdIn(List.of(1L))).thenReturn(List.of(player));
+
+        TransferService spyService = spy(transferService);
+        doReturn(0.99, 0.10, 0.10, 0.20).when(spyService).nextRandomDouble();
+        doReturn(0).when(spyService).nextRandomInt(anyInt());
+
+        spyService.simulateWeeklyMarketActivity();
+
+        assertEquals(1, listedTransfer.getInterestedTeams().size());
+        assertTrue(listedTransfer.getInterestedTeams().iterator().next().contains("AI FC offered €150"));
         verify(transferRepository).save(listedTransfer);
     }
 }

@@ -1,5 +1,5 @@
 // dashboard.js
-import { authFetch } from './auth.js';
+import { authFetch, handleAuthFailure } from './auth.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
@@ -346,8 +346,12 @@ window.addEventListener('load', async () => {
         loadDashboard();
     } catch (err) {
         console.error('Error loading /auth/me:', err);
-        localStorage.removeItem('token');
-        window.location.href = '/login.html';
+        if (!handleAuthFailure(err, 'Session expired while loading dashboard.')) {
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) {
+                mainContent.innerHTML = `<div class="manager-card" style="padding:32px; text-align:center;"><h2>Dashboard unavailable</h2><p>${escapeHtml(err?.message || 'Could not load your session data.')}</p></div>`;
+            }
+        }
     }
 });
 

@@ -2,9 +2,12 @@ package org.example.footballmanager.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.example.footballmanager.dto.ApiErrorResponseDTO;
 import org.example.footballmanager.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -19,8 +22,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.time.LocalDateTime;
+
 @Configuration
 public class SecurityConfig {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Bean
     public UserDetailsService userDetailsService(UserRepository userRepo) {
@@ -92,7 +99,14 @@ public class SecurityConfig {
                 .exceptionHandling(exc -> exc
                         .authenticationEntryPoint((request, response, authException) -> {
                             if (shouldReturnUnauthorized(request)) {
-                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                                writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "Authentication required.", request);
+                                return;
+                            }
+                            response.sendRedirect("/login.html");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            if (shouldReturnUnauthorized(request)) {
+                                writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "Access denied.", request);
                                 return;
                             }
                             response.sendRedirect("/login.html");
@@ -112,5 +126,22 @@ public class SecurityConfig {
                 || !"GET".equalsIgnoreCase(request.getMethod())
                 || (accept != null && accept.contains("application/json"))
                 || request.getRequestURI().startsWith("/api/");
+    }
+
+    private void writeJsonError(HttpServletResponse response,
+                                int status,
+                                String code,
+                                String message,
+                                HttpServletRequest request) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ApiErrorResponseDTO body = new ApiErrorResponseDTO(
+                status,
+                code,
+                message,
+                request != null ? request.getRequestURI() : null,
+                LocalDateTime.now()
+        );
+        response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 }

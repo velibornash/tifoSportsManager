@@ -100,6 +100,12 @@ public class RealisticMatchEngine {
     private static final double CORNER_TAKER_APPROACH_STEP = 2.3;
     private static final double GOALKEEPER_TACTICAL_MAX_X_DRIFT = 2.8;
     private static final double GOALKEEPER_TACTICAL_MAX_Y_DRIFT = 3.8;
+    private static final double GOALKEEPER_HARD_AREA_MIN_X_HOME = 1.5;
+    private static final double GOALKEEPER_HARD_AREA_MAX_X_HOME = 13.5;
+    private static final double GOALKEEPER_HARD_AREA_MIN_X_AWAY = 86.5;
+    private static final double GOALKEEPER_HARD_AREA_MAX_X_AWAY = 98.5;
+    private static final double GOALKEEPER_HARD_AREA_MIN_Y = 36.0;
+    private static final double GOALKEEPER_HARD_AREA_MAX_Y = 64.0;
     private static final double GOALKEEPER_SHOT_COVERAGE_X = 7.5;
     private static final double GOALKEEPER_SHOT_COVERAGE_Y = 9.5;
     private static final double[] ANCHOR_X_CENTERS = {10.0, 22.0, 38.0, 52.0, 66.0};
@@ -1698,7 +1704,7 @@ public class RealisticMatchEngine {
                 return;
             }
             // EXCLUDE: Players currently in 'action pause' (like just released a pass)
-            if (pos.getOffsideTicksRemaining() > 0) {
+            if (pos.getOffsideTicksRemaining() > 0 && pos.getRetreatTicksRemaining() <= 0) {
                 return;
             }
             if (rt.ballInTransit && Objects.equals(rt.pendingReceiverId, pos.getId())) {
@@ -1708,6 +1714,7 @@ public class RealisticMatchEngine {
             applyRoleMovement(rt, pos, player);
         });
         spreadSameTeamPlayers(rt);
+        enforceGoalkeeperArea(rt);
     }
 
     private boolean isLockedCrossTransit(MatchRuntime rt) {
@@ -1965,6 +1972,9 @@ public class RealisticMatchEngine {
                 targetX = applyOffsideTolerance(rt, pos, targetX, home);
             }
             movePosition(pos, targetX, targetY, resolveMovementStep(pos, player, overrideTarget != null));
+            if (player.getPosition() == Position.ATT || player.getPosition() == Position.WNG) {
+                keepAttackerOnside(rt, pos);
+            }
             return;
         }
 
@@ -2045,6 +2055,38 @@ public class RealisticMatchEngine {
        targetY += (random.nextDouble() - 0.5) * 2.8;
 
         movePosition(pos, targetX, targetY, resolveMovementStep(pos, player, false));
+        if (player.getPosition() == Position.ATT || player.getPosition() == Position.WNG) {
+            keepAttackerOnside(rt, pos);
+        }
+    }
+
+    private void enforceGoalkeeperArea(MatchRuntime rt) {
+        Stream.concat(rt.homePlayers.stream(), rt.awayPlayers.stream())
+                .filter(Objects::nonNull)
+                .filter(player -> player.getPosition() == Position.GK)
+                .forEach(goalkeeper -> clampGoalkeeperToArea(rt, goalkeeper));
+    }
+
+    private void clampGoalkeeperToArea(MatchRuntime rt, Player goalkeeper) {
+        PlayerPositionDTO pos = getPlayerPosition(rt, goalkeeper);
+        if (pos == null) {
+            return;
+        }
+
+        boolean home = "HOME".equals(pos.getTeam());
+        double minX = home ? GOALKEEPER_HARD_AREA_MIN_X_HOME : GOALKEEPER_HARD_AREA_MIN_X_AWAY;
+        double maxX = home ? GOALKEEPER_HARD_AREA_MAX_X_HOME : GOALKEEPER_HARD_AREA_MAX_X_AWAY;
+        pos.setX(clamp(pos.getX(), minX, maxX));
+        pos.setY(clamp(pos.getY(), GOALKEEPER_HARD_AREA_MIN_Y, GOALKEEPER_HARD_AREA_MAX_Y));
+
+        if (rt.currentCarrier != null && goalkeeper.getId() != null && rt.currentCarrier.getId() == goalkeeper.getId()) {
+            rt.currentCarrier.setX(pos.getX());
+            rt.currentCarrier.setY(pos.getY());
+            if (rt.ball != null && !rt.ballInTransit) {
+                rt.ball.setX(pos.getX());
+                rt.ball.setY(pos.getY());
+            }
+        }
     }
 
     private double resolveMovementStep(PlayerPositionDTO pos, Player player, boolean overrideApplied) {
