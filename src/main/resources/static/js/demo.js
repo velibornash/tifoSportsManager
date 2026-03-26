@@ -4,10 +4,14 @@ import { authFetch } from './auth.js';
 let currentUserTeamId = null;
 let roundSimulationPollTimer = null;
 let advanceWeekPollTimer = null;
+let weekPreparationPollTimer = null;
 
 const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
 const DASHBOARD_ROUND_SIM_JOB_KEY = 'dashboardRoundSimulationJob';
 const DASHBOARD_ADVANCE_WEEK_JOB_KEY = 'dashboardAdvanceWeekJob';
+const DASHBOARD_WEEK_PREP_JOB_KEY = 'dashboardWeekPreparationJob';
+const DASHBOARD_WEEK_PREP_TARGET_KEY = 'dashboardWeekPreparationTarget';
+const DASHBOARD_WEEK_CONSUMED_KEY = 'dashboardWeekConsumed';
 
 function resetButton(button, label) {
     if (!button) return;
@@ -182,6 +186,74 @@ function hasPersistedAdvanceWeekJob() {
     }
 }
 
+function persistWeekPreparationJob(jobId) {
+    if (!jobId) return;
+    try {
+        sessionStorage.setItem(DASHBOARD_WEEK_PREP_JOB_KEY, jobId);
+    } catch (err) {
+        console.warn('Failed to persist week preparation job:', err);
+    }
+}
+
+function clearWeekPreparationJob() {
+    try {
+        sessionStorage.removeItem(DASHBOARD_WEEK_PREP_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to clear week preparation job:', err);
+    }
+}
+
+function hasPersistedWeekPreparationJob() {
+    try {
+        return !!sessionStorage.getItem(DASHBOARD_WEEK_PREP_JOB_KEY);
+    } catch (err) {
+        console.warn('Failed to read week preparation job:', err);
+        return false;
+    }
+}
+
+function persistWeekPreparationTarget(target) {
+    try {
+        if (target) {
+            sessionStorage.setItem(DASHBOARD_WEEK_PREP_TARGET_KEY, target);
+        } else {
+            sessionStorage.removeItem(DASHBOARD_WEEK_PREP_TARGET_KEY);
+        }
+    } catch (err) {
+        console.warn('Failed to persist week preparation target:', err);
+    }
+}
+
+function readWeekPreparationTarget() {
+    try {
+        return sessionStorage.getItem(DASHBOARD_WEEK_PREP_TARGET_KEY) || null;
+    } catch (err) {
+        console.warn('Failed to read week preparation target:', err);
+        return null;
+    }
+}
+
+function persistWeekConsumed(consumed) {
+    try {
+        if (consumed) {
+            sessionStorage.setItem(DASHBOARD_WEEK_CONSUMED_KEY, 'true');
+        } else {
+            sessionStorage.removeItem(DASHBOARD_WEEK_CONSUMED_KEY);
+        }
+    } catch (err) {
+        console.warn('Failed to persist week consumed flag:', err);
+    }
+}
+
+function isWeekConsumed() {
+    try {
+        return sessionStorage.getItem(DASHBOARD_WEEK_CONSUMED_KEY) === 'true';
+    } catch (err) {
+        console.warn('Failed to read week consumed flag:', err);
+        return false;
+    }
+}
+
 function setSeasonFlowStatus(message, tone = 'info', options = {}) {
     const host = document.getElementById('dashboard-season-flow-status');
     if (host) {
@@ -252,6 +324,51 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
         return;
     }
 
+    if (action === 'WEEK_PREPARATION_RUNNING') {
+        persistWeekPreparationJob(data.jobId);
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Preparing week...';
+        }
+        const processed = Number(data?.processedLeagues || 0);
+        const total = Number(data?.leaguesProcessed || 0);
+        const leagueLabel = data?.currentLeague ? ` ${data.currentLeague}` : '';
+        const progressLabel = total > 0 ? ` (${processed}/${total})` : '';
+        setSeasonFlowStatus(data.message || `Preparing current week${leagueLabel}${progressLabel}.`, 'info');
+        return;
+    }
+
+    if (action === 'WEEK_PREPARED') {
+        stopWeekPreparationPolling();
+        clearWeekPreparationJob();
+        persistWeekConsumed(true);
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Current week prepared.', 'success');
+        const target = readWeekPreparationTarget();
+        persistWeekPreparationTarget(null);
+        if (target === 'match') {
+            if (data.userMatchId) {
+                window.location.href = `/realisticDemo.html?matchId=${data.userMatchId}&mode=live`;
+            } else {
+                setSeasonFlowStatus('No scheduled match exists for your club in the current week.', 'warning');
+            }
+            return;
+        }
+        if (target === 'results') {
+            window.location.href = `/simulateAllResults.html`;
+            return;
+        }
+        return;
+    }
+
+    if (action === 'WEEK_PREPARATION_FAILED') {
+        stopWeekPreparationPolling();
+        clearWeekPreparationJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(data.message || 'Preparing the current week failed.', 'error');
+        return;
+    }
+
     if (action === 'NO_MATCH_CURRENT_WEEK') {
         resetButton(button, defaultLabel);
         setSeasonFlowStatus(data.message || 'No scheduled match exists for your club in the current week.', 'warning');
@@ -311,6 +428,7 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
     if (action === 'WEEK_ADVANCED') {
         stopAdvanceWeekPolling();
         clearAdvanceWeekJob();
+        persistWeekConsumed(false);
         const message = data.message || 'Calendar advanced to the next week.';
         setSeasonFlowStatus(message, 'success', { persist: true });
         const shouldRefreshDashboard = !!button?.closest('.fm-dashboard-view') && typeof window.loadDashboard === 'function';
@@ -341,6 +459,41 @@ function stopRoundSimulationPolling() {
         window.clearInterval(roundSimulationPollTimer);
         roundSimulationPollTimer = null;
     }
+}
+
+function stopWeekPreparationPolling() {
+    if (weekPreparationPollTimer) {
+        window.clearInterval(weekPreparationPollTimer);
+        weekPreparationPollTimer = null;
+    }
+}
+
+async function pollWeekPreparationStatus(buttonId, fallbackLabel) {
+    const button = buttonId ? document.getElementById(buttonId) : null;
+    const defaultLabel = getButtonDefaultLabel(button, fallbackLabel || '⚽ Watch Your Match');
+
+    try {
+        const response = await authFetch('/simulation/current-round/prepare/status');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+            throw new Error(data?.message || data?.error || 'Failed to fetch week preparation status.');
+        }
+        handleSeasonFlowResponse(data, button, defaultLabel);
+    } catch (error) {
+        console.error('Failed to poll week preparation status:', error);
+        stopWeekPreparationPolling();
+        clearWeekPreparationJob();
+        resetButton(button, defaultLabel);
+        setSeasonFlowStatus(error.message || 'Failed to fetch week preparation status.', 'error');
+    }
+}
+
+function startWeekPreparationPolling(buttonId, fallbackLabel) {
+    stopWeekPreparationPolling();
+    pollWeekPreparationStatus(buttonId, fallbackLabel);
+    weekPreparationPollTimer = window.setInterval(() => {
+        pollWeekPreparationStatus(buttonId, fallbackLabel);
+    }, 1500);
 }
 
 async function pollRoundSimulationStatus(buttonId, fallbackLabel) {
@@ -433,7 +586,9 @@ async function runSeasonFlowAction(buttonId, requestUrl, loadingLabel, fallbackL
         }
 
         handleSeasonFlowResponse(data || {}, button, defaultLabel);
-        if (data?.action === 'ROUND_SIMULATION_RUNNING') {
+        if (data?.action === 'WEEK_PREPARATION_RUNNING') {
+            startWeekPreparationPolling(buttonId, fallbackLabel);
+        } else if (data?.action === 'ROUND_SIMULATION_RUNNING') {
             startRoundSimulationPolling(buttonId, fallbackLabel);
         } else if (data?.action === 'WEEK_ADVANCE_RUNNING') {
             startAdvanceWeekPolling(buttonId, fallbackLabel);
@@ -464,26 +619,43 @@ window.addEventListener('load', async () => {
     if (hasPersistedRoundSimulationJob()) {
         startRoundSimulationPolling('simulate-current-round-btn', '🧮 Simulate Other Results');
     }
+    if (hasPersistedWeekPreparationJob()) {
+        const target = readWeekPreparationTarget();
+        const buttonId = target === 'results' ? 'simulate-current-round-btn' : 'start-realistic-demo-btn';
+        const fallbackLabel = target === 'results' ? '🧮 Simulate All Results' : '⚽ Watch Your Match';
+        startWeekPreparationPolling(buttonId, fallbackLabel);
+    }
     if (hasPersistedAdvanceWeekJob()) {
         startAdvanceWeekPolling('advance-week-btn', '📅 Advance Week');
     }
 });
 
 async function startRealisticDemoTest() {
+    if (isWeekConsumed()) {
+        setSeasonFlowStatus('Current week is already locked. Advance Week to unlock the next match week.', 'warning');
+        return;
+    }
+    persistWeekPreparationTarget('match');
     await runSeasonFlowAction(
         'start-realistic-demo-btn',
-        '/start-realistic-demo',
+        '/simulation/current-round/prepare',
         'Preparing your match...',
-        '⚽ Play Your Match'
+        '⚽ Watch Your Match',
+        { method: 'POST' }
     );
 }
 
 async function simulateCurrentRoundTest() {
+    if (isWeekConsumed()) {
+        setSeasonFlowStatus('Current week is already locked. Advance Week to unlock the next results desk.', 'warning');
+        return;
+    }
+    persistWeekPreparationTarget('results');
     await runSeasonFlowAction(
         'simulate-current-round-btn',
-        '/simulation/current-round/simulate-all',
-        'Simulating other results...',
-        '🧮 Simulate Other Results',
+        '/simulation/current-round/prepare',
+        'Preparing all results...',
+        '🧮 Simulate All Results',
         { method: 'POST' }
     );
 }

@@ -500,13 +500,14 @@ public class TransferService {
         Team buyerTeam = randomItem(candidateBuyers);
         double offerPrice = round2(Math.max(1.0, targetPlayer.getPlayerValue()) * (0.80 + nextRandomDouble() * 0.40));
         Transfer transfer = transferByPlayerId.get(targetPlayer.getId());
+        if (transfer == null && targetPlayer.getId() != null) {
+            transfer = transferRepository.findByPlayerId(targetPlayer.getId()).orElse(null);
+        }
         Transfer updated;
         if (isActiveListing(transfer)) {
             updated = transfer;
         } else {
-            updated = transfer == null || transfer.getStatus() == TransferStatus.COMPLETED || transfer.getStatus() == TransferStatus.CANCELLED
-                    ? new Transfer()
-                    : transfer;
+            updated = transfer == null ? new Transfer() : transfer;
             updated.setPlayer(targetPlayer);
             updated.setSellerTeam(sellerTeam);
             updated.setBuyerTeam(null);
@@ -514,11 +515,11 @@ public class TransferService {
             updated.setAgreedPrice(null);
             updated.setCompletedAt(null);
             updated.setAskingPrice(Math.max(1.0, targetPlayer.getPlayerValue()));
-            if (updated.getListedAt() == null) {
-                updated.setListedAt(LocalDateTime.now());
-            }
+            updated.setListedAt(LocalDateTime.now());
             if (updated.getInterestedTeams() == null) {
                 updated.setInterestedTeams(new HashSet<>());
+            } else {
+                updated.getInterestedTeams().clear();
             }
         }
 

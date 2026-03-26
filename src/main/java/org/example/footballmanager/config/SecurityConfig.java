@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/register.html",
                                 "/dashboard.html",
                                 "/realisticDemo.html",
+                                "/simulateAllResults.html",
                                 "/cleanSheetTifo.html",
                                 "/tifo.html",
                                 "/old/**",

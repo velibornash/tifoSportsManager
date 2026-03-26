@@ -57,6 +57,9 @@ matchEndedImg.src = '/images/match_ended.jpg';
 let replayEvents = [];
 let ballData = [];
 let currentInvolvedPlayerIds = new Set();
+let otherMatchTickerEvents = [];
+let otherMatchTickerIndex = 0;
+let otherMatchTickerFlashTimeout = null;
 
 const matchData = {
     homeTeam: 'Home',
@@ -97,6 +100,7 @@ async function initializeReplay() {
     setReplayStatus('Preparing match replay...');
     const metadata = await waitForReplayMetadata();
     hydrateReplayMetadata(metadata);
+    await hydrateOtherMatchTicker();
     refreshSquads();
     renderGoalMarkers(isReplayMode() ? resolveMetadataGoals(metadata) : []);
     updateTimelineBounds();
@@ -353,6 +357,7 @@ function startPlaybackLoop() {
                     isPlaying = false;
                     setReplayStatus('Replay finished');
                     setPlaybackToggleLabel();
+                    setPostMatchActionsVisible(true);
                 }
             }
         } else {
@@ -832,7 +837,94 @@ function resetReplayUi() {
     clearPitchHighlights();
     clearCanvasAnimation();
     currentInvolvedPlayerIds.clear();
+    otherMatchTickerIndex = 0;
+    setPostMatchActionsVisible(false);
+    resetOtherMatchTicker();
     drawTacticalOverlay(getCurrentRenderedState());
+}
+
+async function hydrateOtherMatchTicker() {
+    if (!replayMode || replayMode !== 'live') {
+        resetOtherMatchTicker('Replay mode active - external scores ticker hidden.');
+        return;
+    }
+
+    try {
+        const response = await authFetch('/simulation/current-round/feed');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data || data.status !== 'ok') {
+            throw new Error(data?.message || data?.error || 'Unable to load round ticker.');
+        }
+
+        otherMatchTickerEvents = (data.leagues || [])
+            .filter(league => Boolean(league.userLeague))
+            .flatMap(league => (league.matches || [])
+                .filter(match => String(match.matchId || '') !== String(matchId))
+                .flatMap(match => (match.events || []).map(event => ({
+                    minute: Number(event.minute || 0),
+                    code: String(event.code || 'INFO'),
+                    text: `${match.homeTeam} ${event.homeGoals || 0}-${event.awayGoals || 0} ${match.awayTeam}${event.playerName ? ` • ${event.playerName}` : ''}`
+                }))))
+            .sort((left, right) => left.minute - right.minute);
+
+        resetOtherMatchTicker(otherMatchTickerEvents.length
+            ? 'Watching other grounds in your league for breaking changes...'
+            : 'No other live incidents from your league yet.');
+    } catch (error) {
+        console.warn('Failed to hydrate other-match ticker:', error);
+        resetOtherMatchTicker('Round ticker unavailable.');
+    }
+}
+
+function resetOtherMatchTicker(message = 'Watching other grounds for breaking changes...') {
+    if (message !== 'Watching other grounds for breaking changes...') {
+        otherMatchTickerEvents = [];
+    }
+    otherMatchTickerIndex = 0;
+    const ticker = document.getElementById('other-match-ticker');
+    if (!ticker) return;
+    ticker.classList.remove('flash');
+    ticker.innerHTML = escapeHtml(message);
+}
+
+function setPostMatchActionsVisible(visible) {
+    const host = document.getElementById('post-match-actions');
+    if (!host) return;
+    host.classList.toggle('visible', Boolean(visible && replayMode === 'live'));
+}
+
+function updateOtherMatchTicker(minute, force = false) {
+    if (!Array.isArray(otherMatchTickerEvents) || !otherMatchTickerEvents.length) {
+        return;
+    }
+
+    const ticker = document.getElementById('other-match-ticker');
+    if (!ticker) return;
+
+    let latest = null;
+    while (otherMatchTickerIndex < otherMatchTickerEvents.length && otherMatchTickerEvents[otherMatchTickerIndex].minute <= minute) {
+        latest = otherMatchTickerEvents[otherMatchTickerIndex];
+        otherMatchTickerIndex += 1;
+    }
+
+    if (!latest && !force) {
+        return;
+    }
+    if (!latest && force) {
+        ticker.innerHTML = 'Watching other grounds for breaking changes...';
+        return;
+    }
+
+    ticker.innerHTML = `<span class="code">${escapeHtml(latest.code)}</span>${escapeHtml(latest.text)}`;
+    ticker.classList.remove('flash');
+    void ticker.offsetWidth;
+    ticker.classList.add('flash');
+    if (otherMatchTickerFlashTimeout) {
+        clearTimeout(otherMatchTickerFlashTimeout);
+    }
+    otherMatchTickerFlashTimeout = setTimeout(() => {
+        ticker.classList.remove('flash');
+    }, 2800);
 }
 
 function resetTemporalCaches() {
@@ -2129,6 +2221,7 @@ function updateDisplayedMinute(minute, force = false) {
     const nextMinute = Number(minute) || 0;
     displayMinute = force ? nextMinute : Math.max(displayMinute, nextMinute);
     document.getElementById('minute').textContent = `${displayMinute}'`;
+    updateOtherMatchTicker(displayMinute, force);
 }
 
 function updateScore() {

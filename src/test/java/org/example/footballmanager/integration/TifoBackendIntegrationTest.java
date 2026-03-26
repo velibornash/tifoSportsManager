@@ -6,16 +6,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.footballmanager.BaseTest;
+import org.example.footballmanager.model.MatchFixture;
+import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.example.footballmanager.model.UserRole;
+import org.example.footballmanager.repository.MatchFixtureRepository;
+import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.repository.UserRepository;
+import org.example.footballmanager.service.SeasonService;
+import org.example.footballmanager.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * Backend Integration Tests using MockMvc
@@ -39,6 +51,21 @@ public class TifoBackendIntegrationTest extends BaseTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private TeamRepository teamRepository;
+
+    @Autowired
+    private MatchFixtureRepository matchFixtureRepository;
+
+    @Autowired
+    private SeasonService seasonService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @BeforeEach
     public void setUp() {
@@ -412,5 +439,110 @@ public class TifoBackendIntegrationTest extends BaseTest {
     public void testAuthenticationErrorNotServerError() throws Exception {
         mockMvc.perform(get("/api/teams/1"))
         .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Integration-022: Prepare Current Week Produces User Match")
+    public void testPrepareCurrentWeekProducesUserMatch() throws Exception {
+        String authHeader = createAuthHeaderForUserWithCurrentFixture();
+
+        mockMvc.perform(post("/simulation/current-round/prepare")
+                .header("Authorization", authHeader))
+            .andExpect(status().isAccepted());
+
+        Map<String, Object> payload = awaitWeekPrepared(authHeader);
+        assertThat(payload.get("action")).isEqualTo("WEEK_PREPARED");
+        assertThat(payload.get("userMatchId")).isNotNull();
+        assertThat(((Number) payload.getOrDefault("remainingAfter", -1)).intValue()).isZero();
+    }
+
+    @Test
+    @DisplayName("Integration-023: Current Round Feed Returns Teletext Structure")
+    @SuppressWarnings("unchecked")
+    public void testCurrentRoundFeedReturnsTeletextStructure() throws Exception {
+        String authHeader = createAuthHeaderForUserWithCurrentFixture();
+
+        mockMvc.perform(post("/simulation/current-round/prepare")
+                .header("Authorization", authHeader))
+            .andExpect(status().isAccepted());
+        awaitWeekPrepared(authHeader);
+
+        MvcResult feedResult = mockMvc.perform(get("/simulation/current-round/feed")
+                .header("Authorization", authHeader))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ok"))
+            .andExpect(jsonPath("$.currentWeek").isNumber())
+            .andExpect(jsonPath("$.leagues").isArray())
+            .andReturn();
+
+        Map<String, Object> payload = objectMapper.readValue(feedResult.getResponse().getContentAsString(), Map.class);
+        List<Map<String, Object>> leagues = (List<Map<String, Object>>) payload.get("leagues");
+        assertThat(leagues).isNotEmpty();
+
+        Map<String, Object> firstLeague = leagues.getFirst();
+        assertThat(firstLeague).containsKeys("leagueName", "userLeague", "matches");
+
+        List<Map<String, Object>> matches = (List<Map<String, Object>>) firstLeague.get("matches");
+        assertThat(matches).isNotEmpty();
+        assertThat(matches).allSatisfy(match -> assertThat(match).containsKeys(
+                "fixtureId", "homeTeam", "awayTeam", "homeGoals", "awayGoals", "played", "events"
+        ));
+        assertThat(matches.stream().anyMatch(match -> Boolean.TRUE.equals(match.get("isUserMatch")))).isTrue();
+
+        List<Map<String, Object>> playedMatches = matches.stream()
+                .filter(match -> Boolean.TRUE.equals(match.get("played")))
+                .toList();
+        assertThat(playedMatches).isNotEmpty();
+        assertThat(playedMatches).allSatisfy(match ->
+                assertThat(match.get("events")).isInstanceOf(List.class)
+        );
+    }
+
+    private Map<String, Object> awaitWeekPrepared(String authHeader) throws Exception {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            MvcResult statusResult = mockMvc.perform(get("/simulation/current-round/prepare/status")
+                    .header("Authorization", authHeader))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            Map<String, Object> payload = objectMapper.readValue(statusResult.getResponse().getContentAsString(), Map.class);
+            Object action = payload.get("action");
+            if ("WEEK_PREPARED".equals(action)) {
+                return payload;
+            }
+            if ("WEEK_PREPARATION_FAILED".equals(action)) {
+                fail("Week preparation failed: " + payload.get("message"));
+            }
+            Thread.sleep(250);
+        }
+        fail("Week preparation did not finish in time");
+        return Map.of();
+    }
+
+    private String createAuthHeaderForUserWithCurrentFixture() {
+        int seasonYear = seasonService.getActiveSeasonYear();
+        int currentWeek = seasonService.getCurrentWeek();
+
+        MatchFixture fixture = matchFixtureRepository.findAll().stream()
+                .filter(item -> item.getSeasonYear() != null && item.getSeasonYear() == seasonYear)
+                .filter(item -> item.getRoundNumber() != null && item.getRoundNumber() == currentWeek)
+                .filter(item -> item.getHomeTeam() != null && item.getAwayTeam() != null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No fixture found for current week in test data."));
+
+        Team userTeam = fixture.getHomeTeam();
+        userTeam.setHumanControlled(true);
+        teamRepository.save(userTeam);
+
+        String email = "teletext_" + System.currentTimeMillis() + "@example.com";
+        User user = new User();
+        user.setUsername(email);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode("A12345!@"));
+        user.setRole(UserRole.REGULAR);
+        user.setTeam(userTeam);
+        User saved = userRepository.save(user);
+
+        return "Bearer " + jwtUtil.generateToken(saved);
     }
 }

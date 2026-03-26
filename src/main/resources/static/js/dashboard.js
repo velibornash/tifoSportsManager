@@ -11,6 +11,7 @@ let currentUserCountryIsoCode = null;
 let currentUserRole = null;
 
 const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
+const DASHBOARD_WEEK_CONSUMED_KEY = 'dashboardWeekConsumed';
 
 function updateCountryMenuLabels() {
     const countryLabel = currentUserCountryName || 'Country';
@@ -129,27 +130,39 @@ function readDashboardFlowFlash() {
     }
 }
 
+function isWeekConsumed() {
+    try {
+        return sessionStorage.getItem(DASHBOARD_WEEK_CONSUMED_KEY) === 'true';
+    } catch (err) {
+        console.warn('Failed to read week consumed flag:', err);
+        return false;
+    }
+}
+
 function buildSeasonFlowPanel() {
     const flash = readDashboardFlowFlash();
+    const weekConsumed = isWeekConsumed();
     const statusTone = flash?.tone || 'info';
-    const statusMessage = flash?.message || (isAdminUser()
-        ? 'Manual match-week flow is active here: Play Your Match, then Simulate Other Results, then Advance Week.'
-        : 'Start your club match here. Admin dashboard controls handle the rest of the round and week flow.');
+    const statusMessage = flash?.message || (weekConsumed
+        ? 'Current match week is already locked in. Use Advance Week to move forward and unlock the next replay/results cycle.'
+        : 'Prepare the current week once, then either watch your match or open the live results desk before advancing.');
+    const watchDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
+    const simulateDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
 
     return `
         <div class="recent-matches-section fm-season-flow-panel">
             <div class="fm-season-flow-head">
                 <div>
                     <h3>Match Week Controls</h3>
-                    <div class="fm-season-flow-copy">${escapeHtml(isAdminUser()
-                        ? 'Manual buttons for the current round and calendar progression. Later the same operations can be scheduler-driven in pre-prod.'
-                        : 'Open your live match from here. The wider round/week controls are kept on the admin dashboard flow.')}</div>
+                    <div class="fm-season-flow-copy">${escapeHtml(weekConsumed
+                        ? 'Your replay and live results desk are now closed for this week. Advance the calendar to unlock the next match week.'
+                        : 'Current week can be prepared once, then viewed either through your replay or the live results desk. After that, advance the calendar.')}</div>
                 </div>
                 ${isAdminUser() ? '<span class="fm-season-flow-badge">Admin</span>' : ''}
             </div>
             <div class="dashboard-actions fm-season-flow-buttons">
-                <button id="start-realistic-demo-btn" data-label="⚽ Play Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()">⚽ Play Your Match</button>
-                ${isAdminUser() ? '<button id="simulate-current-round-btn" data-label="🧮 Simulate Other Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()">🧮 Simulate Other Results</button>' : ''}
+                <button id="start-realistic-demo-btn" data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
+                <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
                 ${isAdminUser() ? '<button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>' : ''}
             </div>
             <div id="dashboard-season-flow-status" class="fm-season-flow-status is-${escapeHtml(statusTone)}">${escapeHtml(statusMessage)}</div>
