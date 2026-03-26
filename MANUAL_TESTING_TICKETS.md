@@ -1568,6 +1568,7 @@
 - ❌ Standings don't update
 - ❌ Crashes or errors
 
+
 ---
 
 ## UI/UX & RESPONSIVE DESIGN
@@ -2032,4 +2033,3 @@
 **Version**: 1.0-SNAPSHOT  
 **Total Manual Test Cases**: 42  
 **Estimated Total Duration**: 400-500 minutes (6-8 hours)
-

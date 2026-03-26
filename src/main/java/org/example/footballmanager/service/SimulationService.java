@@ -9,9 +9,16 @@ import org.example.footballmanager.engines.MatchStatisticEngine;
 import org.example.footballmanager.engines.RealisticMatchEngine;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.MatchRuntime;
+import org.example.footballmanager.model.event.MatchEvent;
+import org.example.footballmanager.repository.MatchEventRepository;
+import org.example.footballmanager.repository.MatchPlayerStatsRepository;
+import org.example.footballmanager.repository.MatchRepository;
+import org.example.footballmanager.repository.MatchTickStateRepository;
 import org.example.footballmanager.util.RuntimeSaveToDB;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -24,6 +31,10 @@ public class SimulationService {
     private final MatchStatisticEngine matchStatisticEngine;
     private final RuntimeSaveToDB runtimeToDB;
     private final RealisticMatchEngine realisticMatchEngine;
+    private final MatchRepository matchRepository;
+    private final MatchTickStateRepository matchTickStateRepository;
+    private final MatchEventRepository matchEventRepository;
+    private final MatchPlayerStatsRepository matchPlayerStatsRepository;
 
     @Transactional
     public CompletableFuture<Match> startSimulation(long matchId) {
@@ -33,16 +44,14 @@ public class SimulationService {
             return CompletableFuture.completedFuture(null);
         }
 
-        // 1) Full simulation runtime
-        MatchRuntime runtime = matchEngine.simulateFullMatch(match);
-
-        // 2) Persist match + runtime events
-        Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
-
-        // 3) Playback stream
-        playbackEngine.startPlayback(matchId, runtime);
-
-        return CompletableFuture.completedFuture(saved);
+        try {
+            MatchRuntime runtime = matchEngine.simulateFullMatch(match);
+            Match saved = runtimeToDB.finalizeMatchResult(match, runtime.homePlayers, runtime.awayPlayers, runtime);
+            playbackEngine.startPlayback(matchId, runtime);
+            return CompletableFuture.completedFuture(saved);
+        } finally {
+            matchEngine.markSimulationFinished(matchId);
+        }
     }
 
     /**
@@ -74,8 +83,19 @@ public class SimulationService {
             } catch (Exception e) {
                 log.error("Error in realistic match simulation for match {}", matchId, e);
                 return null;
+            } finally {
+                matchEngine.markSimulationFinished(matchId);
             }
         });
+    }
+
+    public boolean isSimulationRunning(long matchId) {
+        return matchEngine.isSimulationRunning(matchId);
+    }
+
+    public CompletableFuture<Match> recoverAndRestartRealisticSimulation(long matchId) {
+        resetPreparedMatch(matchId);
+        return startRealisticSimulation(matchId);
     }
 
     /**
@@ -94,5 +114,35 @@ public class SimulationService {
 
         log.info("Realistic match simulation finished for match {}", matchId);
         return saved;
+    }
+
+    @org.springframework.transaction.annotation.Transactional(propagation = Propagation.REQUIRES_NEW)
+    protected void resetPreparedMatch(long matchId) {
+        Match match = matchRepository.findById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found: " + matchId));
+
+        matchTickStateRepository.deleteByMatch(match);
+
+        List<MatchEvent> events = matchEventRepository.findByMatch(match);
+        if (!events.isEmpty()) {
+            matchEventRepository.deleteAll(events);
+        }
+
+        var stats = matchPlayerStatsRepository.findByMatchId(matchId);
+        if (!stats.isEmpty()) {
+            matchPlayerStatsRepository.deleteAll(stats);
+        }
+
+        match.setHomeGoals(0);
+        match.setAwayGoals(0);
+        match.setAttendance(null);
+        match.setPlayed(false);
+        match.setStarted(false);
+        match.setFinished(false);
+        match.setEventJson(null);
+        match.setHomeResultRevealed(true);
+        match.setAwayResultRevealed(true);
+        matchRepository.save(match);
+        matchEngine.markSimulationFinished(matchId);
     }
 }

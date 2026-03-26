@@ -5,6 +5,7 @@ import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.dto.TacticsEditorDTO;
 import org.example.footballmanager.dto.TacticsEditorSaveRequest;
+import org.example.footballmanager.dto.TeamSummaryDTO;
 import org.example.footballmanager.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.model.Competition;
 import org.example.footballmanager.model.Lineup;
@@ -26,6 +27,8 @@ import org.example.footballmanager.service.ScheduleInsightService;
 import org.example.footballmanager.service.SeasonService;
 import org.example.footballmanager.service.TeamMedicalService;
 import org.example.footballmanager.service.TeamTacticsService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -82,8 +85,16 @@ public class TeamController {
     }
 
     @GetMapping
-    public List<Team> getAllTeams() {
-        return teamRepository.findAll();
+    public List<TeamSummaryDTO> getAllTeams(@RequestParam(defaultValue = "0") int page,
+                                            @RequestParam(defaultValue = "100") int size,
+                                            @RequestParam(defaultValue = "name") String sortBy,
+                                            @RequestParam(defaultValue = "asc") String direction) {
+        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        return teamRepository.findAll(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200)), sort))
+                .getContent()
+                .stream()
+                .map(TeamSummaryDTO::from)
+                .toList();
     }
 
     @PostMapping("/create")

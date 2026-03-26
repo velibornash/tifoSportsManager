@@ -47,18 +47,24 @@ public class DuelResolver {
                 + shooter.getSkills().getPace() * 0.18;
         double goalkeeperDefense = goalkeeper.getSkills().getGoalkeeper() * 3.0
                 + goalkeeper.getSkills().getDefender() * 0.40;
+        double finisherEdge = shooterAccuracy / Math.max(1.0, shooterAccuracy + goalkeeperDefense);
 
-        double onTargetChance = 0.16
-                + xG * 1.02
-                + (shooter.getSkills().getTechnique() / 112.0)
-                + (shooter.getSkills().getStriker() / 145.0);
-        onTargetChance = clampChance(onTargetChance + (random.nextDouble() - 0.5) * 0.08, 0.20, 0.84);
+        double onTargetChance = 0.10
+                + xG * 0.34
+                + (shooter.getSkills().getTechnique() / 260.0)
+                + (shooter.getSkills().getStriker() / 310.0)
+                - (goalkeeper.getSkills().getGoalkeeper() / 290.0);
+        onTargetChance = clampChance(onTargetChance + (random.nextDouble() - 0.5) * 0.045, 0.13, 0.49);
 
         boolean isOnTarget = random.nextDouble() < onTargetChance;
 
-        double finisherEdge = shooterAccuracy / Math.max(1.0, shooterAccuracy + goalkeeperDefense);
-        double goalChanceWhenOnTarget = 0.09 + xG * 0.92 + finisherEdge * 0.26;
-        goalChanceWhenOnTarget = clampChance(goalChanceWhenOnTarget + (random.nextDouble() - 0.5) * 0.08, 0.11, 0.74);
+        double desiredGoalChance = xG * (0.66 + finisherEdge * 0.10);
+        desiredGoalChance = clampChance(desiredGoalChance + (random.nextDouble() - 0.5) * 0.02, 0.015, 0.34);
+        double goalChanceWhenOnTarget = clampChance(
+                desiredGoalChance / Math.max(onTargetChance, 0.16),
+                0.05,
+                0.45
+        );
 
         boolean isGoal = isOnTarget && random.nextDouble() < goalChanceWhenOnTarget;
         boolean isSaved = isOnTarget && !isGoal;
@@ -111,9 +117,9 @@ public class DuelResolver {
 
     public DuelResult resolveOpenGoalShot(Player shooter, double x, double y) {
         double xG = estimateShotXg(shooter, x, y, true);
-        double variation = (random.nextDouble() - 0.5) * 0.06;
-        double finishingBonus = (shooter.getSkills().getStriker() + shooter.getSkills().getTechnique()) / 240.0;
-        double finalChance = clampChance(0.34 + (xG * 1.02) + finishingBonus + variation, 0.58, 0.995);
+        double variation = (random.nextDouble() - 0.5) * 0.05;
+        double finishingBonus = (shooter.getSkills().getStriker() + shooter.getSkills().getTechnique()) / 270.0;
+        double finalChance = clampChance(0.34 + (xG * 0.42) + finishingBonus + variation, 0.66, 0.93);
         boolean isGoal = random.nextDouble() < finalChance;
 
         log.debug("Open-goal shot: {} (xG: {:.2f}), chance={:.2f}, result={}",
@@ -125,17 +131,17 @@ public class DuelResolver {
     private double estimateShotXg(Player shooter, double x, double y, boolean openGoal) {
         double distToGoal = Math.sqrt(Math.pow(100.0 - x, 2) + Math.pow(50.0 - y, 2));
         double angleToGoal = Math.abs(50.0 - y) / Math.max(0.8, 100.01 - x);
-        double baseXg = (openGoal ? 1.04 : 0.92)
-                * Math.exp(-(openGoal ? 0.092 : 0.105) * distToGoal)
-                / (1.0 + angleToGoal * (openGoal ? 1.45 : 1.85));
-        baseXg = clampChance(baseXg, openGoal ? 0.18 : 0.02, openGoal ? 0.96 : 0.88);
+        double baseXg = (openGoal ? 1.18 : 1.04)
+                * Math.exp(-(openGoal ? 0.080 : 0.092) * distToGoal)
+                / (1.0 + angleToGoal * (openGoal ? 1.20 : 1.50));
+        baseXg = clampChance(baseXg, openGoal ? 0.22 : 0.025, openGoal ? 0.90 : 0.68);
 
-        double skillFactor = (shooter.getSkills().getStriker() * 1.5 + shooter.getSkills().getTechnique() * 0.5) / 140.0;
+        double bodyShapeFactor = (shooter.getSkills().getStriker() + shooter.getSkills().getTechnique()) / 40.0;
         double xG = openGoal
-                ? (baseXg * (0.90 + 0.22 * skillFactor) + 0.10)
-                : (baseXg * (0.84 + 0.42 * skillFactor));
+                ? (baseXg * (0.98 + 0.03 * bodyShapeFactor))
+                : (baseXg * (0.96 + 0.06 * bodyShapeFactor));
 
-        return clampChance(xG, openGoal ? 0.18 : 0.02, openGoal ? 0.99 : 0.90);
+        return clampChance(xG, openGoal ? 0.22 : 0.025, openGoal ? 0.92 : 0.70);
     }
 
     private double clampChance(double value, double min, double max) {
@@ -143,29 +149,45 @@ public class DuelResolver {
     }
 
     public DuelResult resolveTackleDuel(Player attacker, Player defender) {
-        // Attacker snaga (tehnike + driblinga)
-        double attackerStrength = attacker.getSkills().getTechnique() * 1.1 +
-                                 attacker.getSkills().getStriker() * 0.25 +
-                                 (attacker.getSkills().getPace() / 1.8);
-        
-        // Defender snaga (odbrane) - Defenders have a natural advantage in tackles
-        double defenderStrength = defender.getSkills().getDefender() * 1.45 +
-                                 (defender.getSkills().getPace() / 2.2);
-        
-        // Osnovna šansa za pobenu
+        double attackerFatigueFactor = fatigueFactor(attacker);
+        double defenderFatigueFactor = fatigueFactor(defender);
+
+        // Attacker snaga (tehnika, burst, balans pod pritiskom)
+        double attackerStrength = (
+                attacker.getSkills().getTechnique() * 1.05
+                        + attacker.getSkills().getStriker() * 0.22
+                        + attacker.getSkills().getPace() * 0.58
+                        + attacker.getSkills().getStamina() * 0.20
+        ) * attackerFatigueFactor;
+
+        // Defender snaga (timing ulaska, brzina zatvaranja i izdržljivost)
+        double defenderStrength = (
+                defender.getSkills().getDefender() * 1.38
+                        + defender.getSkills().getTechnique() * 0.18
+                        + defender.getSkills().getPace() * 0.44
+                        + defender.getSkills().getStamina() * 0.28
+        ) * defenderFatigueFactor;
+
         double attackerWinChance = attackerStrength / (attackerStrength + defenderStrength);
-        
-        // Random varijacija
+
         double variation = (random.nextDouble() - 0.5) * 0.15;
         double finalChance = Math.max(0.20, Math.min(0.80, attackerWinChance + variation));
-        
+
         boolean attackerWins = random.nextDouble() < finalChance;
-        
+
         log.debug("Tackle duel: {} vs {}, chance={:.2f}, winner={}", 
                 attacker.getName(), defender.getName(), finalChance,
                 attackerWins ? attacker.getName() : defender.getName());
-        
+
         return new DuelResult(attackerWins, false, !attackerWins);
+    }
+
+    private double fatigueFactor(Player player) {
+        if (player == null) {
+            return 1.0;
+        }
+        double fatigue = Math.max(0.0, player.getCurrentFatigue());
+        return Math.max(0.74, 1.0 - Math.max(0.0, fatigue - 5.5) * 0.045);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════

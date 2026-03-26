@@ -11,6 +11,34 @@
 ### Purpose
 A football club management simulator where users manage their team, players, matches, training, tactics, finances, transfers, and compete in league competitions across a simulated Serbian football pyramid.
 
+### Current Product Direction
+- **Primary Flow**: Realistic visual manager (`dashboard.html` → `realisticDemo.html`) backed by `RealisticMatchEngine`
+- **Secondary Flow**: Text-based manager (`tifo.html`) backed by `CleanSheetController` and cleanSheet services
+- Legacy viewers remain in the repository for reference and backward compatibility, but they are no longer the main runtime path
+- Current engineering focus: stronger football realism, more reliable live match flow, and cleaner round/week integration
+
+### Two Main Application Flows
+
+#### Flow 1: Realistic Visual Manager (Primary)
+**Entry Point**: `dashboard.html` → `/start-realistic-demo` → `realisticDemo.html`
+**Backend**: `SimulationController.startRealisticDemo()` → `RealisticMatchEngine`
+**Features**:
+- Visual match simulation with position-aware gameplay
+- Live/replay viewer with tick-based playback
+- Tactics editor integration
+- Advanced match statistics and analytics
+- WebSocket real-time updates
+
+#### Flow 2: Text-Based Manager (Secondary)
+**Entry Point**: `tifo.html` → `/api/cs/start` → Clean Sheet interface
+**Backend**: `CleanSheetController` → `CleanSheetService` → cleanSheet engine
+**Features**:
+- Text-based interface for classic football management
+- Simplified match simulation (results only)
+- Traditional league table and fixtures
+- Inbox system for match reports and news
+- Round-by-round progression
+
 ---
 
 ## 2. CORE FEATURES & MODULES
@@ -29,9 +57,11 @@ A football club management simulator where users manage their team, players, mat
 
 ### 2.2 **Match System** ⚽
 - **Match Simulation**: Advanced realistic match engine with detailed event simulation
-  - 90-minute matches with event-based simulation (1-3 events per minute)
+  - Primary engine: `RealisticMatchEngine`
+  - Tick-based replay persistence with metadata/chunk loading
   - Position-aware decision making (passing, shooting, dribbling)
-  - Duels and collisions when players are close
+  - Tactics-editor-driven movement with limited tactical overrides
+  - Duels, offsides, assists, and set-piece events
 - **Match Types**:
   - League matches (scheduled competitions)
   - Friendlies (practice matches)
@@ -43,6 +73,7 @@ A football club management simulator where users manage their team, players, mat
   - Event history (goals, cards, injuries, substitutions, VAR reviews)
   - Match reports with analysis
   - Player ratings per match
+  - Replay metadata + chunk playback in the realistic viewer
 
 ### 2.3 **Training System** 📊
 - **Training Setup**: Configure weekly training sessions
@@ -86,8 +117,8 @@ A football club management simulator where users manage their team, players, mat
   - Simulate other results in current round
   - View community activity
 
-### 2.7 **TIFO Old School** 🎩
-Legacy/alternative match visualization interface for viewing matches and match events
+### 2.7 **Legacy Match Views** 🎩
+Legacy/alternative match visualization interfaces remain in the repository for reference and backward compatibility, but the intended long-term direction is the realistic live/replay viewer.
 
 ---
 
@@ -97,16 +128,23 @@ Legacy/alternative match visualization interface for viewing matches and match e
 
 #### Main HTML Files
 ```
-dashboard.html          - Primary dashboard/hub page
+dashboard.html          - Primary dashboard/hub page (Realistic Manager)
 ├── login.html         - Authentication entry point
 ├── index.html         - Landing/home page
-├── tifo.html          - Alternative match viewer
-├── cleanSheetTifo.html - Clean sheet match visualization
-├── match_visualisation.html - Match visualization
-├── key-events.html    - Key events/moments viewer
-├── realisticDemo.html - Demo match viewer
-└── zox-match-preview.html - Match preview analysis
+├── realisticDemo.html - Primary live/replay match viewer (Realistic Manager)
+├── zox-match-preview.html - Match preview analysis
+└── tifo.html          - Text-based manager interface (Clean Sheet)
 ```
+
+#### Text-Based Manager Frontend (tifo.html)
+```
+tifo.html (200+ lines) - Text-based manager interface
+├── tifo.js (2125 lines) - Text-based game logic and UI
+├── tifo.css            - Text-based styling
+└── Clean Sheet API integration (/api/cs/*)
+```
+
+Archived/legacy viewers are intentionally not listed as the primary user path anymore.
 
 #### CSS Modules (3 main imports)
 ```
@@ -152,8 +190,7 @@ Utilities:
 - cleanSheet.js        - Clean sheet match viewer
 - tifo.js (2000+ lines) - TIFO match visualization
 - zox-match-preview.js - Match preview analysis
-- key-events.js        - Key events viewer
-- realisticDemo.js     - Demo match runner
+- realisticDemo.js     - Primary realistic live/replay runner
 ```
 
 ### 3.2 Backend Architecture (Spring Boot)
@@ -179,19 +216,25 @@ AdminController.java         - Administrative operations
 UserController.java          - User management
 ZoxViewController.java       - Match preview analysis
 DummyDataController.java     - Test data generation
-SimulationController.java    - Match simulation engines
+SimulationController.java    - Match simulation engines (Realistic Manager)
+CleanSheetController.java    - Text-based manager endpoints (/api/cs/*)
 ```
 
 #### Match Simulation Engines
 ```
-MatchEngine.java             - Standard match creation & basic simulation
-RealisticMatchEngine.java    - Advanced realistic simulation (3000+ lines)
-  - Position-aware decision making
-  - Tactical profiles
-  - Player duels
-  - Event generation (90 min, 1-3 events/min)
-  
-DemoSimulator.java           - Demo match simulation
+MatchEngine.java             - Match creation, fixture alignment, fallback/basic simulation
+RealisticMatchEngine.java    - Primary realistic simulation engine
+  - Tick-based replay generation
+  - Tactics-editor-driven positioning
+  - Position-aware decisions
+  - Duels, offsides, assists, transitions
+ZoxReplayService.java        - Replay metadata/chunk loader for realistic viewer
+RuntimeSaveToDB.java         - Match finalization + replay persistence
+
+CleanSheet Engine (Text-Based Manager):
+- CleanSheetService.java     - Text-based game logic and state management
+- CleanSheetController.java  - REST endpoints for text-based interface
+- cleanSheet models/state    - Game state and data models
 ```
 
 #### Services (15+ services)
@@ -255,11 +298,12 @@ Page Loading (Dynamic SPA)
     └─ Bind event listeners
     ↓
 Match Simulation
-    ├─ Create match with teams & players
-    ├─ Run RealisticMatchEngine
-    ├─ Generate match events
-    ├─ Store results & stats
-    └─ Display match report
+    ├─ Dashboard -> /start-realistic-demo
+    ├─ SimulationController prepares scheduled user fixture
+    ├─ SimulationService runs RealisticMatchEngine
+    ├─ RuntimeSaveToDB persists match/events/ticks/stats
+    ├─ ZoxReplayService exposes replay metadata/chunks
+    └─ realisticDemo.html renders live/replay playback
     ↓
 Training System
     ├─ Configure training setup
@@ -287,12 +331,18 @@ Training System
 - Live game clock showing current in-game time
 
 ### Match System Details
-- **Realistic Simulation**: Advanced AI for player decision-making
-- **Position Awareness**: Players make decisions based on field position
-- **Duels System**: Physical confrontations between nearby players
+- **Realistic Simulation**: Primary runtime path for the user-managed match
+- **Position Awareness**: Players move from tactics-editor target zones with situational overrides
+- **Replay System**: Persisted tick states + chunked playback endpoints
+- **Duels System**: Physical confrontations, blocks, saves, offsides, restarts
 - **Event Generation**: Goals, shots, fouls, injuries, cards, substitutions, VAR
 - **Rating System**: Individual player performance ratings (1-100)
 - **Match Statistics**: Possession, shots on target, fouls, corner kicks
+- **Known realism gaps**:
+  - match flow is still too event-driven vs possession-driven
+  - role identity is weaker than it should be
+  - defensive coordination needs better cover/track/hold behavior
+  - shot selection still creates some low-quality volume spikes
 
 ### Training System Details
 - **General Training**: Base training for all squad players
@@ -310,6 +360,12 @@ Training System
 ---
 
 ## 5. IMPORTANT NOTES FOR TICKET CREATION
+
+### Current Known Risks
+- Live realistic match can affect round/week progression if finalization or replay persistence fails.
+- Session/auth handling should be rechecked after long-running season-flow actions.
+- Mobile match viewer is usable but still needs focused QA and further simplification.
+- Documentation describing legacy viewers as primary should be treated as outdated unless explicitly marked legacy.
 
 ### Connected Files Summary
 ```
@@ -385,3 +441,7 @@ Ready to create developer tickets for work done so far. Please specify which are
 
 Or we can create tickets covering **all modules** in sequence.
 
+### Recommended Immediate Track
+1. Stabilize realistic live match -> fixture/week integration
+2. Improve football realism in `RealisticMatchEngine`
+3. Add stronger manual and automated coverage for live match recovery and season progression

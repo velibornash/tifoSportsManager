@@ -2,6 +2,7 @@ package org.example.footballmanager.model;
 
 import org.example.footballmanager.dto.BallPositionDTO;
 import org.example.footballmanager.dto.PlayerPositionDTO;
+import org.example.footballmanager.dto.TacticsSetPieceDTO;
 import org.example.footballmanager.dto.TacticsSlotDTO;
 import org.example.footballmanager.model.event.GoalEvent;
 import org.example.footballmanager.model.event.MatchEvent;
@@ -18,6 +19,11 @@ public class MatchRuntime {
     public PlayerPositionDTO currentCarrier;
     public BallPositionDTO ball;
     public int possessionTicks = 0;
+    public String currentPossessionTeam = null;
+    public int possessionStartTick = 0;
+    public double possessionStartX = 50.0;
+    public double possessionStartY = 50.0;
+    public PossessionPhase possessionPhase = PossessionPhase.TRANSITION;
     public int spacePassCooldown = 0;
     public boolean isShooting = false;
     public boolean isRebounding = false;
@@ -108,6 +114,10 @@ public class MatchRuntime {
     public Map<Integer, String> playerSlotKeys = new HashMap<>();
     public Map<String, String> homeTacticalTargets = new HashMap<>();
     public Map<String, String> awayTacticalTargets = new HashMap<>();
+    public TacticsSetPieceDTO homeSetPieces = new TacticsSetPieceDTO();
+    public TacticsSetPieceDTO awaySetPieces = new TacticsSetPieceDTO();
+    public String homeStyle = "BALANCED";
+    public String awayStyle = "BALANCED";
     public List<TacticsSlotDTO> homeSlots = new ArrayList<>();
     public List<TacticsSlotDTO> awaySlots = new ArrayList<>();
     public int homeSubstitutionsUsed = 0;
@@ -130,6 +140,14 @@ public class MatchRuntime {
 
     public enum StoppageType {
         CORNER, FREE_KICK, THROW_IN, GOAL_KICK, PENALTY, VAR_REVIEW, GOAL_CELEBRATION
+    }
+
+    public enum PossessionPhase {
+        BUILD_UP,
+        PROGRESSION,
+        FINAL_THIRD,
+        BOX_CHAOS,
+        TRANSITION
     }
 
     /**

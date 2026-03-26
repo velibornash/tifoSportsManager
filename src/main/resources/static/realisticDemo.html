@@ -77,6 +77,16 @@
             margin-bottom: 20px;
         }
 
+        .phase-indicator {
+            text-align: center;
+            margin: -8px 0 12px;
+            font-size: 0.78em;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(182, 231, 255, 0.9);
+        }
+
         .pitch {
             position: relative;
             width: 100%;
@@ -382,6 +392,12 @@
             margin-bottom: 10px;
         }
 
+        .feed-toolbar-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
         .feed-toolbar-title {
             font-size: 0.78em;
             text-transform: uppercase;
@@ -392,6 +408,80 @@
         .feed-toolbar-note {
             font-size: 0.76em;
             color: rgba(255, 255, 255, 0.56);
+        }
+
+        .feed-filter-row,
+        .overlay-toggle-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .feed-chip,
+        .overlay-chip {
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.82);
+            border-radius: 999px;
+            padding: 5px 10px;
+            font-size: 0.68em;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+        }
+
+        .feed-chip.active,
+        .overlay-chip.active {
+            background: rgba(117, 188, 255, 0.2);
+            border-color: rgba(117, 188, 255, 0.46);
+            color: #e7f3ff;
+        }
+
+        .overlay-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .overlay-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.72em;
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        .overlay-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .overlay-legend-swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+        }
+
+        .swatch-home {
+            background: rgba(217, 101, 103, 0.32);
+        }
+
+        .swatch-away {
+            background: rgba(67, 170, 183, 0.32);
+        }
+
+        .swatch-ball {
+            background: rgba(255, 214, 74, 0.34);
+        }
+
+        .swatch-press {
+            background: rgba(255, 96, 96, 0.24);
         }
 
         .squad-panel {
@@ -971,6 +1061,14 @@
             opacity: 0.74;
         }
 
+        .event-insight {
+            margin-top: 5px;
+            font-size: 0.72em;
+            line-height: 1.3;
+            color: rgba(157, 220, 255, 0.88);
+            letter-spacing: 0.01em;
+        }
+
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -1068,6 +1166,11 @@
 
             .header-feed-card .events-panel {
                 max-height: 220px;
+            }
+
+            .overlay-toolbar {
+                flex-direction: column;
+                align-items: flex-start;
             }
 
             .match-info {
@@ -1266,9 +1369,16 @@
     <div class="container">
         <div class="header">
             <section class="header-feed-card">
-                <div class="feed-toolbar-heading">
-                    <div class="feed-toolbar-title">Match Feed</div>
-                    <div class="feed-toolbar-note">Compact live / replay log</div>
+                <div class="feed-toolbar-stack">
+                    <div class="feed-toolbar-heading">
+                        <div class="feed-toolbar-title">Match Feed</div>
+                        <div class="feed-toolbar-note">Compact live / replay log</div>
+                    </div>
+                    <div class="feed-filter-row" id="feed-filter-row">
+                        <button class="feed-chip active" data-feed-filter="all" type="button">All</button>
+                        <button class="feed-chip" data-feed-filter="key" type="button">Key</button>
+                        <button class="feed-chip" data-feed-filter="tactical" type="button">Tactical</button>
+                    </div>
                 </div>
                 <div class="events-panel">
                     <div id="events-list">
@@ -1332,6 +1442,7 @@
 
                 <div class="playback-main">
                     <div class="minute-display" id="minute">0'</div>
+                    <div class="phase-indicator" id="phase-indicator">Transition</div>
                     <div class="mobile-rotate-hint">Rotate to landscape for a wider match view</div>
 
                     <div class="pitch">
@@ -1343,6 +1454,20 @@
                             <img class="pitch-event-stamp" id="pitch-event-stamp" src="" alt="Pitch event">
                         </div>
                         <div class="ball" id="ball" style="display: none;"></div>
+                    </div>
+
+                    <div class="overlay-toolbar">
+                        <div class="overlay-toggle-row" id="overlay-toggle-row">
+                            <button class="overlay-chip" data-overlay-toggle="shape" type="button">Shape</button>
+                            <button class="overlay-chip active" data-overlay-toggle="ball-zone" type="button">Ball Zone</button>
+                            <button class="overlay-chip active" data-overlay-toggle="pressure" type="button">Pressure</button>
+                        </div>
+                        <div class="overlay-legend">
+                            <span class="overlay-legend-item"><span class="overlay-legend-swatch swatch-home"></span>Home shape</span>
+                            <span class="overlay-legend-item"><span class="overlay-legend-swatch swatch-away"></span>Away shape</span>
+                            <span class="overlay-legend-item"><span class="overlay-legend-swatch swatch-ball"></span>Ball zone</span>
+                            <span class="overlay-legend-item"><span class="overlay-legend-swatch swatch-press"></span>Pressure ring</span>
+                        </div>
                     </div>
 
                     <div class="timeline-card" id="timeline-card">

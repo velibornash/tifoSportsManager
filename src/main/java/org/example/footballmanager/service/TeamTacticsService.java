@@ -139,6 +139,17 @@ public class TeamTacticsService {
         return rules.stream().collect(Collectors.toMap(this::ruleKey, TacticsRuleDTO::getTargetCellKey, (left, right) -> right, LinkedHashMap::new));
     }
 
+    @Transactional(readOnly = true)
+    public TacticsSetPieceDTO getRuntimeSetPieces(Long teamId, String formation) {
+        String normalizedFormation = formationSlotCatalog.normalizeFormation(formation);
+        List<TacticsSlotDTO> slots = formationSlotCatalog.getSlots(normalizedFormation);
+        TeamTacticsProfile profile = teamId != null ? teamTacticsProfileRepository.findByTeamId(teamId).orElse(null) : null;
+        TacticsSetPieceDTO configured = profile != null && Objects.equals(profile.getFormation(), normalizedFormation)
+                ? parseSetPieces(profile.getSetPiecesJson())
+                : defaultSetPieces(slots);
+        return sanitizeSetPieces(configured, slots);
+    }
+
     private Lineup saveLineup(Team team, String formation, String style, List<Long> starterIds, List<Long> benchIds) {
         Long teamId = team.getId();
         List<Long> safeStarterIds = parseIdList(starterIds, 11);

@@ -4,6 +4,7 @@ import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -24,6 +25,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByTeam(Team team);
     boolean existsByEmailIgnoreCase(String email);
     boolean existsByUsernameIgnoreCase(String username);
+
+    @Query("select distinct u.team.id from User u where u.team is not null")
+    List<Long> findDistinctManagedTeamIds();
 
     default Optional<User> findByUsernameOrEmail(String value) {
         return findByUsername(value).or(() -> findByEmail(value));

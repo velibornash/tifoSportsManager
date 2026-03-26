@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 public class CSMatchEvent {
     private int minute;
     private CSEventType eventType;
+    private CSGoalType goalType;
     private String playerName;
     private String assistName;
     private String teamName;

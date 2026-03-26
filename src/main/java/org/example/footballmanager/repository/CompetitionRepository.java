@@ -13,4 +13,8 @@ public interface CompetitionRepository extends JpaRepository<Competition, Long> 
     Optional<Competition> findByNameAndCountryIsoCode(String name, String isoCode);
 
     List<Competition> findByCountryIsoCodeAndType(String isoCode, CompetitionType competitionType);
+
+    List<Competition> findByCountryIsoCodeAndTypeOrderByTierAscDivisionLevelAscIdAsc(String isoCode, CompetitionType competitionType);
+
+    List<Competition> findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc(String isoCode, CompetitionType competitionType, Integer tier);
 }

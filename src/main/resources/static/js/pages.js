@@ -1199,6 +1199,12 @@ import { createCommunityFeature } from './pages/features/community.js';
         if (transferStatus.canDirectBuy && !transferStatus.listed) {
 	            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="direct-buy" data-player-id="${player.id}" data-default-price="${defaultValue}">Send offer</button>`);
         }
+        if (transferStatus.canAcceptOffer) {
+            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>`);
+        }
+        if (transferStatus.canRejectOffer) {
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="reject-offers" data-player-id="${player.id}">Reject offers</button>`);
+        }
 
         return `
             <section class="fm-panel fm-player-tab-panel" data-player-tab-panel="transfer">
@@ -1522,6 +1528,23 @@ import { createCommunityFeature } from './pages/features/community.js';
 	                    if (result?.actionMessage) {
 	                        window.alert(result.actionMessage);
 	                    }
+                    await (reloadOwned || reloadCurrent)?.();
+                    return;
+                }
+                case 'accept-offer': {
+                    const result = await performTransferJsonAction(`/transfers/accept-offer/${resolvedPlayerId}`, { teamId: currentUserTeamId });
+                    if (result?.actionMessage) {
+                        window.alert(result.actionMessage);
+                    }
+                    await (reloadOwned || reloadCurrent)?.();
+                    return;
+                }
+                case 'reject-offers': {
+                    if (!window.confirm('Reject all incoming offers for this player?')) return;
+                    const result = await performTransferJsonAction(`/transfers/reject-offers/${resolvedPlayerId}`, { teamId: currentUserTeamId });
+                    if (result?.actionMessage) {
+                        window.alert(result.actionMessage);
+                    }
                     await (reloadOwned || reloadCurrent)?.();
                     return;
                 }
@@ -1870,10 +1893,10 @@ import { createCommunityFeature } from './pages/features/community.js';
                 const homeGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === homeTeamName && e.goalScored !== false).length;
                 const awayGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === awayTeamName && e.goalScored !== false).length;
 
-                const adjHomeShotsOn = Math.max(homeShotsOn, homeGoalsCount);
-                const adjAwayShotsOn = Math.max(awayShotsOn, awayGoalsCount);
-                const homeTotalShots = Math.max(adjHomeShotsOn + homeShotsOff, homeGoalsCount);
-                const awayTotalShots = Math.max(adjAwayShotsOn + awayShotsOff, awayGoalsCount);
+                const adjHomeShotsOn = homeShotsOn + homeGoalsCount;
+                const adjAwayShotsOn = awayShotsOn + awayGoalsCount;
+                const homeTotalShots = adjHomeShotsOn + homeShotsOff;
+                const awayTotalShots = adjAwayShotsOn + awayShotsOff;
 
                 const homeCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === homeTeamName).length;
                 const awayCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === awayTeamName).length;
@@ -4569,21 +4592,20 @@ import { createCommunityFeature } from './pages/features/community.js';
                 || 1;
 
             const playerIdByKey = new Map();
-            await Promise.all(leagueTeams.map(async team => {
-                try {
-                    const response = await authFetch(`/countries/teams/${team.id}/players`);
-                    if (!response.ok) return;
-                    const players = await response.json();
-                    players.forEach(player => {
+            try {
+                const response = await authFetch(`/countries/leagues/${leagueId}/player-directory${seasonParam}`);
+                if (response.ok) {
+                    const directory = await response.json();
+                    directory.forEach(player => {
                         playerIdByKey.set(
-                            `${normalizeTeamKey(team.name)}|${normalizePlayerKey(player.name)}`,
+                            `${normalizeTeamKey(player.teamName)}|${normalizePlayerKey(player.name)}`,
                             player.id
                         );
                     });
-                } catch (e) {
-                    console.warn('League player map fetch failed for team:', team?.name, e);
                 }
-            }));
+            } catch (e) {
+                console.warn('League player directory fetch failed:', e);
+            }
 
             const visibleRounds = rounds.map(round => ({
                 round,
@@ -4808,14 +4830,15 @@ import { createCommunityFeature } from './pages/features/community.js';
             const teamIdByName = new Map();
             leagueTeams.forEach(t => teamIdByName.set(t.name, t.id));
             const playerIdByKey = new Map();
-            await Promise.all(leagueTeams.map(async team => {
-                try {
-                    const r = await authFetch(`/countries/teams/${team.id}/players`);
-                    if (!r.ok) return;
-                    const players = await r.json();
-                    players.forEach(p => playerIdByKey.set(`${team.name}|${p.name}`, p.id));
-                } catch (e) {}
-            }));
+            try {
+                const directoryRes = await authFetch(`/countries/leagues/${leagueId}/player-directory${seasonParam}`);
+                if (directoryRes.ok) {
+                    const directory = await directoryRes.json();
+                    directory.forEach(player => {
+                        playerIdByKey.set(`${player.teamName}|${player.name}`, player.id);
+                    });
+                }
+            } catch (e) {}
 
             const mainContent = document.getElementById("main-content");
 
@@ -5190,9 +5213,6 @@ import { createCommunityFeature } from './pages/features/community.js';
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
-
-
-
 
 
 

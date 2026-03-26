@@ -40,7 +40,7 @@ public class Player {
     private Integer injurySeasonNumber;
     private Integer injuryWeekNumber;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id")
     @JsonBackReference   // ← Ovo je back deo (Player → Team), sprečava ciklus
     private Team team;

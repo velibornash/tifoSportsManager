@@ -3,6 +3,7 @@ package org.example.footballmanager.repository;
 import org.example.footballmanager.model.Junior;
 import org.example.footballmanager.model.JuniorStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,4 +18,8 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     List<Junior> findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(Long teamId);
     List<Junior> findByStatus(JuniorStatus status);
     long countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(Long teamId, int arrivalSeasonNumber, int arrivalWeekNumber);
+
+    @Modifying
+    @Query("update Junior j set j.age = j.age + 1 where j.status = :status")
+    int incrementAgeByStatus(@Param("status") JuniorStatus status);
 }

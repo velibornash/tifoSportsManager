@@ -47,6 +47,15 @@ public class ZoxReplayService {
 
         int totalTicks = tickStates.isEmpty() ? 0 : tickStates.get(tickStates.size() - 1).getTick();
         long totalDurationMs = toTimestampMs(totalTicks);
+        boolean replayReady = !tickStates.isEmpty() && totalDurationMs > 0;
+        String replayState = replayReady
+                ? "READY"
+                : ((match.isFinished() || match.isPlayed()) ? "INCOMPLETE" : "PROCESSING");
+        String replayMessage = switch (replayState) {
+            case "READY" -> "Replay ready.";
+            case "INCOMPLETE" -> "Replay data is incomplete for this match.";
+            default -> "Simulation is still preparing replay data.";
+        };
 
         return ZoxPlaybackMetadataDTO.builder()
                 .matchId(match.getId())
@@ -65,6 +74,9 @@ public class ZoxReplayService {
                 .chunkCount(calculateChunkCount(totalDurationMs))
                 .totalTicks(totalTicks)
                 .totalDurationMs(totalDurationMs)
+                .replayReady(replayReady)
+                .replayState(replayState)
+                .replayMessage(replayMessage)
                 .playersData(buildPlayerMetadata(match))
                 .goalsData(buildGoalMarkers(match, replayEvents, ticksPerMinute))
                 .eventData(replayEvents)

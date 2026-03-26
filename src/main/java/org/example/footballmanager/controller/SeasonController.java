@@ -2,8 +2,8 @@ package org.example.footballmanager.controller;
 
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Season;
-import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.SeasonRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,7 +20,7 @@ public class SeasonController {
 
     @GetMapping
     public List<Season> getAllSeasons() {
-        return seasonRepository.findAll();
+        return seasonRepository.findAll(Sort.by(Sort.Direction.DESC, "seasonYear"));
     }
 
     @PostMapping("/create")

@@ -11,6 +11,8 @@ import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TrainingRepository;
 import org.example.footballmanager.service.PlayerSkillProgressionService;
 import org.example.footballmanager.service.TrainingProgressionService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,8 +37,13 @@ public class TrainingController {
 
     // Vraća sve treninge
     @GetMapping
-    public List<Training> getAllTrainings() {
-        return trainingRepository.findAll();
+    public List<Training> getAllTrainings(@RequestParam(defaultValue = "0") int page,
+                                          @RequestParam(defaultValue = "100") int size,
+                                          @RequestParam(defaultValue = "id") String sortBy,
+                                          @RequestParam(defaultValue = "asc") String direction) {
+        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        return trainingRepository.findAll(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200)), sort))
+                .getContent();
     }
 
     // Postavlja formaciju za igrača

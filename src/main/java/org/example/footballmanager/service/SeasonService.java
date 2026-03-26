@@ -108,9 +108,7 @@ public class SeasonService {
         if (!existing.isEmpty()) {
             return;
         }
-        List<Team> currentLeagueTeams = teamRepository.findAll().stream()
-                .filter(t -> t.getCompetition() != null && Objects.equals(t.getCompetition().getId(), competition.getId()))
-                .toList();
+        List<Team> currentLeagueTeams = teamRepository.findByCompetitionId(competition.getId());
         List<CompetitionEntry> entriesToCreate = new ArrayList<>(currentLeagueTeams.size());
         for (Team t : currentLeagueTeams) {
             CompetitionEntry entry = new CompetitionEntry();
@@ -207,12 +205,8 @@ public class SeasonService {
         List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
         if (top.size() < 8) return;
 
-        List<Competition> tier2Leagues = competitionRepository.findAll().stream()
-                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
-                .filter(c -> c.getType() == CompetitionType.LEAGUE)
-                .filter(c -> Objects.equals(c.getTier(), 2))
-                .sorted(Comparator.comparing(Competition::getDivisionLevel, Comparator.nullsLast(Integer::compareTo)))
-                .toList();
+        List<Competition> tier2Leagues = competitionRepository
+                .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE, 2);
         if (tier2Leagues.size() < 2) return;
 
         List<Team> lowerRunners = new ArrayList<>();
@@ -302,7 +296,7 @@ public class SeasonService {
 
     @Transactional
     protected void decrementInjuriesByWeek() {
-        List<Player> players = playerRepository.findAll();
+        List<Player> players = playerRepository.findByInjuryDaysRemainingGreaterThan(0);
         boolean changed = false;
         for (Player player : players) {
             int current = Math.max(0, player.getInjuryDaysRemaining());
@@ -346,17 +340,8 @@ public class SeasonService {
 
     @Transactional
     protected void agePlayersAndJuniorsOneYear() {
-        List<Player> players = playerRepository.findAll();
-        for (Player p : players) {
-            p.setAge(Math.max(15, p.getAge() + 1));
-        }
-        playerRepository.saveAll(players);
-
-        List<Junior> activeJuniors = juniorRepository.findByStatus(JuniorStatus.ACTIVE);
-        for (Junior j : activeJuniors) {
-            j.setAge(Math.max(15, j.getAge() + 1));
-        }
-        juniorRepository.saveAll(activeJuniors);
+        playerRepository.incrementAgeForAllPlayers();
+        juniorRepository.incrementAgeByStatus(JuniorStatus.ACTIVE);
     }
 
     @Transactional
@@ -383,12 +368,8 @@ public class SeasonService {
         List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
         if (top.size() < 10) return;
 
-        List<Competition> tier2Leagues = competitionRepository.findAll().stream()
-                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
-                .filter(c -> c.getType() == CompetitionType.LEAGUE)
-                .filter(c -> Objects.equals(c.getTier(), 2))
-                .sorted(Comparator.comparing(Competition::getDivisionLevel, Comparator.nullsLast(Integer::compareTo)))
-                .toList();
+        List<Competition> tier2Leagues = competitionRepository
+                .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE, 2);
         if (tier2Leagues.size() < 2) return;
 
         List<Team> relegated = List.of(top.get(8).getTeam(), top.get(9).getTeam());
@@ -549,14 +530,7 @@ public class SeasonService {
     }
 
     private List<Competition> findSerbianLeagues() {
-        return competitionRepository.findAll().stream()
-                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
-                .filter(c -> c.getType() == CompetitionType.LEAGUE)
-                .sorted(Comparator
-                        .comparing(Competition::getTier, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(Competition::getDivisionLevel, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(Competition::getId, Comparator.nullsLast(Long::compareTo)))
-                .toList();
+        return competitionRepository.findByCountryIsoCodeAndTypeOrderByTierAscDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE);
     }
 
     private Map<String, Object> toPlayoffResultSummary(MatchFixture fixture, Set<Long> nextSeasonSuperLigaTeamIds) {

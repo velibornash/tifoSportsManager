@@ -451,6 +451,12 @@ public class MatchEngine {
         }
         return false;
     }
+    public boolean isSimulationRunning(long matchId) {
+        return runningMatches.contains(matchId);
+    }
+    public void markSimulationFinished(long matchId) {
+        runningMatches.remove(matchId);
+    }
     public Tactics createHomeTactics(Match match) {
         return createTacticsFromLineup(match.getHomeLineup(), "4-4-2");
     }

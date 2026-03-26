@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -122,6 +123,10 @@ public class CleanSheetService {
         // Apply derby flags
         leagueManager.applyDerbyFlags(schedule, derbyRivalries);
         state.setSchedule(schedule);
+        initializeInternationalCompetition(state);
+        initializeTransferMarket(state);
+        initializeBoardObjective(state);
+        initializeClubDesk(state);
 
         // 8. Welcome poruka
         state.addInboxMessage("welcome", buildWelcomeMessage(state, userTeam, csTeams.size()));
@@ -152,6 +157,10 @@ public class CleanSheetService {
             response.put("seasonYear", state.getSeasonYear());
             response.put("leagueName", state.getLeagueName());
             response.put("seasonHistory", state.getSeasonHistory());
+            response.put("internationalCompetitionName", state.getInternationalCompetitionName());
+            response.put("internationalMatchday", state.getInternationalMatchday());
+            response.put("internationalTable", state.getInternationalTable());
+            response.put("internationalWindows", state.getInternationalWindows());
             return response;
         }
 
@@ -244,9 +253,14 @@ public class CleanSheetService {
         state.addInboxMessage("round-report", reportGenerator.buildRoundReport(round, allResults, state.getUserTeam().getId()));
         generateInternationalInbox(state, round);
         generateRumorInbox(state, round);
+        updateTransferMarket(state, round);
+        updateLeagueWire(state, round, allResults, userResult);
         
         // Generate periodic special messages
         generatePeriodicInbox(state, round);
+        generateStrategicClubEvents(state, round);
+        applyRoundFinances(state, userFixture, userResult, round);
+        runBoardReview(state, round);
 
         // Oporavi fatigue izmedju kola
         recoverFatigueBetweenRounds(state);
@@ -273,6 +287,20 @@ public class CleanSheetService {
         // Include new data
         response.put("clubMood", state.getClubMood());
         response.put("seasonStats", state.getSeasonStats());
+        response.put("internationalCompetitionName", state.getInternationalCompetitionName());
+        response.put("internationalMatchday", state.getInternationalMatchday());
+        response.put("internationalTable", state.getInternationalTable());
+        response.put("internationalWindows", state.getInternationalWindows());
+        response.put("transferMarket", state.getTransferMarket());
+        response.put("affiliateClubName", state.getAffiliateClubName());
+        response.put("affiliateClubCountry", state.getAffiliateClubCountry());
+        response.put("affiliateClubNote", state.getAffiliateClubNote());
+        response.put("lastRoundIncome", state.getLastRoundIncome());
+        response.put("lastRoundExpenses", state.getLastRoundExpenses());
+        response.put("weeklyWageBill", state.getWeeklyWageBill());
+        response.put("boardReviewTitle", state.getBoardReviewTitle());
+        response.put("boardReviewText", state.getBoardReviewText());
+        response.put("notableNews", state.getNotableNews());
         return response;
     }
     
@@ -346,6 +374,187 @@ public class CleanSheetService {
             }
         }
     }
+
+    private void generateStrategicClubEvents(CleanSheetGameState state, int round) {
+        if (state.getAffiliateClubName() == null && round >= 4 && round % 4 == 0 && random.nextDouble() < 0.24) {
+            String[] clubs = {
+                    "Manchester City|England", "Arsenal|England", "Liverpool|England", "Chelsea|England", "Manchester United|England", "Tottenham|England",
+                    "Bayern Munich|Germany",
+                    "Real Madrid|Spain", "Barcelona|Spain", "Atletico Madrid|Spain",
+                    "Paris Saint-Germain|France", "Marseille|France",
+                    "Inter|Italy", "Milan|Italy", "Juventus|Italy", "Napoli|Italy", "Roma|Italy",
+                    "Borussia Dortmund|Germany", "Sevilla|Spain", "Lazio|Italy"
+            };
+            String[] pick = clubs[random.nextInt(clubs.length)].split("\\|");
+            state.setAffiliateClubName(pick[0]);
+            state.setAffiliateClubCountry(pick[1]);
+            state.setAffiliateClubNote("Technical partnership focused on youth exposure, scouting contacts and seasonal development support.");
+            state.addInboxMessage("board", "BOARD STRATEGY UPDATE\nAffiliate agreement reached with " + pick[0] + " (" + pick[1] + ").\n\nThe club expects stronger scouting reach, occasional loan opportunities and a small prestige boost from the relationship.");
+            state.getUserTeam().setReputation(state.getUserTeam().getReputation() + 2);
+        }
+
+        if (state.getAffiliateClubName() != null && round % 5 == 0 && random.nextDouble() < 0.40) {
+            CSPlayer loanee = createAffiliateProspect(state);
+            state.getRoster().add(loanee);
+            state.getAllTeamRosters().put(state.getUserTeam().getId(), state.getRoster());
+            state.addInboxMessage("youth", "AFFILIATE TALENT ARRIVAL\n" + state.getAffiliateClubName() + " have sent " + loanee.getName() + " (" + loanee.getPosition() + ", age " + loanee.getAge() + ", rating " + loanee.getRating() + ") for a development spell.\n\nStaff note: the player arrives with higher upside than most of the current academy cycle.");
+        }
+    }
+
+    private void initializeBoardObjective(CleanSheetGameState state) {
+        double reputation = state.getUserTeam().getReputation();
+        if (reputation >= 72) {
+            state.setBoardObjectiveTitle("Promotion push");
+            state.setBoardObjectiveText("Stay in the upper third, push toward automatic promotion places and avoid wasting the wage bill on short-term gambles.");
+        } else if (reputation >= 55) {
+            state.setBoardObjectiveTitle("Top-half stability");
+            state.setBoardObjectiveText("Finish safely in the top half, keep the atmosphere steady and show enough progress to justify further investment.");
+        } else {
+            state.setBoardObjectiveTitle("Survival first");
+            state.setBoardObjectiveText("Stay clear of relegation trouble, keep finances under control and build a younger, more resilient squad.");
+        }
+    }
+
+    private void initializeClubDesk(CleanSheetGameState state) {
+        state.setBoardReviewTitle("Opening brief");
+        state.setBoardReviewText("The board expects disciplined spending, a coherent first XI and enough weekly progress to keep the season on a stable track.");
+        state.setNotableNews(new ArrayList<>(List.of(
+                "League Wire: scouts expect the early rounds to expose who is promotion-ready and who is carrying thin depth.",
+                "Board note: budgets are being watched closely across the division after a costly summer window.",
+                "Press room: supporters are already circling the first derby dates on the fixture list."
+        )));
+    }
+
+    private void applyRoundFinances(CleanSheetGameState state, CSFixture userFixture, CSMatchResult userResult, int round) {
+        double wageBill = Math.round(state.getRoster().stream().mapToDouble(CSPlayer::getEarnings).sum() * 0.58);
+        double stadiumCosts = 3500 + Math.round(state.getUserTeam().getStadiumCapacity() * 0.28);
+        double travelCosts = userFixture != null && !Objects.equals(userFixture.getHomeTeamId(), state.getUserTeam().getId()) ? 6500 : 2200;
+        double scoutingAndOps = 2600 + random.nextInt(1800);
+
+        double sponsorIncome = 10000 + Math.round(state.getUserTeam().getReputation() * 180);
+        double gateIncome = 0;
+        if (userFixture != null && Objects.equals(userFixture.getHomeTeamId(), state.getUserTeam().getId())) {
+            double fillRatio = Math.min(0.95, 0.42 + state.getUserTeam().getReputation() / 220.0 + (state.getClubMood().getFanMood() / 260.0));
+            int attendance = (int) Math.round(state.getUserTeam().getStadiumCapacity() * fillRatio);
+            gateIncome = attendance * (8 + random.nextInt(5));
+        }
+        double performanceBonus = 0;
+        if (userResult != null) {
+            Long userTeamId = state.getUserTeam().getId();
+            boolean userHome = Objects.equals(userResult.getHomeTeamId(), userTeamId);
+            int gf = userHome ? userResult.getHomeGoals() : userResult.getAwayGoals();
+            int ga = userHome ? userResult.getAwayGoals() : userResult.getHomeGoals();
+            performanceBonus = gf > ga ? 7000 : gf == ga ? 2500 : 0;
+        }
+        double affiliateIncome = state.getAffiliateClubName() != null ? 3500 : 0;
+
+        double income = sponsorIncome + gateIncome + performanceBonus + affiliateIncome;
+        double expenses = wageBill + stadiumCosts + travelCosts + scoutingAndOps;
+        state.setWeeklyWageBill(wageBill);
+        state.setLastRoundIncome(income);
+        state.setLastRoundExpenses(expenses);
+        state.getUserTeam().setBudget(Math.max(25_000, state.getUserTeam().getBudget() + income - expenses));
+
+        if (round == 1 || round % 3 == 0 || state.getUserTeam().getBudget() < 150_000) {
+            long net = Math.round(income - expenses);
+            state.addInboxMessage("finance", "FINANCE OFFICE // ROUND " + round + "\nIncome: €" + formatMoney((long) income) + "\nExpenses: €" + formatMoney((long) expenses) + "\nWeekly wage bill: €" + formatMoney((long) wageBill) + "\nNet movement: " + (net >= 0 ? "+" : "-") + "€" + formatMoney(Math.abs(net)) + "\nCurrent budget: €" + formatMoney((long) state.getUserTeam().getBudget()));
+        }
+    }
+
+    private void updateLeagueWire(CleanSheetGameState state, int round, List<CSMatchResult> allResults, CSMatchResult userResult) {
+        List<String> wire = new ArrayList<>();
+        wire.add("Round " + round + ": " + buildLeagueWireLead(state, allResults, userResult));
+
+        CSTableEntry userEntry = state.getLeagueTable().stream()
+                .filter(entry -> Objects.equals(entry.getTeamId(), state.getUserTeam().getId()))
+                .findFirst()
+                .orElse(null);
+        if (userEntry != null) {
+            wire.add("Table watch: " + state.getUserTeam().getName() + " sit " + ordinal(userEntry.getPosition())
+                    + " with " + userEntry.getPoints() + " pts and GD " + signedValue(userEntry.getGoalDifference()) + ".");
+        }
+
+        List<CSPlayer> hottestScorers = state.getRoster().stream()
+                .sorted(Comparator.comparingInt(CSPlayer::getGoals).reversed().thenComparingInt(CSPlayer::getRating).reversed())
+                .limit(2)
+                .toList();
+        if (!hottestScorers.isEmpty()) {
+            String scorerLine = hottestScorers.stream()
+                    .map(player -> player.getName() + " (" + player.getGoals() + ")")
+                    .collect(Collectors.joining(", "));
+            wire.add("Player watch: top in-house scorers right now are " + scorerLine + ".");
+        }
+
+        double budget = state.getUserTeam().getBudget();
+        if (budget < 140_000) {
+            wire.add("Finance watch: room is tightening and the board may freeze late-window business unless results improve.");
+        } else if (budget > 420_000) {
+            wire.add("Finance watch: healthy reserves could support a targeted move if the board feels promotion momentum building.");
+        }
+
+        state.setNotableNews(wire.stream().limit(5).collect(Collectors.toCollection(ArrayList::new)));
+    }
+
+    private String buildLeagueWireLead(CleanSheetGameState state, List<CSMatchResult> allResults, CSMatchResult userResult) {
+        List<CSMatchResult> pool = new ArrayList<>();
+        if (allResults != null) {
+            pool.addAll(allResults.stream().filter(Objects::nonNull).toList());
+        }
+        if (userResult != null && pool.stream().noneMatch(result ->
+                Objects.equals(result.getHomeTeamId(), userResult.getHomeTeamId())
+                        && Objects.equals(result.getAwayTeamId(), userResult.getAwayTeamId()))) {
+            pool.add(userResult);
+        }
+        if (pool.isEmpty()) {
+            return "The fixture desk had no major swings to flag.";
+        }
+
+        CSMatchResult standout = pool.stream()
+                .max(Comparator.comparingInt(result -> Math.abs(result.getHomeGoals() - result.getAwayGoals()) * 10 + result.getHomeGoals() + result.getAwayGoals()))
+                .orElse(pool.get(0));
+        return standout.getHomeTeamName() + " " + standout.getHomeGoals() + ":" + standout.getAwayGoals() + " " + standout.getAwayTeamName()
+                + " delivered the loudest scoreline on the board.";
+    }
+
+    private void runBoardReview(CleanSheetGameState state, int round) {
+        int totalRounds = Math.max(1, state.getTotalRounds());
+        if (round != Math.max(2, totalRounds / 2) && round != Math.max(3, (totalRounds * 2) / 3)) {
+            return;
+        }
+
+        CSTableEntry userEntry = state.getLeagueTable().stream()
+                .filter(entry -> Objects.equals(entry.getTeamId(), state.getUserTeam().getId()))
+                .findFirst()
+                .orElse(null);
+        int position = userEntry != null ? userEntry.getPosition() : state.getLeagueTable().size();
+        int teamCount = Math.max(1, state.getLeagueTable().size());
+        double budget = state.getUserTeam().getBudget();
+        double adjustment = 0;
+        String reviewTitle;
+        String reviewText;
+
+        if (position <= Math.max(2, teamCount / 4) && budget > 180_000) {
+            adjustment = 45_000 + random.nextInt(30_001);
+            reviewTitle = "Board review: backing the push";
+            reviewText = "Promotion form has convinced the board to release an extra €" + formatMoney((long) adjustment).replace("€", "")
+                    + " for selective recruitment and wage flexibility.";
+        } else if (position >= Math.max(4, teamCount - 2) || budget < 120_000) {
+            adjustment = -(20_000 + random.nextInt(15_001));
+            reviewTitle = "Board review: cost controls";
+            reviewText = "Results and cash flow triggered a budget correction of -€" + formatMoney((long) Math.abs(adjustment)).replace("€", "")
+                    + ". The expectation is fewer risks and smarter squad management.";
+        } else {
+            reviewTitle = "Board review: hold course";
+            reviewText = "The board sees enough stability to keep current plans intact. No fresh budget swing has been approved this time.";
+        }
+
+        if (adjustment != 0) {
+            state.getUserTeam().setBudget(Math.max(25_000, state.getUserTeam().getBudget() + adjustment));
+        }
+        state.setBoardReviewTitle(reviewTitle);
+        state.setBoardReviewText(reviewText + " Current transfer budget: €" + formatMoney((long) state.getUserTeam().getBudget()).replace("€", "") + ".");
+        state.addInboxMessage("board", reviewTitle.toUpperCase(Locale.ROOT) + "\n" + state.getBoardReviewText());
+    }
     
     /**
      * Find league position for a team
@@ -378,6 +587,159 @@ public class CleanSheetService {
 
     public List<CSInboxMessage> getInbox(Long userId) {
         return getStateOrThrow(userId).getInbox();
+    }
+
+    public void markInboxRead(Long userId, int index) {
+        getStateOrThrow(userId).markInboxMessageRead(index);
+    }
+
+    public Map<String, Object> getTransferCentre(Long userId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("budget", state.getUserTeam().getBudget());
+        payload.put("market", state.getTransferMarket());
+        payload.put("listedPlayers", state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .toList());
+        payload.put("availableTargets", state.getTransferMarket().stream()
+                .filter(item -> !Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .toList());
+        payload.put("incomingOffers", state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .filter(item -> item.getBestOffer() != null && item.getBestOfferClub() != null)
+                .toList());
+        return payload;
+    }
+
+    public CSTransferListing listPlayerForTransfer(Long userId, Long playerId, double askingPrice) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSPlayer player = state.getRoster().stream()
+                .filter(p -> Objects.equals(p.getId(), playerId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Player not found in your squad."));
+
+        state.getTransferMarket().removeIf(item -> Objects.equals(item.getPlayerId(), playerId));
+        CSTransferListing listing = buildTransferListing(state.getUserTeam(), player, normalizeAskingPrice(player, askingPrice));
+        state.getTransferMarket().add(0, listing);
+        state.addInboxMessage("transfer", "Transfer desk: " + player.getName() + " has been listed for €" + formatMoney((long) listing.getAskingPrice()) + ".");
+        return listing;
+    }
+
+    public void removePlayerFromTransferList(Long userId, Long playerId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        boolean removed = state.getTransferMarket().removeIf(item ->
+                Objects.equals(item.getPlayerId(), playerId) && Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()));
+        if (removed) {
+            state.addInboxMessage("transfer", "Transfer desk: " + findPlayerName(state, playerId) + " has been removed from the market.");
+        }
+    }
+
+    public Map<String, Object> buyListedPlayer(Long userId, Long playerId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTransferListing listing = state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getPlayerId(), playerId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Listing not found."));
+        if (Objects.equals(listing.getSellerTeamId(), state.getUserTeam().getId())) {
+            throw new RuntimeException("You cannot buy your own listed player.");
+        }
+        if (state.getUserTeam().getBudget() < listing.getAskingPrice()) {
+            throw new RuntimeException("Budget too low for this deal.");
+        }
+        return executeTransfer(state, listing, listing.getAskingPrice());
+    }
+
+    public Map<String, Object> bidForPlayer(Long userId, Long playerId, double offer) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTransferListing listing = state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getPlayerId(), playerId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Listing not found."));
+        if (Objects.equals(listing.getSellerTeamId(), state.getUserTeam().getId())) {
+            throw new RuntimeException("You cannot negotiate for your own player.");
+        }
+        if (offer <= 0) {
+            throw new RuntimeException("Offer must be above zero.");
+        }
+        if (state.getUserTeam().getBudget() < offer) {
+            throw new RuntimeException("Budget too low for that offer.");
+        }
+
+        double ask = listing.getAskingPrice();
+        double ratio = offer / Math.max(1.0, ask);
+        Map<String, Object> payload = new HashMap<>();
+
+        if (ratio >= 0.97 || (ratio >= 0.92 && random.nextDouble() < 0.45)) {
+            Map<String, Object> completed = executeTransfer(state, listing, offer);
+            completed.put("outcome", "accepted");
+            completed.put("message", listing.getSellerTeamName() + " accepted your bid for " + listing.getPlayerName() + " at €" + formatMoney((long) offer) + ".");
+            return completed;
+        }
+
+        if (ratio >= 0.82) {
+            double counter = Math.min(ask, Math.round(Math.max(offer + (ask - offer) * 0.55, ask * 0.9)));
+            listing.setAskingPrice(counter);
+            state.addInboxMessage("transfer", "Negotiation note: " + listing.getSellerTeamName() + " want €" + formatMoney((long) counter) + " for " + listing.getPlayerName() + ".");
+            payload.put("outcome", "counter");
+            payload.put("counterPrice", counter);
+            payload.put("message", listing.getSellerTeamName() + " rejected €" + formatMoney((long) offer) + " and came back at €" + formatMoney((long) counter) + ".");
+            payload.put("market", state.getTransferMarket());
+            payload.put("budget", state.getUserTeam().getBudget());
+            return payload;
+        }
+
+        state.addInboxMessage("transfer", "Bid rejected: " + listing.getSellerTeamName() + " dismissed your €" + formatMoney((long) offer) + " offer for " + listing.getPlayerName() + ".");
+        payload.put("outcome", "rejected");
+        payload.put("message", listing.getSellerTeamName() + " rejected the bid for " + listing.getPlayerName() + " without opening serious talks.");
+        payload.put("market", state.getTransferMarket());
+        payload.put("budget", state.getUserTeam().getBudget());
+        return payload;
+    }
+
+    public Map<String, Object> acceptIncomingOffer(Long userId, Long playerId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTransferListing listing = state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getPlayerId(), playerId))
+                .filter(item -> Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Listing not found."));
+        if (listing.getBestOffer() == null || listing.getBestOfferClub() == null) {
+            throw new RuntimeException("No active offer to accept.");
+        }
+        CSTeam buyer = state.getAllTeams().stream()
+                .filter(team -> Objects.equals(team.getName(), listing.getBestOfferClub()))
+                .findFirst()
+                .orElseGet(() -> createGeneratedTeam(listing.getBestOfferClub()));
+        completeOutgoingTransfer(state, listing, buyer, listing.getBestOffer());
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("ok", true);
+        payload.put("budget", state.getUserTeam().getBudget());
+        payload.put("roster", state.getRoster());
+        payload.put("market", state.getTransferMarket());
+        payload.put("message", "Offer accepted. " + listing.getPlayerName() + " leaves for " + listing.getBestOfferClub() + " at €" + formatMoney(listing.getBestOffer().longValue()) + ".");
+        return payload;
+    }
+
+    public Map<String, Object> rejectIncomingOffer(Long userId, Long playerId) {
+        CleanSheetGameState state = getStateOrThrow(userId);
+        CSTransferListing listing = state.getTransferMarket().stream()
+                .filter(item -> Objects.equals(item.getPlayerId(), playerId))
+                .filter(item -> Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Listing not found."));
+        String club = listing.getBestOfferClub();
+        listing.setBestOffer(null);
+        listing.setBestOfferClub(null);
+        if (club != null) {
+            state.addInboxMessage("transfer", "Offer rejected: " + club + " were turned away in talks for " + listing.getPlayerName() + ".");
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("ok", true);
+        payload.put("market", state.getTransferMarket());
+        payload.put("budget", state.getUserTeam().getBudget());
+        payload.put("message", "Offer rejected.");
+        return payload;
     }
 
     public CSTactics changeTactics(Long userId, String formation, String style) {
@@ -630,6 +992,10 @@ public class CleanSheetService {
         return String.format(Locale.US, "%,d", amount);
     }
 
+    private String signedValue(int value) {
+        return value > 0 ? "+" + value : String.valueOf(value);
+    }
+
     private int safeInt(Number value) {
         return value == null ? 0 : value.intValue();
     }
@@ -654,6 +1020,197 @@ public class CleanSheetService {
             return "";
         }
         return options[random.nextInt(options.length)];
+    }
+
+    private void initializeTransferMarket(CleanSheetGameState state) {
+        state.setTransferMarket(new ArrayList<>());
+        List<CSPlayer> candidates = state.getAllTeamRosters().entrySet().stream()
+                .filter(entry -> !Objects.equals(entry.getKey(), state.getUserTeam().getId()))
+                .flatMap(entry -> entry.getValue().stream())
+                .filter(player -> player.getAge() <= 30)
+                .sorted(Comparator.comparingInt(CSPlayer::getRating).reversed())
+                .limit(18)
+                .toList();
+
+        candidates.stream()
+                .filter(player -> random.nextDouble() < 0.45)
+                .limit(8)
+                .forEach(player -> {
+                    CSTeam team = findTeamByPlayer(state, player.getId());
+                    if (team != null) {
+                        state.getTransferMarket().add(buildTransferListing(team, player, normalizeAskingPrice(player, 0)));
+                    }
+                });
+    }
+
+    private void updateTransferMarket(CleanSheetGameState state, int round) {
+        List<CSTransferListing> market = state.getTransferMarket();
+        market.stream()
+                .filter(item -> !Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .forEach(item -> {
+                    if (random.nextDouble() < 0.22) {
+                        CSTeam club = pickRandomOtherTeam(state, item.getSellerTeamId());
+                        if (club != null && item.getInterestedClubs().stream().noneMatch(club.getName()::equals)) {
+                            item.getInterestedClubs().add(club.getName());
+                        }
+                    }
+                });
+
+        if (round % 2 == 1 && market.stream().filter(item -> !Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId())).count() < 10) {
+            CSPlayer target = pickRandomLeaguePlayer(state);
+            if (target != null) {
+                CSTeam seller = findTeamByPlayer(state, target.getId());
+                boolean valid = seller != null
+                        && !Objects.equals(seller.getId(), state.getUserTeam().getId())
+                        && market.stream().noneMatch(item -> Objects.equals(item.getPlayerId(), target.getId()))
+                        && target.getAge() <= 31;
+                if (valid) {
+                    market.add(buildTransferListing(seller, target, normalizeAskingPrice(target, 0)));
+                }
+            }
+        }
+
+        List<CSTransferListing> userListings = market.stream()
+                .filter(item -> Objects.equals(item.getSellerTeamId(), state.getUserTeam().getId()))
+                .toList();
+        for (CSTransferListing listing : userListings) {
+            if (random.nextDouble() < 0.28) {
+                CSTeam club = pickRandomOtherTeam(state, state.getUserTeam().getId());
+                if (club != null && listing.getInterestedClubs().stream().noneMatch(club.getName()::equals)) {
+                    listing.getInterestedClubs().add(club.getName());
+                    state.addInboxMessage("transfer", "Interest received: " + club.getName() + " have started tracking " + listing.getPlayerName() + ".");
+                }
+            }
+            if (listing.getBestOffer() == null && !listing.getInterestedClubs().isEmpty() && random.nextDouble() < 0.18) {
+                String clubName = listing.getInterestedClubs().get(random.nextInt(listing.getInterestedClubs().size()));
+                double offer = Math.round(listing.getAskingPrice() * (0.78 + random.nextDouble() * 0.2));
+                listing.setBestOffer(offer);
+                listing.setBestOfferClub(clubName);
+                state.addInboxMessage("transfer", "Incoming offer: " + clubName + " bid €" + formatMoney((long) offer) + " for " + listing.getPlayerName() + ".");
+            }
+        }
+    }
+
+    private CSTransferListing buildTransferListing(CSTeam seller, CSPlayer player, double askingPrice) {
+        return CSTransferListing.builder()
+                .playerId(player.getId())
+                .playerName(player.getName())
+                .position(player.getPosition())
+                .age(player.getAge())
+                .rating(player.getRating())
+                .marketValue(player.getValue())
+                .askingPrice(askingPrice)
+                .sellerTeamId(seller.getId())
+                .sellerTeamName(seller.getName())
+                .listedAt(java.time.LocalDateTime.now().toString())
+                .bestOffer(null)
+                .bestOfferClub(null)
+                .interestedClubs(new ArrayList<>())
+                .build();
+    }
+
+    private double normalizeAskingPrice(CSPlayer player, double askingPrice) {
+        double base = Math.max(50_000, player.getValue() > 0 ? player.getValue() : player.getRating() * 18_000.0);
+        if (askingPrice > 0) {
+            return Math.max(25_000, askingPrice);
+        }
+        return Math.round(base * (1.08 + random.nextDouble() * 0.28));
+    }
+
+    private CSTeam findTeamByPlayer(CleanSheetGameState state, Long playerId) {
+        for (Map.Entry<Long, List<CSPlayer>> entry : state.getAllTeamRosters().entrySet()) {
+            if (entry.getValue().stream().anyMatch(player -> Objects.equals(player.getId(), playerId))) {
+                return state.getAllTeams().stream()
+                        .filter(team -> Objects.equals(team.getId(), entry.getKey()))
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
+        return null;
+    }
+
+    private String findPlayerName(CleanSheetGameState state, Long playerId) {
+        return state.getAllTeamRosters().values().stream()
+                .flatMap(List::stream)
+                .filter(player -> Objects.equals(player.getId(), playerId))
+                .map(CSPlayer::getName)
+                .findFirst()
+                .orElse("Player");
+    }
+
+    private CSPlayer createAffiliateProspect(CleanSheetGameState state) {
+        String[] positions = {"DEF", "MID", "WNG", "ATT"};
+        String position = positions[random.nextInt(positions.length)];
+        int rating = 66 + random.nextInt(10);
+        double value = 900_000 + random.nextInt(1_400_000);
+        return CSPlayer.builder()
+                .id(generatedPlayerId.getAndDecrement())
+                .name(pickFirstName() + " " + pickLastName())
+                .position(position)
+                .age(17 + random.nextInt(3))
+                .rating(rating)
+                .form(6.2)
+                .fatigue(1.2)
+                .talent(2.5 + random.nextDouble() * 1.2)
+                .stamina(clampSkill(12 + random.nextInt(6)))
+                .goalkeeper(position.equals("GK") ? clampSkill(13 + random.nextInt(5)) : clampSkill(3 + random.nextInt(3)))
+                .defending(clampSkill(position.equals("DEF") ? 14 + random.nextInt(5) : 8 + random.nextInt(5)))
+                .pace(clampSkill(position.equals("WNG") || position.equals("ATT") ? 14 + random.nextInt(5) : 10 + random.nextInt(5)))
+                .technique(clampSkill(12 + random.nextInt(6)))
+                .playmaker(clampSkill(position.equals("MID") ? 14 + random.nextInt(5) : 9 + random.nextInt(5)))
+                .passing(clampSkill(11 + random.nextInt(6)))
+                .shooting(clampSkill(position.equals("ATT") ? 14 + random.nextInt(5) : 9 + random.nextInt(5)))
+                .goals(0)
+                .assists(0)
+                .value(value)
+                .earnings(2200 + random.nextInt(2200))
+                .height(174 + random.nextInt(18))
+                .weight(67 + random.nextInt(11))
+                .build();
+    }
+
+    private Map<String, Object> executeTransfer(CleanSheetGameState state, CSTransferListing listing, double agreedFee) {
+        CSTeam seller = findTeam(state, listing.getSellerTeamId());
+        List<CSPlayer> sellerRoster = state.getAllTeamRosters().getOrDefault(seller.getId(), new ArrayList<>());
+        CSPlayer player = sellerRoster.stream()
+                .filter(p -> Objects.equals(p.getId(), listing.getPlayerId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Selling club no longer has this player."));
+
+        sellerRoster.remove(player);
+        state.getRoster().add(player);
+        state.getAllTeamRosters().put(state.getUserTeam().getId(), state.getRoster());
+        state.getAllTeamRosters().put(seller.getId(), sellerRoster);
+
+        state.getUserTeam().setBudget(state.getUserTeam().getBudget() - agreedFee);
+        seller.setBudget(seller.getBudget() + agreedFee);
+        state.getTransferMarket().removeIf(item -> Objects.equals(item.getPlayerId(), listing.getPlayerId()));
+        state.addInboxMessage("transfer", "Deal completed: " + player.getName() + " joins from " + seller.getName() + " for €" + formatMoney((long) agreedFee) + ".");
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("ok", true);
+        payload.put("budget", state.getUserTeam().getBudget());
+        payload.put("roster", state.getRoster());
+        payload.put("market", state.getTransferMarket());
+        return payload;
+    }
+
+    private void completeOutgoingTransfer(CleanSheetGameState state, CSTransferListing listing, CSTeam buyer, double agreedFee) {
+        CSPlayer player = state.getRoster().stream()
+                .filter(p -> Objects.equals(p.getId(), listing.getPlayerId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Player not found in your squad."));
+
+        state.getRoster().remove(player);
+        state.getAllTeamRosters().put(state.getUserTeam().getId(), state.getRoster());
+        List<CSPlayer> buyerRoster = new ArrayList<>(state.getAllTeamRosters().getOrDefault(buyer.getId(), new ArrayList<>()));
+        buyerRoster.add(player);
+        state.getAllTeamRosters().put(buyer.getId(), buyerRoster);
+
+        state.getUserTeam().setBudget(state.getUserTeam().getBudget() + agreedFee);
+        buyer.setBudget(Math.max(25_000, buyer.getBudget() - agreedFee));
+        state.getTransferMarket().removeIf(item -> Objects.equals(item.getPlayerId(), listing.getPlayerId()));
+        state.addInboxMessage("transfer", "Transfer completed: " + player.getName() + " sold to " + buyer.getName() + " for €" + formatMoney((long) agreedFee) + ".");
     }
 
     private void recoverFatigueBetweenRounds(CleanSheetGameState state) {
@@ -712,6 +1269,8 @@ public class CleanSheetService {
         state.setCurrentRound(1);
         state.setSchedule(leagueManager.generateSchedule(state.getAllTeams()));
         state.setLeagueTable(leagueManager.initializeTable(state.getAllTeams()));
+        initializeInternationalCompetition(state);
+        initializeTransferMarket(state);
         state.getMatchHistory().clear();
 
         for (List<CSPlayer> roster : state.getAllTeamRosters().values()) {
@@ -840,50 +1399,23 @@ public class CleanSheetService {
     }
 
     private void generateInternationalInbox(CleanSheetGameState state, int round) {
-        if (random.nextDouble() > 0.55) {
+        boolean scheduledWindow = round % 2 == 0;
+        if (!scheduledWindow || state.getInternationalMatchday() > 6) {
             return;
         }
-        String stage = random.nextDouble() < 0.28 ? "World Cup Qualifiers" : "International Friendlies";
-        List<String> nations = new ArrayList<>(List.of("Serbia", "Croatia", "Romania", "Bulgaria", "Hungary", "Greece", "Slovakia", "Austria", "Sweden", "Denmark"));
-        Collections.shuffle(nations, random);
-        if (!nations.contains("Serbia")) nations.add(0, "Serbia");
-
-        List<String> lines = new ArrayList<>();
-        lines.add(pick(
-                "International desk - " + stage + " (Round " + round + ")",
-                stage + " bulletin - match window around Round " + round,
-                stage + " watch - results filed during Round " + round
-        ));
-
-        int fixtures = 3 + random.nextInt(2);
-        for (int i = 0; i < fixtures; i++) {
-            String home = (i == 0) ? "Serbia" : nations.get((i * 2) % nations.size());
-            String away = nations.get((i * 2 + 1) % nations.size());
-            if (home.equals(away)) continue;
-
-            int hg = random.nextInt(4);
-            int ag = random.nextInt(4);
-            boolean serbiaHome = "Serbia".equals(home);
-            boolean serbiaAway = "Serbia".equals(away);
-            int serbiaGoals = serbiaHome ? hg : (serbiaAway ? ag : 0);
-
-            String line = home + " " + hg + ":" + ag + " " + away + ". "
-                    + pick(
-                            "A lively contest.",
-                            "Another useful scouting note for the inbox.",
-                            "The result drew a fair amount of attention on the wire."
-                    );
-            if (serbiaGoals > 0) {
-                line += " Serbia scorers: " + String.join(", ", pickInternationalScorers(state, serbiaGoals)) + ".";
-            }
-            lines.add(line);
+        List<CSMatchResult> results = simulateInternationalMatchday(state);
+        if (results.isEmpty()) {
+            return;
         }
-        lines.add(pick(
-                "European scouts continue to circulate after a busy round of international fixtures.",
-                "Reports from abroad suggest several players have enhanced their stock.",
-                "Clubs across the region will be comparing notes after this window."
-        ));
-        state.addInboxMessage("international", String.join("\n", lines));
+        String bulletin = buildInternationalBulletin(state, round, results);
+        state.getInternationalWindows().add(CSInternationalWindow.builder()
+                .round(round)
+                .matchday(state.getInternationalMatchday() - 1)
+                .competitionName(state.getInternationalCompetitionName())
+                .results(results)
+                .bulletin(bulletin)
+                .build());
+        state.addInboxMessage("international", bulletin);
     }
 
     private List<String> pickInternationalScorers(CleanSheetGameState state, int goals) {
@@ -909,6 +1441,189 @@ public class CleanSheetService {
             scorers.add("Unknown");
         }
         return scorers;
+    }
+
+    private void initializeInternationalCompetition(CleanSheetGameState state) {
+        state.setInternationalCompetitionName("World Cup Qualifying Group D");
+        state.setInternationalMatchday(1);
+        state.setInternationalWindows(new ArrayList<>());
+        state.setInternationalTable(new ArrayList<>(List.of(
+                CSTableEntry.builder().teamId(-1001L).teamName("Serbia").points(0).wins(0).draws(0).losses(0).goalsScored(0).goalsConceded(0).played(0).position(1).build(),
+                CSTableEntry.builder().teamId(-1002L).teamName("Romania").points(0).wins(0).draws(0).losses(0).goalsScored(0).goalsConceded(0).played(0).position(2).build(),
+                CSTableEntry.builder().teamId(-1003L).teamName("Austria").points(0).wins(0).draws(0).losses(0).goalsScored(0).goalsConceded(0).played(0).position(3).build(),
+                CSTableEntry.builder().teamId(-1004L).teamName("Greece").points(0).wins(0).draws(0).losses(0).goalsScored(0).goalsConceded(0).played(0).position(4).build()
+        )));
+    }
+
+    private List<CSMatchResult> simulateInternationalMatchday(CleanSheetGameState state) {
+        List<String[]> fixtures = switch (state.getInternationalMatchday()) {
+            case 1 -> List.of(new String[]{"Serbia", "Romania"}, new String[]{"Austria", "Greece"});
+            case 2 -> List.of(new String[]{"Greece", "Serbia"}, new String[]{"Romania", "Austria"});
+            case 3 -> List.of(new String[]{"Serbia", "Austria"}, new String[]{"Romania", "Greece"});
+            case 4 -> List.of(new String[]{"Romania", "Serbia"}, new String[]{"Greece", "Austria"});
+            case 5 -> List.of(new String[]{"Serbia", "Greece"}, new String[]{"Austria", "Romania"});
+            case 6 -> List.of(new String[]{"Austria", "Serbia"}, new String[]{"Greece", "Romania"});
+            default -> List.of();
+        };
+        if (fixtures.isEmpty()) {
+            return List.of();
+        }
+
+        List<CSMatchResult> results = new ArrayList<>();
+        for (String[] fixture : fixtures) {
+            String home = fixture[0];
+            String away = fixture[1];
+            int homeGoals = weightedInternationalGoals(home);
+            int awayGoals = weightedInternationalGoals(away);
+
+            if (home.equals("Serbia") && homeGoals == awayGoals && random.nextDouble() < 0.45) {
+                homeGoals += 1;
+            }
+
+            List<String> homeScorers = pickInternationalScorers(state, Math.max(1, homeGoals));
+            List<String> awayScorers = pickInternationalScorers(state, Math.max(1, awayGoals));
+            String summary = home + " " + homeGoals + ":" + awayGoals + " " + away;
+            if (homeGoals > 0) {
+                summary += ". " + home + " scorers: " + String.join(", ", homeScorers.stream().limit(homeGoals).toList()) + ".";
+            }
+            if (awayGoals > 0) {
+                summary += " " + away + " scorers: " + String.join(", ", awayScorers.stream().limit(awayGoals).toList()) + ".";
+            }
+
+            CSMatchResult result = CSMatchResult.builder()
+                    .homeTeamName(home)
+                    .awayTeamName(away)
+                    .homeGoals(homeGoals)
+                    .awayGoals(awayGoals)
+                    .round(state.getInternationalMatchday())
+                    .summary(summary)
+                    .report(summary)
+                    .events(new ArrayList<>())
+                    .build();
+            results.add(result);
+            applyInternationalResult(state, result);
+        }
+
+        state.setInternationalMatchday(state.getInternationalMatchday() + 1);
+        sortInternationalTable(state);
+        return results;
+    }
+
+    private int weightedInternationalGoals(String nation) {
+        int base = switch (nation) {
+            case "Serbia" -> 2;
+            case "Austria" -> 1;
+            case "Romania" -> 1;
+            default -> 1;
+        };
+        return Math.max(0, base + random.nextInt(3) - random.nextInt(2));
+    }
+
+    private void applyInternationalResult(CleanSheetGameState state, CSMatchResult result) {
+        CSTableEntry home = findInternationalEntry(state, result.getHomeTeamName());
+        CSTableEntry away = findInternationalEntry(state, result.getAwayTeamName());
+        if (home == null || away == null) return;
+
+        home.setPlayed(home.getPlayed() + 1);
+        away.setPlayed(away.getPlayed() + 1);
+        home.setGoalsScored(home.getGoalsScored() + result.getHomeGoals());
+        home.setGoalsConceded(home.getGoalsConceded() + result.getAwayGoals());
+        away.setGoalsScored(away.getGoalsScored() + result.getAwayGoals());
+        away.setGoalsConceded(away.getGoalsConceded() + result.getHomeGoals());
+
+        if (result.getHomeGoals() > result.getAwayGoals()) {
+            home.setWins(home.getWins() + 1);
+            home.setPoints(home.getPoints() + 3);
+            away.setLosses(away.getLosses() + 1);
+        } else if (result.getHomeGoals() < result.getAwayGoals()) {
+            away.setWins(away.getWins() + 1);
+            away.setPoints(away.getPoints() + 3);
+            home.setLosses(home.getLosses() + 1);
+        } else {
+            home.setDraws(home.getDraws() + 1);
+            away.setDraws(away.getDraws() + 1);
+            home.setPoints(home.getPoints() + 1);
+            away.setPoints(away.getPoints() + 1);
+        }
+    }
+
+    private void sortInternationalTable(CleanSheetGameState state) {
+        List<CSTableEntry> sorted = state.getInternationalTable().stream()
+                .sorted(Comparator.comparingInt(CSTableEntry::getPoints).reversed()
+                        .thenComparingInt(CSTableEntry::getGoalDifference).reversed()
+                        .thenComparingInt(CSTableEntry::getGoalsScored).reversed()
+                        .thenComparing(CSTableEntry::getTeamName))
+                .collect(Collectors.toCollection(ArrayList::new));
+        for (int i = 0; i < sorted.size(); i++) {
+            sorted.get(i).setPosition(i + 1);
+        }
+        state.setInternationalTable(sorted);
+    }
+
+    private CSTableEntry findInternationalEntry(CleanSheetGameState state, String teamName) {
+        return state.getInternationalTable().stream()
+                .filter(entry -> Objects.equals(entry.getTeamName(), teamName))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String buildInternationalBulletin(CleanSheetGameState state, int round, List<CSMatchResult> results) {
+        List<String> lines = new ArrayList<>();
+        int matchday = Math.max(1, state.getInternationalMatchday() - 1);
+        lines.add("INTERNATIONAL DESK // " + state.getInternationalCompetitionName() + " // MATCHDAY " + matchday);
+        lines.add("HEADLINE");
+        CSTableEntry leader = state.getInternationalTable().isEmpty() ? null : state.getInternationalTable().getFirst();
+        lines.add(pick(
+                "The group picture tightened again during the latest international break.",
+                "Another qualifying window has added shape to the race for the top spot.",
+                "Scouts and analysts were pulled into another meaningful matchday abroad."
+        ));
+        if (leader != null) {
+            lines.add("Current leaders: " + leader.getTeamName() + " with " + leader.getPoints() + " points after round " + round + ".");
+        }
+        lines.add("");
+        lines.add("SERBIA WATCH");
+        results.stream()
+                .filter(r -> "Serbia".equals(r.getHomeTeamName()) || "Serbia".equals(r.getAwayTeamName()))
+                .forEach(r -> lines.add("- " + r.getSummary()));
+        lines.add("");
+        lines.add("REGIONAL RESULTS");
+        results.stream()
+                .filter(r -> !"Serbia".equals(r.getHomeTeamName()) && !"Serbia".equals(r.getAwayTeamName()))
+                .forEach(r -> lines.add("- " + r.getSummary()));
+        lines.add("");
+        lines.add("QUALIFYING TABLE SNAPSHOT");
+        state.getInternationalTable().forEach(entry ->
+                lines.add(entry.getPosition() + ". " + entry.getTeamName() + " - " + entry.getPoints() + " pts (GD " + entry.getGoalDifference() + ")"));
+        lines.add("");
+        lines.add("SCOUT RADAR");
+        lines.add("- " + pick(
+                "Domestic clubs are comparing notes on players who handled the bigger stage well.",
+                "Several performances from this window have already triggered fresh scouting requests.",
+                "Managers back home will welcome their internationals back with new reputations attached."
+        ));
+        List<String> names = results.stream()
+                .flatMap(r -> Stream.concat(extractScorers(r.getSummary(), r.getHomeTeamName()).stream(),
+                        extractScorers(r.getSummary(), r.getAwayTeamName()).stream()))
+                .distinct()
+                .limit(3)
+                .toList();
+        if (!names.isEmpty()) {
+            lines.add("- Names repeated on the wire: " + String.join(", ", names) + ".");
+        }
+        return String.join("\n", lines);
+    }
+
+    private List<String> extractScorers(String summary, String nation) {
+        String marker = nation + " scorers:";
+        int start = summary.indexOf(marker);
+        if (start < 0) return List.of();
+        int end = summary.indexOf('.', start);
+        String segment = end > start ? summary.substring(start + marker.length(), end) : summary.substring(start + marker.length());
+        return Arrays.stream(segment.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     private void generateRumorInbox(CleanSheetGameState state, int round) {

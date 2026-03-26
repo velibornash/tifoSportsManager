@@ -9,6 +9,10 @@ let csPlayerNameToEntries = new Map();
 let csPlayerIndexLoaded = false;
 let csPlayerIdToTeamId = new Map();
 let inboxUnreadCount = 0;
+let inboxSelectedIndex = null;
+let inboxActiveFilter = 'all';
+let inboxSortMode = 'newest';
+let currentPage = null;
 
 // --- Auth helper ---
 async function csApi(url, options = {}) {
@@ -34,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         rebuildRoundResultsFromSchedule();
         rebuildTeamIndex();
         ensurePlayerIndexLoaded();
-        inboxUnreadCount = 0;
+        inboxUnreadCount = (gameState?.inbox || []).filter(msg => !msg?.read).length;
         updateInboxRibbon();
         updateRoundInfo();
         renderPage('clubInfo');
@@ -55,7 +59,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         rebuildRoundResultsFromSchedule();
         rebuildTeamIndex();
         ensurePlayerIndexLoaded();
-        inboxUnreadCount = 0;
+        inboxUnreadCount = (gameState?.inbox || []).filter(msg => !msg?.read).length;
         updateInboxRibbon();
         updateRoundInfo();
         renderPage('inbox');
@@ -173,6 +177,7 @@ async function ensurePlayerIndexLoaded(force = false) {
 
 // --- Navigation ---
 function renderPage(page) {
+    currentPage = page;
     const main = document.getElementById('main-content');
     main.innerHTML = '';
     closeDesktopSidebars();
@@ -183,8 +188,6 @@ function renderPage(page) {
 
     switch (page) {
         case 'inbox':
-            inboxUnreadCount = 0;
-            updateInboxRibbon();
             renderInbox(card);
             break;
         case 'players': renderPlayers(card); break;
@@ -192,6 +195,7 @@ function renderPage(page) {
         case 'leagueTable': renderLeagueTable(card); break;
         case 'schedule': renderSchedule(card); break;
         case 'matches': renderMatches(card); break;
+        case 'internationalCentre': renderInternationalCentre(card); break;
         case 'clubInfo': renderClubInfo(card); break;
         case 'topScorers': renderTopScorers(card); break;
         case 'topAssists': renderTopAssists(card); break;
@@ -473,10 +477,40 @@ function getInboxTypeLabel(type) {
         report: 'Match report',
         'round-report': 'Round review',
         international: 'International desk',
+        finance: 'Finance office',
         message: 'Rumour mill',
         info: 'Club office',
         error: 'Alert',
-        transfer: 'Transfer desk'
+        transfer: 'Transfer desk',
+        board: 'Board room',
+        press: 'Press room',
+        fans: 'Fan pulse',
+        media: 'Media watch',
+        scout: 'Scout report',
+        youth: 'Academy report',
+        derby: 'Derby wire'
+    })[type] || 'Inbox';
+}
+
+function getInboxSourceLabel(type) {
+    return ({
+        welcome: 'Chairman',
+        match: 'Match Day',
+        report: 'Analysis Desk',
+        'round-report': 'League Office',
+        international: 'World Desk',
+        finance: 'Finance Office',
+        message: 'Rumour Mill',
+        info: 'Club Office',
+        error: 'System',
+        transfer: 'Transfer Desk',
+        board: 'Board Room',
+        press: 'Press Office',
+        fans: 'Supporters',
+        media: 'Media Watch',
+        scout: 'Scouting',
+        youth: 'Academy',
+        derby: 'Rival Wire'
     })[type] || 'Inbox';
 }
 
@@ -489,6 +523,128 @@ function getInboxPreview(msg) {
     const lines = String(msg?.text || '').split('\n').map(v => v.trim()).filter(Boolean);
     const body = lines.length > 1 ? lines.slice(1).join(' ') : (lines[0] || 'No details filed.');
     return truncate(body, 160);
+}
+
+function getInboxIcon(type) {
+    return ({
+        welcome: '👔',
+        match: '⚽',
+        report: '📊',
+        'round-report': '📈',
+        international: '🌍',
+        finance: '💷',
+        message: '🗞️',
+        info: 'ℹ️',
+        error: '⚠️',
+        transfer: '♻️',
+        board: '🏛️',
+        press: '🎙️',
+        fans: '🧣',
+        media: '📰',
+        scout: '🕵️',
+        youth: '🧒',
+        derby: '🔥'
+    })[type] || '📬';
+}
+
+function getInboxDeskGroups() {
+    return [
+        { key: 'matchday', label: 'Matchday', types: ['match', 'report', 'round-report', 'press', 'fans', 'media', 'derby'] },
+        { key: 'club', label: 'Club', types: ['welcome', 'board', 'info', 'youth'] },
+        { key: 'market', label: 'Market', types: ['message', 'transfer', 'scout'] },
+        { key: 'world', label: 'World', types: ['international'] }
+    ];
+}
+
+function countInboxDeskMessages(inbox, desk) {
+    return inbox.filter(msg => desk.types.includes(msg?.type)).length;
+}
+
+function findLatestInboxByTypes(inbox, types) {
+    for (let i = inbox.length - 1; i >= 0; i--) {
+        if (types.includes(inbox[i]?.type)) return inbox[i];
+    }
+    return null;
+}
+
+function parseStructuredBulletin(text) {
+    const lines = String(text || '').split('\n').map(line => line.trim());
+    const title = lines.find(Boolean) || 'Bulletin';
+    const sections = [];
+    let current = { heading: 'Overview', lines: [] };
+    const namedHeadings = new Set(['Key incidents', 'Half-time:', 'Second half:', 'Match desk']);
+
+    lines.slice(1).forEach(line => {
+        if (!line) return;
+        const isHeading = (
+            (/^[A-Z0-9 /:&-]{4,}$/.test(line) && !line.startsWith('- '))
+            || namedHeadings.has(line)
+        );
+        if (isHeading) {
+            if (current.lines.length) sections.push(current);
+            current = { heading: line, lines: [] };
+            return;
+        }
+        current.lines.push(line);
+    });
+
+    if (current.lines.length) sections.push(current);
+    return { title, sections };
+}
+
+function buildStructuredSectionsHtml(text, options = {}) {
+    const bulletin = parseStructuredBulletin(text);
+    const bodyClass = options.bodyClass || 'cs-structured-text';
+    const emptyText = options.emptyText || 'No notes filed.';
+    const sectionsHtml = bulletin.sections.map(section => {
+        const rows = section.lines.map(line => {
+            const clean = line.startsWith('- ') ? line.slice(2) : line;
+            return `<div class="${bodyClass}">${injectEntityLinks(clean)}</div>`;
+        }).join('');
+        return `<section class="cs-structured-section">
+            <div class="cs-structured-heading">${escapeHtml(section.heading)}</div>
+            <div class="cs-structured-stack">${rows || `<div class="${bodyClass}">${escapeHtml(emptyText)}</div>`}</div>
+        </section>`;
+    }).join('');
+
+    return {
+        title: bulletin.title,
+        html: sectionsHtml || `<div class="${bodyClass}">${escapeHtml(text || emptyText)}</div>`
+    };
+}
+
+function extractControlEstimate(match) {
+    const events = match?.events || [];
+    const homeName = match?.homeTeamName;
+    const awayName = match?.awayTeamName;
+    const countFor = (type, team) => events.filter(e => e.eventType === type && e.teamName === team).length;
+    const combinedCountFor = (types, team) => types.reduce((sum, type) => sum + countFor(type, team), 0);
+    const homeControlScore = combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName) * 2 + countFor('CORNER', homeName) + countFor('FREE_KICK', homeName);
+    const awayControlScore = combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName) * 2 + countFor('CORNER', awayName) + countFor('FREE_KICK', awayName);
+    const totalControl = homeControlScore + awayControlScore;
+    return totalControl === 0 ? 50 : Math.round((homeControlScore * 100) / totalControl);
+}
+
+function buildMatchReportSnapshot(match) {
+    const motm = findManOfTheMatch(match);
+    const homeControl = extractControlEstimate(match);
+    const shots = (team) => (match.events || []).filter(e => e.teamName === team && ['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'].includes(e.eventType)).length;
+    return `
+        <div class="cs-report-kpi-grid">
+            <div class="cs-report-kpi"><span>Score</span><strong>${match.homeGoals}:${match.awayGoals}</strong></div>
+            <div class="cs-report-kpi"><span>Control</span><strong>${homeControl}% / ${100 - homeControl}%</strong></div>
+            <div class="cs-report-kpi"><span>Shots</span><strong>${shots(match.homeTeamName)} / ${shots(match.awayTeamName)}</strong></div>
+            <div class="cs-report-kpi"><span>Standout</span><strong>${escapeHtml(motm?.playerName || 'N/A')}</strong></div>
+        </div>`;
+}
+
+function buildRoundReportDigest(text) {
+    const lines = String(text || '').split('\n').map(line => line.trim()).filter(Boolean);
+    const scoreLines = lines.filter(line => /\b\d+:\d+\b/.test(line) && !line.includes('Final score:')).slice(0, 8);
+    if (!scoreLines.length) return '';
+    return `<div class="cs-round-digest">
+        ${scoreLines.map(line => `<div class="cs-round-digest-row">${injectEntityLinks(line.replace('[YOUR MATCH]', '<span class="cs-round-you">YOUR MATCH</span>'))}</div>`).join('')}
+    </div>`;
 }
 
 function findManOfTheMatch(match) {
@@ -515,6 +671,16 @@ function renderClubInfo(el) {
     const tactics = gameState?.tactics || {};
     const positionLabel = tableEntry ? ordinal(getPosition(t.id)) : 'Unplaced';
     const mood = gameState?.clubMood;  // NEW
+    const affiliateClub = gameState?.affiliateClubName;
+    const affiliateNote = gameState?.affiliateClubNote;
+    const lastIncome = gameState?.lastRoundIncome || 0;
+    const lastExpenses = gameState?.lastRoundExpenses || 0;
+    const weeklyWageBill = gameState?.weeklyWageBill || 0;
+    const boardObjectiveTitle = gameState?.boardObjectiveTitle;
+    const boardObjectiveText = gameState?.boardObjectiveText;
+    const boardReviewTitle = gameState?.boardReviewTitle;
+    const boardReviewText = gameState?.boardReviewText;
+    const notableNews = Array.isArray(gameState?.notableNews) ? gameState.notableNews : [];
     const nextOpponent = nextFixture
         ? (Number(nextFixture.homeTeamId) === Number(t.id) ? nextFixture.awayTeamName : nextFixture.homeTeamName)
         : null;
@@ -578,6 +744,35 @@ function renderClubInfo(el) {
                     Finances: <span style="color:${getMoodColor(mood?.financialHealth)}">${mood?.financialHealth ?? '--'}%</span>
                 </div>
             </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Finance Sheet</div>
+                <div class="cs-note-title">Budget ${formatMoney(t.budget)}</div>
+                <div class="cs-note-text">Last round income: ${formatMoney(lastIncome)}<br>Last round expenses: ${formatMoney(lastExpenses)}<br>Weekly wage bill: ${formatMoney(weeklyWageBill)}</div>
+            </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Affiliate Club</div>
+                <div class="cs-note-title">${affiliateClub ? escapeHtml(affiliateClub) : 'No strategic partner yet'}</div>
+                <div class="cs-note-text">${affiliateClub ? escapeHtml(affiliateNote || 'Youth and scouting pathway active.') : 'Board links with bigger clubs can unlock prospects, prestige and small annual support.'}</div>
+            </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Board Objective</div>
+                <div class="cs-note-title">${escapeHtml(boardObjectiveTitle || 'Season target pending')}</div>
+                <div class="cs-note-text">${escapeHtml(boardObjectiveText || 'The board has not published a clear target yet.')}</div>
+            </div>
+            <div class="cs-note-card">
+                <div class="cs-section-label">Board Review</div>
+                <div class="cs-note-title">${escapeHtml(boardReviewTitle || 'Review pending')}</div>
+                <div class="cs-note-text">${escapeHtml(boardReviewText || 'The board has not issued a fresh review yet.')}</div>
+            </div>
+            <div class="cs-note-card cs-wire-card">
+                <div class="cs-section-label">League Wire</div>
+                <div class="cs-note-title">Around the division</div>
+                <div class="cs-wire-list">
+                    ${notableNews.length
+                        ? notableNews.map(line => `<div class="cs-wire-item">${injectEntityLinks(escapeHtml(line))}</div>`).join('')
+                        : '<div class="cs-wire-item">The wire desk is still waiting for the next wave of stories.</div>'}
+                </div>
+            </div>
         </div>
         <div class="cs-note-card cs-club-milestones">
             <div class="cs-section-label">Milestone board</div>
@@ -588,7 +783,87 @@ function renderClubInfo(el) {
     hydrateClubMilestones();
 }
 
-// --- Inbox (click opens modal) ---
+function getInboxFilterTypes(filter) {
+    if (filter === 'all') return null;
+    const desk = getInboxDeskGroups().find(group => group.key === filter);
+    return desk?.types || null;
+}
+
+function getFilteredInboxEntries(inbox, filter) {
+    const allowed = getInboxFilterTypes(filter);
+    const entries = inbox
+        .map((msg, index) => ({ msg, index }))
+        .filter(entry => !allowed || allowed.includes(entry.msg?.type));
+    return sortInboxEntries(entries, inboxSortMode);
+}
+
+function sortInboxEntries(entries, mode) {
+    const list = [...entries];
+    const ts = (entry) => new Date(entry.msg?.timestamp || 0).getTime() || 0;
+    switch (mode) {
+        case 'unread':
+            return list.sort((a, b) => Number(a.msg?.read) - Number(b.msg?.read) || ts(b) - ts(a));
+        case 'type':
+            return list.sort((a, b) => getInboxTypeLabel(a.msg?.type).localeCompare(getInboxTypeLabel(b.msg?.type)) || ts(b) - ts(a));
+        case 'oldest':
+            return list.sort((a, b) => ts(a) - ts(b));
+        case 'newest':
+        default:
+            return list.sort((a, b) => ts(b) - ts(a));
+    }
+}
+
+function buildInboxPreviewPane(msg, index) {
+    if (!msg) {
+        return `<div class="cs-inbox-empty-preview">
+            <div class="cs-section-label">Preview</div>
+            <div class="cs-note-title">Select a message</div>
+            <div class="cs-note-text">Choose a row on the left to read the full item without leaving the inbox view.</div>
+        </div>`;
+    }
+
+    const icon = getInboxIcon(msg.type);
+    const title = getInboxHeadline(msg);
+    const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${escapeHtml(getInboxTypeLabel(msg.type))}</span>`;
+    if (msg.type === 'international' || msg.type === 'report' || msg.type === 'round-report') {
+        const structured = buildStructuredSectionsHtml(msg.text || '', { bodyClass: 'cs-report-line' });
+        return `<div class="cs-inbox-preview-pane">
+            <div class="cs-inbox-preview-head">
+                <div>
+                    <div style="font-size:1.8em;">${icon}</div>
+                    <div class="cs-inbox-preview-title">${escapeHtml(msg.type === 'international' ? structured.title : title)}</div>
+                    <div class="cs-inbox-preview-meta">${badgeHtml}</div>
+                </div>
+                <div class="cs-inbox-time">${escapeHtml(msg.timestamp || '')}</div>
+            </div>
+            <div class="cs-report-shell">
+                <div class="cs-report-body cs-report-body-structured">${structured.html}</div>
+            </div>
+        </div>`;
+    }
+
+    return `<div class="cs-inbox-preview-pane">
+        <div class="cs-inbox-preview-head">
+            <div>
+                <div style="font-size:1.8em;">${icon}</div>
+                <div class="cs-inbox-preview-title">${escapeHtml(title)}</div>
+                <div class="cs-inbox-preview-meta">${badgeHtml}</div>
+            </div>
+            <div class="cs-inbox-time">${escapeHtml(msg.timestamp || '')}</div>
+        </div>
+        <div class="cs-message-body">${injectEntityLinks(msg.text || '')}</div>
+        <div class="cs-note-text">Message #${index + 1}</div>
+    </div>`;
+}
+
+function formatInboxTimestamp(timestamp) {
+    if (!timestamp) return '-';
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) return timestamp;
+    return parsed.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+// --- Inbox ---
 function renderInbox(el) {
     const inbox = gameState?.inbox || [];
     const counts = inbox.reduce((acc, msg) => {
@@ -596,34 +871,170 @@ function renderInbox(el) {
         acc[key] = (acc[key] || 0) + 1;
         return acc;
     }, {});
+    const deskSummary = getInboxDeskGroups().map(group => {
+        const count = countInboxDeskMessages(inbox, group);
+        const latest = findLatestInboxByTypes(inbox, group.types);
+        return { ...group, count, latest };
+    });
     const summary = Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 4)
         .map(([type, count]) => `<span class="cs-pill-summary"><span class="cs-inbox-badge ${type}">${type.toUpperCase()}</span>${count}</span>`)
         .join('');
+    const deskCards = deskSummary.map(group => `
+        <div class="cs-desk-card ${group.key}">
+            <div class="cs-desk-label">${group.label}</div>
+            <div class="cs-desk-count">${group.count}</div>
+            <div class="cs-desk-copy">${escapeHtml(group.latest ? getInboxHeadline(group.latest) : 'No fresh note in this desk yet.')}</div>
+        </div>
+    `).join('');
+    const featuredReport = findLatestInboxByTypes(inbox, ['report']);
+    const featuredInternational = findLatestInboxByTypes(inbox, ['international']);
+    const filterTabs = [{ key: 'all', label: 'All' }, ...getInboxDeskGroups().map(group => ({ key: group.key, label: group.label }))];
+    const sortTabs = [
+        { key: 'newest', label: 'Newest' },
+        { key: 'unread', label: 'Unread first' },
+        { key: 'type', label: 'Desk' }
+    ];
+    const filtered = getFilteredInboxEntries(inbox, inboxActiveFilter);
+    if (inboxSelectedIndex == null && filtered.length) {
+        inboxSelectedIndex = filtered[0].index;
+    }
+    if (!filtered.some(entry => entry.index === inboxSelectedIndex)) {
+        inboxSelectedIndex = filtered[0]?.index ?? null;
+    }
+    const selectedMsg = inboxSelectedIndex != null ? inbox[inboxSelectedIndex] : null;
     let html = `<h2>📬 Inbox (${inbox.length})</h2>`;
-    html += `<div class="cs-inbox-toolbar"><div class="cs-note-text">Latest items from the chairman, scouting desk and match-day press box.</div><div class="cs-pill-wrap">${summary || '<span class="cs-note-text">No messages logged.</span>'}</div></div>`;
+    html += `<div class="cs-inbox-hub">
+        <div class="cs-inbox-toolbar"><div class="cs-note-text">Latest items from the chairman, scouting desk and match-day press box.</div><div class="cs-pill-wrap">${summary || '<span class="cs-note-text">No messages logged.</span>'}</div></div>
+        <div class="cs-desk-grid">${deskCards}</div>
+        <div class="cs-inbox-feature-grid">
+            <div class="cs-inbox-feature">
+                <div class="cs-section-label">Featured report</div>
+                <div class="cs-inbox-feature-title">${escapeHtml(featuredReport ? getInboxHeadline(featuredReport) : 'Next match report will appear here')}</div>
+                <div class="cs-note-text">${escapeHtml(featuredReport ? getInboxPreview(featuredReport) : 'Play the next round to keep the season notebook moving.')}</div>
+            </div>
+            <div class="cs-inbox-feature cs-clickable" onclick="tifoNav('internationalCentre')">
+                <div class="cs-section-label">International centre</div>
+                <div class="cs-inbox-feature-title">${escapeHtml(featuredInternational ? getInboxHeadline(featuredInternational) : 'Open the world desk')}</div>
+                <div class="cs-note-text">${escapeHtml(featuredInternational ? getInboxPreview(featuredInternational) : 'Regional results, Serbia watch and scouting notes are collected here.')}</div>
+            </div>
+        </div>
+    </div>`;
+    html += `<div class="cs-inbox-filter-row">${filterTabs.map(tab => {
+        const active = tab.key === inboxActiveFilter ? 'active' : '';
+        const count = tab.key === 'all'
+            ? inbox.length
+            : countInboxDeskMessages(inbox, getInboxDeskGroups().find(group => group.key === tab.key) || { types: [] });
+        return `<button class="cs-filter-chip ${active}" onclick="tifoInboxFilter('${tab.key}')">${escapeHtml(tab.label)} <span>${count}</span></button>`;
+    }).join('')}</div>`;
+    html += `<div class="cs-inbox-sort-row">${sortTabs.map(tab => `<button class="cs-sort-chip ${tab.key === inboxSortMode ? 'active' : ''}" onclick="tifoInboxSort('${tab.key}')">${tab.label}</button>`).join('')}</div>`;
     if (inbox.length === 0) { html += '<p style="color:#aaa;">No messages. Check back after next round.</p>'; }
     else {
-        inbox.slice().reverse().forEach((msg, idx) => {
-            const realIdx = inbox.length - 1 - idx;
-            const typeIcons = {
-                'welcome': '👔', 'match': '⚽', 'report': '📊', 'round-report': '📈',
-                'international': '🌍', 'message': '💬', 'info': 'ℹ️', 'error': '⚠️', 'transfer': '♻️'
-            };
-            const icon = typeIcons[msg.type] || '📬';
-            html += `<div class="cs-inbox-item cs-clickable" onclick="tifoOpenInbox(${realIdx})">
-                <div class="cs-inbox-topline">
-                    <span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>
-                    <span style="margin-left:6px; font-size:1.1em;">${icon}</span>
-                    <span class="cs-inbox-time" style="margin-left:auto;">${escapeHtml(msg.timestamp || '')}</span>
+        const listHtml = filtered.length
+            ? filtered.map(({ msg, index }) => {
+                const selected = index === inboxSelectedIndex ? 'selected' : '';
+                const unread = msg.read ? '' : 'unread';
+                return `<div class="cs-inbox-item cs-clickable ${selected} ${unread}" onclick="tifoOpenInbox(${index}, false)">
+                    <div class="cs-inbox-col date">${escapeHtml(formatInboxTimestamp(msg.timestamp || ''))}</div>
+                    <div class="cs-inbox-col subject">
+                        <div class="cs-inbox-subject">${msg.read ? '' : '<span class="cs-unread-dot inline"></span>'}${escapeHtml(getInboxHeadline(msg))}</div>
+                        <div class="cs-inbox-preview">${escapeHtml(getInboxPreview(msg))}</div>
+                    </div>
+                    <div class="cs-inbox-col source">${escapeHtml(getInboxSourceLabel(msg.type))}</div>
+                </div>`;
+            }).join('')
+            : '<p style="color:#aaa;">No messages match this filter.</p>';
+
+        html += `<div class="cs-inbox-split">
+            <div class="cs-inbox-list-pane">
+                <div class="cs-inbox-list-head">
+                    <div class="cs-inbox-col date">DATE</div>
+                    <div class="cs-inbox-col subject">SUBJECT</div>
+                    <div class="cs-inbox-col source">SOURCE</div>
                 </div>
-                <div class="cs-inbox-subject">${escapeHtml(getInboxHeadline(msg))}</div>
-                <div class="cs-inbox-preview">${escapeHtml(getInboxPreview(msg))}</div>
-            </div>`;
-        });
+                ${listHtml}
+            </div>
+            <div class="cs-inbox-reading-pane">${buildInboxPreviewPane(selectedMsg, inboxSelectedIndex ?? 0)}</div>
+        </div>`;
     }
     el.innerHTML = html;
+}
+
+function renderInternationalCentre(el) {
+    const reports = gameState?.internationalWindows?.slice().reverse() || [];
+    const latest = reports[0] || null;
+    const latestStructured = latest ? buildStructuredSectionsHtml(latest.bulletin, { bodyClass: 'cs-report-line' }) : null;
+    const table = gameState?.internationalTable || [];
+    const compName = gameState?.internationalCompetitionName || 'International competition';
+
+    let html = `<h2>🌍 International Centre</h2>
+        <div class="cs-intel-shell">
+            <div class="cs-intel-hero">
+                <div>
+                    <div class="cs-section-label">World desk</div>
+                    <div class="cs-intel-title">${escapeHtml(compName)}</div>
+                    <div class="cs-note-text">${escapeHtml(latest ? getInboxPreview({ text: latest.bulletin }) : 'International windows will populate here as the season advances.')}</div>
+                </div>
+                <div class="cs-intel-meta">
+                    <div class="cs-intel-stat"><span class="cs-intel-stat-label">Windows logged</span><strong>${reports.length}</strong></div>
+                    <div class="cs-intel-stat"><span class="cs-intel-stat-label">Current matchday</span><strong>${gameState?.internationalMatchday || 1}</strong></div>
+                </div>
+            </div>`;
+
+    if (table.length) {
+        html += `<div class="cs-intel-table-wrap">
+            <div class="cs-section-label">Qualifying Table</div>
+            <table class="cs-table">
+                <thead><tr><th>#</th><th>Nation</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
+                <tbody>
+                    ${table.map(entry => `<tr class="${entry.teamName === 'Serbia' ? 'user-row' : ''}">
+                        <td>${entry.position}</td>
+                        <td>${escapeHtml(entry.teamName)}</td>
+                        <td>${entry.played}</td>
+                        <td>${entry.wins}</td>
+                        <td>${entry.draws}</td>
+                        <td>${entry.losses}</td>
+                        <td>${entry.goalDifference}</td>
+                        <td>${entry.points}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    }
+
+    if (latestStructured) {
+        html += `<div class="cs-intel-latest">${latestStructured.html}</div>`;
+    }
+
+    html += `<div class="cs-intel-archive">
+        <div class="cs-section-label">Archive</div>`;
+    if (!reports.length) {
+        html += `<p style="color:#aaa;">No international messages yet.</p>`;
+    } else {
+        html += reports.map((window) => `
+            <div class="cs-intel-archive-row">
+                <div>
+                    <div class="cs-intel-archive-title">Matchday ${window.matchday} · ${escapeHtml(window.competitionName || compName)}</div>
+                    <div class="cs-note-text">${escapeHtml(getInboxPreview({ text: window.bulletin }))}</div>
+                    <div class="cs-intel-result-strip">${(window.results || []).map(result => `<span>${escapeHtml(result.homeTeamName)} ${result.homeGoals}:${result.awayGoals} ${escapeHtml(result.awayTeamName)}</span>`).join('')}</div>
+                </div>
+                <div class="cs-inbox-time">Round ${window.round}</div>
+            </div>
+        `).join('');
+    }
+    html += `</div></div>`;
+    el.innerHTML = html;
+}
+
+function setInboxFilter(filter) {
+    inboxActiveFilter = filter || 'all';
+    renderPage('inbox');
+}
+
+function setInboxSort(mode) {
+    inboxSortMode = mode || 'newest';
+    renderPage('inbox');
 }
 
 function truncate(text, max) {
@@ -702,47 +1113,63 @@ function injectEntityLinks(rawText) {
     return html.replaceAll('\n', '<br>');
 }
 
-async function openInboxMessage(index) {
+async function openInboxMessage(index, forceModal = true) {
     const msg = gameState?.inbox?.[index];
     if (!msg) return;
+    inboxSelectedIndex = index;
     rebuildTeamIndex();
-    if (msg.type === 'report' || msg.type === 'round-report') {
+    if (msg.type === 'report' || msg.type === 'round-report' || msg.type === 'international') {
         await ensurePlayerIndexLoaded();
     }
-    
-    const typeIcons = {
-        'welcome': '👔',
-        'match': '⚽',
-        'report': '📊',
-        'round-report': '📈',
-        'international': '🌍',
-        'message': '💬',
-        'info': 'ℹ️',
-        'error': '⚠️',
-        'transfer': '♻️'
-    };
-    const icon = typeIcons[msg.type] || '📬';
-    
-    const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${msg.type.toUpperCase()}</span>`;
+    if (!msg.read) {
+        msg.read = true;
+        inboxUnreadCount = Math.max(0, inboxUnreadCount - 1);
+        updateInboxRibbon();
+        try {
+            await csApi(`/api/cs/inbox/${index}/read`, { method: 'POST' });
+        } catch {
+            // local state already updated; inbox view remains responsive
+        }
+    }
+    if (!forceModal && currentPage === 'inbox') {
+        renderPage('inbox');
+        return;
+    }
+    const icon = getInboxIcon(msg.type);
+
+    const badgeHtml = `<span class="cs-inbox-badge ${msg.type}">${escapeHtml(getInboxTypeLabel(msg.type))}</span>`;
     const linkedText = injectEntityLinks(msg.text || '');
     
     let content = '';
     
     if (msg.type === 'international') {
-        const lines = (msg.text || "").split('\n').filter(Boolean);
-        const header = lines.shift() || "International update";
-        const rows = lines.length
-            ? lines.map(line => `<div class="cs-match-card cs-message-card"><div class="cs-match-teams">${injectEntityLinks(line)}</div></div>`).join("")
-            : `<p style="color:#aaa;">No fixtures in this update.</p>`;
+        const structured = buildStructuredSectionsHtml(msg.text || '', { bodyClass: 'cs-report-line' });
         content = `
-            <div class="cs-message-shell">
-                <div class="cs-message-headline">${escapeHtml(header)}</div>
-                <div>${rows}</div>
+            <div class="cs-message-shell cs-intel-modal">
+                <div class="cs-message-headline">${escapeHtml(structured.title)}</div>
+                <div class="cs-intel-latest">${structured.html}</div>
                 <div class="cs-message-timestamp">${escapeHtml(msg.timestamp || '')}</div>
             </div>
         `;
+    } else if (msg.type === 'report' || msg.type === 'round-report') {
+        const structured = buildStructuredSectionsHtml(msg.text || '', { bodyClass: 'cs-report-line' });
+        const roundDigest = msg.type === 'round-report' ? buildRoundReportDigest(msg.text || '') : '';
+        content = `
+            <div class="cs-message-shell">
+                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+                    <div style="flex:1;">
+                        <div style="font-size:2em; margin-bottom:8px;">${icon}</div>
+                        <div class="cs-message-headline">${escapeHtml(structured.title)}</div>
+                    </div>
+                    <div style="color:#7e8b92; font-size:0.85em; text-align:right;">${escapeHtml(msg.timestamp || '')}</div>
+                </div>
+                ${roundDigest}
+                <div class="cs-report-shell">
+                    <div class="cs-report-body cs-report-body-structured">${structured.html}</div>
+                </div>
+            </div>
+        `;
     } else {
-        const bodyClass = (msg.type === 'report' || msg.type === 'round-report') ? 'cs-report-body' : 'cs-message-body';
         content = `
             <div class="cs-message-shell">
                 <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
@@ -753,7 +1180,7 @@ async function openInboxMessage(index) {
                     <div style="color:#7e8b92; font-size:0.85em; text-align:right;">${escapeHtml(msg.timestamp || '')}</div>
                 </div>
                 <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
-                    <div class="${bodyClass}">${linkedText}</div>
+                    <div class="cs-message-body">${linkedText}</div>
                 </div>
             </div>
         `;
@@ -1370,28 +1797,41 @@ function buildStatsHtml(match) {
     const homeControl = totalControl === 0 ? 50 : Math.round((homeControlScore * 100) / totalControl);
     const awayControl = 100 - homeControl;
 
-    return `<table class="cs-table">
-        <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${homeName}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${awayName}</span></th></tr></thead>
-        <tbody>
-            <tr><td>Goals</td><td>${match.homeGoals}</td><td>${match.awayGoals}</td></tr>
-            <tr><td>Total shots</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName)}</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName)}</td></tr>
-            <tr><td>Shots on target</td><td>${countFor('SHOT_ON_TARGET', homeName)}</td><td>${countFor('SHOT_ON_TARGET', awayName)}</td></tr>
-            <tr><td>Shots off target</td><td>${countFor('SHOT_OFF_TARGET', homeName)}</td><td>${countFor('SHOT_OFF_TARGET', awayName)}</td></tr>
-            <tr><td>Corners</td><td>${countFor('CORNER', homeName)}</td><td>${countFor('CORNER', awayName)}</td></tr>
-            <tr><td>Free kicks</td><td>${countFor('FREE_KICK', homeName)}</td><td>${countFor('FREE_KICK', awayName)}</td></tr>
-            <tr><td>Offsides</td><td>${countFor('OFFSIDE', homeName)}</td><td>${countFor('OFFSIDE', awayName)}</td></tr>
-            <tr><td>Fouls</td><td>${countFor('FOUL', homeName)}</td><td>${countFor('FOUL', awayName)}</td></tr>
-            <tr><td>Yellow cards</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', homeName)}</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', awayName)}</td></tr>
-            <tr><td>Red cards</td><td style="color:#f44336;">${countFor('RED_CARD', homeName)}</td><td style="color:#f44336;">${countFor('RED_CARD', awayName)}</td></tr>
-            <tr><td>Penalties</td><td>${countFor('PENALTY', homeName)}</td><td>${countFor('PENALTY', awayName)}</td></tr>
-            <tr><td>Control estimate</td><td>${homeControl}%</td><td>${awayControl}%</td></tr>
-        </tbody>
-    </table>`;
+    return `<div class="cs-stats-shell">
+        <div class="cs-control-bar">
+            <div class="cs-control-side">
+                <span class="cs-control-team">${escapeHtml(homeName)}</span>
+                <strong>${homeControl}%</strong>
+            </div>
+            <div class="cs-control-track"><span style="width:${homeControl}%;"></span></div>
+            <div class="cs-control-side right">
+                <strong>${awayControl}%</strong>
+                <span class="cs-control-team">${escapeHtml(awayName)}</span>
+            </div>
+        </div>
+        <table class="cs-table">
+            <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${homeName}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${awayName}</span></th></tr></thead>
+            <tbody>
+                <tr><td>Goals</td><td>${match.homeGoals}</td><td>${match.awayGoals}</td></tr>
+                <tr><td>Total shots</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName)}</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName)}</td></tr>
+                <tr><td>Shots on target</td><td>${countFor('SHOT_ON_TARGET', homeName)}</td><td>${countFor('SHOT_ON_TARGET', awayName)}</td></tr>
+                <tr><td>Shots off target</td><td>${countFor('SHOT_OFF_TARGET', homeName)}</td><td>${countFor('SHOT_OFF_TARGET', awayName)}</td></tr>
+                <tr><td>Corners</td><td>${countFor('CORNER', homeName)}</td><td>${countFor('CORNER', awayName)}</td></tr>
+                <tr><td>Free kicks</td><td>${countFor('FREE_KICK', homeName)}</td><td>${countFor('FREE_KICK', awayName)}</td></tr>
+                <tr><td>Offsides</td><td>${countFor('OFFSIDE', homeName)}</td><td>${countFor('OFFSIDE', awayName)}</td></tr>
+                <tr><td>Fouls</td><td>${countFor('FOUL', homeName)}</td><td>${countFor('FOUL', awayName)}</td></tr>
+                <tr><td>Yellow cards</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', homeName)}</td><td style="color:#ff9800;">${countFor('YELLOW_CARD', awayName)}</td></tr>
+                <tr><td>Red cards</td><td style="color:#f44336;">${countFor('RED_CARD', homeName)}</td><td style="color:#f44336;">${countFor('RED_CARD', awayName)}</td></tr>
+                <tr><td>Penalties</td><td>${countFor('PENALTY', homeName)}</td><td>${countFor('PENALTY', awayName)}</td></tr>
+                <tr><td>Control estimate</td><td>${homeControl}%</td><td>${awayControl}%</td></tr>
+            </tbody>
+        </table>
+    </div>`;
 }
 
 function buildReportHtml(match) {
     const reportText = match.report || match.summary || 'No full report available for this match.';
-    const linkedReport = injectEntityLinks(reportText);
+    const structured = buildStructuredSectionsHtml(reportText, { bodyClass: 'cs-report-line' });
     const motm = findManOfTheMatch(match);
     const motmMeta = motm ? getMatchPlayerTeamMeta(match, motm.playerName) : null;
     const motmId = motm && motmMeta ? findMatchPlayerIdByName(match, motmMeta.teamName, motm.playerName) : null;
@@ -1405,7 +1845,8 @@ function buildReportHtml(match) {
             <div><strong>Match file:</strong> ${escapeHtml(match.homeTeamName)} ${match.homeGoals}:${match.awayGoals} ${escapeHtml(match.awayTeamName)}</div>
             <div><strong>Standout:</strong> ${motmHtml}</div>
         </div>
-        <div class="cs-report-body">${linkedReport}</div>
+        ${buildMatchReportSnapshot(match)}
+        <div class="cs-report-body cs-report-body-structured">${structured.html}</div>
     </div>`;
 }
 
@@ -1734,20 +2175,231 @@ function openRankedPlayer(playerId, teamName) {
     openMatchPlayer(playerId, teamId);
 }
 
-// --- Transfers (dummy) ---
-function renderTransfers(el) {
+async function renderTransfers(el) {
+    el.innerHTML = `<h2>&#128260; Transfers</h2><p>Loading market...</p>`;
+    const res = await csApi('/api/cs/transfers');
+    if (!res || !res.ok) {
+        el.innerHTML = `<h2>&#128260; Transfers</h2><p style="color:#aaa;">Transfer centre unavailable.</p>`;
+        return;
+    }
+    const data = await res.json();
+    gameState.transferMarket = data.market || [];
+    if (typeof data.budget === 'number' && gameState?.userTeam) {
+        gameState.userTeam.budget = data.budget;
+    }
+
+    const listed = data.listedPlayers || [];
+    const market = data.availableTargets || [];
+    const incomingOffers = data.incomingOffers || [];
+    const roster = [...(gameState?.roster || [])].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
+    const listableIds = new Set(listed.map(item => Number(item.playerId)));
+    const averageAsk = market.length ? Math.round(market.reduce((sum, item) => sum + Number(item.askingPrice || 0), 0) / market.length) : 0;
+
     el.innerHTML = `<h2>&#128260; Transfers</h2>
-        <div class="cs-transfer-placeholder">
-            <div class="icon">&#128260;</div>
-            <h3>Transfer Market</h3>
-            <p>The transfer window is currently closed.</p>
-            <p style="margin-top:12px;">Transfers will be available in a future version.</p>
+        <div class="cs-transfer-shell">
+            <div class="cs-transfer-hero">
+                <div>
+                    <div class="cs-section-label">Transfer centre</div>
+                    <div class="cs-note-title">Market board</div>
+                    <div class="cs-note-text">List surplus players, track external interest and buy directly from clubs that are ready to sell.</div>
+                </div>
+                <div class="cs-transfer-hero-stats">
+                    <div><strong>${formatMoney(gameState?.userTeam?.budget || 0)}</strong><span>Budget</span></div>
+                    <div><strong>${listed.length}</strong><span>Listed</span></div>
+                    <div><strong>${market.length}</strong><span>Targets</span></div>
+                    <div><strong>${averageAsk ? formatMoney(averageAsk) : '—'}</strong><span>Avg ask</span></div>
+                </div>
+            </div>
+
+            <div class="cs-transfer-grid">
+                <section class="cs-transfer-panel">
+                    <div class="cs-transfer-panel-head">
+                        <h3>Your Listed Players</h3>
+                        <span>${listed.length} active</span>
+                    </div>
+                    ${listed.length ? listed.map(item => `
+                        <div class="cs-transfer-row">
+                            <div>
+                                <div class="cs-transfer-name">${escapeHtml(item.playerName)} <span class="cs-transfer-meta">${escapeHtml(item.position)} · ${item.age} · R ${item.rating}</span></div>
+                                <div class="cs-note-text">Ask ${formatMoney(item.askingPrice)} · Interest: ${escapeHtml((item.interestedClubs || []).length ? item.interestedClubs.join(', ') : 'No clubs yet')}</div>
+                            </div>
+                            <button class="big-button cs-transfer-btn-muted" onclick="tifoRemoveTransfer(${item.playerId})">Remove</button>
+                        </div>
+                    `).join('') : `<div class="cs-transfer-empty">No one listed yet.</div>`}
+                </section>
+
+                <section class="cs-transfer-panel">
+                    <div class="cs-transfer-panel-head">
+                        <h3>Incoming Offers</h3>
+                        <span>${incomingOffers.length} live</span>
+                    </div>
+                    ${incomingOffers.length ? incomingOffers.map(item => `
+                        <div class="cs-transfer-row">
+                            <div>
+                                <div class="cs-transfer-name">${escapeHtml(item.playerName)} <span class="cs-transfer-meta">${escapeHtml(item.bestOfferClub || '?')} · ask ${formatMoney(item.askingPrice)}</span></div>
+                                <div class="cs-note-text">Current bid ${formatMoney(item.bestOffer || 0)} · position ${escapeHtml(item.position)} · rating ${item.rating}</div>
+                            </div>
+                            <div class="cs-transfer-actions">
+                                <button class="big-button" onclick="tifoAcceptTransfer(${item.playerId})">Accept</button>
+                                <button class="big-button cs-transfer-btn-muted" onclick="tifoRejectTransfer(${item.playerId})">Reject</button>
+                            </div>
+                        </div>
+                    `).join('') : `<div class="cs-transfer-empty">No formal offers on your listed players yet.</div>`}
+                </section>
+
+                <section class="cs-transfer-panel">
+                    <div class="cs-transfer-panel-head">
+                        <h3>Market Targets</h3>
+                        <span>${market.length} available</span>
+                    </div>
+                    ${market.length ? market.map(item => `
+                        <div class="cs-transfer-row">
+                            <div>
+                                <div class="cs-transfer-name">${escapeHtml(item.playerName)} <span class="cs-transfer-meta">${escapeHtml(item.sellerTeamName)} · ${escapeHtml(item.position)} · ${item.age} · R ${item.rating}</span></div>
+                                <div class="cs-note-text">Value ${formatMoney(item.marketValue)} · Asking ${formatMoney(item.askingPrice)} · Interest ${escapeHtml((item.interestedClubs || []).length ? item.interestedClubs.join(', ') : 'Quiet market')}</div>
+                            </div>
+                            <div class="cs-transfer-actions">
+                                <button class="big-button cs-transfer-btn-muted" onclick="tifoBidTransfer(${item.playerId}, ${item.askingPrice})">Bid</button>
+                                <button class="big-button" onclick="tifoBuyTransfer(${item.playerId})" ${Number(gameState?.userTeam?.budget || 0) < Number(item.askingPrice || 0) ? 'disabled' : ''}>Buy</button>
+                            </div>
+                        </div>
+                    `).join('') : `<div class="cs-transfer-empty">No external listings right now.</div>`}
+                </section>
+            </div>
+
+            <section class="cs-transfer-panel">
+                <div class="cs-transfer-panel-head">
+                    <h3>Squad Availability</h3>
+                    <span>${roster.length} players</span>
+                </div>
+                <div class="cs-transfer-squad-table">
+                    <table class="cs-table">
+                        <thead><tr><th>Name</th><th>Pos</th><th>Age</th><th>Rat</th><th>Value</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>
+                            ${roster.map(player => `
+                                <tr>
+                                    <td>${escapeHtml(player.name)}</td>
+                                    <td>${escapeHtml(player.position)}</td>
+                                    <td>${player.age}</td>
+                                    <td>${player.rating}</td>
+                                    <td>${formatMoney(player.value)}</td>
+                                    <td>${listableIds.has(Number(player.id)) ? 'Listed' : 'Available'}</td>
+                                    <td>${listableIds.has(Number(player.id))
+                                        ? '<span class="cs-transfer-status-pill listed">On market</span>'
+                                        : `<button class="big-button cs-transfer-btn-small" onclick="tifoListTransfer(${player.id})">List</button>`}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>`;
+}
+
+async function listTransferPlayer(playerId) {
+    const player = (gameState?.roster || []).find(item => Number(item.id) === Number(playerId));
+    if (!player) return;
+    const suggested = Math.max(25000, Math.round(Number(player.value || 0) || player.rating * 18000));
+    const raw = window.prompt(`Set asking price for ${player.name}:`, String(suggested));
+    if (raw == null) return;
+    const askingPrice = Number(raw);
+    if (!Number.isFinite(askingPrice) || askingPrice <= 0) {
+        window.alert('Enter a valid asking price.');
+        return;
+    }
+    const res = await csApi(`/api/cs/transfers/list/${playerId}`, {
+        method: 'POST',
+        body: JSON.stringify({ askingPrice })
+    });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Could not list player.');
+        return;
+    }
+    renderPage('transfers');
+}
+
+async function removeTransferPlayer(playerId) {
+    const res = await csApi(`/api/cs/transfers/list/${playerId}`, { method: 'DELETE' });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Could not remove listing.');
+        return;
+    }
+    renderPage('transfers');
+}
+
+async function buyTransferPlayer(playerId) {
+    const res = await csApi(`/api/cs/transfers/buy/${playerId}`, { method: 'POST' });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Deal failed.');
+        return;
+    }
+    const data = await res.json();
+    if (data.roster) gameState.roster = data.roster;
+    if (typeof data.budget === 'number' && gameState?.userTeam) gameState.userTeam.budget = data.budget;
+    if (data.market) gameState.transferMarket = data.market;
+    renderPage('transfers');
+}
+
+async function bidTransferPlayer(playerId, askingPrice) {
+    const suggested = Math.max(10000, Math.round(Number(askingPrice || 0) * 0.88));
+    const raw = window.prompt('Enter your offer:', String(suggested));
+    if (raw == null) return;
+    const offer = Number(raw);
+    if (!Number.isFinite(offer) || offer <= 0) {
+        window.alert('Enter a valid offer.');
+        return;
+    }
+    const res = await csApi(`/api/cs/transfers/bid/${playerId}`, {
+        method: 'POST',
+        body: JSON.stringify({ offer })
+    });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Bid failed.');
+        return;
+    }
+    const data = await res.json();
+    if (typeof data.budget === 'number' && gameState?.userTeam) gameState.userTeam.budget = data.budget;
+    if (data.roster) gameState.roster = data.roster;
+    if (data.market) gameState.transferMarket = data.market;
+    window.alert(data.message || 'Bid processed.');
+    renderPage('transfers');
+}
+
+async function acceptTransferOffer(playerId) {
+    const res = await csApi(`/api/cs/transfers/accept/${playerId}`, { method: 'POST' });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Could not accept offer.');
+        return;
+    }
+    const data = await res.json();
+    if (typeof data.budget === 'number' && gameState?.userTeam) gameState.userTeam.budget = data.budget;
+    if (data.roster) gameState.roster = data.roster;
+    if (data.market) gameState.transferMarket = data.market;
+    window.alert(data.message || 'Offer accepted.');
+    renderPage('transfers');
+}
+
+async function rejectTransferOffer(playerId) {
+    const res = await csApi(`/api/cs/transfers/reject/${playerId}`, { method: 'POST' });
+    if (!res || !res.ok) {
+        const err = await res?.json().catch(() => null);
+        window.alert(err?.error || 'Could not reject offer.');
+        return;
+    }
+    const data = await res.json();
+    if (typeof data.budget === 'number' && gameState?.userTeam) gameState.userTeam.budget = data.budget;
+    if (data.market) gameState.transferMarket = data.market;
+    window.alert(data.message || 'Offer rejected.');
+    renderPage('transfers');
 }
 
 // --- Next Round ---
 async function nextRound() {
-    const previousInboxCount = (gameState?.inbox || []).length;
     const btns = [document.getElementById('nextRoundBtn'), document.getElementById('nextRoundBtnMobileTop')].filter(Boolean);
     btns.forEach(btn => {
         btn.dataset.originalText = btn.textContent;
@@ -1779,7 +2431,7 @@ async function nextRound() {
             rebuildTeamIndex();
             csPlayerIndexLoaded = false;
             ensurePlayerIndexLoaded();
-            inboxUnreadCount = 0;
+            inboxUnreadCount = (gameState?.inbox || []).filter(msg => !msg?.read).length;
             updateInboxRibbon();
             updateRoundInfo();
             showModal(
@@ -1801,6 +2453,11 @@ async function nextRound() {
         }
         // Update roster with refreshed goals/assists
         if (data.roster) gameState.roster = data.roster;
+        if (data.internationalCompetitionName) gameState.internationalCompetitionName = data.internationalCompetitionName;
+        if (data.internationalMatchday != null) gameState.internationalMatchday = data.internationalMatchday;
+        if (data.internationalTable) gameState.internationalTable = data.internationalTable;
+        if (data.internationalWindows) gameState.internationalWindows = data.internationalWindows;
+        if (data.transferMarket) gameState.transferMarket = data.transferMarket;
 
         // Store all round results for schedule fixture detail
         const roundNum = data.round || gameState.currentRound;
@@ -1814,12 +2471,9 @@ async function nextRound() {
         // Reload inbox
         const inboxRes = await csApi('/api/cs/inbox');
         if (inboxRes && inboxRes.ok) gameState.inbox = await inboxRes.json();
-        const freshInboxCount = (gameState?.inbox || []).length;
-        const delta = Math.max(0, freshInboxCount - previousInboxCount);
-        if (delta > 0) {
-            inboxUnreadCount += delta;
-            updateInboxRibbon();
-        }
+        const freshUnread = (gameState?.inbox || []).filter(msg => !msg?.read).length;
+        inboxUnreadCount = freshUnread;
+        updateInboxRibbon();
 
         rebuildTeamIndex();
         updateRoundInfo();
@@ -1933,36 +2587,49 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
         homeGoals: 0,
         awayGoals: 0,
         pulse: false,
-        userMatch: m.homeTeamId === userTeamId || m.awayTeamId === userTeamId
+        userMatch: m.homeTeamId === userTeamId || m.awayTeamId === userTeamId,
+        finishMinute: 90 + Math.floor(Math.random() * 6),
+        finished: false
     }));
 
-    const goalTimeline = [];
+    const eventTimeline = [];
     allResults.forEach(m => {
         (m.events || [])
-            .filter(e => e.eventType === 'GOAL')
+            .filter(e => ['GOAL', 'PENALTY', 'RED_CARD', 'VAR_REVIEW'].includes(e.eventType))
             .forEach(e => {
-                goalTimeline.push({
+                eventTimeline.push({
                     minute: e.minute || 1,
                     matchKey: `${m.round}|${m.homeTeamId}|${m.awayTeamId}`,
+                    eventType: e.eventType,
                     teamName: e.teamName,
                     playerName: e.playerName,
-                    assistName: e.assistName
+                    assistName: e.assistName,
+                    penaltyScored: e.penaltyScored
                 });
             });
     });
-    goalTimeline.sort((a, b) => a.minute - b.minute);
+    eventTimeline.sort((a, b) => a.minute - b.minute);
 
     const feed = [];
     const keyOf = (s) => `${s.round}|${s.homeTeamId}|${s.awayTeamId}`;
+    const getDisplayMinute = (ratio) => {
+        if (ratio <= 0.74) {
+            return Math.floor(1 + (ratio / 0.74) * 79);
+        }
+        return Math.floor(80 + ((ratio - 0.74) / 0.26) * 17);
+    };
 
     const render = (minute) => {
         const cards = states.map(s => `
-            <div class="cs-live-card ${s.userMatch ? 'user-match' : ''}">
+            <div class="cs-live-card ${s.userMatch ? 'user-match' : ''} ${s.pulse ? 'flash' : ''} ${s.finished ? 'finished' : ''}">
                 <div class="cs-live-card-head">
-                    <div><strong>${s.homeTeamName}</strong> vs <strong>${s.awayTeamName}</strong></div>
-                    ${s.userMatch ? '<span class="cs-live-match-tag">Your match</span>' : ''}
+                    <div class="cs-live-card-page">537</div>
+                    ${s.finished ? '<span class="cs-live-match-tag finished">FT</span>' : (s.userMatch ? '<span class="cs-live-match-tag">LIVE</span>' : '<span class="cs-live-match-tag alt">POOL</span>')}
                 </div>
-                <div class="cs-live-score ${s.pulse ? 'pulse' : ''}">${s.homeGoals} : ${s.awayGoals}</div>
+                <div class="cs-live-card-main">
+                    <div class="cs-live-fixture-line"><span>${escapeHtml(s.homeTeamName).toUpperCase()}</span><strong class="${s.pulse ? 'pulse' : ''}">${s.homeGoals}</strong></div>
+                    <div class="cs-live-fixture-line"><span>${escapeHtml(s.awayTeamName).toUpperCase()}</span><strong class="${s.pulse ? 'pulse' : ''}">${s.awayGoals}</strong></div>
+                </div>
             </div>
         `).join('');
 
@@ -1973,11 +2640,14 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
         `).join('');
 
         main.innerHTML = `
-            <div class="manager-card">
-                <h2>Live Scores - Round ${states[0]?.round ?? '?'}</h2>
-                <div style="color:#9a9a9a; margin-top:4px;">Minute ${Math.max(1, Math.min(90, minute))}</div>
+            <div class="manager-card cs-live-teletext">
+                <div class="cs-live-tt-head">
+                    <div class="cs-live-tt-brand">ATLANTIC 537</div>
+                    <div class="cs-live-tt-meta">ROUND ${states[0]?.round ?? '?'}  MIN ${String(Math.max(1, Math.min(90, minute))).padStart(2, '0')}</div>
+                </div>
+                <div class="cs-live-tt-sub">FOOTBALL LIVE SCORES  RESULTS SERVICE</div>
                 <div class="cs-live-grid">${cards}</div>
-                <div class="cs-live-feed">${feedHtml || '<div class="cs-live-feed-item">Press box note: the opening exchanges are still being weighed up.</div>'}</div>
+                <div class="cs-live-feed">${feedHtml || '<div class="cs-live-feed-item">00  SERVICE NOTE  RESULTS PENDING  NO GOALS LOGGED YET</div>'}</div>
             </div>`;
     };
 
@@ -1990,25 +2660,52 @@ async function renderLiveRoundSimulation(allResults, userTeamId, durationMs = 36
         const timer = setInterval(() => {
             const elapsed = performance.now() - startedAt;
             const ratio = Math.min(1, elapsed / durationMs);
-            const minute = Math.floor(1 + ratio * 89);
+            const minute = getDisplayMinute(ratio);
 
-            while (timelineIdx < goalTimeline.length && goalTimeline[timelineIdx].minute <= minute) {
-                const g = goalTimeline[timelineIdx];
+            while (timelineIdx < eventTimeline.length && eventTimeline[timelineIdx].minute <= minute) {
+                const g = eventTimeline[timelineIdx];
                 const target = states.find(s => keyOf(s) === g.matchKey);
-                if (target) {
-                    if (g.teamName === target.homeTeamName) target.homeGoals += 1;
-                    else target.awayGoals += 1;
+                if (target && !target.finished) {
                     target.pulse = true;
-                    setTimeout(() => { target.pulse = false; }, 700);
+                    setTimeout(() => { target.pulse = false; }, 2800);
+
+                    if (g.eventType === 'GOAL' || (g.eventType === 'PENALTY' && g.penaltyScored)) {
+                        if (g.teamName === target.homeTeamName) target.homeGoals += 1;
+                        else target.awayGoals += 1;
+                    }
 
                     const assist = g.assistName ? ` (assist: ${g.assistName})` : '';
+                    const code = g.eventType === 'GOAL'
+                        ? 'GOAL'
+                        : g.eventType === 'PENALTY'
+                        ? (g.penaltyScored ? 'PEN' : 'PEN MISS')
+                        : g.eventType === 'RED_CARD'
+                        ? 'RC'
+                        : 'VAR';
+                    const suffix = g.eventType === 'RED_CARD'
+                        ? `  ${escapeHtml(g.teamName || '?').toUpperCase()} ${escapeHtml(g.playerName || '?').toUpperCase()} SENT OFF`
+                        : g.eventType === 'VAR_REVIEW'
+                        ? `  CHECK UNDERWAY  ${escapeHtml(g.teamName || '?').toUpperCase()}`
+                        : `  ${escapeHtml(g.teamName || '?').toUpperCase()}  ${escapeHtml(g.playerName || '?').toUpperCase()}${escapeHtml(assist).toUpperCase()}`;
                     feed.push({
                         minute: g.minute,
-                        line: `${target.userMatch ? '<span class="cs-live-tag">YOUR MATCH</span> ' : ''}${escapeHtml(target.homeTeamName)} ${target.homeGoals}:${target.awayGoals} ${escapeHtml(target.awayTeamName)} &mdash; GOAL for ${escapeHtml(g.teamName || '?')}: ${escapeHtml(g.playerName || '?')}${escapeHtml(assist)}`
+                        line: `${target.userMatch ? '<span class="cs-live-tag">YOU</span> ' : ''}<span class="cs-live-code">${code}</span> ${escapeHtml(target.homeTeamName).toUpperCase()} ${target.homeGoals}-${target.awayGoals} ${escapeHtml(target.awayTeamName).toUpperCase()}${suffix}`
                     });
                 }
                 timelineIdx++;
             }
+
+            states.forEach(target => {
+                if (!target.finished && minute >= target.finishMinute) {
+                    target.finished = true;
+                    target.pulse = true;
+                    setTimeout(() => { target.pulse = false; }, 2200);
+                    feed.push({
+                        minute: target.finishMinute,
+                        line: `${target.userMatch ? '<span class="cs-live-tag">YOU</span> ' : ''}${escapeHtml(target.homeTeamName).toUpperCase()} ${target.homeGoals}-${target.awayGoals} ${escapeHtml(target.awayTeamName).toUpperCase()}  FULL TIME`
+                    });
+                }
+            });
 
             render(minute);
 
@@ -2102,6 +2799,8 @@ window.tifoSetTactics = setTactics;
 window.toggleMobileMenu = toggleMobileMenu;
 window.tifoCloseModal = closeModal;
 window.tifoOpenInbox = openInboxMessage;
+window.tifoInboxFilter = setInboxFilter;
+window.tifoInboxSort = setInboxSort;
 window.tifoTeamDetail = renderTeamDetail;
 window.tifoViewPlayer = viewPlayerFromTeam;
 window.tifoFixtureDetail = fixtureDetail;
@@ -2112,6 +2811,12 @@ window.tifoOpenMatchPlayer = openMatchPlayer;
 window.tifoOpenRankedPlayer = openRankedPlayer;
 window.tifoBackToMain = backToMainApp;
 window.tifoSaveLineup = saveLineup;
+window.tifoListTransfer = listTransferPlayer;
+window.tifoRemoveTransfer = removeTransferPlayer;
+window.tifoBuyTransfer = buyTransferPlayer;
+window.tifoBidTransfer = bidTransferPlayer;
+window.tifoAcceptTransfer = acceptTransferOffer;
+window.tifoRejectTransfer = rejectTransferOffer;
 window.tifoContinueFromHalf = () => {
     closeModal();
     if (window._pendingFullTimeContinue) {
@@ -2119,6 +2824,3 @@ window.tifoContinueFromHalf = () => {
         window._pendingFullTimeContinue = null;
     }
 };
-
-
-

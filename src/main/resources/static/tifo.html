@@ -12,17 +12,17 @@
 
 <div class="top-menu">
     <div id="backMainDesktop" class="menu-button desktop-only cs-back-main" onclick="tifoBackToMain()">← Back to Main App</div>
-    <div id="inboxBtnDesktop" class="menu-button desktop-only" onclick="tifoNav('inbox')">Inbox</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoClubSidebar')">Club</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoCompetitionsSidebar')">Competitions</div>
-    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoStatsSidebar')">Stats</div>
+    <div id="inboxBtnDesktop" class="menu-button desktop-only" onclick="tifoNav('inbox')">📬 Inbox</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoClubSidebar')">🏟 Club HQ</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoCompetitionsSidebar')">⚽ Matchday</div>
+    <div class="menu-button desktop-only" onclick="toggleSidebar('tifoStatsSidebar')">📊 Reports</div>
     <div class="menu-button desktop-only cs-next-round-wrap">
         <button id="nextRoundBtn" class="big-button cs-next-round-btn" onclick="tifoNextRound()">Next Round -></button>
     </div>
     <div class="desktop-only" id="roundInfo" style="color:#aaa; padding:10px; font-size:0.85em;"></div>
     <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
 
-    <div id="inboxBtnMobile" class="menu-button mobile-only" onclick="tifoNav('inbox')">Inbox</div>
+    <div id="inboxBtnMobile" class="menu-button mobile-only" onclick="tifoNav('inbox')">📬 Inbox</div>
     <div class="menu-button mobile-only cs-next-round-wrap">
         <button id="nextRoundBtnMobileTop" class="big-button cs-next-round-btn" onclick="tifoNextRound()">Next</button>
     </div>
@@ -32,42 +32,44 @@
 
 <div id="tifoClubSidebar" class="sidebar">
     <div class="sidebar-content">
-        <h3>Club</h3>
-        <div onclick="tifoNav('clubInfo')">Club Info</div>
+        <h3>🏟 Club HQ</h3>
+        <div onclick="tifoNav('clubInfo')">Overview</div>
         <div onclick="tifoNav('players')">First Team</div>
-        <div onclick="tifoNav('tactics')">Tactics</div>
-        <div onclick="tifoNav('transfers')">Transfers</div>
+        <div onclick="tifoNav('tactics')">Tactics Board</div>
+        <div onclick="tifoNav('transfers')">Transfer Centre</div>
     </div>
 </div>
 <div id="tifoCompetitionsSidebar" class="sidebar">
     <div class="sidebar-content">
-        <h3>Competitions</h3>
+        <h3>⚽ Matchday</h3>
         <div onclick="tifoNav('leagueTable')">League Table</div>
-        <div onclick="tifoNav('schedule')">Schedule</div>
-        <div onclick="tifoNav('matches')">Results</div>
+        <div onclick="tifoNav('schedule')">Fixture Planner</div>
+        <div onclick="tifoNav('matches')">Match Archive</div>
+        <div onclick="tifoNav('internationalCentre')">International Centre</div>
     </div>
 </div>
 <div id="tifoStatsSidebar" class="sidebar">
     <div class="sidebar-content">
-        <h3>Stats</h3>
-        <div onclick="tifoNav('topScorers')">Top Scorers</div>
-        <div onclick="tifoNav('topAssists')">Top Assists</div>
+        <h3>📊 Reports</h3>
+        <div onclick="tifoNav('topScorers')">Golden Boot</div>
+        <div onclick="tifoNav('topAssists')">Assist Chart</div>
     </div>
 </div>
 
 <div id="mobileSidebar" class="sidebar mobile-only">
     <div class="sidebar-content">
-        <h3 onclick="toggleMobileMenu()">TIFO - Clean Sheet</h3>
+        <h3 onclick="toggleMobileMenu()">TIFO Desk</h3>
         <div onclick="tifoBackToMain(); toggleMobileMenu()">← Back to Main App</div>
-        <div onclick="tifoNav('players'); toggleMobileMenu()">First Team</div>
-        <div onclick="tifoNav('tactics'); toggleMobileMenu()">Tactics</div>
+        <div onclick="tifoNav('clubInfo'); toggleMobileMenu()">🏟 Overview</div>
+        <div onclick="tifoNav('players'); toggleMobileMenu()">👥 First Team</div>
+        <div onclick="tifoNav('tactics'); toggleMobileMenu()">🧠 Tactics Board</div>
+        <div onclick="tifoNav('transfers'); toggleMobileMenu()">💼 Transfer Centre</div>
         <div onclick="tifoNav('leagueTable'); toggleMobileMenu()">League Table</div>
-        <div onclick="tifoNav('schedule'); toggleMobileMenu()">Schedule</div>
-        <div onclick="tifoNav('matches'); toggleMobileMenu()">Results</div>
-        <div onclick="tifoNav('topScorers'); toggleMobileMenu()">Top Scorers</div>
-        <div onclick="tifoNav('topAssists'); toggleMobileMenu()">Top Assists</div>
-        <div onclick="tifoNav('transfers'); toggleMobileMenu()">Transfers</div>
-        <div onclick="tifoNav('clubInfo'); toggleMobileMenu()">Club Info</div>
+        <div onclick="tifoNav('schedule'); toggleMobileMenu()">Fixture Planner</div>
+        <div onclick="tifoNav('matches'); toggleMobileMenu()">Match Archive</div>
+        <div onclick="tifoNav('internationalCentre'); toggleMobileMenu()">International Centre</div>
+        <div onclick="tifoNav('topScorers'); toggleMobileMenu()">Golden Boot</div>
+        <div onclick="tifoNav('topAssists'); toggleMobileMenu()">Assist Chart</div>
     </div>
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="toggleMobileMenu()"></div>

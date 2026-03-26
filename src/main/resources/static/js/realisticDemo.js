@@ -25,6 +25,12 @@ let isScrubbing = false;
 let resumeAfterScrub = false;
 let controlsBound = false;
 let replayMode = 'replay';
+let activeFeedFilter = 'all';
+const overlayState = {
+    shape: false,
+    'ball-zone': true,
+    pressure: true
+};
 
 const EVENT_DELAY = 1650;
 const GOAL_DELAY = 2600;
@@ -75,6 +81,7 @@ window.addEventListener('load', async () => {
     initPitchOverlay();
     configureReplayModeUi();
     bindPlaybackControls();
+    bindViewerControls();
     resetReplayUi();
 
     try {
@@ -111,7 +118,14 @@ async function waitForReplayMetadata() {
         if (response.ok) {
             const metadata = await response.json();
             const duration = Number(metadata.total_duration_ms ?? metadata.totalDurationMs ?? metadata.match_time_ms ?? 0);
-            if (duration > 0) {
+            const replayState = String(metadata.replayState || metadata.replay_state || '').toUpperCase();
+            if (replayState === 'READY' && duration > 0) {
+                return metadata;
+            }
+            if (replayState === 'INCOMPLETE') {
+                throw new Error(metadata.replayMessage || metadata.replay_message || 'Replay data is incomplete for this match.');
+            }
+            if (!replayState && duration > 0) {
                 return metadata;
             }
         }
@@ -274,6 +288,28 @@ function bindPlaybackControls() {
     });
 }
 
+function bindViewerControls() {
+    document.querySelectorAll('[data-feed-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            activeFeedFilter = button.dataset.feedFilter || 'all';
+            document.querySelectorAll('[data-feed-filter]').forEach(node => {
+                node.classList.toggle('active', node === button);
+            });
+            rerenderFeed();
+        });
+    });
+
+    document.querySelectorAll('[data-overlay-toggle]').forEach(button => {
+        button.addEventListener('click', () => {
+            const key = button.dataset.overlayToggle;
+            if (!key) return;
+            overlayState[key] = !overlayState[key];
+            button.classList.toggle('active', Boolean(overlayState[key]));
+            drawTacticalOverlay(getCurrentRenderedState());
+        });
+    });
+}
+
 async function seekTo(timeMs, options = {}) {
     currentTime = clamp(Number(timeMs) || 0, 0, totalDurationMs || 0);
     await ensureChunkLoaded(getChunkNumber(currentTime));
@@ -378,7 +414,8 @@ function resolveInvolvedPlayers(event) {
 function updateReplayFrame(timeMs) {
     const state = buildInterpolatedState(timeMs);
     renderPlayers(state);
-    updateDisplayedMinute(deriveMinuteFromTime(timeMs), true);
+    updateDisplayedMinute(deriveMinuteFromTime(timeMs));
+    updatePhaseIndicator(state);
 }
 
 function buildInterpolatedState(timeMs) {
@@ -510,6 +547,11 @@ async function ensureChunkLoaded(chunkIndex) {
     loadingChunks.add(chunkIndex);
     try {
         const response = await authFetch(`/api/zox/replay/${matchId}/chunks/${chunkIndex}`);
+        if (response.status === 404) {
+            totalChunks = totalChunks > 0 ? Math.min(totalChunks, chunkIndex) : chunkIndex;
+            loadedChunks.add(chunkIndex);
+            return;
+        }
         if (!response.ok) {
             throw new Error(`Failed to load replay chunk ${chunkIndex}`);
         }
@@ -790,6 +832,7 @@ function resetReplayUi() {
     clearPitchHighlights();
     clearCanvasAnimation();
     currentInvolvedPlayerIds.clear();
+    drawTacticalOverlay(getCurrentRenderedState());
 }
 
 function resetTemporalCaches() {
@@ -802,6 +845,45 @@ function clearEventFeed() {
     const eventsList = document.getElementById('events-list');
     if (!eventsList) return;
     eventsList.innerHTML = '<div class="placeholder">Match events will appear here.</div>';
+}
+
+function rerenderFeed() {
+    const eventsList = document.getElementById('events-list');
+    if (!eventsList) return;
+    eventsList.innerHTML = '';
+
+    const visibleEvents = [...replayEvents]
+        .filter(event => getTimestamp(event) <= currentTime)
+        .filter(event => normalize(event?.displayCategory) !== 'micro')
+        .filter(matchesActiveFeedFilter)
+        .sort((left, right) => getTimestamp(right) - getTimestamp(left))
+        .slice(0, MAX_FEED_ITEMS);
+
+    if (!visibleEvents.length) {
+        eventsList.innerHTML = '<div class="placeholder">No events for this filter yet.</div>';
+        return;
+    }
+
+    for (const event of visibleEvents) {
+        const item = document.createElement('div');
+        item.className = `event ${normalizeEventType(event.type)} ${resolveEventCategory(event)} ${resolveEventImportance(event)}`;
+        item.innerHTML = buildEventHtml(event);
+        eventsList.appendChild(item);
+    }
+}
+
+function matchesActiveFeedFilter(event) {
+    if (activeFeedFilter === 'all') return true;
+    const category = resolveEventCategory(event);
+    const type = normalizeEventType(event?.type);
+    if (activeFeedFilter === 'key') {
+        return category === 'key' || resolveEventImportance(event) === 'critical';
+    }
+    if (activeFeedFilter === 'tactical') {
+        return category === 'commentary'
+            || ['pass', 'dribble', 'duel', 'interception', 'offside', 'corner', 'freekick', 'throwin', 'goalkick', 'chance'].includes(type);
+    }
+    return true;
 }
 
 function deriveMinuteFromTime(timeMs) {
@@ -894,6 +976,9 @@ function renderEvent(event) {
     if (normalize(event?.displayCategory) === 'micro') {
         return;
     }
+    if (!matchesActiveFeedFilter(event)) {
+        return;
+    }
     const eventsList = document.getElementById('events-list');
     const loading = eventsList.querySelector('.loading');
     if (loading) loading.remove();
@@ -913,6 +998,7 @@ function buildEventHtml(event) {
     const description = event.description && normalize(event.description) !== normalize(headline)
         ? escapeHtml(event.description)
         : '';
+    const insight = buildTacticalInsight(event);
     const xgBadge = formatXgBadge(event);
 
     return `
@@ -925,9 +1011,74 @@ function buildEventHtml(event) {
                 </div>
                 <div class="event-main">${escapeHtml(headline)}</div>
                 ${description ? `<div class="event-sub">${description}</div>` : ''}
+                ${insight ? `<div class="event-insight">${escapeHtml(insight)}</div>` : ''}
             </div>
         </div>
     `;
+}
+
+function buildTacticalInsight(event) {
+    const type = normalizeEventType(event.type);
+    const player = event.playerName || event.scorerName || event.takerName || event.goalkeeperName || event.playerOutName || event.playerInName || null;
+    const slot = getSlotByName(player);
+    const lane = describeSlotLane(slot);
+    const xg = resolveEventXgValue(event);
+
+    switch (type) {
+        case 'pass':
+            return lane ? `Build-up flows through the ${lane}.` : 'Build-up circulation keeps the move alive.';
+        case 'dribble':
+            return lane ? `${player || 'Carrier'} attacks space from the ${lane}.` : 'Carrier drives into open space between lines.';
+        case 'duel':
+            return 'Pressure arrives early and turns the phase into a direct contest.';
+        case 'interception':
+            return 'The lane closes and the attack is cut out before the next pass.';
+        case 'chance':
+            return event.dangerous
+                ? 'The move reaches the danger zone with support around the box.'
+                : 'Territory is gained, but the defense is still largely set.';
+        case 'shotontarget':
+            if (xg >= 0.34) return 'Clean contact from a strong scoring position forces the keeper to act.';
+            if (xg >= 0.18) return 'A workable lane opens, but the finish still needs accuracy.';
+            return 'Low-value attempt still tests the keeper through traffic or angle.';
+        case 'shotofftarget':
+            if (xg >= 0.28) return 'The chance is good enough, but the execution gets away.';
+            return 'The angle, pressure or body shape makes the finish difficult.';
+        case 'goal':
+            if (xg >= 0.38) return 'High-quality chance converted from a favorable body shape and lane.';
+            if (xg >= 0.20) return 'A decent opening is finished efficiently before the block arrives.';
+            return 'Low-probability finish beats the numbers with sharp execution.';
+        case 'offside':
+            return 'The front line breaks too soon and has to reset behind the last defender.';
+        case 'corner':
+            return event.takerName ? `Set-piece delivery is shaped by ${event.takerName}'s crossing quality.` : 'Set-piece shape pulls bodies into the box.';
+        case 'freekick':
+            return 'Restart choice depends on distance, angle and taker quality.';
+        case 'penalty':
+            return 'Dead-ball duel isolates taker quality against keeper reach and timing.';
+        case 'goalkick':
+            return 'The team resets shape before trying to play out or go longer.';
+        case 'throwin':
+            return 'A short restart tries to keep local control on the flank.';
+        case 'substitution':
+            return 'Fresh legs can change pressing intensity and running power late on.';
+        default:
+            return '';
+    }
+}
+
+function describeSlotLane(slot) {
+    if (!slot) return '';
+    const key = String(slot).toUpperCase();
+    if (key.includes('DL') || key.includes('DR')) return 'fullback lane';
+    if (key.includes('DCL') || key.includes('DCR') || key === 'DC') return 'central defensive lane';
+    if (key.includes('DMC') || key === 'DM') return 'holding midfield lane';
+    if (key.includes('CML') || key.includes('CMR')) return 'half-space';
+    if (key.includes('AMC') || key === 'AM') return 'central attacking lane';
+    if (key.includes('AML') || key.includes('AMR') || key.includes('W')) return 'wide attacking lane';
+    if (key.includes('STL') || key.includes('STR')) return 'split striker lane';
+    if (key.includes('ST')) return 'central striker lane';
+    return '';
 }
 
 function renderPitchEvent(event) {
@@ -942,7 +1093,9 @@ function renderPitchEvent(event) {
 
     if (mainEl) mainEl.classList.add('involved-primary');
     if (secondaryEl) secondaryEl.classList.add('involved-secondary');
-    showPitchEventStampForEvent(event);
+    if (type !== 'varreview') {
+        showPitchEventStampForEvent(event);
+    }
 
     if (type === 'duel' || type === 'interception') {
         if (mainEl) {
@@ -1020,6 +1173,9 @@ function buildPitchBannerText(event) {
 function showPitchBanner(text, event) {
     const banner = document.getElementById('pitch-event-banner');
     if (!banner) return;
+    if (normalizeEventType(event?.type) === 'varreview' && activeAnimation?.type === 'varreview') {
+        return;
+    }
 
     banner.textContent = text;
     banner.dataset.importance = resolveEventImportance(event);
@@ -1136,6 +1292,7 @@ function renderPlayers(state) {
         if (ballEl) {
             ballEl.style.display = 'none';
         }
+        drawTacticalOverlay(null);
         return;
     }
 
@@ -1193,6 +1350,8 @@ function renderPlayers(state) {
     } else if (ballEl) {
         ballEl.style.display = 'none';
     }
+
+    drawTacticalOverlay(state);
 }
 
 function initPitchOverlay() {
@@ -1209,6 +1368,7 @@ function syncPitchOverlaySize() {
     const rect = pitch.getBoundingClientRect();
     overlay.width = Math.max(1, Math.round(rect.width));
     overlay.height = Math.max(1, Math.round(rect.height));
+    drawTacticalOverlay(getCurrentRenderedState());
 }
 
 function isShotAnimationEvent(type) {
@@ -1308,6 +1468,7 @@ function clearCanvasAnimation() {
     if (ballEl) {
         ballEl.style.opacity = '1';
     }
+    drawTacticalOverlay(getCurrentRenderedState());
 }
 
 function drawAnimationFrame(timestamp) {
@@ -1358,10 +1519,55 @@ function drawShotMarkers(ctx, anim, progress) {
 }
 
 function drawAnimatedBall(ctx, anim, progress) {
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const x = anim.shooter.x + (anim.target.x - anim.shooter.x) * eased;
-    const y = anim.shooter.y + (anim.target.y - anim.shooter.y) * eased;
+    const type = anim.type;
+    let x;
+    let y;
+    if (type === 'shotontarget' && progress > 0.62) {
+        const firstLeg = 0.62;
+        const t = (progress - firstLeg) / (1 - firstLeg);
+        const saveDriftX = anim.target.x + (getAttackDirection(anim.event) === 1 ? -32 : 32);
+        const saveDriftY = anim.target.y + (anim.target.y <= anim.keeper.y ? -18 : 18);
+        x = anim.target.x + (saveDriftX - anim.target.x) * t;
+        y = anim.target.y + (saveDriftY - anim.target.y) * t;
+    } else {
+        const eased = 1 - Math.pow(1 - progress, 3);
+        x = anim.shooter.x + (anim.target.x - anim.shooter.x) * eased;
+        y = anim.shooter.y + (anim.target.y - anim.shooter.y) * eased;
+    }
+    drawShotTrail(ctx, anim, progress);
     drawCanvasBall(ctx, x, y, 7);
+}
+
+function drawShotTrail(ctx, anim, progress) {
+    const samples = 7;
+    for (let i = 0; i < samples; i += 1) {
+        const t = Math.max(0, progress - ((i + 1) * 0.045));
+        if (t <= 0) continue;
+        let x;
+        let y;
+        if (anim.type === 'shotontarget' && t > 0.62) {
+            const firstLeg = 0.62;
+            const innerT = (t - firstLeg) / (1 - firstLeg);
+            const saveDriftX = anim.target.x + (getAttackDirection(anim.event) === 1 ? -32 : 32);
+            const saveDriftY = anim.target.y + (anim.target.y <= anim.keeper.y ? -18 : 18);
+            x = anim.target.x + (saveDriftX - anim.target.x) * innerT;
+            y = anim.target.y + (saveDriftY - anim.target.y) * innerT;
+        } else {
+            const eased = 1 - Math.pow(1 - t, 3);
+            x = anim.shooter.x + (anim.target.x - anim.shooter.x) * eased;
+            y = anim.shooter.y + (anim.target.y - anim.shooter.y) * eased;
+        }
+        const alpha = Math.max(0.05, 0.22 - (i * 0.026));
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = (anim.type === 'goal' || (anim.type === 'penalty' && anim.scored))
+            ? '#fff0a8'
+            : '#d9f2ff';
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(2.2, 5.8 - (i * 0.42)), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
 }
 
 function drawCanvasBall(ctx, x, y, radius = 7) {
@@ -1993,10 +2199,145 @@ function resolveEventCategory(event) {
     if (['matchstarted', 'matchended'].includes(type)) {
         return 'system';
     }
-    if (['corner', 'throwin', 'goalkick', 'freekick', 'offside'].includes(type)) {
+    if (['pass', 'dribble', 'duel', 'interception', 'corner', 'throwin', 'goalkick', 'freekick', 'offside'].includes(type)) {
         return 'commentary';
     }
     return 'micro';
+}
+
+function getCurrentRenderedState() {
+    if (!latestPositions.size) {
+        return null;
+    }
+    const players = [];
+    for (const [id, pos] of latestPositions.entries()) {
+        players.push({
+            id,
+            team: pos.team,
+            x: pos.x,
+            y: pos.y
+        });
+    }
+
+    const ball = resolveBallPoint(currentTime);
+    return {
+        players,
+        ball: Array.isArray(ball) ? { x: ball[0], y: ball[1] } : null,
+        carrierPlayerId: resolveCarrierPlayerId(currentTime)
+    };
+}
+
+function drawTacticalOverlay(state) {
+    const overlay = document.getElementById('pitch-overlay');
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+    if (activeAnimation) {
+        return;
+    }
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!state || !Array.isArray(state.players) || !state.players.length) {
+        return;
+    }
+
+    const homePlayers = state.players.filter(player => normalize(player.team) === 'home');
+    const awayPlayers = state.players.filter(player => normalize(player.team) === 'away');
+
+    if (overlayState.shape) {
+        drawTeamShape(ctx, overlay, homePlayers, 'rgba(217, 101, 103, 0.22)', 'rgba(255, 166, 168, 0.48)');
+        drawTeamShape(ctx, overlay, awayPlayers, 'rgba(67, 170, 183, 0.22)', 'rgba(141, 224, 235, 0.46)');
+    }
+    if (overlayState['ball-zone'] && state.ball) {
+        drawBallZone(ctx, overlay, state.ball);
+    }
+    if (overlayState.pressure && state.ball) {
+        drawPressureRing(ctx, overlay, state, homePlayers, awayPlayers);
+    }
+}
+
+function drawTeamShape(ctx, overlay, players, fillStyle, strokeStyle) {
+    const outfield = players
+        .map(player => ({ ...player, slot: playerSlots.get(Number(player.id)) }))
+        .filter(player => normalize(player.slot?.position) !== 'gk');
+    if (outfield.length < 3) return;
+
+    const leftMost = [...outfield].sort((a, b) => a.x - b.x || a.y - b.y)[0];
+    const rightMost = [...outfield].sort((a, b) => b.x - a.x || a.y - b.y)[0];
+    const topMost = [...outfield].sort((a, b) => a.y - b.y || a.x - b.x)[0];
+    const bottomMost = [...outfield].sort((a, b) => b.y - a.y || a.x - b.x)[0];
+    const polygon = [leftMost, topMost, rightMost, bottomMost]
+        .filter((point, index, arr) => arr.findIndex(candidate => candidate.id === point.id) === index)
+        .map(point => toCanvasPoint(overlay, point.x, point.y));
+    if (polygon.length < 3) return;
+
+    const center = outfield.reduce((acc, player) => ({
+        x: acc.x + (player.x / outfield.length),
+        y: acc.y + (player.y / outfield.length)
+    }), { x: 0, y: 0 });
+    const centerPoint = toCanvasPoint(overlay, center.x, center.y);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(polygon[0].x, polygon[0].y);
+    for (let i = 1; i < polygon.length; i += 1) {
+        ctx.lineTo(polygon[i].x, polygon[i].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(centerPoint.x, centerPoint.y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = strokeStyle;
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawBallZone(ctx, overlay, ball) {
+    const point = toCanvasPoint(overlay, ball.x, ball.y);
+    const radius = Math.max(24, overlay.width * 0.06);
+    ctx.save();
+    const gradient = ctx.createRadialGradient(point.x, point.y, 3, point.x, point.y, radius);
+    gradient.addColorStop(0, 'rgba(255, 214, 74, 0.18)');
+    gradient.addColorStop(1, 'rgba(255, 214, 74, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawPressureRing(ctx, overlay, state, homePlayers, awayPlayers) {
+    const carrierId = Number(state.carrierPlayerId);
+    if (!Number.isFinite(carrierId)) return;
+    const carrier = state.players.find(player => Number(player.id) === carrierId);
+    if (!carrier) return;
+    const opponents = normalize(carrier.team) === 'home' ? awayPlayers : homePlayers;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const opponent of opponents) {
+        closestDistance = Math.min(closestDistance, Math.hypot(carrier.x - opponent.x, carrier.y - opponent.y));
+    }
+    if (!Number.isFinite(closestDistance) || closestDistance > 18) return;
+
+    const point = toCanvasPoint(overlay, carrier.x, carrier.y);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 96, 96, 0.48)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, Math.max(18, overlay.width * 0.03), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function toCanvasPoint(overlay, x, y) {
+    return {
+        x: (clamp(x, 0, 100) / 100) * overlay.width,
+        y: (clamp(y, 0, 100) / 100) * overlay.height
+    };
 }
 
 function resolveEventImportance(event) {
@@ -2047,6 +2388,31 @@ function resolveEventTypeLabel(event) {
         case 'varreview': return 'VAR';
         default: return 'Match event';
     }
+}
+
+function updatePhaseIndicator(state) {
+    const node = document.getElementById('phase-indicator');
+    if (!node) return;
+    node.textContent = resolvePhaseLabel(state);
+}
+
+function resolvePhaseLabel(state) {
+    if (!state?.ball) return 'Transition';
+    const carrierPlayerId = Number(state.carrierPlayerId);
+    const carrier = Number.isFinite(carrierPlayerId)
+        ? state.players.find(player => Number(player.id) === carrierPlayerId)
+        : null;
+    if (!carrier) {
+        return state.ballInTransit ? 'Ball In Flight' : 'Transition';
+    }
+
+    const attacksRight = carrier.team === 'HOME';
+    const canonicalX = attacksRight ? state.ball.x : 100 - state.ball.x;
+    const centralGap = Math.abs(state.ball.y - 50);
+    if (canonicalX >= 84 && centralGap <= 18) return 'Box Chaos';
+    if (canonicalX >= 66) return 'Final Third';
+    if (canonicalX >= 40) return 'Progression';
+    return 'Build-up';
 }
 
 function buildEventHeadline(event) {

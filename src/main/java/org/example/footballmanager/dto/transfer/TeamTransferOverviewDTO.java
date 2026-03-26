@@ -12,4 +12,6 @@ public class TeamTransferOverviewDTO {
     private Double budget;
     private int listedCount;
     private List<TransferDTO> listedPlayers = new ArrayList<>();
+    private int incomingOfferCount;
+    private List<TransferDTO> incomingOffers = new ArrayList<>();
 }

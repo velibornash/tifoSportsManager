@@ -27,5 +27,7 @@ public class PlayerTransferStatusDTO {
     private boolean canRemove;
     private boolean canBuyListed;
     private boolean canDirectBuy;
+    private boolean canAcceptOffer;
+    private boolean canRejectOffer;
     private String summary;
 }

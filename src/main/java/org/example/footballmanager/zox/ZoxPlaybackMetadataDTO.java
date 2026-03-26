@@ -29,6 +29,9 @@ public class ZoxPlaybackMetadataDTO {
     private int chunkCount;
     private int totalTicks;
     private long totalDurationMs;
+    private boolean replayReady;
+    private String replayState;
+    private String replayMessage;
     private List<ZoxReplayPlayerDTO> playersData;
     private List<ZoxReplayGoalDTO> goalsData;
     private List<ZoxReplayEventDTO> eventData;

@@ -27,7 +27,7 @@ public class Team {
     private Country country;
     @ManyToOne(fetch = FetchType.LAZY)
     private Competition competition;
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinColumn(name = "stadium_id")
     @EqualsAndHashCode.Exclude  // ⬅ isključeno da ne bi zvao Stadium.hashCode
     @JsonBackReference

@@ -1,5 +1,6 @@
 package org.example.footballmanager.controller;
 
+import org.example.footballmanager.dto.CountrySummaryDTO;
 import org.example.footballmanager.dto.LeagueTableDTO;
 import org.example.footballmanager.dto.MatchDTO;
 import org.example.footballmanager.model.*;
@@ -52,8 +53,11 @@ public class CountryController {
     }
 
     @GetMapping
-    public List<Country> getAllCountries() {
-        return countryRepository.findAll();
+    public List<CountrySummaryDTO> getAllCountries() {
+        return countryRepository.findAll().stream()
+                .sorted(Comparator.comparing(Country::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(CountrySummaryDTO::from)
+                .toList();
     }
 
     @GetMapping("/{isoCode}/leagues")
@@ -239,13 +243,7 @@ public class CountryController {
     public List<Map<String, Object>> getLeagueSeasons(@PathVariable Long leagueId) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
-        List<Integer> years = seasonCompetitionRepository.findAll().stream()
-                .filter(sc -> sc.getCompetition() != null && Objects.equals(sc.getCompetition().getId(), league.getId()))
-                .map(SeasonCompetition::getSeasonYear)
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted()
-                .toList();
+        List<Integer> years = seasonCompetitionRepository.findSeasonYearsByCompetitionId(league.getId());
         List<Map<String, Object>> result = new ArrayList<>();
         for (int i = 0; i < years.size(); i++) {
             Integer year = years.get(i);
@@ -255,6 +253,36 @@ public class CountryController {
             result.add(row);
         }
         return result;
+    }
+
+    @GetMapping("/leagues/{leagueId}/player-directory")
+    public List<Map<String, Object>> getLeaguePlayerDirectory(@PathVariable Long leagueId,
+                                                              @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+        Competition league = competitionRepository.findById(leagueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League not found"));
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
+        seasonService.ensureEntriesForSeasonCompetition(league, activeSeasonYear);
+
+        SeasonCompetition seasonCompetition = seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(league, activeSeasonYear)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "League season not found"));
+
+        List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(seasonCompetition);
+        Map<Long, String> teamNameById = entries.stream()
+                .filter(entry -> entry.getTeam() != null && entry.getTeam().getId() != null)
+                .collect(Collectors.toMap(entry -> entry.getTeam().getId(), entry -> entry.getTeam().getName(), (left, right) -> left));
+
+        return playerRepository.findByTeamIdIn(new ArrayList<>(teamNameById.keySet())).stream()
+                .map(player -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    Long teamId = player.getTeam() != null ? player.getTeam().getId() : null;
+                    row.put("id", player.getId());
+                    row.put("name", player.getName());
+                    row.put("teamId", teamId);
+                    row.put("teamName", teamId != null ? teamNameById.get(teamId) : null);
+                    return row;
+                })
+                .toList();
     }
 
     @GetMapping("/teams/{teamId}/players")

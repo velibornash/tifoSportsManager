@@ -47,13 +47,34 @@ public class MatchAnalyticsService {
         return events.stream()
                 .filter(e -> {
                     try {
-                        return (e.getMatch().getHomeTeam() != null && e.getMatch().getHomeTeam().equals(team))
-                    || (e.getMatch().getAwayTeam() != null && e.getMatch().getAwayTeam().equals(team));
-
+                        Team eventTeam = resolveEventTeam(e);
+                        return eventTeam != null && eventTeam.equals(team);
                     } catch (Exception ex) {
                         return false;
                     }
                 })
                 .count();
+    }
+
+    private Team resolveEventTeam(MatchEvent event) {
+        return switch (event) {
+            case GoalEvent goalEvent -> goalEvent.getTeam();
+            case ShotOnTargetEvent shotOnTargetEvent -> shotOnTargetEvent.getTeam();
+            case ShotOffTargetEvent shotOffTargetEvent -> shotOffTargetEvent.getTeam();
+            case YellowCardEvent yellowCardEvent -> yellowCardEvent.getTeam();
+            case RedCardEvent redCardEvent -> redCardEvent.getTeam();
+            case PenaltyEvent penaltyEvent -> penaltyEvent.getTeam();
+            case FreeKickEvent freeKickEvent -> freeKickEvent.getTeam();
+            case CornerEvent cornerEvent -> cornerEvent.getTeam();
+            case ThrowInEvent throwInEvent -> throwInEvent.getTeam();
+            case GoalKickEvent goalKickEvent -> goalKickEvent.getTeam();
+            case ChanceEvent chanceEvent -> chanceEvent.getTeam();
+            case DuelEvent duelEvent -> duelEvent.getTeam();
+            case DribbleEvent dribbleEvent -> dribbleEvent.getTeam();
+            case InterceptionEvent interceptionEvent -> interceptionEvent.getTeam();
+            case PassEvent passEvent -> passEvent.getTeam();
+            case SubstitutionEvent substitutionEvent -> substitutionEvent.getTeam();
+            default -> null;
+        };
     }
 }

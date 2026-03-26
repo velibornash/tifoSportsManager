@@ -48,30 +48,39 @@ public class CSMatchSimulator {
         Map<Long, Boolean> homeOnFieldStatus = new java.util.HashMap<>();
         Map<Long, Boolean> awayOnFieldStatus = new java.util.HashMap<>();
         
+        // Entry minutes: when each player first set foot on the field (0 = started, 91 = never entered)
+        Map<Long, Integer> homeEntryMinutes = new java.util.HashMap<>();
+        Map<Long, Integer> awayEntryMinutes = new java.util.HashMap<>();
+
         homePlayers.forEach(p -> {
             homeMinutes.put(p.getId(), 90);
             homeOnFieldStatus.put(p.getId(), true);
+            homeEntryMinutes.put(p.getId(), 0);
         });
         homeBench.forEach(p -> {
             homeMinutes.put(p.getId(), 0);
             homeOnFieldStatus.put(p.getId(), false);
+            homeEntryMinutes.put(p.getId(), 91);
         });
-        
+
         awayPlayers.forEach(p -> {
             awayMinutes.put(p.getId(), 90);
             awayOnFieldStatus.put(p.getId(), true);
+            awayEntryMinutes.put(p.getId(), 0);
         });
         awayBench.forEach(p -> {
             awayMinutes.put(p.getId(), 0);
             awayOnFieldStatus.put(p.getId(), false);
+            awayEntryMinutes.put(p.getId(), 91);
         });
 
-        // Apply substitutions BEFORE generating events
-        applySubstitutions(events, home, homeOnField, homeBench, homeMinutes, homeOnFieldStatus);
-        applySubstitutions(events, away, awayOnField, awayBench, awayMinutes, awayOnFieldStatus);
+        // Apply substitutions — updates entry minutes so goal scoring is correctly gated
+        applySubstitutions(events, home, homeOnField, homeBench, homeMinutes, homeOnFieldStatus, homeEntryMinutes);
+        applySubstitutions(events, away, awayOnField, awayBench, awayMinutes, awayOnFieldStatus, awayEntryMinutes);
 
-        // Generate goals and stats with the final on-field players
-        generateGoalEvents(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals);
+        // Generate goals with entry-minute awareness (fixes sub scoring before entering)
+        generateGoalEvents(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals,
+                homeEntryMinutes, awayEntryMinutes);
         generateStats(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals);
 
         events.add(CSMatchEvent.builder()
@@ -204,17 +213,65 @@ public class CSMatchSimulator {
 
         if (isHome) base += 5.0;
 
+        double formationFit = calculateFormationFit(players, tactics);
+        double styleFit = calculateStyleFit(players, tactics);
         double styleBonus = switch (tactics.getStyle()) {
-            case ATTACKING -> 3.0;
-            case COUNTER -> 1.5;
-            case BALANCED -> 0.0;
-            case DEFENSIVE -> -2.0;
+            case ATTACKING -> 2.4 + styleFit;
+            case COUNTER -> 1.3 + styleFit;
+            case BALANCED -> 0.6 + styleFit * 0.55;
+            case DEFENSIVE -> 0.2 + styleFit;
         };
-        base += styleBonus;
+        base += formationFit + styleBonus;
 
         base += rnd.nextDouble() * 10.0 - 5.0;
 
         return Math.max(10.0, base);
+    }
+
+    private double calculateFormationFit(List<CSPlayer> players, CSTactics tactics) {
+        int[] desired = parseFormation(String.valueOf(tactics.getFormation()));
+        int defenders = (int) players.stream().filter(p -> "DEF".equals(p.getPosition())).count();
+        int mids = (int) players.stream().filter(p -> "MID".equals(p.getPosition()) || "WNG".equals(p.getPosition())).count();
+        int attackers = (int) players.stream().filter(p -> "ATT".equals(p.getPosition()) || "WNG".equals(p.getPosition())).count();
+        int goalkeepers = (int) players.stream().filter(p -> "GK".equals(p.getPosition())).count();
+
+        double mismatch = Math.abs(goalkeepers - 1) * 4.0
+                + Math.abs(defenders - desired[0]) * 2.3
+                + Math.abs(mids - desired[1]) * 1.8
+                + Math.abs(attackers - desired[2]) * 2.0;
+
+        return Math.max(-10.0, 5.5 - mismatch);
+    }
+
+    private double calculateStyleFit(List<CSPlayer> players, CSTactics tactics) {
+        double pace = players.stream().mapToInt(CSPlayer::getPace).average().orElse(50.0);
+        double defending = players.stream().mapToInt(CSPlayer::getDefending).average().orElse(50.0);
+        double passing = players.stream().mapToInt(CSPlayer::getPassing).average().orElse(50.0);
+        double shooting = players.stream().mapToInt(CSPlayer::getShooting).average().orElse(50.0);
+        double stamina = players.stream().mapToInt(CSPlayer::getStamina).average().orElse(50.0);
+
+        return switch (tactics.getStyle()) {
+            case ATTACKING -> ((shooting + passing + pace) / 3.0 - 52.0) / 6.0;
+            case COUNTER -> ((pace + shooting + stamina) / 3.0 - 51.0) / 6.5;
+            case BALANCED -> ((passing + stamina + defending) / 3.0 - 50.0) / 8.0;
+            case DEFENSIVE -> ((defending + stamina + passing) / 3.0 - 50.0) / 6.0;
+        };
+    }
+
+    private int[] parseFormation(String formation) {
+        String[] parts = (formation == null ? "4-4-2" : formation).split("-");
+        int def = parts.length > 0 ? parsePart(parts[0], 4) : 4;
+        int mid = parts.length > 1 ? parsePart(parts[1], 4) : 4;
+        int att = parts.length > 2 ? parsePart(parts[2], 2) : 2;
+        return new int[]{def, mid, att};
+    }
+
+    private int parsePart(String value, int fallback) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     /**
@@ -390,7 +447,8 @@ public class CSMatchSimulator {
                                     List<CSPlayer> onField,
                                     List<CSPlayer> bench,
                                     java.util.Map<Long, Integer> minutesByPlayer,
-                                    java.util.Map<Long, Boolean> onFieldStatus) {
+                                    java.util.Map<Long, Boolean> onFieldStatus,
+                                    java.util.Map<Long, Integer> entryMinutes) {
         if (onField.isEmpty() || bench.isEmpty()) return;
         int maxSubs = Math.min(3, bench.size());
         int subs = rnd.nextDouble() < 0.55 ? rnd.nextInt(maxSubs + 1) : 0;
@@ -407,7 +465,12 @@ public class CSMatchSimulator {
             // Update minutes for substituted players
             minutesByPlayer.put(out.getId(), Math.max(1, minute));
             minutesByPlayer.put(in.getId(), Math.max(0, 91 - minute));
-            
+
+            // Record when the substitute entered the field (fixes scoring-before-entering bug)
+            if (entryMinutes != null) {
+                entryMinutes.put(in.getId(), minute);
+            }
+
             // Update on-field status
             if (onFieldStatus != null) {
                 onFieldStatus.put(out.getId(), false);
@@ -451,7 +514,9 @@ public class CSMatchSimulator {
     private void generateGoalEvents(List<CSMatchEvent> events,
                                     CSTeam home, List<CSPlayer> homePlayers,
                                     CSTeam away, List<CSPlayer> awayPlayers,
-                                    int homeGoals, int awayGoals) {
+                                    int homeGoals, int awayGoals,
+                                    Map<Long, Integer> homeEntryMinutes,
+                                    Map<Long, Integer> awayEntryMinutes) {
         int remainingHome = homeGoals;
         int remainingAway = awayGoals;
         int lastMinute = 0;
@@ -464,16 +529,7 @@ public class CSMatchSimulator {
             else if (remainingAway == 0) isHome = true;
             else isHome = rnd.nextDouble() < ((double) remainingHome / (remainingHome + remainingAway) + 0.1);
 
-            CSTeam scoringTeam = isHome ? home : away;
-            List<CSPlayer> scoringPlayers = isHome ? homePlayers : awayPlayers;
-
-            // Scorer — bias ka napadacima
-            CSPlayer scorer = pickScorer(scoringPlayers);
-            CSPlayer assist = pickAssist(scoringPlayers, scorer);
-            if (scorer != null && assist != null && scorer.getId().equals(assist.getId())) {
-                assist = null;
-            }
-
+            // Compute minute FIRST so we can filter eligible scorers correctly
             int remaining = remainingHome + remainingAway - 1;
             int minMinute = lastMinute + 1;
             int maxMinute = 90 - remaining * 3;
@@ -481,27 +537,88 @@ public class CSMatchSimulator {
             if (maxMinute > 90) maxMinute = 90;
             int minute = minMinute + rnd.nextInt(Math.max(1, maxMinute - minMinute + 1));
 
+            CSTeam scoringTeam = isHome ? home : away;
+            List<CSPlayer> allScoringPlayers = isHome ? homePlayers : awayPlayers;
+            Map<Long, Integer> entryMin = isHome ? homeEntryMinutes : awayEntryMinutes;
+
+            // Only players who were already on the field at this minute can score
+            final int goalMinute = minute;
+            List<CSPlayer> eligibleScorers = allScoringPlayers.stream()
+                    .filter(p -> entryMin.getOrDefault(p.getId(), 0) <= goalMinute)
+                    .toList();
+            List<CSPlayer> scoringPlayers = eligibleScorers.isEmpty() ? allScoringPlayers : eligibleScorers;
+
+            CSPlayer scorer = pickScorer(scoringPlayers);
+            CSPlayer assist = pickAssist(scoringPlayers, scorer);
+            if (scorer != null && assist != null && scorer.getId().equals(assist.getId())) {
+                assist = null;
+            }
+
             if (isHome) { remainingHome--; currentHomeScore++; }
             else { remainingAway--; currentAwayScore++; }
 
             String scoreAfter = currentHomeScore + ":" + currentAwayScore;
 
-            // Update sezonski golovi/asistencije
             scorer.setGoals(scorer.getGoals() + 1);
             if (assist != null) assist.setAssists(assist.getAssists() + 1);
 
+            org.example.footballmanager.cleanSheet.model.CSGoalType goalType = assignGoalType(scorer);
             events.add(CSMatchEvent.builder()
                     .minute(minute)
                     .eventType(CSEventType.GOAL)
+                    .goalType(goalType)
                     .playerName(scorer.getName())
                     .assistName(assist != null ? assist.getName() : null)
                     .teamName(scoringTeam.getName())
-                    .description(describeGoal(scoringTeam.getName(), scorer.getName(), assist != null ? assist.getName() : null, scoreAfter))
+                    .description(describeGoal(scoringTeam.getName(), scorer.getName(),
+                            assist != null ? assist.getName() : null, scoreAfter, goalType))
                     .scoreAfterGoal(scoreAfter)
                     .build());
 
             lastMinute = minute;
         }
+    }
+
+    /**
+     * Assigns a goal type based on the scorer's position and randomness.
+     * Mirrors real-world tendencies: ATT scores tap-ins/one-on-ones, DEF headers, MID long-range/FK.
+     */
+    private org.example.footballmanager.cleanSheet.model.CSGoalType assignGoalType(CSPlayer scorer) {
+        if (scorer == null) return org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+        double roll = rnd.nextDouble();
+        return switch (scorer.getPosition()) {
+            case "ATT" -> {
+                if (roll < 0.28) yield org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+                if (roll < 0.50) yield org.example.footballmanager.cleanSheet.model.CSGoalType.ONE_ON_ONE;
+                if (roll < 0.65) yield org.example.footballmanager.cleanSheet.model.CSGoalType.POACHERS;
+                if (roll < 0.78) yield org.example.footballmanager.cleanSheet.model.CSGoalType.HEADER;
+                if (roll < 0.90) yield org.example.footballmanager.cleanSheet.model.CSGoalType.VOLLEY;
+                yield org.example.footballmanager.cleanSheet.model.CSGoalType.COUNTER;
+            }
+            case "WNG" -> {
+                if (roll < 0.28) yield org.example.footballmanager.cleanSheet.model.CSGoalType.LONG_RANGE;
+                if (roll < 0.48) yield org.example.footballmanager.cleanSheet.model.CSGoalType.ONE_ON_ONE;
+                if (roll < 0.62) yield org.example.footballmanager.cleanSheet.model.CSGoalType.COUNTER;
+                if (roll < 0.76) yield org.example.footballmanager.cleanSheet.model.CSGoalType.SCREAMER;
+                if (roll < 0.88) yield org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+                yield org.example.footballmanager.cleanSheet.model.CSGoalType.VOLLEY;
+            }
+            case "MID" -> {
+                if (roll < 0.32) yield org.example.footballmanager.cleanSheet.model.CSGoalType.LONG_RANGE;
+                if (roll < 0.52) yield org.example.footballmanager.cleanSheet.model.CSGoalType.FREE_KICK;
+                if (roll < 0.66) yield org.example.footballmanager.cleanSheet.model.CSGoalType.SCREAMER;
+                if (roll < 0.80) yield org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+                if (roll < 0.90) yield org.example.footballmanager.cleanSheet.model.CSGoalType.HEADER;
+                yield org.example.footballmanager.cleanSheet.model.CSGoalType.COUNTER;
+            }
+            case "DEF" -> {
+                if (roll < 0.52) yield org.example.footballmanager.cleanSheet.model.CSGoalType.HEADER;
+                if (roll < 0.70) yield org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+                if (roll < 0.84) yield org.example.footballmanager.cleanSheet.model.CSGoalType.LONG_RANGE;
+                yield org.example.footballmanager.cleanSheet.model.CSGoalType.FREE_KICK;
+            }
+            default -> org.example.footballmanager.cleanSheet.model.CSGoalType.TAP_IN;
+        };
     }
 
     private CSPlayer pickScorer(List<CSPlayer> players) {
@@ -677,14 +794,56 @@ public class CSMatchSimulator {
                 .build();
     }
 
-    private String describeGoal(String teamName, String scorerName, String assistName, String scoreAfter) {
+    private String describeGoal(String teamName, String scorerName, String assistName, String scoreAfter,
+                               org.example.footballmanager.cleanSheet.model.CSGoalType goalType) {
         String assistText = assistName == null || assistName.isBlank() ? "" : " Assist: " + assistName + ".";
         String scoreText = scoreAfter == null || scoreAfter.isBlank() ? "" : " [" + scoreAfter + "]";
-        return pick(
-                scorerName + " applies the finish for " + teamName + "." + assistText + scoreText,
-                "Goal for " + teamName + ": " + scorerName + " converts the move." + assistText + scoreText,
-                scorerName + " finds the net for " + teamName + "." + assistText + scoreText
-        );
+        if (goalType == null) {
+            return pick(
+                    scorerName + " applies the finish for " + teamName + "." + assistText + scoreText,
+                    "Goal for " + teamName + ": " + scorerName + " converts the move." + assistText + scoreText,
+                    scorerName + " finds the net for " + teamName + "." + assistText + scoreText
+            );
+        }
+        String base = switch (goalType) {
+            case HEADER -> pick(
+                    scorerName + " wins the aerial battle and heads home for " + teamName,
+                    "Powerful header from " + scorerName + " beats the keeper",
+                    scorerName + " gets above his marker and guides the header in");
+            case VOLLEY -> pick(
+                    "Stunning volley from " + scorerName + " — the keeper had no chance",
+                    scorerName + " catches the ball on the half-volley and rifles it in",
+                    "Sweet volley from " + scorerName + " puts " + teamName + " ahead");
+            case TAP_IN -> pick(
+                    scorerName + " taps home from close range for " + teamName,
+                    "The keeper can only parry and " + scorerName + " is first to react",
+                    "Simple finish from " + scorerName + " — all the hard work done by those around him");
+            case LONG_RANGE -> pick(
+                    scorerName + " lets fly from distance and it flies into the corner",
+                    "Audacious effort from " + scorerName + " from outside the area — and it's in",
+                    scorerName + " unleashes from 25 yards — keeper rooted to the spot");
+            case ONE_ON_ONE -> pick(
+                    scorerName + " rounds the keeper and rolls it into an empty net",
+                    "Composed finish from " + scorerName + " one-on-one with the goalkeeper",
+                    scorerName + " stays cool and slots home after breaking clear");
+            case SCREAMER -> pick(
+                    "Thunderous strike from " + scorerName + " — absolutely unstoppable",
+                    scorerName + " unleashes a screamer from the edge of the box — pure class",
+                    "Goal of the season contender from " + scorerName + " for " + teamName);
+            case FREE_KICK -> pick(
+                    scorerName + " curls a brilliant free kick over the wall and into the corner",
+                    "Direct free kick from " + scorerName + " beats the wall and the keeper",
+                    "Set-piece quality from " + scorerName + " — the keeper had no answer");
+            case POACHERS -> pick(
+                    scorerName + " ghosts in at the back post and converts the cross",
+                    "Poacher's finish from " + scorerName + " — two yards out, he doesn't miss",
+                    "Classic striker's goal from " + scorerName + " — right place, right time");
+            case COUNTER -> pick(
+                    scorerName + " finishes off a clinical counter-attack for " + teamName,
+                    "Three passes and it's in the net — " + scorerName + " completes the counter",
+                    "Devastating on the break — " + scorerName + " slots home after a quick transition");
+        };
+        return base + "." + assistText + scoreText;
     }
 
     private String describeSubstitution(String teamName, String playerOut, String playerIn) {

@@ -33,13 +33,8 @@ public class LeagueMilestoneService {
                 .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
                 .toList();
 
-        List<GoalEvent> seasonGoals = goalEventRepository.findAll().stream()
-                .filter(GoalEvent::isScored)
-                .filter(goal -> goal.getMatch() != null
-                        && goal.getMatch().getCompetition() != null
-                        && Objects.equals(goal.getMatch().getCompetition().getId(), league.getId())
-                        && Objects.equals(goal.getMatch().getSeasonYear(), seasonYear))
-                .toList();
+        List<GoalEvent> seasonGoals = goalEventRepository
+                .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(league.getId(), seasonYear);
 
         return LeagueMilestonesDTO.builder()
                 .seasonYear(seasonYear)
@@ -59,11 +54,7 @@ public class LeagueMilestoneService {
                 .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
                 .toList();
 
-        List<GoalEvent> seasonGoals = goalEventRepository.findAll().stream()
-                .filter(GoalEvent::isScored)
-                .filter(goal -> goal.getMatch() != null
-                        && Objects.equals(goal.getMatch().getSeasonYear(), seasonYear))
-                .toList();
+        List<GoalEvent> seasonGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear);
 
         List<GoalEvent> scoringGoals = seasonGoals.stream()
                 .filter(goal -> sameTeam(goal.getScorer() != null ? goal.getScorer().getTeam() : null, team))

@@ -91,13 +91,9 @@ public class StatsController {
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Long> teamIds = entries.stream().map(e -> e.getTeam().getId()).toList();
 
-        List<GoalEvent> seasonGoals = goalEventRepository.findAll().stream()
-                .filter(GoalEvent::isScored)
-                .filter(g -> g.getMatch() != null
-                        && g.getMatch().getCompetition() != null
-                        && Objects.equals(g.getMatch().getCompetition().getId(), leagueId)
-                        && Objects.equals(g.getMatch().getSeasonYear(), activeSeasonYear)
-                        && g.getScorer() != null
+        List<GoalEvent> seasonGoals = goalEventRepository
+                .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(leagueId, activeSeasonYear).stream()
+                .filter(g -> g.getScorer() != null
                         && g.getScorer().getTeam() != null
                         && teamIds.contains(g.getScorer().getTeam().getId()))
                 .toList();
@@ -134,13 +130,9 @@ public class StatsController {
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Long> teamIds = entries.stream().map(e -> e.getTeam().getId()).toList();
 
-        List<GoalEvent> seasonGoals = goalEventRepository.findAll().stream()
-                .filter(GoalEvent::isScored)
-                .filter(g -> g.getMatch() != null
-                        && g.getMatch().getCompetition() != null
-                        && Objects.equals(g.getMatch().getCompetition().getId(), leagueId)
-                        && Objects.equals(g.getMatch().getSeasonYear(), activeSeasonYear)
-                        && g.getAssistant() != null
+        List<GoalEvent> seasonGoals = goalEventRepository
+                .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(leagueId, activeSeasonYear).stream()
+                .filter(g -> g.getAssistant() != null
                         && g.getAssistant().getTeam() != null
                         && teamIds.contains(g.getAssistant().getTeam().getId()))
                 .toList();

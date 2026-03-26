@@ -43,6 +43,10 @@ public class CSMatchReportGenerator {
                     .append("\n");
         }
         sb.append("Desk note: ").append(buildMiniSummaryLine(result)).append("\n");
+        sb.append("\nTACTICAL BOARD\n");
+        sb.append(buildTacticalBoard(result, sorted)).append("\n");
+        sb.append("\nTURNING POINT\n");
+        sb.append(buildTurningPoint(timeline)).append("\n");
 
         if (timeline.isEmpty()) {
             sb.append("\nThe game never truly opened up and the notebook stayed almost empty.\n");
@@ -58,6 +62,7 @@ public class CSMatchReportGenerator {
 
         appendHalfSummary(sb, result, sorted, 1, 45, "Half-time");
         appendHalfSummary(sb, result, sorted, 46, 90, "Second half");
+        appendStandoutPerformers(sb, result);
         appendMatchDesk(sb, result, sorted, motm);
 
         sb.append("\nFull-time verdict: ").append(buildClosingVerdict(result));
@@ -82,6 +87,9 @@ public class CSMatchReportGenerator {
         StringBuilder sb = new StringBuilder();
         sb.append("ROUND ").append(round).append(" REVIEW\n");
         sb.append(buildRoundHeadline(totalGoals, sorted.size(), biggestWin, highestScoring)).append("\n\n");
+        sb.append("LEAGUE DESK\n");
+        sb.append(buildRoundDesk(round, sorted, totalGoals, userTeamId)).append("\n\n");
+        sb.append("SCORELINES\n");
 
         for (CSMatchResult r : sorted) {
             boolean userMatch = Objects.equals(r.getHomeTeamId(), userTeamId) || Objects.equals(r.getAwayTeamId(), userTeamId);
@@ -96,6 +104,97 @@ public class CSMatchReportGenerator {
                 .append(':').append(biggestWin.getAwayGoals()).append(' ').append(biggestWin.getAwayTeamName())
                 .append(" carried the strongest final margin.");
         return sb.toString().trim();
+    }
+
+    private String buildTacticalBoard(CSMatchResult result, List<CSMatchEvent> events) {
+        int homeShots = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getHomeTeamName(), 1, 90)
+                + countEvents(events, CSEventType.SHOT_OFF_TARGET, result.getHomeTeamName(), 1, 90);
+        int awayShots = countEvents(events, CSEventType.SHOT_ON_TARGET, result.getAwayTeamName(), 1, 90)
+                + countEvents(events, CSEventType.SHOT_OFF_TARGET, result.getAwayTeamName(), 1, 90);
+        int homeSetPieces = countEvents(events, CSEventType.CORNER, result.getHomeTeamName(), 1, 90)
+                + countEvents(events, CSEventType.FREE_KICK, result.getHomeTeamName(), 1, 90);
+        int awaySetPieces = countEvents(events, CSEventType.CORNER, result.getAwayTeamName(), 1, 90)
+                + countEvents(events, CSEventType.FREE_KICK, result.getAwayTeamName(), 1, 90);
+
+        String controlTeam = homeShots + homeSetPieces >= awayShots + awaySetPieces ? result.getHomeTeamName() : result.getAwayTeamName();
+        String pressureTeam = homeSetPieces != awaySetPieces
+                ? (homeSetPieces > awaySetPieces ? result.getHomeTeamName() : result.getAwayTeamName())
+                : controlTeam;
+
+        return pick(
+                controlTeam + " spent longer dictating territory, while " + pressureTeam + " kept the set-piece pressure alive.",
+                "The control phases leaned toward " + controlTeam + ", but much of the real danger came whenever " + pressureTeam + " forced dead-ball situations.",
+                controlTeam + " looked the cleaner side in open play and " + pressureTeam + " repeatedly tried to shift the match through restarts and second balls."
+        );
+    }
+
+    private String buildTurningPoint(List<CSMatchEvent> timeline) {
+        if (timeline.isEmpty()) {
+            return "No single flashpoint emerged, so the result was shaped more by general control than by one dramatic swing.";
+        }
+
+        CSMatchEvent turning = timeline.stream()
+                .filter(e -> e.getEventType() == CSEventType.GOAL
+                        || e.getEventType() == CSEventType.RED_CARD
+                        || e.getEventType() == CSEventType.PENALTY
+                        || e.getEventType() == CSEventType.INJURY
+                        || e.getEventType() == CSEventType.SUBSTITUTION)
+                .findFirst()
+                .orElse(timeline.get(Math.max(0, timeline.size() / 2)));
+
+        return switch (turning.getEventType()) {
+            case GOAL -> safeName(turning.getPlayerName()) + " changed the mood in " + turning.getMinute()
+                    + "' when " + safeTeam(turning.getTeamName()) + " finally found daylight on the scoreboard.";
+            case RED_CARD -> "The dismissal in " + turning.getMinute() + "' forced " + safeTeam(turning.getTeamName())
+                    + " into survival mode and rewrote the flow of the contest.";
+            case PENALTY -> "Everything tightened around the penalty in " + turning.getMinute()
+                    + "', the one phase that genuinely made both dugouts hold their breath.";
+            case INJURY -> "The injury pause in " + turning.getMinute()
+                    + "' disrupted the rhythm and left both benches recalculating their route through the game.";
+            case SUBSTITUTION -> "The substitution on " + turning.getMinute()
+                    + "' shifted the balance, giving the final half-hour a noticeably different shape.";
+            default -> "The key swing arrived around " + turning.getMinute()
+                    + "', when the pace of the game tilted in a way neither side could fully undo.";
+        };
+    }
+
+    private void appendStandoutPerformers(StringBuilder sb, CSMatchResult result) {
+        List<CSPlayerMatchStats> topPerformers = allPlayerStats(result).stream()
+                .sorted(Comparator.comparingDouble(CSPlayerMatchStats::getRating).reversed()
+                        .thenComparingInt(CSPlayerMatchStats::getGoals).reversed()
+                        .thenComparingInt(CSPlayerMatchStats::getAssists).reversed())
+                .limit(3)
+                .toList();
+        if (topPerformers.isEmpty()) {
+            return;
+        }
+
+        sb.append("\n\nSTANDOUT PERFORMERS\n");
+        for (CSPlayerMatchStats stat : topPerformers) {
+            sb.append(safeName(stat.getPlayerName()))
+                    .append(" - rating ")
+                    .append(String.format(java.util.Locale.US, "%.1f", stat.getRating()))
+                    .append(", goals ").append(stat.getGoals())
+                    .append(", assists ").append(stat.getAssists())
+                    .append(", key passes ").append(stat.getKeyPasses())
+                    .append(".\n");
+        }
+    }
+
+    private String buildRoundDesk(int round, List<CSMatchResult> results, int totalGoals, Long userTeamId) {
+        long draws = results.stream().filter(r -> r.getHomeGoals() == r.getAwayGoals()).count();
+        long awayWins = results.stream().filter(r -> r.getAwayGoals() > r.getHomeGoals()).count();
+        CSMatchResult userMatch = results.stream()
+                .filter(r -> Objects.equals(r.getHomeTeamId(), userTeamId) || Objects.equals(r.getAwayTeamId(), userTeamId))
+                .findFirst()
+                .orElse(null);
+
+        String userLine = userMatch == null
+                ? "Your club had no dedicated line in this review."
+                : "Your file: " + buildMiniSummaryLine(userMatch);
+
+        return "Round " + round + " produced " + totalGoals + " goals, " + draws + " draws and "
+                + awayWins + " away wins. " + userLine;
     }
 
     private void appendHalfSummary(StringBuilder sb, CSMatchResult result, List<CSMatchEvent> events,

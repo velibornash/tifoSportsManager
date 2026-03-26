@@ -134,6 +134,18 @@ public class SimulationController {
 
         Match existingPreparedMatch = findPreparedUserMatch(activeLeague, activeSeasonYear, currentWeek, userTeam.getId());
         if (existingPreparedMatch != null) {
+            if (!simulationService.isSimulationRunning(existingPreparedMatch.getId())) {
+                log.warn("Recovering stale prepared live match {} for team {}", existingPreparedMatch.getId(), userTeam.getId());
+                simulationService.recoverAndRestartRealisticSimulation(existingPreparedMatch.getId())
+                        .exceptionally(throwable -> {
+                            log.error("Error while recovering realistic demo simulation for match {}", existingPreparedMatch.getId(), throwable);
+                            return null;
+                        });
+                return ResponseEntity.ok(buildStartMatchResponse(
+                        existingPreparedMatch,
+                        "Recovered your previous live match and restarted the simulation."
+                ));
+            }
             return ResponseEntity.ok(buildStartMatchResponse(
                     existingPreparedMatch,
                     "Existing live match is already prepared - opening that match."

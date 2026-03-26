@@ -3,14 +3,16 @@ package org.example.footballmanager.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.dto.junior.JuniorAcademyItemDTO;
-import org.example.footballmanager.dto.junior.JuniorPromotionResultDTO;
 import org.example.footballmanager.dto.junior.JuniorAcademyStateDTO;
+import org.example.footballmanager.dto.junior.JuniorPromotionResultDTO;
+import org.example.footballmanager.exception.ApiException;
 import org.example.footballmanager.model.*;
 import org.example.footballmanager.repository.JuniorRepository;
 import org.example.footballmanager.repository.PlayerRepository;
 import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.util.players.NameGenerator;
 import org.example.footballmanager.util.players.SquadNumberAssigner;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,9 +34,7 @@ public class YouthAcademyService {
     public void generateSeasonIntakeForWeek2(int seasonNumber, int weekNumber) {
         if (weekNumber != 2) return;
 
-        List<Team> teams = teamRepository.findAll().stream()
-                .filter(t -> t.getType() == null || t.getType() == CompetitionTeamType.CLUB)
-                .toList();
+        List<Team> teams = teamRepository.findClubTeamsForOperations();
 
         for (Team team : teams) {
             if (team.getId() == null) continue;
@@ -171,12 +171,14 @@ public class YouthAcademyService {
     }
 
     private Junior loadDecisionJunior(Long juniorId, int currentSeason, int currentWeek) {
-        Junior junior = juniorRepository.findById(juniorId).orElseThrow(() -> new RuntimeException("Junior not found"));
+        Junior junior = juniorRepository.findById(juniorId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "JUNIOR_NOT_FOUND", "Junior not found."));
         if (junior.getStatus() != JuniorStatus.ACTIVE) {
-            throw new RuntimeException("Junior is not active in academy");
+            throw new ApiException(HttpStatus.CONFLICT, "JUNIOR_INACTIVE", "Junior is no longer active in the academy.");
         }
         if (junior.getArrivalSeasonNumber() >= currentSeason) {
-            throw new RuntimeException("This junior is too new. Decisions open from next season.");
+            throw new ApiException(HttpStatus.CONFLICT, "DECISION_LOCKED",
+                    "This junior is too new. Decisions open from next season.");
         }
         return junior;
     }
@@ -202,7 +204,7 @@ public class YouthAcademyService {
         Skills skills = skillBuild.skills;
         player.setSkills(skills);
 
-        double value = Math.max(1.0, round2(junior.getAcademySkillExact() * 3 + (random.nextInt(9) - 4)));
+        double value = estimateJuniorMarketValue(junior, position, skills);
         player.setPlayerValue(value);
 
         player = playerRepository.save(player);
@@ -276,6 +278,42 @@ public class YouthAcademyService {
         build.allocatedSkills.put("shooting", base.get(SkillName.STRIKER));
         build.allocationSequence = allocationSequence;
         return build;
+    }
+
+    private double estimateJuniorMarketValue(Junior junior, Position position, Skills skills) {
+        double academySkill = Math.max(1.0, junior.getAcademySkillExact());
+        double talent = Math.max(1.0, junior.getTalent());
+        double visibleSkillAverage = (
+                skills.getStamina()
+                        + skills.getGoalkeeper()
+                        + skills.getDefender()
+                        + skills.getPace()
+                        + skills.getTechnique()
+                        + skills.getPlaymaker()
+                        + skills.getPassing()
+                        + skills.getStriker()
+        ) / 8.0;
+
+        double baseValue = 18_000
+                + (academySkill * 4_200)
+                + (talent * 3_500)
+                + (visibleSkillAverage * 2_250);
+
+        if (junior.getAge() <= 17) {
+            baseValue *= 1.18;
+        } else if (junior.getAge() >= 19) {
+            baseValue *= 0.94;
+        }
+
+        if (position == Position.ATT) {
+            baseValue *= 1.12;
+        } else if (position == Position.GK) {
+            baseValue *= 0.92;
+        }
+
+        double floor = 22_500 + (talent * 2_250);
+        double swing = 0.92 + random.nextDouble() * 0.22;
+        return round2(Math.max(floor, baseValue * swing));
     }
 
     private String toRevealKey(SkillName skillName) {

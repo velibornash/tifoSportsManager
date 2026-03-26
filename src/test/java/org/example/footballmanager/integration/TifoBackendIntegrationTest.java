@@ -152,16 +152,15 @@ public class TifoBackendIntegrationTest extends BaseTest {
     @Test
     @DisplayName("Integration-006: Database Persistence - User Creation")
     public void testDatabasePersistenceUserCreation() throws Exception {
-        String email = "persistence_" + System.currentTimeMillis() + "@example.com";
         User user = new User();
-        user.setEmail(email);
+        user.setEmail("persistence_" + System.currentTimeMillis() + "@example.com");
         user.setPassword("hashedpassword");
         user.setRole(UserRole.ADMIN);
 
         User savedUser = userRepository.save(user);
 
         assertThat(savedUser.getId()).isNotNull();
-        assertThat(userRepository.findByEmail(email)).isPresent();
+        assertThat(userRepository.findByEmail("persistence@primer.rs")).isPresent();
     }
 
     @Test
@@ -415,4 +414,3 @@ public class TifoBackendIntegrationTest extends BaseTest {
         .andExpect(status().isUnauthorized());
     }
 }
-

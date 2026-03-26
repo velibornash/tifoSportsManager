@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import org.example.footballmanager.dto.transfer.PlayerTransferStatusDTO;
 import org.example.footballmanager.dto.transfer.TeamTransferOverviewDTO;
 import org.example.footballmanager.dto.transfer.TransferDTO;
+import org.example.footballmanager.exception.ApiException;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.model.Team;
 import org.example.footballmanager.model.Transfer;
@@ -13,10 +14,12 @@ import org.example.footballmanager.repository.TeamRepository;
 import org.example.footballmanager.repository.TransferRepository;
 import org.example.footballmanager.repository.UserRepository;
 import org.example.footballmanager.util.players.SquadNumberAssigner;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +54,7 @@ public class TransferService {
     @Transactional
     public Transfer listPlayerForTransfer(Long playerId, double askingPrice) {
         Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
 
         Team sellerTeam = requirePlayerTeam(player);
         return listPlayerForTransferEntity(player, sellerTeam.getId(), askingPrice);
@@ -60,14 +63,13 @@ public class TransferService {
     @Transactional
     public TransferDTO listPlayerForTransfer(Long playerId, Long actingTeamId, double askingPrice) {
         Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
         return toTransferDto(listPlayerForTransferEntity(player, actingTeamId, askingPrice), actingTeamId);
     }
 
     @Transactional
     public List<TransferDTO> getAllTransfers(Long viewerTeamId) {
-        return transferRepository.findAll().stream()
-                .filter(this::isActiveListing)
+        return transferRepository.findByStatusAndBuyerTeamIsNullOrderByListedAtDesc(TransferStatus.LISTED).stream()
                 .sorted(Comparator.comparing(Transfer::getListedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(transfer -> toTransferDto(transfer, viewerTeamId))
                 .toList();
@@ -80,20 +82,28 @@ public class TransferService {
         dto.setTeamId(team.getId());
         dto.setTeamName(team.getName());
         dto.setBudget(team.getBudget());
-        List<TransferDTO> listed = transferRepository.findBySellerTeamId(teamId).stream()
+        List<Transfer> teamTransfers = transferRepository
+                .findBySellerTeamIdAndStatusInAndBuyerTeamIsNullOrderByListedAtDesc(teamId, EnumSet.of(TransferStatus.LISTED, TransferStatus.OFFER_RECEIVED));
+        List<TransferDTO> listed = teamTransfers.stream()
                 .filter(this::isActiveListing)
-                .sorted(Comparator.comparing(Transfer::getListedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(transfer -> toTransferDto(transfer, viewerTeamId))
+                .toList();
+        List<TransferDTO> incomingOffers = teamTransfers.stream()
+                .filter(this::hasOpenOffer)
+                .filter(transfer -> !isActiveListing(transfer))
                 .map(transfer -> toTransferDto(transfer, viewerTeamId))
                 .toList();
         dto.setListedPlayers(listed);
         dto.setListedCount(listed.size());
+        dto.setIncomingOffers(incomingOffers);
+        dto.setIncomingOfferCount(incomingOffers.size());
         return dto;
     }
 
     @Transactional
     public PlayerTransferStatusDTO getPlayerTransferStatus(Long playerId, Long viewerTeamId) {
         Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
         Transfer transfer = transferRepository.findByPlayerId(playerId).orElse(null);
 
         Long currentTeamId = player.getTeam() != null ? player.getTeam().getId() : null;
@@ -121,6 +131,8 @@ public class TransferService {
         dto.setCanRemove(ownedByViewer && listed && sortedInterests(transfer).isEmpty());
         dto.setCanBuyListed(listed && viewerTeamId != null && !ownedByViewer);
         dto.setCanDirectBuy(viewerTeamId != null && !ownedByViewer && !listed);
+        dto.setCanAcceptOffer(ownedByViewer && openOffer);
+        dto.setCanRejectOffer(ownedByViewer && openOffer);
         dto.setSummary(buildPlayerSummary(dto));
         return dto;
     }
@@ -130,7 +142,8 @@ public class TransferService {
         Transfer transfer = getActiveTransfer(playerId);
         Long sellerTeamId = transfer.getSellerTeam() != null ? transfer.getSellerTeam().getId() : null;
         if (viewerTeamId != null && Objects.equals(sellerTeamId, viewerTeamId)) {
-            throw new RuntimeException("Owning club cannot register interest in its own player");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TRANSFER",
+                    "Your club cannot register interest in its own player.");
         }
 
         String resolvedClubName = clubName;
@@ -139,7 +152,8 @@ public class TransferService {
         }
 
         if (resolvedClubName == null || resolvedClubName.isBlank()) {
-            throw new RuntimeException("Club name is required to register interest");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CLUB_REQUIRED",
+                    "Club name is required to register interest.");
         }
 
         transfer.getInterestedTeams().add(resolvedClubName.trim());
@@ -151,10 +165,12 @@ public class TransferService {
         Transfer transfer = getActiveTransfer(playerId);
         Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
         if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new RuntimeException("Only the owning club can remove this player from the transfer list");
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Only the owning club can remove this player from the transfer list.");
         }
         if (!sortedInterests(transfer).isEmpty()) {
-            throw new RuntimeException("Cannot remove player from transfer list while a bid/interest exists");
+            throw new ApiException(HttpStatus.CONFLICT, "ACTIVE_INTEREST",
+                    "Cannot remove this player from the transfer list while another club has active interest.");
         }
         transfer.setStatus(TransferStatus.CANCELLED);
         transfer.setCompletedAt(LocalDateTime.now());
@@ -172,12 +188,12 @@ public class TransferService {
     @Transactional
     public TransferDTO directBuyPlayer(Long playerId, Long buyerTeamId, Double offeredPrice) {
         Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
         Team buyerTeam = loadTeam(buyerTeamId);
         Team sellerTeam = requirePlayerTeam(player);
         Transfer transfer = transferRepository.findByPlayerId(playerId).orElseGet(Transfer::new);
         if (Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
-            throw new RuntimeException("Buyer club must be different from seller club");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TRANSFER", "You cannot buy your own player.");
         }
 
         transfer.setPlayer(player);
@@ -186,7 +202,8 @@ public class TransferService {
 
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
         if (buyerBudget + 0.0001 < price) {
-            throw new RuntimeException("Buyer club does not have enough budget");
+            throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_BUDGET",
+                    "Your club does not have enough budget for this offer.");
         }
 
         if (isActiveListing(transfer)) {
@@ -210,8 +227,52 @@ public class TransferService {
     }
 
     @Transactional
+    public TransferDTO acceptBestOffer(Long playerId, Long actingTeamId) {
+        Transfer transfer = getOpenOfferTransfer(playerId);
+        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
+        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can accept incoming offers.");
+        }
+
+        OfferDetails bestOffer = extractBestOffer(transfer);
+        Team buyerTeam = teamRepository.findByName(bestOffer.clubName())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BUYER_NOT_FOUND",
+                        "The club behind this offer could not be found."));
+
+        TransferDTO dto = toTransferDto(completeTransfer(transfer.getPlayer(), buyerTeam, bestOffer.price(), transfer), actingTeamId);
+        dto.setOfferAccepted(true);
+        dto.setActionMessage("Offer accepted. " + transfer.getPlayer().getName()
+                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(bestOffer.price()) + ".");
+        return dto;
+    }
+
+    @Transactional
+    public TransferDTO rejectOffers(Long playerId, Long actingTeamId) {
+        Transfer transfer = getOpenOfferTransfer(playerId);
+        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
+        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can reject incoming offers.");
+        }
+
+        transfer.getInterestedTeams().clear();
+        transfer.setBuyerTeam(null);
+        if (isActiveListing(transfer)) {
+            transfer.setStatus(TransferStatus.LISTED);
+            transfer.setCompletedAt(null);
+        } else {
+            transfer.setStatus(TransferStatus.CANCELLED);
+            transfer.setCompletedAt(LocalDateTime.now());
+        }
+        Transfer saved = transferRepository.save(transfer);
+        TransferDTO dto = toTransferDto(saved, actingTeamId);
+        dto.setOfferAccepted(false);
+        dto.setActionMessage("All incoming offers were rejected.");
+        return dto;
+    }
+
+    @Transactional
     public void simulateWeeklyMarketActivity() {
-        List<Team> allTeams = teamRepository.findAll().stream()
+        List<Team> allTeams = teamRepository.findClubTeamsForOperations().stream()
                 .filter(Objects::nonNull)
                 .filter(team -> team.getId() != null)
                 .toList();
@@ -219,12 +280,10 @@ public class TransferService {
             return;
         }
 
-        Set<Long> humanManagedTeamIds = userRepository.findAll().stream()
-                .map(user -> user.getTeam() != null ? user.getTeam().getId() : null)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<Long> humanManagedTeamIds = new HashSet<>(userRepository.findDistinctManagedTeamIds());
 
-        Map<Long, Transfer> transferByPlayerId = transferRepository.findAll().stream()
+        Map<Long, Transfer> transferByPlayerId = transferRepository
+                .findByStatusInAndBuyerTeamIsNull(EnumSet.of(TransferStatus.LISTED, TransferStatus.OFFER_RECEIVED)).stream()
                 .filter(Objects::nonNull)
                 .filter(transfer -> transfer.getPlayer() != null && transfer.getPlayer().getId() != null)
                 .collect(Collectors.toMap(transfer -> transfer.getPlayer().getId(), Function.identity(), (left, right) -> right));
@@ -240,7 +299,8 @@ public class TransferService {
     private Transfer listPlayerForTransferEntity(Player player, Long actingTeamId, double askingPrice) {
         Team sellerTeam = requirePlayerTeam(player);
         if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new RuntimeException("Only the owning club can list this player");
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Only the owning club can list this player.");
         }
 
         Transfer transfer = transferRepository.findByPlayerId(player.getId()).orElse(new Transfer());
@@ -262,12 +322,13 @@ public class TransferService {
     private Transfer completeTransfer(Player player, Team buyerTeam, double price, Transfer transfer) {
         Team sellerTeam = requirePlayerTeam(player);
         if (Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
-            throw new RuntimeException("Buyer club must be different from seller club");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TRANSFER", "You cannot buy your own player.");
         }
 
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
         if (buyerBudget + 0.0001 < price) {
-            throw new RuntimeException("Buyer club does not have enough budget");
+            throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_BUDGET",
+                    "Your club does not have enough budget for this transfer.");
         }
 
         buyerTeam.setBudget(round2(buyerBudget - price));
@@ -298,9 +359,19 @@ public class TransferService {
 
     private Transfer getActiveTransfer(Long playerId) {
         Transfer transfer = transferRepository.findByPlayerId(playerId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND", "Transfer listing not found."));
         if (!isActiveListing(transfer)) {
-            throw new RuntimeException("Player is not currently transfer listed");
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_LISTED", "Player is not currently transfer listed.");
+        }
+        return transfer;
+    }
+
+    private Transfer getOpenOfferTransfer(Long playerId) {
+        Transfer transfer = transferRepository.findByPlayerId(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND", "Incoming offer was not found."));
+        if (!hasOpenOffer(transfer)) {
+            throw new ApiException(HttpStatus.CONFLICT, "NO_OPEN_OFFERS",
+                    "There are no incoming offers to process for this player.");
         }
         return transfer;
     }
@@ -319,23 +390,20 @@ public class TransferService {
         if (transfer == null || transfer.getPlayer() == null) {
             return false;
         }
-        if (transfer.getStatus() != TransferStatus.OFFER_RECEIVED) {
-            return false;
-        }
-        return transfer.getBuyerTeam() == null && !sortedInterests(transfer).isEmpty();
+        return transfer.getBuyerTeam() == null && sortedInterests(transfer).stream().anyMatch(this::isOfferEntry);
     }
 
     private Team loadTeam(Long teamId) {
         if (teamId == null) {
-            throw new RuntimeException("Team id is required");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "TEAM_REQUIRED", "Team id is required.");
         }
         return teamRepository.findById(teamId)
-                .orElseThrow(() -> new RuntimeException("Team not found"));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEAM_NOT_FOUND", "Team not found."));
     }
 
     private Team requirePlayerTeam(Player player) {
         if (player.getTeam() == null || player.getTeam().getId() == null) {
-            throw new RuntimeException("Player is not assigned to a club");
+            throw new ApiException(HttpStatus.CONFLICT, "PLAYER_UNASSIGNED", "Player is not assigned to a club.");
         }
         return player.getTeam();
     }
@@ -396,8 +464,7 @@ public class TransferService {
             return;
         }
 
-        List<Player> humanPlayers = humanManagedTeamIds.stream()
-                .flatMap(teamId -> playerRepository.findByTeamId(teamId).stream())
+        List<Player> humanPlayers = playerRepository.findByTeamIdIn(humanManagedTeamIds.stream().toList()).stream()
                 .filter(Objects::nonNull)
                 .filter(player -> player.getId() != null)
                 .filter(player -> player.getTeam() != null && player.getTeam().getId() != null)
@@ -493,6 +560,41 @@ public class TransferService {
         transfer.getInterestedTeams().add(normalizedClub + " offered €" + Math.round(price));
     }
 
+    private OfferDetails extractBestOffer(Transfer transfer) {
+        return sortedInterests(transfer).stream()
+                .filter(this::isOfferEntry)
+                .map(this::parseOfferDetails)
+                .filter(Objects::nonNull)
+                .max(Comparator.comparingDouble(OfferDetails::price))
+                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_VALID_OFFERS",
+                        "There are no valid incoming offers to accept."));
+    }
+
+    private OfferDetails parseOfferDetails(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return null;
+        }
+        String marker = " offered €";
+        int splitIndex = rawValue.toLowerCase().indexOf(marker);
+        if (splitIndex < 0) {
+            return null;
+        }
+        String clubName = rawValue.substring(0, splitIndex).trim();
+        String priceText = rawValue.substring(splitIndex + marker.length()).replaceAll("[^0-9.]", "").trim();
+        if (clubName.isBlank() || priceText.isBlank()) {
+            return null;
+        }
+        try {
+            return new OfferDetails(clubName, Math.max(1.0, Double.parseDouble(priceText)));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private boolean isOfferEntry(String rawValue) {
+        return rawValue != null && rawValue.toLowerCase().contains(" offered ");
+    }
+
     private boolean isOfferAccepted(Player player, Team sellerTeam, Team buyerTeam, double price) {
         double baseValue = Math.max(1.0, player.getPlayerValue());
         double ratio = price / baseValue;
@@ -581,6 +683,7 @@ public class TransferService {
         Player player = transfer.getPlayer();
         Long sellerTeamId = transfer.getSellerTeam() != null ? transfer.getSellerTeam().getId() : null;
         boolean ownedByViewer = viewerTeamId != null && Objects.equals(sellerTeamId, viewerTeamId);
+        boolean hasOpenOffer = hasOpenOffer(transfer);
 
         TransferDTO dto = new TransferDTO();
         dto.setId(transfer.getId());
@@ -603,6 +706,11 @@ public class TransferService {
         dto.setOwnedByViewer(ownedByViewer);
         dto.setBuyableByViewer(viewerTeamId != null && !ownedByViewer && isActiveListing(transfer));
         dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer) && sortedInterests(transfer).isEmpty());
+        dto.setCanAcceptOffer(ownedByViewer && hasOpenOffer);
+        dto.setCanRejectOffer(ownedByViewer && hasOpenOffer);
         return dto;
+    }
+
+    private record OfferDetails(String clubName, double price) {
     }
 }

@@ -37,6 +37,22 @@ public class CleanSheetGameState {
     private List<CSMatchResult> matchHistory = new ArrayList<>();
     private List<CSInboxMessage> inbox = new ArrayList<>();
     private List<CSSeasonRecord> seasonHistory = new ArrayList<>();
+    private String internationalCompetitionName;
+    private int internationalMatchday = 1;
+    private List<CSTableEntry> internationalTable = new ArrayList<>();
+    private List<CSInternationalWindow> internationalWindows = new ArrayList<>();
+    private List<CSTransferListing> transferMarket = new ArrayList<>();
+    private String affiliateClubName;
+    private String affiliateClubCountry;
+    private String affiliateClubNote;
+    private double lastRoundIncome;
+    private double lastRoundExpenses;
+    private double weeklyWageBill;
+    private String boardObjectiveTitle;
+    private String boardObjectiveText;
+    private String boardReviewTitle;
+    private String boardReviewText;
+    private List<String> notableNews = new ArrayList<>();
     
     // Club atmosphere and stats tracking
     private CSClubMood clubMood = CSClubMood.builder().build();
@@ -48,7 +64,13 @@ public class CleanSheetGameState {
                 .type(type)
                 .text(text)
                 .timestamp(java.time.LocalDateTime.now().toString())
+                .read(false)
                 .build());
+    }
+
+    public void markInboxMessageRead(int index) {
+        if (index < 0 || index >= inbox.size()) return;
+        inbox.get(index).setRead(true);
     }
 
     public int getTotalRounds() {

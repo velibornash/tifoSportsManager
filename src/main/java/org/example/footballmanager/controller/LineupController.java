@@ -2,6 +2,8 @@ package org.example.footballmanager.controller;
 
 import org.example.footballmanager.model.Lineup;
 import org.example.footballmanager.repository.LineupRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,8 +20,13 @@ public class LineupController {
     }
 
     @GetMapping
-    public List<Lineup> getAll() {
-        return lineupRepository.findAll();
+    public List<Lineup> getAll(@RequestParam(defaultValue = "0") int page,
+                               @RequestParam(defaultValue = "100") int size,
+                               @RequestParam(defaultValue = "id") String sortBy,
+                               @RequestParam(defaultValue = "desc") String direction) {
+        Sort sort = direction.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        return lineupRepository.findAll(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 100)), sort))
+                .getContent();
     }
 
     @GetMapping("/{id}")

@@ -3,6 +3,8 @@ package org.example.footballmanager.service;
 import org.example.footballmanager.model.Match;
 import org.example.footballmanager.model.Stadium;
 import org.example.footballmanager.model.Team;
+import org.example.footballmanager.repository.StadiumRepository;
+import org.example.footballmanager.repository.TeamRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -11,12 +13,21 @@ import java.util.Objects;
 @Service
 public class AttendanceService {
 
+    private final TeamRepository teamRepository;
+    private final StadiumRepository stadiumRepository;
+
+    public AttendanceService(TeamRepository teamRepository, StadiumRepository stadiumRepository) {
+        this.teamRepository = teamRepository;
+        this.stadiumRepository = stadiumRepository;
+    }
+
     public int ensureAttendance(Match match) {
         if (match == null) {
             return 0;
         }
-        if (match.getStadium() == null && match.getHomeTeam() != null) {
-            match.setStadium(match.getHomeTeam().getStadium());
+        Stadium stadium = resolveStadium(match);
+        if (match.getStadium() == null && stadium != null) {
+            match.setStadium(stadium);
         }
         int attendance = estimateAttendance(match);
         match.setAttendance(attendance);
@@ -30,7 +41,7 @@ public class AttendanceService {
 
         Team homeTeam = match.getHomeTeam();
         Team awayTeam = match.getAwayTeam();
-        Stadium stadium = match.getStadium() != null ? match.getStadium() : homeTeam.getStadium();
+        Stadium stadium = resolveStadium(match);
         int capacity = Math.max(2500, stadium != null && stadium.getCapacity() != null ? stadium.getCapacity() : 6000);
 
         double homeReputation = clamp01(resolveReputation(homeTeam, 54.0) / 100.0);
@@ -52,6 +63,21 @@ public class AttendanceService {
         int attendance = (int) Math.round(capacity * fill);
         attendance = Math.max(600, Math.min(capacity, attendance));
         return roundToNearestTen(attendance);
+    }
+
+    private Stadium resolveStadium(Match match) {
+        if (match == null) {
+            return null;
+        }
+        if (match.getStadium() != null && match.getStadium().getId() != null) {
+            return stadiumRepository.findById(match.getStadium().getId()).orElse(null);
+        }
+        if (match.getHomeTeam() == null || match.getHomeTeam().getId() == null) {
+            return null;
+        }
+        return teamRepository.findWithStadiumById(match.getHomeTeam().getId())
+                .map(Team::getStadium)
+                .orElse(null);
     }
 
     private double resolveReputation(Team team, double fallback) {

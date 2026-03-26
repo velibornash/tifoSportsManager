@@ -3,10 +3,7 @@ package org.example.footballmanager.controller;
 import org.example.footballmanager.dto.PlayerDTO;
 import org.example.footballmanager.model.Player;
 import org.example.footballmanager.repository.PlayerRepository;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,8 +21,13 @@ public class PlayerController {
     }
 
     @GetMapping
-    public List<PlayerDTO> getAllPlayers() {
-        return playerRepository.findAll()
+    public List<PlayerDTO> getAllPlayers(@RequestParam(defaultValue = "0") int page,
+                                         @RequestParam(defaultValue = "100") int size,
+                                         @RequestParam(defaultValue = "id") String sortBy,
+                                         @RequestParam(defaultValue = "asc") String direction) {
+        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 250)), sort);
+        return playerRepository.findAll(pageable).getContent()
                 .stream()
                 .map(PlayerDTO::from)
                 .collect(Collectors.toList());

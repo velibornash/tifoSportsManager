@@ -134,6 +134,9 @@ public class ZoxMatchAnalyticsController {
         try {
             log.info("Fetching replay chunk {} for match {}", chunkIndex, matchId);
             return ResponseEntity.ok(zoxReplayService.getPlaybackChunk(matchId, chunkIndex));
+        } catch (IllegalArgumentException e) {
+            log.warn("Replay chunk {} unavailable for match {}: {}", chunkIndex, matchId, e.getMessage());
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             log.error("Error fetching replay chunk {} for match {}", chunkIndex, matchId, e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

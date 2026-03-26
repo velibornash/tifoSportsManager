@@ -84,6 +84,14 @@ public class CleanSheetController {
         return ResponseEntity.ok(cleanSheetService.getInbox(user.getId()));
     }
 
+    @PostMapping("/inbox/{index}/read")
+    public ResponseEntity<?> markInboxRead(@AuthenticationPrincipal User user,
+                                           @PathVariable int index) {
+        if (user == null) return ResponseEntity.status(401).build();
+        cleanSheetService.markInboxRead(user.getId(), index);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
     @PutMapping("/tactics")
     public ResponseEntity<CSTactics> changeTactics(@AuthenticationPrincipal User user,
                                                     @RequestParam(required = false) String formation,
@@ -124,6 +132,63 @@ public class CleanSheetController {
         return ResponseEntity.ok(cleanSheetService.getTopAssists(user.getId()));
     }
 
+    @GetMapping("/transfers")
+    public ResponseEntity<?> getTransfers(@AuthenticationPrincipal User user) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.getTransferCentre(user.getId()));
+    }
+
+    @PostMapping("/transfers/list/{playerId}")
+    public ResponseEntity<?> listTransfer(@AuthenticationPrincipal User user,
+                                          @PathVariable Long playerId,
+                                          @RequestBody(required = false) Map<String, Object> payload) {
+        if (user == null) return ResponseEntity.status(401).build();
+        double askingPrice = payload != null && payload.get("askingPrice") instanceof Number number
+                ? number.doubleValue()
+                : 0.0;
+        return ResponseEntity.ok(cleanSheetService.listPlayerForTransfer(user.getId(), playerId, askingPrice));
+    }
+
+    @DeleteMapping("/transfers/list/{playerId}")
+    public ResponseEntity<?> removeTransfer(@AuthenticationPrincipal User user,
+                                            @PathVariable Long playerId) {
+        if (user == null) return ResponseEntity.status(401).build();
+        cleanSheetService.removePlayerFromTransferList(user.getId(), playerId);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    @PostMapping("/transfers/buy/{playerId}")
+    public ResponseEntity<?> buyTransfer(@AuthenticationPrincipal User user,
+                                         @PathVariable Long playerId) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.buyListedPlayer(user.getId(), playerId));
+    }
+
+    @PostMapping("/transfers/bid/{playerId}")
+    public ResponseEntity<?> bidTransfer(@AuthenticationPrincipal User user,
+                                         @PathVariable Long playerId,
+                                         @RequestBody(required = false) Map<String, Object> payload) {
+        if (user == null) return ResponseEntity.status(401).build();
+        double offer = payload != null && payload.get("offer") instanceof Number number
+                ? number.doubleValue()
+                : 0.0;
+        return ResponseEntity.ok(cleanSheetService.bidForPlayer(user.getId(), playerId, offer));
+    }
+
+    @PostMapping("/transfers/accept/{playerId}")
+    public ResponseEntity<?> acceptOffer(@AuthenticationPrincipal User user,
+                                         @PathVariable Long playerId) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.acceptIncomingOffer(user.getId(), playerId));
+    }
+
+    @PostMapping("/transfers/reject/{playerId}")
+    public ResponseEntity<?> rejectOffer(@AuthenticationPrincipal User user,
+                                         @PathVariable Long playerId) {
+        if (user == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(cleanSheetService.rejectIncomingOffer(user.getId(), playerId));
+    }
+
     private Map<String, Object> buildStateResponse(CleanSheetGameState state) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("active", true);
@@ -140,6 +205,22 @@ public class CleanSheetController {
         response.put("inbox", state.getInbox());
         response.put("seasonHistory", state.getSeasonHistory());
         response.put("clubMood", state.getClubMood());
+        response.put("internationalCompetitionName", state.getInternationalCompetitionName());
+        response.put("internationalMatchday", state.getInternationalMatchday());
+        response.put("internationalTable", state.getInternationalTable());
+        response.put("internationalWindows", state.getInternationalWindows());
+        response.put("transferMarket", state.getTransferMarket());
+        response.put("affiliateClubName", state.getAffiliateClubName());
+        response.put("affiliateClubCountry", state.getAffiliateClubCountry());
+        response.put("affiliateClubNote", state.getAffiliateClubNote());
+        response.put("lastRoundIncome", state.getLastRoundIncome());
+        response.put("lastRoundExpenses", state.getLastRoundExpenses());
+        response.put("weeklyWageBill", state.getWeeklyWageBill());
+        response.put("boardObjectiveTitle", state.getBoardObjectiveTitle());
+        response.put("boardObjectiveText", state.getBoardObjectiveText());
+        response.put("boardReviewTitle", state.getBoardReviewTitle());
+        response.put("boardReviewText", state.getBoardReviewText());
+        response.put("notableNews", state.getNotableNews());
         return response;
     }
 }

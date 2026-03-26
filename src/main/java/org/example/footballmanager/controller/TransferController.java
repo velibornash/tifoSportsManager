@@ -58,6 +58,16 @@ public class TransferController {
         return transferService.directBuyPlayer(playerId, request.getTeamId(), request.getPrice());
     }
 
+    @PostMapping("/accept-offer/{playerId}")
+    public TransferDTO acceptBestOffer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.acceptBestOffer(playerId, request.getTeamId());
+    }
+
+    @PostMapping("/reject-offers/{playerId}")
+    public TransferDTO rejectOffers(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.rejectOffers(playerId, request.getTeamId());
+    }
+
     @DeleteMapping("/remove/{playerId}")
     public void removeFromList(@PathVariable Long playerId, @RequestParam Long teamId) {
         transferService.removeFromTransferList(playerId, teamId);
