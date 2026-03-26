@@ -43,3 +43,4 @@ build/
 
 # Stakpak session files
 .stakpak/session*
+/src/main/java/org/example/footballmanager/open-football-master/

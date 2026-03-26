@@ -40,7 +40,17 @@ public class ZoxMatchPreviewDTO {
     private Integer awayTeamRating;
     private String homeRecentForm; // W/D/L string
     private String awayRecentForm;
-    
+    private Integer homeRecentFormPoints;
+    private Integer awayRecentFormPoints;
+    private Double homeFormationFitness;
+    private Double awayFormationFitness;
+    private Double homeBenchQuality;
+    private Double awayBenchQuality;
+    private Integer homePositionMismatches;
+    private Integer awayPositionMismatches;
+    private Double homeAvailabilityScore;
+    private Double awayAvailabilityScore;
+
     // Player lineups with ratings
     private List<ZoxPlayerRatingDTO> homeLineup;
     private List<ZoxPlayerRatingDTO> awayLineup;
@@ -53,6 +63,9 @@ public class ZoxMatchPreviewDTO {
     // Injury/suspension info
     private List<String> homeAbsentees;
     private List<String> awayAbsentees;
-    
+    private List<String> predictionReasons;
+    private List<ZoxInsightItemDTO> homeInsights;
+    private List<ZoxInsightItemDTO> awayInsights;
+
     private String analysisText;
 }

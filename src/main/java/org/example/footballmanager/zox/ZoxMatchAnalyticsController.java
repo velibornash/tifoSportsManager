@@ -68,6 +68,17 @@ public class ZoxMatchAnalyticsController {
         }
     }
 
+    @GetMapping("/post-match-report/{matchId}")
+    public ResponseEntity<?> getPostMatchReport(@PathVariable Long matchId) {
+        try {
+            log.info("Fetching post-match report for match {}", matchId);
+            return ResponseEntity.ok(zoxAnalyticsService.generatePostMatchReport(matchId));
+        } catch (Exception e) {
+            log.error("Error fetching post-match report for match {}", matchId, e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /**
      * Match prediction pre meča
      */

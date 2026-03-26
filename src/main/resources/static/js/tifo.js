@@ -1,4 +1,4 @@
-﻿// tifo.js - Clean Sheet Text Mode (in-memory)
+﻿﻿// tifo.js - Clean Sheet Text Mode (in-memory)
 
 let gameState = null;
 // Store all round results (keyed by round) so schedule fixtures can link to any match
@@ -645,6 +645,117 @@ function buildRoundReportDigest(text) {
     return `<div class="cs-round-digest">
         ${scoreLines.map(line => `<div class="cs-round-digest-row">${injectEntityLinks(line.replace('[YOUR MATCH]', '<span class="cs-round-you">YOUR MATCH</span>'))}</div>`).join('')}
     </div>`;
+}
+
+function countMatchEvents(match, teamName, types) {
+    return (match?.events || []).filter(e => e.teamName === teamName && types.includes(e.eventType)).length;
+}
+
+function buildTeletextReportHeadline(match) {
+    if (!match) return 'No featured match is available.';
+    const diff = Math.abs(Number(match.homeGoals || 0) - Number(match.awayGoals || 0));
+    if (Number(match.homeGoals || 0) === Number(match.awayGoals || 0)) {
+        return 'Tight affair with neither side forcing the decisive break.';
+    }
+    const winner = Number(match.homeGoals || 0) > Number(match.awayGoals || 0) ? match.homeTeamName : match.awayTeamName;
+    if (diff >= 3) return `${winner} ran away with the headline scoreline.`;
+    if (diff === 2) return `${winner} created clear daylight before full time.`;
+    return `${winner} edged the featured contest by a single strike.`;
+}
+
+function buildTeletextRoundDigestHtml(allResults, states, round) {
+    const results = Array.isArray(allResults) ? allResults : [];
+    if (!results.length) {
+        return '<div class="cs-tt-panel"><div class="cs-tt-panel-title">Round digest unavailable.</div></div>';
+    }
+
+    const totalGoals = results.reduce((sum, match) => sum + Number(match.homeGoals || 0) + Number(match.awayGoals || 0), 0);
+    const biggestWin = [...results].sort((a, b) =>
+        Math.abs(Number(b.homeGoals || 0) - Number(b.awayGoals || 0)) - Math.abs(Number(a.homeGoals || 0) - Number(a.awayGoals || 0))
+    )[0];
+    const highestScoring = [...results].sort((a, b) =>
+        (Number(b.homeGoals || 0) + Number(b.awayGoals || 0)) - (Number(a.homeGoals || 0) + Number(a.awayGoals || 0))
+    )[0];
+    const featured = results.find(match => states.find(state => state.userMatch && state.homeTeamId === match.homeTeamId && state.awayTeamId === match.awayTeamId)) || results[0];
+    const scoreRows = results
+        .slice()
+        .sort((a, b) => {
+            const aUser = states.some(state => state.userMatch && state.homeTeamId === a.homeTeamId && state.awayTeamId === a.awayTeamId);
+            const bUser = states.some(state => state.userMatch && state.homeTeamId === b.homeTeamId && state.awayTeamId === b.awayTeamId);
+            if (aUser !== bUser) return aUser ? -1 : 1;
+            return String(a.homeTeamName || '').localeCompare(String(b.homeTeamName || ''));
+        })
+        .map(match => {
+            const isUserMatch = states.some(state => state.userMatch && state.homeTeamId === match.homeTeamId && state.awayTeamId === match.awayTeamId);
+            return `<div class="cs-tt-score-row ${isUserMatch ? 'is-user-match' : ''}">
+                <span>${escapeHtml(match.homeTeamName)}</span>
+                <strong>${match.homeGoals}:${match.awayGoals}</strong>
+                <span>${escapeHtml(match.awayTeamName)}</span>
+                <em>${isUserMatch ? 'YOUR MATCH' : 'FINAL'}</em>
+            </div>`;
+        }).join('');
+
+    return `
+        <div class="cs-tt-layout digest">
+            <section class="cs-tt-panel">
+                <div class="cs-tt-panel-title">Round ${round} digest</div>
+                <div class="cs-tt-chip-row">
+                    <div class="cs-tt-chip"><span>Goals</span><strong>${totalGoals}</strong></div>
+                    <div class="cs-tt-chip"><span>Biggest win</span><strong>${escapeHtml(biggestWin ? `${biggestWin.homeGoals}:${biggestWin.awayGoals}` : '-')}</strong></div>
+                    <div class="cs-tt-chip"><span>Goal rush</span><strong>${escapeHtml(highestScoring ? `${highestScoring.homeGoals + highestScoring.awayGoals} total` : '-')}</strong></div>
+                </div>
+                <div class="cs-tt-note">${escapeHtml(featured ? `${featured.homeTeamName} ${featured.homeGoals}:${featured.awayGoals} ${featured.awayTeamName} is the featured board result.` : 'No featured match available.')}</div>
+            </section>
+            <section class="cs-tt-panel">
+                <div class="cs-tt-panel-title">Final scores</div>
+                <div class="cs-tt-score-grid">${scoreRows}</div>
+            </section>
+        </div>`;
+}
+
+function buildTeletextMatchReportHtml(match) {
+    if (!match) {
+        return '<div class="cs-tt-panel"><div class="cs-tt-panel-title">No featured match file.</div></div>';
+    }
+    const homeShots = countMatchEvents(match, match.homeTeamName, ['SHOT_ON_TARGET', 'SHOT_OFF_TARGET']);
+    const awayShots = countMatchEvents(match, match.awayTeamName, ['SHOT_ON_TARGET', 'SHOT_OFF_TARGET']);
+    const homeControl = extractControlEstimate(match);
+    const motm = findManOfTheMatch(match);
+    const keyMoments = (match.events || [])
+        .filter(event => ['GOAL', 'PENALTY', 'RED_CARD', 'VAR_REVIEW', 'INJURY', 'SUBSTITUTION'].includes(event.eventType))
+        .slice(0, 5)
+        .map(event => {
+            const codeMap = {
+                GOAL: 'GOAL',
+                PENALTY: event.penaltyScored ? 'PEN' : 'MISS',
+                RED_CARD: 'RC',
+                VAR_REVIEW: 'VAR',
+                INJURY: 'INJ',
+                SUBSTITUTION: 'SUB'
+            };
+            const subject = event.eventType === 'SUBSTITUTION'
+                ? `${event.playerOutName || '?'} / ${event.playerInName || '?'}`
+                : event.playerName || event.teamName || 'Match note';
+            return `<div class="cs-tt-moment"><strong>${event.minute || 0}' ${codeMap[event.eventType] || event.eventType}</strong><span>${escapeHtml(subject)}</span></div>`;
+        }).join('');
+
+    return `
+        <div class="cs-tt-layout report">
+            <section class="cs-tt-panel cs-tt-panel-highlight">
+                <div class="cs-tt-panel-title">Featured match report</div>
+                <div class="cs-tt-report-score">${escapeHtml(match.homeTeamName)} <strong>${match.homeGoals}:${match.awayGoals}</strong> ${escapeHtml(match.awayTeamName)}</div>
+                <div class="cs-tt-note">${escapeHtml(buildTeletextReportHeadline(match))}</div>
+                <div class="cs-tt-chip-row">
+                    <div class="cs-tt-chip"><span>Control</span><strong>${homeControl}% / ${100 - homeControl}%</strong></div>
+                    <div class="cs-tt-chip"><span>Shots</span><strong>${homeShots} / ${awayShots}</strong></div>
+                    <div class="cs-tt-chip"><span>Standout</span><strong>${escapeHtml(motm?.playerName || 'N/A')}</strong></div>
+                </div>
+            </section>
+            <section class="cs-tt-panel">
+                <div class="cs-tt-panel-title">Key moments</div>
+                <div class="cs-tt-moment-stack">${keyMoments || '<div class="cs-tt-note">No decisive flashpoints were logged.</div>'}</div>
+            </section>
+        </div>`;
 }
 
 function findManOfTheMatch(match) {

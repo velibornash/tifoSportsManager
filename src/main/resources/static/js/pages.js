@@ -1735,36 +1735,31 @@ import { createCommunityFeature } from './pages/features/community.js';
             }
 
             function renderMatchPreview(previewPayload) {
-                const prediction = previewPayload?.prediction || {};
-                const h2h = previewPayload?.h2h || {};
-                const meetings = Array.isArray(previewPayload?.meetings) ? previewPayload.meetings : [];
+                const predictionReasons = Array.isArray(previewPayload?.predictionReasons) ? previewPayload.predictionReasons : [];
+                const homeInsights = Array.isArray(previewPayload?.homeInsights) ? previewPayload.homeInsights : [];
+                const awayInsights = Array.isArray(previewPayload?.awayInsights) ? previewPayload.awayInsights : [];
+                const homeAbsentees = Array.isArray(previewPayload?.homeAbsentees) ? previewPayload.homeAbsentees : [];
+                const awayAbsentees = Array.isArray(previewPayload?.awayAbsentees) ? previewPayload.awayAbsentees : [];
+                const homeWin = Number(previewPayload?.homeWinProbability ?? 0) * 100;
+                const draw = Number(previewPayload?.drawProbability ?? 0) * 100;
+                const awayWin = Number(previewPayload?.awayWinProbability ?? 0) * 100;
+                const expectedHomeGoals = Number(previewPayload?.expectedHomeGoals ?? 0);
+                const expectedAwayGoals = Number(previewPayload?.expectedAwayGoals ?? 0);
+                const homeFormationFitness = Number(previewPayload?.homeFormationFitness ?? 0);
+                const awayFormationFitness = Number(previewPayload?.awayFormationFitness ?? 0);
+                const homeBenchQuality = Number(previewPayload?.homeBenchQuality ?? 0);
+                const awayBenchQuality = Number(previewPayload?.awayBenchQuality ?? 0);
+                const homeAvailabilityScore = Number(previewPayload?.homeAvailabilityScore ?? 0);
+                const awayAvailabilityScore = Number(previewPayload?.awayAvailabilityScore ?? 0);
+                const analysis = escapeHtml(String(previewPayload?.analysisText || 'No extra preview analysis available.'));
 
-                const homeWin = Number(prediction.homeWinProbability ?? 0);
-                const draw = Number(prediction.drawProbability ?? 0);
-                const awayWin = Number(prediction.awayWinProbability ?? 0);
-                const confidence = Number(prediction.confidence ?? 0);
-                const expectedHomeGoals = Number(prediction.expectedHomeGoals ?? 0);
-                const expectedAwayGoals = Number(prediction.expectedAwayGoals ?? 0);
-                const homeStrength = Number(previewPayload?.homeTeamStrength ?? 0);
-                const awayStrength = Number(previewPayload?.awayTeamStrength ?? 0);
-                const homeForm = Number(previewPayload?.homeTeamForm ?? 0);
-                const awayForm = Number(previewPayload?.awayTeamForm ?? 0);
-                const analysis = escapeHtml(String(prediction.analysis || 'No extra preview analysis available.'));
-                const h2hSummary = escapeHtml(String(h2h.summary || 'No head-to-head history yet.'));
-                const lastMeetingSummary = escapeHtml(String(h2h.lastMeetingSummary || 'First recorded meeting.'));
-                const lastMeetingDate = escapeHtml(String(h2h.lastMeetingDate || 'N/A'));
+                const renderInsights = items => items.length
+                    ? items.map(item => `<div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="color:#9aa0a6;">${escapeHtml(String(item.label || 'Insight'))}</span><strong>${escapeHtml(String(item.value || 'N/A'))}</strong></div>`).join('')
+                    : `<div style="color:#aaa;">No extra insight available.</div>`;
 
-                const meetingsHtml = meetings.length
-                    ? meetings.map(meeting => {
-                        const meetingId = Number(meeting?.matchId ?? 0);
-                        const line = `${escapeHtml(String(meeting.homeTeam || 'Home'))} ${Number(meeting.homeGoals ?? 0)} - ${Number(meeting.awayGoals ?? 0)} ${escapeHtml(String(meeting.awayTeam || 'Away'))}`;
-                        const meta = `${escapeHtml(formatDateTimeLabel(meeting.matchDate))} · ${escapeHtml(String(meeting.summary || ''))}`;
-                        if (meetingId) {
-                            return `<button type="button" class="fm-action-btn secondary" style="width:100%; text-align:left; justify-content:space-between; gap:12px; margin-bottom:10px;" onclick="loadMatch(${meetingId}, 'match')"><span>${line}</span><span style="color:#9aa0a6; font-size:0.9em;">${meta}</span></button>`;
-                        }
-                        return `<div style="padding:10px 12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05);"><div>${line}</div><div style="color:#9aa0a6; font-size:0.9em; margin-top:4px;">${meta}</div></div>`;
-                    }).join('')
-                    : `<div style="color:#aaa; text-align:center; padding:14px 0;">No previous meetings recorded.</div>`;
+                const renderAbsentees = items => items.length
+                    ? items.map(item => `<span style="display:inline-flex; padding:7px 10px; border-radius:999px; background:rgba(255,255,255,0.06); margin:0 8px 8px 0;">${escapeHtml(String(item))}</span>`).join('')
+                    : `<span style="color:#9aa0a6;">No absences reported.</span>`;
 
                 infoDiv.innerHTML = `
                     <div class="fm-match-report-shell">
@@ -1772,29 +1767,48 @@ import { createCommunityFeature } from './pages/features/community.js';
                         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:16px;">
                             <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05); text-align:center;">
                                 <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:8px;">Prediction</div>
-                                <div style="font-size:0.92em; color:#cfd8dc; margin-bottom:8px;">${confidence}% confidence</div>
                                 <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">1</div><div style="font-size:1.35em; font-weight:700;">${homeWin}%</div></div>
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">X</div><div style="font-size:1.35em; font-weight:700;">${draw}%</div></div>
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">2</div><div style="font-size:1.35em; font-weight:700;">${awayWin}%</div></div>
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">1</div><div style="font-size:1.35em; font-weight:700;">${homeWin.toFixed(0)}%</div></div>
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">X</div><div style="font-size:1.35em; font-weight:700;">${draw.toFixed(0)}%</div></div>
+                                    <div><div style="font-size:0.8em; color:#9aa0a6;">2</div><div style="font-size:1.35em; font-weight:700;">${awayWin.toFixed(0)}%</div></div>
                                 </div>
                                 <div style="font-size:0.92em; color:#dfe6eb;">xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}</div>
                                 <div style="font-size:0.88em; color:#9aa0a6; margin-top:8px;">${analysis}</div>
                             </div>
                             <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05);">
-                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:10px;">Team edge</div>
+                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:10px;">Squad fit</div>
                                 <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:10px;">
-                                    <div><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(homeTeamName)}</div><div style="font-weight:700;">OVR ${homeStrength}</div><div style="color:#9aa0a6; font-size:0.88em;">Form ${homeForm.toFixed(1)}</div></div>
-                                    <div style="text-align:right;"><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(awayTeamName)}</div><div style="font-weight:700;">OVR ${awayStrength}</div><div style="color:#9aa0a6; font-size:0.88em;">Form ${awayForm.toFixed(1)}</div></div>
+                                    <div><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(homeTeamName)}</div><div style="font-weight:700;">${escapeHtml(String(previewPayload?.homeFormation || '4-3-3'))}</div><div style="color:#9aa0a6; font-size:0.88em;">Fit ${(homeFormationFitness * 100).toFixed(0)}%</div><div style="color:#9aa0a6; font-size:0.88em;">Bench ${homeBenchQuality.toFixed(1)}</div></div>
+                                    <div style="text-align:right;"><div style="font-size:0.82em; color:#9aa0a6;">${escapeHtml(awayTeamName)}</div><div style="font-weight:700;">${escapeHtml(String(previewPayload?.awayFormation || '4-3-3'))}</div><div style="color:#9aa0a6; font-size:0.88em;">Fit ${(awayFormationFitness * 100).toFixed(0)}%</div><div style="color:#9aa0a6; font-size:0.88em;">Bench ${awayBenchQuality.toFixed(1)}</div></div>
                                 </div>
-                                <div style="padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); font-size:0.92em; color:#dfe6eb;">${h2hSummary}</div>
-                                <div style="margin-top:8px; color:#9aa0a6; font-size:0.88em;">${lastMeetingSummary}</div>
-                                <div style="margin-top:4px; color:#7f8c8d; font-size:0.82em;">${lastMeetingDate}</div>
+                                <div style="padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); font-size:0.92em; color:#dfe6eb;">Availability ${homeAvailabilityScore.toFixed(0)}% vs ${awayAvailabilityScore.toFixed(0)}%</div>
+                                <div style="margin-top:8px; color:#9aa0a6; font-size:0.88em;">Position mismatches ${Number(previewPayload?.homePositionMismatches ?? 0)} : ${Number(previewPayload?.awayPositionMismatches ?? 0)}</div>
+                                <div style="margin-top:4px; color:#7f8c8d; font-size:0.82em;">${escapeHtml(String(previewPayload?.homePlayStyle || 'BALANCED'))} vs ${escapeHtml(String(previewPayload?.awayPlayStyle || 'BALANCED'))}</div>
                             </div>
                         </div>
-                        <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                            <h4 style="margin:0 0 12px; color:#dfe6eb;">Recent H2H meetings</h4>
-                            ${meetingsHtml}
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 12px; color:#dfe6eb;">Why this prediction</h4>
+                                <ul style="margin:0; padding-left:18px; color:#dfe6eb;">${predictionReasons.map(reason => `<li style="margin-bottom:8px;">${escapeHtml(String(reason))}</li>`).join('')}</ul>
+                            </div>
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${escapeHtml(homeTeamName)} insights</h4>
+                                ${renderInsights(homeInsights)}
+                            </div>
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${escapeHtml(awayTeamName)} insights</h4>
+                                ${renderInsights(awayInsights)}
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-top:14px;">
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${escapeHtml(homeTeamName)} absences</h4>
+                                ${renderAbsentees(homeAbsentees)}
+                            </div>
+                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${escapeHtml(awayTeamName)} absences</h4>
+                                ${renderAbsentees(awayAbsentees)}
+                            </div>
                         </div>
                     </div>`;
             }
@@ -1808,7 +1822,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading preview...</p>`;
 
                 try {
-                    const response = await authFetch(`/matches/${matchId}/preview`);
+                    const response = await authFetch(`/api/zox/match-preview/${matchId}`);
                     if (!response.ok) {
                         throw new Error(`Preview unavailable (${response.status})`);
                     }
@@ -1822,8 +1836,12 @@ import { createCommunityFeature } from './pages/features/community.js';
 
             function renderMatchReport(reportPayload) {
                 const headline = escapeHtml(String(reportPayload?.headline || 'Match Report'));
-                const reportText = escapeHtml(String(reportPayload?.report || 'No match report available.'));
-                const motm = reportPayload?.manOfTheMatch || null;
+                const reportText = escapeHtml(String(reportPayload?.summary || 'No match report available.'));
+                const motm = reportPayload?.playerOfTheMatch || null;
+                const timeline = Array.isArray(reportPayload?.timeline) ? reportPayload.timeline : [];
+                const stats = reportPayload?.stats || {};
+                const homeTop = Array.isArray(reportPayload?.homeTopPerformers) ? reportPayload.homeTopPerformers : [];
+                const awayTop = Array.isArray(reportPayload?.awayTopPerformers) ? reportPayload.awayTopPerformers : [];
                 const motmFacts = [];
                 if (Number.isFinite(Number(motm?.rating10))) motmFacts.push(`${Number(motm.rating10).toFixed(1)} rating`);
                 if (Number(motm?.goals) > 0) motmFacts.push(`${Number(motm.goals)} goal${Number(motm.goals) === 1 ? '' : 's'}`);
@@ -1857,6 +1875,34 @@ import { createCommunityFeature } from './pages/features/community.js';
                         <div class="fm-match-report-headline">${headline}</div>
                         ${motmBlock}
                         <div class="fm-match-report-body">${reportText}</div>
+                        <div style="margin-top:14px; color:#9aa0a6;">${escapeHtml(String(reportPayload?.turningPoint || ''))}</div>
+                        <div style="margin-top:8px; color:#9aa0a6;">${escapeHtml(String(reportPayload?.tacticalVerdict || ''))}</div>
+                        <div style="margin-top:18px; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+                            <div style="padding:14px; border-radius:12px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 10px; color:#dfe6eb;">Top ${escapeHtml(homeTeamName)}</h4>
+                                ${homeTop.length ? homeTop.map(player => `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><strong>${escapeHtml(String(player.playerName || 'Unknown'))}</strong><div style="color:#9aa0a6; font-size:0.88em;">${escapeHtml(String(player.summary || 'Match contribution logged'))}</div></div>`).join('') : '<div style="color:#9aa0a6;">No top performers logged.</div>'}
+                            </div>
+                            <div style="padding:14px; border-radius:12px; background:rgba(255,255,255,0.04);">
+                                <h4 style="margin:0 0 10px; color:#dfe6eb;">Top ${escapeHtml(awayTeamName)}</h4>
+                                ${awayTop.length ? awayTop.map(player => `<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><strong>${escapeHtml(String(player.playerName || 'Unknown'))}</strong><div style="color:#9aa0a6; font-size:0.88em;">${escapeHtml(String(player.summary || 'Match contribution logged'))}</div></div>`).join('') : '<div style="color:#9aa0a6;">No top performers logged.</div>'}
+                            </div>
+                        </div>
+                        <div style="margin-top:16px; padding:14px; border-radius:12px; background:rgba(255,255,255,0.04);">
+                            <h4 style="margin:0 0 10px; color:#dfe6eb;">Team stats</h4>
+                            <table style="width:100%; border-collapse:collapse;">
+                                <tbody>
+                                    <tr><td style="padding:8px 0;">Possession</td><td style="text-align:center;">${Number(stats.homePossession || 0).toFixed(0)}%</td><td style="text-align:center;">${Number(stats.awayPossession || 0).toFixed(0)}%</td></tr>
+                                    <tr><td style="padding:8px 0;">xG</td><td style="text-align:center;">${Number(stats.homeExpectedGoals || 0).toFixed(2)}</td><td style="text-align:center;">${Number(stats.awayExpectedGoals || 0).toFixed(2)}</td></tr>
+                                    <tr><td style="padding:8px 0;">Shots on target</td><td style="text-align:center;">${Number(stats.homeShotsOnTarget || 0)}</td><td style="text-align:center;">${Number(stats.awayShotsOnTarget || 0)}</td></tr>
+                                    <tr><td style="padding:8px 0;">Pass accuracy</td><td style="text-align:center;">${Number(stats.homePassAccuracy || 0).toFixed(0)}%</td><td style="text-align:center;">${Number(stats.awayPassAccuracy || 0).toFixed(0)}%</td></tr>
+                                    <tr><td style="padding:8px 0;">Corners</td><td style="text-align:center;">${Number(stats.homeCorners || 0)}</td><td style="text-align:center;">${Number(stats.awayCorners || 0)}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:16px; padding:14px; border-radius:12px; background:rgba(255,255,255,0.04);">
+                            <h4 style="margin:0 0 10px; color:#dfe6eb;">Timeline</h4>
+                            ${timeline.length ? timeline.map(event => `<div style="display:grid; grid-template-columns:48px 28px minmax(0,1fr); gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><strong style="color:#e8d47d;">${Number(event.minute || 0)}'</strong><span>${escapeHtml(String(event.icon || '•'))}</span><div><strong>${escapeHtml(String(event.title || 'Event'))}</strong><div style="color:#9aa0a6; font-size:0.88em;">${escapeHtml(String(event.teamName || ''))} · ${escapeHtml(String(event.detail || ''))}</div></div></div>`).join('') : '<div style="color:#9aa0a6;">No key events logged.</div>'}
+                        </div>
                     </div>`;
             }
 
@@ -1871,7 +1917,7 @@ import { createCommunityFeature } from './pages/features/community.js';
                 infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading match report...</p>`;
 
                 try {
-                    const response = await authFetch(`/matches/${matchId}/report`);
+                    const response = await authFetch(`/api/zox/post-match-report/${matchId}`);
                     if (!response.ok) {
                         throw new Error(`Report unavailable (${response.status})`);
                     }
@@ -5287,7 +5333,6 @@ import { createCommunityFeature } from './pages/features/community.js';
     window.openStadiumImage = openStadiumImage;
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
-
 
 
 
