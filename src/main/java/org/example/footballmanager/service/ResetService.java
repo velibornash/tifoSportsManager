@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -28,8 +27,9 @@ public class ResetService {
 
     @Transactional
     public void resetDatabase() {
-        log.warn("RESET DATABASE STARTED - full truncate with identity reset");
+        log.warn("RESET DATABASE STARTED - preserving owner account and resetting football data");
         sanitizeLegacyLineupOrderSchema();
+        preserveOwnerAccount();
         List<String> desiredOrder = List.of(
                 "community_message",
                 "registration_request",
@@ -81,12 +81,41 @@ public class ResetService {
             }
         }
 
-        if (!toTruncate.isEmpty()) {
-            String sql = "TRUNCATE TABLE " + toTruncate.stream().collect(Collectors.joining(", "))
-                    + " RESTART IDENTITY CASCADE";
-            entityManager.createNativeQuery(sql).executeUpdate();
+        for (String tableName : toTruncate) {
+            entityManager.createNativeQuery("TRUNCATE TABLE " + tableName + " RESTART IDENTITY").executeUpdate();
         }
-        log.warn("RESET DATABASE FINISHED - all core tables cleared");
+
+        if (existingNormalized.contains("app_user")) {
+            entityManager.createNativeQuery("""
+                    DELETE FROM app_user
+                    WHERE lower(coalesce(username, '')) <> 'velibor@example.com'
+                      AND lower(coalesce(email, '')) <> 'velibor@example.com'
+                    """).executeUpdate();
+        }
+
+        log.warn("RESET DATABASE FINISHED - football data cleared, owner account preserved");
+    }
+
+    private void preserveOwnerAccount() {
+        List<String> existing = entityManager.createNativeQuery("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                """).getResultList();
+
+        List<String> existingNormalized = existing.stream()
+                .map(String::valueOf)
+                .map(String::toLowerCase)
+                .toList();
+
+        if (existingNormalized.contains("app_user")) {
+            entityManager.createNativeQuery("""
+                    UPDATE app_user
+                    SET team_id = NULL
+                    WHERE lower(coalesce(username, '')) = 'velibor@example.com'
+                       OR lower(coalesce(email, '')) = 'velibor@example.com'
+                    """).executeUpdate();
+        }
     }
 
     private void dropLegacyColumnIfExists(String tableName, String columnName) {

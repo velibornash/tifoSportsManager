@@ -1,10 +1,10 @@
 package org.example.footballmanager.util;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.model.*;
+import org.example.footballmanager.model.tactics.TeamTacticsProfile;
 import org.example.footballmanager.repository.*;
 import org.example.footballmanager.service.ResetService;
 import org.example.footballmanager.service.SeasonService;
@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DatabaseInitializer {
 
+    private static final String OWNER_EMAIL = "velibor@example.com";
+
     private final CountryRepository countryRepository;
     private final CompetitionRepository competitionRepository;
     private final UserRepository userRepository;
@@ -34,6 +36,7 @@ public class DatabaseInitializer {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PromotionRuleRepository promotionRuleRepository;
+    private final TeamTacticsProfileRepository teamTacticsProfileRepository;
     private final PlayerFactory playerFactory;
     private final TeamFactory teamFactory;
     private final PasswordEncoder encoder;  // Spring Security BCrypt encoder
@@ -48,6 +51,21 @@ public class DatabaseInitializer {
         resetService.sanitizeLegacyLineupOrderSchema();
     }
 
+    @EventListener(ApplicationReadyEvent.class)
+    public void ensureBaselineDataOnStartup() {
+        if (countryRepository.count() > 0
+                && competitionRepository.count() > 0
+                && teamRepository.count() > 0
+                && userRepository.findByUsername(OWNER_EMAIL).isPresent()) {
+            return;
+        }
+
+        log.warn("Core football data missing on startup. Bootstrapping baseline Serbian pyramid.");
+        initSerbianFootballStructure();
+        Team ownerTeam = createOwnerUserIfNotExists();
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        assignSquadNumbersIfMissing();
+    }
 
     public void init() {
         resetAndInitializeDatabase();
@@ -55,6 +73,7 @@ public class DatabaseInitializer {
 
     public void resetAndInitializeDatabase() {
         log.info("Počinje automatska inicijalizacija baze podataka...");
+        List<TacticsProfileSnapshot> tacticsSnapshots = snapshotTacticsProfiles();
         resetService.resetDatabase();
         // 1. Always run structure init after a full reset.
         log.info("Pokrecem punu inicijalizaciju strukture...");
@@ -62,6 +81,7 @@ public class DatabaseInitializer {
 
         // 2. Kreiraj Owner korisnika ako ne postoji (sada baza ima strukturu, timovi postoje)
         Team ownerTeam = createOwnerUserIfNotExists();
+        restoreTacticsProfiles(tacticsSnapshots);
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
 
         assignSquadNumbersIfMissing();
@@ -81,10 +101,10 @@ public class DatabaseInitializer {
 
     private Team createOwnerUserIfNotExists() {
         Team ownerTeam;
-        if (userRepository.findByUsername("velibor@example.com").isEmpty()) {
+        if (userRepository.findByUsername(OWNER_EMAIL).isEmpty()) {
             User owner = new User();
-            owner.setUsername("velibor@example.com");
-            owner.setEmail("velibor@example.com");
+            owner.setUsername(OWNER_EMAIL);
+            owner.setEmail(OWNER_EMAIL);
 
             // Hash lozinke – koristi encoder
             owner.setPassword(encoder.encode("A12345!"));
@@ -109,16 +129,65 @@ public class DatabaseInitializer {
             log.info("Kreiran Owner korisnik 'velibor' sa timom OFK Omladinac (ID: {})", omladinac.getId());
         } else {
             log.info("Owner korisnik 'velibor' već postoji – preskačem kreiranje.");
-            ownerTeam = userRepository.findByUsername("velibor@example.com")
-                    .map(User::getTeam)
-                    .orElseGet(() -> teamRepository.findByName("OFK Omladinac")
-                            .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac")));
-            if (ownerTeam != null) {
-                ownerTeam.setHumanControlled(true);
-                teamRepository.save(ownerTeam);
+            User owner = userRepository.findByUsername(OWNER_EMAIL).orElseThrow();
+            ownerTeam = teamRepository.findByName("OFK Omladinac")
+                    .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac"));
+            ownerTeam.setHumanControlled(true);
+            teamRepository.save(ownerTeam);
+            owner.setTeam(ownerTeam);
+            owner.setEmail(OWNER_EMAIL);
+            owner.setUsername(OWNER_EMAIL);
+            if (owner.getRole() == null) {
+                owner.setRole(UserRole.OWNER);
             }
+            userRepository.save(owner);
         }
         return ownerTeam;
+    }
+
+    private List<TacticsProfileSnapshot> snapshotTacticsProfiles() {
+        return teamTacticsProfileRepository.findAll().stream()
+                .map(profile -> {
+                    Team team = profile.getTeam();
+                    if (team == null || team.getName() == null || team.getName().isBlank()) {
+                        return null;
+                    }
+                    TacticsProfileSnapshot snapshot = new TacticsProfileSnapshot();
+                    snapshot.teamName = team.getName();
+                    snapshot.formation = profile.getFormation();
+                    snapshot.style = profile.getStyle();
+                    snapshot.rulesJson = profile.getRulesJson();
+                    snapshot.setPiecesJson = profile.getSetPiecesJson();
+                    snapshot.version = profile.getVersion();
+                    return snapshot;
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private void restoreTacticsProfiles(List<TacticsProfileSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return;
+        }
+
+        int restored = 0;
+        for (TacticsProfileSnapshot snapshot : snapshots) {
+            Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
+            if (team == null || team.getId() == null) {
+                continue;
+            }
+            TeamTacticsProfile profile = teamTacticsProfileRepository.findByTeamId(team.getId()).orElseGet(TeamTacticsProfile::new);
+            profile.setTeam(team);
+            profile.setFormation(snapshot.formation);
+            profile.setStyle(snapshot.style);
+            profile.setRulesJson(snapshot.rulesJson);
+            profile.setSetPiecesJson(snapshot.setPiecesJson);
+            profile.setVersion(snapshot.version != null ? snapshot.version : 1L);
+            profile.setUpdatedAt(java.time.LocalDateTime.now());
+            teamTacticsProfileRepository.save(profile);
+            restored++;
+        }
+        log.info("Restored {} tactics editor profiles after reset.", restored);
     }
 
     private void seedInitialJuniorsForOwnerIfMissing(Team ownerTeam) {
@@ -412,6 +481,15 @@ public class DatabaseInitializer {
         promotionRuleRepository.save(rule);
     }
 
+    private static class TacticsProfileSnapshot {
+        private String teamName;
+        private String formation;
+        private String style;
+        private String rulesJson;
+        private String setPiecesJson;
+        private Long version;
+    }
+
     private Competition createCupCompetitionIfNotExists(Country country, String name, int teamsCount, Season season) {
         Optional<Competition> existing = competitionRepository.findByNameAndCountryIsoCode(name, country.getIsoCode());
         if (existing.isPresent()) {
@@ -433,6 +511,4 @@ public class DatabaseInitializer {
         return cup;
     }
 }
-
-
 

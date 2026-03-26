@@ -7,7 +7,7 @@ const state = {
     matchStates: new Map(),
     feedItems: [],
     lastClockTick: 0,
-    visibleLeagueNames: new Set()
+    visibleLeagueKeys: new Set()
 };
 
 window.addEventListener('load', async () => {
@@ -98,21 +98,23 @@ function bootstrapMatchStates(data) {
 function bootstrapLeagueFilters(data) {
     const leagues = getOrderedLeagues(data.leagues || []);
     const userLeague = leagues.find(league => league.userLeague);
-    state.visibleLeagueNames = new Set(userLeague ? [userLeague.leagueName] : leagues.slice(0, 1).map(league => league.leagueName));
+    state.visibleLeagueKeys = new Set(userLeague ? [leagueKey(userLeague)] : leagues.slice(0, 1).map(league => leagueKey(league)));
+    ensureVisibleLeagueSelection(leagues);
     bindLeagueFilterActions(leagues);
     renderLeagueFilters(leagues);
 }
 
 function bindLeagueFilterActions(leagues) {
     document.getElementById('ttSelectAllBtn')?.addEventListener('click', () => {
-        state.visibleLeagueNames = new Set(leagues.map(league => league.leagueName));
+        state.visibleLeagueKeys = new Set(leagues.map(league => leagueKey(league)));
         renderLeagueFilters(leagues);
         renderBoard();
     });
 
     document.getElementById('ttDeselectAllBtn')?.addEventListener('click', () => {
         const userLeague = leagues.find(league => league.userLeague);
-        state.visibleLeagueNames = new Set(userLeague ? [userLeague.leagueName] : leagues.slice(0, 1).map(league => league.leagueName));
+        state.visibleLeagueKeys = new Set(userLeague ? [leagueKey(userLeague)] : leagues.slice(0, 1).map(league => leagueKey(league)));
+        ensureVisibleLeagueSelection(leagues);
         renderLeagueFilters(leagues);
         renderBoard();
     });
@@ -121,29 +123,31 @@ function bindLeagueFilterActions(leagues) {
 function renderLeagueFilters(leagues) {
     const host = document.getElementById('ttFilterList');
     if (!host) return;
+    ensureVisibleLeagueSelection(leagues);
     host.innerHTML = leagues.map(league => {
-        const checked = state.visibleLeagueNames.has(league.leagueName) ? 'checked' : '';
+        const checked = state.visibleLeagueKeys.has(leagueKey(league)) ? 'checked' : '';
         const badge = league.userLeague ? 'YOUR' : `${(league.matches || []).length}M`;
         return `
             <label class="tt-filter-item">
-                <input type="checkbox" data-league-name="${escapeHtml(league.leagueName)}" ${checked}>
+                <input type="checkbox" data-league-key="${escapeHtml(leagueKey(league))}" ${checked}>
                 <span class="tt-filter-label">${escapeHtml(league.leagueName)}</span>
                 <span class="tt-filter-badge">${escapeHtml(badge)}</span>
             </label>
         `;
     }).join('');
 
-    host.querySelectorAll('input[type="checkbox"][data-league-name]').forEach(input => {
+    host.querySelectorAll('input[type="checkbox"][data-league-key]').forEach(input => {
         input.addEventListener('change', (event) => {
-            const leagueName = event.target.dataset.leagueName;
-            if (!leagueName) return;
+            const selectedLeagueKey = event.target.dataset.leagueKey;
+            if (!selectedLeagueKey) return;
             if (event.target.checked) {
-                state.visibleLeagueNames.add(leagueName);
-            } else if (state.visibleLeagueNames.size > 1) {
-                state.visibleLeagueNames.delete(leagueName);
+                state.visibleLeagueKeys.add(selectedLeagueKey);
+            } else if (state.visibleLeagueKeys.size > 1) {
+                state.visibleLeagueKeys.delete(selectedLeagueKey);
             } else {
                 event.target.checked = true;
             }
+            ensureVisibleLeagueSelection(leagues);
             renderBoard();
         });
     });
@@ -208,10 +212,15 @@ function animate(now = 0) {
 function renderBoard() {
     const board = document.getElementById('ttBoard');
     if (!board || !state.feed) return;
-    const visibleLeagues = getOrderedLeagues(state.feed.leagues || [])
-        .filter(league => state.visibleLeagueNames.has(league.leagueName));
+    const orderedLeagues = getOrderedLeagues(state.feed.leagues || []);
+    ensureVisibleLeagueSelection(orderedLeagues);
+    const visibleLeagues = orderedLeagues
+        .filter(league => state.visibleLeagueKeys.has(leagueKey(league)));
     if (!visibleLeagues.length) {
-        board.innerHTML = '<section class="tt-league"><div class="tt-league-head">No leagues selected</div><div class="tt-match"><div class="tt-team">Select at least one league from the filter desk.</div></div></section>';
+        const hasAnyLeagues = orderedLeagues.length > 0;
+        board.innerHTML = hasAnyLeagues
+            ? '<section class="tt-league"><div class="tt-league-head">League selection recovered</div><div class="tt-match"><div class="tt-team">Teletext restored the first available league automatically.</div></div></section>'
+            : '<section class="tt-league"><div class="tt-league-head">No fixtures loaded</div><div class="tt-match"><div class="tt-team">Current-week feed has no league fixtures to display.</div></div></section>';
         return;
     }
     board.innerHTML = visibleLeagues.map(league => `
@@ -347,6 +356,32 @@ function compareLeagues(left, right) {
 
 function getOrderedLeagues(leagues) {
     return [...leagues].sort(compareLeagues);
+}
+
+function ensureVisibleLeagueSelection(leagues) {
+    const availableKeys = new Set((leagues || []).map(league => leagueKey(league)).filter(Boolean));
+    state.visibleLeagueKeys = new Set([...state.visibleLeagueKeys].filter(key => availableKeys.has(key)));
+    if (state.visibleLeagueKeys.size > 0) {
+        return;
+    }
+    const userLeague = (leagues || []).find(league => league.userLeague);
+    if (userLeague) {
+        state.visibleLeagueKeys.add(leagueKey(userLeague));
+        return;
+    }
+    const firstLeague = (leagues || []).find(Boolean);
+    if (firstLeague) {
+        state.visibleLeagueKeys.add(leagueKey(firstLeague));
+    }
+}
+
+function leagueKey(league) {
+    if (!league) {
+        return '';
+    }
+    const idPart = league.leagueId != null ? String(league.leagueId).trim() : '';
+    const namePart = String(league.leagueName || '').trim().toLowerCase();
+    return `${idPart}::${namePart}`;
 }
 
 function leagueRank(name) {
