@@ -1,9 +1,9 @@
-package org.example.footballmanager.config;
+package org.example.commonmanager.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.example.footballmanager.dto.ApiErrorResponseDTO;
-import org.example.footballmanager.repository.UserRepository;
+import org.example.commonmanager.dto.ApiErrorResponseDTO;
+import org.example.commonmanager.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -61,6 +61,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(req -> req
                         .requestMatchers(
                                 "/",
+                                "/home.html",
                                 "/login.html",
                                 "/register.html",
                                 "/dashboard.html",
@@ -82,6 +83,8 @@ public class SecurityConfig {
                                 "/api/zox/**",
                                 "/countries/**",
                                 "/start-realistic-demo",
+                                "/newLogic/**",
+                                "/api/v2/**",
                                 "/teams/**",
                                 "/players/**",
                                 "/matches/**",
@@ -89,7 +92,10 @@ public class SecurityConfig {
                                 "/demo-position-updates/**",
                                 "/training/**",
                                 "/demo-match-events/**",
-                                "/match-events/**"
+                                "/match-events/**",
+                                "/basketballmanager/**",
+                                "/americanfootballmanager/**",
+                                "/commonmanager/**"
                         ).permitAll()
 
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "OWNER", "DEV")

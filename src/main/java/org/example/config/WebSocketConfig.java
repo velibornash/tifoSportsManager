@@ -1,9 +1,9 @@
-package org.example.footballmanager.config;
+package org.example.commonmanager.config;
 
-import org.example.footballmanager.util.websocket.JwtHandshakeInterceptor;
-import org.example.footballmanager.util.websocket.MatchEventWSHandler;
-import org.example.footballmanager.util.websocket.PositionWSHandler;
-import org.example.footballmanager.util.old.MatchEventWebSocketHandler;
+import org.example.commonmanager.util.websocket.JwtHandshakeInterceptor;
+import org.example.commonmanager.util.websocket.MatchEventWSHandler;
+import org.example.commonmanager.util.websocket.PositionWSHandler;
+import org.example.commonmanager.util.old.MatchEventWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.EnableScheduling;
