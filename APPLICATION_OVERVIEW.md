@@ -9,7 +9,7 @@
 - **Architecture**: RESTful API with modular feature-based frontend
 
 ### Purpose
-A football club management simulator where users manage their team, players, matches, training, tactics, finances, transfers, and compete in league competitions across a simulated Serbian football pyramid.
+A football club management simulator where users manage their CTeam, CPlayers, matches, training, tactics, finances, transfers, and compete in league competitions across a simulated Serbian football pyramid.
 
 ### Current Product Direction
 - **Primary Flow**: Realistic visual manager (`dashboard.html` → `realisticDemo.html`) backed by `RealisticMatchEngine`
@@ -23,7 +23,7 @@ A football club management simulator where users manage their team, players, mat
 **Entry Point**: `dashboard.html` → `/start-realistic-demo` → `realisticDemo.html`
 **Backend**: `SimulationController.startRealisticDemo()` → `RealisticMatchEngine`
 **Features**:
-- Visual match simulation with position-aware gameplay
+- Visual match simulation with CSPosition-aware gameplay
 - Live/replay viewer with tick-based playback
 - Tactics editor integration
 - Advanced match statistics and analytics
@@ -44,14 +44,14 @@ A football club management simulator where users manage their team, players, mat
 ## 2. CORE FEATURES & MODULES
 
 ### 2.1 **Club Management** 🏆
-- **First Team Squad Management**: View/manage player roster with detailed stats
-- **Juniors Academy**: Manage young players and development
-- **Player Profiles**: Individual player details, career history, skills
+- **First Team Squad Management**: View/manage CPlayer roster with detailed stats
+- **Juniors Academy**: Manage young CPlayers and development
+- **Player Profiles**: Individual CPlayer details, career history, skills
 - **Staff Directory**: Manage coaching staff and personnel
-- **Medical Center**: Track injuries, suspensions, player fitness/condition
+- **Medical Center**: Track injuries, suspensions, CPlayer fitness/condition
 - **Finances**: Budget management and financial overview
-- **Transfers**: Buying/selling players and transfer negotiations
-- **Tactics & Formations**: Set team formation, tactical style, and player positions
+- **Transfers**: Buying/selling CPlayers and transfer negotiations
+- **Tactics & Formations**: Set CTeam formation, tactical style, and CPlayer positions
   - Support for multiple formations: 4-3-3, 3-5-2, 5-3-2, etc.
   - 7 tactical styles: BALANCED, ATTACKING, DEFENSIVE, COUNTER, POSSESSION, HIGH_PRESS, DIRECT
 
@@ -77,16 +77,16 @@ A football club management simulator where users manage their team, players, mat
 
 ### 2.3 **Training System** 📊
 - **Training Setup**: Configure weekly training sessions
-  - General training (all players)
-  - Positional training (by player position)
+  - General training (all CPlayers)
+  - Positional training (by CPlayer CSPosition)
   - Specialized skill training (technical, tactical, physical)
-  - Advanced training for high-performing players
-- **Training Reports**: Weekly reports on player development
+  - Advanced training for high-performing CPlayers
+- **Training Reports**: Weekly reports on CPlayer development
 - **Player Progression**: Track skill improvement over time
   - Skills: Pace, Passing, Shooting, Dribbling, Defense, Physical, Mental
   - Skill progression graph over weeks/seasons
   - Condition/Fatigue tracking
-- **Fatigue Management**: Monitor player fatigue levels to prevent injuries
+- **Fatigue Management**: Monitor CPlayer fatigue levels to prevent injuries
 
 ### 2.4 **League & Competition** 🏅
 - **League Table**: Standing with points, matches played, goal difference
@@ -100,18 +100,18 @@ A football club management simulator where users manage their team, players, mat
 - **Season Management**: Multiple seasons with year progression
 
 ### 2.5 **Analytics & Statistics** 📈
-- **Player Statistics**: Individual player performance metrics
+- **Player Statistics**: Individual CPlayer performance metrics
   - Goals, assists, minutes played, ratings
-- **Team Statistics**: Overall team performance data
+- **Team Statistics**: Overall CTeam performance data
 - **Top Scorers & Assists**: League-wide leaderboards
-- **Analytics Dashboard**: Advanced team analytics and insights
+- **Analytics Dashboard**: Advanced CTeam analytics and insights
 - **Events Tracking**: Comprehensive event logs (goals, cards, injuries, VAR reviews)
 - **Schedule Insights**: Analysis of upcoming fixtures and difficulty
 
 ### 2.6 **Community & Social** 💬
-- **Community Chat**: Live messaging with other players
+- **Community Chat**: Live messaging with other CPlayers
 - **Forum**: Discussion board for community interaction
-- **Country Management**: National team features (optional)
+- **Country Management**: National CTeam features (optional)
 - **League Actions**: 
   - Play scheduled match
   - Simulate other results in current round
@@ -178,7 +178,7 @@ Renderers:
 
 Feature Modules (pages/features/):
 - academy.js           - Juniors/academy feature
-- team.js              - Team squad management
+- CTeam.js              - Team squad management
 - matches.js           - Match results/fixtures
 - club-management.js   - Club operations
 - community.js         - Community/chat
@@ -205,11 +205,11 @@ TrainingController.java      - Training setup, reports
 TransferController.java      - Transfer operations
 JuniorController.java        - Academy management
 StatsController.java         - Statistics endpoints
-MatchPlayerStatsController.java - Individual player match stats
+MatchPlayerStatsController.java - Individual CPlayer match stats
 LineupController.java        - Match lineups
 CommunityController.java     - Chat, forum, community
 CompetitionController.java   - League/cup management
-CountryController.java       - National team features
+CountryController.java       - National CTeam features
 SeasonController.java        - Season management
 StadiumController.java       - Stadium data
 AdminController.java         - Administrative operations
@@ -280,7 +280,7 @@ Support:
 #### Repositories (JPA)
 - Core CRUD repositories for all entities
 - Custom query methods for complex searches
-- Match queries, player queries, team queries, etc.
+- Match queries, CPlayer queries, CTeam queries, etc.
 
 ### 3.3 Data Flow
 
@@ -288,7 +288,7 @@ Support:
 User Login (JWT)
     ↓
 Dashboard Initialization
-    ├─ Load user team data
+    ├─ Load user CTeam data
     ├─ Load season/competition info
     └─ Initialize sidebar navigation
     ↓
@@ -336,7 +336,7 @@ Training System
 - **Replay System**: Persisted tick states + chunked playback endpoints
 - **Duels System**: Physical confrontations, blocks, saves, offsides, restarts
 - **Event Generation**: Goals, shots, fouls, injuries, cards, substitutions, VAR
-- **Rating System**: Individual player performance ratings (1-100)
+- **Rating System**: Individual CPlayer performance ratings (1-100)
 - **Match Statistics**: Possession, shots on target, fouls, corner kicks
 - **Known realism gaps**:
   - match flow is still too event-driven vs possession-driven
@@ -345,17 +345,17 @@ Training System
   - shot selection still creates some low-quality volume spikes
 
 ### Training System Details
-- **General Training**: Base training for all squad players
-- **Positional Training**: Skill focus by player position
+- **General Training**: Base training for all squad CPlayers
+- **Positional Training**: Skill focus by CPlayer CSPosition
 - **Advanced Training**: High-level skill enhancement
 - **Physical Training**: Stamina and condition management
 - **Report Generation**: Weekly progress reports with graphs
 
 ### Tactics System
-- **7 Tactical Styles**: Each affecting team play
+- **7 Tactical Styles**: Each affecting CTeam play
 - **Formation Support**: Multiple formation options
 - **Lineup Editor**: Visual squad lineup setter
-- **Formation Validation**: Player position compatibility checking
+- **Formation Validation**: Player CSPosition compatibility checking
 
 ---
 
@@ -413,7 +413,7 @@ Each feature module imports:
 ### By Functional Area
 1. **Authentication** (auth.js, login.html, register.html)
 2. **Dashboard Core** (dashboard.html, dashboard.js, dashboard.css)
-3. **Team Management** (team.js feature, players, formations)
+3. **Team Management** (CTeam.js feature, CPlayers, formations)
 4. **Match System** (MatchController, RealisticMatchEngine, match visualization)
 5. **Training** (TrainingController, training.js feature)
 6. **League/Competition** (CompetitionController, league pages)
@@ -432,7 +432,7 @@ Each feature module imports:
 
 Ready to create developer tickets for work done so far. Please specify which area you'd like to start with:
 1. **Dashboard & Navigation** - Core UI/UX
-2. **Club Management** - Team, players, staff
+2. **Club Management** - Team, CPlayers, staff
 3. **Match System** - Simulation, visualization
 4. **Training System** - Setup, progression, reports
 5. **League & Competition** - Tables, fixtures, standings

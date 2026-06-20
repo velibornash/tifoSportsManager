@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>TIFO Clean Sheet - Text Mode</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/newLogic/css/dashboard.css">
 </head>
 <body>
 <div class="background"></div>
@@ -12,7 +12,7 @@
 <div class="top-menu">
     <!-- Desktop – samo kategorije + Next Match, bez sidebara i sata -->
     <div class="menu-button desktop-only" onclick="loadCleanPage('inbox')">📬 Inbox</div>
-    <div class="menu-button desktop-only" onclick="loadCleanPage('players')">👥 First Team</div>
+    <div class="menu-button desktop-only" onclick="loadCleanPage('CPlayers')">👥 First Team</div>
     <div class="menu-button desktop-only" onclick="loadCleanPage('juniors')">🌱 Juniors</div>
     <div class="menu-button desktop-only" onclick="loadCleanPage('tactics')">⚽ Tactics</div>
     <div class="menu-button desktop-only" onclick="loadCleanPage('leagueTable')">🏆 League Table</div>
@@ -36,7 +36,7 @@
         <h3 id="closeMobileMenu">Clean Sheet</h3>
 
         <div onclick="loadCleanPage('inbox'); closeMobileMenu()">📬 Inbox</div>
-        <div onclick="loadCleanPage('players'); closeMobileMenu()">👥 First Team</div>
+        <div onclick="loadCleanPage('CPlayers'); closeMobileMenu()">👥 First Team</div>
         <div onclick="loadCleanPage('juniors'); closeMobileMenu()">🌱 Juniors</div>
         <div onclick="loadCleanPage('tactics'); closeMobileMenu()">⚽ Tactics</div>
         <div onclick="loadCleanPage('leagueTable'); closeMobileMenu()">🏆 League Table</div>
@@ -55,7 +55,7 @@
 
 <!-- Desktop sidebari – ostavljeni, ali se NE koriste (klikovi idu direktno) -->
 <div id="inboxSidebar" class="sidebar"><div class="sidebar-content"><h3>Inbox</h3><div onclick="loadCleanPage('inbox')">Messages</div></div></div>
-<div id="playersSidebar" class="sidebar"><div class="sidebar-content"><h3>First Team</h3><div onclick="loadCleanPage('players')">Squad</div></div></div>
+<div id="playersSidebar" class="sidebar"><div class="sidebar-content"><h3>First Team</h3><div onclick="loadCleanPage('CPlayers')">Squad</div></div></div>
 <div id="juniorsSidebar" class="sidebar"><div class="sidebar-content"><h3>Juniors</h3><div onclick="loadCleanPage('juniors')">Youth</div></div></div>
 <div id="tacticsSidebar" class="sidebar"><div class="sidebar-content"><h3>Tactics</h3><div onclick="loadCleanPage('tactics')">Formation & Style</div></div></div>
 <div id="leagueSidebar" class="sidebar"><div class="sidebar-content"><h3>League Table</h3><div onclick="loadCleanPage('leagueTable')">Standings</div></div></div>
@@ -72,8 +72,8 @@
     </div>
 </div>
 
-<script type="module" src="/js/auth.js"></script>
-<script type="module" src="/js/cleanSheet.js"></script>
-<script type="module" src="/js/sidebar.js"></script>
+<script type="module" src="/newLogic/js/auth.js"></script>
+<script type="module" src="/newLogic/js/cleanSheet.js"></script>
+<script type="module" src="/newLogic/js/sidebar.js"></script>
 </body>
 </html>

@@ -1,0 +1,524 @@
+/* ─── BASKETBALL MANAGER SPECIFIC STYLES ─── */
+
+/* Color theme: orange basketball */
+:root {
+    --bball-primary: #e87d2f;
+    --bball-primary-light: #f5a623;
+    --bball-primary-dark: #c0641a;
+    --bball-accent: #ff6b35;
+    --bball-court: #c8955c;
+    --bball-court-line: rgba(255,255,255,0.5);
+    --bball-bg: linear-gradient(135deg, #2a1a0a, #4a2a10);
+    --bball-highlight: rgba(232, 125, 47, 0.18);
+}
+
+.background::after {
+    background:
+        radial-gradient(circle at top, rgba(245, 166, 35, 0.20), transparent 34%),
+        linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.86)) !important;
+}
+
+/* CSPosition colors */
+.pos-PG { color: #f5a623; }
+.pos-SG { color: #e87d2f; }
+.pos-SF { color: #ff6b35; }
+.pos-PF { color: #c0641a; }
+.pos-C { color: #8b4513; }
+
+.pos-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.pos-badge.PG { background: rgba(245, 166, 35, 0.2); color: #f5a623; }
+.pos-badge.SG { background: rgba(232, 125, 47, 0.2); color: #e87d2f; }
+.pos-badge.SF { background: rgba(255, 107, 53, 0.2); color: #ff6b35; }
+.pos-badge.PF { background: rgba(192, 100, 26, 0.2); color: #c0641a; }
+.pos-badge.C  { background: rgba(139, 69, 19, 0.2); color: #d4a574; }
+
+/* Basketball stat colors */
+.stat-pace { color: #f5a623; }
+.stat-steals { color: #2ecc71; }
+.stat-blocks { color: #e74c3c; }
+.stat-ft { color: #3498db; }
+.stat-2pt { color: #9b59b6; }
+.stat-3pt { color: #e67e22; }
+.stat-reb { color: #1abc9c; }
+.stat-play { color: #f39c12; }
+
+/* Skill bar colors for basketball */
+.skill-bar-bball .skill-bar-fill.rating-pace { background: #f5a623; }
+.skill-bar-bball .skill-bar-fill.rating-steals { background: #2ecc71; }
+.skill-bar-bball .skill-bar-fill.rating-blocks { background: #e74c3c; }
+.skill-bar-bball .skill-bar-fill.rating-ft { background: #3498db; }
+.skill-bar-bball .skill-bar-fill.rating-2pt { background: #9b59b6; }
+.skill-bar-bball .skill-bar-fill.rating-3pt { background: #e67e22; }
+.skill-bar-bball .skill-bar-fill.rating-reb { background: #1abc9c; }
+.skill-bar-bball .skill-bar-fill.rating-play { background: #f39c12; }
+
+/* League table - basketball variant */
+.bball-table .pts-col {
+    color: var(--bball-primary);
+}
+
+.bball-table th {
+    color: var(--bball-primary-light);
+    border-bottom-color: rgba(245, 166, 35, 0.2);
+}
+
+.bball-table .highlight-row td {
+    background: var(--bball-highlight);
+}
+
+.bball-table .pos-num {
+    color: var(--bball-primary-light);
+}
+
+/* CPlayer profile header */
+.bball-player-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    background: linear-gradient(135deg, rgba(42, 26, 10, 0.95), rgba(74, 42, 16, 0.95));
+    border-radius: 14px;
+    border: 1px solid rgba(232, 125, 47, 0.2);
+    margin-bottom: 20px;
+}
+
+.bball-player-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--bball-primary), var(--bball-accent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.bball-player-meta h2 {
+    font-size: 1.6rem;
+    margin-bottom: 4px;
+}
+
+.bball-player-meta .pos-label {
+    font-size: 0.85rem;
+    color: var(--bball-primary-light);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.bball-player-meta .phys-stats {
+    font-size: 0.82rem;
+    color: #b9c7da;
+    margin-top: 4px;
+}
+
+/* Hall / arena card */
+.hall-card {
+    background: rgba(42, 26, 10, 0.3);
+    border: 1px solid rgba(232, 125, 47, 0.15);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 12px 0;
+}
+
+.hall-card h4 {
+    color: var(--bball-primary-light);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.hall-card .hall-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+/* Stat grid for basketball */
+.stat-grid-bball {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.stat-cell {
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 10px 8px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.04);
+}
+
+.stat-cell .stat-cell-value {
+    font-size: 1.2rem;
+    font-weight: 900;
+}
+
+.stat-cell .stat-cell-label {
+    font-size: 0.62rem;
+    color: #99a6bb;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+/* Percentage display */
+.pct-display {
+    font-weight: 700;
+}
+
+.pct-display.good { color: #6fcf97; }
+.pct-display.average { color: #f2c94c; }
+.pct-display.poor { color: #eb5757; }
+
+/* Basketball match card (visual) */
+.bball-match-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 20px;
+    background: rgba(42, 26, 10, 0.3);
+    border-radius: 12px;
+    border: 1px solid rgba(232, 125, 47, 0.1);
+}
+
+.bball-match-team {
+    text-align: center;
+    flex: 1;
+}
+
+.bball-match-team .team-name {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+
+.bball-match-score {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--bball-primary-light);
+}
+
+.bball-match-vs {
+    font-size: 0.9rem;
+    color: #99a6bb;
+    font-weight: 700;
+}
+
+.bball-match-period {
+    font-size: 0.72rem;
+    color: #99a6bb;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Override common styles for basketball */
+.team-card .bball-team-header {
+    border-bottom: 2px solid rgba(232, 125, 47, 0.2);
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+}
+
+.bball-eyebrow {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--bball-primary-light);
+    margin-bottom: 2px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .bball-player-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+    }
+    .bball-match-card {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .stat-grid-bball {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ─── Match Viewer ─── */
+.match-viewer .scoreboard {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    background: linear-gradient(135deg, rgba(42,26,10,0.95), rgba(74,42,16,0.95));
+    border-radius: 14px;
+    border: 1px solid rgba(232,125,47,0.2);
+    margin-bottom: 16px;
+}
+
+.match-viewer .score-team {
+    text-align: center;
+    flex: 1;
+}
+
+.match-viewer .score-team-name {
+    font-size: 0.9rem;
+    color: #b9c7da;
+    margin-bottom: 6px;
+}
+
+.match-viewer .score-value {
+    font-size: 3.2rem;
+    font-weight: 900;
+    color: var(--bball-primary-light);
+    line-height: 1;
+}
+
+.match-viewer .score-vs {
+    font-size: 0.8rem;
+    color: #5a6a7a;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.qtr-scores {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.qtr-score {
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 8px 14px;
+    text-align: center;
+    min-width: 60px;
+    border: 1px solid rgba(255,255,255,0.04);
+}
+
+.qtr-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #99a6bb;
+    margin-bottom: 4px;
+}
+
+.qtr-home, .qtr-away {
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.qtr-home { color: var(--bball-primary-light); }
+.qtr-away { color: #64b5f6; }
+.match-viewer .score-team.away .score-value {
+    color: #64b5f6;
+}
+
+.match-viewer .score-team.away .score-team-name {
+    color: #64b5f6;
+}
+
+.qtr-away {
+    color: #64b5f6;
+}
+
+.tab-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #99a6bb;
+    transition: all 0.2s;
+}
+
+.tab-btn.active {
+    background: rgba(232,125,47,0.15);
+    border-color: var(--bball-primary);
+    color: var(--bball-primary-light);
+}
+
+.tab-btn:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.match-tab {
+    margin-top: 12px;
+}
+
+.event-feed {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
+}
+
+.match-event {
+    padding: 4px 0;
+    font-size: 0.82rem;
+    color: #b9c7da;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.match-event:last-child {
+    border-bottom: none;
+}
+
+.play-btn {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: rgba(245, 166, 35, 0.15);
+    color: #f5a623;
+    border: 1px solid rgba(245, 166, 35, 0.35);
+    cursor: pointer;
+}
+
+.play-btn:hover {
+    background: rgba(245, 166, 35, 0.25);
+}
+
+.play-all-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+        background: linear-gradient(135deg, rgba(232,125,47,0.3), rgba(245,166,35,0.2));
+    color: #f5a623;
+    border: 1px solid rgba(232,125,47,0.4);
+
+
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.play-all-btn:hover {
+    background: linear-gradient(135deg, rgba(232,125,47,0.45), rgba(245,166,35,0.3));
+    transform: scale(1.02);
+}
+
+.schedule-round {
+    border-left: 3px solid transparent;
+    padding-left: 12px;
+}
+
+.schedule-round.current-round {
+    border-left-color: #f5a623;
+}
+
+.locked-row {
+    opacity: 0.5;
+    cursor: default !important;
+}
+
+.locked-row:hover {
+    background: none !important;
+}
+
+.stats-table th {
+    font-size: 0.62rem;
+    padding: 6px 4px;
+    white-space: nowrap;
+}
+
+.stats-table td {
+    padding: 6px 4px;
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.stat-highlight {
+    color: var(--bball-primary-light);
+}
+
+.next-match-card {
+    background: linear-gradient(135deg, rgba(245, 166, 35, 0.08), rgba(245, 166, 35, 0.02));
+    border: 1px solid rgba(245, 166, 35, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 12px 0;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.next-match-card:hover {
+    background: linear-gradient(135deg, rgba(245, 166, 35, 0.15), rgba(245, 166, 35, 0.05));
+    border-color: rgba(245, 166, 35, 0.4);
+}
+
+.side-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 768px) {
+    .side-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.side-stats-home, .side-stats-away {
+    min-width: 0;
+}
+
+.side-stats-home .stats-table th,
+.side-stats-away .stats-table th {
+    font-size: 0.55rem;
+    padding: 4px 2px;
+}
+
+.side-stats-home .stats-table td,
+.side-stats-away .stats-table td {
+    font-size: 0.65rem;
+    padding: 4px 2px;
+}
+
+.reset-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: rgba(235, 87, 87, 0.1);
+    color: #eb5757;
+    border: 1px solid rgba(235, 87, 87, 0.3);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reset-btn:hover {
+    background: rgba(235, 87, 87, 0.2);
+}

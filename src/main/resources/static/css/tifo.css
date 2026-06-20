@@ -1,30 +1,200 @@
-/* TIFO – Clean Sheet Text Mode extra styles */
+/* TIFO – Clean Sheet Text Mode (Teletext Edition) */
 
 :root {
-    --cs-bg-1: #0b1210;
-    --cs-bg-2: #13211a;
-    --cs-panel: rgba(11, 19, 16, 0.88);
-    --cs-panel-2: rgba(20, 31, 26, 0.94);
-    --cs-border: rgba(157, 186, 109, 0.18);
-    --cs-accent: #a9d36f;
-    --cs-accent-2: #6bc9a2;
-    --cs-text-main: #edf3e2;
-    --cs-text-muted: #a8b5a6;
-    --cs-text-soft: #879488;
+    --cs-bg-1: #0a0a0a;
+    --cs-bg-2: #141108;
+    --cs-panel: rgba(10, 8, 4, 0.92);
+    --cs-panel-2: rgba(20, 17, 8, 0.96);
+    --cs-border: rgba(212, 160, 23, 0.20);
+    --cs-accent: #d4a017;
+    --cs-accent-2: #b8860b;
+    --cs-text-main: #f0e6c5;
+    --cs-text-muted: #a8976a;
+    --cs-text-soft: #7a6b48;
+    --cs-amber-bright: #ffcc00;
+    --cs-amber-dim: #8b6914;
+    --cs-paper: rgba(30, 26, 16, 0.85);
+}
+
+/* Teletext base font */
+body { font-family: "Lucida Console", "Courier New", monospace; }
+
+/* Permanent sidebar layout */
+.tifo-layout { display: flex; min-height: 100vh; }
+.tifo-sidebar {
+    width: 200px;
+    min-width: 200px;
+    background: var(--cs-bg-2);
+    border-right: 1px solid var(--cs-border);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 20;
+    overflow-y: auto;
+}
+.tifo-sidebar-brand {
+    padding: 16px 14px 10px;
+    border-bottom: 1px solid var(--cs-border);
+    text-align: center;
+}
+.tifo-sidebar-brand h2 {
+    margin: 0;
+    color: var(--cs-amber-bright);
+    font-size: 1.1em;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.tifo-sidebar-brand small {
+    color: var(--cs-text-soft);
+    font-size: 0.65em;
+    letter-spacing: 0.1em;
+}
+.tifo-sidebar-nav { flex: 1; padding: 8px 0; }
+.tifo-sidebar-lobby {
+    color: var(--cs-amber-bright) !important;
+    font-weight: 700;
+    font-size: 0.82em !important;
+}
+.tifo-sidebar-nav a,
+.tifo-sidebar-nav .tifo-snav-item {
+    display: block;
+    padding: 9px 14px;
+    color: var(--cs-text-muted);
+    text-decoration: none;
+    font-size: 0.78em;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.12s;
+    border-left: 3px solid transparent;
+    text-transform: uppercase;
+}
+.tifo-sidebar-nav a:hover,
+.tifo-sidebar-nav .tifo-snav-item:hover {
+    background: rgba(212, 160, 23, 0.10);
+    color: var(--cs-text-main);
+    border-left-color: var(--cs-accent);
+}
+.tifo-sidebar-nav .tifo-snav-item.active {
+    color: var(--cs-amber-bright);
+    background: rgba(212, 160, 23, 0.12);
+    border-left-color: var(--cs-amber-bright);
+}
+.tifo-sidebar-divider {
+    height: 1px;
+    background: var(--cs-border);
+    margin: 6px 14px;
+}
+.tifo-sidebar-continue {
+    padding: 12px 14px;
+    border-top: 1px solid var(--cs-border);
+}
+.tifo-sidebar-continue .big-button { width: 100%; font-size: 0.85em; padding: 10px 0; }
+.tifo-sidebar-inbox-badge {
+    float: right;
+    background: var(--cs-accent);
+    color: #000;
+    font-size: 0.7em;
+    padding: 1px 7px;
+    border-radius: 0;
+    font-weight: 800;
+}
+
+/* Main content shift for sidebar */
+.tifo-main {
+    margin-left: 200px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Override old top-menu to work alongside sidebar */
+.top-menu {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* Manager office */
+.tifo-mgr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+.tifo-mgr-stat {
+    padding: 14px;
+    border-radius: 0;
+    background: var(--cs-paper);
+    border: 1px solid var(--cs-border);
+    text-align: center;
+}
+.tifo-mgr-stat .val { font-size: 1.6em; font-weight: 800; color: var(--cs-amber-bright); }
+.tifo-mgr-stat .lbl { font-size: 0.7em; color: var(--cs-text-soft); margin-top: 4px; letter-spacing: 0.1em; text-transform: uppercase; }
+.tifo-mgr-job-bar {
+    height: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--cs-border);
+    margin-top: 6px;
+    position: relative;
+}
+.tifo-mgr-job-bar span {
+    display: block;
+    height: 100%;
+    background: var(--cs-accent);
+    transition: width 0.3s;
+}
+
+/* CPlayer status icons */
+.cs-player-status-icon { display: inline-block; margin-left: 6px; font-size: 0.85em; }
+
+/* Match preview */
+.tifo-preview-form { display: flex; gap: 20px; justify-content: center; margin: 16px 0; }
+.tifo-preview-side { text-align: center; min-width: 120px; }
+.tifo-preview-side .team-name { font-weight: 800; font-size: 1.1em; color: var(--cs-text-main); }
+.tifo-preview-side .form-strip { margin-top: 6px; display: flex; gap: 4px; justify-content: center; }
+.tifo-preview-vs { font-size: 1.8em; color: var(--cs-accent); align-self: center; font-weight: 800; }
+.tifo-preview-prediction { text-align: center; margin-top: 16px; padding: 12px; background: var(--cs-paper); border: 1px solid var(--cs-border); }
+.tifo-preview-prediction strong { color: var(--cs-amber-bright); font-size: 1.3em; }
+
+/* Mobile sidebar toggle */
+.tifo-hamburger {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 25;
+    background: var(--cs-bg-2);
+    border: 1px solid var(--cs-border);
+    color: var(--cs-text-main);
+    font-size: 1.3em;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+.tifo-sidebar-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 19; display: none;
+}
+.tifo-sidebar-overlay.active { display: block; }
+
+@media (max-width: 768px) {
+    .tifo-hamburger { display: block; }
+    .tifo-sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+    }
+    .tifo-sidebar.open { transform: translateX(0); }
+    .tifo-main { margin-left: 0; }
 }
 
 .big-button {
     padding: 10px 22px;
-    background: linear-gradient(180deg, #719d3d, #476c29);
+    background: linear-gradient(180deg, #d4a017, #8b6914);
     border: none;
     border-radius: 8px;
-    color: white;
+    color: #000;
     font-weight: bold;
     font-size: 1em;
     cursor: pointer;
     transition: all 0.2s;
 }
-.big-button:hover { transform: scale(1.05); background: linear-gradient(180deg, #88b84b, #557d32); }
+.big-button:hover { transform: scale(1.05); background: linear-gradient(180deg, #ffcc00, #b8860b); }
 .big-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .cs-next-round-wrap { display: flex; align-items: center; }
 .cs-next-round-btn {
@@ -76,7 +246,7 @@
     font-size: 0.74em;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #7fbf8f;
+    color: var(--cs-accent);
     margin-bottom: 8px;
 }
 .cs-club-hero {
@@ -175,14 +345,14 @@
 .cs-table tbody tr:hover { background: rgba(42,140,74,0.12); }
 .cs-table .user-row { background: rgba(42,140,74,0.18) !important; font-weight: bold; }
 
-/* Player list */
+/* CPlayer list */
 .cs-player-row {
     display: flex; align-items: center; gap: 14px;
     padding: 10px 14px; border-radius: 8px;
     cursor: pointer; transition: background 0.15s;
 }
 .cs-player-row:hover { background: rgba(255,255,255,0.06); }
-.cs-player-pos { width: 40px; text-align: center; font-weight: bold; color: #2a8c4a; }
+.cs-player-pos { width: 40px; text-align: center; font-weight: bold; color: var(--cs-accent); }
 .cs-player-name { flex: 1; }
 .cs-player-stat { width: 50px; text-align: center; font-size: 0.9em; color: #ccc; }
 
@@ -201,7 +371,7 @@
 
 /* Fixture */
 .cs-fixture-round { margin-top: 20px; }
-.cs-fixture-round h4 { border-bottom: 1px solid #333; padding-bottom: 6px; color: #2a8c4a; }
+.cs-fixture-round h4 { border-bottom: 1px solid #333; padding-bottom: 6px; color: var(--cs-accent); }
 
 /* Tactics selector */
 .cs-tactics-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
@@ -214,8 +384,8 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-.cs-tactics-btn:hover { border-color: #2a8c4a; }
-.cs-tactics-btn.active { border-color: #2a8c4a; background: rgba(42,140,74,0.2); }
+.cs-tactics-btn:hover { border-color: var(--cs-accent); }
+.cs-tactics-btn.active { border-color: var(--cs-accent); background: rgba(212, 160, 23, 0.2); }
 
 /* Inbox */
 .cs-inbox-item {
@@ -237,7 +407,7 @@
 }
 .cs-inbox-item.unread .cs-inbox-subject { color: #f5f8ec; }
 .cs-inbox-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.64em; font-weight: 800; margin-right: 0; letter-spacing: 0.06em; text-transform: uppercase; }
-.cs-inbox-badge.welcome { background: #2a8c4a; color: #fff; }
+.cs-inbox-badge.welcome { background: var(--cs-accent); color: #000; }
 .cs-inbox-badge.match { background: #1976d2; color: #fff; }
 .cs-inbox-badge.report { background: #26a69a; color: #fff; }
 .cs-inbox-badge.round-report { background: #5c6bc0; color: #fff; }
@@ -517,7 +687,7 @@
     transition: all 0.15s;
 }
 .cs-tab-btn:hover { color: #fff; background: rgba(255,255,255,0.04); }
-.cs-tab-btn.active { color: #2a8c4a; border-bottom-color: #2a8c4a; font-weight: bold; }
+.cs-tab-btn.active { color: var(--cs-amber-bright); border-bottom-color: var(--cs-amber-bright); font-weight: bold; }
 
 /* Top scorers/assists ranking */
 .cs-rank-row {
@@ -526,7 +696,7 @@
     cursor: pointer; transition: background 0.15s;
 }
 .cs-rank-row:hover { background: rgba(255,255,255,0.06); }
-.cs-rank-num { width: 30px; text-align: center; font-weight: bold; color: #2a8c4a; font-size: 1.1em; }
+.cs-rank-num { width: 30px; text-align: center; font-weight: bold; color: var(--cs-accent); font-size: 1.1em; }
 .cs-rank-name { flex: 1; }
 .cs-rank-team { color: #888; font-size: 0.85em; }
 .cs-rank-val { font-weight: bold; font-size: 1.2em; min-width: 40px; text-align: center; }
@@ -537,7 +707,7 @@
     padding: 8px 12px; border-radius: 6px;
 }
 .cs-lineup-row:nth-child(even) { background: rgba(255,255,255,0.03); }
-.cs-lineup-pos { width: 40px; text-align: center; font-weight: bold; color: #2a8c4a; font-size: 0.85em; }
+.cs-lineup-pos { width: 40px; text-align: center; font-weight: bold; color: var(--cs-accent); font-size: 0.85em; }
 .cs-lineup-name { flex: 1; }
 .cs-lineup-stat { width: 45px; text-align: center; font-size: 0.9em; color: #ccc; }
 .cs-lineup-rating { width: 45px; text-align: center; font-weight: bold; }
@@ -580,7 +750,7 @@
     padding: 12px 0;
     border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-.cs-event-minute { color: #7fbf8f; font-weight: 800; }
+.cs-event-minute { color: var(--cs-amber-bright); font-weight: 800; }
 .cs-event-icon { text-align: center; }
 .cs-event-body { min-width: 0; }
 .cs-event-title { color: #eef4ef; font-weight: 700; line-height: 1.45; }

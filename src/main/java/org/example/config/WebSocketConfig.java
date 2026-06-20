@@ -1,4 +1,4 @@
-package org.example.commonmanager.config;
+package org.example.config;
 
 import org.example.commonmanager.util.websocket.JwtHandshakeInterceptor;
 import org.example.commonmanager.util.websocket.MatchEventWSHandler;

@@ -1,5 +1,6 @@
-package org.example.commonmanager.config;
+package org.example.config;
 
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.commonmanager.dto.ApiErrorResponseDTO;
@@ -27,7 +28,7 @@ import java.time.LocalDateTime;
 @Configuration
 public class SecurityConfig {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @Bean
     public UserDetailsService userDetailsService(UserRepository userRepo) {

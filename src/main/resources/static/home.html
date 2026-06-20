@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TIFO Manager - Home</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="stylesheet" href="/newLogic/css/home.css">
+</head>
+<body>
+<div class="background"></div>
+
+<div class="home-wrapper">
+    <div class="logo-corner">
+        <img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo">
+    </div>
+
+    <div class="hero">
+        <h1 class="hero-title">TIFO Manager</h1>
+        <p class="hero-subtitle">Sports Lobby</p>
+    </div>
+
+    <div class="game-grid">
+        <div class="game-card" onclick="navigateTo('/newLogic/dashboard.html')">
+            <div class="game-card-bg" style="background-image:linear-gradient(135deg, #1a3a5c, #2d6da8)"></div>
+            <div class="game-card-icon">⚽</div>
+            <div class="game-card-title">TIFO UI MANAGER</div>
+            <div class="game-card-desc">Full graphical football management experience</div>
+            <div class="game-card-status active">PLAY</div>
+        </div>
+
+        <div class="game-card" onclick="navigateTo('/tifo.html')">
+            <div class="game-card-bg" style="background-image:linear-gradient(135deg, #3a1a5c, #7d2da8)"></div>
+            <div class="game-card-icon">📋</div>
+            <div class="game-card-title">TIFO TEXT BASED</div>
+            <div class="game-card-desc">Classic text-based football manager</div>
+            <div class="game-card-status active">PLAY</div>
+        </div>
+
+        <div class="game-card" onclick="window.location.href='/americanfootballmanager/index.html'">
+            <div class="game-card-bg" style="background-image:linear-gradient(135deg, #2a1a10, #5c3a1e)"></div>
+            <div class="game-card-icon">🏈</div>
+            <div class="game-card-title">AMERICAN FOOTBALL</div>
+            <div class="game-card-desc">American football management experience</div>
+            <div class="game-card-status active">PLAY</div>
+        </div>
+
+        <div class="game-card" onclick="window.location.href='/basketballmanager/index.html'">
+            <div class="game-card-bg" style="background-image:linear-gradient(135deg, #5c3a1a, #a86d2d)"></div>
+            <div class="game-card-icon">🏀</div>
+            <div class="game-card-title">BASKETBALL</div>
+            <div class="game-card-desc">Basketball management experience</div>
+            <div class="game-card-status active">PLAY</div>
+        </div>
+    </div>
+
+    <div class="logout-area">
+        <button class="logout-btn" onclick="logout()">Sign Out</button>
+    </div>
+</div>
+
+<script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login.html';
+    }
+
+    window.navigateTo = function(url) {
+        window.location.href = url;
+    };
+
+    window.logout = function() {
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
+    };
+</script>
+</body>
+</html>

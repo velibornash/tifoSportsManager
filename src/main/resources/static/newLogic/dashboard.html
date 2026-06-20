@@ -1,0 +1,136 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="stylesheet" href="/newLogic/css/dashboard.css">
+</head>
+<body>
+<div class="background"></div>
+<div class="top-menu">
+    <div class="menu-button desktop-only" onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
+    <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">⚽ Club</div>
+    <div class="menu-button desktop-only" onclick="loadPage('trainingSetup')">🏋️ Training</div>
+    <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
+	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
+	    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
+    <div id="live-clock" class="desktop-only live-clock">
+        <strong id="clock-time">Loading...</strong>
+        <small id="clock-date"></small>
+        <small id="clock-phase"></small>
+    </div>
+    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo"></div>
+    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">&#9776;</div>
+    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo"></div>
+</div>
+
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3 onclick="closeMobileMenu()">Menu</h3>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                ⚽ Club
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
+                <div onclick="loadPage('schedule'); closeMobileMenu()">Schedule</div>
+                <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
+                <div onclick="loadPage('formations'); closeMobileMenu()">Tactics</div>
+                <div onclick="loadPage('staff'); closeMobileMenu()">Staff</div>
+                <div onclick="loadPage('finances'); closeMobileMenu()">Finances</div>
+                <div onclick="loadPage('transfers'); closeMobileMenu()">Transfers</div>
+                <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
+                <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                🏋️ Training
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
+                <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('leagueTable')">
+                &#127942; League
+            </div>
+        </div>
+
+	        <div class="mobile-accordion">
+	            <div id="country-mobile-button" class="accordion-header" onclick="closeMobileMenu(); loadPage('country')">
+                &#127758; Country
+            </div>
+        </div>
+
+	        <div class="mobile-accordion">
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('chat')">
+	                &#128172; Community Chat
+	            </div>
+	        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="window.location.href='/newLogic/home.html'">
+                ⚽🏀🏈 Sports Lobby
+            </div>
+        </div>
+
+        <div id="live-clock-mobile" class="mobile-accordion" style="padding:12px; background:#1e2e1e; border-radius:8px; text-align:center; margin:10px 0;">
+            <strong id="clock-time-m">Loading...</strong><br>
+            <small id="clock-date-m"></small>
+        </div>
+
+    </div>
+</div>
+<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
+
+<div id="clubSidebar" class="sidebar">
+    <div class="sidebar-content">
+        <h3>Club</h3>
+
+        <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                Players
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam')">First Team</div>
+                <div onclick="loadPage('juniors')">Juniors</div>
+            </div>
+        </div>
+
+        <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+                Tactics
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('formations')">Formations</div>
+                <div onclick="loadPage('medicalCenter')">Medical Center</div>
+            </div>
+        </div>
+
+        <div onclick="loadPage('profile')">Profile</div>
+    </div>
+</div>
+
+<div class="dashboard-content">
+    <div id="main-content" style="opacity:0.9"></div>
+</div>
+
+<script type="module" src="/newLogic/js/auth.js"></script>
+<script type="module" src="/newLogic/js/demo.js"></script>
+<script type="module" src="/newLogic/js/sidebar.js"></script>
+<script type="module" src="/newLogic/js/dashboard.js"></script>
+<script type="module" src="/newLogic/js/pages.js"></script>
+<script type="module" src="/newLogic/js/app.js"></script>
+<script type="module" src="/newLogic/js/clock.js"></script>
+
+</body>
+</html>

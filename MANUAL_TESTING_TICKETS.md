@@ -162,28 +162,28 @@
 
 **Prerequisites**:
 - User logged in
-- User has assigned team and role
+- User has assigned CTeam and role
 
 **Test Steps**:
 1. Login as test user
 2. Navigate to dashboard
 3. Verify user name displays in header
-4. Verify user's team name displays
+4. Verify user's CTeam name displays
 5. Check user profile menu (if available)
 6. Verify user role displayed (Coach, Admin, Viewer)
-7. Verify user's team information accessible
-8. Check that user-specific data filters by team
+7. Verify user's CTeam information accessible
+8. Check that user-specific data filters by CTeam
 
 **Expected Results**:
 - ✅ User name displays correctly
 - ✅ Team name/logo visible
 - ✅ User role shown appropriately
-- ✅ Data scoped to user's team
+- ✅ Data scoped to user's CTeam
 - ✅ Profile information accurate
 
 **Failure Criteria**:
 - ❌ User info shows as "null" or undefined
-- ❌ Wrong team data displayed
+- ❌ Wrong CTeam data displayed
 - ❌ Role not reflected correctly
 
 ---
@@ -442,8 +442,8 @@
 
 **Test Steps**:
 1. Navigate to First Team section
-2. Verify squad table/list displays all players
-3. Verify each player shows:
+2. Verify squad table/list displays all CPlayers
+3. Verify each CPlayer shows:
    - Name, Position (GK/DEF/MID/FWD)
    - Shirt Number, Age, Rating (★★★★☆ format)
    - Condition percentage, Salary
@@ -454,16 +454,16 @@
    - Sort by Position
    - Sort by Age
 5. Verify sorting works correctly
-6. Test filter by position (dropdown or buttons)
+6. Test filter by CSPosition (dropdown or buttons)
 7. Filter to show only forwards, verify results
-8. Click on player name to view profile
-9. Verify player detail page loads
+8. Click on CPlayer name to view profile
+9. Verify CPlayer detail page loads
 10. Return to squad list and verify state maintained
 
 **Expected Results**:
 - ✅ All squad members display with correct data
 - ✅ Sorting functions correctly for each column
-- ✅ Filtering by position works
+- ✅ Filtering by CSPosition works
 - ✅ Player links navigate to profile page
 - ✅ Ratings display as stars (1-5 scale)
 - ✅ Condition shows as percentage
@@ -472,7 +472,7 @@
 
 **Failure Criteria**:
 - ❌ Players missing from list
-- ❌ Incorrect player data
+- ❌ Incorrect CPlayer data
 - ❌ Sorting doesn't work
 - ❌ Filtering broken
 - ❌ Links don't navigate
@@ -487,11 +487,11 @@
 **Prerequisites**:
 - User logged in
 - Navigate to First Team
-- Click on a player name
+- Click on a CPlayer name
 
 **Test Steps**:
-1. Click on any player from squad list
-2. Verify player detail page loads
+1. Click on any CPlayer from squad list
+2. Verify CPlayer detail page loads
 3. Verify personal information displays:
    - Name, Age, Nationality, Position
    - Height, Weight, Preferred Foot
@@ -512,7 +512,7 @@
 10. Verify page displays correctly on mobile
 
 **Expected Results**:
-- ✅ All player information displays accurately
+- ✅ All CPlayer information displays accurately
 - ✅ Career statistics are correct and complete
 - ✅ Skills display in readable format (bars or numbers)
 - ✅ Contract details accurate
@@ -521,7 +521,7 @@
 - ✅ No missing data fields
 
 **Failure Criteria**:
-- ❌ Missing player information
+- ❌ Missing CPlayer information
 - ❌ Incorrect statistics
 - ❌ Empty data fields shown as blank/null
 - ❌ Back navigation doesn't work
@@ -536,22 +536,22 @@
 **Prerequisites**:
 - User logged in
 - Navigate to Club > Medical Center
-- Team should have injured/suspended players for testing
+- Team should have injured/suspended CPlayers for testing
 
 **Test Steps**:
 1. Navigate to Medical Center
-2. Verify page displays list of unavailable players
-3. For injured players, verify display:
+2. Verify page displays list of unavailable CPlayers
+3. For injured CPlayers, verify display:
    - Player name, Position, Type of injury
    - Injury Date, Expected Return Date
    - Recovery percentage (0-100%)
    - Severity indicator (Minor/Moderate/Severe)
-4. For suspended players, verify display:
+4. For suspended CPlayers, verify display:
    - Player name, Yellow/Red card status
    - Suspension duration (matches remaining)
    - Next availability date
-5. Verify players unavailable in squad selector
-6. Verify injured players excluded from lineup selection
+5. Verify CPlayers unavailable in squad selector
+6. Verify injured CPlayers excluded from lineup selection
 7. Check if recovery percentage increases over time
 8. Verify clear visual indicators for injury severity
 9. Test on mobile view
@@ -561,7 +561,7 @@
 - ✅ Return dates accurately calculated
 - ✅ Recovery progress visible
 - ✅ Severity clearly indicated with colors/icons
-- ✅ Injured players can't be selected for matches
+- ✅ Injured CPlayers can't be selected for matches
 - ✅ Suspension duration accurate
 - ✅ Medical alerts appear on relevant pages
 
@@ -582,25 +582,25 @@
 - User logged in
 - Navigate to Club > Transfers
 - Sufficient budget for transfers
-- Available transfer market players
+- Available transfer market CPlayers
 
 **Test Steps**:
 1. Navigate to Transfers section
-2. Verify available players for transfer display
-3. For each player, verify:
+2. Verify available CPlayers for transfer display
+3. For each CPlayer, verify:
    - Name, Position, Age, Current Club, Rating
    - Asking Price/Value
    - Contract Length Remaining
-4. Search/filter available players:
-   - Filter by position (dropdown)
+4. Search/filter available CPlayers:
+   - Filter by CSPosition (dropdown)
    - Search by name (if available)
    - Sort by price/rating
-5. Click on player to view details
-6. Verify player detail modal/popup shows:
-   - Full player stats
+5. Click on CPlayer to view details
+6. Verify CPlayer detail modal/popup shows:
+   - Full CPlayer stats
    - Transfer history
    - Negotiation status
-7. Try to place bid on player:
+7. Try to place bid on CPlayer:
    - Enter bid amount (less than asking price)
    - Verify offer is submitted
 8. Verify confirmation message displays
@@ -608,13 +608,13 @@
 10. Verify transfer list updates with new status
 
 **Expected Results**:
-- ✅ Available players list displays
+- ✅ Available CPlayers list displays
 - ✅ Player information accurate and complete
 - ✅ Filtering/sorting works
 - ✅ Bid submission successful
 - ✅ Confirmation message displays
 - ✅ Budget updated appropriately
-- ✅ Transfer status shows in player list
+- ✅ Transfer status shows in CPlayer list
 
 **Failure Criteria**:
 - ❌ Transfer list empty or incorrect
@@ -649,7 +649,7 @@
    - Prize money
    - Player sales
 6. Verify expense categories display correctly
-7. Check financial balance/net position
+7. Check financial balance/net CSPosition
 8. Verify financial warnings (if budget low)
 9. Verify budget history/trends (if available)
 10. Check that financial data updates after transfers
@@ -697,7 +697,7 @@
 7. Verify final score displays
 8. Verify match result stored (win/draw/loss)
 9. Verify event log shows all major events
-10. Check that match result updates team statistics
+10. Check that match result updates CTeam statistics
 
 **Expected Results**:
 - ✅ Match simulation runs without errors
@@ -742,7 +742,7 @@
 6. Play another match and verify multiple goals are tracked
 7. Verify own goals display differently (if applicable)
 8. Verify penalty goals show penalty indicator
-9. Check goal statistics update for player and team
+9. Check goal statistics update for CPlayer and CTeam
 
 **Expected Results**:
 - ✅ Goals display with correct details
@@ -778,24 +778,24 @@
    - Player name receiving card
    - Reason (if shown: foul, dissent, etc.)
    - Time in match
-3. Verify yellow card count displayed for player
+3. Verify yellow card count displayed for CPlayer
 4. Verify accumulation over season:
-   - Track if player reaches suspension threshold (e.g., 5 yellow = 1 match ban)
+   - Track if CPlayer reaches suspension threshold (e.g., 5 yellow = 1 match ban)
 5. Wait for red card event (or complete multiple matches)
 6. Verify red card displays:
    - Player name
    - Time
    - Automatic suspension
-7. Verify suspended players can't play next match
+7. Verify suspended CPlayers can't play next match
 8. Check that cards clear periodically (if applicable)
-9. Verify discipline history available in player profile
+9. Verify discipline history available in CPlayer profile
 
 **Expected Results**:
 - ✅ Cards display correctly with details
 - ✅ Card colors accurate (yellow/red)
 - ✅ Card count accumulates properly
 - ✅ Suspension triggered on threshold
-- ✅ Suspended players excluded from lineup
+- ✅ Suspended CPlayers excluded from lineup
 - ✅ Event log captures all cards
 - ✅ History available for review
 
@@ -803,7 +803,7 @@
 - ❌ Cards don't display
 - ❌ Card count incorrect
 - ❌ Suspension not enforced
-- ❌ Suspended players still selectable
+- ❌ Suspended CPlayers still selectable
 - ❌ Card history lost
 
 ---
@@ -822,24 +822,24 @@
 1. Open lineup editor for next match
 2. Verify formation selector displays (e.g., 4-3-3, 4-2-3-1, etc.)
 3. Select a formation
-4. Verify player positions match formation:
+4. Verify CPlayer positions match formation:
    - Exactly 1 goalkeeper
    - 4-5 defenders (depending on formation)
    - 3-4 midfielders
    - 1-2 forwards
-5. Attempt to drag-and-drop players (desktop) or select from dropdown (mobile)
-6. Verify injured/suspended players show as unavailable
+5. Attempt to drag-and-drop CPlayers (desktop) or select from dropdown (mobile)
+6. Verify injured/suspended CPlayers show as unavailable
 7. Verify save lineup button works
-8. Select different formation and verify players are reorganized
-9. Add substitute players (typically 5-7 additional players)
-10. Verify validation prevents invalid lineups (wrong player count)
+8. Select different formation and verify CPlayers are reorganized
+9. Add substitute CPlayers (typically 5-7 additional CPlayers)
+10. Verify validation prevents invalid lineups (wrong CPlayer count)
 11. Confirm lineup is saved before match
 
 **Expected Results**:
 - ✅ Lineup editor loads and displays
 - ✅ Formations displayed and selectable
 - ✅ Drag-and-drop or dropdown selection works
-- ✅ Injured players excluded from selection
+- ✅ Injured CPlayers excluded from selection
 - ✅ Player count validation enforced
 - ✅ Lineup saves successfully
 - ✅ Lineup persists until match plays
@@ -848,10 +848,10 @@
 **Failure Criteria**:
 - ❌ Lineup editor doesn't load
 - ❌ Formation selection doesn't work
-- ❌ Injured players selectable
+- ❌ Injured CPlayers selectable
 - ❌ Validation doesn't work
 - ❌ Lineup not saved
-- ❌ Incorrect players in match
+- ❌ Incorrect CPlayers in match
 
 ---
 
@@ -877,9 +877,9 @@
    - Tackles, interceptions, clearances
 3. Verify comparison between both teams
 4. Check statistics are realistic and proportional to match events
-5. Verify team statistics updated in club profile
+5. Verify CTeam statistics updated in club profile
 6. Check season statistics accumulation
-7. Verify statistics available in team profile/analytics
+7. Verify statistics available in CTeam profile/analytics
 
 **Expected Results**:
 - ✅ All statistics display with correct values
@@ -911,15 +911,15 @@
 **Test Steps**:
 1. Open TIFO match viewer
 2. Verify page displays match information:
-   - Score, team names, match time
+   - Score, CTeam names, match time
    - Formation display
    - Player names and positions
 3. Verify event feed displays on side:
    - Goals with time and scorer
-   - Cards with time and player
+   - Cards with time and CPlayer
    - Substitutions
    - Other key events
-4. Click on event in feed to highlight player involved
+4. Click on event in feed to highlight CPlayer involved
 5. Verify match statistics tab displays (possession, shots, etc.)
 6. Verify lineups tab shows starting XI and substitutes
 7. Verify match timeline (if available)
@@ -961,16 +961,16 @@
 1. Navigate to Training Setup page
 2. Verify training pools displayed:
    - General Training (all squad)
-   - Positional Training (by position)
-   - Advanced Training (elite players)
+   - Positional Training (by CSPosition)
+   - Advanced Training (elite CPlayers)
    - Specialized Training (technical, tactical, physical)
-3. Verify player list displays all squad members
-4. Assign players to training pools:
+3. Verify CPlayer list displays all squad members
+4. Assign CPlayers to training pools:
    - Drag-and-drop on desktop (test functionality)
    - Select from dropdown on mobile
-5. Verify injured players are excluded from selection
-6. Assign 5-10 players to different pools
-7. Verify player can only be in one pool (no duplicates)
+5. Verify injured CPlayers are excluded from selection
+6. Assign 5-10 CPlayers to different pools
+7. Verify CPlayer can only be in one pool (no duplicates)
 8. Verify "clear" or "remove" button works
 9. Test quick templates (if available):
    - "All forwards to advanced training" template
@@ -981,7 +981,7 @@
 - ✅ All training pools display
 - ✅ Player assignment works (drag-drop or dropdown)
 - ✅ No duplicate assignments
-- ✅ Injured players excluded
+- ✅ Injured CPlayers excluded
 - ✅ Training templates work
 - ✅ Configuration saves successfully
 - ✅ Data persists after page reload
@@ -992,7 +992,7 @@
 - ❌ Player assignment doesn't work
 - ❌ Duplicate assignments possible
 - ❌ Configuration doesn't save
-- ❌ Injured players selectable
+- ❌ Injured CPlayers selectable
 
 ---
 
@@ -1012,14 +1012,14 @@
    - Week number and date range
    - Training configuration used
    - Player list with progression data
-3. For each player, verify:
+3. For each CPlayer, verify:
    - Assigned training pool
    - Skill changes (7 core skills: Pace, Passing, Shooting, Dribbling, Defense, Physical, Mental)
    - Change indicators (↑, ↓, or →)
    - Overall rating change
    - Condition percentage
    - Fatigue level
-4. Verify team summary statistics:
+4. Verify CTeam summary statistics:
    - Average skill improvement
    - Training compliance
    - Injury count/risk
@@ -1032,7 +1032,7 @@
 
 **Expected Results**:
 - ✅ Training reports display with all required data
-- ✅ Skill progression visible for all players
+- ✅ Skill progression visible for all CPlayers
 - ✅ Change indicators accurate
 - ✅ Team summary accurate
 - ✅ Historical comparison available
@@ -1059,7 +1059,7 @@
 - Ability to simulate multiple weeks (or wait)
 
 **Test Steps**:
-1. Note current skill levels for 2-3 players
+1. Note current skill levels for 2-3 CPlayers
 2. Set training configuration (e.g., advanced training for strikers)
 3. Wait 1 week (or simulate if possible)
 4. Check training reports
@@ -1069,7 +1069,7 @@
 6. Note specific skill improvements match training focus
 7. Repeat with different training configuration
 8. Verify goalkeepers don't improve shooting skills
-9. Verify young players improve faster
+9. Verify young CPlayers improve faster
 10. Check that overtraining increases injury risk
 11. Verify fatigue accumulates from high-intensity training
 12. Check that rest reduces fatigue
@@ -1078,7 +1078,7 @@
 - ✅ Skill improvements visible after training
 - ✅ Skill improvements match training focus
 - ✅ Position-specific improvement (forwards shoot, defenders defend)
-- ✅ Young players learn faster
+- ✅ Young CPlayers learn faster
 - ✅ Fatigue accumulates from high-intensity
 - ✅ Rest/recovery reduces fatigue
 - ✅ Injury risk increases with overtraining
@@ -1108,7 +1108,7 @@
 **Test Steps**:
 1. Navigate to league standings table
 2. Verify table displays all teams in league
-3. For each team, verify columns:
+3. For each CTeam, verify columns:
    - Rank (1st, 2nd, etc.)
    - Team name/logo
    - Matches Played (MP)
@@ -1118,7 +1118,7 @@
    - Points (W=3, D=1, L=0)
 4. Verify teams sorted by points (descending)
 5. Verify tiebreaker rules applied (goal difference, head-to-head)
-6. Check user's team highlighted or easily identifiable
+6. Check user's CTeam highlighted or easily identifiable
 7. Verify promotion/relegation zones color-coded:
    - Green (promotion)
    - White (safe)
@@ -1137,7 +1137,7 @@
 - ✅ Mobile responsive
 
 **Failure Criteria**:
-- ❌ Incorrect team ranking
+- ❌ Incorrect CTeam ranking
 - ❌ Wrong point calculations
 - ❌ Table doesn't update after matches
 - ❌ Zones not color-coded
@@ -1166,7 +1166,7 @@
 4. Click on match to view details:
    - Pre-match statistics (if available)
    - Team form
-   - Key player matchups
+   - Key CPlayer matchups
    - Injury/suspension information
 5. Verify "Next Match" highlighted or featured
 6. Check past results display (if in past)
@@ -1206,7 +1206,7 @@
 **Test Steps**:
 1. Navigate to match results/history page
 2. Verify completed matches display with:
-   - Score (home team score - away team score)
+   - Score (home CTeam score - away CTeam score)
    - Teams names/logos
    - Match date
    - Competition/round
@@ -1254,8 +1254,8 @@
 - Players with matches played
 
 **Test Steps**:
-1. Navigate to player statistics page or profile
-2. For a player with matches played, verify stats:
+1. Navigate to CPlayer statistics page or profile
+2. For a CPlayer with matches played, verify stats:
    - Matches Played
    - Goals Scored
    - Assists
@@ -1267,7 +1267,7 @@
    - League stats
    - Cup stats
    - International stats (if applicable)
-5. Click on player to view detailed stats
+5. Click on CPlayer to view detailed stats
 6. Verify percentages correct:
    - Goals per match ratio
    - Assists per match
@@ -1303,7 +1303,7 @@
 - Team with completed matches
 
 **Test Steps**:
-1. Navigate to team statistics page
+1. Navigate to CTeam statistics page
 2. Verify season statistics display:
    - Matches Played
    - Wins, Draws, Losses
@@ -1322,7 +1322,7 @@
 5. Verify performance trends:
    - Form (last 5 matches)
    - Recent performance chart
-6. Check league position and context
+6. Check league CSPosition and context
 7. Verify data accurate compared to league table
 8. Test on mobile
 
@@ -1356,16 +1356,16 @@
 1. Navigate to top scorers leaderboard
 2. Verify leaderboard displays:
    - Player rank (1st, 2nd, etc.)
-   - Player name and team
+   - Player name and CTeam
    - Goals scored
    - Matches played
    - Goals per match ratio
 3. Verify ranking is correct (highest goals at top)
 4. Verify top scorers are realistic
-5. Click on player to view profile
+5. Click on CPlayer to view profile
 6. Check if penalty goals broken out separately (if available)
 7. Verify leaderboard updates after matches
-8. Test filtering by position (if available)
+8. Test filtering by CSPosition (if available)
 9. Check top 10 accuracy
 
 **Expected Results**:
@@ -1379,7 +1379,7 @@
 **Failure Criteria**:
 - ❌ Leaderboard doesn't display
 - ❌ Incorrect ranking
-- ❌ Missing player data
+- ❌ Missing CPlayer data
 - ❌ Doesn't update
 
 ---
@@ -1397,7 +1397,7 @@
 **Test Steps**:
 1. Navigate to analytics dashboard
 2. Verify dashboard displays KPIs (Key Performance Indicators):
-   - Current league position
+   - Current league CSPosition
    - Win percentage
    - Average goals per match
    - Recent form (last 5 matches)
@@ -1406,10 +1406,10 @@
    - Performance charts
    - Possession averages
    - Attacking/defensive metrics
-4. Verify player insights:
-   - Best performing players
-   - Underperforming players
-   - In-form players (recent success)
+4. Verify CPlayer insights:
+   - Best performing CPlayers
+   - Underperforming CPlayers
+   - In-form CPlayers (recent success)
 5. Check tactical analysis:
    - Formation effectiveness
    - Tactical style performance
@@ -1501,12 +1501,12 @@
    - Verify score updates in real-time
    - Verify events display (goals, cards, etc.)
    - Verify match time progresses 0-90 minutes
-   - Verify team formations visible (if shown)
+   - Verify CTeam formations visible (if shown)
 6. Wait for match to complete
 7. Verify final score displays
 8. Verify match result saves
 9. Verify result reflects in standings/results list
-10. Verify player statistics updated
+10. Verify CPlayer statistics updated
 11. Verify match can be replayed/viewed in TIFO viewer
 
 **Expected Results**:
@@ -1548,7 +1548,7 @@
    - Winners/losers
    - Goals scored
 6. Verify standings update with new results
-7. Check that player's team match is NOT simulated (only others)
+7. Check that CPlayer's CTeam match is NOT simulated (only others)
 8. Verify all fixtures show completed status
 9. Verify league table updated correctly
 10. Check time: simulating should be instant (no waiting for match playback)
@@ -1869,7 +1869,7 @@
 2. **Team Inspection**:
    - Navigate to Club > First Team
    - Review squad composition
-   - Check player ratings and skills
+   - Check CPlayer ratings and skills
    
 3. **Initial Setup**:
    - Navigate to Training > Training Setup
@@ -1889,11 +1889,11 @@
 6. **Post-Match Analysis**:
    - View match result
    - Review statistics
-   - Check player performances
+   - Check CPlayer performances
    
 7. **League Interaction**:
    - View league standings
-   - Check position improvement/decline
+   - Check CSPosition improvement/decline
    - Review other results
    
 8. **Training Progression**:
@@ -1903,12 +1903,12 @@
    
 9. **Transfers (if applicable)**:
    - Navigate to Transfers
-   - Review available players
+   - Review available CPlayers
    - Attempt a transfer
    
 10. **Analytics Review**:
     - Check analytics dashboard
-    - Review team statistics
+    - Review CTeam statistics
     - Verify recommendations
 
 **Expected Results**:

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>American Football Manager - Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="/commonmanager/css/common.css">
+    <link rel="stylesheet" href="/americanfootballmanager/css/americanfootball.css">
+</head>
+<body>
+<div class="background"></div>
+
+<div class="top-menu">
+    <div class="menu-button desktop-only" onclick="window.location.href='/newLogic/home.html'">⚽🏀🏈 Sports Lobby</div>
+    <div class="menu-button desktop-only" onclick="loadPage('dashboard')">📊 Dashboard</div>
+    <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">🏈 Club</div>
+    <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
+    <div class="menu-button desktop-only" onclick="loadPage('stats')">&#128202; Stats</div>
+    <div class="menu-button desktop-only" onclick="loadPage('schedule')">&#128197; Schedule</div>
+    <div class="menu-button desktop-only" onclick="loadPage('transfers')">&#128176; Transfers</div>
+    <div id="live-clock" class="desktop-only live-clock">
+        <strong id="clock-time">Loading...</strong>
+        <small id="clock-date"></small>
+    </div>
+    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
+    <div class="menu-button mobile-only" onclick="cmToggleMobileMenu()">&#9776;</div>
+    <div class="mobile-only" style="margin-left:auto;"><img src="/images/logomain.jpg" alt="Logo" style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(139,94,60,0.3);"></div>
+</div>
+
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3 onclick="cmCloseMobileMenu()">Menu</h3>
+        <div class="accordion">
+            <div class="accordion-header" onclick="cmToggleAccordion(this)">🏈 Club</div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam');cmCloseMobileMenu()">First Team</div>
+                <div onclick="loadPage('schedule');cmCloseMobileMenu()">Schedule</div>
+                <div onclick="loadPage('transfers');cmCloseMobileMenu()">Transfers</div>
+            </div>
+        </div>
+        <div onclick="loadPage('leagueTable');cmCloseMobileMenu()">&#127942; League</div>
+        <div onclick="loadPage('stats');cmCloseMobileMenu()">&#128202; Stats</div>
+        <div onclick="loadPage('dashboard');cmCloseMobileMenu()">📊 Dashboard</div>
+        <div onclick="window.location.href='/newLogic/home.html'">⚽🏀🏈 Sports Lobby</div>
+        <div onclick="window.location.href='/newLogic/home.html'">&#127759; All Sports</div>
+        <div style="padding:12px;background:rgba(139,94,60,0.1);border-radius:8px;text-align:center;margin:10px 0;border:1px solid rgba(139,94,60,0.2);">
+            <strong id="clock-time-m">Loading...</strong><br>
+            <small id="clock-date-m"></small>
+        </div>
+    </div>
+</div>
+<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="cmCloseMobileMenu()"></div>
+
+<div id="clubSidebar" class="sidebar desktop-only">
+    <div class="sidebar-content">
+        <h3 style="color:#C49A6C;">Club</h3>
+        <div onclick="loadPage('firstTeam')">First Team</div>
+        <div onclick="loadPage('schedule')">Schedule</div>
+        <div onclick="loadPage('transfers')">Transfers</div>
+    </div>
+</div>
+
+<div class="dashboard-content">
+    <div id="main-content"></div>
+</div>
+
+<script type="module">
+    import { authFetch, handleAuthFailure } from '/js/auth.js';
+    window.authFetch = authFetch;
+    window.handleAuthFailure = handleAuthFailure;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/newLogic/login.html';
+    }
+</script>
+<script src="/commonmanager/js/common-sidebar.js"></script>
+<script src="/commonmanager/js/common-utils.js"></script>
+<script src="/americanfootballmanager/js/af-data.js"></script>
+<script src="/americanfootballmanager/js/pages/af-utils.js"></script>
+<script src="/americanfootballmanager/js/pages/af-dashboard.js"></script>
+<script src="/americanfootballmanager/js/pages/af-CTeam.js"></script>
+<script src="/americanfootballmanager/js/pages/af-CPlayer.js"></script>
+<script src="/americanfootballmanager/js/pages/af-league.js"></script>
+<script src="/americanfootballmanager/js/pages/af-schedule.js"></script>
+<script src="/americanfootballmanager/js/pages/af-match-viewer.js"></script>
+<script src="/americanfootballmanager/js/pages/af-router.js"></script>
+<script src="/americanfootballmanager/js/af-dashboard.js"></script>
+</body>
+</html>

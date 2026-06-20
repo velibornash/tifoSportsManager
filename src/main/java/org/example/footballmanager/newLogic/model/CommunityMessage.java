@@ -1,0 +1,51 @@
+package org.example.footballmanager.newLogic.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.example.commonmanager.model.User;
+
+import java.time.LocalDateTime;
+
+@Entity(name = "nl_CommunityMessage")
+@Table(name = "nl_community_message")
+@Data
+@NoArgsConstructor
+public class CommunityMessage {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_user_id")
+    private User authorUser;
+
+    @Column(nullable = false)
+    private String authorLabel;
+
+    @Column(nullable = false, length = 2000)
+    private String message;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 24)
+    private CommunityMessageType type;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recipient_user_id")
+    private User recipientUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "registration_request_id")
+    private RegistrationRequest registrationRequest;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
+}

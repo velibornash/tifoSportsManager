@@ -1,0 +1,296 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Bebas+Neue&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    color: #eef4ff;
+    overflow-x: hidden;
+    background: #071018;
+}
+
+.background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('/images/background.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #071018;
+    z-index: -1;
+    filter: saturate(0.86) brightness(0.68);
+    transform: scale(1.02);
+}
+
+.background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at top, rgba(143, 211, 255, 0.24), transparent 34%),
+        linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.86));
+}
+
+.logo-corner {
+    position: fixed;
+    top: 18px;
+    right: 24px;
+    z-index: 10;
+}
+
+.corner-logo {
+    width: 100px;
+    height: auto;
+    border-radius: 50%;
+    border: 4px solid rgba(143, 211, 255, 0.34);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.corner-logo:hover {
+    transform: scale(1.12) rotate(8deg);
+    box-shadow: 0 22px 54px rgba(143, 211, 255, 0.22);
+}
+
+.home-wrapper {
+    width: 100%;
+    max-width: 900px;
+    padding: 100px 24px 60px;
+    position: relative;
+    z-index: 5;
+}
+
+.hero {
+    text-align: center;
+    margin-bottom: 60px;
+}
+
+.hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4.5rem;
+    color: #eef4ff;
+    letter-spacing: 3px;
+    text-shadow: 0 6px 16px rgba(0, 0, 0, 0.42);
+    margin-bottom: 8px;
+}
+
+.hero-subtitle {
+    font-size: 1.3rem;
+    color: #8fd3ff;
+    opacity: 0.9;
+}
+
+.game-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.game-card {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    padding: 32px 24px;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(17, 23, 37, 0.92);
+    border: 1px solid rgba(143, 211, 255, 0.12);
+    box-shadow: 0 22px 54px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+}
+
+.game-card:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 28px 64px rgba(0, 0, 0, 0.45);
+    border-color: rgba(143, 211, 255, 0.35);
+}
+
+.game-card:active {
+    transform: translateY(-2px) scale(1.01);
+}
+
+.game-card-bg {
+    position: absolute;
+    inset: 0;
+    opacity: 0.25;
+    transition: opacity 0.35s ease;
+}
+
+.game-card:hover .game-card-bg {
+    opacity: 0.40;
+}
+
+.game-card-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+}
+
+.game-card-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.6rem;
+    letter-spacing: 1.5px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 6px;
+}
+
+.game-card-desc {
+    font-size: 0.9rem;
+    color: #b9c7da;
+    position: relative;
+    z-index: 1;
+    line-height: 1.4;
+    max-width: 220px;
+}
+
+.game-card-status {
+    margin-top: 16px;
+    padding: 8px 28px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    position: relative;
+    z-index: 1;
+    background: linear-gradient(135deg, #4f8fdc, #6fcf97);
+    color: #08111c;
+    box-shadow: 0 4px 16px rgba(79, 143, 220, 0.25);
+}
+
+.game-card-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    padding: 5px 14px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    z-index: 2;
+    background: linear-gradient(135deg, #e94560, #c026d3);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(233, 69, 96, 0.35);
+}
+
+.game-card.soon {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.game-card.soon:hover {
+    transform: none;
+    border-color: rgba(143, 211, 255, 0.12);
+}
+
+.game-card.soon:hover .game-card-bg {
+    opacity: 0.25;
+}
+
+.logout-area {
+    text-align: center;
+    margin-top: 48px;
+}
+
+.logout-btn {
+    padding: 12px 36px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    color: #b9c7da;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Roboto', sans-serif;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #eef4ff;
+    border-color: rgba(143, 211, 255, 0.3);
+}
+
+@media (max-width: 767px) {
+    .logo-corner {
+        top: 16px;
+        left: 16px;
+        right: auto;
+    }
+
+    .corner-logo {
+        width: 60px;
+        border-width: 3px;
+    }
+
+    .home-wrapper {
+        padding: 80px 16px 40px;
+    }
+
+    .hero {
+        margin-bottom: 40px;
+    }
+
+    .hero-title {
+        font-size: 3rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+    }
+
+    .game-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .game-card {
+        min-height: 180px;
+        padding: 24px 20px;
+    }
+
+    .game-card-icon {
+        font-size: 2.4rem;
+    }
+
+    .game-card-title {
+        font-size: 1.3rem;
+    }
+
+    .game-card-desc {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 400px) {
+    .hero-title {
+        font-size: 2.4rem;
+    }
+
+    .corner-logo {
+        width: 48px;
+    }
+
+    .game-card {
+        min-height: 160px;
+        padding: 20px 16px;
+    }
+}

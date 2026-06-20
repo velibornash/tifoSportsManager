@@ -107,7 +107,7 @@ Implement user registration flow allowing new users to create accounts with emai
 **Sprint**: Core  
 
 **Description**:
-Manage user profile information including team assignment, role assignment, and personal details.
+Manage user profile information including CTeam assignment, role assignment, and personal details.
 
 **Features Implemented**:
 - User profile data retrieval
@@ -123,12 +123,12 @@ Manage user profile information including team assignment, role assignment, and 
 - Frontend: `dashboard.js` - User state management
 
 **User Roles**:
-- COACH (primary role for team managers)
+- COACH (primary role for CTeam managers)
 - ADMIN (administrative access)
 - VIEWER (read-only access)
 
 **Database Models**:
-- User entity with team reference
+- User entity with CTeam reference
 - Role enumeration
 - Profile data persistence
 
@@ -216,7 +216,7 @@ Implement desktop and mobile sidebar navigation with accordion menus, dynamic pa
 - Club (Players, Tactics, Medical)
 - Training (Setup, Reports)
 - League (Tables, Schedules)
-- Country (National team)
+- Country (National CTeam)
 - Community (Chat, Forums)
 - TIFO Old School (Legacy viewer)
 
@@ -286,7 +286,7 @@ Implement real-time game clock displaying current in-game time, date, and match 
 **Update Frequency**:
 - Real-time updates (typically every second)
 - Phase information updates on match state changes
-- Responsive to user team's current match
+- Responsive to user CTeam's current match
 
 **Localization**:
 - Serbian locale (sr-RS)
@@ -309,12 +309,12 @@ Implement real-time game clock displaying current in-game time, date, and match 
 **Sprint**: Core  
 
 **Description**:
-Implement comprehensive first team squad management with player roster, filtering, sorting, and detailed player information.
+Implement comprehensive first CTeam squad management with CPlayer roster, filtering, sorting, and detailed CPlayer information.
 
 **Features Implemented**:
-- Squad list display with player details (name, position, number, rating, stats)
-- Player sorting by various attributes (name, position, rating, salary)
-- Player filtering by position or status
+- Squad list display with CPlayer details (name, CSPosition, number, rating, stats)
+- Player sorting by various attributes (name, CSPosition, rating, salary)
+- Player filtering by CSPosition or status
 - Squad performance statistics aggregation
 - Player card view with key metrics:
   - Rating (1-100 scale with star visualization)
@@ -327,7 +327,7 @@ Implement comprehensive first team squad management with player roster, filterin
 **Files Involved**:
 - Frontend: `js/pages.js` - Squad loading logic
 - Frontend: `js/pages-renderers.js` (1,102 lines) - HTML rendering
-- Frontend: `js/pages/features/team.js` - Team feature module
+- Frontend: `js/pages/features/CTeam.js` - Team feature module
 - Frontend: `css/dashboard.css` - Squad table styling
 - Backend: `TeamController.java` - Squad endpoints
 - Backend: `PlayerController.java` - Player data
@@ -337,7 +337,7 @@ Implement comprehensive first team squad management with player roster, filterin
 **Squad Features**:
 - Player count tracking
 - Formation compatibility display
-- Quick player selection for tactics
+- Quick CPlayer selection for tactics
 - Injury/suspension indicators
 - Performance ratings visualization
 - Contract information display
@@ -354,7 +354,7 @@ Implement comprehensive first team squad management with player roster, filterin
 - Weekly salary
 
 **Filtering Options**:
-- By position (goalkeeper, defender, midfielder, forward)
+- By CSPosition (goalkeeper, defender, midfielder, forward)
 - By status (active, injured, suspended)
 - By condition (fit, caution, warning)
 
@@ -362,12 +362,12 @@ Implement comprehensive first team squad management with player roster, filterin
 - By name (A-Z)
 - By rating (high to low)
 - By age (young to old)
-- By position
+- By CSPosition
 - By salary (high to low)
 - By condition
 
 **Notes**:
-- Foundation for team-related features
+- Foundation for CTeam-related features
 - Integrates with tactics system
 - Used for match lineup selection
 - Star rating visualization (1-5 stars)
@@ -381,15 +381,15 @@ Implement comprehensive first team squad management with player roster, filterin
 **Sprint**: Core  
 
 **Description**:
-Implement youth academy/juniors management system for developing young players with progression tracking.
+Implement youth academy/juniors management system for developing young CPlayers with progression tracking.
 
 **Features Implemented**:
-- Junior player list display
+- Junior CPlayer list display
 - Age-based grouping (U-17, U-19, U-21, etc.)
 - Development tracking with progression paths
 - Player potential ratings
-- Training progress for youth players
-- Promotion to first team capability
+- Training progress for youth CPlayers
+- Promotion to first CTeam capability
 
 **Files Involved**:
 - Frontend: `js/pages.js` - Juniors loading
@@ -403,8 +403,8 @@ Implement youth academy/juniors management system for developing young players w
 - Age group categorization
 - Potential rating display
 - Development progress tracking
-- Training assignments for youth players
-- Promotion to first team workflows
+- Training assignments for youth CPlayers
+- Promotion to first CTeam workflows
 - Junior squad management
 
 **Player Development**:
@@ -412,7 +412,7 @@ Implement youth academy/juniors management system for developing young players w
 - Current rating tracking
 - Skill growth indicators
 - Training impact visibility
-- Contract management for youth players
+- Contract management for youth CPlayers
 
 **Data per Junior Player**:
 - Name, age, birth date
@@ -424,8 +424,8 @@ Implement youth academy/juniors management system for developing young players w
 - Training group assignment
 
 **Notes**:
-- Long-term player development system
-- Foundation for sustainable team building
+- Long-term CPlayer development system
+- Foundation for sustainable CTeam building
 - Reduces transfer dependency
 - Connected to training system
 
@@ -438,10 +438,10 @@ Implement youth academy/juniors management system for developing young players w
 **Sprint**: Core  
 
 **Description**:
-Implement detailed player profile pages with comprehensive statistics, career history, and individual performance metrics.
+Implement detailed CPlayer profile pages with comprehensive statistics, career history, and individual performance metrics.
 
 **Features Implemented**:
-- Individual player detail view
+- Individual CPlayer detail view
 - Career statistics aggregation
 - Performance metrics display
 - Injury history tracking
@@ -458,7 +458,7 @@ Implement detailed player profile pages with comprehensive statistics, career hi
 - Backend: `PlayerRepository`
 
 **Player Profile Sections**:
-- Personal info (name, age, nationality, position)
+- Personal info (name, age, nationality, CSPosition)
 - Physical attributes (height, weight, preferred foot)
 - Career statistics:
   - Matches played
@@ -479,11 +479,11 @@ Implement detailed player profile pages with comprehensive statistics, career hi
 - Clickable profile navigation from squad lists
 - Statistics aggregation across competitions
 - Historical performance data
-- Comparison indicators vs team average
+- Comparison indicators vs CTeam average
 - Skill radar chart visualization
 
 **Notes**:
-- Central hub for player information
+- Central hub for CPlayer information
 - Used for transfer decisions
 - Supports lineup selection decisions
 - Integrates with medical center data
@@ -523,7 +523,7 @@ Implement staff directory system for managing coaching staff, medical staff, and
 - Nutritionist
 
 **Staff Information**:
-- Name and position/role
+- Name and CSPosition/role
 - Experience level (years in role)
 - Specialization area
 - Contract status and duration
@@ -539,9 +539,9 @@ Implement staff directory system for managing coaching staff, medical staff, and
 - Contract management
 
 **Notes**:
-- Impacts team morale and performance indirectly
+- Impacts CTeam morale and performance indirectly
 - Coaching staff influences training effectiveness
-- Medical staff affects player recovery
+- Medical staff affects CPlayer recovery
 
 ---
 
@@ -552,7 +552,7 @@ Implement staff directory system for managing coaching staff, medical staff, and
 **Sprint**: Core  
 
 **Description**:
-Implement medical center system for tracking player injuries, suspensions, fitness levels, and player condition management.
+Implement medical center system for tracking CPlayer injuries, suspensions, fitness levels, and CPlayer condition management.
 
 **Features Implemented**:
 - Injury tracking with severity levels (minor, moderate, severe)
@@ -561,7 +561,7 @@ Implement medical center system for tracking player injuries, suspensions, fitne
 - Fitness condition percentage display
 - Fatigue level tracking
 - Return-to-play predictions
-- Medical history per player
+- Medical history per CPlayer
 
 **Files Involved**:
 - Frontend: `js/pages.js` - Medical center loading
@@ -600,7 +600,7 @@ Implement medical center system for tracking player injuries, suspensions, fitne
 - Recovery acceleration (via training/rest)
 
 **Impact on Gameplay**:
-- Unavailable players excluded from lineups
+- Unavailable CPlayers excluded from lineups
 - Fitness affects match performance
 - Fatigue increases injury risk
 - Suspension enforces match bans
@@ -625,7 +625,7 @@ Implement club finances management including budget tracking, income/expenses, a
 **Features Implemented**:
 - Club budget display
 - Income tracking (ticket sales, sponsorships, prize money)
-- Expense tracking (player salaries, staff salaries, facility costs)
+- Expense tracking (CPlayer salaries, staff salaries, facility costs)
 - Financial balance overview
 - Budget planning and forecasting
 - Transfer fund allocation
@@ -641,7 +641,7 @@ Implement club finances management including budget tracking, income/expenses, a
 **Financial Metrics**:
 - Total budget
 - Available budget
-- Salary expenditure (first team + academy + staff)
+- Salary expenditure (first CTeam + academy + staff)
 - Operating expenses
 - Income sources:
   - Match day revenue
@@ -675,7 +675,7 @@ Implement club finances management including budget tracking, income/expenses, a
 **Notes**:
 - Balance between ambition and financial reality
 - Long-term sustainability planning
-- Impacts team competitiveness
+- Impacts CTeam competitiveness
 - Transfer strategy dependency
 
 ---
@@ -687,11 +687,11 @@ Implement club finances management including budget tracking, income/expenses, a
 **Sprint**: Core  
 
 **Description**:
-Implement transfer system for buying/selling players, managing transfer negotiations, and maintaining transfer market.
+Implement transfer system for buying/selling CPlayers, managing transfer negotiations, and maintaining transfer market.
 
 **Features Implemented**:
-- Buy player functionality with bid system
-- Sell player offers and negotiations
+- Buy CPlayer functionality with bid system
+- Sell CPlayer offers and negotiations
 - Transfer market browsing
 - Transfer list management
 - Negotiation history
@@ -708,11 +708,11 @@ Implement transfer system for buying/selling players, managing transfer negotiat
 - Backend: `Player` model (transfer fields)
 
 **Transfer Features**:
-- Available players for sale (market list)
-- Bid placement on target players
+- Available CPlayers for sale (market list)
+- Bid placement on target CPlayers
 - Counter-offer system
 - Negotiation timer (real-time matches)
-- Transfer fee suggestion based on player value
+- Transfer fee suggestion based on CPlayer value
 - Success probability calculation
 - Transfer history tracking
 
@@ -720,14 +720,14 @@ Implement transfer system for buying/selling players, managing transfer negotiat
 - Free transfers (no fee)
 - Permanent transfers (fee-based)
 - Loan transfers (temporary, with buy option)
-- Swap deals (player + fee)
+- Swap deals (CPlayer + fee)
 
 **Transfer Status**:
 - Pending (awaiting response)
 - Offered (bid made by another club)
 - Accepted (deal agreed)
 - Rejected (offer declined)
-- Completed (player transferred)
+- Completed (CPlayer transferred)
 - Cancelled (negotiation ended)
 
 **Financial Impact**:
@@ -762,11 +762,11 @@ Implement transfer system for buying/selling players, managing transfer negotiat
 **Sprint**: MVP  
 
 **Description**:
-Implement the core match simulation engine with realistic football mechanics, player decision-making, and event generation.
+Implement the core match simulation engine with realistic football mechanics, CPlayer decision-making, and event generation.
 
 **Features Implemented**:
 - 90-minute match simulation with event-based system
-- Position-aware player decision-making (pass/shoot/dribble)
+- Position-aware CPlayer decision-making (pass/shoot/dribble)
 - Player duels and physical confrontations
 - Advanced tactical profile system
 - Realistic event generation (1-3 events per minute)
@@ -808,7 +808,7 @@ Implement the core match simulation engine with realistic football mechanics, pl
 - Risk assessment (pass vs shoot vs dribble)
 - Teamwork and formation awareness
 - Player chemistry impact
-- Individual player attributes influencing decisions
+- Individual CPlayer attributes influencing decisions
 
 **Match Context**:
 - Home/away status
@@ -838,7 +838,7 @@ Implement the core match simulation engine with realistic football mechanics, pl
 **Performance Optimization**:
 - Event-based simulation (not tick-based)
 - Intelligent event generation (1-3 per minute, not every tick)
-- Efficient player ranking and decision-making
+- Efficient CPlayer ranking and decision-making
 - Optimized distance calculations
 
 **Testing & Validation**:
@@ -874,12 +874,12 @@ Refactor the realistic engine from an event-first model toward a possession-firs
 **Sprint**: Next  
 
 **Description**:
-Add explicit team width, line height, compactness, and defensive assignments.
+Add explicit CTeam width, line height, compactness, and defensive assignments.
 
 **Goals**:
 - Support press carrier / cover lane / track runner / hold line behaviors
 - Improve rest-defense shape during possession
-- Make the whole team move as a unit more consistently
+- Make the whole CTeam move as a unit more consistently
 
 ### TICKET-014C: Role-Based Decision Profiles
 **Status**: 🟡 PLANNED  
@@ -888,7 +888,7 @@ Add explicit team width, line height, compactness, and defensive assignments.
 **Sprint**: Next  
 
 **Description**:
-Move from broad position logic to role/slot-specific behavior driven by tactics data.
+Move from broad CSPosition logic to role/slot-specific behavior driven by tactics data.
 
 ### TICKET-014D: Shot Selection & Chance Quality Tuning
 **Status**: 🟡 PLANNED  
@@ -993,9 +993,9 @@ Implement match visualization interfaces displaying live match events, lineups, 
   - Tackles and interceptions
 - Event log:
   - Goal events (scorer, assist, time)
-  - Card events (player, card type, time)
-  - Substitutions (player out/in, time)
-  - Injury events (player, severity, time)
+  - Card events (CPlayer, card type, time)
+  - Substitutions (CPlayer out/in, time)
+  - Injury events (CPlayer, severity, time)
   - VAR review events
   - Match status updates
 - Match report:
@@ -1149,24 +1149,24 @@ Implement match lineup selection system allowing managers to set starting XI and
 
 **Features Implemented**:
 - Lineup editor with formation support
-- Drag-and-drop player placement (on some interfaces)
+- Drag-and-drop CPlayer placement (on some interfaces)
 - Starting XI selection validation
-- Substitute bench selection (5-12 players)
-- Formation validation (11 field players)
+- Substitute bench selection (5-12 CPlayers)
+- Formation validation (11 field CPlayers)
 - Formation change capability
-- Player position compatibility checking
+- Player CSPosition compatibility checking
 - Quick substitution templates
 - Tactical positioning assignment
 
 **Lineup Components**:
 - Formation display (visual representation)
-- Player selection per position
+- Player selection per CSPosition
   - 1 Goalkeeper
   - 4-5 Defenders
   - 3-4 Midfielders
   - 1-2 Forwards
   - (varies by formation)
-- Substitutes list (5-12 players)
+- Substitutes list (5-12 CPlayers)
 - Captain selection
 - Set piece takers (free kicks, penalties)
 
@@ -1180,11 +1180,11 @@ Implement match lineup selection system allowing managers to set starting XI and
 - 5-4-1 (very defensive)
 
 **Validation Rules**:
-- Must have exactly 11 field players
+- Must have exactly 11 field CPlayers
 - Must have 1 goalkeeper
-- Player position must match formation requirements
-- No duplicate player selection
-- Injured/suspended players excluded
+- Player CSPosition must match formation requirements
+- No duplicate CPlayer selection
+- Injured/suspended CPlayers excluded
 - Squad depth validation
 
 **Files Involved**:
@@ -1209,8 +1209,8 @@ Implement match lineup selection system allowing managers to set starting XI and
 - Not injured (medical center check)
 - Not suspended (discipline check)
 - Contract status valid
-- Has played in position before (preference tracking)
-- Skill level appropriate for position
+- Has played in CSPosition before (preference tracking)
+- Skill level appropriate for CSPosition
 
 **Set Pieces**:
 - Penalty taker assignment
@@ -1222,7 +1222,7 @@ Implement match lineup selection system allowing managers to set starting XI and
 - Done before each match
 - Can be changed before kickoff
 - Tactical tweaking opportunity
-- Formation affects team play
+- Formation affects CTeam play
 
 ---
 
@@ -1233,7 +1233,7 @@ Implement match lineup selection system allowing managers to set starting XI and
 **Sprint**: Core  
 
 **Description**:
-Implement comprehensive match statistics tracking and aggregation for team and player performance metrics.
+Implement comprehensive match statistics tracking and aggregation for CTeam and CPlayer performance metrics.
 
 **Features Implemented**:
 - Match statistics aggregation
@@ -1282,7 +1282,7 @@ Implement comprehensive match statistics tracking and aggregation for team and p
 - Head-to-head statistics
 
 **Performance Ratings**:
-- Individual player match rating (1-10)
+- Individual CPlayer match rating (1-10)
 - Based on:
   - Successful actions
   - Errors and mistakes
@@ -1292,15 +1292,15 @@ Implement comprehensive match statistics tracking and aggregation for team and p
 - Visual star rating (1-5 stars)
 
 **Comparative Statistics**:
-- Team vs team comparison
-- Player position-group averages
+- Team vs CTeam comparison
+- Player CSPosition-group averages
 - Season averages
 - Historical comparison
 
 **Analytics Features**:
 - Statistical trends over time
-- Best-performing players per stat
-- Underperforming players alert
+- Best-performing CPlayers per stat
+- Underperforming CPlayers alert
 - Formation effectiveness metrics
 - Tactical effectiveness (based on stats)
 
@@ -1321,24 +1321,24 @@ Implement comprehensive match statistics tracking and aggregation for team and p
 **Sprint**: Core  
 
 **Description**:
-Implement training setup system allowing managers to configure weekly training sessions with different focus areas for player development.
+Implement training setup system allowing managers to configure weekly training sessions with different focus areas for CPlayer development.
 
 **Features Implemented**:
 - Weekly training configuration interface
 - Multiple training pools:
-  - General training (all players)
-  - Positional training (by position)
-  - Advanced training (elite players)
+  - General training (all CPlayers)
+  - Positional training (by CSPosition)
+  - Advanced training (elite CPlayers)
   - Specialized training (technical, tactical, physical)
 - Player assignment to training pools
 - Training intensity settings
 - Duration configuration per session
 - Training schedule for week
 - Quick presets for common configurations
-- Mobile fallback for player selection
+- Mobile fallback for CPlayer selection
 
 **Training Pools**:
-1. **General Pool** - Base training for all squad players
+1. **General Pool** - Base training for all squad CPlayers
    - Fitness maintenance
    - Technical skill work
    - Tactical understanding
@@ -1350,8 +1350,8 @@ Implement training setup system allowing managers to configure weekly training s
    - Midfielder training (passing, movement, positioning)
    - Forward training (finishing, positioning, hold-up play)
 
-3. **Advanced Pool** - High-performance player development
-   - Elite player skill enhancement
+3. **Advanced Pool** - High-performance CPlayer development
+   - Elite CPlayer skill enhancement
    - Tactical specialization
    - Individual attribute focus
 
@@ -1361,13 +1361,13 @@ Implement training setup system allowing managers to configure weekly training s
    - Physical (strength, speed, endurance)
 
 **Configuration Options**:
-- Pool selection per player
+- Pool selection per CPlayer
 - Training intensity (low, medium, high)
-- Focus area (based on team needs)
+- Focus area (based on CTeam needs)
 - Session duration (45min, 60min, 90min)
 - Weekly schedule (Monday-Friday/Saturday)
 - Rest days allocation
-- Individual player modifications
+- Individual CPlayer modifications
 
 **Files Involved**:
 - Frontend: `js/pages.js` - Training setup loading/saving
@@ -1386,7 +1386,7 @@ Implement training setup system allowing managers to configure weekly training s
 - Team assigned configuration
 - Players per pool
 - Training intensity
-- Estimated player development impact
+- Estimated CPlayer development impact
 - Fatigue accumulated
 - Injury risk adjustment
 
@@ -1410,7 +1410,7 @@ Implement training setup system allowing managers to configure weekly training s
 
 **Notes**:
 - Weekly reset for new training plans
-- Critical for player development
+- Critical for CPlayer development
 - Affects injury risk and fatigue
 - Linked to progression system
 - Foundational for long-term improvement
@@ -1424,7 +1424,7 @@ Implement training setup system allowing managers to configure weekly training s
 **Sprint**: Core  
 
 **Description**:
-Implement comprehensive player skill development system with progression tracking, experience accumulation, and skill growth over time.
+Implement comprehensive CPlayer skill development system with progression tracking, experience accumulation, and skill growth over time.
 
 **Features Implemented**:
 - Skill attribute system (7 core skills)
@@ -1466,7 +1466,7 @@ Implement comprehensive player skill development system with progression trackin
 **Progression Tracking**:
 - Weekly skill change tracking
 - Cumulative progression over time
-- Skill development graphs per player
+- Skill development graphs per CPlayer
 - Team-wide skill statistics
 - Position group comparisons
 - Comparative analysis vs league averages
@@ -1486,7 +1486,7 @@ Implement comprehensive player skill development system with progression trackin
 - Backend: `PlayerTrainingReportDTO` - DTO for reports
 
 **Training Report Features**:
-- Weekly summary per player
+- Weekly summary per CPlayer
 - Skill change indicators (↑↓→)
 - Condition percentage
 - Fatigue level
@@ -1496,10 +1496,10 @@ Implement comprehensive player skill development system with progression trackin
 - Comparative rankings
 
 **Player Development Rates**:
-- Young players learn faster
-- Older players plateau and decline
+- Young CPlayers learn faster
+- Older CPlayers plateau and decline
 - Prime years (23-31) most consistent growth
-- Veteran players (32+) slight decline/stability
+- Veteran CPlayers (32+) slight decline/stability
 - Training investment ROI varies by age
 
 **Fatigue System**:
@@ -1524,11 +1524,11 @@ Implement comprehensive player skill development system with progression trackin
 - Milestone achievements
 
 **Notes**:
-- Long-term player development critical
+- Long-term CPlayer development critical
 - Balances short-term results vs long-term growth
 - Requires strategic training planning
 - Impacts squad strength over multiple seasons
-- Prevents unrealistic player development
+- Prevents unrealistic CPlayer development
 
 ---
 
@@ -1539,24 +1539,24 @@ Implement comprehensive player skill development system with progression trackin
 **Sprint**: Core  
 
 **Description**:
-Implement comprehensive training reports showing weekly player development, skill progression, and training effectiveness metrics.
+Implement comprehensive training reports showing weekly CPlayer development, skill progression, and training effectiveness metrics.
 
 **Features Implemented**:
 - Weekly training report generation
-- Player-by-player progression tracking
+- Player-by-CPlayer progression tracking
 - Skill development visualization (graphs)
 - Training effectiveness metrics
 - Team-wide summary statistics
 - Individual training impact assessment
 - Condition and fatigue trending
-- Injury risk analysis per player
+- Injury risk analysis per CPlayer
 - Training recommendations
 
 **Report Contents**:
 - Week number and date range
 - Team configuration used
 - Player list with progression:
-  - Each player's assigned pool
+  - Each CPlayer's assigned pool
   - Skill changes (7 core skills)
   - Overall rating change
   - Condition percentage
@@ -1564,8 +1564,8 @@ Implement comprehensive training reports showing weekly player development, skil
   - Injury risk status
   - Performance trend
 - Team statistics:
-  - Average skill level per position
-  - Overall team strength change
+  - Average skill level per CSPosition
+  - Overall CTeam strength change
   - Training compliance rate
   - Injury count/risk
   - Fatigue distribution
@@ -1583,7 +1583,7 @@ Implement comprehensive training reports showing weekly player development, skil
 - Rest requirement assessment
 
 **Graphs & Visualizations**:
-- Skill progression line chart per player (x: weeks, y: skill level)
+- Skill progression line chart per CPlayer (x: weeks, y: skill level)
 - Player rating trend chart
 - Condition percentage display
 - Fatigue distribution histogram
@@ -1604,14 +1604,14 @@ Implement comprehensive training reports showing weekly player development, skil
 
 **Report Endpoints**:
 - GET `/training/reports/{weekNumber}` - Weekly report
-- GET `/training/player/{playerId}/progression` - Player progression
+- GET `/training/CPlayer/{playerId}/progression` - Player progression
 - GET `/training/summary` - Team summary
 - GET `/training/alerts` - Problem areas/recommendations
 
 **Interactive Features**:
-- Filter by position
+- Filter by CSPosition
 - Sort by skill
-- Show injury risk players
+- Show injury risk CPlayers
 - Export to PDF/CSV (if implemented)
 - Historical comparison (previous weeks)
 - Projection to season-end
@@ -1626,7 +1626,7 @@ Implement comprehensive training reports showing weekly player development, skil
 **Notes**:
 - Essential feedback mechanism
 - Drives training strategy decisions
-- Supports player evaluation
+- Supports CPlayer evaluation
 - Identifies development trends
 - Helps prevent injuries via overtraining detection
 
@@ -1674,10 +1674,10 @@ Implement league standings table and standings management with automatic updates
 
 **Standing Features**:
 - Color-coded zones (promotion, safety, relegation)
-- Team position indicators
+- Team CSPosition indicators
 - Form indicators (recent wins/losses)
 - Trends (↑ rising, ↓ falling, → stable)
-- Historical position comparison
+- Historical CSPosition comparison
 - Points projection to season-end
 
 **Files Involved**:
@@ -1709,7 +1709,7 @@ Implement league standings table and standings management with automatic updates
 
 **Notes**:
 - Core league progression mechanism
-- Provides context for team performance
+- Provides context for CTeam performance
 - Drives engagement (promotion/relegation stakes)
 - Real-time updates critical
 - Fair Play rules optional
@@ -1748,7 +1748,7 @@ Implement league schedule generation, fixture management, and round-by-round mat
 
 **League Competition Settings**:
 - Number of teams
-- Matches per team per season (38 typical for double round-robin)
+- Matches per CTeam per season (38 typical for double round-robin)
 - Promotion/Relegation slots
 - European qualification positions
 - Number of rounds in season
@@ -1790,7 +1790,7 @@ Implement league schedule generation, fixture management, and round-by-round mat
 - Done at season start
 - Drives entire season progression
 - Critical for planning
-- Affects team performance expectations
+- Affects CTeam performance expectations
 
 ---
 
@@ -1848,7 +1848,7 @@ Implement league match results tracking and historical match data browsing for l
 
 **Filtering & Sorting**:
 - Filter by round
-- Filter by team (home/away/any)
+- Filter by CTeam (home/away/any)
 - Sort by date (newest/oldest)
 - Sort by attendance
 - Show only wins/draws/losses
@@ -1856,7 +1856,7 @@ Implement league match results tracking and historical match data browsing for l
 **Notes**:
 - Provides historical context
 - Supports performance analysis
-- Shows team trends
+- Shows CTeam trends
 - Engagement mechanism
 
 ---
@@ -1901,15 +1901,15 @@ Implement competition/tournament management system supporting multiple competiti
 **Competition Types**:
 - **League**: Round-robin format, points-based
   - Promotion/relegation based on final standing
-  - Typical 34-38 matches per team (double round-robin)
+  - Typical 34-38 matches per CTeam (double round-robin)
 - **Cup**: Knockout format, single elimination
   - Replays on draws (or extra time)
   - Progression through rounds
   - Final winner determination
-- **International**: National team competition
+- **International**: National CTeam competition
   - Qualification rounds
   - Final tournament groups
-  - Multi-team format
+  - Multi-CTeam format
 
 **Notes**:
 - Foundation for multi-competition experience
@@ -1927,7 +1927,7 @@ Implement competition/tournament management system supporting multiple competiti
 **Sprint**: Core  
 
 **Description**:
-Implement comprehensive player statistics tracking and performance metrics across all competitions.
+Implement comprehensive CPlayer statistics tracking and performance metrics across all competitions.
 
 **Features Implemented**:
 - Career statistics tracking:
@@ -1960,7 +1960,7 @@ Implement comprehensive player statistics tracking and performance metrics acros
 - Backend: `MatchPlayerStatsRepository`
 
 **Statistics Tracked**:
-- Goals (breakdown by position)
+- Goals (breakdown by CSPosition)
 - Assists (final pass for goals)
 - Appearances (match count)
 - Minutes played (total time on pitch)
@@ -1968,7 +1968,7 @@ Implement comprehensive player statistics tracking and performance metrics acros
 - Substitute appearances
 - Bench appearances (not playing)
 - Average rating per season
-- Position stats (specific to player position)
+- Position stats (specific to CPlayer CSPosition)
 
 **Advanced Metrics**:
 - Goals + Assists (combined metric)
@@ -1984,7 +1984,7 @@ Implement comprehensive player statistics tracking and performance metrics acros
 **Filtering Options**:
 - By season
 - By competition
-- By position
+- By CSPosition
 - By timeframe (recent matches)
 - By opponent quality
 
@@ -2003,7 +2003,7 @@ Implement comprehensive player statistics tracking and performance metrics acros
 **Sprint**: Core  
 
 **Description**:
-Implement team-level statistics and performance analysis across competitions.
+Implement CTeam-level statistics and performance analysis across competitions.
 
 **Features Implemented**:
 - Season statistics:
@@ -2053,7 +2053,7 @@ Implement team-level statistics and performance analysis across competitions.
 - Historical trend comparison
 
 **Notes**:
-- Shows team strength
+- Shows CTeam strength
 - Identifies strategic needs
 - Guides training focus
 - Informs transfer strategy
@@ -2121,7 +2121,7 @@ Implement league-wide leaderboards for top scorers, assists leaders, and other s
 - Fair play ranking (fewest cards)
 
 **Notes**:
-- Provides competition between players
+- Provides competition between CPlayers
 - Motivates performance
 - Prestige scoring (top scorer award)
 - Historical records (all-time leaders possible)
@@ -2148,8 +2148,8 @@ Implement comprehensive analytics dashboard with advanced insights, performance 
   - Attacking/Defensive metrics
   - Set piece performance
 - Player insights:
-  - Best performing players (recent)
-  - Underperforming players (recent)
+  - Best performing CPlayers (recent)
+  - Underperforming CPlayers (recent)
   - Injury impact assessment
   - Development trajectory
 - Tactical analysis:
@@ -2217,7 +2217,7 @@ Implement comprehensive event tracking system capturing all match events and pro
   - Match start/end
 - Event log display:
   - Chronological order
-  - Event details (player, time, type)
+  - Event details (CPlayer, time, type)
   - Event outcome
   - Commentary/description
 - Event statistics:
@@ -2227,8 +2227,8 @@ Implement comprehensive event tracking system capturing all match events and pro
   - Team event comparison
 - Historical event searching:
   - Filter by event type
-  - Filter by player
-  - Filter by team
+  - Filter by CPlayer
+  - Filter by CTeam
   - Filter by date range
   - Sort by time or type
 
@@ -2257,7 +2257,7 @@ Implement comprehensive event tracking system capturing all match events and pro
 - Team
 - Event result (if applicable)
 - Context information:
-  - Player position during event
+  - Player CSPosition during event
   - Ball possession
   - Formation (for relevant events)
 
@@ -2265,7 +2265,7 @@ Implement comprehensive event tracking system capturing all match events and pro
 - GET `/matches/{matchId}/events` - Match events
 - GET `/matches/{matchId}/events?type={type}` - Filtered events
 - GET `/teams/{teamId}/events` - Team events
-- GET `/players/{playerId}/events` - Player events
+- GET `/CPlayers/{playerId}/events` - Player events
 
 **Key Events Filter**:
 - Show only goals, cards, injuries, substitutions
@@ -2295,7 +2295,7 @@ Implement comprehensive event tracking system capturing all match events and pro
 **Sprint**: Secondary  
 
 **Description**:
-Implement real-time community chat system for player communication and social interaction.
+Implement real-time community chat system for CPlayer communication and social interaction.
 
 **Features Implemented**:
 - Live chat interface
@@ -2304,11 +2304,11 @@ Implement real-time community chat system for player communication and social in
 - Message timestamps
 - User activity status
 - Message history
-- Chat room organization (global, team, competition)
+- Chat room organization (global, CTeam, competition)
 - Moderation features
 
 **Chat Features**:
-- Global chat (all players)
+- Global chat (all CPlayers)
 - Team chat (squad members)
 - Competition chat (league competitors)
 - Private messages (between users)
@@ -2365,7 +2365,7 @@ Implement real-time community chat system for player communication and social in
 **Sprint**: Secondary  
 
 **Description**:
-Implement forum discussion system for community topics, team discussions, and strategic conversations.
+Implement forum discussion system for community topics, CTeam discussions, and strategic conversations.
 
 **Features Implemented**:
 - Forum categories:
@@ -2432,11 +2432,11 @@ Implement forum discussion system for community topics, team discussions, and st
 **Sprint**: Secondary  
 
 **Description**:
-Implement community-level league control system allowing players to simulate matches and control league progression.
+Implement community-level league control system allowing CPlayers to simulate matches and control league progression.
 
 **Features Implemented**:
 - Play your match action:
-  - Launch user team's current scheduled match
+  - Launch user CTeam's current scheduled match
   - Realistic match simulation
   - Live match viewing
   - Match result determination
@@ -2462,7 +2462,7 @@ Implement community-level league control system allowing players to simulate mat
 
 **Actions Available**:
 1. **Play Your Match** 🎮
-   - Triggers next scheduled match for user's team
+   - Triggers next scheduled match for user's CTeam
    - Launches full match simulation
    - User watches match play out
    - Live event feed
@@ -2793,11 +2793,11 @@ Implement responsive data tables and list displays that adapt to different scree
 - Empty state messaging
 
 **Table Types Implemented**:
-1. **Squad Table** (player list)
+1. **Squad Table** (CPlayer list)
    - Name, Position, Number, Rating, Salary
    - Sortable by all columns
-   - Filterable by position
-   - Click for player detail
+   - Filterable by CSPosition
+   - Click for CPlayer detail
 
 2. **Match Results Table**
    - Score, Opponent, Date, Result
@@ -2809,7 +2809,7 @@ Implement responsive data tables and list displays that adapt to different scree
    - Rank, Team, Matches, W-D-L, Goals, Diff, Points
    - Color-coded zones (promotion/relegation)
    - Sortable by most columns
-   - Click for team detail
+   - Click for CTeam detail
 
 4. **Training Report Table**
    - Player, Pool, Skills, Condition, Fatigue
@@ -3002,7 +3002,7 @@ POST /api/cs/next-round    - Advance to next round
 
 **Technical Details**:
 - In-memory game state per user
-- Integration with existing team/player data
+- Integration with existing CTeam/CPlayer data
 - Round-by-round league progression
 - Simplified match results (no live simulation)
 
@@ -3019,7 +3019,7 @@ Implement text-based football manager interface with classic management features
 
 **Features Implemented**:
 - Club information display
-- First team squad management
+- First CTeam squad management
 - League table and standings
 - Match fixtures and results
 - Transfer market interface
@@ -3079,7 +3079,7 @@ Implement core game logic for text-based football management simulation.
 
 **Data Persistence**:
 - Game state stored in memory
-- Integration with main database for teams/players
+- Integration with main database for teams/CPlayers
 - Match results and statistics tracking
 - Player career progression
 
@@ -3139,8 +3139,8 @@ Stats Sidebar:
 Integrate text-based manager with existing backend services and data.
 
 **Integration Points**:
-- User authentication and team assignment
-- Player and team data from main database
+- User authentication and CTeam assignment
+- Player and CTeam data from main database
 - Training system integration
 - Transfer market integration
 - League and competition data

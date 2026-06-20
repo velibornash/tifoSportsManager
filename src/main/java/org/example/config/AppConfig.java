@@ -1,4 +1,4 @@
-package org.example.commonmanager.config;
+package org.example.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;

@@ -59,7 +59,7 @@ public class CleanSheetService {
                         .orElseThrow(() -> new RuntimeException("CSSeasonCompetition not found")));
 
         // 2. Ucitaj sve timove u ligi
-        List<CSCompetitionEntry> entries = CSCompetitionEntryRepository.findBySeasonCompetition(sc);
+        List<CSCompetitionEntry> entries = CSCompetitionEntryRepository.findByCsSeasonCompetition(sc);
         List<CTeam> teamsInLeague = entries.stream()
                 .map(CSCompetitionEntry::getCTeam)
                 .filter(Objects::nonNull)
@@ -78,7 +78,7 @@ public class CleanSheetService {
         // 4. Mapiraj igrace svih timova
         Map<Long, List<CSPlayer>> allRosters = new HashMap<>();
         for (CTeam CTeam : teamsInLeague) {
-            List<CPlayer> CPlayers = CSPlayerRepository.findByTeam(CTeam);
+            List<CPlayer> CPlayers = CSPlayerRepository.findByCTeam(CTeam);
             allRosters.put(CTeam.getId(), CSMapper.toCSPlayers(CPlayers));
         }
 

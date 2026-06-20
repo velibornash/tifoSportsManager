@@ -1,4 +1,4 @@
-package org.example.commonmanager.config;
+package org.example.config;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -34,6 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (path.startsWith("/js/")
                 || path.startsWith("/css/")
+                || path.startsWith("/newLogic/")
                 || path.startsWith("/images/")
                 || path.startsWith("/zox/")
                 || path.endsWith(".html")) {

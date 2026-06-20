@@ -17,8 +17,8 @@ public final class DuelResolver {
         double xG = estimateXG(shooter, params, openGoal);
 
         if (openGoal) {
-            // Slightly reduce open-goal generosity
-            double chance = clamp(0.48 + xG * 0.38 + (shooter.skills().shooting() + shooter.skills().technique()) / 300.0, 0.75, 0.98);
+            // Open goal: moderate conversion
+            double chance = clamp(0.42 + xG * 0.35 + (shooter.skills().shooting() + shooter.skills().technique()) / 330.0, 0.65, 0.90);
             boolean goal = RNG.nextDouble() < chance;
             return new DuelResult(goal, goal, false, !goal, xG);
         }
@@ -26,14 +26,14 @@ public final class DuelResolver {
         double shooterPower = shooter.skills().shooting() * 0.50 + shooter.skills().technique() * 0.30 + shooter.skills().pace() * 0.20;
         double keeperPower = goalkeeper.skills().goalkeeping() * 0.60 + goalkeeper.skills().defending() * 0.20;
 
-        double onTargetChance = clamp(0.32 + xG * 0.45 + (shooter.skills().technique() / 190.0) - (goalkeeper.skills().goalkeeping() / 420.0), 0.28, 0.86);
+        double onTargetChance = clamp(0.30 + xG * 0.38 + (shooter.skills().technique() / 220.0) - (goalkeeper.skills().goalkeeping() / 480.0), 0.24, 0.76);
         boolean onTarget = RNG.nextDouble() < onTargetChance;
 
         if (!onTarget) {
             return new DuelResult(false, false, false, true, xG);
         }
 
-        double goalChance = clamp(xG * 0.70 + (shooterPower / (shooterPower + keeperPower + 1)) * 0.18, 0.10, 0.52);
+        double goalChance = clamp(xG * 0.75 + (shooterPower / (shooterPower + keeperPower + 1)) * 0.16, 0.15, 0.55);
         boolean goal = RNG.nextDouble() < goalChance;
 
         return new DuelResult(goal, goal, !goal, false, xG);
@@ -45,8 +45,8 @@ public final class DuelResolver {
         double defStr = defender.skills().defending() * 1.38 + defender.skills().pace() * 0.44 + defender.skills().technique() * 0.18
             + defender.skills().stamina() * 0.28;
 
-        attStr *= attacker.skills().fatigueFactor(attacker.fatigue());
-        defStr *= defender.skills().fatigueFactor(defender.fatigue());
+        attStr *= attacker.skills().fatigueFactor(attacker.fatigueInt());
+        defStr *= defender.skills().fatigueFactor(defender.fatigueInt());
 
         double winChance = attStr / (attStr + defStr + 0.1);
         winChance = clamp(winChance + (RNG.nextDouble() - 0.5) * 0.15, 0.18, 0.82);

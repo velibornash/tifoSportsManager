@@ -1,0 +1,28 @@
+package org.example.footballmanager.newLogic.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+@Data
+@Entity(name = "MatchPlayerStats")
+public class MatchPlayerStats {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    private Match match;
+
+    @ManyToOne
+    private Player player;
+
+    private int goals;
+    private int assists;
+    private int yellowCards;
+    private int redCards;
+    private int minutesPlayed;
+    private int rating;
+    private int interceptions;
+    private int saves;
+    private boolean cleanSheet;
+}

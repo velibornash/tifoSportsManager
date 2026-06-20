@@ -820,8 +820,8 @@ mvn test -Dtest=TifoUITest
 ```
 POST   /auth/register              - User registration
 POST   /auth/login                 - User login
-GET    /api/teams/{teamId}         - Get team info
-GET    /api/players/{playerId}     - Get player details
+GET    /api/teams/{teamId}         - Get CTeam info
+GET    /api/CPlayers/{playerId}     - Get CPlayer details
 GET    /api/matches/fixtures       - Get match fixtures
 GET    /api/matches/{matchId}      - Get match details
 GET    /api/leagues/standings      - Get league standings
