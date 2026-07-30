@@ -10,4 +10,5 @@ import java.util.List;
 public interface MatchPlayerStatsRepository extends JpaRepository<MatchPlayerStats, Long> {
     List<MatchPlayerStats> findByMatchId(Long matchId);
     List<MatchPlayerStats> findByPlayerId(Long playerId);
+    List<MatchPlayerStats> findByPlayerIdIn(List<Long> playerIds);
 }

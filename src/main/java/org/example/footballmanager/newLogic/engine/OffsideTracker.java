@@ -1,39 +1,85 @@
 package org.example.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.MatchState;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
+import org.example.footballmanager.newLogic.model.*;
+import org.example.footballmanager.newLogic.model.event.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
 
 public final class OffsideTracker {
 
-    public static boolean isOffside(MatchState state, PlayerSnapshot receiver) {
-        boolean homeAttack = "HOME".equals(receiver.teamSide());
-        boolean inOppositionHalf = homeAttack ? receiver.x() > 50.0 : receiver.x() < 50.0;
-        if (!inOppositionHalf) return false;
+    private static final Logger log = LoggerFactory.getLogger(OffsideTracker.class);
 
-        double offsideLine = calculateOffsideLine(state, receiver.teamSide());
-        boolean aheadOfBall = isAheadOfBall(state, receiver, homeAttack);
+    private final Set<Long> flaggedOffside = new HashSet<>();
 
-        boolean beyondLine = homeAttack ? receiver.x() > offsideLine + 1.5 : receiver.x() < offsideLine - 1.5;
-        return aheadOfBall && beyondLine;
+    public OffsideTracker() {}
+
+    private int checkCounter = 0;
+
+    public void update(MatchState state) {
+        checkCounter++;
+        if (checkCounter % 60 != 0) return;
+
+        if (state.carrierId == null || state.ballInTransit) return;
+
+        String attackingTeam = state.carrierTeamSide;
+        if (attackingTeam == null) return;
+        String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
+
+        double offsideLine = calculateOffsideLine(state, defendingTeam);
+
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            if (!snap.teamSide().equals(attackingTeam)) continue;
+            if (snap.position() == Position.GK) continue;
+
+            boolean isOffside = isPlayerOffside(snap, attackingTeam, offsideLine, state.ball.x());
+
+            if (isOffside && !flaggedOffside.contains(snap.playerId())) {
+                flaggedOffside.add(snap.playerId());
+                state.addEvent(new OffsideEvent(state.minute, state.tick,
+                    snap.playerId(), snap.name(), attackingTeam));
+            } else if (!isOffside) {
+                flaggedOffside.remove(snap.playerId());
+            }
+        }
     }
 
-    private static double calculateOffsideLine(MatchState state, String attackingTeam) {
-        String defendingTeam = state.oppositeTeam(attackingTeam);
-        var defenders = "HOME".equals(defendingTeam) ? state.homeSnapshots() : state.awaySnapshots();
-        var xPositions = defenders.stream()
-            .filter(s -> s.position() != org.example.footballmanager.newLogic.model.Position.GK)
-            .mapToDouble(PlayerSnapshot::x)
-            .sorted()
-            .toArray();
-
-        if (xPositions.length == 0) return "HOME".equals(attackingTeam) ? 95.0 : 5.0;
-
-        return "HOME".equals(attackingTeam) ? xPositions[xPositions.length - 1] : xPositions[0];
+    public boolean isOffside(MatchState state, PlayerSnapshot snap) {
+        String attackingTeam = snap.teamSide();
+        String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
+        double offsideLine = calculateOffsideLine(state, defendingTeam);
+        return isPlayerOffside(snap, attackingTeam, offsideLine, state.ball.x());
     }
 
-    private static boolean isAheadOfBall(MatchState state, PlayerSnapshot receiver, boolean homeAttack) {
-        PlayerSnapshot carrier = state.ballCarrierSnapshot();
-        if (carrier == null) return true;
-        return homeAttack ? receiver.x() > carrier.x() + 0.5 : receiver.x() < carrier.x() - 0.5;
+    private double calculateOffsideLine(MatchState state, String defendingTeam) {
+        List<Double> defenderXPositions = new ArrayList<>();
+
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            if (!snap.teamSide().equals(defendingTeam)) continue;
+            if (snap.position() == Position.GK) continue;
+            defenderXPositions.add(snap.x());
+        }
+
+        if (defenderXPositions.isEmpty()) return 0;
+
+        defenderXPositions.sort(Comparator.reverseOrder());
+
+        if (defenderXPositions.size() >= 2) {
+            return defenderXPositions.get(1);
+        }
+        return defenderXPositions.get(0);
+    }
+
+    private boolean isPlayerOffside(PlayerSnapshot snap, String attackingTeam, double offsideLine, double ballX) {
+        if ("HOME".equals(attackingTeam)) {
+            return snap.x() > offsideLine && snap.x() > ballX;
+        } else {
+            return snap.x() < offsideLine && snap.x() < ballX;
+        }
+    }
+
+    public void reset() {
+        flaggedOffside.clear();
     }
 }

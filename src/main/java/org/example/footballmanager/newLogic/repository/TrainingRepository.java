@@ -9,6 +9,6 @@ import java.util.Optional;
 
 @Repository
 public interface TrainingRepository extends JpaRepository<Training, Long> {
-    List<Training> findByPlayerId(Long playerId);
+    Optional<Training> findByPlayerId(Long playerId);
     Optional<Training> findByPlayerIdAndFormation(Long playerId, String formation);
 }

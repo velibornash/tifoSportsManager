@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.commonmanager.util.JwtUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -18,6 +20,8 @@ import java.io.IOException;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
@@ -53,6 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             username = jwtUtil.getUsernameFromToken(jwt);
         } catch (Exception ex) {
+            log.warn("[JWT] Failed to extract username from token for {} {}: {}", request.getMethod(), path, ex.getMessage());
             SecurityContextHolder.clearContext();
             filterChain.doFilter(request, response);
             return;
@@ -66,10 +71,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                    log.debug("[JWT] Authenticated user '{}' for {} {}", username, request.getMethod(), path);
+                } else {
+                    log.warn("[JWT] Token validation failed for user '{}' on {} {}", username, request.getMethod(), path);
                 }
             } catch (UsernameNotFoundException ex) {
+                log.warn("[JWT] User '{}' not found in DB for {} {}", username, request.getMethod(), path);
                 SecurityContextHolder.clearContext();
             } catch (Exception ex) {
+                log.warn("[JWT] Error authenticating user '{}' for {} {}: {}", username, request.getMethod(), path, ex.getMessage());
                 SecurityContextHolder.clearContext();
             }
         }

@@ -6,6 +6,8 @@ import org.example.commonmanager.dto.LoginRequestDTO;
 import org.example.commonmanager.model.User;
 import org.example.commonmanager.repository.UserRepository;
 import org.example.commonmanager.util.JwtUtil;
+import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -19,11 +21,13 @@ public class UserController {
     private final UserRepository userRepo;
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
+    private final TeamRepository teamRepository;
 
-    public UserController(UserRepository userRepo, AuthenticationManager authManager, JwtUtil jwtUtil) {
+    public UserController(UserRepository userRepo, AuthenticationManager authManager, JwtUtil jwtUtil, TeamRepository teamRepository) {
         this.userRepo = userRepo;
         this.authManager = authManager;
         this.jwtUtil = jwtUtil;
+        this.teamRepository = teamRepository;
     }
 
     @PostMapping("/login")
@@ -52,6 +56,17 @@ public class UserController {
         if (resolvedUser.getCTeam() != null) {
             dto.setTeamId(resolvedUser.getCTeam().getId());
             dto.setTeamName(resolvedUser.getCTeam().getName());
+            if (resolvedUser.getCTeam().getCsCountry() != null) {
+                dto.setCountryName(resolvedUser.getCTeam().getCsCountry().getName());
+                dto.setCountryIsoCode(resolvedUser.getCTeam().getCsCountry().getIsoCode());
+            }
+            
+            // Look up the newLogic football team by name
+            String teamName = resolvedUser.getCTeam().getName();
+            teamRepository.findByName(teamName).ifPresent(team -> {
+                dto.setFootballTeamId(team.getId());
+                dto.setFootballTeamName(team.getName());
+            });
         }
         if (resolvedUser.getTifoCTeam() != null) {
             dto.setTifoTeamId(resolvedUser.getTifoCTeam().getId());
@@ -77,11 +92,15 @@ public class UserController {
         private String role;
         private Long teamId;
         private String teamName;
+        private Long footballTeamId;
+        private String footballTeamName;
         private Long tifoTeamId;
         private String tifoTeamName;
         private Long basketballTeamId;
         private String basketballTeamName;
         private Long americanFootballTeamId;
         private String americanFootballTeamName;
+        private String countryName;
+        private String countryIsoCode;
     }
 }

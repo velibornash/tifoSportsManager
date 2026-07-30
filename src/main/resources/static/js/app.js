@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
-    loadDashboard();
+    // dashboard.js sam inicijalizuje dashboard kroz window.addEventListener('load', ...)
+    // Ne pozivamo loadDashboard() ovde jer currentUserTeamId još nije postavljen
 
     const sidebar = document.getElementById("clubSidebar");
 

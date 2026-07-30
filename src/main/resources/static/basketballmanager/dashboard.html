@@ -11,7 +11,7 @@
 <div class="background"></div>
 
 <div class="top-menu">
-    <div class="menu-button desktop-only" onclick="window.location.href='/newLogic/home.html'">⚽🏀🏈 Sports Lobby</div>
+    <div class="menu-button desktop-only" onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
     <div class="menu-button desktop-only" onclick="loadPage('dashboard')">📊 Dashboard</div>
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">🏀 Club</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
@@ -41,8 +41,8 @@
         <div onclick="loadPage('leagueTable');cmCloseMobileMenu()">&#127942; League</div>
         <div onclick="loadPage('stats');cmCloseMobileMenu()">&#128202; Stats</div>
         <div onclick="loadPage('dashboard');cmCloseMobileMenu()">📊 Dashboard</div>
-        <div onclick="window.location.href='/newLogic/home.html'">⚽🏀🏈 Sports Lobby</div>
-        <div onclick="window.location.href='/newLogic/home.html'">&#127759; All Sports</div>
+        <div onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
+        <div onclick="window.location.href='/home.html'">&#127759; All Sports</div>
         <div style="padding:12px;background:rgba(232,125,47,0.1);border-radius:8px;text-align:center;margin:10px 0;border:1px solid rgba(232,125,47,0.2);">
             <strong id="clock-time-m">Loading...</strong><br>
             <small id="clock-date-m"></small>
@@ -69,9 +69,9 @@
     window.authFetch = authFetch;
     window.handleAuthFailure = handleAuthFailure;
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (!token) {
-        window.location.href = '/newLogic/login.html';
+        window.location.href = '/login.html';
     }
 </script>
 <script src="/commonmanager/js/common-sidebar.js"></script>
@@ -79,8 +79,8 @@
 <script src="/basketballmanager/js/basketball-data.js"></script>
 <script src="/basketballmanager/js/pages/bb-utils.js"></script>
 <script src="/basketballmanager/js/pages/bb-dashboard.js"></script>
-<script src="/basketballmanager/js/pages/bb-CTeam.js"></script>
-<script src="/basketballmanager/js/pages/bb-CPlayer.js"></script>
+<script src="/basketballmanager/js/pages/bb-team.js"></script>
+<script src="/basketballmanager/js/pages/bb-player.js"></script>
 <script src="/basketballmanager/js/pages/bb-league.js"></script>
 <script src="/basketballmanager/js/pages/bb-stats.js"></script>
 <script src="/basketballmanager/js/pages/bb-schedule.js"></script>

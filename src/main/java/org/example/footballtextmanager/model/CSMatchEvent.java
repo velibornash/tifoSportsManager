@@ -21,4 +21,8 @@ public class CSMatchEvent {
     private String playerInName;
     private String scoreAfterGoal;
     private boolean penaltyScored;
+    
+    // Shot statistics
+    private Double xG;
+    private Integer distance;
 }

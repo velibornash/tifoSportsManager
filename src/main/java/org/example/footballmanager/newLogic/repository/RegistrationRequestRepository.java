@@ -13,4 +13,6 @@ public interface RegistrationRequestRepository extends JpaRepository<Registratio
     Optional<RegistrationRequest> findByUsername(String username);
     Optional<RegistrationRequest> findByEmail(String email);
     List<RegistrationRequest> findByStatus(RegistrationRequestStatus status);
+    Optional<RegistrationRequest> findByUsernameIgnoreCaseAndStatus(String username, RegistrationRequestStatus status);
+    Optional<RegistrationRequest> findByEmailIgnoreCaseAndStatus(String email, RegistrationRequestStatus status);
 }

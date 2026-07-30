@@ -58,7 +58,13 @@ public class Match {
     private String homeFormation;
     private String awayFormation;
 
+    @Column(columnDefinition = "text")
     private String eventJson;
+
+    @Column(columnDefinition = "text")
+    private String lineupJson;
+
+    private Long replayId;
     private Boolean finished;
 
     public boolean isFinished() {
@@ -72,6 +78,12 @@ public class Match {
     public void setFinished(Boolean finished) {
         this.finished = finished;
     }
+
+    @Transient
+    private boolean userMatch;
+
+    public boolean isUserMatch() { return userMatch; }
+    public void setUserMatch(boolean userMatch) { this.userMatch = userMatch; }
 
     // Fluent accessors for MatchSimulator compatibility
     public Long id() { return this.id; }

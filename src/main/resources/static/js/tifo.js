@@ -16,18 +16,23 @@ let currentPage = null;
 
 // --- Auth helper ---
 async function csApi(url, options = {}) {
-    const token = localStorage.getItem('token');
-    if (!token) { window.location.href = '/newLogic/login.html'; return null; }
+    const token = sessionStorage.getItem('token');
+    if (!token) { window.location.href = '/login.html'; return null; }
     const headers = { ...options.headers, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
     const res = await fetch(url, { ...options, headers });
-    if (res.status === 401) { localStorage.removeItem('token'); window.location.href = '/newLogic/login.html'; return null; }
+    if (res.status === 401) {
+        sessionStorage.removeItem('token');
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
+        return null;
+    }
     return res;
 }
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
-    const token = localStorage.getItem('token');
-    if (!token) { window.location.href = '/newLogic/login.html'; return; }
+    const token = sessionStorage.getItem('token');
+    if (!token) { window.location.href = '/login.html'; return; }
 
     const res = await csApi('/api/cs/state');
     if (!res) return;
@@ -3073,7 +3078,7 @@ setupSessionLifecycle();
 
 async function backToMainApp() {
     await closeCsSession();
-    window.location.href = '/newLogic/home.html';
+    window.location.href = '/home.html';
 }
 
 // --- Expose to global scope (for onclick handlers in HTML) ---

@@ -10,4 +10,5 @@ import java.util.List;
 public interface CommunityMessageRepository extends JpaRepository<CommunityMessage, Long> {
     List<CommunityMessage> findByAuthorUserId(Long authorUserId);
     List<CommunityMessage> findByRecipientUserId(Long recipientUserId);
+    List<CommunityMessage> findTop150ByOrderByCreatedAtDescIdDesc();
 }

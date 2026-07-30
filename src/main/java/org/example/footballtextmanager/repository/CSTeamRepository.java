@@ -12,10 +12,10 @@ import java.util.Optional;
 
 public interface CSTeamRepository extends JpaRepository<CTeam, Long> {
     @Override
-    @EntityGraph(attributePaths = {"competition", "country"})
+    @EntityGraph(attributePaths = {"CSCompetition", "csCountry"})
     Optional<CTeam> findById(Long id);
 
-    @EntityGraph(attributePaths = {"stadium"})
+    @EntityGraph(attributePaths = {"csStadium"})
     Optional<CTeam> findWithStadiumById(Long id);
 
     Optional<CTeam> findByName(String name);

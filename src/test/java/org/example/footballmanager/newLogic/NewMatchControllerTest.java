@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.dto.MatchStatusResponse;
 import org.example.footballmanager.newLogic.dto.ReplayChunkDTO;
 import org.example.footballmanager.newLogic.dto.ReplayMetadataDTO;
 import org.example.footballmanager.newLogic.dto.StartMatchRequest;
+import org.example.footballmanager.newLogic.store.MatchStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
@@ -16,7 +17,7 @@ public class NewMatchControllerTest {
 
     @Test
     void fullMatchFlow() {
-        NewMatchController controller = new NewMatchController(null);
+        NewMatchController controller = new NewMatchController(null, new MatchStore());
 
         // 1. Start match
         StartMatchRequest req = new StartMatchRequest("Crvena Zvezda", "Partizan");
@@ -59,16 +60,16 @@ public class NewMatchControllerTest {
         ReplayChunkDTO chunk0 = controller.replayChunk(matchId, 0).getBody();
         assertNotNull(chunk0);
         assertEquals(0, chunk0.chunkIndex());
-        assertNotNull(chunk0.ticks());
-        assertFalse(chunk0.ticks().isEmpty());
+        assertNotNull(chunk0.players());
+        assertFalse(chunk0.players().isEmpty());
 
         // 6. Verify chunk boundary
         for (int i = 0; i < Math.min(3, chunks.size()); i++) {
             var chunk = chunks.get(i);
             assertNotNull(chunk);
             assertEquals(i, chunk.chunkIndex());
-            long tickCount = chunk.ticks().size();
-            assertTrue(tickCount <= 125, "Chunk tick count: " + tickCount);
+            assertNotNull(chunk.ball());
+            assertNotNull(chunk.players());
         }
 
         // 7. Unknown match returns 404

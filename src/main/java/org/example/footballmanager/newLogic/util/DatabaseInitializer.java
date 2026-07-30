@@ -1,0 +1,617 @@
+package org.example.footballmanager.newLogic.util;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.newLogic.model.*;
+import org.example.commonmanager.model.User;
+import org.example.commonmanager.model.UserRole;
+import org.example.commonmanager.repository.UserRepository;
+import org.example.footballmanager.newLogic.model.tactics.TeamTacticsProfile;
+import org.example.footballmanager.newLogic.repository.*;
+import org.example.footballmanager.newLogic.service.ResetService;
+import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.service.TacticsProfileBackupEntry;
+import org.example.footballmanager.newLogic.service.TacticsProfileBackupService;
+import org.example.footballmanager.newLogic.service.YouthAcademyService;
+import org.example.footballmanager.newLogic.util.players.PlayerFactory;
+import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
+import org.example.footballmanager.newLogic.util.teams.TeamFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class DatabaseInitializer {
+
+    private static final String OWNER_EMAIL = "velibor@example.com";
+
+    private final CountryRepository countryRepository;
+    private final CompetitionRepository competitionRepository;
+    private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
+    private final PlayerRepository playerRepository;
+    private final SeasonRepository seasonRepository;
+    private final SeasonCompetitionRepository seasonCompetitionRepository;
+    private final CompetitionEntryRepository competitionEntryRepository;
+    private final PromotionRuleRepository promotionRuleRepository;
+    private final TeamTacticsProfileRepository teamTacticsProfileRepository;
+    private final PlayerFactory playerFactory;
+    private final TeamFactory teamFactory;
+    private final PasswordEncoder encoder;  // Spring Security BCrypt encoder
+    private final Random random = new Random();
+    private final ResetService resetService;
+    private final SeasonService seasonService;
+    private final YouthAcademyService youthAcademyService;
+    private final SquadNumberAssigner squadNumberAssigner;
+    private final TacticsProfileBackupService tacticsProfileBackupService;
+    private final org.example.footballtextmanager.repository.CSTeamRepository csTeamRepository;
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void sanitizeLegacySchemaOnStartup() {
+        resetService.sanitizeLegacyLineupOrderSchema();
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void ensureBaselineDataOnStartup() {
+        if (countryRepository.count() > 0
+                && competitionRepository.count() > 0
+                && teamRepository.count() > 0
+                && userRepository.findByUsernameOrEmail(OWNER_EMAIL).isPresent()) {
+            return;
+        }
+
+        log.warn("Core football data missing on startup. Bootstrapping baseline Serbian pyramid.");
+        try {
+            initSerbianFootballStructure();
+            Team ownerTeam = createOwnerUserIfNotExists();
+            seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+            assignSquadNumbersIfMissing();
+        } catch (Exception e) {
+            log.warn("Startup initialization failed (likely concurrent DB reset): {}", e.getMessage());
+        }
+    }
+
+
+    public void init() {
+        resetAndInitializeDatabase();
+    }
+
+    public void resetOnly() {
+        log.info("Počinje soft reset baze podataka (čuvaju se korisnici, taktike, struktura)...");
+        resetService.resetFootballDataOnly();
+        log.info("Soft reset baze završen.");
+    }
+
+    /** Clear all football data but preserve user account + tactics profiles. Does NOT rebuild structure. */
+    public void clearDatabaseOnly() {
+        clearDatabaseOnly(message -> {});
+    }
+
+    public void clearDatabaseOnly(Consumer<String> progressListener) {
+        log.info("Clearing football data (preserving owner account + tactics profiles)...");
+        progressListener.accept("Snapshotting tactics profiles...");
+        List<TacticsProfileSnapshot> tacticsSnapshots = snapshotTacticsProfiles();
+        progressListener.accept("Resetting database...");
+        resetService.resetDatabase();
+        // Re-seed Omladinac team + players + re-link common User's CTeam reference
+        progressListener.accept("Re-seeding Omladinac team...");
+        seedOwnerAfterReset();
+        progressListener.accept("Restoring tactics profiles...");
+        restoreTacticsProfiles(tacticsSnapshots);
+        log.info("Database cleared. Use Initialize to rebuild the football structure.");
+        progressListener.accept("Clear completed.");
+    }
+
+    public void resetAndInitializeDatabase() {
+        resetAndInitializeDatabase(message -> {});
+    }
+
+    public void resetAndInitializeDatabase(Consumer<String> progressListener) {
+        log.info("Počinje automatska inicijalizacija baze podataka...");
+        progressListener.accept("Snapshotting tactics profiles...");
+        List<TacticsProfileSnapshot> tacticsSnapshots = snapshotTacticsProfiles();
+        progressListener.accept("Resetting football data...");
+        resetService.resetDatabase();
+        // 1. Always run structure init after a full reset.
+        log.info("Pokrecem punu inicijalizaciju strukture...");
+        progressListener.accept("Rebuilding Serbian pyramid...");
+        initSerbianFootballStructure();
+
+        // 2. Kreiraj Owner korisnika ako ne postoji (sada baza ima strukturu, timovi postoje)
+        progressListener.accept("Restoring owner account...");
+        Team ownerTeam = createOwnerUserIfNotExists();
+        progressListener.accept("Restoring tactics profiles...");
+        restoreTacticsProfiles(tacticsSnapshots);
+        progressListener.accept("Assigning squad numbers and juniors...");
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+
+        assignSquadNumbersIfMissing();
+        log.info("Inicijalizacija završena.");
+        progressListener.accept("Database rebuild completed.");
+    }
+
+    @Transactional
+    public void seedOwnerAfterReset() {
+        Team ownerTeam = createOwnerUserIfNotExists();
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        assignSquadNumbersIfMissing();
+    }
+
+    private void assignSquadNumbersIfMissing() {
+        teamRepository.findAll().forEach(squadNumberAssigner::assignMissingNumbers);
+    }
+
+    private Team createOwnerUserIfNotExists() {
+        Team ownerTeam;
+        Optional<User> existingOwner = userRepository.findByUsernameOrEmail(OWNER_EMAIL);
+        if (existingOwner.isEmpty()) {
+            User owner = new User();
+
+            // Pronađi Omladinac (pretpostavljam da postoji nakon inicijalizacije)
+            Team omladinac = teamRepository.findByName("OFK Omladinac")
+                    .orElseGet(() -> {
+                        log.warn("Omladinac nije pronađen – kreira se placeholder tim");
+                        Team temp = teamFactory.findOrCreate("OFK Omladinac");
+                        teamRepository.save(temp);
+                        return temp;
+                    });
+
+            omladinac.setHumanControlled(true);
+            teamRepository.save(omladinac);
+            applyOwnerIdentity(owner, omladinac);
+            owner.setPassword(encoder.encode("A12345!"));
+            owner.setRole(UserRole.OWNER);
+            userRepository.save(owner);
+            ownerTeam = omladinac;
+
+            log.info("Kreiran Owner korisnik 'velibor' sa timom OFK Omladinac (ID: {})", omladinac.getId());
+        } else {
+            log.info("Owner korisnik 'velibor' već postoji – preskačem kreiranje.");
+            User owner = existingOwner.orElseThrow();
+            ownerTeam = teamRepository.findByName("OFK Omladinac")
+                    .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac"));
+            ownerTeam.setHumanControlled(true);
+            teamRepository.save(ownerTeam);
+            applyOwnerIdentity(owner, ownerTeam);
+            if (owner.getRole() == null) {
+                owner.setRole(UserRole.OWNER);
+            }
+            userRepository.save(owner);
+        }
+        return ownerTeam;
+    }
+
+    void applyOwnerIdentity(User owner, Team ownerTeam) {
+        owner.setEmail(OWNER_EMAIL);
+        owner.setUsername(OWNER_EMAIL);
+        org.example.footballtextmanager.model.CTeam csTeam = csTeamRepository.findByName("OFK Omladinac")
+                .orElseGet(() -> {
+                    org.example.footballtextmanager.model.CTeam ct = new org.example.footballtextmanager.model.CTeam();
+                    ct.setName("OFK Omladinac");
+                    return csTeamRepository.save(ct);
+                });
+        owner.setCTeam(csTeam);
+        owner.setTifoCTeam(csTeam);
+    }
+
+    private List<TacticsProfileSnapshot> snapshotTacticsProfiles() {
+        Map<String, TacticsProfileSnapshot> merged = new LinkedHashMap<>();
+
+        teamTacticsProfileRepository.findAll().stream()
+                .map(profile -> {
+                    Team team = profile.getTeam();
+                    if (team == null || team.getName() == null || team.getName().isBlank()) {
+                        return null;
+                    }
+                    TacticsProfileSnapshot snapshot = new TacticsProfileSnapshot();
+                    snapshot.teamName = team.getName();
+                    snapshot.formation = profile.getFormation();
+                    snapshot.style = profile.getStyle();
+                    snapshot.rulesJson = profile.getRulesJson();
+                    snapshot.setPiecesJson = profile.getSetPiecesJson();
+                    snapshot.version = profile.getVersion();
+                    return snapshot;
+                })
+                .filter(Objects::nonNull)
+                .forEach(snapshot -> merged.put(snapshot.teamName, snapshot));
+
+        tacticsProfileBackupService.loadAll().stream()
+                .map(this::toTacticsSnapshot)
+                .filter(Objects::nonNull)
+                .forEach(snapshot -> {
+                    TacticsProfileSnapshot existing = merged.get(snapshot.teamName);
+                    boolean shouldReplace = existing == null
+                            || (snapshot.rulesJson != null && snapshot.rulesJson.length() > 10
+                                && (existing.rulesJson == null || existing.rulesJson.length() <= 10))
+                            || (snapshot.version != null && existing.version != null && snapshot.version > existing.version);
+                    if (shouldReplace) {
+                        merged.put(snapshot.teamName, snapshot);
+                    }
+                });
+
+        return new ArrayList<>(merged.values());
+    }
+
+    private void restoreTacticsProfiles(List<TacticsProfileSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return;
+        }
+
+        int restored = 0;
+        for (TacticsProfileSnapshot snapshot : snapshots) {
+            Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
+            if (team == null || team.getId() == null) {
+                continue;
+            }
+            TeamTacticsProfile profile = teamTacticsProfileRepository.findByTeamId(team.getId()).orElseGet(TeamTacticsProfile::new);
+            profile.setTeam(team);
+            profile.setFormation(snapshot.formation);
+            profile.setStyle(snapshot.style);
+            profile.setRulesJson(snapshot.rulesJson);
+            profile.setSetPiecesJson(snapshot.setPiecesJson);
+            profile.setVersion(snapshot.version != null ? snapshot.version : 1L);
+            profile.setUpdatedAt(java.time.LocalDateTime.now());
+            teamTacticsProfileRepository.save(profile);
+            restored++;
+        }
+        log.info("Restored {} tactics editor profiles after reset.", restored);
+    }
+
+    private TacticsProfileSnapshot toTacticsSnapshot(TacticsProfileBackupEntry entry) {
+        if (entry == null || entry.getTeamName() == null || entry.getTeamName().isBlank()) {
+            return null;
+        }
+        TacticsProfileSnapshot snapshot = new TacticsProfileSnapshot();
+        snapshot.teamName = entry.getTeamName();
+        snapshot.formation = entry.getFormation();
+        snapshot.style = entry.getStyle();
+        snapshot.rulesJson = entry.getRulesJson();
+        snapshot.setPiecesJson = entry.getSetPiecesJson();
+        snapshot.version = entry.getVersion();
+        return snapshot;
+    }
+
+    private void seedInitialJuniorsForOwnerIfMissing(Team ownerTeam) {
+        if (ownerTeam == null || ownerTeam.getId() == null) return;
+        int seasonNumber = seasonService.getOrCreateClock().getCurrentSeason();
+        youthAcademyService.seedInitialJuniorsForTeam(ownerTeam.getId(), seasonNumber);
+    }
+
+    @Transactional
+    public void initSerbianFootballStructure() {
+        // 1. Država – Srbija + još nekoliko (modularno)
+        createCountryIfNotExists("Srbija", "SRB", 65, 70);
+        createCountryIfNotExists("Bosna i Hercegovina", "BIH", 55, 60);
+        createCountryIfNotExists("Crna Gora", "MNE", 50, 55);
+        createCountryIfNotExists("Hrvatska", "HRV", 70, 75);
+        createCountryIfNotExists("Slovenija", "SVN", 60, 65);
+        createCountryIfNotExists("Severna Makedonija", "MKD", 45, 50);
+        createCountryIfNotExists("Nemačka", "DEU", 95, 95);
+        createCountryIfNotExists("Engleska", "GBR", 95, 90);
+        createCountryIfNotExists("Brazil", "BRA", 90, 85);
+
+        Country serbia = countryRepository.findByIsoCode("SRB").orElseThrow();
+
+        // 2. Kreiraj tekuću sezonu (2025)
+        Season currentSeason = createSeasonIfNotExists(2025, "2025/2026 Season");
+
+        // 3. Kreiraj lige ako ne postoje
+        Competition tier1 = createLeagueIfNotExists(serbia, 1, "Superliga Srbije", 1, 10, currentSeason);
+        createLeagueIfNotExists(serbia, 2, "Prva liga Srbije Grupa A", 1, 10, currentSeason);
+        createLeagueIfNotExists(serbia, 2, "Prva liga Srbije Grupa B", 2, 10, currentSeason);
+
+        // Tier 3 – 4 lige
+        for (int i = 1; i <= 4; i++) {
+            createLeagueIfNotExists(serbia, 3, "Srpska liga Grupa " + (char)('A' + i - 1), i, 10, currentSeason);
+        }
+
+        // Tier 4 – 8 liga
+        for (int i = 1; i <= 8; i++) {
+            createLeagueIfNotExists(serbia, 4, "Okružna liga Grupa " + i, i, 10, currentSeason);
+        }
+
+        // Tier 5 – 16 liga
+        for (int i = 1; i <= 16; i++) {
+            createLeagueIfNotExists(serbia, 5, "Opštinska liga Grupa " + i, i, 10, currentSeason);
+        }
+
+        // 4. Popuni timove u Tier 1 (Superliga) – obavezno Omladinac + 9 random/stvarnih
+        populateLeagueWithTeams(tier1, 10, true, currentSeason);
+
+        // Ostale lige popuni random timovima
+        competitionRepository.findAll().stream()
+                .filter(c -> c.getCountry().getIsoCode().equals("SRB") && c.getTier() > 1)
+                .forEach(league -> populateLeagueWithTeams(league, 10, false, currentSeason));
+
+        // 5. Dodaj PromotionRule za lige
+        addPromotionRulesForLeagues(currentSeason);
+
+        // 6. Dodaj Kup Srbije (nacionalni kup)
+        createCupCompetitionIfNotExists(serbia, "Kup Srbije", 64, currentSeason);
+
+        // 7. Generate double round-robin fixtures for all Serbian leagues (season year = 2025)
+        int seasonYear = 2025;
+        competitionRepository.findAll().stream()
+                .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
+                .filter(c -> c.getType() == CompetitionType.LEAGUE)
+                .forEach(league -> seasonService.ensureDoubleRoundRobinSchedule(league, seasonYear));
+    }
+
+    private Country createCountryIfNotExists(String name, String isoCode, int reputation, int youthRating) {
+        return countryRepository.findByIsoCode(isoCode)
+                .map(existing -> {
+                    if ((existing.getFlagImagePath() == null || existing.getFlagImagePath().isBlank())
+                            && "SRB".equalsIgnoreCase(isoCode)) {
+                        existing.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
+                        return countryRepository.save(existing);
+                    }
+                    return existing;
+                })
+                .orElseGet(() -> {
+                    Country c = new Country();
+                    c.setName(name);
+                    c.setIsoCode(isoCode);
+                    c.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
+                    c.setCurrencyCode(isoCode.equals("SRB") ? "RSD" : "EUR");
+                    c.setReputation(reputation);
+                    c.setYouthRating(youthRating);
+                    return countryRepository.save(c);
+                });
+    }
+
+    private String resolveCountryFlagImagePath(String isoCode) {
+        return "SRB".equalsIgnoreCase(String.valueOf(isoCode)) ? "/images/serbiaflag.png" : null;
+    }
+
+    private Season createSeasonIfNotExists(int year, String description) {
+        return seasonRepository.findBySeasonYear(year)
+                .orElseGet(() -> {
+                    Season s = new Season();
+                    s.setSeasonYear(year);
+                    s.setDescription(description);
+                    return seasonRepository.save(s);
+                });
+    }
+
+    private Competition createLeagueIfNotExists(Country country, int tier, String name, int divisionLevel, int teamsCount, Season season) {
+        Optional<Competition> existing = competitionRepository.findByNameAndCountryIsoCode(name, country.getIsoCode());
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        Competition comp = new Competition();
+        comp.setName(name);
+        comp.setType(CompetitionType.LEAGUE);
+        comp.setScope(CompetitionScope.NATIONAL);
+        comp.setTeamType(CompetitionTeamType.CLUB);
+        comp.setCountry(country);
+        comp.setTier(tier);
+        comp.setDivisionLevel(divisionLevel);
+        comp.setTeamsPerCompetition(teamsCount);
+        comp.setReputationWeight(tier * 20);
+        competitionRepository.save(comp);
+
+        createSeasonCompetitionIfNotExists(comp, season);
+        return comp;
+    }
+
+    private SeasonCompetition createSeasonCompetitionIfNotExists(Competition competition, Season season) {
+        SeasonCompetition sc = new SeasonCompetition();
+        sc.setSeasonYear(season.getSeasonYear());
+        sc.setCompetition(competition);
+        sc.setFinished(false);
+        return seasonCompetitionRepository.save(sc);
+    }
+
+    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac, Season season) {
+        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear())
+                .orElseThrow(() -> new RuntimeException("Sezona za ligu nije pronađena"));
+
+        long currentTeams = competitionEntryRepository.countBySeasonCompetition(sc);
+        int toCreate = teamCount - (int) currentTeams;
+
+        if (toCreate <= 0) {
+            log.info("Liga {} već ima {} timova → preskačem", league.getName(), currentTeams);
+            return;
+        }
+
+        Set<String> usedNamesInLeague = competitionEntryRepository.findBySeasonCompetition(sc)
+                .stream()
+                .map(entry -> entry.getTeam().getName())
+                .collect(Collectors.toSet());
+
+        int attempts = 0;
+        final int maxAttempts = 100;
+
+        // 1. Dodaj Omladinac ako treba i ako ga nema
+        if (includeOmladinac && !usedNamesInLeague.contains("OFK Omladinac")) {
+            Team omladinac = teamFactory.findOrCreate("OFK Omladinac");
+            addTeamToLeague(omladinac, sc);
+            usedNamesInLeague.add("OFK Omladinac");
+            toCreate--;
+            log.info("Dodat Omladinac u ligu: {}", league.getName());
+        }
+
+        // 2. Dodaj preostale timove
+        while (toCreate > 0 && attempts < maxAttempts) {
+            String candidateName = getRandomTeamName();
+            if (usedNamesInLeague.contains(candidateName)) {
+                attempts++;
+                continue;
+            }
+
+            Team team = teamFactory.findOrCreate(candidateName);
+            if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
+                addTeamToLeague(team, sc);
+                usedNamesInLeague.add(candidateName);
+                toCreate--;
+                log.info("Dodat tim {} u ligu {}", candidateName, league.getName());
+            }
+            attempts++;
+        }
+
+        if (toCreate > 0) {
+            log.warn("Nisam uspeo da popunim ligu {} sa {} timova – ostalo je {} da se doda",
+                    league.getName(), teamCount, toCreate);
+        }
+    }
+
+    private void addTeamToLeague(Team team, SeasonCompetition sc) {
+        team.setCompetition(sc.getCompetition());
+        if (team.getCountry() == null) {
+            team.setCountry(sc.getCompetition().getCountry());
+        }
+        teamRepository.save(team);
+
+        CompetitionEntry entry = new CompetitionEntry();
+        entry.setSeasonCompetition(sc);
+        entry.setTeam(team);
+        entry.setPoints(0);
+        entry.setGoalsScored(0);
+        entry.setGoalsConceded(0);
+        entry.setPosition(0);
+        entry.setWins(0);
+        entry.setDraws(0);
+        entry.setLosses(0);
+        competitionEntryRepository.save(entry);
+
+        // Kreiraj igrače ako ih nema
+        if (playerRepository.countByTeam(team) == 0) {
+            if (Objects.equals(team.getName(), "OFK Omladinac")) {
+                playerFactory.createOmladinacPlayers(team);
+                applyOmladinacTalentProfile(team);
+            } else {
+                playerFactory.createRandomTeamPlayers(team.getName(), team);
+            }
+        }
+        squadNumberAssigner.assignMissingNumbers(team);
+    }
+
+    private void applyOmladinacTalentProfile(Team team) {
+        List<Player> players = playerRepository.findByTeam(team);
+        if (players.isEmpty()) return;
+
+        Map<String, Double> fixedTalent = new HashMap<>();
+        fixedTalent.put(normalizeName("Ljupče Ožegović"), 10.0);
+        fixedTalent.put(normalizeName("Borislav Negovanović"), 9.0);
+        fixedTalent.put(normalizeName("Žika Veljković"), 8.0);
+        fixedTalent.put(normalizeName("Šumenko Dabić"), 7.0);
+
+        players.forEach(player -> {
+            String key = normalizeName(player.getName());
+            Double talent = fixedTalent.get(key);
+            if (talent == null) {
+                talent = 5.0 + random.nextDouble() * 3.0; // 5.0 - 8.0
+            }
+            player.setTalent(Math.max(1.0, Math.min(10.0, talent)));
+            if ("zvezdan vukomanovic".equals(key)) {
+                player.setSquadNumber(1);
+            }
+        });
+        playerRepository.saveAll(players);
+    }
+
+    private String normalizeName(String name) {
+        if (name == null) return "";
+        return name.toLowerCase(Locale.ROOT)
+                .replace("č", "c")
+                .replace("ć", "c")
+                .replace("š", "s")
+                .replace("ž", "z")
+                .replace("đ", "dj");
+    }
+
+    private String getRandomTeamName() {
+        String[] prefixes = {"FK", "OFK", "RFK", "SK", "TSK", "NK", "ŽFK", "GFK"};
+        String[] cities = {
+                "Beograd", "Novi Sad", "Niš", "Kragujevac", "Subotica", "Zrenjanin", "Čačak", "Kraljevo",
+                "Smederevo", "Leskovac", "Užice", "Valjevo", "Vranje", "Šabac", "Zaječar", "Pančevo",
+                "Požarevac", "Surdulica", "Loznica", "Bor", "Prokuplje", "Gornji Milanovac", "Jagodina",
+                "Vrbas", "Sombor", "Kikinda", "Pirot", "Kruševac", "Sremska Mitrovica", "Inđija",
+                "Ruma", "Aranđelovac", "Paraćin", "Kovin", "Apatin", "Prijepolje", "Pirot", "Negotin",
+                "Ćuprija", "Svilajnac", "Bajina Bašta", "Nova Pazova", "Zemun", "Bačka Palanka", "Bečej",
+                "Temerin", "Vrnjačka Banja", "Trstenik", "Kladovo", "Ivanjica"
+        };
+        String[] clubWords = {
+                "Radnički", "Metalac", "Sloga", "Mladost", "Napredak", "Jedinstvo", "Budućnost", "Proleter",
+                "Borac", "Sloboda", "Rudar", "Železničar", "Dinamo", "Hajduk", "Sinđelić", "Timok",
+                "Morava", "Tamiš", "Kolubara", "Javor", "Balkan", "Pobeda", "Bratstvo", "Partizan",
+                "Teleoptik", "Grafičar", "Omladinac", "Car Konstantin", "Mlava", "Zlatibor", "Borski", "Podunavac"
+        };
+        String[] localityExtras = {
+                "United", "City", "Sport", "1901", "1912", "1913", "1919", "1923", "1928", "1931", "1945", "1950"
+        };
+
+        String prefix = prefixes[random.nextInt(prefixes.length)];
+        String city = cities[random.nextInt(cities.length)];
+        String clubWord = clubWords[random.nextInt(clubWords.length)];
+        String extra = localityExtras[random.nextInt(localityExtras.length)];
+
+        return switch (random.nextInt(5)) {
+            case 0 -> prefix + " " + city;
+            case 1 -> prefix + " " + clubWord + " " + city;
+            case 2 -> prefix + " " + city + " " + extra;
+            case 3 -> prefix + " " + clubWord + " " + extra;
+            default -> prefix + " " + clubWord + " " + city + " " + extra;
+        };
+    }
+
+    private void addPromotionRulesForLeagues(Season season) {
+        Competition tier1 = competitionRepository.findByNameAndCountryIsoCode("Superliga Srbije", "SRB").orElseThrow();
+        addPromotionRule(tier1, RuleType.RELEGATION, 9, 10, null, 2, false);
+        addPromotionRule(tier1, RuleType.PLAYOFF, 7, 8, null, 2, true);
+        // Dodaj ostale po potrebi
+    }
+
+    private void addPromotionRule(Competition competition, RuleType type, int positionFrom, int positionTo,
+                                  Competition target, int spots, boolean isPlayoff) {
+        PromotionRule rule = new PromotionRule();
+        rule.setCompetition(competition);
+        rule.setRuleType(type);
+        rule.setPositionFrom(positionFrom);
+        rule.setPositionTo(positionTo);
+        rule.setTargetCompetition(target);
+        rule.setIsPlayoff(isPlayoff);
+        promotionRuleRepository.save(rule);
+    }
+
+    private static class TacticsProfileSnapshot {
+        private String teamName;
+        private String formation;
+        private String style;
+        private String rulesJson;
+        private String setPiecesJson;
+        private Long version;
+    }
+
+    private Competition createCupCompetitionIfNotExists(Country country, String name, int teamsCount, Season season) {
+        Optional<Competition> existing = competitionRepository.findByNameAndCountryIsoCode(name, country.getIsoCode());
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        Competition cup = new Competition();
+        cup.setName(name);
+        cup.setType(CompetitionType.CUP);
+        cup.setScope(CompetitionScope.NATIONAL);
+        cup.setTeamType(CompetitionTeamType.CLUB);
+        cup.setCountry(country);
+        cup.setTeamsPerCompetition(teamsCount);
+        cup.setHasSeeding(true);
+        cup.setSeededTeamsCount(teamsCount / 2);
+        competitionRepository.save(cup);
+
+        createSeasonCompetitionIfNotExists(cup, season);
+        return cup;
+    }
+}

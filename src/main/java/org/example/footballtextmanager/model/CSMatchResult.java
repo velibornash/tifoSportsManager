@@ -30,4 +30,18 @@ public class CSMatchResult {
     private List<CSPlayerMatchStats> awayPlayerStats = new ArrayList<>();
     @Builder.Default
     private boolean derby = false;
+    
+    // Match statistics
+    private int homePossession;
+    private int awayPossession;
+    private double homeXG;
+    private double awayXG;
+    private int homeShotsOnTarget;
+    private int awayShotsOnTarget;
+    private int homeShotsOffTarget;
+    private int awayShotsOffTarget;
+    private int homeCorners;
+    private int awayCorners;
+    private int homeFouls;
+    private int awayFouls;
 }

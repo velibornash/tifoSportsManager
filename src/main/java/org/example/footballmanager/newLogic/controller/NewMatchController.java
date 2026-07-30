@@ -27,8 +27,8 @@ public class NewMatchController {
     private final NewLogicTacticsService tacticsService;
 
     @Autowired
-    public NewMatchController(NewLogicTacticsService tacticsService) {
-        this.store = new MatchStore();
+    public NewMatchController(NewLogicTacticsService tacticsService, MatchStore store) {
+        this.store = store;
         this.orchestrator = new MatchOrchestrator(store);
         this.replayBuilder = new ReplayBuilder();
         this.tacticsService = tacticsService;

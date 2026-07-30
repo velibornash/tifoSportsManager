@@ -1,106 +1,125 @@
 package org.example.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Position;
+import org.example.footballmanager.newLogic.model.*;
+import org.springframework.stereotype.Component;
 
 import java.util.Random;
 
+@Component
 public final class DuelResolver {
 
     private static final Random RNG = new Random();
 
-    public record DuelResult(boolean attackerWins, boolean goal, boolean saved, boolean missed, double xG) {}
+    public DuelResolver() {}
 
-    public record ShotParams(double x, double y, double goalDistance, double angle) {}
+    public DuelResult resolveShotDuel(PlayerSnapshot shooter, PlayerSnapshot goalkeeper, double distance, double xG) {
+        double shootSkill = shooter.shooting() + shooter.technique();
+        double gkSkill = goalkeeper != null ? goalkeeper.defending() + (goalkeeper instanceof PlayerSnapshot ? 10 : 0) : 5;
 
-    public static DuelResult resolveShot(Player shooter, Player goalkeeper, ShotParams params, boolean openGoal) {
-        double xG = estimateXG(shooter, params, openGoal);
+        double saveChance = 0.30 + (gkSkill / 40.0) * 0.30;
+        saveChance *= (1.0 + distance / 100.0);
 
-        if (openGoal) {
-            // Open goal: moderate conversion
-            double chance = clamp(0.42 + xG * 0.35 + (shooter.skills().shooting() + shooter.skills().technique()) / 330.0, 0.65, 0.90);
-            boolean goal = RNG.nextDouble() < chance;
-            return new DuelResult(goal, goal, false, !goal, xG);
+        double adjustedXG = xG * (0.7 + (shootSkill / 40.0) * 0.6);
+
+        boolean saved = RNG.nextDouble() < saveChance;
+        boolean isGoal = !saved && RNG.nextDouble() < adjustedXG;
+
+        return new DuelResult(isGoal, isGoal ? "GOAL" : saved ? "SAVED" : "MISSED", adjustedXG, isGoal, saved);
+    }
+
+    public DuelResult resolveOpenGoalShot(PlayerSnapshot shooter, double distance, double xG) {
+        double shootSkill = shooter.shooting() + shooter.technique();
+        double adjustedXG = Math.min(0.85, xG * 1.5 * (0.8 + (shootSkill / 40.0) * 0.4));
+        boolean isGoal = RNG.nextDouble() < adjustedXG;
+        return new DuelResult(isGoal, isGoal ? "GOAL" : "MISSED", adjustedXG, isGoal, false);
+    }
+
+    public DuelResult resolveTackleDuel(PlayerSnapshot attacker, PlayerSnapshot defender) {
+        return resolveTackle(attacker, defender);
+    }
+
+    public static DuelResult resolveTackle(PlayerSnapshot attacker, PlayerSnapshot defender) {
+        double attackPower = attacker.technique() + attacker.pace() + attacker.dribbling();
+        double defendPower = defender.defending() + defender.pace();
+
+        double attackChance = attackPower / (attackPower + defendPower);
+        attackChance = Math.max(0.25, Math.min(0.75, attackChance));
+
+        boolean attackerWins = RNG.nextDouble() < attackChance;
+        return new DuelResult(attackerWins, attackerWins ? "TACKLE_WON" : "TACKLE_LOST", attackChance);
+    }
+
+    public static DuelResult resolvePenalty(PlayerSnapshot shooter, PlayerSnapshot goalkeeper) {
+        double shootSkill = shooter.shooting() + shooter.technique();
+        double gkSkill = goalkeeper != null ? goalkeeper.defending() : 10;
+
+        double goalChance = 0.76 * (0.8 + (shootSkill / 40.0) * 0.4);
+        double saveChance = 0.35 * (0.6 + (gkSkill / 20.0) * 0.8);
+        goalChance *= (1.0 - saveChance);
+
+        boolean isGoal = RNG.nextDouble() < goalChance;
+        boolean saved = !isGoal && RNG.nextDouble() < saveChance;
+        return new DuelResult(isGoal, isGoal ? "PENALTY_GOAL" : saved ? "PENALTY_SAVED" : "PENALTY_MISSED", goalChance, isGoal, saved);
+    }
+
+    public DuelResult resolveHeaderDuel(PlayerSnapshot attacker, PlayerSnapshot defender) {
+        double attackPower = attacker.technique() + attacker.shooting();
+        double defendPower = defender.defending() + defender.technique();
+
+        double attackChance = attackPower / (attackPower + defendPower);
+        attackChance = Math.max(0.25, Math.min(0.75, attackChance));
+
+        boolean attackerWins = RNG.nextDouble() < attackChance;
+        return new DuelResult(attackerWins, attackerWins ? "HEADER_WON" : "HEADER_LOST", attackChance);
+    }
+
+    public DuelResult resolveLooseBallDuel(PlayerSnapshot player1, PlayerSnapshot player2) {
+        double power1 = player1.pace() + player1.technique();
+        double power2 = player2.pace() + player2.technique();
+
+        double chance1 = power1 / (power1 + power2);
+        chance1 = Math.max(0.25, Math.min(0.75, chance1));
+
+        boolean player1Wins = RNG.nextDouble() < chance1;
+        return new DuelResult(player1Wins, player1Wins ? "LOOSE_BALL_WON" : "LOOSE_BALL_LOST", chance1);
+    }
+
+    public DuelResult resolveNumericDuel(PlayerSnapshot carrier, java.util.List<PlayerSnapshot> attackers,
+                                          java.util.List<PlayerSnapshot> defenders) {
+        if (defenders.isEmpty()) {
+            return new DuelResult(true, "CARRIER_WINS", 0.9);
+        }
+        if (attackers.isEmpty()) {
+            return new DuelResult(false, "TACKLE_WON", 0.9);
         }
 
-        double shooterPower = shooter.skills().shooting() * 0.50 + shooter.skills().technique() * 0.30 + shooter.skills().pace() * 0.20;
-        double keeperPower = goalkeeper.skills().goalkeeping() * 0.60 + goalkeeper.skills().defending() * 0.20;
+        double attackPower = attackers.stream()
+            .mapToDouble(a -> a.technique() + a.pace() + a.dribbling())
+            .sum();
+        double defendPower = defenders.stream()
+            .mapToDouble(d -> d.defending() + d.pace())
+            .sum();
 
-        double onTargetChance = clamp(0.30 + xG * 0.38 + (shooter.skills().technique() / 220.0) - (goalkeeper.skills().goalkeeping() / 480.0), 0.24, 0.76);
-        boolean onTarget = RNG.nextDouble() < onTargetChance;
+        int attackCount = attackers.size();
+        int defendCount = defenders.size();
 
-        if (!onTarget) {
-            return new DuelResult(false, false, false, true, xG);
+        if (attackCount > defendCount) {
+            attackPower *= 1.0 + (attackCount - defendCount) * 0.25;
+        } else if (defendCount > attackCount) {
+            defendPower *= 1.0 + (defendCount - attackCount) * 0.25;
         }
 
-        double goalChance = clamp(xG * 0.75 + (shooterPower / (shooterPower + keeperPower + 1)) * 0.16, 0.15, 0.55);
-        boolean goal = RNG.nextDouble() < goalChance;
+        double carrierChance = attackPower / (attackPower + defendPower);
+        carrierChance = Math.max(0.15, Math.min(0.85, carrierChance));
 
-        return new DuelResult(goal, goal, !goal, false, xG);
+        boolean carrierWins = RNG.nextDouble() < carrierChance;
+        return new DuelResult(carrierWins,
+            carrierWins ? "CARRIER_WINS" : "TACKLE_WON", carrierChance);
     }
 
-    public static DuelResult resolveTackle(Player attacker, Player defender) {
-        double attStr = attacker.skills().technique() * 1.05 + attacker.skills().pace() * 0.58 + attacker.skills().shooting() * 0.22
-            + attacker.skills().stamina() * 0.20;
-        double defStr = defender.skills().defending() * 1.38 + defender.skills().pace() * 0.44 + defender.skills().technique() * 0.18
-            + defender.skills().stamina() * 0.28;
-
-        attStr *= attacker.skills().fatigueFactor(attacker.fatigueInt());
-        defStr *= defender.skills().fatigueFactor(defender.fatigueInt());
-
-        double winChance = attStr / (attStr + defStr + 0.1);
-        winChance = clamp(winChance + (RNG.nextDouble() - 0.5) * 0.15, 0.18, 0.82);
-        boolean attackerWins = RNG.nextDouble() < winChance;
-
-        return new DuelResult(attackerWins, false, false, !attackerWins, 0);
-    }
-
-    public static DuelResult resolvePenalty(Player taker, Player goalkeeper) {
-        double xG = clamp(0.76 + (taker.skills().shooting() - 10) * 0.006 + (taker.skills().technique() - 10) * 0.004, 0.72, 0.84);
-        double takerQuality = taker.skills().shooting() * 1.10 + taker.skills().technique() * 0.90;
-        double keeperQuality = goalkeeper.skills().goalkeeping() * 1.22 + goalkeeper.skills().defending() * 0.18;
-
-        double scoreChance = clamp(0.78 + (takerQuality - keeperQuality) / 255.0 + (RNG.nextDouble() - 0.5) * 0.07, 0.70, 0.88);
-        boolean scored = RNG.nextDouble() < scoreChance;
-
-        if (scored) {
-            return new DuelResult(true, true, false, false, xG);
+    public record DuelResult(boolean attackerWins, String resultType, double xG, boolean goal, boolean saved) {
+        public DuelResult(boolean attackerWins, String resultType, double probability) {
+            this(attackerWins, resultType, probability, false, false);
         }
-
-        double missShare = clamp(0.24 - Math.min(0.06, taker.skills().technique() / 400.0)
-            + Math.max(0, 10 - taker.skills().shooting()) * 0.01 + (RNG.nextDouble() - 0.5) * 0.05, 0.16, 0.34);
-        boolean saved = RNG.nextDouble() >= missShare;
-
-        return new DuelResult(false, false, saved, !saved, xG);
-    }
-
-    public static boolean isFoul(Player attacker, Player defender, boolean inPenaltyBox) {
-        double chance = inPenaltyBox ? 0.038 : 0.034;
-        if (defender.position() == Position.DEF) chance += inPenaltyBox ? 0.006 : 0.012;
-        if (defender.position() == Position.MID) chance += inPenaltyBox ? 0.004 : 0.008;
-        if (defender.position() == Position.GK && inPenaltyBox) chance += 0.012;
-        return RNG.nextDouble() < chance;
-    }
-
-    public static boolean isCardWorthy(double foulChanceModifier) {
-        double chance = 0.012 + foulChanceModifier;
-        return RNG.nextDouble() < chance;
-    }
-
-    private static double estimateXG(Player shooter, ShotParams params, boolean openGoal) {
-        double dist = params.goalDistance();
-        double angle = params.angle();
-        double baseXg = (openGoal ? 1.18 : 1.04)
-            * Math.exp(-(openGoal ? 0.080 : 0.092) * dist)
-            / (1.0 + angle * (openGoal ? 1.20 : 1.50));
-        baseXg = clamp(baseXg, openGoal ? 0.22 : 0.025, openGoal ? 0.90 : 0.68);
-
-        double bodyFactor = (shooter.skills().shooting() + shooter.skills().technique()) / 40.0;
-        return clamp(baseXg * (openGoal ? 0.98 + 0.03 * bodyFactor : 0.96 + 0.06 * bodyFactor),
-            openGoal ? 0.22 : 0.025, openGoal ? 0.92 : 0.70);
-    }
-
-    private static double clamp(double v, double min, double max) {
-        return Math.max(min, Math.min(max, v));
     }
 }

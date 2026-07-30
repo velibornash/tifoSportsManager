@@ -63,7 +63,11 @@ public class MatchState {
 
     public PossessionPhase possessionPhase = PossessionPhase.BUILD_UP;
     public int possessionAgeTicks;
+    public int possessionPassCount;
+    public long possessionChainId;
+    public String possessionTeamLabel;
     public int lastDuelTick = -100;
+    public int lastShotTick = -100;
 
     public MatchState(Match match) {
         this.match = match;
@@ -122,8 +126,8 @@ public class MatchState {
     }
 
     public void recordTick() {
-        tickHistory.add(new TickSnapshot(
-            tick, minute, List.copyOf(playerSnapshots), ball,
+        tickHistory.add(TickSnapshot.capture(
+            tick, minute, playerSnapshots, ball,
             carrierId, pendingReceiverId, ballInTransit,
             stoppage != null ? stoppage.name() : null
         ));

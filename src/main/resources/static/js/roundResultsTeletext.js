@@ -37,7 +37,7 @@ window.addEventListener('load', async () => {
 });
 
 async function teletextFetch(url, options = {}) {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (!token) {
         throw new Error('Nema aktivne sesije. Uloguj se ponovo pa otvori Results Desk.');
     }

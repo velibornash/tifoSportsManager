@@ -41,16 +41,16 @@ public class RedCardTest {
 
             if (redCards.isEmpty()) continue;
 
-            // At least one red card was issued in this match — verify team size after
+            // At least one red card was issued — verify player removed after red card tick
             for (CardEvent rc : redCards) {
                 String side = rc.teamSide();
-                // Verify player was not found on pitch in subsequent ticks
+                int redCardTick = rc.tick();
                 var ticks = result.tickHistory();
                 boolean foundAfter = ticks.stream()
-                    .skip(ticks.size() / 2)
+                    .filter(t -> t.tick() > redCardTick)
                     .flatMap(t -> t.players().stream())
                     .anyMatch(s -> s.playerId() == rc.playerId() && s.teamSide().equals(side));
-                assert !foundAfter : "Red-carded player " + rc.playerName() + " should not appear after red card";
+                assert !foundAfter : "Red-carded player " + rc.playerName() + " should not appear after tick " + redCardTick;
             }
         }
     }

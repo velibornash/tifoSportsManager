@@ -1,165 +1,169 @@
 package org.example.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.MatchState;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
-import org.example.footballmanager.newLogic.model.Position;
-import org.example.footballmanager.newLogic.model.event.InjuryEvent;
-import org.example.footballmanager.newLogic.model.event.SubstitutionEvent;
+import org.example.footballmanager.newLogic.model.*;
+import org.example.footballmanager.newLogic.model.event.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public final class FatigueSystem {
 
+    private static final Logger log = LoggerFactory.getLogger(FatigueSystem.class);
     private static final Random RNG = new Random();
 
-    public static void updateFatigue(MatchState state, int minute) {
-        for (var p : state.homePlayers()) increaseFatigue(p, minute);
-        for (var p : state.awayPlayers()) increaseFatigue(p, minute);
-    }
+    private static final double BASE_STAMINA_DRAIN_PER_MINUTE = 0.12;
+    private static final double SPRINT_EXTRA_DRAIN = 0.06;
+    private static final double INJURY_BASE_CHANCE = 0.0008;
+    private static final double INJURY_FATIGUE_MULTIPLIER = 3.5;
 
-    private static void increaseFatigue(Player player, int minute) {
-        if (player.position() == Position.GK) {
-            if (minute % 18 == 0) {
-                player.addFatigue(1);
+    private final Map<Long, Integer> playerMinutesPlayed = new HashMap<>();
+    private final Map<Long, Double> playerFatigueMap = new HashMap<>();
+
+    public FatigueSystem() {}
+
+    public void updateFatigue(MatchState state, int minute) {
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            double currentFatigue = playerFatigueMap.getOrDefault(snap.playerId(), 0.0);
+
+            double drain = BASE_STAMINA_DRAIN_PER_MINUTE;
+            double staminaFactor = snap.stamina() / 20.0;
+            drain *= (1.3 - staminaFactor * 0.6);
+
+            double distMoved = estimateDistanceMoved(state, snap);
+            if (distMoved > 2.0) {
+                drain += SPRINT_EXTRA_DRAIN * (distMoved / 2.0);
             }
-            return;
-        }
 
-        double staminaPenalty = Math.max(0, 13.0 - player.skills().stamina()) / 24.0;
-        double positionLoad = switch (player.position()) {
-            case WNG, ATT -> 0.05;
-            case MID -> 0.04;
-            case DEF -> 0.03;
-            default -> 0.03;
-        };
-        double chance = 0.16 + staminaPenalty + positionLoad;
-        if (minute >= 60) chance += 0.07;
-        if (minute >= 78) chance += 0.08;
-
-        if (RNG.nextDouble() < chance) player.addFatigue(1);
-        if (minute >= 75 && RNG.nextDouble() < 0.14 + staminaPenalty) player.addFatigue(1);
-    }
-
-    public static void maybeInjury(MatchState state, int minute, String side) {
-        if (minute < 8 || minute > 88) return;
-
-        List<Player> players = "HOME".equals(side) ? state.homePlayers() : state.awayPlayers();
-        if (players.isEmpty()) return;
-
-        Player injured = pickInjuryRisk(players);
-        if (injured == null) return;
-
-        double chance = 0.00028 + Math.max(0, injured.fatigue() - 18) * 0.00008;
-        if (injured.position() == Position.WNG || injured.position() == Position.ATT) chance += 0.00008;
-
-        if (RNG.nextDouble() >= chance) return;
-
-        // Apply injury
-        state.injuredPlayers.add(injured.id());
-        state.addEvent(new InjuryEvent(minute, state.tick, injured.id(), injured.name(), side));
-
-        // Auto substitute if possible
-        int subsUsed = "HOME".equals(side) ? state.homeSubsUsed : state.awaySubsUsed;
-        if (subsUsed < 3) {
-            List<Player> bench = getBench(state, side);
-            Player replacement = pickReplacement(bench, injured.position());
-            if (replacement != null) {
-                applySubstitution(state, minute, side, injured, replacement);
+            if (state.carrierId != null && state.carrierId == snap.playerId()) {
+                drain += 0.04;
             }
+
+            currentFatigue += drain;
+            currentFatigue = Math.min(currentFatigue, 10.0);
+            playerFatigueMap.put(snap.playerId(), currentFatigue);
+
+            state.playerFatigue.put(snap.playerId(), (int) currentFatigue);
+
+            int mins = playerMinutesPlayed.getOrDefault(snap.playerId(), 0) + 1;
+            playerMinutesPlayed.put(snap.playerId(), mins);
+            state.playerMinutes.put(snap.playerId(), mins);
         }
     }
 
-    public static void maybeSubstitution(MatchState state, int minute, String side) {
-        if (minute < 58 || minute > 84) return;
+    public void maybeInjury(MatchState state, int minute, String teamSide) {
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            if (!snap.teamSide().equals(teamSide)) continue;
+            if (state.injuredPlayers.contains(snap.playerId())) continue;
 
-        List<Player> players = "HOME".equals(side) ? state.homePlayers() : state.awayPlayers();
-        int subsUsed = "HOME".equals(side) ? state.homeSubsUsed : state.awaySubsUsed;
+            double fatigue = playerFatigueMap.getOrDefault(snap.playerId(), 0.0);
+            double injuryChance = INJURY_BASE_CHANCE;
+
+            if (fatigue > 6.0) {
+                injuryChance *= 1.0 + (fatigue - 6.0) * INJURY_FATIGUE_MULTIPLIER;
+            }
+
+            double staminaFactor = snap.stamina() / 20.0;
+            injuryChance *= (1.5 - staminaFactor * 0.8);
+
+            if (RNG.nextDouble() < injuryChance) {
+                state.injuredPlayers.add(snap.playerId());
+
+                state.addEvent(new InjuryEvent(minute, state.tick,
+                    snap.playerId(), snap.name(), snap.teamSide()));
+
+                if (state.carrierId != null && state.carrierId == snap.playerId()) {
+                    state.carrierId = null;
+                    state.carrierTeamSide = null;
+                    state.ball = BallState.at(snap.x(), snap.y());
+                }
+            }
+        }
+    }
+
+    public void maybeSubstitution(MatchState state, int minute, String teamSide) {
+        if (minute < 45) return;
+        if (minute % 5 != 0) return;
+
+        int subsUsed = "HOME".equals(teamSide) ? state.homeSubsUsed : state.awaySubsUsed;
         if (subsUsed >= 3) return;
 
-        List<Player> bench = getBench(state, side);
-        if (bench.isEmpty()) return;
+        Team team = "HOME".equals(teamSide) ? state.match.homeTeam() : state.match.awayTeam();
+        List<Player> subs = team.substitutes();
+        if (subs.isEmpty()) return;
 
-        Player mostTired = players.stream()
-            .filter(p -> p.position() != Position.GK)
-            .max(Comparator.comparingDouble(Player::fatigue))
-            .orElse(null);
-        if (mostTired == null || mostTired.fatigue() < 16) return;
+        PlayerSnapshot mostTired = null;
+        double maxFatigue = 7.0;
 
-        double chance = 0.012;
-        if (mostTired.fatigue() >= 18) chance += 0.04;
-        if (mostTired.fatigue() >= 26) chance += 0.06;
-        if (minute >= 72) chance += 0.018;
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            if (!snap.teamSide().equals(teamSide)) continue;
+            if (snap.position() == Position.GK) continue;
+            if (state.injuredPlayers.contains(snap.playerId())) continue;
 
-        if (RNG.nextDouble() < chance) {
-            Player replacement = pickReplacement(bench, mostTired.position());
-            if (replacement != null) {
-                applySubstitution(state, minute, side, mostTired, replacement);
+            double fatigue = playerFatigueMap.getOrDefault(snap.playerId(), 0.0);
+            if (fatigue > maxFatigue) {
+                maxFatigue = fatigue;
+                mostTired = snap;
             }
         }
-    }
 
-    private static void applySubstitution(MatchState state, int minute, String side, Player out, Player in) {
-        List<Player> targetList = "HOME".equals(side) ? state.homePlayers() : state.awayPlayers();
+        if (mostTired == null) return;
 
-        // Replace in the player list
-        int idx = targetList.indexOf(out);
-        if (idx >= 0) {
-            targetList.set(idx, in);
-        }
+        Player replacement = findBestSub(subs, mostTired.position());
+        if (replacement == null) return;
 
-        if ("HOME".equals(side)) state.homeSubsUsed++;
+        long tiredId = mostTired.playerId();
+        String tiredName = mostTired.name();
+        state.playerSnapshots.removeIf(s -> s.playerId() == tiredId);
+        List<PlayerSnapshot> teammates = state.playerSnapshots.stream()
+            .filter(s -> s.teamSide().equals(teamSide)).toList();
+        double[] pos = MovementEngine.getStartingPosition(replacement, teamSide, teammates);
+        state.playerSnapshots.add(PlayerSnapshot.fromPlayer(replacement, teamSide, pos[0], pos[1]));
+
+        state.playerSlotKeys.put(replacement.id(), state.playerSlotKeys.getOrDefault(tiredId, "CM"));
+        playerFatigueMap.put(replacement.id(), 2.0);
+        state.playerFatigue.put(replacement.id(), 2);
+
+        state.addEvent(new SubstitutionEvent(minute, state.tick,
+            tiredId, tiredName,
+            replacement.id(), replacement.name(), teamSide));
+
+        if ("HOME".equals(teamSide)) state.homeSubsUsed++;
         else state.awaySubsUsed++;
+    }
 
-        state.playerTeamSide.put(in.id(), side);
-        state.playerMinutes.put(in.id(), 91 - minute);
+    public double getFatigueModifier(long playerId) {
+        double fatigue = playerFatigueMap.getOrDefault(playerId, 0.0);
+        return Math.max(0.72, 1.0 - Math.max(0, fatigue - 3) * 0.04);
+    }
 
-        // Copy position from outgoing player, then remove old snapshot
-        var outSnap = state.snapshotById(out.id());
-        state.playerSnapshots.removeIf(s -> s.playerId() == out.id());
-        if (outSnap != null) {
-            state.playerSnapshots.add(new PlayerSnapshot(in.id(), in.name(), side, in.position(),
-                outSnap.x(), outSnap.y(), "IDLE", false));
+    public double getFatigueValue(long playerId) {
+        return playerFatigueMap.getOrDefault(playerId, 0.0);
+    }
+
+    private double estimateDistanceMoved(MatchState state, PlayerSnapshot snap) {
+        int tick = state.tick;
+        if (tick < 120) return 0;
+        List<TickSnapshot> history = state.tickHistory;
+        if (history.size() < 120) return 0;
+
+        TickSnapshot prev = history.get(Math.max(0, history.size() - 120));
+        for (PlayerSnapshot ps : prev.players()) {
+            if (ps.playerId() == snap.playerId()) {
+                return snap.distanceTo(ps);
+            }
         }
-
-        state.addEvent(new SubstitutionEvent(minute, state.tick, out.id(), out.name(), in.id(), in.name(), side));
+        return 0;
     }
 
-    private static Player pickInjuryRisk(List<Player> players) {
-        List<Player> candidates = players.stream()
-            .filter(p -> p.position() != Position.GK)
-            .toList();
-        if (candidates.isEmpty()) return null;
-
-        double totalWeight = candidates.stream()
-            .mapToDouble(p -> 1.0 + Math.max(0, p.fatigue() - 10) * 0.25)
-            .sum();
-        double r = RNG.nextDouble() * totalWeight;
-        for (var p : candidates) {
-            r -= 1.0 + Math.max(0, p.fatigue() - 10) * 0.25;
-            if (r <= 0) return p;
-        }
-        return candidates.getLast();
-    }
-
-    private static List<Player> getBench(MatchState state, String side) {
-        Set<Long> onPitch = ("HOME".equals(side) ? state.homePlayers() : state.awayPlayers()).stream()
-            .map(Player::id).collect(Collectors.toSet());
-
-        List<Player> full = "HOME".equals(side) ? state.match.homeTeam().allPlayers() : state.match.awayTeam().allPlayers();
-        return full.stream()
-            .filter(p -> !onPitch.contains(p.id()))
-            .filter(p -> !state.injuredPlayers.contains(p.id()))
-            .filter(p -> !state.playerMinutes.containsKey(p.id()))
-            .toList();
-    }
-
-    private static Player pickReplacement(List<Player> bench, Position position) {
-        if (bench.isEmpty()) return null;
-        return bench.stream()
-            .filter(p -> p.position() == position)
-            .findFirst()
-            .orElseGet(() -> bench.stream().filter(p -> p.position() != Position.GK).findFirst().orElse(bench.getFirst()));
+    private Player findBestSub(List<Player> subs, Position neededPosition) {
+        return subs.stream()
+            .filter(p -> p.position() == neededPosition)
+            .filter(p -> !p.isInjured())
+            .max(Comparator.comparingInt(p -> p.getSkills() != null ? p.getSkills().getStamina() : 0))
+            .orElse(subs.stream()
+                .filter(p -> !p.isInjured())
+                .max(Comparator.comparingInt(p -> p.getSkills() != null ? p.getSkills().getStamina() : 0))
+                .orElse(null));
     }
 }

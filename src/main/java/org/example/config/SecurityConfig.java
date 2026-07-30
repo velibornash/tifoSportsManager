@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.example.commonmanager.dto.ApiErrorResponseDTO;
 import org.example.commonmanager.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -28,6 +30,7 @@ import java.time.LocalDateTime;
 @Configuration
 public class SecurityConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @Bean
@@ -62,6 +65,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(req -> req
                         .requestMatchers(
                                 "/",
+                                "/.well-known/**",
                                 "/home.html",
                                 "/login.html",
                                 "/register.html",
@@ -84,7 +88,6 @@ public class SecurityConfig {
                                 "/api/zox/**",
                                 "/countries/**",
                                 "/start-realistic-demo",
-                                "/newLogic/**",
                                 "/api/v2/**",
                                 "/teams/**",
                                 "/players/**",
@@ -96,7 +99,8 @@ public class SecurityConfig {
                                 "/match-events/**",
                                 "/basketballmanager/**",
                                 "/americanfootballmanager/**",
-                                "/commonmanager/**"
+                                "/commonmanager/**",
+                                "/favicon.ico"
                         ).permitAll()
 
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "OWNER", "DEV")
@@ -105,17 +109,37 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(exc -> exc
                         .authenticationEntryPoint((request, response, authException) -> {
+                            log.warn(
+                                    "Authentication entry point for {} {} (xrw={}, accept={}, authPresent={}): {}",
+                                    request.getMethod(),
+                                    request.getRequestURI(),
+                                    request.getHeader("X-Requested-With"),
+                                    request.getHeader("Accept"),
+                                    request.getHeader("Authorization") != null,
+                                    authException.getMessage()
+                            );
                             if (shouldReturnUnauthorized(request)) {
                                 writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "Authentication required.", request);
                                 return;
                             }
+                            log.warn("Redirecting unauthenticated request to /login.html for {} {}", request.getMethod(), request.getRequestURI());
                             response.sendRedirect("/login.html");
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            log.warn(
+                                    "Access denied for {} {} (xrw={}, accept={}, authPresent={}): {}",
+                                    request.getMethod(),
+                                    request.getRequestURI(),
+                                    request.getHeader("X-Requested-With"),
+                                    request.getHeader("Accept"),
+                                    request.getHeader("Authorization") != null,
+                                    accessDeniedException.getMessage()
+                            );
                             if (shouldReturnUnauthorized(request)) {
                                 writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "Access denied.", request);
                                 return;
                             }
+                            log.warn("Redirecting forbidden request to /login.html for {} {}", request.getMethod(), request.getRequestURI());
                             response.sendRedirect("/login.html");
                         })
                 )

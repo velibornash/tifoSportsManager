@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="/newLogic/css/home.css">
+    <link rel="stylesheet" href="/css/home.css">
 </head>
 <body>
 <div class="background"></div>
@@ -22,7 +22,7 @@
     </div>
 
     <div class="game-grid">
-        <div class="game-card" onclick="navigateTo('/newLogic/dashboard.html')">
+        <div class="game-card" onclick="navigateTo('/dashboard.html')">
             <div class="game-card-bg" style="background-image:linear-gradient(135deg, #1a3a5c, #2d6da8)"></div>
             <div class="game-card-icon">⚽</div>
             <div class="game-card-title">TIFO UI MANAGER</div>
@@ -61,7 +61,8 @@
 </div>
 
 <script>
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
+    console.log('[home.html] Token check:', token ? 'found (' + token.substring(0, 20) + '...)' : 'MISSING - redirecting to login');
     if (!token) {
         window.location.href = '/login.html';
     }
@@ -71,6 +72,7 @@
     };
 
     window.logout = function() {
+        sessionStorage.removeItem('token');
         localStorage.removeItem('token');
         window.location.href = '/login.html';
     };

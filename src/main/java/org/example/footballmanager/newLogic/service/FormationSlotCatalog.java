@@ -1,9 +1,13 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.dto.TacticsRuleDTO;
 import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
+
+import org.springframework.stereotype.Component;
 
 import java.util.*;
 
+@Component
 public class FormationSlotCatalog {
     public static final String WE_HAVE_BALL = "WE_HAVE_BALL";
     public static final String OPPONENT_HAS_BALL = "OPPONENT_HAS_BALL";
@@ -153,7 +157,13 @@ public class FormationSlotCatalog {
     }
 
     private static List<String> buildBallStates() {
-        return List.of("LOW", "MEDIUM", "HIGH");
+        List<String> states = new ArrayList<>();
+        for (int r = 0; r < 5; r++) for (int c = 0; c < 5; c++) states.add("CELL_" + r + "_" + c);
+        states.add("ATTACK_LEFT_CORNER");
+        states.add("ATTACK_RIGHT_CORNER");
+        states.add("DEFEND_LEFT_CORNER");
+        states.add("DEFEND_RIGHT_CORNER");
+        return Collections.unmodifiableList(states);
     }
 
     public String normalizeFormation(String formation) {
@@ -165,5 +175,25 @@ public class FormationSlotCatalog {
 
     public List<TacticsSlotDTO> getSlots(String formation) {
         return layouts.getOrDefault(normalizeFormation(formation), layouts.get("4-4-2"));
+    }
+
+    public List<TacticsRuleDTO> buildDefaultRules(String formation) {
+        List<TacticsSlotDTO> slots = getSlots(formation);
+        List<TacticsRuleDTO> rules = new ArrayList<>();
+        for (TacticsSlotDTO slot : slots) {
+            for (String ballState : SUPPORTED_BALL_STATES) {
+                rules.add(new TacticsRuleDTO(slot.getSlotKey(), ballState, WE_HAVE_BALL, slot.getAnchorCellKey()));
+                rules.add(new TacticsRuleDTO(slot.getSlotKey(), ballState, OPPONENT_HAS_BALL, slot.getAnchorCellKey()));
+            }
+        }
+        return rules;
+    }
+
+    public List<String> getSupportedBallStates() {
+        return SUPPORTED_BALL_STATES;
+    }
+
+    public List<String> getSupportedTargetCells() {
+        return SUPPORTED_TARGET_CELLS;
     }
 }

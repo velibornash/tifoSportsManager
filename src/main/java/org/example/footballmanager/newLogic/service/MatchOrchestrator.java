@@ -1,24 +1,46 @@
 package org.example.footballmanager.newLogic.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.engine.MatchSimulator;
 import org.example.footballmanager.newLogic.engine.ZonePositionCalculator;
 import org.example.footballmanager.newLogic.model.*;
+import org.example.footballmanager.newLogic.repository.LineupRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.store.MatchStore;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
+@Slf4j
 public final class MatchOrchestrator {
 
     private static final Random RNG = new Random();
     private final MatchStore store;
     private final MatchSimulator simulator = new MatchSimulator();
+    private final TeamRepository teamRepository;
+    private final PlayerRepository playerRepository;
+    private final LineupRepository lineupRepository;
+    private final MatchPersistenceService persistenceService;
 
     public MatchOrchestrator(MatchStore store) {
+        this(store, null, null, null, null);
+    }
+
+    public MatchOrchestrator(MatchStore store, TeamRepository teamRepository, PlayerRepository playerRepository) {
+        this(store, teamRepository, playerRepository, null, null);
+    }
+
+    public MatchOrchestrator(MatchStore store, TeamRepository teamRepository, PlayerRepository playerRepository, LineupRepository lineupRepository) {
+        this(store, teamRepository, playerRepository, lineupRepository, null);
+    }
+
+    public MatchOrchestrator(MatchStore store, TeamRepository teamRepository, PlayerRepository playerRepository, LineupRepository lineupRepository, MatchPersistenceService persistenceService) {
         this.store = store;
+        this.teamRepository = teamRepository;
+        this.playerRepository = playerRepository;
+        this.lineupRepository = lineupRepository;
+        this.persistenceService = persistenceService;
     }
 
     public long startMatch(String homeName, String awayName) {
@@ -28,34 +50,44 @@ public final class MatchOrchestrator {
     /**
      * Start a match with custom tactic rules per team.
      * If homeTactics/homeSlots are null, generates defaults (4-3-3).
+     * Loads real teams and players from DB if available.
      */
     public long startMatch(String homeName, String awayName,
                            TacticRules homeTactics, List<String> homeSlots,
                            TacticRules awayTactics, List<String> awaySlots) {
-        // Generate home team (IDs 0-13)
-        Set<String> usedNames = new HashSet<>();
-        List<Player> homeSquad = generateSquad(11, 0, usedNames);
-        Team home = new Team();
-        home.setId(1L);
-        home.setName(homeName);
-        home.setPlayers(homeSquad);
-        home.selectLineup(homeSquad.subList(0, 11), homeSquad.subList(11, Math.min(14, homeSquad.size())));
-        home.setFormation("4-3-3");
+        
+        // Try to load real team from DB
+        Team home = loadTeamFromDB(homeName);
+        if (home == null) {
+            Set<String> usedNames = new HashSet<>();
+            List<Player> homeSquad = generateSquad(11, 0, usedNames);
+            home = new Team();
+            home.setId(1L);
+            home.setName(homeName);
+            home.setPlayers(homeSquad);
+            home.selectLineup(homeSquad.subList(0, 11), homeSquad.subList(11, Math.min(14, homeSquad.size())));
+            home.setFormation("4-3-3");
+        }
 
-        // Generate away team (IDs 100-113 — distinct from home)
-        List<Player> awaySquad = generateSquad(11, 100, usedNames);
-        Team away = new Team();
-        away.setId(2L);
-        away.setName(awayName);
-        away.setPlayers(awaySquad);
-        away.selectLineup(awaySquad.subList(0, 11), awaySquad.subList(11, Math.min(14, awaySquad.size())));
-        away.setFormation("4-3-3");
+        Team away = loadTeamFromDB(awayName);
+        if (away == null) {
+            Set<String> usedNames = new HashSet<>();
+            List<Player> awaySquad = generateSquad(11, 100, usedNames);
+            away = new Team();
+            away.setId(2L);
+            away.setName(awayName);
+            away.setPlayers(awaySquad);
+            away.selectLineup(awaySquad.subList(0, 11), awaySquad.subList(11, Math.min(14, awaySquad.size())));
+            away.setFormation("4-3-3");
+        }
 
-        // Attach tactic rules (custom from DB or default 4-3-3)
+        // Slot keys — use saved formation from lineup, else caller-provided slots, else default
+        String homeFormation = home.getFormation() != null ? home.getFormation() : "4-3-3";
+        String awayFormation = away.getFormation() != null ? away.getFormation() : "4-3-3";
         List<String> effectiveHomeSlots = homeSlots != null ? homeSlots
-            : ZonePositionCalculator.buildSlotKeys("4-3-3", home.startingXI());
+            : ZonePositionCalculator.buildSlotKeys(homeFormation, home.startingXI());
         List<String> effectiveAwaySlots = awaySlots != null ? awaySlots
-            : ZonePositionCalculator.buildSlotKeys("4-3-3", away.startingXI());
+            : ZonePositionCalculator.buildSlotKeys(awayFormation, away.startingXI());
         home.setTacticRules(homeTactics != null ? homeTactics : generateDefaultTactics(effectiveHomeSlots), effectiveHomeSlots);
         away.setTacticRules(awayTactics != null ? awayTactics : generateDefaultTactics(effectiveAwaySlots), effectiveAwaySlots);
 
@@ -67,6 +99,140 @@ public final class MatchOrchestrator {
         long matchId = store.createMatch(match);
 
         return matchId;
+    }
+
+    /**
+     * Load real team with players from database.
+     * Uses saved Lineup (tactic editor) if available, otherwise sorts by Position.
+     * Ensures exactly 1 GK in starting XI.
+     * Logs player positions and assigned slots.
+     */
+    private Team loadTeamFromDB(String teamName) {
+        if (teamRepository == null || playerRepository == null) {
+            return null;
+        }
+        
+        try {
+            Team dbTeam = teamRepository.findByName(teamName).orElse(null);
+            if (dbTeam == null) return null;
+            
+            List<Player> players = playerRepository.findByTeamId(dbTeam.getId());
+            if (players.isEmpty()) return null;
+            
+            for (Player p : players) {
+                if (p.getId() == null || p.getName() == null || p.getSkills() == null || p.getPosition() == null) {
+                    log.warn("Team {} has invalid player data, using synthetic team", teamName);
+                    return null;
+                }
+            }
+            
+            Team team = new Team();
+            team.setId(dbTeam.getId());
+            team.setName(dbTeam.getName());
+            team.setPlayers(players);
+
+            // Try to use saved Lineup from tactic editor
+            Lineup lineup = null;
+            if (lineupRepository != null) {
+                lineup = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(dbTeam.getId()).orElse(null);
+            }
+
+            List<Player> starters;
+            List<Player> subs;
+
+            if (lineup != null && !lineup.getOrderedStartingPlayers().isEmpty()) {
+                starters = new ArrayList<>(lineup.getOrderedStartingPlayers());
+                // If lineup has < 11, fill with best remaining players sorted by position
+                if (starters.size() < 11) {
+                    Set<Long> starterIds = starters.stream().map(Player::getId).collect(Collectors.toSet());
+                    List<Player> remaining = players.stream()
+                        .filter(p -> !starterIds.contains(p.getId()))
+                        .sorted(Comparator.comparingInt(p -> positionOrder(p.getPosition())))
+                        .collect(Collectors.toList());
+                    int needed = 11 - starters.size();
+                    starters.addAll(remaining.subList(0, Math.min(needed, remaining.size())));
+                }
+                Set<Long> starterIds = starters.stream().map(Player::getId).collect(Collectors.toSet());
+                subs = players.stream()
+                    .filter(p -> !starterIds.contains(p.getId()))
+                    .limit(7)
+                    .collect(Collectors.toList());
+                if (lineup.getFormation() != null) {
+                    team.setFormation(lineup.getFormation());
+                }
+                log.info("=== LINEUP for {} (from saved tactic editor, formation: {}) ===",
+                    teamName, team.getFormation());
+            } else {
+                // Nema sačuvanog lineup-a — sortiraj po poziciji pa uzmi prvih 11
+                List<Player> sorted = new ArrayList<>(players);
+                sorted.sort(Comparator.comparingInt(p -> positionOrder(p.getPosition())));
+                ensureSingleGK(sorted);
+                starters = sorted.subList(0, Math.min(11, sorted.size()));
+                subs = sorted.size() > 11
+                    ? sorted.subList(11, Math.min(18, sorted.size()))
+                    : List.of();
+                team.setFormation("4-3-3");
+                log.info("=== LINEUP for {} (auto-sorted by position, no saved lineup) ===", teamName);
+            }
+
+            team.selectLineup(starters, subs);
+
+            // Uvek INDEX-based slot assignment — KRETNJA je po slotu, ne po prirodnoj poziciji
+            List<String> slotKeys = ZonePositionCalculator.buildSlotKeys(
+                team.getFormation() != null ? team.getFormation() : "4-3-3", starters);
+            log.info("=== LINEUP for {} (formacija: {}) ===", teamName, team.getFormation());
+            for (int i = 0; i < starters.size() && i < slotKeys.size(); i++) {
+                log.info("  {}. {} | Position: {} | Slot: {}",
+                    i + 1, starters.get(i).getName(), starters.get(i).getPosition(), slotKeys.get(i));
+            }
+            log.info("  Slot assignment: {}", String.join(", ", slotKeys));
+
+            log.info("Loaded team {} from DB with {} players, {} starters, {} subs",
+                teamName, players.size(), starters.size(), subs.size());
+            return team;
+        } catch (Exception e) {
+            log.warn("Failed to load team {} from DB, using synthetic team: {}", teamName, e.getMessage());
+            return null;
+        }
+    }
+
+    private static int positionOrder(Position p) {
+        return switch (p) {
+            case GK -> 0;
+            case DEF -> 1;
+            case MID -> 2;
+            case WNG -> 3;
+            case ATT -> 4;
+        };
+    }
+
+    /** Ensure at most 1 GK in first 11; move extras to end. */
+    private static void ensureSingleGK(List<Player> sorted) {
+        int firstGK = -1;
+        for (int i = 0; i < Math.min(11, sorted.size()); i++) {
+            if (sorted.get(i).getPosition() == Position.GK) {
+                if (firstGK == -1) {
+                    firstGK = i;
+                } else {
+                    // Extra GK in first 11 — swap with last non-GK
+                    for (int j = sorted.size() - 1; j >= 11; j--) {
+                        if (sorted.get(j).getPosition() != Position.GK) {
+                            Collections.swap(sorted, i, j);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // If no GK in first 11, swap first GK from subs
+        if (firstGK == -1) {
+            for (int i = 11; i < sorted.size(); i++) {
+                if (sorted.get(i).getPosition() == Position.GK) {
+                    Collections.swap(sorted, 0, i);
+                    break;
+                }
+            }
+        }
     }
 
     /**
@@ -193,6 +359,15 @@ public final class MatchOrchestrator {
 
         MatchResult result = simulator.simulate(match);
         store.storeResult(matchId, result);
+
+        if (persistenceService != null) {
+            try {
+                persistenceService.saveMatchResult(result, match);
+            } catch (Exception e) {
+                log.warn("Failed to persist match result: {}", e.getMessage(), e);
+            }
+        }
+
         return result;
     }
 
@@ -260,6 +435,7 @@ public final class MatchOrchestrator {
             player.setName(name);
             player.setPosition(pos);
             player.setSkills(skills);
+            player.setSquadNumber(i + 1);
             squad.add(player);
         }
         return squad;

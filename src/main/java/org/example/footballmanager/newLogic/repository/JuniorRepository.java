@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.repository;
 import org.example.footballmanager.newLogic.model.Junior;
 import org.example.footballmanager.newLogic.model.JuniorStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,5 +13,19 @@ import java.util.List;
 @Repository
 public interface JuniorRepository extends JpaRepository<Junior, Long> {
     List<Junior> findByTeamId(Long teamId);
-    List<Junior> findByTeamIdAndStatus(Long teamId, JuniorStatus status);
+    List<Junior> findByTeamIdOrderByAcademySkillExactDesc(Long teamId);
+
+    @Query("SELECT j FROM Junior j WHERE j.team.id = :teamId AND (j.archived = false OR j.archived IS NULL) ORDER BY j.academySkillExact DESC")
+    List<Junior> findVisibleByTeamId(@Param("teamId") Long teamId);
+
+    @Query("SELECT count(j) FROM Junior j WHERE j.team.id = :teamId AND j.status = :status AND (j.archived = false OR j.archived IS NULL)")
+    long countVisibleByTeamIdAndStatus(@Param("teamId") Long teamId, @Param("status") JuniorStatus status);
+
+    List<Junior> findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(Long teamId);
+    List<Junior> findByStatus(JuniorStatus status);
+    long countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(Long teamId, int arrivalSeasonNumber, int arrivalWeekNumber);
+
+    @Modifying
+    @Query("update Junior j set j.age = j.age + 1 where j.status = :status")
+    int incrementAgeByStatus(@Param("status") JuniorStatus status);
 }
