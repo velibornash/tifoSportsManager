@@ -479,6 +479,93 @@ public class AIDecisionMaker {
         };
     }
 
+    /**
+     * Debug decision used by the AI Decision Debugger mode.
+     * Deterministic, explainable scoring that maps to PASS/SHOT/DRIBBLE.
+     */
+    public Decision makeDebugDecision(Player player, MatchRuntime rt, Match match, int minute) {
+        String team = getTeam(player, rt);
+        PlayerPositionDTO pos = getPlayerPosition(player, rt);
+        if (pos == null) return new Decision(ActionType.DRIBBLE, null);
+
+        java.util.function.BiFunction<PlayerPositionDTO, PlayerPositionDTO, Double> dist = (a, b) -> {
+            double dx = a.getX() - b.getX(); double dy = a.getY() - b.getY(); return Math.sqrt(dx*dx + dy*dy);
+        };
+
+        // teammates and opponents
+        var teammates = getTeammates(player, rt);
+        var opponents = getOpponentPositions(team, rt);
+
+        // SHOT score
+        double goalX = "HOME".equals(team) ? 100.0 : 0.0;
+        double dx = goalX - pos.getX();
+        double dy = 50.0 - pos.getY();
+        double goalDist = Math.sqrt(dx*dx + dy*dy);
+        int nearbyDefenders = getNearbyDefenders(player, rt, team).size();
+        double shotScore = 0.0;
+        if (player.getPosition() != Position.GK && goalDist <= 28.0) {
+            shotScore = Math.max(0.0, 2.0 - (goalDist / 20.0)) - (nearbyDefenders * 0.35);
+        }
+
+        // PASS_SHORT
+        Player bestShort = null; double bestShortScore = -1.0;
+        for (var p : teammates) {
+            var pPos = getPlayerPosition(p, rt);
+            if (pPos == null) continue;
+            double d = dist.apply(pos, pPos);
+            if (d <= 15.0 && d > 0.1) {
+                double nearestOpp = opponents.stream().mapToDouble(o -> dist.apply(pPos, o)).min().orElse(12.0);
+                double score = (15.0 - d) * 0.06 + (nearestOpp * 0.03);
+                if (score > bestShortScore) { bestShortScore = score; bestShort = p; }
+            }
+        }
+        double passShortScore = Math.max(0.0, bestShortScore);
+
+        // PASS_LONG
+        Player bestLong = null; double bestLongScore = -1.0;
+        for (var p : teammates) {
+            var pPos = getPlayerPosition(p, rt);
+            if (pPos == null) continue;
+            double d = dist.apply(pos, pPos);
+            if (d > 15.0 && d <= 35.0) {
+                double forward = "HOME".equals(team) ? pPos.getX() - pos.getX() : pos.getX() - pPos.getX();
+                double nearestOpp = opponents.stream().mapToDouble(o -> dist.apply(pPos, o)).min().orElse(12.0);
+                double score = Math.max(0.0, forward / 20.0) + (nearestOpp * 0.02);
+                if (score > bestLongScore) { bestLongScore = score; bestLong = p; }
+            }
+        }
+        double passLongScore = Math.max(0.0, bestLongScore);
+
+        // THROUGH
+        Player bestThrough = null; double bestThroughScore = -1.0;
+        for (var p : teammates) {
+            var pPos = getPlayerPosition(p, rt);
+            if (pPos == null) continue;
+            double forward = "HOME".equals(team) ? pPos.getX() - pos.getX() : pos.getX() - pPos.getX();
+            if (forward > 6.5) {
+                double nearestOpp = opponents.stream().mapToDouble(o -> dist.apply(pPos, o)).min().orElse(12.0);
+                double score = 1.2 + (nearestOpp * 0.04) + (forward / 20.0);
+                if (score > bestThroughScore) { bestThroughScore = score; bestThrough = p; }
+            }
+        }
+        double throughScore = Math.max(0.0, bestThroughScore);
+
+        double carryScore = (nearbyDefenders == 0) ? 0.6 : 0.05;
+        double dribbleScore = 0.2 + (0.1 * Math.max(0, 3 - nearbyDefenders));
+
+        // Select best
+        double max = shotScore; String action = "SHOT"; Player chosen = null;
+        if (passShortScore > max) { max = passShortScore; action = "PASS_SHORT"; chosen = bestShort; }
+        if (passLongScore > max) { max = passLongScore; action = "PASS_LONG"; chosen = bestLong; }
+        if (throughScore > max) { max = throughScore; action = "THROUGH_BALL"; chosen = bestThrough; }
+        if (carryScore > max) { max = carryScore; action = "CARRY"; chosen = null; }
+        if (dribbleScore > max) { max = dribbleScore; action = "DRIBBLE"; chosen = null; }
+
+        if ("SHOT".equals(action)) return new Decision(ActionType.SHOT, null);
+        if ("PASS_SHORT".equals(action) || "PASS_LONG".equals(action) || "THROUGH_BALL".equals(action)) return new Decision(ActionType.PASS, chosen);
+        return new Decision(ActionType.DRIBBLE, null);
+    }
+
     private double resolvePassLaneProfileBonus(String passerSlotKey,
                                                String receiverSlotKey,
                                                PlayerPositionDTO passerPos,

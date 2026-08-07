@@ -357,3 +357,59 @@ The 4 sport-specific `.md` files are written as instructions for AI agents — t
 - `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
 - **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
 - **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events
+
+## Match Engine Architecture (`newLogic/engine/`)
+
+The simulation engine follows a tick-based pipeline with these core classes:
+
+```
+Simulation Tick Pipeline (each tick):
+  MatchState → TacticalEditor → AwarenessEngine → IntentEngine →
+  MovementEngine → DecisionEngine → ActionCommitment → BallEngine →
+  InteractionEngine → RulesEngine → EventBus → StatisticsEngine
+```
+
+### Core Engine Classes
+
+| Class | Responsibility |
+|---|---|
+| `MatchPhase` | `BUILD_UP`, `PROGRESSION`, `FINAL_THIRD`, `FINISHING` — phase based on ball position |
+| `BallState` | `POSSESSION`, `IN_FLIGHT`, `ROLLING`, `DEFLECTED`, `LOOSE` |
+| `PlayerIntent` | `RETURN_TO_SHAPE`, `PRESS`, `MARK`, `INTERCEPT`, `CHASE_BALL`, `SUPPORT`, `OVERLAP`, `UNDERLAP`, `MAKE_RUN`, `HOLD_POSITION` |
+| `PossessionContext` | Tracks ball owner, possession duration, phase, pass count, chain ID |
+| `CurrentAction` | Tracks action type and remaining execution time (commitment duration) |
+| `ActionCommitment` | Prevents decision changes while action is in progress |
+| `SpaceInfo` | Pressure, openness, pass lane score, shot lane score, threat status |
+| `SpaceAnalyzer` | Real-time spatial analysis for each player |
+| `UtilityScorer` | Functional interface per scoring strategy (Carry, Shoot, Pass, Cross, etc.) |
+| `MatchMetrics` | Live match statistics (shots, passes, tackles, corners, etc.) |
+| `MatchEventBus` | Decoupled event publishing — stats, replay, and reporting subscribe independently |
+| `StatisticsEngine` | Consumes events and produces `MatchMetrics` |
+| `SimulationDebugger` | Produces "Simulation Health Report" with possession analysis |
+
+### Decision Engine Architecture (refactored)
+
+The `DecisionEngine` now uses:
+- `UtilityScorer` interface — each action type has its own scorer class
+- `SpaceInfo` from `SpaceAnalyzer` — decisions use real-time spatial data, not computed values
+- `ActionCommitment` — prevents action switching mid-animation, creates realistic action durations
+- `PlayerIntent` — intent drives movement, not the decision
+
+### Simulation Debug HUD
+
+After each match, the simulation prints a health report:
+```
+=== Simulation Health Report ===
+Possession switches: N
+Average possession: X.Xs
+Longest possession: X.Xs [WARNING if >5s]
+
+Shots: N | Passes: N | Tackles: N | Corners: N
+Through balls: N | Crosses: N | Offsides: N
+Loose ball time: X% | Ball in flight: X%
+
+Warnings:
+⚠️  Carry selected N% of all actions.
+⚠️  No throw-ins detected.
+⚠️  No shots from Team B.
+```

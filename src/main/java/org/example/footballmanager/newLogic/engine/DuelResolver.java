@@ -16,11 +16,19 @@ public final class DuelResolver {
         double shootSkill = shooter.shooting() + shooter.technique();
         double gkSkill = goalkeeper != null ? goalkeeper.defending() + (goalkeeper instanceof PlayerSnapshot ? 10 : 0) : 5;
 
-        double saveChance = 0.30 + (gkSkill / 40.0) * 0.30;
-        saveChance *= (1.0 + distance / 100.0);
+        // Longer shots miss the target more often (real football: off-target rate
+        // climbs with distance). Close shots are almost always on target.
+        double missChance = 0.05 + Math.max(0, (distance - 8.0)) * 0.025;
+        missChance = Math.min(0.55, missChance);
 
-        double adjustedXG = xG * (0.7 + (shootSkill / 40.0) * 0.6);
+        double saveChance = 0.45 + (gkSkill / 40.0) * 0.30;
 
+        double adjustedXG = xG * (0.5 + (shootSkill / 40.0) * 0.3);
+
+        double r = RNG.nextDouble();
+        if (r < missChance) {
+            return new DuelResult(false, "MISSED", adjustedXG, false, false);
+        }
         boolean saved = RNG.nextDouble() < saveChance;
         boolean isGoal = !saved && RNG.nextDouble() < adjustedXG;
 
@@ -29,7 +37,7 @@ public final class DuelResolver {
 
     public DuelResult resolveOpenGoalShot(PlayerSnapshot shooter, double distance, double xG) {
         double shootSkill = shooter.shooting() + shooter.technique();
-        double adjustedXG = Math.min(0.85, xG * 1.5 * (0.8 + (shootSkill / 40.0) * 0.4));
+        double adjustedXG = Math.min(0.70, xG * 1.2 * (0.6 + (shootSkill / 40.0) * 0.3)); // Reduced multiplier
         boolean isGoal = RNG.nextDouble() < adjustedXG;
         return new DuelResult(isGoal, isGoal ? "GOAL" : "MISSED", adjustedXG, isGoal, false);
     }

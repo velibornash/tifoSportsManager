@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.service;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.engine.MatchSimulator;
 import org.example.footballmanager.newLogic.engine.ZonePositionCalculator;
@@ -17,6 +18,7 @@ public final class MatchOrchestrator {
 
     private static final Random RNG = new Random();
     private final MatchStore store;
+    @Getter
     private final MatchSimulator simulator = new MatchSimulator();
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
@@ -317,11 +319,19 @@ public final class MatchOrchestrator {
             progress = Math.max(Math.max(1, anchor[0] - 1), Math.min(progress, anchor[0] + (weHaveBall ? 1 : 0)));
         }
         if (!weHaveBall && "ATT".equals(slot.line)) {
-            progress = Math.max(Math.max(2, anchor[0] - 1), progress);
+            // Wingers/strikers track the ball back when defending instead of
+            // standing stranded high up the pitch
+            progress = clamp(Math.min(anchor[0], ballP + 1));
         }
 
-        // Keep the slot anchor dominant. Ball state should nudge positioning, not reshape it.
-        progress = clamp(Math.round(anchor[0] + (progress - anchor[0]) * (weHaveBall ? 0.25f : 0.18f)));
+        if (!weHaveBall && "ATT".equals(slot.line)) {
+            // Ball tracking is dominant when defending so the front line
+            // drops back to the ball instead of staying glued to the anchor
+            progress = clamp(progress);
+        } else {
+            // Keep the slot anchor dominant. Ball state should nudge positioning, not reshape it.
+            progress = clamp(Math.round(anchor[0] + (progress - anchor[0]) * (weHaveBall ? 0.25f : 0.18f)));
+        }
         width = clamp(Math.round(anchor[1] + (width - anchor[1]) * (weHaveBall ? 0.18f : 0.12f)));
         return new int[]{clamp(progress), clamp(width)};
     }

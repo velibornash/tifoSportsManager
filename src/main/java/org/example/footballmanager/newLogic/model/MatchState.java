@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.model;
 
+import org.example.footballmanager.newLogic.engine.MatchMetrics;
 import org.example.footballmanager.newLogic.model.event.MatchEvent;
 
 import java.util.*;
@@ -51,6 +52,7 @@ public class MatchState {
     public int lastPassTick = -100;
     public int lastDecisionTick = -100;
     public Long lastPassFromId, lastPassToId;
+    public Long lastPasserId; // For assist tracking
     public Long pendingPenaltyTakerId;
     public Long kickoffTakerId;
     public Long restartTakerId;
@@ -68,6 +70,22 @@ public class MatchState {
     public String possessionTeamLabel;
     public int lastDuelTick = -100;
     public int lastShotTick = -100;
+
+    // Offside state
+    public boolean offsideActive;
+    public String offsideTeam;
+    public int offsideTick;
+
+    // Consecutive pass tracking - prevents same 2 players passing back and forth
+    public final List<Long> lastPasserIds = new ArrayList<>();
+    public int consecutivePassCount;
+
+    // Backward pass tracking - limits backward passes per possession
+    public int backwardPassCount;
+    public String lastBallAction = null; // e.g., "CARRY", "SHORT_PASS"
+    public int lastBallActionStreak = 0;
+
+    public MatchMetrics simulatorMetrics; // Reference to simulator metrics for tracking
 
     public MatchState(Match match) {
         this.match = match;

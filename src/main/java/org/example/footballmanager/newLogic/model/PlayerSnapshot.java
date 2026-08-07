@@ -10,6 +10,19 @@ public final class PlayerSnapshot {
     private String state;
     private boolean hasBall;
 
+    // Action commitment: current action name and remaining ticks
+    private String currentAction;
+    private int currentActionTicks;
+
+    // Possession time in ticks while this player holds the ball continuously
+    private int possessionTicks;
+
+    // Tactical positioning system
+    private double[] tacticalPosition;  // From TacticRules (ball state -> target cell)
+    private double[] desiredPosition;   // Final target (tactical or threat override)
+    private Intent intent;              // Current intent (RETURN_TO_SHAPE, PRESS, etc.)
+    private String reason;              // Reason for current desired position
+
     private final int pace;
     private final int technique;
     private final int passing;
@@ -17,6 +30,13 @@ public final class PlayerSnapshot {
     private final int shooting;
     private final int defending;
     private final int stamina;
+
+    public enum Intent {
+        RETURN_TO_SHAPE,
+        PRESS,
+        SUPPORT,
+        TRACK_RUNNER
+    }
 
     public PlayerSnapshot(long playerId, String name, String teamSide, Position position,
                           double x, double y, String state, boolean hasBall) {
@@ -42,6 +62,12 @@ public final class PlayerSnapshot {
         this.shooting = shooting;
         this.defending = defending;
         this.stamina = stamina;
+        
+        // Initialize tactical positioning fields
+        this.tacticalPosition = new double[]{x, y};
+        this.desiredPosition = new double[]{x, y};
+        this.intent = Intent.RETURN_TO_SHAPE;
+        this.reason = "Tactical Editor";
     }
 
     public static PlayerSnapshot fromPlayer(Player p, String teamSide, double x, double y) {
@@ -60,8 +86,13 @@ public final class PlayerSnapshot {
     }
 
     public PlayerSnapshot copy() {
-        return new PlayerSnapshot(playerId, name, teamSide, position, x, y, state, hasBall,
+        PlayerSnapshot copy = new PlayerSnapshot(playerId, name, teamSide, position, x, y, state, hasBall,
             pace, technique, passing, playmaking, shooting, defending, stamina);
+        copy.tacticalPosition = new double[]{tacticalPosition[0], tacticalPosition[1]};
+        copy.desiredPosition = new double[]{desiredPosition[0], desiredPosition[1]};
+        copy.intent = intent;
+        copy.reason = reason;
+        return copy;
     }
 
     public long playerId() { return playerId; }
@@ -94,7 +125,30 @@ public final class PlayerSnapshot {
 
     public void setHasBall(boolean hasBall) {
         this.hasBall = hasBall;
+        if (!hasBall) {
+            this.possessionTicks = 0;
+        }
     }
+
+    public boolean isBusy() {
+        return currentActionTicks > 0;
+    }
+
+    public void setCurrentAction(String name, int ticks) {
+        this.currentAction = name;
+        this.currentActionTicks = ticks;
+    }
+
+    public String getCurrentAction() { return currentAction; }
+
+    public void updateActionTick() {
+        if (currentActionTicks > 0) currentActionTicks--;
+        if (currentActionTicks == 0) currentAction = null;
+    }
+
+    public void incPossessionTick() { this.possessionTicks++; }
+    public void resetPossessionTicks() { this.possessionTicks = 0; }
+    public int getPossessionTicks() { return this.possessionTicks; }
 
     public double distanceTo(PlayerSnapshot other) {
         return Math.sqrt(Math.pow(x - other.x, 2) + Math.pow(y - other.y, 2));
@@ -102,5 +156,27 @@ public final class PlayerSnapshot {
 
     public double distanceToPoint(double px, double py) {
         return Math.sqrt(Math.pow(x - px, 2) + Math.pow(y - py, 2));
+    }
+
+    // Tactical positioning getters/setters
+    public double[] tacticalPosition() { return tacticalPosition; }
+    public double[] desiredPosition() { return desiredPosition; }
+    public Intent intent() { return intent; }
+    public String reason() { return reason; }
+
+    public void setTacticalPosition(double x, double y) {
+        this.tacticalPosition = new double[]{x, y};
+    }
+
+    public void setDesiredPosition(double x, double y) {
+        this.desiredPosition = new double[]{x, y};
+    }
+
+    public void setIntent(Intent intent) {
+        this.intent = intent;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
     }
 }

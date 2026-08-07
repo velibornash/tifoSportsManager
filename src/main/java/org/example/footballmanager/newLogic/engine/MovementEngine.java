@@ -22,6 +22,7 @@ public final class MovementEngine {
     public MovementEngine() {}
 
     public static void initializePositions(MatchState state) {
+        blendTargets.clear();
         state.playerSnapshots.clear();
         for (Player p : state.match.homeTeam().startingXI()) {
             double[] pos = startingPosition(p, "HOME", state.match.homeTeam().startingXI().indexOf(p));
@@ -64,6 +65,10 @@ public final class MovementEngine {
             ticks, ticks
         );
         blendTargets.put(playerId, bt);
+    }
+
+    public static boolean hasActiveBlend(long playerId) {
+        return blendTargets.containsKey(playerId);
     }
 
     public static void processBlends(MatchState state) {

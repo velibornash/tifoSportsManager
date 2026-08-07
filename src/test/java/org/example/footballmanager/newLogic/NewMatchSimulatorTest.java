@@ -97,4 +97,60 @@ public class NewMatchSimulatorTest {
             assertFalse(result.events().isEmpty(), "Should have events on run " + run);
         }
     }
+
+    @Test
+    void tenMatchDiagnosticSummary() {
+        int totalGoals = 0, totalShots = 0, totalPasses = 0, totalCorners = 0;
+        int totalFouls = 0, totalCards = 0, totalSubs = 0, totalDuels = 0;
+        int totalShotsOnTarget = 0, totalYelCards = 0, totalReds = 0;
+
+        for (int i = 0; i < 10; i++) {
+            MatchStore store = new MatchStore();
+            MatchOrchestrator orchestrator = new MatchOrchestrator(store);
+            long matchId = orchestrator.startMatch("TeamA" + i, "TeamB" + i);
+            MatchResult result = orchestrator.simulate(matchId);
+
+            totalGoals += result.homeGoals() + result.awayGoals();
+            totalShots += result.homeShots() + result.awayShots();
+            totalShotsOnTarget += result.homeShotsOnTarget() + result.awayShotsOnTarget();
+            totalCorners += result.homeCorners() + result.awayCorners();
+            totalFouls += result.homeFouls() + result.awayFouls();
+            totalYelCards += result.homeYellowCards() + result.awayYellowCards();
+            totalReds += result.homeRedCards() + result.awayRedCards();
+            totalCards += totalYelCards + totalReds;
+
+            long passes = result.events().stream().filter(e -> e instanceof PassEvent).count();
+            totalPasses += passes;
+            long duels = result.events().stream()
+                .filter(e -> e instanceof DuelEvent || e instanceof TackleEvent).count();
+            totalDuels += duels;
+            long subs = result.events().stream().filter(e -> e instanceof SubstitutionEvent).count();
+            totalSubs += subs;
+            long corners = result.events().stream()
+                .filter(e -> e instanceof SetPieceEvent spe
+                    && spe.setPieceType() == SetPieceEvent.SetPieceType.CORNER)
+                .count();
+            totalCorners += corners;
+
+            System.out.printf("Match %2d: %d-%d | Passes: %3d | Shots: %2d (OT:%d) | Goals: %d | Corners: %2d | Poss: H=%.0f%% | Events: %d%n",
+                i + 1, result.homeGoals(), result.awayGoals(),
+                passes, result.homeShots() + result.awayShots(),
+                result.homeShotsOnTarget() + result.awayShotsOnTarget(),
+                result.homeGoals() + result.awayGoals(),
+                corners, result.homePossession(), result.events().size());
+        }
+
+        System.out.printf("%n=== AVERAGES (10 simulated matches) ===%n");
+        System.out.printf("Goals/match:       %.1f%n", totalGoals / 10.0);
+        System.out.printf("Shots/match:       %.1f%n", totalShots / 10.0);
+        System.out.printf("Shots on target:   %.1f%n", totalShotsOnTarget / 10.0);
+        System.out.printf("Passes/match:      %.0f%n", (double) totalPasses / 10.0);
+        System.out.printf("Corners/match:     %.1f%n", totalCorners / 10.0);
+        System.out.printf("Fouls/match:       %.1f%n", totalFouls / 10.0);
+        System.out.printf("Cards/match:       %.1f%n", totalCards / 10.0);
+        System.out.printf("Substitutions/match: %.1f%n", totalSubs / 10.0);
+        System.out.printf("Duels/interceptions/match: %.0f%n", (double) totalDuels / 10.0);
+
+        // Diagnostic output only - no assertions required
+    }
 }

@@ -53,6 +53,8 @@ public class RealisticMatchEngine {
     private final RealisticEventGenerator eventGenerator;
     private final BroadcastEngine broadcastEngine;
     private final Random random = new Random();
+    // Debug mode: when enabled (env var TIFO_DEBUG_DECISION_MODE=true) use simplified deterministic decision/movement rules
+    private final boolean debugDecisionMode = Boolean.parseBoolean(java.util.Optional.ofNullable(System.getenv("TIFO_DEBUG_DECISION_MODE")).orElse("false"));
     private static final int ACTIONS_PER_MINUTE = 12; // Increased from 4 for smoother movement
     private static final double MIN_X = 4.0;
     private static final double MAX_X = 96.0;
@@ -284,6 +286,317 @@ public class RealisticMatchEngine {
     }
 
     /**
+     * Debug discrete phase emulating the Decision Demo rules on a 5x5 grid.
+     */
+    private void simulateDebugPhase(MatchRuntime rt, Match match, int minute, int phase) {
+        // Map continuous positions to 5x5 cells using TARGET_X_CENTERS and BAND_Y_CENTERS
+        final int GRID = 5;
+        class Cell { int x; int y; Cell(int x,int y){this.x=x;this.y=y;} }
+        java.util.Map<Integer, Cell> playerCell = new java.util.HashMap<>();
+        java.util.Map<String, java.util.List<Integer>> teamPlayers = new java.util.HashMap<>();
+        teamPlayers.put("HOME", new java.util.ArrayList<>());
+        teamPlayers.put("AWAY", new java.util.ArrayList<>());
+
+        java.util.List<PlayerPositionDTO> positions = rt.players;
+        for (PlayerPositionDTO pp : positions) {
+            int id = pp.getId();
+            int cx = 0; int cy = 0; double bestDX = Double.MAX_VALUE;
+            // find nearest x center
+            for (int xi = 0; xi < TARGET_X_CENTERS.length; xi++) {
+                double dx = Math.abs(pp.getX() - TARGET_X_CENTERS[xi]);
+                if (dx < bestDX) { bestDX = dx; cx = xi; }
+            }
+            double bestDY = Double.MAX_VALUE;
+            for (int yi = 0; yi < BAND_Y_CENTERS.length; yi++) {
+                double dy = Math.abs(pp.getY() - BAND_Y_CENTERS[yi]);
+                if (dy < bestDY) { bestDY = dy; cy = yi; }
+            }
+            playerCell.put(id, new Cell(cx, cy));
+            if ("HOME".equals(pp.getTeam())) teamPlayers.get("HOME").add(id); else teamPlayers.get("AWAY").add(id);
+        }
+
+        // Find current carrier
+        Integer carrierId = rt.currentCarrier != null ? rt.currentCarrier.getId() : null;
+        Player carrier = carrierId != null ? rt.homeSquad.stream().filter(p->p.getId().intValue()==carrierId).findFirst().orElse(rt.awaySquad.stream().filter(p->p.getId().intValue()==carrierId).findFirst().orElse(null)) : null;
+        if (carrier == null) {
+            // loose ball simple behavior: no special handling here
+            return;
+        }
+
+        // 1) Ball carrier decides using debug decision
+        AIDecisionMaker.Decision decision = aiDecisionMaker.makeDebugDecision(carrier, rt, match, minute);
+
+        // 2) All attackers decide movement knowing the action
+        java.util.Random rand = new java.util.Random(rt.tick + minute + (carrierId!=null?carrierId:0));
+
+        java.util.Map<Integer, Cell> movementTarget = new java.util.HashMap<>();
+
+        // Build helper to check adjacency
+        java.util.function.BiPredicate<Cell,Cell> adjacent = (a,b)->Math.abs(a.x-b.x)<=1 && Math.abs(a.y-b.y)<=1 && !(a.x==b.x && a.y==b.y);
+
+        // Determine pass target cell if any
+        Cell passTargetCell = null; Integer passTargetPlayerId = null;
+        if (decision.getAction() == AIDecisionMaker.ActionType.PASS && decision.getTargetPlayer() != null) {
+            Player t = decision.getTargetPlayer();
+            PlayerPositionDTO tPos = getPlayerPosition(rt, t);
+            if (tPos != null) {
+                passTargetPlayerId = Math.toIntExact(t.getId());
+                Cell c = playerCell.get(passTargetPlayerId);
+                passTargetCell = c;
+            }
+        }
+
+        // Attackers move
+        for (String team : java.util.List.of("HOME","AWAY")) {
+            for (int pid : teamPlayers.get(team)) {
+                PlayerPositionDTO pp = positions.stream().filter(p->p.getId()==pid).findFirst().orElse(null);
+                if (pp == null) continue;
+                // skip GK movement
+                if ("HOME".equals(pp.getTeam())) {
+                    Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null);
+                    if (pObj!=null && pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
+                } else {
+                    Player pObj = rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null);
+                    if (pObj!=null && pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
+                }
+
+                // attackers only: team of carrier
+                Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null));
+                boolean isAttacker = pObj!=null && pObj.getPosition()!=org.example.footballmanager.newLogic.model.Position.DEF && pObj.getPosition()!=org.example.footballmanager.newLogic.model.Position.GK;
+                if (isAttacker && (rt.homeSquad.contains(carrier) ? "HOME".equals(pObj.getTeam()) : "AWAY".equals(pObj.getTeam()))) {
+                    Cell cur = playerCell.get(pid);
+                    if (passTargetCell!=null && passTargetPlayerId!=null && passTargetPlayerId==pid) {
+                        // if pass directed to their current cell -> stay
+                        movementTarget.put(pid, cur);
+                    } else if (passTargetCell!=null && cur!=null && adjacent.test(cur, passTargetCell)) {
+                        movementTarget.put(pid, passTargetCell);
+                    } else {
+                        // move one random neighbouring cell
+                        java.util.List<Cell> neigh = new java.util.ArrayList<>();
+                        for (int dx=-1; dx<=1; dx++) for (int dy=-1; dy<=1; dy++) {
+                            int nx=cur.x+dx, ny=cur.y+dy; if (nx<0||nx>=5||ny<0||ny>=5) continue; if (dx==0&&dy==0) continue;
+                            neigh.add(new Cell(nx,ny));
+                        }
+                        if (!neigh.isEmpty()) movementTarget.put(pid, neigh.get(rand.nextInt(neigh.size())));
+                        else movementTarget.put(pid, cur);
+                    }
+                } else {
+                    // non-attacker: default one random neighbouring cell
+                    Cell cur = playerCell.get(pid);
+                    java.util.List<Cell> neigh = new java.util.ArrayList<>();
+                    for (int dx=-1; dx<=1; dx++) for (int dy=-1; dy<=1; dy++) {
+                        int nx=cur.x+dx, ny=cur.y+dy; if (nx<0||nx>=5||ny<0||ny>=5) continue; if (dx==0&&dy==0) continue;
+                        neigh.add(new Cell(nx,ny));
+                    }
+                    if (!neigh.isEmpty()) movementTarget.put(pid, neigh.get(rand.nextInt(neigh.size())));
+                    else movementTarget.put(pid, cur);
+                }
+            }
+        }
+
+        // Defenders special rule: if adjacent to ball carrier move into that cell to initiate duel
+        Cell carrierCell = playerCell.get(Math.toIntExact(carrier.getId()));
+        for (int pid : teamPlayers.get(rt.homeSquad.contains(carrier)?"AWAY":"HOME")) {
+            Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null));
+            if (pObj==null || pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) continue;
+            Cell cur = playerCell.get(pid);
+            if (adjacent.test(cur, carrierCell)) {
+                movementTarget.put(pid, carrierCell);
+            } else {
+                // already set above for defenders, keep existing
+            }
+        }
+
+        // Execute movement: update playerCell -> apply movementTarget with collision rules
+        // Build occupancy map
+        java.util.Map<String, java.util.List<Integer>> cellOccupants = new java.util.HashMap<>();
+        for (int pid : movementTarget.keySet()) {
+            Cell t = movementTarget.get(pid);
+            String key = t.x+":"+t.y;
+            cellOccupants.computeIfAbsent(key,k->new java.util.ArrayList<>()).add(pid);
+        }
+
+        // Resolve teammate collisions: if teammates in same cell, move one to a neighbouring cell
+        for (var entry : new java.util.ArrayList<>(cellOccupants.entrySet())) {
+            var list = entry.getValue();
+            if (list.size()<=1) continue;
+            // if same team teammates, disperse all but first
+            java.util.Map<String, java.util.List<Integer>> byTeam = new java.util.HashMap<>();
+            for (int pid : list) {
+                PlayerPositionDTO posForTeam = findPositionDTOById(rt, pid);
+                String team = posForTeam != null ? posForTeam.getTeam() : "HOME";
+                byTeam.computeIfAbsent(team, k->new java.util.ArrayList<>()).add(pid);
+            }
+            for (var teamList : byTeam.values()) {
+                if (teamList.size()<=1) continue;
+                for (int i=1;i<teamList.size();i++) {
+                    int pid = teamList.get(i);
+                    Cell cur = playerCell.get(pid);
+                    java.util.List<Cell> neigh = new java.util.ArrayList<>();
+                    for (int dx=-1; dx<=1; dx++) for (int dy=-1; dy<=1; dy++) {
+                        int nx=cur.x+dx, ny=cur.y+dy; if (nx<0||nx>=5||ny<0||ny>=5) continue; if (dx==0&&dy==0) continue;
+                        neigh.add(new Cell(nx,ny));
+                    }
+                    if (!neigh.isEmpty()) movementTarget.put(pid, neigh.get(rand.nextInt(neigh.size())));
+                }
+            }
+        }
+
+        // Apply final movement
+        java.util.Map<Integer, Cell> newPlayerCell = new java.util.HashMap<>();
+        for (int pid : playerCell.keySet()) {
+            Cell target = movementTarget.getOrDefault(pid, playerCell.get(pid));
+            newPlayerCell.put(pid, target);
+        }
+
+        // After movement, check duels in cell containing ball
+        int carrierPid = Math.toIntExact(carrier.getId());
+        Cell newCarrierCell = newPlayerCell.get(carrierPid);
+        String cellKey = newCarrierCell.x+":"+newCarrierCell.y;
+        java.util.List<Integer> occupants = new java.util.ArrayList<>();
+        for (var e : newPlayerCell.entrySet()) if ((e.getValue().x+":"+e.getValue().y).equals(cellKey)) occupants.add(e.getKey());
+
+        // If occupants contain both teams and cell contains ball -> duel
+        boolean hasHome=false, hasAway=false;
+        for (int pid : occupants) {
+            String t = positions.stream().filter(p->p.getId()==pid).findFirst().map(PlayerPositionDTO::getTeam).orElse("HOME");
+            if ("HOME".equals(t)) hasHome=true; else hasAway=true;
+        }
+        if (hasHome && hasAway) {
+            // find attacker and defender involved: attacker is carrier team
+            boolean carrierHome = rt.homeSquad.stream().anyMatch(p->Math.toIntExact(p.getId())==carrierPid);
+            int attackerId = carrierPid;
+            int defenderId = -1;
+            for (int pid : occupants) {
+                if (pid==carrierPid) continue;
+                PlayerPositionDTO posForTeam = findPositionDTOById(rt, pid);
+                String t = posForTeam != null ? posForTeam.getTeam() : "HOME";
+                if ((carrierHome && "AWAY".equals(t)) || (!carrierHome && "HOME".equals(t))) { defenderId = pid; break; }
+            }
+            if (defenderId!=-1) {
+                // duel 50/50
+                boolean attackerWins = rand.nextBoolean();
+                Player attacker = findPlayerInSquads(rt, attackerId);
+                Player defender = findPlayerInSquads(rt, defenderId);
+                DuelResolver.DuelResult dr = new DuelResolver.DuelResult(attackerWins, attackerWins?"TACKLE_WON":"TACKLE_LOST", 0.5);
+                eventGenerator.createDuelEvent(rt, match, minute, attacker, defender, dr);
+                if (attackerWins) {
+                    // loser moves to random neighbouring cell
+                    java.util.List<Cell> neigh = new java.util.ArrayList<>();
+                    Cell cur = newPlayerCell.get(defenderId);
+                    for (int dx=-1; dx<=1; dx++) for (int dy=-1; dy<=1; dy++) { int nx=cur.x+dx, ny=cur.y+dy; if (nx<0||nx>=5||ny<0||ny>=5) continue; if (dx==0&&dy==0) continue; neigh.add(new Cell(nx,ny)); }
+                    if (!neigh.isEmpty()) newPlayerCell.put(defenderId, neigh.get(rand.nextInt(neigh.size())));
+                    // attacker keeps ball
+                    // carrier stays as new carrier
+                } else {
+                    // defender wins: becomes carrier
+                    rt.lastTouchTeam = isPlayerHome(rt, defenderId) ? "HOME" : "AWAY";
+                    PlayerPositionDTO defPos = findPositionDTOById(rt, defenderId);
+                    rt.currentCarrier = defPos != null ? new PlayerPositionDTO(defenderId, defPos.getTeam(), TARGET_X_CENTERS[newPlayerCell.get(defenderId).x], BAND_Y_CENTERS[newPlayerCell.get(defenderId).y],0,0) : null;
+                    // loser moves away
+                    java.util.List<Cell> neigh = new java.util.ArrayList<>();
+                    Cell cur = newPlayerCell.get(attackerId);
+                    for (int dx=-1; dx<=1; dx++) for (int dy=-1; dy<=1; dy++) { int nx=cur.x+dx, ny=cur.y+dy; if (nx<0||nx>=5||ny<0||ny>=5) continue; if (dx==0&&dy==0) continue; neigh.add(new Cell(nx,ny)); }
+                    if (!neigh.isEmpty()) newPlayerCell.put(attackerId, neigh.get(rand.nextInt(neigh.size())));
+                }
+            }
+        }
+
+        // Apply pass if chosen: after movement
+        if (decision.getAction()==AIDecisionMaker.ActionType.PASS && passTargetPlayerId!=null) {
+            // If opponent occupies target cell -> interception
+            java.util.List<Integer> targetOccupants = new java.util.ArrayList<>();
+            for (var e : newPlayerCell.entrySet()) if (e.getValue().x==passTargetCell.x && e.getValue().y==passTargetCell.y) targetOccupants.add(e.getKey());
+            boolean intercepted=false; Integer interceptorId=null;
+            for (int pid : targetOccupants) {
+                PlayerPositionDTO posForOccupant = findPositionDTOById(rt, pid);
+                String t = posForOccupant != null ? posForOccupant.getTeam() : "HOME";
+                PlayerPositionDTO targetPosInfo = findPositionDTOById(rt, passTargetPlayerId);
+                String targetTeam = targetPosInfo != null ? targetPosInfo.getTeam() : "HOME";
+                if (!t.equals(targetTeam)) { intercepted=true; interceptorId=pid; break; }
+            }
+            Player passer = carrier;
+            Player receiver = findPlayerInSquads(rt, passTargetPlayerId);
+            if (intercepted && interceptorId!=null) {
+                Player interceptor = findPlayerInSquads(rt, interceptorId);
+                eventGenerator.createInterceptionEvent(rt, match, minute, passer, interceptor);
+                PlayerPositionDTO intPos = findPositionDTOById(rt, interceptorId);
+                rt.currentCarrier = intPos != null ? new PlayerPositionDTO(interceptorId, intPos.getTeam(), TARGET_X_CENTERS[newPlayerCell.get(interceptorId).x], BAND_Y_CENTERS[newPlayerCell.get(interceptorId).y],0,0) : null;
+            } else {
+                eventGenerator.createPassEvent(rt, match, minute, passer, receiver);
+                PlayerPositionDTO recvPos = findPositionDTOById(rt, passTargetPlayerId);
+                rt.currentCarrier = recvPos != null ? new PlayerPositionDTO(passTargetPlayerId, recvPos.getTeam(), TARGET_X_CENTERS[passTargetCell.x], BAND_Y_CENTERS[passTargetCell.y],0,0) : null;
+            }
+        }
+
+        // Handle shot
+        if (decision.getAction()==AIDecisionMaker.ActionType.SHOT) {
+            Player shooter = carrier;
+            boolean goal = rand.nextBoolean();
+            if (goal) {
+                if (rt.homeSquad.contains(shooter)) rt.homeGoals++; else rt.awayGoals++;
+                eventGenerator.createGoalEvent(rt, match, minute, shooter, null, 0.5);
+                // reset for kickoff
+                rt.currentCarrier = null;
+                rt.ball = new BallPositionDTO(50,50);
+            } else {
+                Player goalkeeper = getGoalkeeper(rt, rt.homeSquad.contains(shooter)?"AWAY":"HOME");
+                eventGenerator.createShotSavedEvent(rt, match, minute, shooter, goalkeeper, 0.2);
+                // goalkeeper outcomes (three equally probable)
+                int pick = rand.nextInt(3);
+                if (pick==0) {
+                    // corner: ball to corner coordinate (use cell 4,0 or 4,4 depending)
+                    eventGenerator.createCornerEvent(rt, match, minute, rt.lastTouchTeam, goalkeeper);
+                    rt.currentCarrier = null;
+                } else if (pick==1) {
+                    // goalkeeper possession then long clearance
+                    rt.currentCarrier = positions.stream().filter(p->p.getId()==Math.toIntExact(goalkeeper.getId())).findFirst().map(p->new PlayerPositionDTO(Math.toIntExact(goalkeeper.getId()), positions.stream().filter(ppp->ppp.getId()==Math.toIntExact(goalkeeper.getId())).findFirst().map(PlayerPositionDTO::getTeam).orElse("AWAY"), TARGET_X_CENTERS[4], BAND_Y_CENTERS[2],0,0)).orElse(null);
+                    // immediate clearance: random cell
+                    int rx = rand.nextInt(5), ry = rand.nextInt(5);
+                    rt.ball = new BallPositionDTO(TARGET_X_CENTERS[rx], BAND_Y_CENTERS[ry]);
+                    rt.currentCarrier = null;
+                } else {
+                    // rebound to random cell
+                    int rx = rand.nextInt(5), ry = rand.nextInt(5);
+                    rt.ball = new BallPositionDTO(TARGET_X_CENTERS[rx], BAND_Y_CENTERS[ry]);
+                    rt.currentCarrier = null;
+                }
+            }
+        }
+
+        // Finally update rt.players positions to reflect newPlayerCell centers
+        for (PlayerPositionDTO pp : positions) {
+            Cell c = newPlayerCell.get(pp.getId());
+            if (c!=null) {
+                pp.setX(TARGET_X_CENTERS[c.x]);
+                pp.setY(BAND_Y_CENTERS[c.y]);
+            }
+        }
+    }
+
+    private Player findPlayerInSquads(MatchRuntime rt, int id) {
+        for (Player p : rt.homeSquad) {
+            if (p.getId() != null && Math.toIntExact(p.getId()) == id) return p;
+        }
+        for (Player p : rt.awaySquad) {
+            if (p.getId() != null && Math.toIntExact(p.getId()) == id) return p;
+        }
+        return null;
+    }
+
+    private PlayerPositionDTO findPositionDTOById(MatchRuntime rt, int id) {
+        for (PlayerPositionDTO pp : rt.players) {
+            if (pp.getId() == id) return pp;
+        }
+        return null;
+    }
+
+    private boolean isPlayerHome(MatchRuntime rt, int id) {
+        for (Player p : rt.homeSquad) if (p.getId() != null && Math.toIntExact(p.getId()) == id) return true;
+        return false;
+    }
+
+    /**
      * Simulates one match phase
      */
     private void simulatePhase(MatchRuntime rt, Match match, int minute, int phase) {
@@ -315,6 +628,13 @@ public class RealisticMatchEngine {
             if (forcedDefender != null) {
                 handleDuel(rt, match, minute, ballCarrier, forcedDefender);
             } else {
+                if (debugDecisionMode) {
+                    simulateDebugPhase(rt, match, minute, phase);
+                    // debug path handles movement, events and recording; skip the regular branch
+                    rt.recordTick();
+                    return;
+                }
+
                 // PAUSE LOGIC: If player just passed, they stay still for 1 tick to show the action
                 PlayerPositionDTO carrierPos = getPlayerPosition(rt, ballCarrier);
                 if (carrierPos != null && carrierPos.getOffsideTicksRemaining() > 0 && carrierPos.getOffsideTicksRemaining() < 2) {
@@ -619,7 +939,14 @@ public class RealisticMatchEngine {
             return;
         }
 
-        DuelResolver.DuelResult result = duelResolver.resolveTackleDuel(toSnapshot(rt, attacker), toSnapshot(rt, defender));
+        DuelResolver.DuelResult result;
+        if (debugDecisionMode) {
+            // Simplified 50/50 duel for debugger mode
+            boolean attackerWins = random.nextBoolean();
+            result = new DuelResolver.DuelResult(attackerWins, attackerWins ? "TACKLE_WON" : "TACKLE_LOST", 0.5);
+        } else {
+            result = duelResolver.resolveTackleDuel(toSnapshot(rt, attacker), toSnapshot(rt, defender));
+        }
 
         eventGenerator.createDuelEvent(rt, match, minute, attacker, defender, result);
 

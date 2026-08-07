@@ -15,34 +15,62 @@ public final class OffsideTracker {
 
     public OffsideTracker() {}
 
-    private int checkCounter = 0;
+    public Long checkOffsideOnPass(MatchState state, PlayerSnapshot passer, PlayerSnapshot receiver) {
+        if (passer == null || receiver == null) return null;
+        if (!passer.teamSide().equals(receiver.teamSide())) return null; // Must be same team
 
-    public void update(MatchState state) {
-        checkCounter++;
-        if (checkCounter % 60 != 0) return;
-
-        if (state.carrierId == null || state.ballInTransit) return;
-
-        String attackingTeam = state.carrierTeamSide;
-        if (attackingTeam == null) return;
+        String attackingTeam = passer.teamSide();
         String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
 
         double offsideLine = calculateOffsideLine(state, defendingTeam);
+
+        boolean home = attackingTeam.equals("HOME");
+        boolean isForwardPass = home ? receiver.x() > passer.x() : receiver.x() < passer.x();
+        if (!isForwardPass) return null;
+
+        boolean isOffside = isPlayerOffside(receiver, attackingTeam, offsideLine, state.ball.x());
+
+        if (isOffside && !flaggedOffside.contains(receiver.playerId())) {
+            flaggedOffside.add(receiver.playerId());
+            state.addEvent(new OffsideEvent(state.minute, state.tick,
+                receiver.playerId(), receiver.name(), attackingTeam));
+            if (state.simulatorMetrics != null) state.simulatorMetrics.onOffside();
+
+            // Reset all attackers to behind offside line
+            resetAttackersBehindOffsideLine(state, attackingTeam, offsideLine);
+
+            // Trigger goal kick for defending team
+            state.stoppage = MatchState.StoppageType.GOAL_KICK;
+            state.stoppageTicks = 5;
+            state.possessionTeam = defendingTeam;
+
+            return receiver.playerId();
+        }
+
+        return null;
+    }
+
+    private void resetAttackersBehindOffsideLine(MatchState state, String attackingTeam, double offsideLine) {
+        boolean home = attackingTeam.equals("HOME");
+        double resetX = home ? offsideLine - 2.0 : offsideLine + 2.0; // 2 units behind offside line
 
         for (PlayerSnapshot snap : state.playerSnapshots) {
             if (!snap.teamSide().equals(attackingTeam)) continue;
             if (snap.position() == Position.GK) continue;
 
-            boolean isOffside = isPlayerOffside(snap, attackingTeam, offsideLine, state.ball.x());
-
-            if (isOffside && !flaggedOffside.contains(snap.playerId())) {
-                flaggedOffside.add(snap.playerId());
-                state.addEvent(new OffsideEvent(state.minute, state.tick,
-                    snap.playerId(), snap.name(), attackingTeam));
-            } else if (!isOffside) {
-                flaggedOffside.remove(snap.playerId());
+            // Only reset attackers who are ahead of offside line
+            boolean aheadOfLine = home ? snap.x() > offsideLine : snap.x() < offsideLine;
+            if (aheadOfLine) {
+                double newX = Math.max(0, Math.min(100, resetX));
+                double newY = Math.max(0, Math.min(100, snap.y()));
+                // Blend back to the offside line gradually - never teleport players
+                MovementEngine.startBlend(state, snap.playerId(), newX, newY, 40);
             }
         }
+    }
+
+    public void update(MatchState state) {
+        // Legacy update — no longer used for tick-based checks
     }
 
     public boolean isOffside(MatchState state, PlayerSnapshot snap) {

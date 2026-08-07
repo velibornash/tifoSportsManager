@@ -379,6 +379,17 @@ public class SimulationController {
         }
 
         orchestrator.simulate(matchId);
+
+        // Analyze the simulated match for realism metrics (non-invasive)
+        try {
+            var result = orchestrator.getResult(matchId);
+            var match = orchestrator.getMatch(matchId);
+            var metrics = org.example.footballmanager.newLogic.util.analysis.MatchAnalyzer.analyze(match, result);
+            log.info("Match realism metrics for matchStoreId={}: {}", matchId, metrics);
+        } catch (Exception e) {
+            log.warn("Failed to analyze match {}: {}", matchId, e.getMessage());
+        }
+
         return matchId;
     }
 

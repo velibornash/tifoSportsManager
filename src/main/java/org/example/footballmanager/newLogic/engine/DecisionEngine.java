@@ -21,6 +21,11 @@ public final class DecisionEngine {
 
     public DecisionEngine() {}
 
+    /**
+     * Score-weighted random selection (softmax). The highest-scoring action is
+     * the most likely, but lower-scored options can still be chosen — a player
+     * does not always make the "textbook" decision.
+     */
     public BallAction decide(MatchState state, PlayerSnapshot carrier, AwarenessEngine awareness) {
         if (carrier == null) return BallAction.CARRY;
 
@@ -35,12 +40,27 @@ public final class DecisionEngine {
         scores.put(BallAction.SHOOT, scoreShoot(carrier, state, awareness));
         scores.put(BallAction.CLEAR, scoreClear(carrier, state, awareness));
 
-        BallAction best = scores.entrySet().stream()
+        // Softmax sampling: probability ~ exp((score - max) / TEMPERATURE).
+        // Small temperature -> mostly the max; large -> near-uniform.
+        final double temperature = 0.50;
+        double maxScore = scores.values().stream().mapToDouble(d -> d).max().orElse(0.5);
+
+        double sum = 0.0;
+        for (double s : scores.values()) {
+            sum += Math.exp((s - maxScore) / temperature);
+        }
+
+        double r = RNG.nextDouble() * sum;
+        double acc = 0.0;
+        for (Map.Entry<BallAction, Double> e : scores.entrySet()) {
+            acc += Math.exp((e.getValue() - maxScore) / temperature);
+            if (r < acc) return e.getKey();
+        }
+
+        return scores.entrySet().stream()
             .max(Map.Entry.comparingByValue())
             .map(Map.Entry::getKey)
             .orElse(BallAction.CARRY);
-
-        return best;
     }
 
     public static double estimateGoalDistance(Object taker, MatchState state, String teamSide) {
@@ -48,7 +68,7 @@ public final class DecisionEngine {
     }
 
     private double scoreCarry(PlayerSnapshot carrier, MatchState state, AwarenessEngine awareness) {
-        double score = 0.45; // Reduced base score
+        double score = 0.40;
         AwarenessEngine.PlayerAwareness aw = awareness.get(carrier.playerId());
 
         if (aw.pressureLevel() < 0.3) score += 0.15;
@@ -89,7 +109,7 @@ public final class DecisionEngine {
     }
 
     private double scoreShortPass(PlayerSnapshot carrier, MatchState state, AwarenessEngine awareness) {
-        double score = 0.50; // Reduced base score
+        double score = 0.50;
         AwarenessEngine.PlayerAwareness aw = awareness.get(carrier.playerId());
 
         if (aw.pressureLevel() > 0.6) score -= 0.20;
@@ -115,21 +135,31 @@ public final class DecisionEngine {
     }
 
     private double scoreLongPass(PlayerSnapshot carrier, MatchState state, AwarenessEngine awareness) {
-        double score = 0.62;
+        // Long passes are not a default outlet — they depend on the arrangement
+        // of teammates (a forward option within range) and the player's skill.
+        double score = 0.30;
+        AwarenessEngine.PlayerAwareness aw = awareness.get(carrier.playerId());
 
-        score += carrier.passing() * 0.012;
-        score += carrier.playmaking() * 0.010;
+        score += carrier.passing() * 0.015;
+        score += carrier.playmaking() * 0.015;
 
-        long farTeammates = state.playerSnapshots.stream()
+        boolean home = carrier.teamSide().equals("HOME");
+        double goalX = home ? 96.0 : 4.0;
+
+        long forwardTeammates = state.playerSnapshots.stream()
             .filter(s -> s.teamSide().equals(carrier.teamSide()) && s.playerId() != carrier.playerId())
             .filter(s -> {
                 double d = carrier.distanceTo(s);
-                return d >= LONG_PASS_MIN && d <= LONG_PASS_MAX;
+                if (d < LONG_PASS_MIN || d > LONG_PASS_MAX) return false;
+                // teammate must be meaningfully forward toward the opponent goal
+                return home ? (s.x() - carrier.x()) > 5.0 : (carrier.x() - s.x()) > 5.0;
             })
             .count();
 
-        if (farTeammates >= 1) score += 0.20;
-        if (farTeammates == 0) score -= 0.30;
+        if (forwardTeammates >= 1) score += 0.20;
+        if (forwardTeammates == 0) score -= 0.25;
+
+        if (aw.pressureLevel() > 0.7) score -= 0.10;
 
         return Math.max(0.0, Math.min(1.0, score));
     }
@@ -180,17 +210,17 @@ public final class DecisionEngine {
         double distToGoal = distanceToGoal(carrier);
         if (distToGoal > SHOT_DISTANCE) return 0.0;
 
-        score = 0.75; // Increased base score significantly
+        // Design: low base, driven by shooting/technique skill and close range.
+        // Long-range shots are rare; close chances dominate.
+        score = (carrier.shooting() / 20.0) * 0.30 + (carrier.technique() / 20.0) * 0.10;
 
-        if (distToGoal < 8.0) score += 0.20;
-        else if (distToGoal < 14.0) score += 0.15;
-        else if (distToGoal < 20.0) score += 0.10;
-
-        score += carrier.shooting() * 0.020;
-        score += carrier.technique() * 0.012;
+        if (distToGoal < 8.0) score += 0.35;
+        else if (distToGoal < 14.0) score += 0.25;
+        else if (distToGoal < 20.0) score += 0.12;
+        // 20-28m: no bonus — specialist shooters only (skill base still counts)
 
         if (carrier.position() == Position.ATT || carrier.position() == Position.WNG) {
-            score += 0.10;
+            score += 0.05;
         }
 
         if (aw.pressureLevel() > 0.8) score -= 0.05;

@@ -6,10 +6,11 @@ import java.util.*;
 
 public final class IntentEngine {
 
+    // Slobodna lopta — samo u susednom polju (jedna zona = ~18 jedinica)
     private static final double CHASE_BALL_RADIUS = 20.0;
+    // Press — samo za opasnog napadača blizu gola
     private static final double PRESS_RADIUS = 12.0;
-    private static final double DANGER_ZONE_X = 25.0;
-    private static final Random RNG = new Random();
+    private static final double DANGER_ZONE_X = 25.0; // blizu vlastitog gola
 
     private final Map<Long, Intent> intentMap = new HashMap<>();
 
@@ -25,24 +26,36 @@ public final class IntentEngine {
         return intentMap.getOrDefault(playerId, Intent.RETURN_TO_SHAPE);
     }
 
+    /**
+     * Taktičke pozicije (ZonePositionCalculator) su DEFAULT target.
+     * Izuzeci:
+     *  - GK_TRACK: golman prati loptu (ne taktika)
+     *  - CARRY_BALL: carrier napreduje ka golu (blend taktike + napredovanje)
+     *  - CHASE_BALL: slobodna lopta u blizini — ide ka lopti
+     *  - PRESS: opasan napadač blizu gola — blend taktike i carrier-a
+     *  - Sve ostalo (SUPPORT, MARK, RETURN_TO_SHAPE): koristi taktičku poziciju
+     */
     public double[] getTarget(long playerId, PlayerSnapshot snap, MatchState state,
                               AwarenessEngine awareness, ZonePositionCalculator zones) {
         Intent intent = getIntent(playerId);
         String slotKey = state.playerSlotKeys.get(playerId);
 
         return switch (intent) {
-            case RETURN_TO_SHAPE -> snap.desiredPosition(); // Use desiredPosition from TacticalIntentEngine
-            case SUPPORT -> snap.desiredPosition();
-            case MARK -> snap.desiredPosition();
+            case RETURN_TO_SHAPE -> zones.getTarget(playerId, slotKey);
+            case SUPPORT -> zones.getTarget(playerId, slotKey);
+            case MARK -> zones.getTarget(playerId, slotKey);
             case CARRY_BALL -> carryBallTarget(snap, state, zones, playerId, slotKey);
             case PRESS -> blendWithCarrier(snap, state, zones, playerId, slotKey);
             case CHASE_BALL -> new double[]{state.ball.x(), state.ball.y()};
             case HOLD_POSITION -> new double[]{snap.x(), snap.y()};
             case GK_TRACK -> findGkTarget(snap, state);
-            case MAKE_RUN -> makeRunTarget(snap, state, zones, playerId, slotKey);
         };
     }
 
+    /**
+     * Carrier — blend taktičke pozicije sa napredovanjem ka golu.
+     * 60% ka golu, 40% taktika — carrier se pomera ka golu ali prati formaciju.
+     */
     private double[] carryBallTarget(PlayerSnapshot snap, MatchState state,
                                       ZonePositionCalculator zones, long playerId, String slotKey) {
         double[] tactical = zones.getTarget(playerId, slotKey);
@@ -50,13 +63,18 @@ public final class IntentEngine {
         double goalX = home ? 96.0 : 4.0;
         double goalY = 50.0;
 
-        double blend = 0.35;
+        // 60% ka golu, 40% taktika — agresivno napredovanje
+        double blend = 0.60;
         double targetX = tactical[0] + (goalX - tactical[0]) * blend;
-        double targetY = tactical[1] + (goalY - tactical[1]) * blend * 0.3;
+        double targetY = tactical[1] + (goalY - tactical[1]) * blend * 0.3; // manje Y pomeranje
 
         return new double[]{targetX, targetY};
     }
 
+    /**
+     * Press — blend taktičke pozicije sa carrier pozicijom.
+     * 70% taktika, 30% carrier — igrač se približava carrier-u ali ne napušta formaciju potpuno.
+     */
     private double[] blendWithCarrier(PlayerSnapshot snap, MatchState state,
                                        ZonePositionCalculator zones, long playerId, String slotKey) {
         double[] tactical = zones.getTarget(playerId, slotKey);
@@ -65,7 +83,7 @@ public final class IntentEngine {
         PlayerSnapshot carrier = state.snapshotById(state.carrierId);
         if (carrier == null) return tactical;
 
-        double blend = 0.20;
+        double blend = 0.30; // 30% ka carrier-u, 70% taktika
         double targetX = tactical[0] + (carrier.x() - tactical[0]) * blend;
         double targetY = tactical[1] + (carrier.y() - tactical[1]) * blend;
         return new double[]{targetX, targetY};
@@ -73,22 +91,26 @@ public final class IntentEngine {
 
     private Intent decideIntent(PlayerSnapshot snap, MatchState state,
                                 AwarenessEngine.PlayerAwareness aw, Intent current) {
+        // Golman uvek prati loptu
         if (snap.position() == Position.GK) {
             return Intent.GK_TRACK;
         }
 
-        // Ball carrier — carry ball forward towards goal
+        // Ball carrier — napreduje ka golu
         if (aw.isBallCarrier()) {
             return Intent.CARRY_BALL;
         }
 
+        // SLOBODNA LOPTA u susednom polju — ide ka lopti
         if (aw.ballFree() && aw.distToBall() < CHASE_BALL_RADIUS) {
             return Intent.CHASE_BALL;
         }
 
+        // OPASAN NAPADAČ blizu gola — press (samo za defanzivce blizu vlastitog gola)
         if (state.carrierId != null && !state.carrierTeamSide.equals(snap.teamSide())) {
             PlayerSnapshot carrier = state.snapshotById(state.carrierId);
             if (carrier != null) {
+                // Opasnost: carrier blizu našeg gola
                 boolean home = snap.teamSide().equals("HOME");
                 double carrierDistToOurGoal = home ? carrier.x() : (100.0 - carrier.x());
                 boolean carrierDangerous = carrierDistToOurGoal < DANGER_ZONE_X;
@@ -100,12 +122,7 @@ public final class IntentEngine {
             }
         }
 
-        // Attackers make forward runs to create space and receiving options
-        if ((snap.position() == Position.ATT || snap.position() == Position.WNG)
-                && snap.teamSide().equals("HOME") ? snap.x() > 40 : snap.x() < 60) {
-            return Intent.MAKE_RUN;
-        }
-
+        // Sve ostalo — RETURN_TO_SHAPE (koristi taktičke pozicije)
         return Intent.RETURN_TO_SHAPE;
     }
 
@@ -148,7 +165,7 @@ public final class IntentEngine {
             } else {
                 targetX = goalX + 3.0;
             }
-            targetX = Math.max(goalX - 1.5, Math.min(goalX + 6.0, targetX));
+            targetX = Math.max(goalX - 1.5, Math.min(goalX + 12.0, targetX));
         } else {
             if (ballX < 30) {
                 targetX = goalX - Math.min(10.0, (goalX - ballX) * 0.15);
@@ -157,45 +174,10 @@ public final class IntentEngine {
             } else {
                 targetX = goalX - 3.0;
             }
-            targetX = Math.min(goalX + 1.5, Math.max(goalX - 6.0, targetX));
+            targetX = Math.min(goalX + 1.5, Math.max(goalX - 12.0, targetX));
         }
 
         return new double[]{targetX, targetY};
-    }
-
-    private double[] makeRunTarget(PlayerSnapshot snap, MatchState state,
-                                       ZonePositionCalculator zones, long playerId, String slotKey) {
-        double[] tactical = zones.getTarget(playerId, slotKey);
-        boolean home = snap.teamSide().equals("HOME");
-        double goalX = home ? 96.0 : 4.0;
-
-        // Attackers make forward runs into the box or space between defense and midfield
-        double blend = 0.55;
-        double targetX = tactical[0] + (goalX - tactical[0]) * blend;
-        // Stagger runs across the pitch width to stretch defense
-        double targetY = tactical[1] + (RNG.nextDouble() - 0.5) * 16.0;
-        targetY = Math.max(MatchState.MIN_Y + 5, Math.min(MatchState.MAX_Y - 5, targetY));
-
-        return new double[]{targetX, targetY};
-    }
-
-    private double calculateOffsideLine(MatchState state, String defendingTeam) {
-        List<Double> defenderXPositions = new ArrayList<>();
-
-        for (PlayerSnapshot snap : state.playerSnapshots) {
-            if (!snap.teamSide().equals(defendingTeam)) continue;
-            if (snap.position() == Position.GK) continue;
-            defenderXPositions.add(snap.x());
-        }
-
-        if (defenderXPositions.isEmpty()) return 50.0;
-
-        defenderXPositions.sort(java.util.Comparator.reverseOrder());
-
-        if (defenderXPositions.size() >= 2) {
-            return defenderXPositions.get(1);
-        }
-        return defenderXPositions.get(0);
     }
 
     public enum Intent {
@@ -206,7 +188,6 @@ public final class IntentEngine {
         SUPPORT,
         CARRY_BALL,
         HOLD_POSITION,
-        GK_TRACK,
-        MAKE_RUN
+        GK_TRACK
     }
 }

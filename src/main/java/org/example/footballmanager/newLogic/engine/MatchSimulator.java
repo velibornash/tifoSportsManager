@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.engine;
 
+import lombok.Getter;
 import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.model.event.*;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ public final class MatchSimulator {
     private MatchState state;
     private TeamConfig homeConfig, awayConfig;
     private ZonePositionCalculator zones;
+    private TacticalIntentEngine tacticalIntents;
     private AwarenessEngine awareness;
     private IntentEngine intents;
     private MovementEngine movement;
@@ -29,6 +31,8 @@ public final class MatchSimulator {
     private TeamCoordination coordination;
     private FatigueSystem fatigue;
     private OffsideTracker offside;
+    @Getter
+    private MatchMetrics metrics;
 
     private int minute;
     private int homeGoals, awayGoals;
@@ -102,6 +106,7 @@ public final class MatchSimulator {
         this.homeConfig = TeamConfig.fromTeam(match.homeTeam());
         this.awayConfig = TeamConfig.fromTeam(match.awayTeam());
         this.zones = new ZonePositionCalculator();
+        this.tacticalIntents = new TacticalIntentEngine();
         this.awareness = new AwarenessEngine();
         this.intents = new IntentEngine();
         this.movement = new MovementEngine();
@@ -115,10 +120,12 @@ public final class MatchSimulator {
         this.coordination = new TeamCoordination();
         this.fatigue = new FatigueSystem();
         this.offside = new OffsideTracker();
+        this.metrics = new MatchMetrics();
     }
 
     private void initializeMatchState(Match match) {
         this.state = new MatchState(match);
+        this.state.simulatorMetrics = this.metrics; // Set metrics reference for tracking
         this.homeGoals = 0;
         this.awayGoals = 0;
         this.homeShots = 0;
@@ -152,17 +159,35 @@ public final class MatchSimulator {
     private void simulateTick() {
         state.tick++;
 
+        // Update action timers for all players (action commitment)
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            snap.updateActionTick();
+        }
+
         removeSentOffPlayers();
         checkBallOutOfBounds();
 
         zones.updateTargets(state, state.match.homeTeam().tacticRules(), state.match.awayTeam().tacticRules());
+        tacticalIntents.updateIntents(state, state.match.homeTeam().tacticRules(), state.match.awayTeam().tacticRules());
         awareness.update(state);
         intents.update(state, awareness);
         coordination.update(state, intents, awareness);
         updateMovement();
+        MovementEngine.processBlends(state);
 
+        // If someone holds the ball, increment their possession counter and enforce timeout
         if (state.carrierId != null && !state.ballInTransit) {
-            updateBallCarrierDecision();
+            PlayerSnapshot carrier = state.snapshotById(state.carrierId);
+            if (carrier != null) {
+                carrier.incPossessionTick();
+                // If possession exceeds 60 ticks (~30s), force a pass to avoid indefinite carry
+                if (carrier.getPossessionTicks() > 60) {
+                    executePass(carrier, 25.0);
+                    carrier.resetPossessionTicks();
+                } else {
+                    updateBallCarrierDecision();
+                }
+            }
         }
 
         ballEngine.updateBall(state);
@@ -178,6 +203,10 @@ public final class MatchSimulator {
 
     private void updateMovement() {
         for (PlayerSnapshot snap : state.playerSnapshots) {
+            // Ball carrier movement is handled by the action engine (CARRY/DRIBBLE);
+            // moving them here too would stack two movements in a single tick
+            if (state.carrierId != null && state.carrierId == snap.playerId()) continue;
+            if (MovementEngine.hasActiveBlend(snap.playerId())) continue;
             double[] target = intents.getTarget(snap.playerId(), snap, state, awareness, zones);
             TeamCoordination.CoordinationAdjustment coord = coordination.get(snap.playerId());
 
@@ -214,6 +243,9 @@ public final class MatchSimulator {
         PlayerSnapshot carrier = state.snapshotById(state.carrierId);
         if (carrier == null) return;
 
+        // Respect action commitment: do not re-decide while busy
+        if (carrier.isBusy()) return;
+
         DecisionEngine.BallAction action = decisions.decide(state, carrier, awareness);
         state.lastDecisionTick = state.tick;
 
@@ -221,15 +253,89 @@ public final class MatchSimulator {
     }
 
     private void executeAction(PlayerSnapshot carrier, DecisionEngine.BallAction action) {
+        // Update lastBallAction and streak
+        String actName = action.name();
+        if (state.lastBallAction != null && state.lastBallAction.equals(actName)) {
+            state.lastBallActionStreak = state.lastBallActionStreak + 1;
+        } else {
+            state.lastBallActionStreak = 1;
+        }
+        state.lastBallAction = actName;
+
         switch (action) {
-            case CARRY -> {}
-            case SHORT_PASS -> executePass(carrier, 15.0);
-            case LONG_PASS -> executePass(carrier, 35.0);
-            case CROSS -> executeCross(carrier);
-            case SHOOT -> executeShot(carrier);
-            case DRIBBLE -> {}
-            case THROUGH_PASS -> executePass(carrier, 25.0);
-            case CLEAR -> executeClearance(carrier);
+            case CARRY -> {
+                metrics.onCarry();
+                carrier.setCurrentAction(actName, 8); // ~4s
+                boolean home = carrier.teamSide().equals("HOME");
+                double goalX = home ? 96.0 : 4.0;
+                double dx = goalX - carrier.x();
+                double baseDy = 50.0 - carrier.y();
+                boolean inOpponentHalf = home ? carrier.x() > 50 : carrier.x() < 50;
+
+                boolean defenderBlocking = false;
+                for (PlayerSnapshot opp : state.playerSnapshots) {
+                    if (opp.teamSide().equals(carrier.teamSide())) continue;
+                    if (carrier.distanceTo(opp) < 4.0) {
+                        defenderBlocking = true;
+                        baseDy = carrier.y() < 50.0 ? -3.0 : 3.0;
+                        break;
+                    }
+                }
+
+                double dist = Math.sqrt(dx * dx + baseDy * baseDy);
+                if (dist > 0.5) {
+                    double move;
+                    if (defenderBlocking) {
+                        move = Math.min(0.22, dist);
+                    } else if (inOpponentHalf) {
+                        move = Math.min(0.45, dist);
+                    } else {
+                        move = Math.min(0.30, dist);
+                    }
+                    carrier.setPosition(carrier.x() + (dx / dist) * move, carrier.y() + (baseDy / dist) * move);
+                }
+            }
+            case SHORT_PASS -> { metrics.onPass(); carrier.setCurrentAction(actName, 4); executePass(carrier, 15.0); }
+            case LONG_PASS -> { metrics.onPass(); carrier.setCurrentAction(actName, 6); executePass(carrier, 35.0); }
+            case CROSS -> { metrics.onCross(); carrier.setCurrentAction(actName, 6); executeCross(carrier); }
+            case SHOOT -> { carrier.setCurrentAction(actName, 6); executeShot(carrier); }
+            case DRIBBLE -> {
+                metrics.onDribble();
+                carrier.setCurrentAction(actName, 8);
+                // Dribble forward similar to carry but more aggressive
+                boolean homeD = carrier.teamSide().equals("HOME");
+                double goalXD = homeD ? 96.0 : 4.0;
+                double dxD = goalXD - carrier.x();
+                double baseDyD = 50.0 - carrier.y();
+                double distD = Math.sqrt(dxD * dxD + baseDyD * baseDyD);
+                if (distD > 0.5) {
+                    double moveD = Math.min(0.4, distD * 0.15 + 0.1);
+                    carrier.setPosition(carrier.x() + (dxD / distD) * moveD, carrier.y() + (baseDyD / distD) * moveD);
+                }
+
+                // If defender nearby, resolve dribble duel
+                PlayerSnapshot nearestDef = findNearestOpponent(carrier, carrier.teamSide());
+                if (nearestDef != null && carrier.distanceTo(nearestDef) < 2.5) {
+                    DuelResolver.DuelResult dr = duels.resolveNumericDuel(carrier, java.util.List.of(carrier), java.util.List.of(nearestDef));
+                    if (!dr.attackerWins()) {
+                        // lost dribble -> tackle
+                        ballEngine.setCarrier(state, nearestDef.playerId(), nearestDef.teamSide());
+                        state.possessionTeam = nearestDef.teamSide();
+                        state.addEvent(new TackleEvent(state.minute, state.tick, 0,
+                            nearestDef.playerId(), nearestDef.name(), nearestDef.teamSide(),
+                            carrier.playerId(), carrier.name(), false,
+                            "dribble_lost", nearestDef.x(), nearestDef.y()));
+                    } else {
+                        // success: if near goal, maybe shoot
+                        double distToGoalD = distanceToGoal(carrier);
+                        if (distToGoalD < 20.0 && RNG.nextDouble() < 0.18) {
+                            executeShot(carrier);
+                        }
+                    }
+                }
+            }
+            case THROUGH_PASS -> { metrics.onThroughBall(); carrier.setCurrentAction(actName, 5); executePass(carrier, 25.0); }
+            case CLEAR -> { metrics.onClearance(); carrier.setCurrentAction(actName, 4); executeClearance(carrier); }
         }
     }
 
@@ -263,21 +369,25 @@ public final class MatchSimulator {
 
         if (bestReceiver != null) {
             double passQuality = (carrier.passing() + carrier.technique()) / 40.0;
-            double interceptChance = 0.05 * (1.0 - passQuality);
+            double interceptChance = 0.08 * (1.0 - passQuality);
+            // Further shorten pass duration to reduce ball-in-flight time
+            int duration = Math.max(2, (int) (carrier.distanceTo(bestReceiver) / 3.0));
             boolean intercepted = RNG.nextDouble() < interceptChance;
-
-            int duration = (int) (carrier.distanceTo(bestReceiver) / 0.5);
 
             if (intercepted) {
                 PlayerSnapshot interceptor = findNearestOpponent(bestReceiver, carrier.teamSide());
-                if (interceptor != null) {
+                if (interceptor != null && interceptor.distanceTo(bestReceiver) < 6.0) {
                     ballEngine.startTransit(state, interceptor.x(), interceptor.y(),
-                        duration / 2, interceptor.playerId(), interceptor.teamSide());
+                        Math.max(2, duration / 2), interceptor.playerId(), interceptor.teamSide());
                     state.addEvent(new PassInterceptedEvent(state.minute, state.tick,
                         state.possessionChainId,
                         carrier.playerId(), carrier.name(),
                         interceptor.playerId(), interceptor.name(), interceptor.teamSide(),
                         "intercepted", interceptor.x(), interceptor.y()));
+                    // interception ends run of backward passes
+                    state.backwardPassCount = 0;
+                    state.lastBallAction = "PASS";
+                    state.lastBallActionStreak = 1;
                     return;
                 }
             }
@@ -287,6 +397,83 @@ public final class MatchSimulator {
             state.addEvent(PassEvent.completed(state.minute, state.tick,
                 carrier.playerId(), carrier.name(),
                 bestReceiver.playerId(), bestReceiver.name(), carrier.teamSide()));
+
+            // Force some passes to go out of bounds for set pieces (8% base chance)
+            if (RNG.nextDouble() < 0.08) {
+                String defendingTeam = carrier.teamSide().equals("HOME") ? "AWAY" : "HOME";
+                // Randomly choose sideline or goal line
+                if (RNG.nextDouble() < 0.4) {
+                    // Sideline -> throw-in
+                    state.stoppage = MatchState.StoppageType.THROW_IN;
+                    state.stoppageTicks = 3;
+                    state.possessionTeam = defendingTeam;
+                    rules.checkThrowIn(state, defendingTeam);
+                    metrics.onThrowIn();
+                } else {
+                    // Goal line -> corner or goal kick (more goal kicks)
+                    if (RNG.nextDouble() < 0.3) {
+                        state.stoppage = MatchState.StoppageType.CORNER;
+                        state.stoppageTicks = 5;
+                        state.possessionTeam = carrier.teamSide();
+                        rules.checkCorner(state, carrier.teamSide());
+                        metrics.onCorner();
+                    } else {
+                        state.stoppage = MatchState.StoppageType.GOAL_KICK;
+                        state.stoppageTicks = 5;
+                        state.possessionTeam = defendingTeam;
+                        metrics.onGoalKick();
+                    }
+                }
+                ballEngine.setLoose(state, 50.0, 50.0);
+                return;
+            }
+
+            // Increased chance that a nearby defender deflects the ball out-of-bounds -> restart
+            int nearbyBlockers = 0;
+            for (PlayerSnapshot opp : state.playerSnapshots) {
+                if (opp.teamSide().equals(carrier.teamSide())) continue;
+                if (opp.distanceTo(bestReceiver) < 4.0) nearbyBlockers++;
+            }
+            // Base 8% + 3% per nearby defender to generate more set pieces
+            double outChance = 0.08 + (nearbyBlockers * 0.03);
+            if (nearbyBlockers > 0 && RNG.nextDouble() < outChance) {
+                // compute out coords slightly beyond field edge following pass vector
+                double ox = bestReceiver.x() + (bestReceiver.x() - carrier.x()) * 0.2;
+                double oy = bestReceiver.y() + (bestReceiver.y() - carrier.y()) * 0.2;
+                // push beyond edges
+                if (ox < MatchState.MIN_X) ox = MatchState.MIN_X - 1.0;
+                if (ox > MatchState.MAX_X) ox = MatchState.MAX_X + 1.0;
+                if (oy < MatchState.MIN_Y) oy = MatchState.MIN_Y - 1.0;
+                if (oy > MatchState.MAX_Y) oy = MatchState.MAX_Y + 1.0;
+
+                state.ballInTransit = false;
+                state.ball = org.example.footballmanager.newLogic.model.BallState.at(ox, oy);
+                state.carrierId = null;
+                state.carrierTeamSide = null;
+                state.lastTouchTeam = carrier.teamSide();
+
+                // Determine side of out: goal line or sideline
+                if (ox < MatchState.MIN_X || ox > MatchState.MAX_X) {
+                    // treat as corner for simplicity (attacking team)
+                    rules.checkCorner(state, carrier.teamSide());
+                    metrics.onCorner();
+                } else {
+                    String defendingTeam = carrier.teamSide().equals("HOME") ? "AWAY" : "HOME";
+                    rules.checkThrowIn(state, defendingTeam);
+                    metrics.onThrowIn();
+                }
+            }
+
+            // Update backward pass counter: if receiver is further from goal than carrier, count as backward
+            double distCarrier = Math.abs(carrier.x() - goalX);
+            double distReceiver = Math.abs(bestReceiver.x() - goalX);
+            if (distReceiver > distCarrier) {
+                state.backwardPassCount = state.backwardPassCount + 1;
+            } else {
+                state.backwardPassCount = 0;
+            }
+            state.lastBallAction = "PASS";
+            state.lastBallActionStreak = 1;
             if (carrier.teamSide().equals("HOME")) {
                 homeSuccessfulPasses++;
                 homeTotalPasses++;
@@ -294,6 +481,10 @@ public final class MatchSimulator {
                 awaySuccessfulPasses++;
                 awayTotalPasses++;
             }
+            state.lastPasserId = carrier.playerId(); // Track for assist attribution
+
+            // Offside check: forward pass to a player beyond the offside line
+            offside.checkOffsideOnPass(state, carrier, bestReceiver);
         }
     }
 
@@ -303,6 +494,18 @@ public final class MatchSimulator {
 
         double crossQuality = (carrier.passing() + carrier.technique()) / 40.0;
         boolean accurate = RNG.nextDouble() < (0.4 + crossQuality * 0.4);
+
+        // 15% chance cross goes out for goal kick (more realistic)
+        if (RNG.nextDouble() < 0.15) {
+            String defendingTeam = carrier.teamSide().equals("HOME") ? "AWAY" : "HOME";
+            state.stoppage = MatchState.StoppageType.GOAL_KICK;
+            state.stoppageTicks = 5;
+            state.possessionTeam = defendingTeam;
+            rules.checkGoalKick(state, defendingTeam);
+            metrics.onGoalKick();
+            ballEngine.setLoose(state, targetX, targetY);
+            return;
+        }
 
         if (accurate) {
             PlayerSnapshot target = findAttackerInBox(carrier.teamSide());
@@ -321,7 +524,9 @@ public final class MatchSimulator {
             }
         }
 
-        ballEngine.startTransit(state, targetX, targetY, 40, null, carrier.teamSide());
+        // shorten cross flight for realism
+        int crossDuration = Math.max(3, (int) (Math.hypot(targetX - carrier.x(), targetY - carrier.y()) / 8.0));
+        ballEngine.startTransit(state, targetX, targetY, crossDuration, null, carrier.teamSide());
         state.addEvent(new CrossEvent(state.minute, state.tick, 0,
             carrier.playerId(), carrier.name(), carrier.teamSide(),
             "cross", carrier.x(), carrier.y()));
@@ -332,7 +537,8 @@ public final class MatchSimulator {
         double xG = calculateXG(distToGoal);
 
         double shootQuality = (carrier.shooting() + carrier.technique()) / 40.0;
-        xG *= (0.7 + shootQuality * 0.6);
+        // Increased shoot quality multiplier for better goal conversion
+        xG *= (0.8 + shootQuality * 0.8);
 
         PlayerSnapshot gk = findGkOnPitch(carrier.teamSide().equals("HOME") ? "AWAY" : "HOME");
         DuelResolver.DuelResult result;
@@ -342,21 +548,35 @@ public final class MatchSimulator {
             result = duels.resolveOpenGoalShot(carrier, distToGoal, xG);
         }
 
+        metrics.onShot();
         if (carrier.teamSide().equals("HOME")) homeShots++;
         else awayShots++;
 
         boolean onTarget = "GOAL".equals(result.resultType()) || "SAVED".equals(result.resultType());
         if (onTarget) {
+            metrics.onShotOnTarget();
             if (carrier.teamSide().equals("HOME")) homeShotsOnTarget++;
             else awayShotsOnTarget++;
         }
 
         if (result.goal()) {
+            metrics.onGoal();
             if (carrier.teamSide().equals("HOME")) homeGoals++;
             else awayGoals++;
 
+            // Find assist from last passer (same team, not the scorer)
+            Long assistId = null;
+            String assistName = null;
+            if (state.lastPasserId != null && state.lastPasserId != carrier.playerId()) {
+                PlayerSnapshot passer = state.snapshotById(state.lastPasserId);
+                if (passer != null && passer.teamSide().equals(carrier.teamSide())) {
+                    assistId = passer.playerId();
+                    assistName = passer.name();
+                }
+            }
+
             state.addEvent(new GoalEvent(state.minute, state.tick,
-                carrier.playerId(), carrier.name(), null, null,
+                carrier.playerId(), carrier.name(), assistId, assistName,
                 carrier.teamSide(), result.xG(), homeGoals, awayGoals));
             ballEngine.setLoose(state, 50.0, 50.0);
             state.stoppage = MatchState.StoppageType.KICK_OFF;
@@ -378,7 +598,32 @@ public final class MatchSimulator {
                 state.possessionChainId,
                 carrier.playerId(), carrier.name(), carrier.teamSide(),
                 result.xG(), "shot_missed", carrier.x(), carrier.y()));
-            ballEngine.setLoose(state, 50.0, 50.0 + (RNG.nextDouble() - 0.5) * 20.0);
+            // 25% chance missed shot goes out for corner/goal kick
+            if (RNG.nextDouble() < 0.25) {
+                String defendingTeam = carrier.teamSide().equals("HOME") ? "AWAY" : "HOME";
+                // Determine if corner or goal kick based on where shot went
+                if (carrier.teamSide().equals("HOME") && carrier.x() > 90) {
+                    state.stoppage = MatchState.StoppageType.CORNER;
+                    state.stoppageTicks = 5;
+                    state.possessionTeam = carrier.teamSide();
+                    rules.checkCorner(state, carrier.teamSide());
+                    metrics.onCorner();
+                } else if (!carrier.teamSide().equals("HOME") && carrier.x() < 10) {
+                    state.stoppage = MatchState.StoppageType.CORNER;
+                    state.stoppageTicks = 5;
+                    state.possessionTeam = carrier.teamSide();
+                    rules.checkCorner(state, carrier.teamSide());
+                    metrics.onCorner();
+                } else {
+                    state.stoppage = MatchState.StoppageType.GOAL_KICK;
+                    state.stoppageTicks = 5;
+                    state.possessionTeam = defendingTeam;
+                    metrics.onGoalKick();
+                }
+                ballEngine.setLoose(state, 50.0, 50.0);
+            } else {
+                ballEngine.setLoose(state, 50.0, 50.0 + (RNG.nextDouble() - 0.5) * 20.0);
+            }
         }
     }
 
@@ -390,7 +635,7 @@ public final class MatchSimulator {
         if (RNG.nextDouble() < clearQuality * 0.3) {
             PlayerSnapshot teammate = findBestClearanceTarget(carrier);
             if (teammate != null) {
-                int duration = (int) (carrier.distanceTo(teammate) / 0.5);
+                int duration = Math.max(3, (int) (carrier.distanceTo(teammate) / 1.8));
                 ballEngine.startTransit(state, teammate.x(), teammate.y(),
                     duration, teammate.playerId(), carrier.teamSide());
                 state.addEvent(new ClearanceEvent(state.minute, state.tick, 0,
@@ -408,7 +653,7 @@ public final class MatchSimulator {
 
     private void updateDuels() {
         if (state.carrierId == null) return;
-        if (state.tick - state.lastDuelTick < 15) return;
+        if (state.tick - state.lastDuelTick < 3) return; // shorter cooldown
 
         PlayerSnapshot carrier = state.snapshotById(state.carrierId);
         if (carrier == null) return;
@@ -417,16 +662,17 @@ public final class MatchSimulator {
         for (PlayerSnapshot opponent : state.playerSnapshots) {
             if (opponent.teamSide().equals(carrier.teamSide())) continue;
             double dist = carrier.distanceTo(opponent);
-            if (dist < 2.0) {
+            if (dist < 4.0) {
                 nearbyDefenders.add(opponent);
             }
         }
 
         if (nearbyDefenders.isEmpty()) return;
 
-        if (RNG.nextDouble() > 0.06) return;
+        if (RNG.nextDouble() > 0.5) return; // duel triggers ~50% of the time
 
         state.lastDuelTick = state.tick;
+        metrics.onDuel();
 
         List<PlayerSnapshot> nearbyAttackers = new ArrayList<>();
         nearbyAttackers.add(carrier);
@@ -444,9 +690,10 @@ public final class MatchSimulator {
         if (!result.attackerWins()) {
             PlayerSnapshot tackler = nearbyDefenders.get(0);
             double tackleSkill = tackler.defending() + tackler.pace();
-            double foulChance = 0.15 * (1.0 - tackleSkill / 40.0);
+            double foulChance = 0.45 * (1.0 - tackleSkill / 40.0); // Further increased foul chance
 
             if (RNG.nextDouble() < foulChance) {
+                metrics.onFoul();
                 rules.checkFoul(state, tackler, carrier);
             } else {
                 ballEngine.setCarrier(state, tackler.playerId(), tackler.teamSide());
@@ -455,6 +702,7 @@ public final class MatchSimulator {
                     tackler.playerId(), tackler.name(), tackler.teamSide(),
                     carrier.playerId(), carrier.name(), true,
                     "tackle", tackler.x(), tackler.y()));
+                metrics.onTackle();
             }
         }
     }
@@ -466,24 +714,45 @@ public final class MatchSimulator {
         double bx = state.ball.x();
         double by = state.ball.y();
 
-        boolean outOfBounds = bx < MatchState.MIN_X || bx > MatchState.MAX_X
-            || by < MatchState.MIN_Y || by > MatchState.MAX_Y;
+        boolean outOverGoalLine = bx < MatchState.MIN_X || bx > MatchState.MAX_X;
+        boolean outOverSideline = by < MatchState.MIN_Y || by > MatchState.MAX_Y;
 
-        if (!outOfBounds) return;
+        if (!outOverGoalLine && !outOverSideline) return;
 
         String lastTeam = state.lastTouchTeam;
         if (lastTeam == null) lastTeam = "HOME";
         String defendingTeam = "HOME".equals(lastTeam) ? "AWAY" : "HOME";
-        String attackingTeam = "HOME".equals(lastTeam) ? "HOME" : "AWAY";
 
-        if (bx < MatchState.MIN_X || bx > MatchState.MAX_X) {
-            state.stoppage = MatchState.StoppageType.CORNER;
-            state.stoppageTicks = 5;
-            rules.checkCorner(state, attackingTeam);
+        if (outOverGoalLine) {
+            // Determine if it's a corner or goal kick
+            boolean homeAttacking = "HOME".equals(lastTeam);
+            boolean outOverHomeGoal = bx < MatchState.MIN_X;
+            boolean outOverAwayGoal = bx > MatchState.MAX_X;
+            
+            // If attacking team touched it last over opponent's goal line = goal kick
+            // If defending team touched it last over own goal line = corner
+            boolean isCorner = (homeAttacking && outOverAwayGoal && defendingTeam.equals("AWAY"))
+                || (!homeAttacking && outOverHomeGoal && defendingTeam.equals("HOME"));
+            
+            if (isCorner) {
+                state.stoppage = MatchState.StoppageType.CORNER;
+                state.stoppageTicks = 5;
+                state.possessionTeam = lastTeam;
+                rules.checkCorner(state, lastTeam);
+                metrics.onCorner();
+            } else {
+                state.stoppage = MatchState.StoppageType.GOAL_KICK;
+                state.stoppageTicks = 5;
+                state.possessionTeam = defendingTeam;
+                metrics.onGoalKick();
+            }
         } else {
+            // Throw-in for the opposing team of the last touch
             state.stoppage = MatchState.StoppageType.THROW_IN;
             state.stoppageTicks = 3;
+            state.possessionTeam = defendingTeam;
             rules.checkThrowIn(state, defendingTeam);
+            metrics.onThrowIn();
         }
 
         state.ball = BallState.at(
@@ -528,6 +797,10 @@ public final class MatchSimulator {
             state.possessionTeamLabel = currentTeam;
             state.possessionPassCount = 0;
             state.possessionChainId++;
+            // Reset per-possession counters
+            state.backwardPassCount = 0;
+            state.lastBallAction = null;
+            state.lastBallActionStreak = 0;
             state.addEvent(new PossessionStartEvent(state.minute, state.tick,
                 state.possessionChainId, currentTeam, "possession_start", 50.0, 50.0));
         }
@@ -696,6 +969,12 @@ public final class MatchSimulator {
         return best;
     }
 
+    private static double getDistToGoal(PlayerSnapshot snap) {
+        double goalX = snap.teamSide().equals("HOME") ? 96.0 : 4.0;
+        double goalY = 50.0;
+        return snap.distanceToPoint(goalX, goalY);
+    }
+
     private void seedPlayerSlotKeys() {
         List<String> homeSlots = ZonePositionCalculator.buildSlotKeys(homeConfig.formation(), state.match.homeTeam().startingXI());
         List<String> awaySlots = ZonePositionCalculator.buildSlotKeys(awayConfig.formation(), state.match.awayTeam().startingXI());
@@ -746,10 +1025,13 @@ public final class MatchSimulator {
     }
 
     private static double calculateXG(double distToGoal) {
-        if (distToGoal < 8.0) return 0.35;
-        if (distToGoal < 14.0) return 0.22;
-        if (distToGoal < 20.0) return 0.12;
-        if (distToGoal < 28.0) return 0.05;
-        return 0.02;
+        // Further increased xG values for more realistic goal conversion
+        if (distToGoal < 6.0) return 0.75;  // Very close to goal
+        if (distToGoal < 10.0) return 0.60; // Inside 6-yard box area
+        if (distToGoal < 14.0) return 0.45; // Penalty area
+        if (distToGoal < 20.0) return 0.30; // Edge of box
+        if (distToGoal < 28.0) return 0.20; // Long range
+        return 0.12;
     }
+
 }

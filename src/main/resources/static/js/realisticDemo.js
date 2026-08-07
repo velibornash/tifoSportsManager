@@ -46,6 +46,8 @@ const playerElements = new Map();
 const playerSlots = new Map();
 const playerNames = new Map();
 const latestPositions = new Map();
+const playerCurrentPositions = new Map(); // For smooth movement
+const playerTargetPositions = new Map(); // For smooth movement
 const pendingVarGoals = [];
 const loadedChunks = new Set();
 const loadingChunks = new Set();
@@ -1443,6 +1445,8 @@ function renderPlayers(state) {
             el.innerHTML = '<div class="CPlayer-marker"><span class="CPlayer-number"></span></div><div class="CPlayer-label"></div>';
             playerElements.set(key, el);
             container.appendChild(el);
+            // Initialize current position to target position for new elements
+            playerCurrentPositions.set(Number(player.id), { x: player.x ?? 50, y: player.y ?? 50 });
         }
 
         const slotData = playerSlots.get(Number(player.id));
@@ -1462,8 +1466,9 @@ function renderPlayers(state) {
         el.classList.toggle('gk', isGoalkeeper);
         el.classList.toggle('home', (player.team || '').toLowerCase() === 'home');
         el.classList.toggle('away', (player.team || '').toLowerCase() === 'away');
-        el.style.left = `${x}%`;
-        el.style.top = `${y}%`;
+
+        // Set target position for smooth movement
+        playerTargetPositions.set(Number(player.id), { x, y });
 
         latestPositions.set(Number(player.id), { x, y, team: (player.team || '').toUpperCase() });
         seen.add(key);
@@ -1474,8 +1479,13 @@ function renderPlayers(state) {
             el.remove();
             playerElements.delete(key);
             latestPositions.delete(Number(key));
+            playerCurrentPositions.delete(Number(key));
+            playerTargetPositions.delete(Number(key));
         }
     }
+
+    // Apply smooth movement to all players
+    applySmoothMovement();
 
     // Ball position with z-coordinate arc effect
     const shadowEl = document.getElementById('ball-shadow');
@@ -1502,6 +1512,34 @@ function renderPlayers(state) {
     }
 
     drawTacticalOverlay(state);
+}
+
+function applySmoothMovement() {
+    const PLAYER_SPEED = 2.0; // Speed percentage per frame
+
+    for (const [playerId, el] of playerElements.entries()) {
+        const target = playerTargetPositions.get(Number(playerId));
+        const current = playerCurrentPositions.get(Number(playerId));
+
+        if (!target || !current) continue;
+
+        const dx = target.x - current.x;
+        const dy = target.y - current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > PLAYER_SPEED) {
+            // Normalize vector and move by constant speed
+            current.x += (dx / distance) * PLAYER_SPEED;
+            current.y += (dy / distance) * PLAYER_SPEED;
+        } else {
+            // Snap to target if close enough
+            current.x = target.x;
+            current.y = target.y;
+        }
+
+        el.style.left = `${current.x}%`;
+        el.style.top = `${current.y}%`;
+    }
 }
 
 function initPitchOverlay() {
