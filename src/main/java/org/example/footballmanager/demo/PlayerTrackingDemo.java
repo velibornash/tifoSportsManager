@@ -1,4 +1,4 @@
-package org.example.footballmanager;
+package org.example.footballmanager.demo;
 
 import javax.swing.*;
 import java.awt.*;

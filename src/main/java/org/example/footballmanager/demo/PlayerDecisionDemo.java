@@ -1,11 +1,9 @@
-package org.example.footballmanager;
+package org.example.footballmanager.demo;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.*;
 import java.util.List;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
