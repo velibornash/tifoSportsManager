@@ -1,0 +1,318 @@
+package org.example.footballmanager.demo;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
+/**
+ * Centralno STANJE simulacije. {@link SimulationEngine} je orkestrator koji
+ * koordinira komponente; SVA mutable simulaciona stanja zive ovde:
+ *
+ *  - identitet / konfiguracija: igraci, lopta, pravila, random, pocetne pozicije
+ *  - tekuci tok: {@link Action}, nosilac lopte
+ *  - brojaci: status, golovi, akcije, sutevi, runda, proslava gola
+ *  - log poruke (Action Log)
+ *  - pracenje po rundi: start/kraj pozicija igraca i lopte, desired ciljevi,
+ *    takticke desired celije i pozicija lopte kojom su racunata pravila
+ *
+ * Kao i modeli ({@link Player}, {@link Ball}, {@link Position}), stanje je
+ * podatkovno — logiku vode komponente koje ga citaju/menjaju.
+ */
+public class SimulationState {
+
+    private static final int MAX_MESSAGES = 8;
+
+    public static final String TEAM_HOME = "HOME";
+
+    private final List<Player> players;
+    private final List<Position> initialPositions;
+    private final Ball ball;
+    private final TacticsRules tacticsRules;
+    private final Random random;
+    private final ArrayDeque<String> messages = new ArrayDeque<>();
+
+    private Player carrier;
+    private Action action;
+
+    private String status = "ready";
+    private int goalCount;
+    private int actionCount;
+    private int shotCount;
+    private int round;
+    private boolean celebrating;
+
+    // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
+    private final Map<Player, Position> roundStartPositions = new HashMap<>();
+    private final Map<Player, Position> roundEndPositions = new HashMap<>();
+    private final Map<Player, Position> desiredPositions = new HashMap<>();
+    private final Map<Player, Position> tacticalDesiredPositions = new HashMap<>();
+    private Position roundStartBallPosition;
+    private Position roundEndBallPosition;
+    private Position tacticalBallPosition;
+    private boolean roundComplete = true;
+
+    public SimulationState(List<Player> players, Ball ball, TacticsRules tacticsRules, Random random) {
+        this.players = players;
+        this.ball = ball;
+        this.tacticsRules = tacticsRules;
+        this.random = random;
+        this.initialPositions = new ArrayList<>(players.size());
+        this.roundStartBallPosition = ball.getPosition();
+        this.roundEndBallPosition = ball.getPosition();
+        this.tacticalBallPosition = ball.getPosition();
+        for (Player p : players) {
+            initialPositions.add(p.getPosition());
+            roundStartPositions.put(p, p.getPosition());
+            roundEndPositions.put(p, p.getPosition());
+            desiredPositions.put(p, p.getPosition());
+            tacticalDesiredPositions.put(p, p.getPosition());
+        }
+    }
+
+    // --- pristup radnim objektima ---
+
+    /** Ista lista igraca koju simulacija menja (deljena sa rendererom). */
+    public List<Player> getPlayers() {
+        return players;
+    }
+
+    public Ball getBall() {
+        return ball;
+    }
+
+    public TacticsRules getTacticsRules() {
+        return tacticsRules;
+    }
+
+    public Random getRandom() {
+        return random;
+    }
+
+    // --- nosilac i akcija ---
+
+    public Player getCarrier() {
+        return carrier;
+    }
+
+    public void setCarrier(Player carrier) {
+        this.carrier = carrier;
+    }
+
+    /** Trenutna akcija; null = nema aktivne akcije. */
+    public Action getAction() {
+        return action;
+    }
+
+    public void setAction(Action action) {
+        this.action = action;
+    }
+
+    public boolean hasActiveAction() {
+        return action != null;
+    }
+
+    // --- brojaci / status ---
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public int getGoalCount() {
+        return goalCount;
+    }
+
+    public void incrementGoalCount() {
+        goalCount++;
+    }
+
+    public int getActionCount() {
+        return actionCount;
+    }
+
+    public void incrementActionCount() {
+        actionCount++;
+    }
+
+    public int getShotCount() {
+        return shotCount;
+    }
+
+    public void incrementShotCount() {
+        shotCount++;
+    }
+
+    public int getRound() {
+        return round;
+    }
+
+    public void incrementRound() {
+        round++;
+    }
+
+    public boolean isCelebrating() {
+        return celebrating;
+    }
+
+    public void setCelebrating(boolean celebrating) {
+        this.celebrating = celebrating;
+    }
+
+    // --- log poruke (Action Log) ---
+
+    public void log(String message) {
+        messages.addLast(message);
+        while (messages.size() > MAX_MESSAGES) {
+            messages.removeFirst();
+        }
+    }
+
+    /** Odvodi i vraca nove poruke (prazni interni red). */
+    public List<String> drainMessages() {
+        List<String> drained = new ArrayList<>(messages);
+        messages.clear();
+        return drained;
+    }
+
+    // --- pracenje pozicija po rundi ---
+
+    /** Pozicija igraca na POCETKU tekuceg/poslednjeg turna. */
+    public Position getRoundStartPosition(Player p) {
+        return roundStartPositions.getOrDefault(p, p.getPosition());
+    }
+
+    /** Desired pozicija (cilj) igraca dodeljena u tekucem/poslednjem turnu. */
+    public Position getDesiredPosition(Player p) {
+        return desiredPositions.getOrDefault(p, p.getPosition());
+    }
+
+    /** Pozicija igraca na KRAJU turna (osvezena kad se akcija zavrsi). */
+    public Position getRoundEndPosition(Player p) {
+        return roundEndPositions.getOrDefault(p, p.getPosition());
+    }
+
+    public void setRoundEndPosition(Player p, Position pos) {
+        roundEndPositions.put(p, pos);
+    }
+
+    /**
+     * Puna takticka desired celija iz editora (pravilo za (role, pozicija
+     * lopte)) — NIJE 1-cell korak kretanja, vec konacni cilj.
+     */
+    public Position getTacticalDesiredPosition(Player p) {
+        return tacticalDesiredPositions.getOrDefault(p, p.getPosition());
+    }
+
+    public void setTacticalDesiredPosition(Player p, Position pos) {
+        tacticalDesiredPositions.put(p, pos);
+    }
+
+    /** Pozicija LOPTE na pocetku tekuceg/poslednjeg turna. */
+    public Position getRoundStartBallPosition() {
+        return roundStartBallPosition;
+    }
+
+    public void setRoundStartBallPosition(Position pos) {
+        roundStartBallPosition = pos;
+    }
+
+    /** Pozicija LOPTE na kraju tekuceg/poslednjeg turna. */
+    public Position getRoundEndBallPosition() {
+        return roundEndBallPosition;
+    }
+
+    public void setRoundEndBallPosition(Position pos) {
+        roundEndBallPosition = pos;
+    }
+
+    /** Pozicija LOPTE kojom su RACUNATA takticka pravila u poslednjem turnu. */
+    public Position getTacticalBallPosition() {
+        return tacticalBallPosition;
+    }
+
+    public void setTacticalBallPosition(Position pos) {
+        tacticalBallPosition = pos;
+    }
+
+    /** Da li je tekuci turn zavrsen (kraj pozicija je finalan). */
+    public boolean isRoundComplete() {
+        return roundComplete;
+    }
+
+    public void setRoundComplete(boolean roundComplete) {
+        this.roundComplete = roundComplete;
+    }
+
+    /** Snima pozicije na pocetku novog turna (kraj se osvezava kad turn zavrsi). */
+    public void beginRound() {
+        roundComplete = false;
+        roundStartBallPosition = ball.getPosition();
+        roundEndBallPosition = ball.getPosition();
+        for (Player p : players) {
+            Position pos = p.getPosition();
+            roundStartPositions.put(p, pos);
+            roundEndPositions.put(p, pos);
+        }
+    }
+
+    /** Snima desired poziciju (cilj) svakog igraca za tekuci turn. */
+    public void recordDesiredPositions() {
+        for (Player p : players) {
+            Position target = p.getTarget();
+            desiredPositions.put(p, target != null ? target : p.getPosition());
+        }
+    }
+
+    /**
+     * Koliko celija je igrac presao u tekucem/poslednjem turnu.
+     * Meri se Chebyshev rastojanjem (max |dr|, |dc|) — dijagonala je 1,
+     * pa je maksimum u BILO kom smeru 1 celija.
+     */
+    public double getCellsMoved(Player p) {
+        Position start = roundStartPositions.get(p);
+        Position end = roundComplete ? roundEndPositions.get(p) : p.getPosition();
+        if (start == null || end == null) {
+            return 0;
+        }
+        return Math.max(Math.abs(end.getRow() - start.getRow()),
+                        Math.abs(end.getColumn() - start.getColumn()));
+    }
+
+    /** Reset na pocetno stanje (nakon gola ili klikom na "Reset State"). */
+    public void reset() {
+        for (int i = 0; i < players.size(); i++) {
+            Player p = players.get(i);
+            p.setPosition(initialPositions.get(i));
+            p.setTarget(null);
+            p.setLocked(false);
+        }
+        ball.setPosition(ball.getInitialPosition());
+        ball.setTarget(null);
+        ball.setCarrier(null);
+        carrier = null;
+        action = null;
+        celebrating = false;
+        roundComplete = true;
+        roundStartBallPosition = ball.getInitialPosition();
+        roundEndBallPosition = ball.getInitialPosition();
+        tacticalBallPosition = ball.getInitialPosition();
+        for (int i = 0; i < players.size(); i++) {
+            Player p = players.get(i);
+            roundStartPositions.put(p, p.getPosition());
+            roundEndPositions.put(p, p.getPosition());
+            desiredPositions.put(p, p.getPosition());
+            tacticalDesiredPositions.put(p, p.getPosition());
+        }
+        if (status.startsWith("GOAL")) {
+            status += " (reset)";
+        } else {
+            status = "reset";
+        }
+    }
+}

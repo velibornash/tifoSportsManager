@@ -1,0 +1,59 @@
+package org.example.footballmanager.demo;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * Odgovornost: IZBOR / PRETRAGA IGRACA.
+ *
+ * Pokriva postojece upite:
+ *  - {@link #closestHomeTo(Position)} — najblizi HOME igrac nekoj poziciji
+ *  - {@link #nearestHomeTo(Player, int)} — N najblizih HOME igraca, bez datog igraca
+ *
+ * Pravila izbora su IDENTICNA kao pre refaktora: izbor primaoca pasa ostaje
+ * nasumican iz liste 6 najblizih kandidata. Bez taktickog scoringa i bez
+ * pametnijeg dodavanja.
+ */
+public class PlayerSelectionEngine {
+
+    private final SimulationState state;
+
+    public PlayerSelectionEngine(SimulationState state) {
+        this.state = state;
+    }
+
+    /** Najblizi HOME igrac datoj poziciji. */
+    public Player closestHomeTo(Position pos) {
+        Player best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            double d = MovementEngine.distance(p.getPosition(), pos);
+            if (d < bestDist) {
+                bestDist = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    /** N najblizih HOME igraca od date pozicije, bez datog igraca. */
+    public List<Player> nearestHomeTo(Player from, int n) {
+        List<Player> candidates = new ArrayList<>();
+        for (Player p : state.getPlayers()) {
+            if (p == from) {
+                continue;
+            }
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            candidates.add(p);
+        }
+        Position fromPos = from.getPosition();
+        candidates.sort(Comparator.comparingDouble(p -> MovementEngine.distance(p.getPosition(), fromPos)));
+        return candidates.subList(0, Math.min(n, candidates.size()));
+    }
+}

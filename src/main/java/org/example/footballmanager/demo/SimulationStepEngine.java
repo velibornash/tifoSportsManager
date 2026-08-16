@@ -1,0 +1,95 @@
+package org.example.footballmanager.demo;
+
+/**
+ * Odgovornost: ODLUKA / KORAK SIMULACIJE.
+ *
+ * Obradjuje JEDNU rundu (jedan {@link SimulationEngine#step() step()}) koristeci
+ * POSTOJECA pravila:
+ *  - ceka ako je pas/sut u letu ili ako nosilac jos hoda
+ *  - CHASE kad nema nosioca ili je daleko od lopte
+ *  - nasumican izbor PASS/CARRY/SHOT (ISTI mehanizam kao pre refaktora)
+ *  - dodela taktickih ciljeva i snimanje desired pozicija
+ *
+ * Bez ikakvog "pametnijeg" odlucivanja — bez taktickog scoringa, skillsa i AI.
+ * Odluka se NE menja; samo je iza ciste arhitektonske granice.
+ */
+public class SimulationStepEngine {
+
+    private final SimulationState state;
+    private final PlayerSelectionEngine selection;
+    private final ActionEngine actions;
+    private final TacticalIntentEngine tactics;
+
+    public SimulationStepEngine(SimulationState state, PlayerSelectionEngine selection,
+                                ActionEngine actions, TacticalIntentEngine tactics) {
+        this.state = state;
+        this.selection = selection;
+        this.actions = actions;
+        this.tactics = tactics;
+    }
+
+    public String step() {
+        // Tokom proslave gola simulacija je zamrznuta — novi turn se ne pokrece.
+        if (state.isCelebrating()) {
+            return state.getStatus();
+        }
+
+        // Ako je akcija pokrenuta (pas/sut u letu, CARRY u toku) — cekamo da zavrsi.
+        if (state.hasActiveAction()) {
+            state.setStatus("action in progress: " + state.getAction().getType().name());
+            return state.getStatus();
+        }
+
+        if (state.getCarrier() != null && state.getCarrier().getTarget() != null) {
+            state.setStatus(state.getCarrier().getLabel() + " still moving");
+            return state.getStatus();
+        }
+
+        state.beginRound();
+
+        Player carrier = state.getCarrier();
+        if (carrier == null) {
+            carrier = selection.closestHomeTo(state.getBall().getPosition());
+            state.setCarrier(carrier);
+            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition())
+                    >= BallMovementEngine.PICKUP_DISTANCE) {
+                carrier.setTarget(MovementEngine.oneCellToward(carrier.getPosition(), state.getBall().getPosition()));
+                state.recordDesiredPositions();
+                actions.start(Action.Type.CHASE, carrier.getLabel() + " chasing ball");
+                state.incrementRound();
+                return state.getStatus();
+            }
+            // Nosilac je vec pri lopti — preuzima je odmah (lopta glatko prati,
+            // bez teleporta), i ista runda nastavlja na odluku (PASS/CARRY/SHOT).
+            state.getBall().setCarrier(carrier);
+        } else if (state.getBall().getCarrier() != carrier) {
+            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition())
+                    >= BallMovementEngine.PICKUP_DISTANCE) {
+                carrier.setTarget(MovementEngine.oneCellToward(carrier.getPosition(), state.getBall().getPosition()));
+                state.recordDesiredPositions();
+                actions.start(Action.Type.CHASE, carrier.getLabel() + " moving to ball");
+                state.incrementRound();
+                return state.getStatus();
+            }
+            state.getBall().setCarrier(carrier);
+        }
+
+        double row = carrier.getPosition().getRow();
+        boolean canShoot = row >= ActionEngine.SHOOT_MIN_ROW;
+        String[] options = canShoot
+            ? new String[] {"PASS", "CARRY", "SHOT"}
+            : new String[] {"PASS", "CARRY"};
+        String action = options[state.getRandom().nextInt(options.length)];
+
+        switch (action) {
+            case "PASS" -> actions.executePass();
+            case "CARRY" -> actions.executeCarry();
+            default -> actions.executeShot();
+        }
+
+        tactics.assignTargets();
+        state.recordDesiredPositions();
+        state.incrementRound();
+        return state.getStatus();
+    }
+}
