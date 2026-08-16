@@ -29,8 +29,16 @@ public class Player {
     private Position target;
     private boolean locked;
 
+    /** Buduce sposobnosti igraca — OVAJ SPRINT INERTNE (neutralne), niko ih ne cita. */
+    private final PlayerSkills skills;
+
     public Player(String id, String label, String team, String role, Color color,
                   Position position, Position alternativePosition) {
+        this(id, label, team, role, color, position, alternativePosition, PlayerSkills.neutral());
+    }
+
+    public Player(String id, String label, String team, String role, Color color,
+                  Position position, Position alternativePosition, PlayerSkills skills) {
         this.id = Objects.requireNonNull(id);
         this.label = Objects.requireNonNull(label);
         this.team = Objects.requireNonNull(team);
@@ -38,6 +46,7 @@ public class Player {
         this.color = Objects.requireNonNull(color);
         this.position = Objects.requireNonNull(position);
         this.alternativePosition = Objects.requireNonNull(alternativePosition);
+        this.skills = Objects.requireNonNull(skills);
     }
 
     public String getId() {
@@ -88,6 +97,14 @@ public class Player {
 
     public void setLocked(boolean locked) {
         this.locked = locked;
+    }
+
+    /**
+     * Sposobnosti igraca — extension point za sledeci sprint. Trenutno uvek
+     * neutralne; simulacija ih NE koristi.
+     */
+    public PlayerSkills getSkills() {
+        return skills;
     }
 
     @Override

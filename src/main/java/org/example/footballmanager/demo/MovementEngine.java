@@ -45,6 +45,18 @@ public class MovementEngine {
         }
     }
 
+    /**
+     * EXTENSION POINT za buduce brzinske sposobnosti po igracu.
+     *
+     * OVAJ SPRINT: metoda se NE POZIVA iz {@link #moveAllTowardTargets()} —
+     * brzina je i dalje konstanta {@link #PLAYER_SPEED}. Mesto gde ce buduci
+     * sprint citati per-player {@link MovementProfile} (speed/acceleration) je
+     * ovde. Za sada se uvek vraca {@link MovementProfile#standard()}.
+     */
+    public MovementProfile profileFor(Player player) {
+        return MovementProfile.standard();
+    }
+
     /** Cilj udaljen najvise 1 celiju (8 smerova) od trenutne pozicije ka desired. */
     public static Position oneCellToward(Position from, Position to) {
         double dr = Math.signum(to.getRow() - from.getRow());

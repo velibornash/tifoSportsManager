@@ -56,4 +56,16 @@ public class PlayerSelectionEngine {
         candidates.sort(Comparator.comparingDouble(p -> MovementEngine.distance(p.getPosition(), fromPos)));
         return candidates.subList(0, Math.min(n, candidates.size()));
     }
+
+    /**
+     * EXTENSION POINT za buduci "najbolji izbor" (skills/AI).
+     *
+     * Buduci sistem ce birati najboljeg kandidata po nekakvoj oceni ("best
+     * option", "best receiver"). OVAJ SPRINT: metoda se NE POZIVA — postojece
+     * puteve dodavanja i dalje vode {@link #closestHomeTo} / {@link #nearestHomeTo}.
+     * Za sada se ponasa identicno kao najblizi igrac, bez ikakvog scoringa.
+     */
+    public Player selectBestCandidate(Position pos) {
+        return closestHomeTo(pos);
+    }
 }

@@ -83,6 +83,27 @@ old/          → Legacy controllers/services/simulators (do not extend)
 exception/    → ApiExceptionHandler (global @ControllerAdvice)
 ```
 
+**`demo/` package** — standalone Swing football grid simulation (not part of the Spring app). Composition root is `TacticalGridDemo` (`main()`), which wires:
+
+```
+TacticalGridDemo          → composition root (main, static test delegates)
+  ├── DemoScenario        → grid config, colors, teams, 22 player defs, ball start
+  ├── DemoPlayerFactory   → PlayerDef → Player objects (fresh instances per call)
+  ├── DemoSimulationFactory → assembles SimulationEngine (+ TacticsRules)
+  ├── DemoScenarioValidator → validateGrid / validatePlayers
+  └── DemoUI              → all Swing rendering + interaction (speaks to engine API only)
+```
+
+Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` (mutable state),
+`SimulationStepEngine` (decisions), `ActionEngine`/`Action` (PASS/CARRY/SHOT/CHASE lifecycle),
+`MovementEngine`/`BallMovementEngine` (geometry), `TacticalIntentEngine` + `TacticsRules`
+(DB-loaded tactical rules), `PlayerSelectionEngine` (closest/nearest selection).
+
+Extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `MovementProfile`
+(returned by `MovementEngine.profileFor()`), `PlayerSelectionEngine.selectBestCandidate()`,
+`ActionCandidate`. Next sprint introduces real skill/selection/action logic here — do NOT
+add more abstractions beyond these.
+
 ### API Route Prefixes
 
 | Controller | Prefix |
