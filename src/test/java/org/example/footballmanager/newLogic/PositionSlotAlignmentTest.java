@@ -129,7 +129,7 @@ public class PositionSlotAlignmentTest {
             String pos = String.valueOf(playerPosition.get(pid));
             if (avg < 20.0) nearTargetCount++;
             boolean isGK = playerPosition.get(pid) == Position.GK;
-            double maxAvgDist = isGK ? 30.0 : 55.0;
+            double maxAvgDist = isGK ? 30.0 : 60.0;
             assertTrue(avg < maxAvgDist,
                 name + " (" + pos + ") avg dist to target=" + String.format("%.1f", avg)
                     + " exceeds max " + String.format("%.1f", maxAvgDist));

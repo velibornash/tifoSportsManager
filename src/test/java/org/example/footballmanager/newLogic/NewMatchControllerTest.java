@@ -17,7 +17,7 @@ public class NewMatchControllerTest {
 
     @Test
     void fullMatchFlow() {
-        NewMatchController controller = new NewMatchController(null, new MatchStore());
+        NewMatchController controller = new NewMatchController(null, new MatchStore(), null, null);
 
         // 1. Start match
         StartMatchRequest req = new StartMatchRequest("Crvena Zvezda", "Partizan");

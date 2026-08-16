@@ -115,9 +115,11 @@ public class NewMatchSimulatorTest {
             totalShotsOnTarget += result.homeShotsOnTarget() + result.awayShotsOnTarget();
             totalCorners += result.homeCorners() + result.awayCorners();
             totalFouls += result.homeFouls() + result.awayFouls();
-            totalYelCards += result.homeYellowCards() + result.awayYellowCards();
-            totalReds += result.homeRedCards() + result.awayRedCards();
-            totalCards += totalYelCards + totalReds;
+            int yel = result.homeYellowCards() + result.awayYellowCards();
+            int red = result.homeRedCards() + result.awayRedCards();
+            totalYelCards += yel;
+            totalReds += red;
+            totalCards += yel + red;
 
             long passes = result.events().stream().filter(e -> e instanceof PassEvent).count();
             totalPasses += passes;
