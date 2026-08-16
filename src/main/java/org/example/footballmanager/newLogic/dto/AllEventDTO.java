@@ -115,11 +115,11 @@ public class AllEventDTO {
         return dto;
     }
 
-    public static AllEventDTO fromVARReviewEvent(VARReviewEvent v) {
+    public static AllEventDTO fromVARReviewEvent(VarReviewEvent v) {
         AllEventDTO dto = new AllEventDTO();
         dto.setType("VARReview");
-        dto.setMinute(v.getMinute());
-        dto.setDecision(v.getDecision());
+        dto.setMinute(v.minute());
+        dto.setDecision(v.decision());
         return dto;
     }
 

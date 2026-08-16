@@ -48,6 +48,8 @@ public final class ReplayBuilder {
             chunkCount,
             homeFormation,
             awayFormation,
+            result.homePossession(),
+            result.awayPossession(),
             players,
             goalSummaries,
             eventSummaries

@@ -14,11 +14,13 @@ public final class FatigueSystem {
 
     private static final double BASE_STAMINA_DRAIN_PER_MINUTE = 0.12;
     private static final double SPRINT_EXTRA_DRAIN = 0.06;
-    private static final double INJURY_BASE_CHANCE = 0.0008;
-    private static final double INJURY_FATIGUE_MULTIPLIER = 3.5;
+    private static final double INJURY_BASE_CHANCE = 0.00012;
+    private static final double INJURY_FATIGUE_MULTIPLIER = 1.5;
+    private static final double MAX_FATIGUE = 8.5;
 
     private final Map<Long, Integer> playerMinutesPlayed = new HashMap<>();
     private final Map<Long, Double> playerFatigueMap = new HashMap<>();
+    private final Set<Long> usedSubstitutes = new HashSet<>();
 
     public FatigueSystem() {}
 
@@ -40,7 +42,7 @@ public final class FatigueSystem {
             }
 
             currentFatigue += drain;
-            currentFatigue = Math.min(currentFatigue, 10.0);
+            currentFatigue = Math.min(currentFatigue, MAX_FATIGUE);
             playerFatigueMap.put(snap.playerId(), currentFatigue);
 
             state.playerFatigue.put(snap.playerId(), (int) currentFatigue);
@@ -59,8 +61,8 @@ public final class FatigueSystem {
             double fatigue = playerFatigueMap.getOrDefault(snap.playerId(), 0.0);
             double injuryChance = INJURY_BASE_CHANCE;
 
-            if (fatigue > 6.0) {
-                injuryChance *= 1.0 + (fatigue - 6.0) * INJURY_FATIGUE_MULTIPLIER;
+            if (fatigue > 7.0) {
+                injuryChance *= 1.0 + (fatigue - 7.0) * INJURY_FATIGUE_MULTIPLIER;
             }
 
             double staminaFactor = snap.stamina() / 20.0;
@@ -82,18 +84,18 @@ public final class FatigueSystem {
     }
 
     public void maybeSubstitution(MatchState state, int minute, String teamSide) {
-        if (minute < 45) return;
-        if (minute % 5 != 0) return;
+        if (minute < 60) return;
+        if (minute % 8 != 0) return;
 
         int subsUsed = "HOME".equals(teamSide) ? state.homeSubsUsed : state.awaySubsUsed;
-        if (subsUsed >= 3) return;
+        if (subsUsed >= 1) return;
 
         Team team = "HOME".equals(teamSide) ? state.match.homeTeam() : state.match.awayTeam();
         List<Player> subs = team.substitutes();
         if (subs.isEmpty()) return;
 
         PlayerSnapshot mostTired = null;
-        double maxFatigue = 7.0;
+        double maxFatigue = 7.8;
 
         for (PlayerSnapshot snap : state.playerSnapshots) {
             if (!snap.teamSide().equals(teamSide)) continue;
@@ -111,6 +113,7 @@ public final class FatigueSystem {
 
         Player replacement = findBestSub(subs, mostTired.position());
         if (replacement == null) return;
+        usedSubstitutes.add(replacement.id());
 
         long tiredId = mostTired.playerId();
         String tiredName = mostTired.name();
@@ -118,7 +121,11 @@ public final class FatigueSystem {
         List<PlayerSnapshot> teammates = state.playerSnapshots.stream()
             .filter(s -> s.teamSide().equals(teamSide)).toList();
         double[] pos = MovementEngine.getStartingPosition(replacement, teamSide, teammates);
-        state.playerSnapshots.add(PlayerSnapshot.fromPlayer(replacement, teamSide, pos[0], pos[1]));
+        PlayerSnapshot subSnap = PlayerSnapshot.fromPlayer(replacement, teamSide, pos[0], pos[1]);
+        // Enter from the sideline and blend to the formation slot — no teleport
+        subSnap.setPosition("HOME".equals(teamSide) ? MatchState.MIN_X : MatchState.MAX_X, 50.0);
+        state.playerSnapshots.add(subSnap);
+        MovementEngine.startBlend(state, replacement.id(), pos[0], pos[1], 90);
 
         state.playerSlotKeys.put(replacement.id(), state.playerSlotKeys.getOrDefault(tiredId, "CM"));
         playerFatigueMap.put(replacement.id(), 2.0);
@@ -158,10 +165,12 @@ public final class FatigueSystem {
 
     private Player findBestSub(List<Player> subs, Position neededPosition) {
         return subs.stream()
+            .filter(p -> !usedSubstitutes.contains(p.id()))
             .filter(p -> p.position() == neededPosition)
             .filter(p -> !p.isInjured())
             .max(Comparator.comparingInt(p -> p.getSkills() != null ? p.getSkills().getStamina() : 0))
             .orElse(subs.stream()
+                .filter(p -> !usedSubstitutes.contains(p.id()))
                 .filter(p -> !p.isInjured())
                 .max(Comparator.comparingInt(p -> p.getSkills() != null ? p.getSkills().getStamina() : 0))
                 .orElse(null));

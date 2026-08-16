@@ -36,11 +36,15 @@ public final class SpaceAnalyzer {
     }
 
     private double computeOpenness(PlayerSnapshot player, MatchState state) {
+        double minDist = Double.MAX_VALUE;
         for (PlayerSnapshot opp : state.playerSnapshots) {
             if (opp.teamSide().equals(player.teamSide())) continue;
-            if (player.distanceTo(opp) < 3.0) return 0.0;
+            double d = player.distanceTo(opp);
+            if (d < minDist) minDist = d;
         }
-        return 1.0;
+        if (minDist == Double.MAX_VALUE) return 1.0;
+        // Continuous scale: fully open at ~10m, completely closed at 0m.
+        return Math.max(0.0, Math.min(1.0, minDist / 10.0));
     }
 
     private double computePassLaneScore(PlayerSnapshot player, MatchState state) {

@@ -19,16 +19,20 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final MatchEventWebSocketHandler matchEventHandler;
     private final PositionWSHandler demoPositionHandler;
     private final MatchEventWSHandler demoEventHandler;
+    private final MatchEventWSHandler matchLiveHandler;
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
 
     public WebSocketConfig(
             MatchEventWebSocketHandler matchEventHandler,
             @Lazy PositionWSHandler demoPositionHandler,
-            @Lazy MatchEventWSHandler demoEventHandler, JwtHandshakeInterceptor jwtHandshakeInterceptor) {
+            @Lazy MatchEventWSHandler demoEventHandler,
+            @Lazy MatchEventWSHandler matchLiveHandler,
+            JwtHandshakeInterceptor jwtHandshakeInterceptor) {
         this.matchEventHandler = matchEventHandler;
         this.demoPositionHandler = demoPositionHandler;
         this.demoEventHandler = demoEventHandler;
+        this.matchLiveHandler = matchLiveHandler;
         this.jwtHandshakeInterceptor = jwtHandshakeInterceptor;
     }
 
@@ -37,5 +41,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(matchEventHandler, "/match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOriginPatterns("*");
         registry.addHandler(demoPositionHandler, "/demo-position-updates").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
         registry.addHandler(demoEventHandler, "/demo-match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
+        registry.addHandler(matchLiveHandler, "/ws/match-live").addInterceptors(jwtHandshakeInterceptor).setAllowedOriginPatterns("*");
     }
 }

@@ -152,13 +152,13 @@ public class FormationSlotCatalog {
 
     private static List<String> buildTargetCells() {
         List<String> cells = new ArrayList<>();
-        for (int r = 0; r < 5; r++) for (int c = 0; c < 5; c++) cells.add("CELL_" + r + "_" + c);
+        for (int r = 0; r < 7; r++) for (int c = 0; c < 6; c++) cells.add("CELL_" + r + "_" + c);
         return Collections.unmodifiableList(cells);
     }
 
     private static List<String> buildBallStates() {
         List<String> states = new ArrayList<>();
-        for (int r = 0; r < 5; r++) for (int c = 0; c < 5; c++) states.add("CELL_" + r + "_" + c);
+        for (int r = 0; r < 7; r++) for (int c = 0; c < 6; c++) states.add("CELL_" + r + "_" + c);
         states.add("ATTACK_LEFT_CORNER");
         states.add("ATTACK_RIGHT_CORNER");
         states.add("DEFEND_LEFT_CORNER");

@@ -12,6 +12,7 @@ import java.util.Optional;
 @Repository
 public interface SeasonCompetitionRepository extends JpaRepository<SeasonCompetition, Long> {
     Optional<SeasonCompetition> findByCompetitionAndSeasonYear(Competition league, Integer seasonYear);
+    List<SeasonCompetition> findBySeasonYear(Integer seasonYear);
 
     @Query("""
             select distinct sc.seasonYear

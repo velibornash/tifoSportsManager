@@ -11,9 +11,10 @@ public final class ZonePositionCalculator {
 
     private static final Logger log = LoggerFactory.getLogger(ZonePositionCalculator.class);
 
-    static final double[] X_BANDS = {10, 30, 50, 70, 90};
-    static final double[] Y_BANDS = {10, 26, 50, 74, 90};
-    static final int GRID = 5;
+    static final double[] X_BANDS = {8.33, 25, 41.67, 58.33, 75, 91.67};
+    static final double[] Y_BANDS = {7.14, 21.43, 35.71, 50, 64.29, 78.57, 92.86};
+    static final int GRID_COLS = 6;
+    static final int GRID_ROWS = 7;
 
     private static final List<String> FORMATION_4_3_3_SLOTS = List.of(
         "GK", "DL", "DCL", "DCR", "DR", "CML", "CM", "CMR", "WL", "ST", "WR"
@@ -63,7 +64,7 @@ public final class ZonePositionCalculator {
         if (slotKey != null && tactics != null) {
             String ballCellKey = "HOME".equals(teamSide)
                 ? cellKey(ballXBand, ballYBand)
-                : cellKey(GRID - 1 - ballXBand, ballYBand);
+                : cellKey(GRID_COLS - 1 - ballXBand, ballYBand);
 
             var rule = tactics.getRule(slotKey, ballCellKey, inPoss);
             if (rule != null) {
@@ -113,7 +114,7 @@ public final class ZonePositionCalculator {
         };
     }
 
-    private static String anchorCellForSlot(String slotKey, Position pos) {
+    static String anchorCellForSlot(String slotKey, Position pos) {
         if (slotKey == null) return null;
         return switch (slotKey) {
             case "GK" -> "CELL_0_2";
@@ -141,12 +142,12 @@ public final class ZonePositionCalculator {
         return cellCenter(cellKey, teamSide, null);
     }
 
-    private static double[] cellCenter(String cellKey, String teamSide, String slotKey) {
+    static double[] cellCenter(String cellKey, String teamSide, String slotKey) {
         int[] parsed = parseCellKey(cellKey);
         int progress = parsed[0];
         int width = parsed[1];
 
-        double x = "HOME".equals(teamSide) ? X_BANDS[progress] : X_BANDS[GRID - 1 - progress];
+        double x = "HOME".equals(teamSide) ? X_BANDS[progress] : X_BANDS[GRID_COLS - 1 - progress];
         double y = Y_BANDS[width];
 
         if (slotKey != null && slotKey.startsWith("DC") && !slotKey.equals("DC")) {
@@ -182,34 +183,34 @@ public final class ZonePositionCalculator {
     }
 
     private static String cellKey(int progress, int width) {
-        return "CELL_" + clamp(progress) + "_" + clamp(width);
+        return "CELL_" + clamp(progress, 0, 6) + "_" + clamp(width, 0, 5);
     }
 
     private static int[] parseCellKey(String cellKey) {
         if (cellKey == null || !cellKey.startsWith("CELL_")) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
         String[] parts = cellKey.split("_");
-        if (parts.length != 3) return new int[]{2, 2};
+        if (parts.length != 3) return new int[]{3, 2};
         try {
-            return new int[]{clamp(Integer.parseInt(parts[1])), clamp(Integer.parseInt(parts[2]))};
+            return new int[]{clamp(Integer.parseInt(parts[1]), 0, 6), clamp(Integer.parseInt(parts[2]), 0, 5)};
         } catch (NumberFormatException e) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
     }
 
-    private static int clamp(int v) { return Math.max(0, Math.min(4, v)); }
     private static int clamp(int v, int min, int max) { return Math.max(min, Math.min(max, v)); }
+    private static int clampToGrid(int v) { return Math.max(0, Math.min(4, v)); }
     private static double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
     public static int[] ballZone(double bx, double by) {
-        int xb = clamp((int) ((bx - 4) / 18.4), 0, 4);
-        int yb = clamp((int) ((by - 4) / 18.4), 0, 4);
+        int xb = clamp((int) ((bx - 8.33) / 16.67), 0, 5);
+        int yb = clamp((int) ((by - 7.14) / 14.29), 0, 6);
         return new int[]{xb, yb};
     }
 
     public static double zoneCenterX(int band, boolean home) {
-        return home ? X_BANDS[band] : X_BANDS[GRID - 1 - band];
+        return home ? X_BANDS[band] : X_BANDS[GRID_COLS - 1 - band];
     }
 
     public static double zoneCenterY(int band) {

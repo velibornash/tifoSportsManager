@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.event.*;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
@@ -13,45 +14,68 @@ public final class RulesEngine {
 
     private static final Random RNG = new Random();
 
-    public void checkFoul(MatchState state, PlayerSnapshot defender, PlayerSnapshot attacker) {
+    public FoulResult checkFoul(MatchState state, PlayerSnapshot defender, PlayerSnapshot attacker) {
         // Don't award penalty if currently in offside stoppage
         if (state.stoppage == MatchState.StoppageType.GOAL_KICK) {
-            return;
+            return FoulResult.NONE;
         }
 
-        if (RNG.nextDouble() < 0.35) {
-            state.addEvent(new FoulEvent(state.minute, state.tick,
-                defender.playerId(), defender.name(),
-                attacker.playerId(), attacker.name(),
-                defender.teamSide(), false, defender.x(), defender.y()));
+        if (RNG.nextDouble() >= 0.65) {
+            return FoulResult.NONE;
+        }
 
-            if (isInPenaltyBox(defender, attacker)) {
-                state.addEvent(new PenaltyEvent(state.minute, state.tick,
-                    attacker.playerId(), attacker.name(), attacker.teamSide(),
-                    false, false, 0.76));
-                state.stoppage = MatchState.StoppageType.PENALTY;
-                state.stoppageTicks = 8;
+        state.addEvent(new FoulEvent(state.minute, state.tick,
+            defender.playerId(), defender.name(),
+            attacker.playerId(), attacker.name(),
+            defender.teamSide(), false, defender.x(), defender.y()));
+
+        boolean penalty = false;
+        if (isInPenaltyBox(defender, attacker)) {
+            penalty = true;
+            state.pendingPenaltyTakerId = attacker.playerId();
+            state.pendingPenaltyTeamSide = attacker.teamSide();
+            state.stoppage = MatchState.StoppageType.PENALTY;
+            state.stoppageTicks = 3;
+        } else {
+            // Outside box — free kick stoppage should fire reliably
+            if (RNG.nextDouble() < 0.95) {
+                state.stoppage = MatchState.StoppageType.FREE_KICK;
+                state.stoppageTicks = 4;
+                state.addEvent(new SetPieceEvent(state.minute, state.tick,
+                    attacker.teamSide(), defender.playerId(), defender.name(),
+                    SetPieceEvent.SetPieceType.FREE_KICK, attacker.x(), attacker.y()));
+            }
+        }
+
+        CardEvent.CardType card = null;
+        boolean alreadyBooked = state.playerYellowCards.getOrDefault(defender.playerId(), 0) > 0;
+        // A short rebook cooldown (5 min) reflects that refs CAN show two
+        // cards in close succession — a tactical foul minutes after a yellow
+        // is the classic example. We just need to avoid back-to-back identical
+        // offences on the exact same tick.
+        // Note: a player who has never been booked has no entry, so the
+        // getOrDefault returns 0 — not MIN_VALUE — and they're NOT marked
+        // "recently carded".
+        int lastCardTick = state.playerLastCardTick.getOrDefault(defender.playerId(), 0);
+        boolean recentlyCarded = state.tick > 0 && lastCardTick > 0
+            && (state.tick - lastCardTick) < (5 * 120); // 5 min × 120 ticks/min
+        if ((RNG.nextDouble() < 0.22 || alreadyBooked) && !recentlyCarded) {
+            card = alreadyBooked ? CardEvent.CardType.RED : CardEvent.CardType.YELLOW;
+            state.addEvent(new CardEvent(state.minute, state.tick,
+                defender.playerId(), defender.name(), defender.teamSide(), card));
+            state.playerLastCardTick.put(defender.playerId(), state.tick);
+
+            if (card == CardEvent.CardType.RED) {
+                state.sentOffPlayers.add(defender.playerId());
+                // Reset the yellow counter so the player is tracked as sent off
+                // rather than still carrying an old yellow card.
+                state.playerYellowCards.remove(defender.playerId());
             } else {
-                // Outside box — free kick stoppage should fire more reliably
-                if (RNG.nextDouble() < 0.60) {
-                    state.stoppage = MatchState.StoppageType.FREE_KICK;
-                    state.stoppageTicks = 4;
-                }
-            }
-
-            if (RNG.nextDouble() < 0.3) {
-                boolean secondYellow = state.playerYellowCards.getOrDefault(defender.playerId(), 0) > 0;
-                CardEvent.CardType cardType = secondYellow ? CardEvent.CardType.RED : CardEvent.CardType.YELLOW;
-                state.addEvent(new CardEvent(state.minute, state.tick,
-                    defender.playerId(), defender.name(), defender.teamSide(), cardType));
-
-                if (secondYellow) {
-                    state.sentOffPlayers.add(defender.playerId());
-                } else {
-                    state.playerYellowCards.merge(defender.playerId(), 1, Integer::sum);
-                }
+                state.playerYellowCards.merge(defender.playerId(), 1, Integer::sum);
             }
         }
+
+        return new FoulResult(true, penalty, card);
     }
 
     public void checkGoal(MatchState state, PlayerSnapshot shooter, double xG, boolean onTarget) {
@@ -95,7 +119,13 @@ public final class RulesEngine {
 
         if (defenderXPositions.isEmpty()) return 0;
 
-        defenderXPositions.sort(java.util.Comparator.reverseOrder());
+        // FIFA rule: second-to-last opponent measured from the attacker's goal.
+        // HOME defends the x=0 goal (2nd-smallest x), AWAY the x=100 goal (2nd-largest).
+        if ("HOME".equals(defendingTeam)) {
+            defenderXPositions.sort(Comparator.naturalOrder());
+        } else {
+            defenderXPositions.sort(Comparator.reverseOrder());
+        }
 
         if (defenderXPositions.size() >= 2) {
             return defenderXPositions.get(1);
@@ -136,8 +166,16 @@ public final class RulesEngine {
     }
 
     private boolean isInPenaltyBox(PlayerSnapshot defender, PlayerSnapshot attacker) {
-        boolean inX = attacker.teamSide().equals("HOME") ? attacker.x() > 78 : attacker.x() < 22;
-        boolean inY = attacker.y() > 30 && attacker.y() < 70;
-        return inX && inY;
+        // Real penalty box: 16.5m deep × 40m wide. Only fouls in this tight
+        // zone become penalties; outside it they become free kicks.
+        boolean home = attacker.teamSide().equals("HOME");
+        double goalX = home ? 100.0 : 0.0;
+        double distX = Math.abs(attacker.x() - goalX);
+        boolean inY = attacker.y() > 28 && attacker.y() < 72;
+        return distX < 16.5 && inY;
+    }
+
+    public record FoulResult(boolean foulCommitted, boolean penalty, CardEvent.CardType card) {
+        public static final FoulResult NONE = new FoulResult(false, false, null);
     }
 }

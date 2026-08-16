@@ -1,11 +1,15 @@
 package org.example.footballmanager.newLogic.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.model.event.*;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.MatchEventRepository;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.newLogic.repository.MatchTickStateRepository;
+import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
+import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +20,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 public class MatchPersistenceService {
@@ -24,16 +29,25 @@ public class MatchPersistenceService {
     private final MatchEventRepository matchEventRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final MatchTickStateRepository matchTickStateRepository;
+    private final SeasonCompetitionRepository seasonCompetitionRepository;
+    private final CompetitionEntryRepository competitionEntryRepository;
+    private final PlayerRepository playerRepository;
     private final ObjectMapper objectMapper;
 
     public MatchPersistenceService(MatchRepository matchRepository,
                                    MatchEventRepository matchEventRepository,
                                    MatchPlayerStatsRepository matchPlayerStatsRepository,
-                                   MatchTickStateRepository matchTickStateRepository) {
+                                   MatchTickStateRepository matchTickStateRepository,
+                                   SeasonCompetitionRepository seasonCompetitionRepository,
+                                   CompetitionEntryRepository competitionEntryRepository,
+                                   PlayerRepository playerRepository) {
         this.matchRepository = matchRepository;
         this.matchEventRepository = matchEventRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
         this.matchTickStateRepository = matchTickStateRepository;
+        this.seasonCompetitionRepository = seasonCompetitionRepository;
+        this.competitionEntryRepository = competitionEntryRepository;
+        this.playerRepository = playerRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -45,6 +59,98 @@ public class MatchPersistenceService {
         saveMatchEvents(result, match);
         savePlayerStats(result, match);
         saveTickHistory(result, match);
+    }
+
+    public void saveMatchResultAndUpdateTable(MatchResult result, Match match) {
+        saveMatchResult(result, match);
+        updateLeagueTable(match);
+    }
+
+    public void updateLeagueTable(Match match) {
+        try {
+            Integer seasonYear = match.getSeasonYear();
+            if (seasonYear == null) {
+                log.debug("Match {} has no seasonYear, skipping table update", match.getId());
+                return;
+            }
+
+            List<SeasonCompetition> seasonCompetitions = seasonCompetitionRepository.findBySeasonYear(seasonYear);
+            if (seasonCompetitions.isEmpty()) {
+                log.debug("No season competitions found for year {}", seasonYear);
+                return;
+            }
+
+            for (SeasonCompetition sc : seasonCompetitions) {
+                recalculateTableForSeasonCompetition(sc);
+            }
+            log.info("League table updated after match {} ({})", match.getId(), match.getHomeTeam().getName() + " vs " + match.getAwayTeam().getName());
+        } catch (Exception e) {
+            log.error("Failed to update league table after match {}: {}", match.getId(), e.getMessage());
+        }
+    }
+
+    private void recalculateTableForSeasonCompetition(SeasonCompetition sc) {
+        List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
+        if (entries.isEmpty()) return;
+
+        Map<Long, CompetitionEntry> byTeamId = entries.stream()
+                .filter(e -> e.getTeam() != null && e.getTeam().getId() != null)
+                .collect(Collectors.toMap(e -> e.getTeam().getId(), e -> e));
+
+        entries.forEach(e -> {
+            e.setPoints(0);
+            e.setGoalsScored(0);
+            e.setGoalsConceded(0);
+            e.setWins(0);
+            e.setDraws(0);
+            e.setLosses(0);
+        });
+
+        List<Match> playedMatches = matchRepository
+                .findByCompetitionIdAndSeasonYear(sc.getCompetition().getId(), sc.getSeasonYear())
+                .stream()
+                .filter(Match::isPlayed)
+                .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
+                .toList();
+
+        for (Match m : playedMatches) {
+            CompetitionEntry homeEntry = byTeamId.get(m.getHomeTeam().getId());
+            CompetitionEntry awayEntry = byTeamId.get(m.getAwayTeam().getId());
+            if (homeEntry == null || awayEntry == null) continue;
+
+            int homeG = m.getHomeGoals();
+            int awayG = m.getAwayGoals();
+
+            homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeG);
+            homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayG);
+            awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayG);
+            awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeG);
+
+            if (homeG > awayG) {
+                homeEntry.setWins(homeEntry.getWins() + 1);
+                awayEntry.setLosses(awayEntry.getLosses() + 1);
+                homeEntry.setPoints(homeEntry.getPoints() + 3);
+            } else if (awayG > homeG) {
+                awayEntry.setWins(awayEntry.getWins() + 1);
+                homeEntry.setLosses(homeEntry.getLosses() + 1);
+                awayEntry.setPoints(awayEntry.getPoints() + 3);
+            } else {
+                homeEntry.setDraws(homeEntry.getDraws() + 1);
+                awayEntry.setDraws(awayEntry.getDraws() + 1);
+                homeEntry.setPoints(homeEntry.getPoints() + 1);
+                awayEntry.setPoints(awayEntry.getPoints() + 1);
+            }
+        }
+
+        List<CompetitionEntry> sorted = new ArrayList<>(entries);
+        sorted.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
+                .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
+                .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
+
+        for (int pos = 0; pos < sorted.size(); pos++) {
+            sorted.get(pos).setPosition(pos + 1);
+        }
+        competitionEntryRepository.saveAll(sorted);
     }
 
     private void updateMatchEntity(Match match, MatchResult result) {
@@ -115,10 +221,23 @@ public class MatchPersistenceService {
         for (Map.Entry<Long, PlayerStatsAccumulator> e : accs.entrySet()) {
             PlayerStatsAccumulator a = e.getValue();
             if (a.team == null) continue;
+            Long playerId = e.getKey();
+            if (playerId == null) continue;
+
+            Player p = null;
+            try {
+                p = playerRepository.findById(playerId).orElse(null);
+            } catch (Exception ex) {
+                log.warn("Error finding player {}: {}", playerId, ex.getMessage());
+                continue;
+            }
+            if (p == null) {
+                log.debug("Player {} not found in DB, skipping stats", playerId);
+                continue;
+            }
+
             MatchPlayerStats s = new MatchPlayerStats();
             s.setMatch(match);
-            Player p = new Player();
-            p.setId(e.getKey());
             s.setPlayer(p);
             s.setGoals(a.goals);
             s.setAssists(a.assists);

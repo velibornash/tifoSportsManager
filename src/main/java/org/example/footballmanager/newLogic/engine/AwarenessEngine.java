@@ -8,7 +8,7 @@ public final class AwarenessEngine {
 
     private static final double THREAT_RADIUS = 12.0;
     private static final double PRESSURE_RADIUS = 8.0;
-    private static final double MARKING_RADIUS = 15.0;
+    private static final double MARKING_RADIUS = 10.0;
 
     private final Map<Long, PlayerAwareness> awarenessMap = new HashMap<>();
 

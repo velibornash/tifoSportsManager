@@ -21,6 +21,8 @@ public record ReplayMetadataDTO(
     int chunkCount,
     String homeFormation,
     String awayFormation,
+    double homePossession,
+    double awayPossession,
     List<Map<String, Object>> players,
     List<Map<String, Object>> goals,
     List<Map<String, Object>> events

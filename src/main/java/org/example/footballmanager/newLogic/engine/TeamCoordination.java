@@ -26,9 +26,9 @@ public final class TeamCoordination {
 
     private CoordinationAdjustment computeAdjustment(PlayerSnapshot snap, MatchState state,
                                                        IntentEngine intents, AwarenessEngine awareness) {
-        IntentEngine.Intent myIntent = intents.getIntent(snap.playerId());
+        PlayerSnapshot.Intent myIntent = intents.getIntent(snap.playerId());
 
-        if (myIntent == IntentEngine.Intent.PRESS) {
+        if (myIntent == PlayerSnapshot.Intent.PRESS) {
             return computePressCover(snap, state, intents);
         }
 
@@ -56,8 +56,8 @@ public final class TeamCoordination {
             if (!teammate.teamSide().equals(presser.teamSide())) continue;
             if (teammate.playerId() == presser.playerId()) continue;
 
-            IntentEngine.Intent teammateIntent = intents.getIntent(teammate.playerId());
-            if (teammateIntent == IntentEngine.Intent.RETURN_TO_SHAPE) {
+            PlayerSnapshot.Intent teammateIntent = intents.getIntent(teammate.playerId());
+            if (teammateIntent == PlayerSnapshot.Intent.RETURN_TO_SHAPE) {
                 double dist = presser.distanceTo(teammate);
                 if (dist < 20.0) {
                     double offsetX = presser.teamSide().equals("HOME") ? -3.0 : 3.0;

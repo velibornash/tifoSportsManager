@@ -21,17 +21,39 @@ public final class MovementEngine {
 
     public MovementEngine() {}
 
-    public static void initializePositions(MatchState state) {
+    public static void initializePositions(MatchState state, TacticRules homeTactics, TacticRules awayTactics) {
         blendTargets.clear();
         state.playerSnapshots.clear();
+
         for (Player p : state.match.homeTeam().startingXI()) {
-            double[] pos = startingPosition(p, "HOME", state.match.homeTeam().startingXI().indexOf(p));
-            state.playerSnapshots.add(PlayerSnapshot.fromPlayer(p, "HOME", pos[0], pos[1]));
+            String slotKey = state.playerSlotKeys.get(p.id());
+            double[] pos = tacticalStartingPosition(p, "HOME", slotKey, homeTactics);
+            PlayerSnapshot snap = PlayerSnapshot.fromPlayer(p, "HOME", pos[0], pos[1]);
+            snap.setDesiredPosition(pos[0], pos[1]);
+            snap.setTacticalPosition(pos[0], pos[1]);
+            state.playerSnapshots.add(snap);
         }
         for (Player p : state.match.awayTeam().startingXI()) {
-            double[] pos = startingPosition(p, "AWAY", state.match.awayTeam().startingXI().indexOf(p));
-            state.playerSnapshots.add(PlayerSnapshot.fromPlayer(p, "AWAY", pos[0], pos[1]));
+            String slotKey = state.playerSlotKeys.get(p.id());
+            double[] pos = tacticalStartingPosition(p, "AWAY", slotKey, awayTactics);
+            PlayerSnapshot snap = PlayerSnapshot.fromPlayer(p, "AWAY", pos[0], pos[1]);
+            snap.setDesiredPosition(pos[0], pos[1]);
+            snap.setTacticalPosition(pos[0], pos[1]);
+            state.playerSnapshots.add(snap);
         }
+    }
+
+    private static double[] tacticalStartingPosition(Player p, String teamSide, String slotKey, TacticRules tactics) {
+        if (slotKey != null && tactics != null) {
+            String anchorCell = ZonePositionCalculator.anchorCellForSlot(slotKey, p.position());
+            if (anchorCell != null) {
+                double[] center = ZonePositionCalculator.cellCenter(anchorCell, teamSide, slotKey);
+                if (center != null) {
+                    return center;
+                }
+            }
+        }
+        return startingPosition(p, teamSide, 0);
     }
 
     public static void moveToward(PlayerSnapshot snap, double targetX, double targetY, MatchState state) {
@@ -85,7 +107,11 @@ public final class MovementEngine {
             double dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist < 0.5) {
-                snap.setPosition(bt.targetX, bt.targetY);
+                // No snapping: finish the approach at pace speed so movement per
+                // tick stays within the pace cap (no-teleport invariant).
+                double maxStep = paceToSpeed(getPaceForPlayer(state, pid));
+                double step = Math.min(dist, maxStep);
+                snap.setPosition(snap.x() + (dx / dist) * step, snap.y() + (dy / dist) * step);
                 iter.remove();
                 continue;
             }
@@ -145,7 +171,7 @@ public final class MovementEngine {
         return new double[]{baseX, baseY};
     }
 
-    private static double paceToSpeed(int pace) {
+    public static double paceToSpeed(int pace) {
         double t = Math.max(0, Math.min(1, (pace - 1) / 19.0));
         return PACE_STEP_MIN + t * (PACE_STEP_MAX - PACE_STEP_MIN);
     }

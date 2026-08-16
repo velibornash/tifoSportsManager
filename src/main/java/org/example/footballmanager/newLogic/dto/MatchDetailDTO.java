@@ -33,7 +33,7 @@ public class MatchDetailDTO {
     private List<OffsideEvent> offsides;
     private List<InjuryEvent> injuries;
     private List<SubstitutionEvent> substitutions;
-    private List<VARReviewEvent> varReviews;
+    private List<VarReviewEvent> varReviews;
     private List<CornerEvent> corners;
     private List<ShotOnTargetEvent> shotsOnTarget;
     private List<ShotOffTargetEvent> shotsOffTarget;

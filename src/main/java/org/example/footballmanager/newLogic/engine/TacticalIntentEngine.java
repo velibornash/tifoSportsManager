@@ -24,8 +24,8 @@ public class TacticalIntentEngine {
     
     private final ZonePositionCalculator zoneCalculator;
     
-    public TacticalIntentEngine() {
-        this.zoneCalculator = new ZonePositionCalculator();
+    public TacticalIntentEngine(ZonePositionCalculator zoneCalculator) {
+        this.zoneCalculator = zoneCalculator;
     }
     
     /**
@@ -49,16 +49,52 @@ public class TacticalIntentEngine {
     private void updateTacticalPositions(MatchState state) {
         for (PlayerSnapshot snap : state.playerSnapshots) {
             String slotKey = state.playerSlotKeys.get(snap.playerId());
-            if (slotKey == null) continue;
             
-            double[] tacticalTarget = zoneCalculator.getTarget(snap.playerId(), slotKey);
+            double[] tacticalTarget;
+            if (slotKey != null) {
+                tacticalTarget = zoneCalculator.getTarget(snap.playerId(), slotKey);
+            } else {
+                // Fallback for players without slot assignment - use a default position based on their actual position
+                tacticalTarget = fallbackTacticalTarget(snap);
+            }
+            
             snap.setTacticalPosition(tacticalTarget[0], tacticalTarget[1]);
-            
-            // Default: desiredPosition = tacticalPosition
             snap.setDesiredPosition(tacticalTarget[0], tacticalTarget[1]);
             snap.setIntent(PlayerSnapshot.Intent.RETURN_TO_SHAPE);
-            snap.setReason("Tactical Editor");
+            snap.setReason(slotKey != null ? "Tactical Editor" : "Fallback position");
         }
+    }
+    
+    private double[] fallbackTacticalTarget(PlayerSnapshot snap) {
+        // Default positions based on actual position and team side
+        boolean home = snap.teamSide().equals("HOME");
+        double baseX = home ? 50.0 : 50.0;
+        double baseY = 50.0;
+        
+        switch (snap.position()) {
+            case GK:
+                baseX = home ? 5.0 : 95.0;
+                baseY = 50.0;
+                break;
+            case DEF:
+                baseX = home ? 20.0 : 80.0;
+                baseY = snap.y(); // Keep current Y
+                break;
+            case MID:
+                baseX = home ? 50.0 : 50.0;
+                baseY = snap.y();
+                break;
+            case WNG:
+                baseX = home ? 60.0 : 40.0;
+                baseY = snap.y() < 50.0 ? 15.0 : 85.0;
+                break;
+            case ATT:
+                baseX = home ? 75.0 : 25.0;
+                baseY = snap.y();
+                break;
+        }
+        
+        return new double[]{baseX, baseY};
     }
     
     /**

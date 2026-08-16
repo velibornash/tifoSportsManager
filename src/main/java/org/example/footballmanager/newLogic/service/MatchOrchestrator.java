@@ -243,6 +243,7 @@ public final class MatchOrchestrator {
      */
     public static TacticRules generateDefaultTactics(List<String> slotKeys) {
         // Slot anchor cells (4-3-3 — matches FormationSlotCatalog / tactics editor)
+        // 7 rows (progress 0-6), 6 cols (width 0-5)
         java.util.Map<String, SlotInfo> slots = new java.util.LinkedHashMap<>();
         slots.put("GK",  new SlotInfo("CELL_0_2", "GK", "GK"));
         slots.put("DL",  new SlotInfo("CELL_1_0", "DEF", "DEF"));
@@ -258,18 +259,19 @@ public final class MatchOrchestrator {
 
         TacticRules rules = TacticRules.createDefault(slotKeys);
 
-        // Generate rules for all ball states: 25 CELLs + 4 corners
-        String[] ballStates = new String[29];
+        // Generate rules for all ball states: 42 CELLs (7x6) + 4 corners
+        int numCells = 7 * 6; // 42
+        String[] ballStates = new String[numCells + 4];
         int idx = 0;
-        for (int p = 0; p < 5; p++) {
-            for (int w = 0; w < 5; w++) {
-                ballStates[idx++] = "CELL_" + p + "_" + w;
+        for (int r = 0; r < 7; r++) {
+            for (int c = 0; c < 6; c++) {
+                ballStates[idx++] = "CELL_" + r + "_" + c;
             }
         }
-        ballStates[25] = "ATTACK_LEFT_CORNER";
-        ballStates[26] = "ATTACK_RIGHT_CORNER";
-        ballStates[27] = "DEFEND_LEFT_CORNER";
-        ballStates[28] = "DEFEND_RIGHT_CORNER";
+        ballStates[42] = "ATTACK_LEFT_CORNER";
+        ballStates[43] = "ATTACK_RIGHT_CORNER";
+        ballStates[44] = "DEFEND_LEFT_CORNER";
+        ballStates[45] = "DEFEND_RIGHT_CORNER";
 
         for (String slotKey : slotKeys) {
             SlotInfo info = slots.get(slotKey);
@@ -302,8 +304,8 @@ public final class MatchOrchestrator {
         };
 
         float shiftFactor = weHaveBall ? 0.25f : 0.18f;
-        int progress = clamp(Math.round(anchor[0] + progressShift + (ballP - anchor[0]) * shiftFactor));
-        int width = clamp(Math.round(anchor[1] + (ballW - anchor[1]) * (weHaveBall ? 0.20f : 0.35f)));
+        int progress = clampToRow(Math.round(anchor[0] + progressShift + (ballP - anchor[0]) * shiftFactor));
+        int width = clampToCol(Math.round(anchor[1] + (ballW - anchor[1]) * (weHaveBall ? 0.20f : 0.35f)));
 
         if ("WNG".equals(slot.role)) {
             width = anchor[1] <= 1 ? Math.min(width, 1 + widthPull) : Math.max(width, 3 - widthPull);
@@ -321,44 +323,49 @@ public final class MatchOrchestrator {
         if (!weHaveBall && "ATT".equals(slot.line)) {
             // Wingers/strikers track the ball back when defending instead of
             // standing stranded high up the pitch
-            progress = clamp(Math.min(anchor[0], ballP + 1));
+            progress = clampToRow(Math.min(anchor[0], ballP + 1));
         }
 
         if (!weHaveBall && "ATT".equals(slot.line)) {
             // Ball tracking is dominant when defending so the front line
             // drops back to the ball instead of staying glued to the anchor
-            progress = clamp(progress);
+            progress = clampToRow(progress);
         } else {
             // Keep the slot anchor dominant. Ball state should nudge positioning, not reshape it.
-            progress = clamp(Math.round(anchor[0] + (progress - anchor[0]) * (weHaveBall ? 0.25f : 0.18f)));
+            progress = clampToRow(Math.round(anchor[0] + (progress - anchor[0]) * (weHaveBall ? 0.25f : 0.18f)));
         }
-        width = clamp(Math.round(anchor[1] + (width - anchor[1]) * (weHaveBall ? 0.18f : 0.12f)));
-        return new int[]{clamp(progress), clamp(width)};
+        width = clampToCol(Math.round(anchor[1] + (width - anchor[1]) * (weHaveBall ? 0.18f : 0.12f)));
+        return new int[]{clampToRow(progress), clampToCol(width)};
     }
 
     private static int[] syntheticBallCell(String ballState) {
+        // 7 rows (0-6), 6 cols (0-5)
         return switch (ballState) {
-            case "ATTACK_LEFT_CORNER" -> new int[]{4, 0};
-            case "ATTACK_RIGHT_CORNER" -> new int[]{4, 4};
+            case "ATTACK_LEFT_CORNER" -> new int[]{6, 0};
+            case "ATTACK_RIGHT_CORNER" -> new int[]{6, 5};
             case "DEFEND_LEFT_CORNER" -> new int[]{0, 0};
-            case "DEFEND_RIGHT_CORNER" -> new int[]{0, 4};
+            case "DEFEND_RIGHT_CORNER" -> new int[]{0, 5};
             default -> parseCellKey(ballState);
         };
     }
 
     private static int[] parseCellKey(String cellKey) {
-        if (cellKey == null || !cellKey.startsWith("CELL_")) return new int[]{2, 2};
+        if (cellKey == null || !cellKey.startsWith("CELL_")) return new int[]{3, 2};
         String[] parts = cellKey.split("_");
-        if (parts.length != 3) return new int[]{2, 2};
+        if (parts.length != 3) return new int[]{3, 2};
         try {
-            return new int[]{clamp(Integer.parseInt(parts[1])), clamp(Integer.parseInt(parts[2]))};
+            return new int[]{clampToRow(Integer.parseInt(parts[1])), clampToCol(Integer.parseInt(parts[2]))};
         } catch (NumberFormatException e) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
     }
 
-    private static int clamp(int v) {
-        return Math.max(0, Math.min(4, v));
+    private static int clampToRow(int v) {
+        return Math.max(0, Math.min(6, v));
+    }
+
+    private static int clampToCol(int v) {
+        return Math.max(0, Math.min(5, v));
     }
 
     private record SlotInfo(String anchorCellKey, String line, String role) {}

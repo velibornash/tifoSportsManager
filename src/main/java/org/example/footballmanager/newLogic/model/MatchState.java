@@ -35,6 +35,7 @@ public class MatchState {
     public String lastTouchTeam;
     public StoppageType stoppage;
     public int stoppageTicks;
+    public String transitPossessionTeam;
 
     public final List<MatchEvent> events = new ArrayList<>();
     public final List<TickSnapshot> tickHistory = new ArrayList<>();
@@ -46,6 +47,7 @@ public class MatchState {
     public final Set<Long> injuredPlayers = new HashSet<>();
     public final Set<Long> sentOffPlayers = new HashSet<>();
     public final Map<Long, Integer> playerYellowCards = new HashMap<>();
+    public final Map<Long, Integer> playerLastCardTick = new HashMap<>();
     public final Map<Long, Integer> playerOffsideStreak = new HashMap<>();
     public final Map<Long, String> playerSlotKeys = new HashMap<>();
 
@@ -54,6 +56,7 @@ public class MatchState {
     public Long lastPassFromId, lastPassToId;
     public Long lastPasserId; // For assist tracking
     public Long pendingPenaltyTakerId;
+    public String pendingPenaltyTeamSide;
     public Long kickoffTakerId;
     public Long restartTakerId;
     public String restartTeamSide;

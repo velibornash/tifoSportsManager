@@ -11,6 +11,9 @@ public final class OffsideTracker {
 
     private static final Logger log = LoggerFactory.getLogger(OffsideTracker.class);
 
+    // How long flagged attackers keep retreating after an offside (ticks, 2s at 120 ticks/min)
+    private static final int OFFSIDE_RETREAT_TICKS = 240;
+
     private final Set<Long> flaggedOffside = new HashSet<>();
 
     public OffsideTracker() {}
@@ -35,6 +38,11 @@ public final class OffsideTracker {
             state.addEvent(new OffsideEvent(state.minute, state.tick,
                 receiver.playerId(), receiver.name(), attackingTeam));
             if (state.simulatorMetrics != null) state.simulatorMetrics.onOffside();
+
+            // Flag the offside so attackers retreat behind the line for a few seconds
+            state.offsideActive = true;
+            state.offsideTeam = attackingTeam;
+            state.offsideTick = state.tick;
 
             // Reset all attackers to behind offside line
             resetAttackersBehindOffsideLine(state, attackingTeam, offsideLine);
@@ -73,6 +81,40 @@ public final class OffsideTracker {
         // Legacy update — no longer used for tick-based checks
     }
 
+    /**
+     * Clear-situation override: attackers who were flagged offside retreat behind
+     * the offside line for a few seconds instead of continuing forward runs.
+     * Returns the player ids whose desired position was overridden this tick.
+     */
+    public List<Long> updateRetreat(MatchState state) {
+        List<Long> retreated = new ArrayList<>();
+        if (!state.offsideActive) return retreated;
+        if (state.tick - state.offsideTick > OFFSIDE_RETREAT_TICKS) {
+            state.offsideActive = false;
+            return retreated;
+        }
+
+        String attackingTeam = state.offsideTeam;
+        String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
+        double offsideLine = calculateOffsideLine(state, defendingTeam);
+        boolean home = attackingTeam.equals("HOME");
+        double resetX = home ? offsideLine - 2.0 : offsideLine + 2.0;
+
+        for (PlayerSnapshot snap : state.playerSnapshots) {
+            if (!snap.teamSide().equals(attackingTeam)) continue;
+            if (snap.position() == Position.GK) continue;
+
+            boolean aheadOfLine = home ? snap.x() > offsideLine : snap.x() < offsideLine;
+            if (aheadOfLine) {
+                snap.setDesiredPosition(resetX, snap.y());
+                snap.setIntent(PlayerSnapshot.Intent.RETURN_TO_SHAPE);
+                snap.setReason("Offside retreat");
+                retreated.add(snap.playerId());
+            }
+        }
+        return retreated;
+    }
+
     public boolean isOffside(MatchState state, PlayerSnapshot snap) {
         String attackingTeam = snap.teamSide();
         String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
@@ -80,7 +122,7 @@ public final class OffsideTracker {
         return isPlayerOffside(snap, attackingTeam, offsideLine, state.ball.x());
     }
 
-    private double calculateOffsideLine(MatchState state, String defendingTeam) {
+    public double calculateOffsideLine(MatchState state, String defendingTeam) {
         List<Double> defenderXPositions = new ArrayList<>();
 
         for (PlayerSnapshot snap : state.playerSnapshots) {
@@ -91,7 +133,17 @@ public final class OffsideTracker {
 
         if (defenderXPositions.isEmpty()) return 0;
 
-        defenderXPositions.sort(Comparator.reverseOrder());
+        // FIFA rule: offside line = second-to-last opponent, measured from the
+        // attacker's goal. When HOME defends (own goal at x=0) the line is the
+        // 2nd-smallest x; when AWAY defends (own goal at x=100) it is the
+        // 2nd-largest x. Always taking the 2nd largest pinned AWAY attackers
+        // to the top of the pitch when HOME's forwards pushed up.
+        boolean homeDefends = "HOME".equals(defendingTeam);
+        if (homeDefends) {
+            defenderXPositions.sort(Comparator.naturalOrder());
+        } else {
+            defenderXPositions.sort(Comparator.reverseOrder());
+        }
 
         if (defenderXPositions.size() >= 2) {
             return defenderXPositions.get(1);

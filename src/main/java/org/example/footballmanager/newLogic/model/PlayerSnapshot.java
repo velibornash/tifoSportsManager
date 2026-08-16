@@ -34,8 +34,16 @@ public final class PlayerSnapshot {
     public enum Intent {
         RETURN_TO_SHAPE,
         PRESS,
+        MARK,
+        INTERCEPT,
+        CHASE_BALL,
         SUPPORT,
-        TRACK_RUNNER
+        OVERLAP,
+        UNDERLAP,
+        MAKE_RUN,
+        HOLD_POSITION,
+        CARRY_BALL,
+        GK_TRACK
     }
 
     public PlayerSnapshot(long playerId, String name, String teamSide, Position position,

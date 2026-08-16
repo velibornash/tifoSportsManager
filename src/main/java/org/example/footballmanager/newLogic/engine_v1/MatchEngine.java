@@ -1141,9 +1141,9 @@ public class MatchEngine {
             decision = "Confirmed";
         }
 
-        VARReviewEvent var = new VARReviewEvent();
-        var.setMinute(minute);
-        var.setDecision(decision);
+        VarReviewEvent var = new VarReviewEvent(minute, rt.tick, 0L, "",
+                decision, "VAR",
+                "VAR Review: " + decision + " at minute " + minute);
         log.info("VAR Review: {} at minute {}", decision, minute);
     }
 

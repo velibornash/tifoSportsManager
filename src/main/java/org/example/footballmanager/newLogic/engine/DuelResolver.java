@@ -12,14 +12,100 @@ public final class DuelResolver {
 
     public DuelResolver() {}
 
+    /**
+     * Pass outcome resolver. Determines what actually happened to a played
+     * pass — completed, intercepted, misplaced (inaccurate), or deflected /
+     * driven out of bounds — using skill-weighted probabilities. Pure
+     * resolution: the caller (simulator) is responsible for events, stats and
+     * state transitions. Returns the landing point for each outcome so the
+     * ball always travels to a real location (no teleportation).
+     */
+    public PassResolution resolvePass(PlayerSnapshot carrier, PlayerSnapshot receiver,
+                                      java.util.List<PlayerSnapshot> allSnapshots) {
+        double passQuality = (carrier.passing() + carrier.technique()) / 40.0;
+        double distance = carrier.distanceTo(receiver);
+
+        // Interception by the nearest opponent marking the receiver zone
+        double interceptChance = 0.08 * (1.0 - passQuality);
+        if (RNG.nextDouble() < interceptChance) {
+            PlayerSnapshot interceptor = findNearestOpponent(receiver, carrier.teamSide(), allSnapshots);
+            if (interceptor != null && interceptor.distanceTo(receiver) < 6.0) {
+                return new PassResolution(PassOutcomeType.INTERCEPTED, interceptor,
+                    interceptor.x(), interceptor.y(), distance);
+            }
+        }
+
+        // Misplaced pass: the ball flies to an error spot and lands loose
+        double inaccuracyChance = 0.12 * (2.0 - passQuality);
+        if (RNG.nextDouble() < inaccuracyChance) {
+            double errX = clamp(receiver.x() + (RNG.nextDouble() - 0.5) * 8.0,
+                MatchState.MIN_X, MatchState.MAX_X);
+            double errY = clamp(receiver.y() + (RNG.nextDouble() - 0.5) * 8.0,
+                 MatchState.MIN_Y, MatchState.MAX_Y);
+            return new PassResolution(PassOutcomeType.INACCURATE, null, errX, errY, distance);
+        }
+
+        // Out of bounds: forced mis-hit (set piece generator) or deflection by
+        // a defender crowding the receiver. Restarts are handled by the rules
+        // engine when the ball crosses the line — no instant repositioning.
+        int nearbyBlockers = 0;
+        for (PlayerSnapshot opp : allSnapshots) {
+            if (opp.teamSide().equals(carrier.teamSide())) continue;
+            if (opp.distanceTo(receiver) < 4.0) nearbyBlockers++;
+        }
+        boolean forcedOut = RNG.nextDouble() < 0.18;
+        boolean deflectedOut = nearbyBlockers > 0
+            && RNG.nextDouble() < (0.15 + nearbyBlockers * 0.05);
+        if (forcedOut || deflectedOut) {
+            double ox = receiver.x() + (receiver.x() - carrier.x()) * 0.4;
+            double oy = receiver.y() + (receiver.y() - carrier.y()) * 0.4;
+            if (RNG.nextDouble() < 0.5) {
+                oy = RNG.nextBoolean() ? MatchState.MAX_Y + 2.0 : MatchState.MIN_Y - 2.0;
+            } else {
+                ox = RNG.nextBoolean() ? MatchState.MAX_X + 2.0 : MatchState.MIN_X - 2.0;
+            }
+            return new PassResolution(PassOutcomeType.OUT_OF_BOUNDS, null, ox, oy, distance);
+        }
+
+        return new PassResolution(PassOutcomeType.COMPLETED, null,
+            receiver.x(), receiver.y(), distance);
+    }
+
+    private static PlayerSnapshot findNearestOpponent(PlayerSnapshot from, String teamSide,
+                                                      java.util.List<PlayerSnapshot> allSnapshots) {
+        PlayerSnapshot nearest = null;
+        double minDist = Double.MAX_VALUE;
+        for (PlayerSnapshot snap : allSnapshots) {
+            if (snap.teamSide().equals(teamSide)) continue;
+            double d = from.distanceTo(snap);
+            if (d < minDist) {
+                minDist = d;
+                nearest = snap;
+            }
+        }
+        return nearest;
+    }
+
+    private static double clamp(double v, double min, double max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    public enum PassOutcomeType {
+        COMPLETED, INTERCEPTED, INACCURATE, OUT_OF_BOUNDS
+    }
+
+    public record PassResolution(PassOutcomeType outcome, PlayerSnapshot interceptor,
+                                 double x, double y, double distance) {}
+
+
     public DuelResult resolveShotDuel(PlayerSnapshot shooter, PlayerSnapshot goalkeeper, double distance, double xG) {
         double shootSkill = shooter.shooting() + shooter.technique();
         double gkSkill = goalkeeper != null ? goalkeeper.defending() + (goalkeeper instanceof PlayerSnapshot ? 10 : 0) : 5;
 
         // Longer shots miss the target more often (real football: off-target rate
-        // climbs with distance). Close shots are almost always on target.
-        double missChance = 0.05 + Math.max(0, (distance - 8.0)) * 0.025;
-        missChance = Math.min(0.55, missChance);
+        // climbs with distance). Roughly a third of all shots are on target.
+        double missChance = 0.42 + Math.max(0, (distance - 8.0)) * 0.03;
+        missChance = Math.min(0.80, missChance);
 
         double saveChance = 0.45 + (gkSkill / 40.0) * 0.30;
 
@@ -124,6 +210,83 @@ public final class DuelResolver {
         return new DuelResult(carrierWins,
             carrierWins ? "CARRIER_WINS" : "TACKLE_WON", carrierChance);
     }
+
+    /**
+     * Resolves what happens when a shot misses — does it go out for a corner
+     * or a goal kick? This is pure resolution: the caller already decided to
+     * shoot, we just determine the physical outcome.
+     */
+    public ShotMissOutcome resolveShotMissOutcome(PlayerSnapshot shooter, double shotX, double shotY) {
+        boolean home = shooter.teamSide().equals("HOME");
+        boolean nearOpponentGoal = home ? shotX > 85 : shotX < 15;
+        boolean nearOwnGoal = home ? shotX < 15 : shotX > 85;
+
+        // Shot went out near opponent's goal line → attacking team gets corner
+        if (nearOpponentGoal) {
+            return new ShotMissOutcome(true, "CORNER");
+        }
+        // Shot went out near own goal line → defending team gets goal kick
+        if (nearOwnGoal) {
+            return new ShotMissOutcome(false, "GOAL_KICK");
+        }
+
+        // Random direction for shots from distance
+        if (RNG.nextDouble() < 0.5) {
+            return new ShotMissOutcome(true, "CORNER");
+        } else {
+            return new ShotMissOutcome(true, "GOAL_KICK");
+        }
+    }
+
+    /**
+     * Resolves cross accuracy — does the cross find its target or go out?
+     * Pure resolution: the carrier already decided to cross.
+     */
+    public CrossOutcome resolveCrossOutcome(PlayerSnapshot carrier, double crossQuality) {
+        boolean accurate = RNG.nextDouble() < (0.4 + crossQuality * 0.4);
+
+        if (!accurate) {
+            // 15% chance goes out for goal kick regardless of accuracy
+            if (RNG.nextDouble() < 0.15) {
+                return new CrossOutcome(false, true, "GOAL_KICK");
+            }
+            return new CrossOutcome(false, false, "LOOSE");
+        }
+
+        // 15% chance accurate cross still goes out for goal kick
+        if (RNG.nextDouble() < 0.15) {
+            return new CrossOutcome(true, true, "GOAL_KICK");
+        }
+
+        return new CrossOutcome(true, false, "ACCURATE");
+    }
+
+    /**
+     * Resolves clearance — does the defender find a teammate or clear to a random spot?
+     */
+    public ClearanceOutcome resolveClearanceOutcome(PlayerSnapshot carrier, double clearQuality) {
+        boolean findsTeammate = RNG.nextDouble() < clearQuality * 0.3;
+
+        if (findsTeammate) {
+            PlayerSnapshot teammate = findBestClearanceTarget(carrier);
+            if (teammate != null) {
+                return new ClearanceOutcome(true, teammate.playerId(), teammate.x(), teammate.y());
+            }
+        }
+
+        double targetX = carrier.teamSide().equals("HOME") ? 70.0 : 30.0;
+        double targetY = 50.0 + (RNG.nextDouble() - 0.5) * 40.0;
+        return new ClearanceOutcome(false, -1, targetX, targetY);
+    }
+
+    private PlayerSnapshot findBestClearanceTarget(PlayerSnapshot carrier) {
+        // This is a simplified version — the full logic is in MatchSimulator
+        return null;
+    }
+
+    public record ShotMissOutcome(boolean attackingTeamGetsRestart, String restartType) {}
+    public record CrossOutcome(boolean accurate, boolean goalKick, String result) {}
+    public record ClearanceOutcome(boolean foundTeammate, long teammateId, double targetX, double targetY) {}
 
     public record DuelResult(boolean attackerWins, String resultType, double xG, boolean goal, boolean saved) {
         public DuelResult(boolean attackerWins, String resultType, double probability) {

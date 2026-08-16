@@ -12,7 +12,8 @@ public sealed interface MatchEvent
             CrossEvent, CrossClearedEvent, CrossHeaderEvent,
             ClearanceEvent,
             GkSaveEvent, GkCatchEvent, GkPunchEvent, GkDistributionEvent,
-            ThroughBallEvent, LongBallEvent {
+            ThroughBallEvent, LongBallEvent, VarReviewEvent, LooseBallEvent,
+            BallCarrierDecisionEvent {
 
     int minute();
     int tick();
@@ -35,7 +36,8 @@ public sealed interface MatchEvent
         CORNER, THROW_IN, GOAL_KICK,
         CLEARANCE,
         GK_SAVE, GK_CATCH, GK_PUNCH, GK_DISTRIBUTION,
-        POSSESSION_START, POSSESSION_END,
-        INJURY, SUBSTITUTION
+        POSSESSION_START, POSSESSION_END, LOOSE_BALL, BALL_CARRIER_DECISION,
+        INJURY, SUBSTITUTION,
+        VAR_REVIEW
     }
 }
