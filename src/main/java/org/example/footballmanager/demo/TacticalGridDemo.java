@@ -69,6 +69,9 @@ public class TacticalGridDemo extends JFrame {
     // --- UI / interakcija ---
     private static final int CONTROLS_WIDTH = 300;
     private static final int PLAYER_SELECT_RADIUS = 40;
+    // Veličina "razmicanja" igrača koji dele isto polje — nasloženi kao karte
+    private static final int FAN_STEP_X = 15;
+    private static final int FAN_STEP_Y = 12;
     private static final int AUTO_RUN_DELAY_MS = 2000;
     private static final int MAX_ACTION_LOG_LINES = 6;
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
@@ -589,11 +592,13 @@ public class TacticalGridDemo extends JFrame {
     /**
      * Crtanje igraca: iscrtava igraca na njegovoj trenutnoj poziciji.
      * Pozicija, boja i oznaka se cita iz {@link Player} stanja.
+     * Opcioni (dx, dy) pomeraj u pikselima koristi se kod naslaganih igraca
+     * (lepeza karata), inace je (0, 0).
      */
-    private static void drawPlayer(Graphics2D g2d, Player player) {
+    private static void drawPlayer(Graphics2D g2d, Player player, int dx, int dy) {
         Position position = player.getPosition();
-        int centerX = cellCenterX(position.getColumn());
-        int centerY = cellCenterY(position.getRow());
+        int centerX = cellCenterX(position.getColumn()) + dx;
+        int centerY = cellCenterY(position.getRow()) + dy;
         drawPlayerCircle(g2d, centerX, centerY, player.getColor(), player.getLabel());
     }
 
@@ -618,10 +623,10 @@ public class TacticalGridDemo extends JFrame {
      * pocetku turna je na trenutnom nosiocu, a kad se nosilac promeni — na
      * novom). Cisto vizuelni highlight, ne menja stanje igraca.
      */
-    private static void drawCarrierRing(Graphics2D g2d, Player carrier) {
+    private static void drawCarrierRing(Graphics2D g2d, Player carrier, int dx, int dy) {
         Position position = carrier.getPosition();
-        int centerX = cellCenterX(position.getColumn());
-        int centerY = cellCenterY(position.getRow());
+        int centerX = cellCenterX(position.getColumn()) + dx;
+        int centerY = cellCenterY(position.getRow()) + dy;
         g2d.setColor(COLOR_CARRIER_RING);
         g2d.setStroke(new BasicStroke(5));
         g2d.drawOval(centerX - 42, centerY - 42, 84, 84);
@@ -634,10 +639,10 @@ public class TacticalGridDemo extends JFrame {
      * Mali trougao-pokazivac iznad selektovanog igraca — jasno se razlikuje
      * od prstena nosioca. UI-only prikaz (ne menja stanje igraca).
      */
-    private static void drawSelectionMarker(Graphics2D g2d, Player player) {
+    private static void drawSelectionMarker(Graphics2D g2d, Player player, int dx, int dy) {
         Position position = player.getPosition();
-        int cx = cellCenterX(position.getColumn());
-        int cy = cellCenterY(position.getRow());
+        int cx = cellCenterX(position.getColumn()) + dx;
+        int cy = cellCenterY(position.getRow()) + dy;
         int tipY = cy - 38;
         int baseY = tipY - 14;
         int[] xs = {cx, cx - 9, cx + 9};
@@ -648,6 +653,61 @@ public class TacticalGridDemo extends JFrame {
         g2d.setColor(Color.BLACK);
         g2d.fillPolygon(xs, ys, 3);
     }
+
+    /**
+     * Crtanje grupe igraca koji dele isto polje. Ako je na polju samo jedan
+     * igrac — crta se normalno. Ako ih je vise — crtaju se kao naslozene
+     * karte: svaka sledeca karta je pomerena za {@link #FAN_STEP_X}/
+     * {@link #FAN_STEP_Y} piksela u donji-desni smer, pa se svaka vidi ivicom.
+     * Selektovani igrac (pa onda nosilac lopte) ide na VECNA (poslednja)
+     * karta — on je najvidljiviji.
+     */
+    private static void drawStack(Graphics2D g2d, List<Player> stack, Player carrier, Player selected) {
+        int n = stack.size();
+        if (n == 1) {
+            Player p = stack.get(0);
+            if (p == carrier) {
+                drawCarrierRing(g2d, p, 0, 0);
+            }
+            drawPlayer(g2d, p, 0, 0);
+            if (p == selected) {
+                drawSelectionMarker(g2d, p, 0, 0);
+            }
+            return;
+        }
+
+        List<Player> ordered = new ArrayList<>(stack);
+        ordered.sort(Comparator.comparingInt(p -> stackPriority(p, selected, carrier)));
+        for (int i = 0; i < n; i++) {
+            Player p = ordered.get(i);
+            int dx = (i - (n - 1)) * FAN_STEP_X;
+            int dy = (i - (n - 1)) * FAN_STEP_Y;
+            if (p == carrier) {
+                drawCarrierRing(g2d, p, dx, dy);
+            }
+            drawPlayer(g2d, p, dx, dy);
+            if (p == selected) {
+                drawSelectionMarker(g2d, p, dx, dy);
+            }
+        }
+    }
+
+    /**
+     * Prioritet igraca unutar naslagane grupe: selektovani igrac je na
+     * "vecem" (vidljivijem) mestu, zatim nosilac lopte, pa ostali.
+     */
+    private static int stackPriority(Player player, Player selected, Player carrier) {
+        if (player == selected) {
+            return 2;
+        }
+        if (player == carrier) {
+            return 1;
+        }
+        return 0;
+    }
+
+    /** Kljuc polja (red, kolona) po kome grupisemo igrace za naslagano crtanje. */
+    private record CellKey(int row, int col) {}
 
     /**
      * Validacija koordinatnog sistema. Vraća true ako su sve provere prošle.
@@ -939,15 +999,17 @@ public class TacticalGridDemo extends JFrame {
             // Igraci: renderer samo cita poziciju iz svakog Player objekta.
             // Prsten nosioca prati TRENUTNOG nosioca lopte (na pocetku turna i
             // kad se nosilac promeni — na novom). Selekcija je samo mali trougao.
+            // Igraci koji su na ISTOM polju crtaju se kao naslozene karte (lepeza),
+            // da se vidi da ih je vise, a ne da se poklapaju jedno preko drugog.
             Player carrier = simulation.getCarrier();
+            Map<CellKey, List<Player>> stacks = new LinkedHashMap<>();
             for (Player player : players) {
-                if (player == carrier) {
-                    drawCarrierRing(g2d, player);
-                }
-                drawPlayer(g2d, player);
-                if (player == selectedPlayer) {
-                    drawSelectionMarker(g2d, player);
-                }
+                Position pos = player.getPosition();
+                CellKey key = new CellKey((int) Math.round(pos.getRow()), (int) Math.round(pos.getColumn()));
+                stacks.computeIfAbsent(key, k -> new ArrayList<>()).add(player);
+            }
+            for (List<Player> stack : stacks.values()) {
+                drawStack(g2d, stack, carrier, selectedPlayer);
             }
 
             // Lopta se crta POSLEDNJA — uvek ON TOP, vidljiva i kad je preko igraca.
