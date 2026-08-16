@@ -669,6 +669,21 @@
             text-overflow: ellipsis;
         }
 
+        .squad-player-rating {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            font-size: 0.72em;
+            font-weight: 700;
+            margin-left: 6px;
+            line-height: 1.3;
+        }
+
         .squad-player-badges {
             display: inline-flex;
             flex-wrap: wrap;
@@ -1609,6 +1624,11 @@
                                 <span class="stat-value home" id="stat-home-big-chances">0</span>
                                 <span class="stat-label">Big chances</span>
                                 <span class="stat-value away" id="stat-away-big-chances">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-value home" id="stat-home-possession">50%</span>
+                                <span class="stat-label">Possession</span>
+                                <span class="stat-value away" id="stat-away-possession">50%</span>
                             </div>
                             <div class="stat-row">
                                 <span class="stat-value home" id="stat-home-corners">0</span>

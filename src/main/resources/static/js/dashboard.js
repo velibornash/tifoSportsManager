@@ -386,19 +386,19 @@ function loadDashboard() {
 
             <div class="stats-grid clickable" onclick="loadLeagueTable()">
                 <div class="stat-item">
-                    <div class="stat-value">1</div>
+                    <div class="stat-value">—</div>
                     <div class="stat-label">Position</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">—</div>
                     <div class="stat-label">Points</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">0-0-0</div>
+                    <div class="stat-value">—</div>
                     <div class="stat-label">W-D-L</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">0</div>
+                    <div class="stat-value">—</div>
                     <div class="stat-label">Goal Diff</div>
                 </div>
             </div>

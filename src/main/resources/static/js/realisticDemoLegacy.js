@@ -152,8 +152,8 @@ function hydrateReplayMetadata(metadata) {
     matchData.homeTeam = metadata.homeTeamName || metadata.home_team_name || matchData.homeTeam;
     matchData.awayTeam = metadata.awayTeamName || metadata.away_team_name || matchData.awayTeam;
 
-    homeScore = Number(metadata.homeGoals ?? metadata.home_goals ?? 0);
-    awayScore = Number(metadata.awayGoals ?? metadata.away_goals ?? 0);
+    homeScore = 0;
+    awayScore = 0;
     resetDerivedState();
 
     document.getElementById('homeTeam').textContent = matchData.homeTeam;

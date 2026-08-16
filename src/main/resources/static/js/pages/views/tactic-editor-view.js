@@ -93,7 +93,7 @@ export function createTacticEditorView(deps) {
         const clearFocusedRule = () => { if (state.focusedSlot && state.activeBallState) setRule(state.focusedSlot, state.activeBallState, ''); };
         const clearFocusedSlotRules = () => { Object.keys(state.rulesMap).forEach(key => { if (key.startsWith(`${state.focusedSlot}|`)) delete state.rulesMap[key]; }); saveDraft(); };
         const hasDraft = () => useDraft;
-        const parseCellKey = (cellKey) => { const match = String(cellKey || '').match(/^CELL_([0-4])_([0-4])$/); return match ? [Number(match[1]), Number(match[2])] : [2, 2]; };
+        const parseCellKey = (cellKey) => { const match = String(cellKey || '').match(/^CELL_([0-6])_([0-5])$/); return match ? [Number(match[1]), Number(match[2])] : [3, 2]; };
         const cellLabel = (key) => {
             if (!key) return '—';
             if (key === 'ATTACK_LEFT_CORNER') return 'Attack left corner';
@@ -101,14 +101,14 @@ export function createTacticEditorView(deps) {
             if (key === 'DEFEND_LEFT_CORNER') return 'Defend left corner';
             if (key === 'DEFEND_RIGHT_CORNER') return 'Defend right corner';
             const [progress, width] = parseCellKey(key);
-            return `${['DEF', 'DEF+', 'MID', 'ATK+', 'ATK'][progress]} · ${['L', 'CL', 'C', 'CR', 'R'][width]}`;
+            return `${['DEF', 'DEF+', 'MID', 'MID+', 'ATK+', 'ATK', 'ATK+'][progress]} · ${['L', 'CL', 'C', 'CR', 'R', 'RR'][width]}`;
         };
-        const toPitchPosition = (cellKey) => { const [progress, width] = parseCellKey(cellKey); return { left: `${(width + 0.5) * 20}%`, top: `${(4.5 - progress) * 20}%` }; };
+        const toPitchPosition = (cellKey) => { const [progress, width] = parseCellKey(cellKey); return { left: `${(width + 0.5) * (100/6)}%`, top: `${(6.5 - progress) * (100/7)}%` }; };
         const focusedSlotMeta = () => slotByKey.get(state.focusedSlot) || null;
 
         const buildCellZonesHtml = () => targetCells.map(cellKey => {
             const [progress, width] = parseCellKey(cellKey);
-            const row = 4 - progress;
+            const row = 6 - progress;
             const isActiveBall = state.activeBallState === cellKey;
             return `<div class="te-drop-cell ${isActiveBall ? 'is-ball-active' : ''}" data-te-drop="cell" data-ball-state="${cellKey}" data-target-cell="${cellKey}" style="--te-col:${width}; --te-row:${row};"><span class="te-cell-label">${htmlEscape(cellLabel(cellKey))}</span></div>`;
         }).join('');
@@ -217,7 +217,7 @@ export function createTacticEditorView(deps) {
                             <div>
                                 <div class="fm-eyebrow">Club tactics</div>
                                 <h2>Tactic Editor</h2>
-                                <p class="fm-subtle">Drag the ball to any 5x5 zone or corner state, then drag slot circles to redraw the team shape for that exact situation.</p>
+                                <p class="fm-subtle">Drag the ball to any 6x7 zone or corner state, then drag slot circles to redraw the team shape for that exact situation.</p>
                             </div>
                             ${buildClubActionsHtml('tacticEditor')}
                         </div>
@@ -270,8 +270,8 @@ export function createTacticEditorView(deps) {
                                 </div>
                             </div>
                             <div class="te-instruction-row">
-                                <span><strong>Ball:</strong> drag to 25 zones + 4 corners</span>
-                                <span><strong>Slots:</strong> drag any circle to a new 5x5 zone for the active ball state</span>
+                                <span><strong>Ball:</strong> drag to 42 zones + 4 corners</span>
+                                <span><strong>Slots:</strong> drag any circle to a new 6x7 zone for the active ball state</span>
                                 <span><strong>Focus:</strong> click a slot circle to inspect / clear it</span>
                             </div>
                         </section>

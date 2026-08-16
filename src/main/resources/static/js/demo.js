@@ -317,10 +317,13 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
     if (action === 'START_MATCH') {
         setSeasonFlowStatus(data.message || 'Opening your live match...', 'success');
         const matchId = data.matchId;
+        const dbMatchId = data.dbMatchId;
         if (!matchId) {
             throw new Error('Missing matchId in response');
         }
-        window.location.href = `/realisticDemo.html?matchId=${matchId}&mode=live`;
+        const query = new URLSearchParams({ matchId, mode: 'live' });
+        if (dbMatchId) query.set('dbMatchId', dbMatchId);
+        window.location.href = `/realisticDemo.html?${query.toString()}`;
         return;
     }
 
@@ -348,7 +351,9 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
         persistWeekPreparationTarget(null);
         if (target === 'match') {
             if (data.userMatchId) {
-                window.location.href = `/realisticDemo.html?matchId=${data.userMatchId}&mode=live`;
+                const query = new URLSearchParams({ matchId: data.userMatchId, mode: 'live' });
+                if (data.dbMatchId) query.set('dbMatchId', data.dbMatchId);
+                window.location.href = `/realisticDemo.html?${query.toString()}`;
             } else {
                 setSeasonFlowStatus('No scheduled match exists for your club in the current week.', 'warning');
             }

@@ -27,6 +27,7 @@ let resumeAfterScrub = false;
 let controlsBound = false;
 let replayMode = 'replay';
 let activeFeedFilter = 'all';
+let dbMatchId = null;
 const overlayState = {
     shape: false,
     'ball-zone': true,
@@ -57,6 +58,9 @@ const keyMoments = [];
 const matchEndedImg = new Image();
 matchEndedImg.src = '/images/match_ended.jpg';
 
+let homePossession = 50;
+let awayPossession = 50;
+
 let replayEvents = [];
 let ballData = [];
 let currentInvolvedPlayerIds = new Set();
@@ -78,6 +82,7 @@ window.addEventListener('load', async () => {
     const params = new URLSearchParams(window.location.search);
     matchId = params.get('matchId');
     replayMode = (params.get('mode') || 'replay').toLowerCase() === 'live' ? 'live' : 'replay';
+    const dbMatchId = params.get('dbMatchId');
 
     if (!matchId) {
         const form = document.getElementById('match-start-form');
@@ -138,6 +143,20 @@ async function initializeReplay() {
     const metadata = await waitForReplayMetadata();
     hydrateReplayMetadata(metadata);
     await hydrateOtherMatchTicker();
+
+    // Fetch match ratings if dbMatchId is available
+    if (dbMatchId) {
+        try {
+            const lineupResponse = await authFetch(`/match-stats/lineups/${dbMatchId}`);
+            if (lineupResponse.ok) {
+                const lineupData = await lineupResponse.json();
+                mergeLineupRatings(lineupData);
+            }
+        } catch (error) {
+            console.warn('Failed to load lineup ratings:', error);
+        }
+    }
+
     refreshSquads();
     renderGoalMarkers(isReplayMode() ? resolveMetadataGoals(metadata) : []);
     updateTimelineBounds();
@@ -188,8 +207,11 @@ function hydrateReplayMetadata(metadata) {
     matchData.homeTeam = metadata.homeTeamName || metadata.home_team_name || matchData.homeTeam;
     matchData.awayTeam = metadata.awayTeamName || metadata.away_team_name || matchData.awayTeam;
 
-    homeScore = Number(metadata.homeGoals ?? metadata.home_goals ?? 0);
-    awayScore = Number(metadata.awayGoals ?? metadata.away_goals ?? 0);
+    homePossession = Number(metadata.homePossession ?? metadata.home_possession ?? 50);
+    awayPossession = Number(metadata.awayPossession ?? metadata.away_possession ?? 50);
+
+    homeScore = 0;
+    awayScore = 0;
     resetDerivedState();
 
     document.getElementById('homeTeam').textContent = matchData.homeTeam;
@@ -236,6 +258,31 @@ function registerPlayerSlot(player) {
     }
     if (normalized.shortName) {
         playerNames.set(normalize(normalized.shortName), playerId);
+    }
+}
+
+function mergeLineupRatings(lineupData) {
+    const homeLineup = Array.isArray(lineupData?.homeLineup) ? lineupData.homeLineup : [];
+    const awayLineup = Array.isArray(lineupData?.awayLineup) ? lineupData.awayLineup : [];
+
+    const ratingMap = new Map();
+    for (const player of [...homeLineup, ...awayLineup]) {
+        const playerId = Number(player.playerId ?? player.id);
+        if (Number.isFinite(playerId)) {
+            ratingMap.set(playerId, {
+                grade: Number(player.grade),
+                minutesPlayed: Number(player.minutesPlayed ?? 90)
+            });
+        }
+    }
+
+    // Merge ratings into playerSlots
+    for (const [playerId, slot] of playerSlots) {
+        const ratingData = ratingMap.get(playerId);
+        if (ratingData) {
+            slot.rating = ratingData.grade;
+            slot.minutesPlayed = ratingData.minutesPlayed;
+        }
     }
 }
 
@@ -707,12 +754,16 @@ function renderSquadList(elementId, players, replayBadgeIndex = { byId: new Map(
         const squadNumber = player.squadNumber ?? player.shirt_number ?? '?';
         const position = player.position || 'N/A';
         const badgeStats = resolveReplayBadgeStats(player, replayBadgeIndex);
+        const rating = player.rating ?? player.grade ?? null;
+        const ratingHtml = Number.isFinite(Number(rating))
+            ? `<span class="squad-player-rating" title="Match rating">${escapeHtml(String(Number(rating).toFixed(1)))}</span>`
+            : '';
         return `
             <div class="squad-player-row">
                 <span class="squad-num">${escapeHtml(String(squadNumber))}</span>
                 <div>
                     <div class="squad-player-head">
-                        <div class="squad-player-name">${escapeHtml(name)}</div>
+                        <div class="squad-player-name">${escapeHtml(name)}${ratingHtml ? ` ${ratingHtml}` : ''}</div>
                         ${buildReplayBadgesHtml(badgeStats)}
                     </div>
                     <div class="squad-player-meta">${escapeHtml(position)}</div>
@@ -2341,6 +2392,8 @@ function createTeamStats() {
 function resetDerivedState() {
     teamStats.HOME = createTeamStats();
     teamStats.AWAY = createTeamStats();
+    homePossession = 50;
+    awayPossession = 50;
     keyMoments.length = 0;
     pendingVarGoals.length = 0;
 }
@@ -2718,7 +2771,7 @@ function buildTeamSummary(side) {
         return 'Waiting for simulation...';
     }
 
-    return `xG ${formatNumber(stats.xG)} • Shots ${stats.shots} • OT ${stats.onTarget}`;
+    return `Poss ${homePossession.toFixed(0)}% • xG ${formatNumber(stats.xG)} • Shots ${stats.shots} • OT ${stats.onTarget}`;
 }
 
 function renderStatBoard() {
@@ -2734,6 +2787,8 @@ function renderStatBoard() {
     setText('stat-away-corners', String(teamStats.AWAY.corners));
     setText('stat-home-cards', formatCards(teamStats.HOME));
     setText('stat-away-cards', formatCards(teamStats.AWAY));
+    setText('stat-home-possession', `${homePossession.toFixed(1)}%`);
+    setText('stat-away-possession', `${awayPossession.toFixed(1)}%`);
 }
 
 function appendKeyMoment(event) {
