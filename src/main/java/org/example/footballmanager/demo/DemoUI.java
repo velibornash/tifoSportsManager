@@ -52,7 +52,6 @@ public class DemoUI {
     // Veličina "razmicanja" igrača koji dele isto polje — nasloženi kao karte
     private static final int FAN_STEP_X = 15;
     private static final int FAN_STEP_Y = 12;
-    private static final int AUTO_RUN_DELAY_MS = 2000;
     private static final int MAX_ACTION_LOG_LINES = 6;
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
     private static final long BALL_TRAIL_MS = 2500;    // trail se skloni posle ~2.5 sekunde
@@ -80,8 +79,6 @@ public class DemoUI {
     private Player selectedPlayer;
     private boolean autoRunActive;
     private boolean stopRequested;
-    private boolean prevInProgress;
-    private long lastActionCompletionTime;
     private long celebrationEndMs; // kraj proslave gola (0 = nema proslave)
     private javax.swing.Timer animationTimer;
     private javax.swing.Timer autoRunTimer;
@@ -255,7 +252,9 @@ public class DemoUI {
 
     /**
      * "Run All Actions" / "Stop Actions":
-     * - Start: krece odmah prva akcija, posle SVAKE završene akcije čeka 2 sekunde.
+     * - Start: krece odmah prva akcija, a svaka sledeća kreće čim se prethodna
+     *   završi — BEZ pauze između akcija. Jedina pauza je proslava gola (~5s),
+     *   koju drži sam engine (zamrzavanje tokom proslave).
      * - Stop: trenutna akcija se završava, posle toga se vise ne pokrece nova.
      *   STOP ne resetuje ništa.
      */
@@ -266,8 +265,6 @@ public class DemoUI {
         } else {
             autoRunActive = true;
             stopRequested = false;
-            prevInProgress = simulation.isActionInProgress();
-            lastActionCompletionTime = 0;
             runAllButton.setText("Stop Actions");
             logAction("Automatic execution started");
             autoRunTimer = new javax.swing.Timer(100, e -> autoRunTick());
@@ -276,30 +273,14 @@ public class DemoUI {
     }
 
     private void autoRunTick() {
-        boolean inProgress = simulation.isActionInProgress();
-        if (inProgress) {
-            prevInProgress = true;
-            return;
-        }
-        if (prevInProgress) {
-            // Akcija se upravo završila — 2s pauza se broji od OVOG trenutka.
-            prevInProgress = false;
-            lastActionCompletionTime = System.currentTimeMillis();
-        }
         if (stopRequested) {
             stopAutoRun();
             return;
         }
-        if (lastActionCompletionTime == 0) {
-            // Prva akcija nakon starta krece odmah.
-            lastActionCompletionTime = System.currentTimeMillis();
-            runNextAction();
-            return;
+        if (simulation.isActionInProgress()) {
+            return; // čekamo da se trenutna akcija završi
         }
-        if (System.currentTimeMillis() - lastActionCompletionTime >= AUTO_RUN_DELAY_MS) {
-            lastActionCompletionTime = System.currentTimeMillis();
-            runNextAction();
-        }
+        runNextAction();
     }
 
     private void stopAutoRun() {
