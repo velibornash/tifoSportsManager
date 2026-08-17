@@ -42,6 +42,13 @@ public final class DuelResolutionCoordinator {
             state.blockAfterDuel(loser);
             loser.setTarget(null);
         }
+        if (duel.getType() == DuelType.DRIBBLE
+                && result.winner() == duel.getAttacker()) {
+            // The defender is already frozen above; the ActionEngine creates
+            // a short visible bypass before the carry resumes.
+            state.setStatus(duel.getAttacker().getLabel() + " beats "
+                    + duel.getDefender().getLabel() + " in dribble");
+        }
         return result;
     }
 }

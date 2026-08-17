@@ -38,6 +38,9 @@ public class Action {
     private int skill;
     private Position intendedTarget;
     private Position actualTarget;
+    private Position executionOrigin;
+    private Position dribbleBypassTarget;
+    private boolean goalLineResolved;
     private boolean goodExecution;
     private SaveType saveType = SaveType.NONE;
     private boolean clearance;
@@ -119,6 +122,19 @@ public class Action {
 
     public void setActualTarget(Position actualTarget) {
         this.actualTarget = actualTarget;
+    }
+
+    public Position getExecutionOrigin() { return executionOrigin; }
+    public void setExecutionOrigin(Position executionOrigin) { this.executionOrigin = executionOrigin; }
+
+    public Position getDribbleBypassTarget() { return dribbleBypassTarget; }
+    public void setDribbleBypassTarget(Position dribbleBypassTarget) {
+        this.dribbleBypassTarget = dribbleBypassTarget;
+    }
+
+    public boolean isGoalLineResolved() { return goalLineResolved; }
+    public void setGoalLineResolved(boolean goalLineResolved) {
+        this.goalLineResolved = goalLineResolved;
     }
 
     /** Da li je izvedba dovoljno dobra za normalan ishod (gol / primaoc hvata). */

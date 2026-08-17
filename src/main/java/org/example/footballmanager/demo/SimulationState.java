@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Centralno STANJE simulacije. {@link SimulationEngine} je orkestrator koji
@@ -24,6 +26,8 @@ import java.util.Random;
 public class SimulationState {
 
     private static final int MAX_MESSAGES = 8;
+    private static final DateTimeFormatter APP_LOG_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
     public static final int SIMULATION_TICKS_PER_SECOND = 20;
     public static final int ACTION_PAUSE_TICKS = 0;       // nema pauze između akcija
     public static final int DUEL_LOSS_TICKS = 60;          // 3 s
@@ -101,6 +105,7 @@ public class SimulationState {
             desiredPositions.put(p, p.getPosition());
             tacticalDesiredPositions.put(p, p.getPosition());
         }
+        captureSnapshot();
     }
 
     // --- pristup radnim objektima ---
@@ -129,6 +134,11 @@ public class SimulationState {
 
     public SimulationSnapshotStore getSnapshotStore() {
         return snapshotStore;
+    }
+
+    /** Returns a stable read model for replay and future statistics exporters. */
+    public SimulationRecording getRecording() {
+        return new SimulationRecording(eventStore.snapshot(), snapshotStore.snapshot(), goalCount);
     }
 
     /** Captures the complete immutable scene without deriving it later from logs. */
@@ -285,7 +295,8 @@ public class SimulationState {
 
     public void log(String message) {
         messages.addLast(message);
-        System.out.println("[AppLog] " + message);
+        String timestamp = LocalDateTime.now().format(APP_LOG_TIME_FORMAT);
+        System.out.println("[AppLog] " + timestamp + " " + message);
         while (messages.size() > MAX_MESSAGES) {
             messages.removeFirst();
         }
@@ -470,5 +481,6 @@ public class SimulationState {
         } else {
             status = "reset";
         }
+        captureSnapshot();
     }
 }

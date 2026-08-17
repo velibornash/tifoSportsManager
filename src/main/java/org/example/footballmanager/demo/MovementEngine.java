@@ -1,5 +1,8 @@
 package org.example.footballmanager.demo;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Odgovornost: KRETANJE IGRACA.
  *
@@ -14,6 +17,7 @@ public class MovementEngine {
     private static final double MIN_PLAYER_DISTANCE = 0.35;
 
     private final SimulationState state;
+    private final Map<Player, Position> chaseDetours = new HashMap<>();
 
     public MovementEngine(SimulationState state) {
         this.state = state;
@@ -57,11 +61,45 @@ public class MovementEngine {
                 }
             }
             Position current = p.getPosition();
+            Action activeAction = state.getAction();
+            boolean dribbleBypass = activeAction != null
+                    && activeAction.getType() == Action.Type.CARRY
+                    && activeAction.getActingPlayer() == p
+                    && activeAction.getDribbleBypassTarget() != null;
+            if (dribbleBypass && distance(current, activeAction.getDribbleBypassTarget()) <= 1e-6) {
+                activeAction.setDribbleBypassTarget(null);
+                p.setTarget(activeAction.getTargetPosition());
+                target = p.getTarget();
+                dribbleBypass = false;
+            }
+            boolean activeChase = isActiveChase(p);
+            Position detour = chaseDetours.get(p);
+            if (activeChase && detour != null && distance(current, detour) <= 1e-6) {
+                chaseDetours.remove(p);
+                p.setTarget(state.getBall().getPosition());
+                target = p.getTarget();
+            }
             Position proposed = moveProposal(p, target, PLAYER_SPEED);
             Position safe = findSafePosition(p, proposed, target);
+            if (activeChase && distance(safe, current) <= 1e-12) {
+                Position escape = findChaseDetour(p, target);
+                if (escape != null) {
+                    chaseDetours.put(p, escape);
+                    p.setTarget(escape);
+                    target = escape;
+                    safe = moveProposal(p, escape, PLAYER_SPEED);
+                }
+            }
             p.setPosition(safe);
             if (distance(safe, target) < 1e-6) {
-                p.setTarget(null);
+                if (dribbleBypass) {
+                    activeAction.setDribbleBypassTarget(null);
+                    p.setTarget(activeAction.getTargetPosition());
+                } else if (activeChase && chaseDetours.remove(p) != null) {
+                    p.setTarget(state.getBall().getPosition());
+                } else {
+                    p.setTarget(null);
+                }
             } else if (distance(safe, current) < 1e-6) {
                 // Igrac je trenutno blokiran. Target ostaje sacuvan da bi
                 // mogao da se obidje prepreka; nikakav "stuck" ishod se ne
@@ -175,6 +213,49 @@ public class MovementEngine {
             }
         }
         return false;
+    }
+
+    /** Finds a real side waypoint around a blocking player for the active chase. */
+    private Position findChaseDetour(Player chaser, Position ballTarget) {
+        Position current = chaser.getPosition();
+        Position direct = moveProposal(chaser, ballTarget, PLAYER_SPEED);
+        Player blocker = state.getPlayers().stream()
+                .filter(other -> other != chaser)
+                .filter(other -> distance(direct, other.getPosition()) < MIN_PLAYER_DISTANCE
+                        || distance(current, other.getPosition()) < MIN_PLAYER_DISTANCE + PLAYER_SPEED)
+                .min((a, b) -> Double.compare(distance(a.getPosition(), direct),
+                        distance(b.getPosition(), direct)))
+                .orElse(null);
+        if (blocker == null) return null;
+
+        double rowDelta = blocker.getPosition().getRow() - current.getRow();
+        double colDelta = blocker.getPosition().getColumn() - current.getColumn();
+        double length = Math.hypot(rowDelta, colDelta);
+        if (length < 1e-9) length = 1;
+        double sideRow = -colDelta / length;
+        double sideCol = rowDelta / length;
+        Position[] candidates = {
+                clampPos(blocker.getPosition().getRow() + sideRow * 0.55,
+                        blocker.getPosition().getColumn() + sideCol * 0.55),
+                clampPos(blocker.getPosition().getRow() - sideRow * 0.55,
+                        blocker.getPosition().getColumn() - sideCol * 0.55),
+                clampPos(blocker.getPosition().getRow() + sideRow * 0.8,
+                        blocker.getPosition().getColumn() + sideCol * 0.8),
+                clampPos(blocker.getPosition().getRow() - sideRow * 0.8,
+                        blocker.getPosition().getColumn() - sideCol * 0.8)
+        };
+        Position best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Position candidate : candidates) {
+            if (!wouldOverlap(chaser, candidate)) {
+                double score = distance(current, candidate) + distance(candidate, ballTarget) * 0.15;
+                if (score < bestScore) {
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+        }
+        return best;
     }
 
     private static Position clampPos(double row, double col) {

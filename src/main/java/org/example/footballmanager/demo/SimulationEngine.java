@@ -85,6 +85,11 @@ public class SimulationEngine {
         return state.getSnapshotStore();
     }
 
+    /** Immutable aggregate containing all saved events and tick snapshots. */
+    public SimulationRecording getRecording() {
+        return state.getRecording();
+    }
+
     /**
      * Jedan TICK animacije (poziva ga Timer svakih ~16ms):
      * pomera igrace ka ciljevima, lopta leti ka cilju (pas/sut),
@@ -223,24 +228,28 @@ public class SimulationEngine {
                 return;
             }
 
-            // Lopta je stigla do svoje STVARNE mete (ne gola)
-            if (MovementEngine.distance(state.getBall().getPosition(),
-                                        action.getActualTarget()) <= 1e-9) {
-                if (action.isGoodExecution()) {
-                    DuelResult duelResult = duelResolution.resolve(action);
-                    if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
-                        actionEngine.shotSaved(duelResult.winner());
-                    } else {
-                        if (MovementEngine.distance(action.getActualTarget(), ActionEngine.GOAL_POSITION) <= 1e-9) {
-                            actionEngine.continueGoalAfterGkDuel();
-                        } else {
-                            actionEngine.goalScored();
-                        }
-                    }
+            // The goal line is a calculation boundary only. A good shot flies
+            // directly to row 8; resolve the GK duel when that visual path
+            // crosses row 7, without redirecting the ball to (7, 3.5).
+            if (action.isGoodExecution() && !action.isGoalLineResolved()
+                    && state.getBall().getPosition().getRow() >= ActionEngine.GOAL_POSITION.getRow()) {
+                DuelResult duelResult = duelResolution.resolve(action);
+                if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                    actionEngine.shotSaved(duelResult.winner());
                 } else {
-                    actionEngine.shotMissed();
-                    scheduleAwayRestart(state.getBall().getPosition());
+                    actionEngine.continueGoalAfterGkDuel();
                 }
+            }
+
+            if (state.hasActiveAction() && action.isGoalLineResolved()
+                    && MovementEngine.distance(state.getBall().getPosition(),
+                                               action.getActualTarget()) <= 1e-9) {
+                actionEngine.goalScored();
+            } else if (state.hasActiveAction() && !action.isGoodExecution()
+                    && MovementEngine.distance(state.getBall().getPosition(),
+                                               action.getActualTarget()) <= 1e-9) {
+                actionEngine.shotMissed();
+                scheduleAwayRestart(state.getBall().getPosition());
             }
             duelEngine.update(state.getAction());
             return;
@@ -278,6 +287,7 @@ public class SimulationEngine {
                     return;
                 }
                 // Dribbler attacker wins: continue carry, but close this duel.
+                actionEngine.prepareDribbleBypass(duelEngine.getActiveDuel().getDefender());
                 duelEngine.closeAfterResolution();
             }
         }
@@ -288,7 +298,11 @@ public class SimulationEngine {
                 && actionPlayer != null && carryTarget != null
                 && actionPlayer.getTarget() != null) {
             double carryDistanceAfter = MovementEngine.distance(actionPlayer.getPosition(), carryTarget);
-            if (carryDistanceAfter >= carryDistanceBefore - 1e-6) {
+            // Collision avoidance may produce a tiny side movement while the
+            // carrier is still effectively blocked. Count that as stuck too;
+            // otherwise two HOME players can keep pushing/oscillating forever.
+            double carryProgress = carryDistanceBefore - carryDistanceAfter;
+            if (carryProgress < MovementEngine.PLAYER_SPEED * 0.25) {
                 blockedCarryTicks++;
             } else {
                 blockedCarryTicks = 0;
@@ -398,7 +412,9 @@ public class SimulationEngine {
                 continue;
             }
             // Cilj: celije 8_1 do 8_3 (koordinate red 8, kolone 1-3)
-            double targetCol = 2.0; // sredina izmedju 1 i 3
+            double sourceCol = p.getAlternativePosition().getColumn();
+            double targetCol = sourceCol <= 2.33 ? 1.0
+                    : sourceCol <= 4.33 ? 2.0 : 3.0;
             double targetRow = 8.0;
             Position currentPos = p.getPosition();
             // Glatko kretanje ka cilju za manji speed
@@ -414,8 +430,9 @@ public class SimulationEngine {
             // Ako je igrac gotovo na cilju, pomeri ga malo oko sebe
             if (dist <= celebSpeed) {
                 // Mini-proslava: glatko kretanje oko pozicije
-                double orbitAngle = System.currentTimeMillis() / 100.0 % (2 * Math.PI);
-                double orbitRadius = 0.1;
+                double orbitAngle = System.currentTimeMillis() / 100.0
+                        + (p.getId().hashCode() & 0xFF) * 0.08;
+                double orbitRadius = 0.28;
                 p.setPosition(new Position(
                         targetRow + Math.sin(orbitAngle) * orbitRadius,
                         targetCol + Math.cos(orbitAngle) * orbitRadius));

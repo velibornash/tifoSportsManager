@@ -145,9 +145,56 @@ public class ActionEngine {
         double nr = MovementEngine.clamp(r + dr, 1, 7);
         double nc = MovementEngine.clamp(c + dc, 1, 6);
         carrier.setTarget(new Position(nr, nc));
+        Position carryTarget = new Position(nr, nc);
+        carrier.setTarget(carryTarget);
         start(Action.Type.CARRY, "CARRY: " + carrier.getLabel() + " -> "
-                + formatPosition(new Position(nr, nc)));
+                + formatPosition(carryTarget));
+        state.getAction().setTargetPosition(carryTarget);
         state.incrementActionCount();
+    }
+
+    /**
+     * After winning a dribble duel, the carrier visibly goes past the defender
+     * instead of changing possession at the same point.
+     */
+    public void prepareDribbleBypass(Player defender) {
+        Action action = state.getAction();
+        Player carrier = state.getCarrier();
+        if (action == null || carrier == null || defender == null) return;
+
+        Position current = carrier.getPosition();
+        Position finalTarget = action.getTargetPosition() != null
+                ? action.getTargetPosition() : carrier.getTarget();
+        if (finalTarget == null) return;
+
+        double forwardRow = finalTarget.getRow() - current.getRow();
+        double forwardCol = finalTarget.getColumn() - current.getColumn();
+        double length = Math.hypot(forwardRow, forwardCol);
+        if (length < 1e-9) {
+            forwardRow = 1.0;
+            forwardCol = 0.0;
+            length = 1.0;
+        }
+        forwardRow /= length;
+        forwardCol /= length;
+
+        double toDefenderRow = defender.getPosition().getRow() - current.getRow();
+        double toDefenderCol = defender.getPosition().getColumn() - current.getColumn();
+        double sideRow = -forwardCol;
+        double sideCol = forwardRow;
+        double side = toDefenderRow * sideRow + toDefenderCol * sideCol;
+        if (side > 0) {
+            sideRow = -sideRow;
+            sideCol = -sideCol;
+        }
+
+        Position bypass = new Position(
+                MovementEngine.clamp(defender.getPosition().getRow() + forwardRow * 0.5 + sideRow * 0.42, 1, 7),
+                MovementEngine.clamp(defender.getPosition().getColumn() + forwardCol * 0.5 + sideCol * 0.42, 1, 6));
+        action.setDribbleBypassTarget(bypass);
+        carrier.setTarget(bypass);
+        state.log("DRIBBLE bypass: " + carrier.getLabel() + " past "
+                + defender.getLabel() + " -> " + formatPosition(bypass));
     }
 
     /** Smer po redovima: blagi nagib NAPRED (ka away golu): 50% +1, 25% 0, 25% -1. */
@@ -178,13 +225,14 @@ public class ActionEngine {
 
 /** Odluka o sutu: lopta leti ka away golu sa odstupanjem zavisnim od skill-a. */
     public void executeShot() {
+        Position shotOrigin = state.getCarrier().getPosition();
         ExecutionQuality.ShotResult result = executionQuality.evaluateShot(GOAL_POSITION);
 
         state.getBall().setCarrier(null);
         // For a goal, set target to row 8 (through the goal) so animation shows ball flying through
         // For a miss, actualTarget already has the out-of-bounds position
         Position shotTarget = result.goal()
-                ? GOAL_POSITION
+                ? GOAL_EXIT_POSITION
                 : new Position(8.0, result.actualTarget().getColumn());
         state.getBall().setTarget(shotTarget);
 
@@ -196,11 +244,12 @@ public class ActionEngine {
 
         Action action = state.getAction();
         action.setTargetPosition(GOAL_POSITION);
+        action.setExecutionOrigin(shotOrigin);
         action.setSkill(result.skill());
         action.setIntendedTarget(GOAL_POSITION);
         // Dobar šut prvo mora fizički da stigne do gol-linije. Tek posle
         // duela sa GK lopta nastavlja kroz gol do reda 8.
-        action.setActualTarget(result.goal() ? GOAL_POSITION : shotTarget);
+        action.setActualTarget(shotTarget);
         action.setGoodExecution(result.goal());
         state.incrementActionCount();
         state.incrementShotCount();
@@ -331,8 +380,7 @@ public class ActionEngine {
     /** Nastavlja do reda 8 tek kada je šutant dobio duel sa golmanom. */
     public void continueGoalAfterGkDuel() {
         Action action = state.getAction();
-        action.setActualTarget(GOAL_EXIT_POSITION);
-        state.getBall().setTarget(GOAL_EXIT_POSITION);
+        action.setGoalLineResolved(true);
         state.log("SHOT outcome: GOAL path | ball crosses goal line and continues to row 8");
     }
 

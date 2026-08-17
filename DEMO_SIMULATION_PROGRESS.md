@@ -335,3 +335,48 @@ The snapshot is captured in a `finally` block around tick execution, so early
 return paths (holds, restarts, celebrations and completed actions) are recorded
 as well. Replay consumers can read the saved scene timeline directly instead
 of rebuilding it from console output or re-running random simulation decisions.
+
+## Chase and goal-animation correction
+
+An active loose-ball chase now creates a side waypoint around a blocking player
+when the direct movement proposal is fully blocked. Once the waypoint is
+reached, the chaser resumes the exact ball coordinate; the ball itself never
+moves during this detour. This keeps one active chaser while preventing a
+permanent visual deadlock.
+
+Goal qualification still uses the actual goal line at `(7, 3.5)`. After the
+goalkeeper duel, the visual exit target is calculated as a continuation of the
+shot's incoming vector toward row 8, avoiding an artificial right-angle turn.
+Celebration targets are split across `(8,1)`, `(8,2)` and `(8,3)` based on the
+players' side of the pitch, with a small local orbit once they arrive.
+
+When the attacker wins a `DRIBBLE` duel, the defender remains frozen for the
+normal three-second duel-loss cooldown while the carrier receives a temporary
+half-cell side bypass target. After reaching that point, the original carry
+target is restored, making the successful dribble visible instead of an
+instantaneous possession switch.
+
+For a successful shot, `(7,3.5)` is now only the logical goal-line boundary
+used for outcome/GK resolution. The animated ball target is `(8,3.5)` from the
+start, so an angled shot does not visibly turn at the goal line. A save switches
+the target to the selected rebound path only after the goalkeeper resolution.
+Celebration players use three side groups with independent orbit phases around
+the three row-8 cells.
+
+## Recording boundary — Sprint D
+
+`SimulationRecording` is the read boundary for persistence consumers. It
+contains immutable copies of the append-only action/duel event timeline and
+per-tick scene snapshots, plus the current score. The initial scene and reset
+scenes are also captured, so replay consumers do not need to infer them from
+the first or last action. `SimulationEngine#getRecording()` exposes this
+aggregate without exposing mutable `SimulationState` internals.
+
+## Runtime diagnostics and carrier fallback
+
+Every console application log line now starts with a local 24-hour timestamp:
+`[AppLog] DD-MM-YYYY HH:MM:ss`. CARRY obstruction detection uses meaningful
+distance progress rather than only exact zero movement. Tiny collision-avoidance
+slides therefore still count as blocked; after three such ticks the carrier
+falls back to PASS so two HOME players cannot keep the action in an apparent
+collision loop.
