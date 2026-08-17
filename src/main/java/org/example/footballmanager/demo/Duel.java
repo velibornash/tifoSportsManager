@@ -1,6 +1,6 @@
 package org.example.footballmanager.demo;
 
-/** Jedan aktivan prostorni duel; trenutno nema uticaj na ishod akcije. */
+/** Jedan aktivan prostorni duel; resolution i posledice vode odvojeni slojevi. */
 public final class Duel {
     private final Player attacker;
     private final Player defender;

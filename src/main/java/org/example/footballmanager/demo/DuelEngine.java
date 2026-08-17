@@ -3,13 +3,14 @@ package org.example.footballmanager.demo;
 import java.util.List;
 import java.util.Locale;
 
-/** Detekcija i lifecycle duela na kontinuiranim koordinatama. */
+/** Detekcija, lifecycle i eksplicitna resolution granica duela. */
 public final class DuelEngine {
     public static final double DEFAULT_DUEL_RADIUS = 0.5;
 
     private final SimulationState state;
     private final double duelRadius;
     private Duel activeDuel;
+    private boolean activeDuelResolved;
 
     public DuelEngine(SimulationState state) {
         this(state, DEFAULT_DUEL_RADIUS);
@@ -27,7 +28,10 @@ public final class DuelEngine {
             return;
         }
 
-        Player attacker = action.getActingPlayer();
+        // Kod RECEIVE_PASS-a receiver je duel attacker; passer samo izvodi
+        // loptu i ne ucestvuje u contestu prijema.
+        Player attacker = action.getType() == Action.Type.PASS
+                ? action.getTargetPlayer() : action.getActingPlayer();
         if (attacker == null) {
             closeActiveDuel();
             return;
@@ -39,7 +43,7 @@ public final class DuelEngine {
         }
 
         Position contestPosition = contestPosition(action, attacker, contestTarget);
-        Player defender = closestOpponentTo(contestTarget, attacker, contestPosition);
+        Player defender = closestOpponentTo(action, contestTarget, attacker, contestPosition);
         if (defender == null || MovementEngine.distance(contestPosition,
                 defender.getPosition()) > duelRadius) {
             closeActiveDuel();
@@ -54,6 +58,7 @@ public final class DuelEngine {
 
         closeActiveDuel();
         activeDuel = new Duel(attacker, defender, contestPosition, type);
+        activeDuelResolved = false;
         state.log("DUEL START: " + attacker.getLabel() + " vs " + defender.getLabel()
                 + " | " + type + " | position " + format(contestPosition));
     }
@@ -64,7 +69,9 @@ public final class DuelEngine {
 
     /** Rezolucija je eksplicitna; pozivalac bira trenutak primene posledice. */
     public DuelResult resolveActiveDuel(DuelResolver resolver) {
-        return activeDuel == null ? null : resolver.resolve(activeDuel);
+        if (activeDuel == null || activeDuelResolved) return null;
+        activeDuelResolved = true;
+        return resolver.resolve(activeDuel);
     }
 
     private Player contestTarget(Action action, Player attacker) {
@@ -77,6 +84,7 @@ public final class DuelEngine {
     private Position contestPosition(Action action, Player attacker, Player target) {
         if (action.getType() == Action.Type.CHASE) return state.getBall().getPosition();
         if (action.getType() == Action.Type.PASS) return target.getPosition();
+        if (action.getType() == Action.Type.SHOT) return ActionEngine.GOAL_POSITION;
         return attacker.getPosition();
     }
 
@@ -89,12 +97,14 @@ public final class DuelEngine {
         };
     }
 
-    private Player closestOpponentTo(Player contestTarget, Player attacker, Position position) {
+    private Player closestOpponentTo(Action action, Player contestTarget,
+                                     Player attacker, Position position) {
         List<Player> players = state.getPlayers();
         Player best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Player candidate : players) {
             if (candidate == attacker || candidate.getTeam().equals(contestTarget.getTeam())) continue;
+            if (action.getType() == Action.Type.SHOT && !"GK".equals(candidate.getRole())) continue;
             double distance = MovementEngine.distance(candidate.getPosition(), position);
             if (distance < bestDistance) {
                 best = candidate;
@@ -109,6 +119,7 @@ public final class DuelEngine {
         state.log("DUEL END: " + activeDuel.getAttacker().getLabel() + " vs "
                 + activeDuel.getDefender().getLabel() + " | " + activeDuel.getType());
         activeDuel = null;
+        activeDuelResolved = false;
     }
 
     private static String format(Position position) {

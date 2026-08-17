@@ -46,6 +46,7 @@ public class SimulationEngine {
     private final TacticalIntentEngine tacticalIntentEngine;
     private final PlayerSelectionEngine playerSelectionEngine;
     private final DuelEngine duelEngine;
+    private final DuelResolver duelResolver;
     private int blockedCarryTicks;
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules) {
@@ -58,6 +59,7 @@ public class SimulationEngine {
         this.ballMovementEngine = new BallMovementEngine(state);
         this.playerSelectionEngine = new PlayerSelectionEngine(state);
         this.duelEngine = new DuelEngine(state);
+        this.duelResolver = new DuelResolver(random);
         this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
         this.tacticalIntentEngine = new TacticalIntentEngine(state);
         this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine);
@@ -93,10 +95,16 @@ public class SimulationEngine {
             blockedCarryTicks = 0;
         }
 
+        if (action == null && state.getPendingRestartPosition() != null
+                && state.getRestartHoldTicks() > 0) {
+            state.consumeRestartHoldTick();
+            return;
+        }
+
         // Prvi frejm ostavlja loptu na stvarnoj aut-liniji. Tek u sledecem
         // tick-u vracamo je na liniju celije i pokrecemo AWAY izvodjaca.
         if (action == null && state.getPendingRestartPosition() != null
-                && System.currentTimeMillis() >= state.getRestartHoldUntilMs()) {
+                && state.getRestartHoldTicks() == 0) {
             Position restartPosition = state.getPendingRestartPosition();
             Player restartPlayer = state.getPendingRestartPlayer();
             boolean passToHomeGoalkeeper = state.isRestartPassToHomeGoalkeeper();
@@ -108,7 +116,9 @@ public class SimulationEngine {
             return;
         }
 
-        if (action == null && System.currentTimeMillis() < state.getActionDelayUntilMs()) {
+        if (action == null && state.getActionDelayTicks() > 0) {
+            state.consumeActionDelayTick();
+            if (state.getActionDelayTicks() == 0) state.setRoundComplete(true);
             return;
         }
 
@@ -125,7 +135,12 @@ public class SimulationEngine {
                     actionEngine.passOutOfBounds();
                     scheduleAwayRestart(action.getActualTarget());
                 } else if (action.isGoodExecution()) {
-                    actionEngine.pickupPass();
+                    DuelResult duelResult = resolveDuel(action);
+                    if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                        actionEngine.giveBallTo(duelResult.winner(), "RECEIVE_PASS defender");
+                    } else {
+                        actionEngine.pickupPass();
+                    }
                 } else {
                     actionEngine.passFailed();
                 }
@@ -144,7 +159,12 @@ public class SimulationEngine {
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
                 if (action.isGoodExecution()) {
-                    actionEngine.goalScored();
+                    DuelResult duelResult = resolveDuel(action);
+                    if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                        actionEngine.shotSaved(duelResult.winner());
+                    } else {
+                        actionEngine.goalScored();
+                    }
                 } else {
                     actionEngine.shotMissed();
                     scheduleAwayRestart(state.getBall().getPosition());
@@ -171,6 +191,16 @@ public class SimulationEngine {
                 ? Double.NaN : MovementEngine.distance(beforeMove, carryTarget);
         movementEngine.moveAllTowardTargets();
         duelEngine.update(action);
+
+        if (action != null && (action.getType() == Action.Type.CHASE
+                || action.getType() == Action.Type.CARRY)) {
+            DuelResult duelResult = duelEngine.resolveActiveDuel(duelResolver);
+            if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                actionEngine.giveBallTo(duelResult.winner(), action.getType().name());
+                duelEngine.update(state.getAction());
+                return;
+            }
+        }
 
         // Carrier ne ostaje zaglavljen: ako ne moze ni minimalno da se
         // pomeri oko prepreke, odmah bira pas umesto da prekine akciju.
@@ -213,6 +243,11 @@ public class SimulationEngine {
 
         actionEngine.checkActionCompletion();
         duelEngine.update(state.getAction());
+    }
+
+    private DuelResult resolveDuel(Action action) {
+        duelEngine.update(action);
+        return duelEngine.resolveActiveDuel(duelResolver);
     }
 
     private boolean isOutsidePitch(Position position) {
@@ -265,7 +300,7 @@ public class SimulationEngine {
         state.setPendingRestartPlayer(restartPlayer);
         state.setPendingRestartPosition(restartPosition);
         state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
-        state.setRestartHoldUntilMs(System.currentTimeMillis() + 3000);
+        state.setRestartHoldTicks(60);
         state.setRoundComplete(false);
     }
 

@@ -40,7 +40,8 @@ public class SimulationStepEngine {
             return state.getStatus();
         }
 
-        if (System.currentTimeMillis() < state.getActionDelayUntilMs()) {
+        if (state.getActionDelayTicks() > 0) {
+            state.setRoundComplete(false);
             state.setStatus("carrier holding ball");
             return state.getStatus();
         }

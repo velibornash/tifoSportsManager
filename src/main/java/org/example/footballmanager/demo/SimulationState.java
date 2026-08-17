@@ -50,6 +50,8 @@ public class SimulationState {
     private boolean restartPassToHomeGoalkeeper;
     private long actionDelayUntilMs;
     private long restartHoldUntilMs;
+    private int actionDelayTicks;
+    private int restartHoldTicks;
 
     // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -186,6 +188,12 @@ public class SimulationState {
     public void setRestartPassToHomeGoalkeeper(boolean value) { restartPassToHomeGoalkeeper = value; }
     public long getActionDelayUntilMs() { return actionDelayUntilMs; }
     public void setActionDelayUntilMs(long value) { actionDelayUntilMs = value; }
+    public int getActionDelayTicks() { return actionDelayTicks; }
+    public void setActionDelayTicks(int ticks) { actionDelayTicks = Math.max(0, ticks); }
+    public void consumeActionDelayTick() { if (actionDelayTicks > 0) actionDelayTicks--; }
+    public int getRestartHoldTicks() { return restartHoldTicks; }
+    public void setRestartHoldTicks(int ticks) { restartHoldTicks = Math.max(0, ticks); }
+    public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
     public long getRestartHoldUntilMs() { return restartHoldUntilMs; }
     public void setRestartHoldUntilMs(long value) { restartHoldUntilMs = value; }
 
@@ -346,6 +354,8 @@ public class SimulationState {
         restartPassToHomeGoalkeeper = false;
         actionDelayUntilMs = 0;
         restartHoldUntilMs = 0;
+        actionDelayTicks = 0;
+        restartHoldTicks = 0;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();

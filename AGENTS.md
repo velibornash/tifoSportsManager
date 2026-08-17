@@ -104,16 +104,17 @@ Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` 
 
 `DuelEngine` detects one deterministic active opponent contest using continuous
 coordinates and a configurable 0.5-cell radius. It supports `CHASE_BALL`,
-`DRIBBLE`, `RECEIVE_PASS`, and `SHOT`, and logs lifecycle events without
-changing current action outcomes. `DuelResolver` is a side-effect-free
-resolution layer: it maps existing `PlayerSkills` extension points to the
-relevant skill, adds only `random(0..5)`, and returns `DuelResult` with winner,
-outcome, ball state, possession, and power values.
+`DRIBBLE`, `RECEIVE_PASS`, and `SHOT`, and logs lifecycle events. `DuelResolver`
+is a side-effect-free resolution layer: it maps existing `PlayerSkills` extension
+points to the relevant skill, adds only `random(0..5)`, and returns `DuelResult`
+with winner, outcome, ball state, possession, and power values.
 
 `PlayerSkills` does not yet expose receiving, tackling, or goalkeeping fields;
 `positioning` is the documented neutral placeholder for those roles.
-Resolution is explicit through `DuelEngine.resolveActiveDuel()` and is not
-automatically applied to possession, passing, carrying, or shooting yet.
+`SimulationEngine` applies the result after execution: Chase/Carry/Receive can
+change the carrier, while a goalkeeper can save a good shot. Poor shot
+execution remains a miss and does not create a duel result. The resolver itself
+never mutates state; consequences are centralized in `ActionEngine`.
 
 Other extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `MovementProfile`
 (returned by `MovementEngine.profileFor()`), `PlayerSelectionEngine.selectBestCandidate()`,

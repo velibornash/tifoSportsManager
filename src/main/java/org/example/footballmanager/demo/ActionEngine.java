@@ -179,8 +179,33 @@ public class ActionEngine {
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
-        state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
+        state.setActionDelayTicks(20);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
+    }
+
+    /** Duel winner takes the ball; used by CHASE/CARRY/RECEIVE resolution. */
+    public void giveBallTo(Player winner, String reason) {
+        Action action = state.getAction();
+        if (action != null && action.getTargetPlayer() != null) {
+            action.getTargetPlayer().setLocked(false);
+        }
+        state.getBall().setTarget(null);
+        state.getBall().setPosition(winner.getPosition());
+        state.getBall().setCarrier(winner);
+        state.setCarrier(winner);
+        winner.setTarget(null);
+        state.setActionDelayTicks(20);
+        complete("DUEL: " + winner.getLabel() + " wins | " + reason);
+    }
+
+    /** Good shot lost to the goalkeeper duel; no goal is scored. */
+    public void shotSaved(Player goalkeeper) {
+        state.getBall().setTarget(null);
+        state.getBall().setPosition(goalkeeper.getPosition());
+        state.getBall().setCarrier(goalkeeper);
+        state.setCarrier(goalkeeper);
+        state.setStatus("SHOT saved by " + goalkeeper.getLabel());
+        complete("SHOT | SAVE by " + goalkeeper.getLabel());
     }
 
     /** Gol je postignut — simulacija se zamrzava do reset-a. */
@@ -250,14 +275,14 @@ public void passFailed() {
                         state.getBall().getPosition()) <= 1e-9) {
                     state.getBall().setCarrier(state.getCarrier());
                     state.getCarrier().setTarget(null);
-                    state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
+                    state.setActionDelayTicks(20);
                     complete("CHASE: " + state.getCarrier().getLabel() + " has the ball");
                 }
             }
             case CARRY -> {
                 // If carrier has the ball and target is null, action completes
                 if (state.getCarrier().getTarget() == null && state.getBall().getCarrier() == state.getCarrier()) {
-                    state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
+                    state.setActionDelayTicks(20);
                     complete("CARRY: " + state.getCarrier().getLabel());
                 }
             }

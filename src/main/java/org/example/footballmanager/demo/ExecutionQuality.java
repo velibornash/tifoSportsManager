@@ -41,7 +41,10 @@ public class ExecutionQuality {
      * @return PassResult sa skill-om, odstupnom metom i ishodom
      */
     public PassResult evaluatePass(Position intendedTarget, Player receiver) {
-        return evaluatePass(intendedTarget, intendedTarget, receiver);
+        // Legacy API has no passer position; preserve its original deviation
+        // contract. The main simulator uses the distance-aware overload below.
+        return evaluatePass(new Position(intendedTarget.getRow() - 100, intendedTarget.getColumn()),
+                intendedTarget, receiver);
     }
 
     public PassResult evaluatePass(Position origin, Position intendedTarget, Player receiver) {
