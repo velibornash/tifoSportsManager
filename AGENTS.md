@@ -85,6 +85,9 @@ exception/    → ApiExceptionHandler (global @ControllerAdvice)
 
 **`demo/` package** — standalone Swing football grid simulation (not part of the Spring app). Composition root is `TacticalGridDemo` (`main()`), which wires:
 
+The detailed current architecture, rules, limitations and extension points are
+maintained in [DEMO_SIMULATION_PROGRESS.md](DEMO_SIMULATION_PROGRESS.md).
+
 ```
 TacticalGridDemo          → composition root (main, static test delegates)
   ├── DemoScenario        → grid config, colors, teams, 22 player defs, ball start
