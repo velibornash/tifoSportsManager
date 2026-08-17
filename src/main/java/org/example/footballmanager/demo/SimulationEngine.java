@@ -82,6 +82,7 @@ public class SimulationEngine {
      */
     public void advance() {
         state.consumeDuelCooldownTick();
+        state.consumeDuelVisualTick();
         if (state.isCelebrating()) {
             // During celebration: move home players toward goal area (row 8, cols 1-3)
             // in a slow celebration pattern, no teleport
@@ -555,4 +556,10 @@ public class SimulationEngine {
     public List<String> getAndDrainMessages() {
         return state.drainMessages();
     }
+
+    public boolean isDuelVisualActive() { return state.isDuelVisualActive(); }
+    public Player getDuelVisualAttacker() { return state.getDuelVisualAttacker(); }
+    public Player getDuelVisualDefender() { return state.getDuelVisualDefender(); }
+    public Position getDuelVisualPosition() { return state.getDuelVisualPosition(); }
+    public DuelType getDuelVisualType() { return state.getDuelVisualType(); }
 }

@@ -276,6 +276,20 @@ These are intentionally not complete yet:
 - there is no fatigue, pressing, offside, foul or card layer in this demo;
 - the demo is not the production `newLogic` match engine.
 
+## Duel visualization and restart protection
+
+When a duel is detected, the UI briefly shows an orange contest line, a
+pulsing contest ring and a `DUEL <type>` label at the contest position. This is
+visual-only state; the ball and players still move through the normal engine.
+The effect makes the possession change readable before the winner starts a
+clearance or the next action.
+
+Restart approaches are protected from normal duel resolution. The restart
+taker must first reach the restart coordinate; only after that does the normal
+restart pass/goal-kick decision run. This prevents a nearby player from stealing
+the ball during the short restart approach and sending the simulation back
+into a restart/chase loop.
+
 ## Safe next extension points
 
 Future changes should preserve these boundaries:

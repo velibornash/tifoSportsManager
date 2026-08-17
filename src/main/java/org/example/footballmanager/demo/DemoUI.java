@@ -590,6 +590,37 @@ public class DemoUI {
         g2d.fillPolygon(xs, ys, 3);
     }
 
+    /** Kratak contest prikaz pre promene poseda: jasno pokazuje duel, a ne teleport. */
+    private void drawDuelVisual(Graphics2D g2d) {
+        if (!simulation.isDuelVisualActive()) {
+            return;
+        }
+        Position contest = simulation.getDuelVisualPosition();
+        int cx = DemoScenario.cellCenterX(contest.getColumn());
+        int cy = DemoScenario.cellCenterY(contest.getRow());
+        Player attacker = simulation.getDuelVisualAttacker();
+        Player defender = simulation.getDuelVisualDefender();
+        int ax = DemoScenario.cellCenterX(attacker.getPosition().getColumn());
+        int ay = DemoScenario.cellCenterY(attacker.getPosition().getRow());
+        int dx = DemoScenario.cellCenterX(defender.getPosition().getColumn());
+        int dy = DemoScenario.cellCenterY(defender.getPosition().getRow());
+
+        g2d.setColor(new Color(255, 170, 0, 210));
+        g2d.setStroke(new BasicStroke(5));
+        g2d.drawLine(ax, ay, dx, dy);
+        g2d.drawOval(cx - 32, cy - 32, 64, 64);
+        g2d.setColor(new Color(255, 235, 80, 90));
+        g2d.fillOval(cx - 24, cy - 24, 48, 48);
+
+        String label = "DUEL " + simulation.getDuelVisualType();
+        g2d.setFont(new Font("Arial", Font.BOLD, 13));
+        FontMetrics metrics = g2d.getFontMetrics();
+        g2d.setColor(Color.BLACK);
+        g2d.drawString(label, cx - metrics.stringWidth(label) / 2 + 1, cy - 42 + 1);
+        g2d.setColor(new Color(255, 190, 0));
+        g2d.drawString(label, cx - metrics.stringWidth(label) / 2, cy - 42);
+    }
+
     /**
      * Crtanje grupe igraca koji dele isto polje. Ako je na polju samo jedan
      * igrac — crta se normalno. Ako ih je vise — crtaju se kao naslozene
@@ -782,6 +813,8 @@ public class DemoUI {
                     drawSelectionMarker(g2d, player, 0, 0);
                 }
             }
+
+            drawDuelVisual(g2d);
 
             // Lopta se crta POSLEDNJA — uvek ON TOP, vidljiva i kad je preko igraca.
             Position ballPos = ball.getPosition();

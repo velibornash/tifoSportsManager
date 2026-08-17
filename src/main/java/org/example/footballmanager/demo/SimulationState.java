@@ -62,6 +62,11 @@ public class SimulationState {
     private boolean pendingCornerRight;
     private Player cornerTaker;
     private int cornerHoldTicks;
+    private Player duelVisualAttacker;
+    private Player duelVisualDefender;
+    private Position duelVisualPosition;
+    private DuelType duelVisualType;
+    private int duelVisualTicks;
 
     // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -219,6 +224,19 @@ public class SimulationState {
     public int getCornerHoldTicks() { return cornerHoldTicks; }
     public void setCornerHoldTicks(int ticks) { cornerHoldTicks = Math.max(0, ticks); }
     public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
+    public void showDuelVisual(Duel duel) {
+        duelVisualAttacker = duel.getAttacker();
+        duelVisualDefender = duel.getDefender();
+        duelVisualPosition = duel.getContestPosition();
+        duelVisualType = duel.getType();
+        duelVisualTicks = 10;
+    }
+    public boolean isDuelVisualActive() { return duelVisualTicks > 0 && duelVisualPosition != null; }
+    public Player getDuelVisualAttacker() { return duelVisualAttacker; }
+    public Player getDuelVisualDefender() { return duelVisualDefender; }
+    public Position getDuelVisualPosition() { return duelVisualPosition; }
+    public DuelType getDuelVisualType() { return duelVisualType; }
+    public void consumeDuelVisualTick() { if (duelVisualTicks > 0) duelVisualTicks--; }
     public long getRestartHoldUntilMs() { return restartHoldUntilMs; }
     public void setRestartHoldUntilMs(long value) { restartHoldUntilMs = value; }
 
@@ -387,6 +405,11 @@ public class SimulationState {
         pendingCornerRight = false;
         cornerTaker = null;
         cornerHoldTicks = 0;
+        duelVisualAttacker = null;
+        duelVisualDefender = null;
+        duelVisualPosition = null;
+        duelVisualType = null;
+        duelVisualTicks = 0;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();

@@ -27,6 +27,12 @@ public final class DuelEngine {
             closeActiveDuel();
             return;
         }
+        // Restartni prilaz je set-piece kretanje, ne contest. Izvođač mora
+        // prvi stići do lopte bez da ga protivnik preuzme u tranzitu.
+        if (action.getType() == Action.Type.CHASE && state.isAwayRestartPending()) {
+            closeActiveDuel();
+            return;
+        }
 
         // Kod RECEIVE_PASS-a receiver je duel attacker; passer samo izvodi
         // loptu i ne ucestvuje u contestu prijema.
@@ -63,6 +69,7 @@ public final class DuelEngine {
         closeActiveDuel();
         activeDuel = new Duel(attacker, defender, contestPosition, type);
         activeDuelResolved = false;
+        state.showDuelVisual(activeDuel);
         state.log("DUEL START: " + attacker.getLabel() + " vs " + defender.getLabel()
                 + " | " + type + " | position " + format(contestPosition));
     }
