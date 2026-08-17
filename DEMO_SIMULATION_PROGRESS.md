@@ -376,6 +376,11 @@ The action audit also records a `CHASE_CONTINUE` result when a blocked chaser
 is replaced. A replay can therefore distinguish an unfinished pursuit handed
 to a new player from a possession pickup or a silent action reset.
 
+`SimulationReplayQueries.goalOnly(recording, before, after)` provides the first
+replay projection: it selects already saved snapshots around `SHOT_GOAL`
+events. Goal-only playback therefore uses persisted frames and does not invoke
+the random decision or movement engines again.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:
