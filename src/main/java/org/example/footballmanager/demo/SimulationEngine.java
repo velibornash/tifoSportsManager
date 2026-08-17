@@ -85,6 +85,7 @@ public class SimulationEngine {
         // PASS u toku — lopta leti ka primaocu.
         if (action != null && action.isPassInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
+            tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getTargetPlayer().getPosition()) < BallMovementEngine.PICKUP_DISTANCE) {
                 actionEngine.pickupPass();
@@ -97,6 +98,7 @@ public class SimulationEngine {
         // SHOT u toku — lopta leti ka golu.
         if (action != null && action.isShotInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
+            tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         ActionEngine.GOAL_POSITION) < BallMovementEngine.PICKUP_DISTANCE) {
                 actionEngine.goalScored();
@@ -119,6 +121,7 @@ public class SimulationEngine {
         movementEngine.moveAllTowardTargets();
 
         ballMovementEngine.followCarrier();
+        tacticalIntentEngine.refreshTargetsIfBallStateChanged();
 
         actionEngine.checkActionCompletion();
     }

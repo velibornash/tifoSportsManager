@@ -104,6 +104,44 @@ Extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `Movem
 `ActionCandidate`. Next sprint introduces real skill/selection/action logic here — do NOT
 add more abstractions beyond these.
 
+### Mid-Action Tactical Refresh
+
+During a PASS or SHOT in flight, `TacticalIntentEngine.refreshTargetsIfBallStateChanged()`
+is called every animation tick in `SimulationEngine.advance()`. When the ball crosses into
+a new grid cell (new `ballStateKey`), all non-carrier HOME players recalculate their
+tactical desired position from `TacticsRules`. This makes players reposition *during*
+the action, not just at the start/end.
+
+**Design principle — three-phase action lifecycle:**
+1. **Decision** (once, at `step()`) — PASS/CARRY/SHOT chosen; does NOT change during action
+2. **Movement** (every `advance()` tick) — players reposition relative to ball; updates mid-action
+3. **Outcome** (future) — result of the action (pass completed/intercepted, shot saved/goal)
+
+The decision is fixed for the action's duration. Movement reacts to ball trajectory.
+When the action completes (regardless of outcome), a new action starts with the same principles.
+
+### Velocity-Based Smooth Movement (Inertia)
+
+Players (non-carrier) use velocity-based inertia instead of instant direction changes.
+Each player has `velX`/`velY` velocity components. Each tick, the velocity is blended
+toward the desired direction at `TURN_RATE = 0.25` (25% per tick). This creates smooth
+turning — players decelerate, rotate, then accelerate in the new direction.
+
+- **Carrier**: moves directly toward target (no inertia) — action completion depends on carrier reaching destination
+- **Non-carrier tactical**: uses inertia blending — smooth direction changes when ball crosses grid cells
+- **1-cell limit**: non-carrier players cannot move more than 1 cell from their round-start position (enforced per tick)
+- Velocity resets to (0,0) when target is reached, when player is locked, or on round reset
+
+### Ball Speed
+
+- `BALL_SPEED = 0.09` cells/tick (pass/shot flight)
+- `CARRIER_FOLLOW_SPEED = 0.10` cells/tick (ball follows carrier)
+
+### UI Circle Sizes
+
+Player radius: 18px, ball radius: 14px (down from 30/24). Carrier ring: 26px outer.
+Allows precise positioning visibility within grid cells.
+
 ### API Route Prefixes
 
 | Controller | Prefix |

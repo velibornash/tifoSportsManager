@@ -52,6 +52,7 @@ public class SimulationState {
     private Position roundStartBallPosition;
     private Position roundEndBallPosition;
     private Position tacticalBallPosition;
+    private String lastTacticalBallStateKey;
     private boolean roundComplete = true;
 
     public SimulationState(List<Player> players, Ball ball, TacticsRules tacticsRules, Random random) {
@@ -63,6 +64,7 @@ public class SimulationState {
         this.roundStartBallPosition = ball.getPosition();
         this.roundEndBallPosition = ball.getPosition();
         this.tacticalBallPosition = ball.getPosition();
+        this.lastTacticalBallStateKey = TacticsRules.ballStateKey(ball.getPosition());
         for (Player p : players) {
             initialPositions.add(p.getPosition());
             roundStartPositions.put(p, p.getPosition());
@@ -240,6 +242,14 @@ public class SimulationState {
         tacticalBallPosition = pos;
     }
 
+    public String getLastTacticalBallStateKey() {
+        return lastTacticalBallStateKey;
+    }
+
+    public void setLastTacticalBallStateKey(String key) {
+        lastTacticalBallStateKey = key;
+    }
+
     /** Da li je tekuci turn zavrsen (kraj pozicija je finalan). */
     public boolean isRoundComplete() {
         return roundComplete;
@@ -291,6 +301,8 @@ public class SimulationState {
             p.setPosition(initialPositions.get(i));
             p.setTarget(null);
             p.setLocked(false);
+            p.setVelX(0);
+            p.setVelY(0);
         }
         ball.setPosition(ball.getInitialPosition());
         ball.setTarget(null);
@@ -302,6 +314,7 @@ public class SimulationState {
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();
         tacticalBallPosition = ball.getInitialPosition();
+        lastTacticalBallStateKey = TacticsRules.ballStateKey(ball.getInitialPosition());
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             roundStartPositions.put(p, p.getPosition());

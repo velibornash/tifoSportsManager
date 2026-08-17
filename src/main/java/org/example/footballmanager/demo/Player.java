@@ -28,6 +28,8 @@ public class Player {
     private final Position alternativePosition;
     private Position target;
     private boolean locked;
+    private double velX;
+    private double velY;
 
     /** Buduce sposobnosti igraca — OVAJ SPRINT INERTNE (neutralne), niko ih ne cita. */
     private final PlayerSkills skills;
@@ -97,6 +99,22 @@ public class Player {
 
     public void setLocked(boolean locked) {
         this.locked = locked;
+    }
+
+    public double getVelX() {
+        return velX;
+    }
+
+    public void setVelX(double velX) {
+        this.velX = velX;
+    }
+
+    public double getVelY() {
+        return velY;
+    }
+
+    public void setVelY(double velY) {
+        this.velY = velY;
     }
 
     /**

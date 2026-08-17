@@ -114,6 +114,9 @@ public class RealisticMatchEngine {
     private static final double[] TARGET_X_CENTERS = {10.0, 30.0, 50.0, 70.0, 90.0};
     private static final double[] BAND_Y_CENTERS = {18.0, 34.0, 50.0, 66.0, 82.0};
 
+    private static final double[] TACTICAL_X_CENTERS = {7.14, 21.43, 35.71, 50.0, 64.29, 78.57, 92.86};
+    private static final double[] TACTICAL_Y_CENTERS = {8.33, 25.0, 41.67, 58.33, 75.0, 91.67};
+
     /**
      * Simulates a full 90-minute realistic match
      */
@@ -4530,8 +4533,8 @@ public class RealisticMatchEngine {
         if (canonicalX <= 12.0 && canonicalY <= 18.0) return "DEFEND_LEFT_CORNER";
         if (canonicalX <= 12.0 && canonicalY >= 82.0) return "DEFEND_RIGHT_CORNER";
 
-        int progressBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(canonicalX, 0.0, 99.999) / 20.0)));
-        int widthBand = Math.max(0, Math.min(4, (int) Math.floor(clamp(canonicalY, 0.0, 99.999) / 20.0)));
+        int progressBand = Math.max(0, Math.min(6, (int) Math.floor(clamp(canonicalX, 0.0, 99.999) * 7.0 / 100.0)));
+        int widthBand = Math.max(0, Math.min(5, (int) Math.floor(clamp(canonicalY, 0.0, 99.999) * 6.0 / 100.0)));
         return "CELL_" + progressBand + "_" + widthBand;
     }
 
@@ -4998,11 +5001,10 @@ public class RealisticMatchEngine {
         int progressBand = bands[0];
         int widthBand = bands[1];
         if (!"HOME".equals(team)) {
-            progressBand = 4 - progressBand;
-            widthBand = 4 - widthBand;
+            progressBand = 6 - progressBand;
+            widthBand = 5 - widthBand;
         }
-        double[] xCenters = anchorScale ? ANCHOR_X_CENTERS : TARGET_X_CENTERS;
-        return new double[]{xCenters[progressBand], BAND_Y_CENTERS[widthBand]};
+        return new double[]{TACTICAL_X_CENTERS[progressBand], TACTICAL_Y_CENTERS[widthBand]};
     }
 
     private int[] resolveSpatialBands(double x, double y) {
@@ -5030,18 +5032,18 @@ public class RealisticMatchEngine {
 
     private int[] parseCellBands(String cellKey) {
         if (cellKey == null || !cellKey.startsWith("CELL_")) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
         String[] parts = cellKey.split("_");
         if (parts.length != 3) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
         try {
-            int progressBand = Math.max(0, Math.min(4, Integer.parseInt(parts[1])));
-            int widthBand = Math.max(0, Math.min(4, Integer.parseInt(parts[2])));
+            int progressBand = Math.max(0, Math.min(6, Integer.parseInt(parts[1])));
+            int widthBand = Math.max(0, Math.min(5, Integer.parseInt(parts[2])));
             return new int[]{progressBand, widthBand};
         } catch (NumberFormatException ex) {
-            return new int[]{2, 2};
+            return new int[]{3, 2};
         }
     }
 

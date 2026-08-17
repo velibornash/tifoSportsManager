@@ -6,6 +6,8 @@ import org.example.footballmanager.newLogic.dto.TacticsRuleDTO;
 import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
 import org.example.footballmanager.newLogic.service.FormationSlotCatalog;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -19,10 +21,10 @@ import java.util.regex.Pattern;
 /**
  * Taktička pravila (desired pozicije) za DEMO simulaciju.
  *
- * Pravila se ucitavaju iz produkcijske baze (tabela team_tactics_profile,
- * pravila iz tactice editora tima 1: formation 4-4-2, WE_HAVE_BALL).
- * Ukoliko baza nije dostupna, koristi se fallback — default pravila iz
- * {@link FormationSlotCatalog} (anchor celije formacije 4-4-2).
+ * Učitavanje (3-tier):
+ *  1. PostgreSQL baza (team_tactics_profile, team 1, 4-4-2, WE_HAVE_BALL)
+ *  2. Bundled JSON fajl {@code tactics_fallback.json} na classpath-u
+ *  3. Anchor pozicije iz {@link FormationSlotCatalog}
  *
  * DB koordinate su 0-based "progress" red (0 = najblize sopstvenom golu)
  * i 0-based kolona; demo koordinate su model (row, col) sa row 1 = donji red.
@@ -51,7 +53,7 @@ public class TacticsRules {
     private final String source;
     private final int ruleCount;
 
-    /** Ucitava iz baze; ako baza nije dostupna, koristi catalog fallback. */
+    /** 3-tier: DB → bundled JSON → catalog anchors. */
     public TacticsRules() {
         Map<String, Map<String, Position>> loaded = loadFromDb();
         if (loaded != null) {
@@ -60,10 +62,19 @@ public class TacticsRules {
             this.source = "DB (team " + TEAM_ID + ", " + FORMATION + ")";
             this.ruleCount = countRules(loaded);
         } else {
-            this.desiredByRoleByState = new LinkedHashMap<>();
-            this.anchorByRole = anchorsFromCatalog();
-            this.source = "fallback (FormationSlotCatalog)";
-            this.ruleCount = 0;
+            System.out.println("[TacticsRules] DB nedostupna, pokusavam bundled JSON fallback...");
+            loaded = loadFromBundledJson();
+            if (loaded != null) {
+                this.desiredByRoleByState = loaded;
+                this.anchorByRole = anchorsFromCatalog();
+                this.source = "bundled tactics_fallback.json";
+                this.ruleCount = countRules(loaded);
+            } else {
+                this.desiredByRoleByState = new LinkedHashMap<>();
+                this.anchorByRole = anchorsFromCatalog();
+                this.source = "fallback (FormationSlotCatalog anchors only)";
+                this.ruleCount = 0;
+            }
         }
         System.out.println("[TacticsRules] loaded " + ruleCount + " WE_HAVE_BALL rules from " + source);
     }
@@ -153,7 +164,7 @@ public class TacticsRules {
         try {
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {
-            System.out.println("[TacticsRules] PG driver nije na classpath-u, koristi fallback: " + e.getMessage());
+            System.out.println("[TacticsRules] PG driver nije na classpath-u: " + e.getMessage());
             return null;
         }
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -171,25 +182,49 @@ public class TacticsRules {
                 System.out.println("[TacticsRules] rules_json je prazan za team " + TEAM_ID);
                 return null;
             }
-            List<TacticsRuleDTO> allRules = new ObjectMapper()
-                .readValue(json, new TypeReference<List<TacticsRuleDTO>>() {});
-            Map<String, Map<String, Position>> byRole = new LinkedHashMap<>();
-            for (TacticsRuleDTO rule : allRules) {
-                if (!WE_HAVE_BALL.equals(rule.getPossessionContext())) {
-                    continue;
-                }
-                Position target = parseCell(rule.getTargetCellKey());
-                if (target == null) {
-                    continue;
-                }
-                byRole.computeIfAbsent(rule.getSlotKey(), k -> new LinkedHashMap<>())
-                    .put(rule.getBallStateKey(), target);
-            }
-            return byRole;
+            return parseRulesJson(json);
         } catch (Exception e) {
-            System.out.println("[TacticsRules] baza nije dostupna, koristi fallback: " + e.getMessage());
+            System.out.println("[TacticsRules] baza nije dostupna: " + e.getMessage());
             return null;
         }
+    }
+
+    /** Ucitava WE_HAVE_BALL pravila iz bundled JSON fajla na classpath-u. */
+    private Map<String, Map<String, Position>> loadFromBundledJson() {
+        try (InputStream is = getClass().getResourceAsStream("/tactics_fallback.json")) {
+            if (is == null) {
+                System.out.println("[TacticsRules] tactics_fallback.json nije nadjen na classpath-u");
+                return null;
+            }
+            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            if (json.isBlank()) {
+                System.out.println("[TacticsRules] tactics_fallback.json je prazan");
+                return null;
+            }
+            return parseRulesJson(json);
+        } catch (Exception e) {
+            System.out.println("[TacticsRules] greska citanja tactics_fallback.json: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Parsira rules_json string u role→ballStateKey→Position mapu (samo WE_HAVE_BALL). */
+    private Map<String, Map<String, Position>> parseRulesJson(String json) throws Exception {
+        List<TacticsRuleDTO> allRules = new ObjectMapper()
+            .readValue(json, new TypeReference<List<TacticsRuleDTO>>() {});
+        Map<String, Map<String, Position>> byRole = new LinkedHashMap<>();
+        for (TacticsRuleDTO rule : allRules) {
+            if (!WE_HAVE_BALL.equals(rule.getPossessionContext())) {
+                continue;
+            }
+            Position target = parseCell(rule.getTargetCellKey());
+            if (target == null) {
+                continue;
+            }
+            byRole.computeIfAbsent(rule.getSlotKey(), k -> new LinkedHashMap<>())
+                .put(rule.getBallStateKey(), target);
+        }
+        return byRole;
     }
 
     private static int countRules(Map<String, Map<String, Position>> rules) {

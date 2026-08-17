@@ -26,6 +26,33 @@ public class TacticalIntentEngine {
      */
     public void assignTargets() {
         state.setTacticalBallPosition(state.getBall().getPosition());
+        state.setLastTacticalBallStateKey(TacticsRules.ballStateKey(state.getBall().getPosition()));
+        for (Player p : state.getPlayers()) {
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            if (p == state.getCarrier() || p.isLocked()) {
+                continue;
+            }
+            Position desired = state.getTacticsRules().desiredCell(p.getRole(), state.getBall().getPosition());
+            state.setTacticalDesiredPosition(p, desired);
+            p.setTarget(MovementEngine.oneCellToward(p.getPosition(), desired));
+        }
+    }
+
+    /**
+     * Osvezava takticke ciljeve samo ako je lopta presla u novu grid celiju.
+     * Poziva se tokom advance() tick-ova da bi igraci reagovali na kretanje
+     * lopte tokom pas/sut leta, a ne samo na pocetku i kraju runde.
+     */
+    public void refreshTargetsIfBallStateChanged() {
+        String currentKey = TacticsRules.ballStateKey(state.getBall().getPosition());
+        String lastKey = state.getLastTacticalBallStateKey();
+        if (currentKey.equals(lastKey)) {
+            return;
+        }
+        state.setTacticalBallPosition(state.getBall().getPosition());
+        state.setLastTacticalBallStateKey(currentKey);
         for (Player p : state.getPlayers()) {
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
                 continue;

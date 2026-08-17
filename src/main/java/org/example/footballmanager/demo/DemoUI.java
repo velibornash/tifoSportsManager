@@ -52,10 +52,9 @@ public class DemoUI {
     // Veličina "razmicanja" igrača koji dele isto polje — nasloženi kao karte
     private static final int FAN_STEP_X = 15;
     private static final int FAN_STEP_Y = 12;
-    private static final int MAX_ACTION_LOG_LINES = 6;
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
     private static final long BALL_TRAIL_MS = 2500;    // trail se skloni posle ~2.5 sekunde
-    private static final int ANIMATION_DELAY_MS = 50;  // sporija ANIMACIJA: sim-tick na svakih 50ms (20fps)
+    private static final int ANIMATION_DELAY_MS = 80;
     private static final int GOAL_CELEBRATION_MS = 5000; // pauza (proslava) pre reseta nakon gola
 
     private final DemoScenario scenario;
@@ -140,7 +139,7 @@ public class DemoUI {
         controls.add(Box.createVerticalStrut(14));
 
         controls.add(sectionLabel("Action Log"));
-        actionLogArea = logArea(MAX_ACTION_LOG_LINES);
+        actionLogArea = logArea(24);
         actionLogArea.setText("Waiting...");
         controls.add(new JScrollPane(actionLogArea));
         controls.add(Box.createVerticalStrut(14));
@@ -412,12 +411,10 @@ public class DemoUI {
         }
     }
 
-    /** Action Log — poruke iz simulacije + UI poruke, ogranicen broj redova. */
+    /** Action Log — poruke iz simulacije + UI poruke, append-only. */
     private void logAction(String message) {
         actionLogMessages.addLast(message);
-        while (actionLogMessages.size() > MAX_ACTION_LOG_LINES) {
-            actionLogMessages.removeFirst();
-        }
+        System.out.println("[ActionLog] " + message);
         if (actionLogArea != null) {
             actionLogArea.setText(String.join("\n", actionLogMessages));
             actionLogArea.setCaretPosition(actionLogArea.getDocument().getLength());
@@ -514,18 +511,18 @@ public class DemoUI {
      * Crtanje fudbalske lopte: beli krug, crni obrub i crni "pentagoni".
      */
     private static void drawBall(Graphics2D g2d, int centerX, int centerY) {
-        int radius = 24; // malko manja od igraca (igrac r=30) — ali uvek on top
+        int radius = 14;
         g2d.setColor(Color.WHITE);
         g2d.fillOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
         g2d.setColor(Color.BLACK);
-        g2d.setStroke(new BasicStroke(3));
+        g2d.setStroke(new BasicStroke(2));
         g2d.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
 
-        int pentagonSize = 8;
+        int pentagonSize = 5;
         g2d.fillOval(centerX - pentagonSize, centerY - pentagonSize, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX - 16, centerY - 3, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX + 8, centerY - 3, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX - 8, centerY + 11, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX - 9, centerY - 2, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX + 4, centerY - 2, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX - 5, centerY + 6, pentagonSize * 2, pentagonSize * 2);
     }
 
     /**
@@ -545,16 +542,16 @@ public class DemoUI {
      * Crtanje kruga igraca: krug u datoj boji sa oznakom pozicije u centru.
      */
     private static void drawPlayerCircle(Graphics2D g2d, int centerX, int centerY, Color color, String label) {
-        int radius = 30;
+        int radius = 18;
         g2d.setColor(color);
         g2d.fillOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
         g2d.setColor(Color.BLACK);
-        g2d.setStroke(new BasicStroke(3));
+        g2d.setStroke(new BasicStroke(2));
         g2d.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
 
-        g2d.setFont(new Font("Arial", Font.BOLD, 17));
+        g2d.setFont(new Font("Arial", Font.BOLD, 11));
         int textWidth = g2d.getFontMetrics().stringWidth(label);
-        g2d.drawString(label, centerX - textWidth / 2, centerY + 6);
+        g2d.drawString(label, centerX - textWidth / 2, centerY + 4);
     }
 
     /**
@@ -567,11 +564,11 @@ public class DemoUI {
         int centerX = DemoScenario.cellCenterX(position.getColumn()) + dx;
         int centerY = DemoScenario.cellCenterY(position.getRow()) + dy;
         g2d.setColor(DemoScenario.COLOR_CARRIER_RING);
-        g2d.setStroke(new BasicStroke(5));
-        g2d.drawOval(centerX - 42, centerY - 42, 84, 84);
+        g2d.setStroke(new BasicStroke(3));
+        g2d.drawOval(centerX - 26, centerY - 26, 52, 52);
         g2d.setColor(new Color(255, 255, 255, 140));
         g2d.setStroke(new BasicStroke(2));
-        g2d.drawOval(centerX - 34, centerY - 34, 68, 68);
+        g2d.drawOval(centerX - 22, centerY - 22, 44, 44);
     }
 
     /**
@@ -582,9 +579,9 @@ public class DemoUI {
         Position position = player.getPosition();
         int cx = DemoScenario.cellCenterX(position.getColumn()) + dx;
         int cy = DemoScenario.cellCenterY(position.getRow()) + dy;
-        int tipY = cy - 38;
-        int baseY = tipY - 14;
-        int[] xs = {cx, cx - 9, cx + 9};
+        int tipY = cy - 24;
+        int baseY = tipY - 10;
+        int[] xs = {cx, cx - 6, cx + 6};
         int[] ys = {tipY, baseY, baseY};
         g2d.setColor(Color.WHITE);
         g2d.setStroke(new BasicStroke(2));
