@@ -141,6 +141,31 @@ public class SimulationState {
         return new SimulationRecording(eventStore.snapshot(), snapshotStore.snapshot(), goalCount);
     }
 
+    /** Applies a saved frame for replay rendering; it does not execute an action. */
+    public void applySnapshot(SimulationSnapshot snapshot) {
+        Map<String, Player> playersById = new HashMap<>();
+        for (Player player : players) playersById.put(player.getId(), player);
+        for (PlayerSnapshot saved : snapshot.players()) {
+            Player player = playersById.get(saved.id());
+            if (player == null) continue;
+            player.setPosition(saved.position());
+            player.setTarget(saved.target());
+            player.setLocked(saved.locked());
+            player.setVelX(saved.velocityX());
+            player.setVelY(saved.velocityY());
+        }
+        ball.setPosition(snapshot.ballPosition());
+        ball.setTarget(snapshot.ballTarget());
+        Player savedCarrier = playersById.get(snapshot.ballCarrierId());
+        ball.setCarrier(savedCarrier);
+        carrier = savedCarrier;
+        // Replay is a read-only projection; do not reconstruct a stale action
+        // from a frame. Live mode chooses the next action normally afterwards.
+        action = null;
+        status = snapshot.status();
+        goalCount = snapshot.goalCount();
+    }
+
     /** Captures the complete immutable scene without deriving it later from logs. */
     public void captureSnapshot() {
         Action currentAction = action;

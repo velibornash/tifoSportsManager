@@ -71,6 +71,8 @@ public class DemoUI {
     private DrawingPanel drawingPanel;
     private final JLabel statusLabel = new JLabel(" ");
     private JButton runAllButton;
+    private JButton replayButton;
+    private JButton replayGoalsButton;
     private JTextArea playerLogArea;
     private JTextArea actionLogArea;
     private final ArrayDeque<String> actionLogMessages = new ArrayDeque<>();
@@ -82,6 +84,8 @@ public class DemoUI {
     private long celebrationEndMs; // kraj proslave gola (0 = nema proslave)
     private javax.swing.Timer animationTimer;
     private javax.swing.Timer autoRunTimer;
+    private final SimulationReplayPlayer replayPlayer = new SimulationReplayPlayer();
+    private boolean replayActive;
 
     /** Trag lopte: [x, y, vremeMs] u pikselima — čisto vizuelni, briše se na reset. */
     private final ArrayDeque<long[]> ballTrail = new ArrayDeque<>();
@@ -118,6 +122,11 @@ public class DemoUI {
         JButton resetBtn = new JButton("Reset State");
         resetBtn.addActionListener(e -> resetState());
 
+        replayButton = new JButton("Replay Last");
+        replayButton.addActionListener(e -> startReplay(false));
+        replayGoalsButton = new JButton("Replay Goals");
+        replayGoalsButton.addActionListener(e -> startReplay(true));
+
         // Desni kontrolni panel: opaka pozadina + fiksna širina, da NIKADA ne
         // prekrije teren — prostor se dodaje s desne strane (proširen prozor).
         JPanel controls = new JPanel();
@@ -131,6 +140,10 @@ public class DemoUI {
         controls.add(runAllButton);
         controls.add(Box.createVerticalStrut(8));
         controls.add(resetBtn);
+        controls.add(Box.createVerticalStrut(16));
+        controls.add(replayButton);
+        controls.add(Box.createVerticalStrut(8));
+        controls.add(replayGoalsButton);
         controls.add(Box.createVerticalStrut(16));
 
         controls.add(sectionLabel("Player Log"));
@@ -171,8 +184,20 @@ public class DemoUI {
      */
     private void startAnimationTimer() {
         animationTimer = new javax.swing.Timer(ANIMATION_DELAY_MS, e -> {
-            simulation.advance();
-            handleCelebrationTiming();
+            if (replayActive) {
+                SimulationSnapshot frame = replayPlayer.next();
+                if (frame == null) {
+                    replayActive = false;
+                    replayButton.setText("Replay Last");
+                    replayGoalsButton.setText("Replay Goals");
+                    logAction("Replay finished");
+                } else {
+                    simulation.applySnapshot(frame);
+                }
+            } else {
+                simulation.advance();
+                handleCelebrationTiming();
+            }
             trackBallTrail();
             drainActionLog();
             refreshPlayerLog();
@@ -241,6 +266,7 @@ public class DemoUI {
      * Ako je akcija već u toku, klik se ignorise (samo poruka "Waiting...").
      */
     private void runNextAction() {
+        stopReplay();
         if (simulation.isActionInProgress()) {
             logAction("Waiting... (" + simulation.getStatus() + ")");
             return;
@@ -259,6 +285,7 @@ public class DemoUI {
      *   STOP ne resetuje ništa.
      */
     private void toggleRunAll() {
+        stopReplay();
         if (autoRunActive) {
             stopRequested = true;
             logAction("Stop requested...");
@@ -298,6 +325,7 @@ public class DemoUI {
      * stanje i cisti logove. Ne zatvara prozor.
      */
     private void resetState() {
+        stopReplay();
         if (autoRunActive) {
             stopAutoRun();
         }
@@ -309,6 +337,31 @@ public class DemoUI {
         statusLabel.setText(simulationStatus());
         logAction("Reset state");
         drawingPanel.repaint();
+    }
+
+    private void startReplay(boolean goalsOnly) {
+        stopAutoRun();
+        SimulationRecording recording = simulation.getRecording();
+        List<SimulationSnapshot> frames = goalsOnly
+                ? SimulationReplayQueries.goalOnly(recording, 100, 140)
+                : recording.snapshots();
+        if (frames.isEmpty()) {
+            logAction(goalsOnly ? "No goal replay available" : "No replay frames available");
+            return;
+        }
+        replayPlayer.load(frames);
+        replayActive = true;
+        replayButton.setText("Replay Running...");
+        replayGoalsButton.setText("Replay Running...");
+        logAction(goalsOnly ? "Goal replay started" : "Full replay started");
+    }
+
+    private void stopReplay() {
+        if (!replayActive) return;
+        replayActive = false;
+        replayButton.setText("Replay Last");
+        replayGoalsButton.setText("Replay Goals");
+        logAction("Replay stopped");
     }
 
     /**

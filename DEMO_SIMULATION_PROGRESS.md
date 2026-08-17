@@ -381,6 +381,11 @@ replay projection: it selects already saved snapshots around `SHOT_GOAL`
 events. Goal-only playback therefore uses persisted frames and does not invoke
 the random decision or movement engines again.
 
+The Swing demo exposes this through `Replay Last` and `Replay Goals` buttons.
+Replay applies one saved frame per animation timer tick; stopping it leaves the
+simulation ready for a fresh live decision instead of reconstructing a stale
+in-flight action.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:

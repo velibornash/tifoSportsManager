@@ -90,6 +90,11 @@ public class SimulationEngine {
         return state.getRecording();
     }
 
+    /** Applies one persisted frame for UI replay; no simulation tick is run. */
+    public void applySnapshot(SimulationSnapshot snapshot) {
+        if (snapshot != null) state.applySnapshot(snapshot);
+    }
+
     /**
      * Jedan TICK animacije (poziva ga Timer svakih ~16ms):
      * pomera igrace ka ciljevima, lopta leti ka cilju (pas/sut),
