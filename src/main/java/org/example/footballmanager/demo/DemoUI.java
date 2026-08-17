@@ -48,13 +48,14 @@ public class DemoUI {
 
     // --- UI / interakcija ---
     private static final int CONTROLS_WIDTH = 300;
-    private static final int PLAYER_SELECT_RADIUS = 40;
+    private static final int PLAYER_SELECT_RADIUS = 25;
     // Veličina "razmicanja" igrača koji dele isto polje — nasloženi kao karte
     private static final int FAN_STEP_X = 15;
     private static final int FAN_STEP_Y = 12;
+    private static final int MAX_ACTION_LOG_LINES = 6;
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
     private static final long BALL_TRAIL_MS = 2500;    // trail se skloni posle ~2.5 sekunde
-    private static final int ANIMATION_DELAY_MS = 80;
+    private static final int ANIMATION_DELAY_MS = 50;  // sporija ANIMACIJA: sim-tick na svakih 50ms (20fps)
     private static final int GOAL_CELEBRATION_MS = 5000; // pauza (proslava) pre reseta nakon gola
 
     private final DemoScenario scenario;
@@ -139,7 +140,7 @@ public class DemoUI {
         controls.add(Box.createVerticalStrut(14));
 
         controls.add(sectionLabel("Action Log"));
-        actionLogArea = logArea(24);
+        actionLogArea = logArea(MAX_ACTION_LOG_LINES);
         actionLogArea.setText("Waiting...");
         controls.add(new JScrollPane(actionLogArea));
         controls.add(Box.createVerticalStrut(14));
@@ -411,10 +412,12 @@ public class DemoUI {
         }
     }
 
-    /** Action Log — poruke iz simulacije + UI poruke, append-only. */
+    /** Action Log — poruke iz simulacije + UI poruke, ogranicen broj redova. */
     private void logAction(String message) {
         actionLogMessages.addLast(message);
-        System.out.println("[ActionLog] " + message);
+        while (actionLogMessages.size() > MAX_ACTION_LOG_LINES) {
+            actionLogMessages.removeFirst();
+        }
         if (actionLogArea != null) {
             actionLogArea.setText(String.join("\n", actionLogMessages));
             actionLogArea.setCaretPosition(actionLogArea.getDocument().getLength());
@@ -511,18 +514,18 @@ public class DemoUI {
      * Crtanje fudbalske lopte: beli krug, crni obrub i crni "pentagoni".
      */
     private static void drawBall(Graphics2D g2d, int centerX, int centerY) {
-        int radius = 14;
+        int radius = 12;
         g2d.setColor(Color.WHITE);
         g2d.fillOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
         g2d.setColor(Color.BLACK);
         g2d.setStroke(new BasicStroke(2));
         g2d.drawOval(centerX - radius, centerY - radius, radius * 2, radius * 2);
 
-        int pentagonSize = 5;
+        int pentagonSize = 4;
         g2d.fillOval(centerX - pentagonSize, centerY - pentagonSize, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX - 9, centerY - 2, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX + 4, centerY - 2, pentagonSize * 2, pentagonSize * 2);
-        g2d.fillOval(centerX - 5, centerY + 6, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX - 8, centerY - 1, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX + 4, centerY - 1, pentagonSize * 2, pentagonSize * 2);
+        g2d.fillOval(centerX - 4, centerY + 6, pentagonSize * 2, pentagonSize * 2);
     }
 
     /**
@@ -564,7 +567,7 @@ public class DemoUI {
         int centerX = DemoScenario.cellCenterX(position.getColumn()) + dx;
         int centerY = DemoScenario.cellCenterY(position.getRow()) + dy;
         g2d.setColor(DemoScenario.COLOR_CARRIER_RING);
-        g2d.setStroke(new BasicStroke(3));
+        g2d.setStroke(new BasicStroke(4));
         g2d.drawOval(centerX - 26, centerY - 26, 52, 52);
         g2d.setColor(new Color(255, 255, 255, 140));
         g2d.setStroke(new BasicStroke(2));
@@ -581,7 +584,7 @@ public class DemoUI {
         int cy = DemoScenario.cellCenterY(position.getRow()) + dy;
         int tipY = cy - 24;
         int baseY = tipY - 10;
-        int[] xs = {cx, cx - 6, cx + 6};
+        int[] xs = {cx, cx - 7, cx + 7};
         int[] ys = {tipY, baseY, baseY};
         g2d.setColor(Color.WHITE);
         g2d.setStroke(new BasicStroke(2));
@@ -771,19 +774,16 @@ public class DemoUI {
             drawGoal(g2d, goalCenterX, awayGoalLineY, DemoScenario.GOAL_DEPTH, true);
 
             // Igraci: renderer samo cita poziciju iz svakog Player objekta.
-            // Prsten nosioca prati TRENUTNOG nosioca lopte (na pocetku turna i
-            // kad se nosilac promeni — na novom). Selekcija je samo mali trougao.
-            // Igraci koji su na ISTOM polju crtaju se kao naslozene karte (lepeza),
-            // da se vidi da ih je vise, a ne da se poklapaju jedno preko drugog.
+            // Prsten nosioca prati TRENUTNOG nosioca lopte.
             Player carrier = simulation.getCarrier();
-            Map<CellKey, List<Player>> stacks = new LinkedHashMap<>();
             for (Player player : players) {
-                Position pos = player.getPosition();
-                CellKey key = new CellKey((int) Math.round(pos.getRow()), (int) Math.round(pos.getColumn()));
-                stacks.computeIfAbsent(key, k -> new ArrayList<>()).add(player);
-            }
-            for (List<Player> stack : stacks.values()) {
-                drawStack(g2d, stack, carrier, selectedPlayer);
+                if (player == carrier) {
+                    drawCarrierRing(g2d, player, 0, 0);
+                }
+                drawPlayer(g2d, player, 0, 0);
+                if (player == selectedPlayer) {
+                    drawSelectionMarker(g2d, player, 0, 0);
+                }
             }
 
             // Lopta se crta POSLEDNJA — uvek ON TOP, vidljiva i kad je preko igraca.
