@@ -398,6 +398,10 @@ values and the match-clock state are included in tick snapshots for replay.
 The manual `Reset State` control starts a fresh match; the automatic reset after
 a goal only resets positions and preserves the running score/clock.
 
+The match clock is gated by an explicit `matchStarted` state. The Swing control
+is labelled `Start match simulation` before kickoff and `Stop match simulation`
+while automatic execution is active; it uses a pale-green button style.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:

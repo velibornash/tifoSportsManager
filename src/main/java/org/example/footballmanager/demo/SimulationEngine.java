@@ -524,12 +524,14 @@ public class SimulationEngine {
     public String getMatchClockLabel() { return state.matchClockLabel(); }
     public boolean isHalfTime() { return state.isHalfTime(); }
     public boolean isMatchFinished() { return state.isMatchFinished(); }
+    public boolean isMatchStarted() { return state.isMatchStarted(); }
     public List<GoalRecord> getGoals() { return state.getGoals(); }
     public int getPassAttempts() { return state.getPassAttempts(); }
     public int getPassCompletions() { return state.getPassCompletions(); }
     public int getShotsOnTarget() { return state.getShotsOnTarget(); }
 
     public void startSecondHalf() { state.startSecondHalf(); }
+    public void startMatchSimulation() { state.startMatchSimulation(); }
 
     public int getRound() {
         return state.getRound();

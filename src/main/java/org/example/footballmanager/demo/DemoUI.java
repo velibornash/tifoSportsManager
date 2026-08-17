@@ -122,7 +122,10 @@ public class DemoUI {
         JButton nextBtn = new JButton("Run Next Action");
         nextBtn.addActionListener(e -> runNextAction());
 
-        runAllButton = new JButton("Run All Actions");
+        runAllButton = new JButton("Start match simulation");
+        runAllButton.setBackground(new Color(195, 235, 195));
+        runAllButton.setOpaque(true);
+        runAllButton.setBorderPainted(true);
         runAllButton.addActionListener(e -> toggleRunAll());
 
         JButton resetBtn = new JButton("Reset State");
@@ -367,7 +370,8 @@ public class DemoUI {
         } else {
             autoRunActive = true;
             stopRequested = false;
-            runAllButton.setText("Stop Actions");
+            simulation.startMatchSimulation();
+            runAllButton.setText("Stop match simulation");
             logAction("Automatic execution started");
             autoRunTimer = new javax.swing.Timer(100, e -> autoRunTick());
             autoRunTimer.start();
@@ -391,7 +395,7 @@ public class DemoUI {
         }
         autoRunActive = false;
         stopRequested = false;
-        runAllButton.setText("Run All Actions");
+        runAllButton.setText("Start match simulation");
         logAction("Automatic execution stopped");
     }
 

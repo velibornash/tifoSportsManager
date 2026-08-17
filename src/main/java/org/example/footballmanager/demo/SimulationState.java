@@ -61,6 +61,7 @@ public class SimulationState {
     private int matchTicks;
     private boolean halfTime;
     private boolean matchFinished;
+    private boolean matchStarted;
     private int passAttempts;
     private int passCompletions;
     private int shotsOnTarget;
@@ -276,6 +277,7 @@ public class SimulationState {
     public int getMatchTicks() { return matchTicks; }
     public boolean isHalfTime() { return halfTime; }
     public boolean isMatchFinished() { return matchFinished; }
+    public boolean isMatchStarted() { return matchStarted; }
     public List<GoalRecord> getGoals() { return List.copyOf(goals); }
     public int getPassAttempts() { return passAttempts; }
     public int getPassCompletions() { return passCompletions; }
@@ -288,7 +290,7 @@ public class SimulationState {
     }
 
     public void advanceMatchClock() {
-        if (halfTime || matchFinished) return;
+        if (!matchStarted || halfTime || matchFinished) return;
         matchTicks++;
         if (matchTicks == 45 * MATCH_TICKS_PER_MINUTE) {
             enterHalfTime();
@@ -318,6 +320,13 @@ public class SimulationState {
         halfTime = false;
         matchTicks = 46 * MATCH_TICKS_PER_MINUTE;
         status = "SECOND HALF";
+    }
+
+    public void startMatchSimulation() {
+        if (!matchFinished) {
+            matchStarted = true;
+            status = "MATCH STARTED";
+        }
     }
 
     private void enterHalfTime() {
@@ -540,6 +549,7 @@ public class SimulationState {
         matchTicks = 0;
         halfTime = false;
         matchFinished = false;
+        matchStarted = false;
         passAttempts = 0;
         passCompletions = 0;
         shotsOnTarget = 0;
