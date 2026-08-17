@@ -36,7 +36,7 @@ public class PlayerSelectionEngine {
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
                 continue;
             }
-            if (p == excluded || p.isLocked()) {
+            if (p == excluded || p.isLocked() || state.isBlockedAfterDuel(p)) {
                 continue;
             }
             double d = MovementEngine.distance(p.getPosition(), pos);
@@ -52,7 +52,7 @@ public class PlayerSelectionEngine {
         Player best = null;
         double bestDist = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
-            if (!"AWAY".equals(p.getTeam()) || p.isLocked()) continue;
+            if (!"AWAY".equals(p.getTeam()) || p.isLocked() || state.isBlockedAfterDuel(p)) continue;
             double d = MovementEngine.distance(p.getPosition(), pos);
             if (d < bestDist) {
                 bestDist = d;
@@ -76,11 +76,32 @@ public class PlayerSelectionEngine {
         return closestAwayTo(new Position(7, 3.5));
     }
 
+    public Player awayByRole(String role) {
+        return state.getPlayers().stream()
+                .filter(p -> "AWAY".equals(p.getTeam()) && role.equals(p.getRole()))
+                .filter(p -> !state.isBlockedAfterDuel(p) && !p.isLocked())
+                .findFirst().orElse(null);
+    }
+
+    public Player nearestAwayTo(Position pos, boolean excludeGoalkeeper) {
+        return nearestAwayTo(pos, excludeGoalkeeper, null);
+    }
+
+    public Player nearestAwayTo(Position pos, boolean excludeGoalkeeper, Player excluded) {
+        return state.getPlayers().stream()
+                .filter(p -> "AWAY".equals(p.getTeam()))
+                .filter(p -> !excludeGoalkeeper || !"GK".equals(p.getRole()))
+                .filter(p -> p != excluded)
+                .filter(p -> !state.isBlockedAfterDuel(p) && !p.isLocked())
+                .min(Comparator.comparingDouble(p -> MovementEngine.distance(p.getPosition(), pos)))
+                .orElse(null);
+    }
+
     /** N najblizih HOME igraca od date pozicije, bez datog igraca. */
     public List<Player> nearestHomeTo(Player from, int n) {
         List<Player> candidates = new ArrayList<>();
         for (Player p : state.getPlayers()) {
-            if (p == from) {
+            if (p == from || p.isLocked() || state.isBlockedAfterDuel(p)) {
                 continue;
             }
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {

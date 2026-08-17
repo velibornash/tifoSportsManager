@@ -81,6 +81,7 @@ public class SimulationEngine {
      * primaoc preuzima loptu, gol se resetuje.
      */
     public void advance() {
+        state.consumeDuelCooldownTick();
         if (state.isCelebrating()) {
             // During celebration: move home players toward goal area (row 8, cols 1-3)
             // in a slow celebration pattern, no teleport
@@ -116,6 +117,23 @@ public class SimulationEngine {
             return;
         }
 
+        if (action == null && state.isPendingCorner()) {
+            if (state.getCornerHoldTicks() > 0) {
+                state.consumeCornerHoldTick();
+                return;
+            }
+            boolean right = state.isPendingCornerRight();
+            Position corner = new Position(7, right ? 6 : 1);
+            Player taker = state.getCornerTaker();
+            state.setPendingCorner(false);
+            state.setPendingRestartPosition(corner);
+            state.setPendingRestartPlayer(taker);
+            state.getBall().setPosition(corner);
+            state.log("CORNER ready: ball at " + formatPosition(corner)
+                    + " | taker: " + (taker == null ? "none" : taker.getLabel()));
+            return;
+        }
+
         if (action == null && state.getActionDelayTicks() > 0) {
             state.consumeActionDelayTick();
             if (state.getActionDelayTicks() == 0) state.setRoundComplete(true);
@@ -130,7 +148,7 @@ public class SimulationEngine {
             duelEngine.update(action);
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
-                                        action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
+                                        action.getActualTarget()) <= 1e-9) {
                 if (isOutsidePitch(action.getActualTarget())) {
                     actionEngine.passOutOfBounds();
                     scheduleAwayRestart(action.getActualTarget());
@@ -155,15 +173,44 @@ public class SimulationEngine {
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
             duelEngine.update(action);
+            // SAVE ima sopstvenu glatku putanju posle kontakta sa golmanom.
+            if (action.getSaveType() != Action.SaveType.NONE
+                    && MovementEngine.distance(state.getBall().getPosition(), action.getActualTarget()) <= 1e-9) {
+                if (action.getSaveType() == Action.SaveType.CORNER_REBOUND) {
+                    boolean right = action.getActualTarget().getColumn() > 3.5;
+                    actionEngine.finishCornerRebound();
+                    state.setPendingCorner(true);
+                    state.setPendingCornerRight(right);
+                    state.setCornerHoldTicks(SimulationState.SET_PIECE_HOLD_TICKS);
+                    Player taker = playerSelectionEngine.awayByRole(right ? "MR" : "ML");
+                    state.setCornerTaker(taker);
+                    if (taker != null) {
+                        state.setTacticalDesiredPosition(taker,
+                                state.getTacticsRules().desiredCell(taker.getRole(),
+                                        new Position(7, right ? 6 : 1)));
+                    }
+                    state.log("CORNER sequence started: " + (right ? "right" : "left")
+                            + " | hold 3.00s");
+                } else {
+                    actionEngine.finishFieldRebound();
+                }
+                duelEngine.update(state.getAction());
+                return;
+            }
+
             // Lopta je stigla do svoje STVARNE mete (ne gola)
             if (MovementEngine.distance(state.getBall().getPosition(),
-                                        action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
+                                        action.getActualTarget()) <= 1e-9) {
                 if (action.isGoodExecution()) {
                     DuelResult duelResult = resolveDuel(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                         actionEngine.shotSaved(duelResult.winner());
                     } else {
-                        actionEngine.goalScored();
+                        if (MovementEngine.distance(action.getActualTarget(), ActionEngine.GOAL_POSITION) <= 1e-9) {
+                            actionEngine.continueGoalAfterGkDuel();
+                        } else {
+                            actionEngine.goalScored();
+                        }
                     }
                 } else {
                     actionEngine.shotMissed();
@@ -247,7 +294,27 @@ public class SimulationEngine {
 
     private DuelResult resolveDuel(Action action) {
         duelEngine.update(action);
-        return duelEngine.resolveActiveDuel(duelResolver);
+        Duel duel = duelEngine.getActiveDuel();
+        DuelResult result = duelEngine.resolveActiveDuel(duelResolver);
+        if (duel != null && result != null) {
+            Player loser = result.winner() == duel.getAttacker()
+                    ? duel.getDefender() : duel.getAttacker();
+            state.log("DUEL CALC: " + duel.getType() + " | "
+                    + duel.getAttacker().getLabel() + " [" + duelResolver.skillDescription(duel, true)
+                    + " = " + result.attackerPower() + "] vs " + duel.getDefender().getLabel() + " ["
+                    + duelResolver.skillDescription(duel, false) + " = " + result.defenderPower() + "]"
+                    + " | winner: " + result.winner().getLabel());
+            // Posle svakog izgubljenog duela igrač je van akcije 3 sekunde.
+            // Golman koji je odbranio šut je izuzetak: mora odmah biti dostupan
+            // za sledeći odbitak/akciju sa loptom.
+            if (!(duel.getType() == DuelType.SHOT
+                    && duel.getDefender() == result.winner()
+                    && "GK".equals(duel.getDefender().getRole()))) {
+                state.blockAfterDuel(loser);
+                loser.setTarget(null);
+            }
+        }
+        return result;
     }
 
     private boolean isOutsidePitch(Position position) {
@@ -275,6 +342,10 @@ public class SimulationEngine {
         double col = outPosition.getColumn() <= 0 ? 0.5
                 : outPosition.getColumn() >= 7 ? 6.5 : outPosition.getColumn();
         return new Position(outPosition.getRow(), col);
+    }
+
+    private String formatPosition(Position p) {
+        return String.format(java.util.Locale.ROOT, "(%.2f,%.2f)", p.getRow(), p.getColumn());
     }
 
     private void scheduleAwayRestart(Position outPosition) {

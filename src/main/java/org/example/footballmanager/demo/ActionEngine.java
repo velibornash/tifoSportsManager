@@ -16,6 +16,7 @@ public class ActionEngine {
 
     public static final int SHOOT_MIN_ROW = 5;                    // iz kog reda nosilac moze na gol (ne menja se)
     public static final Position GOAL_POSITION = new Position(7, 3.5); // away gol — linija gola je red 7
+    public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
 
     private final SimulationState state;
     private final PlayerSelectionEngine selection;
@@ -143,7 +144,7 @@ public class ActionEngine {
         // For a goal, set target to row 8 (through the goal) so animation shows ball flying through
         // For a miss, actualTarget already has the out-of-bounds position
         Position shotTarget = result.goal()
-                ? new Position(8.0, 3.5)
+                ? GOAL_POSITION
                 : new Position(8.0, result.actualTarget().getColumn());
         state.getBall().setTarget(shotTarget);
 
@@ -157,9 +158,9 @@ public class ActionEngine {
         action.setTargetPosition(GOAL_POSITION);
         action.setSkill(result.skill());
         action.setIntendedTarget(GOAL_POSITION);
-        // For goals, set actualTarget to shotTarget so goal triggers when ball reaches row 8
-        // For misses, use actualTarget for proper miss handling
-        action.setActualTarget(result.goal() ? shotTarget : result.actualTarget());
+        // Dobar šut prvo mora fizički da stigne do gol-linije. Tek posle
+        // duela sa GK lopta nastavlja kroz gol do reda 8.
+        action.setActualTarget(result.goal() ? GOAL_POSITION : shotTarget);
         action.setGoodExecution(result.goal());
         state.incrementActionCount();
         state.incrementShotCount();
@@ -179,7 +180,7 @@ public class ActionEngine {
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
-        state.setActionDelayTicks(20);
+        state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
 
@@ -194,18 +195,63 @@ public class ActionEngine {
         state.getBall().setCarrier(winner);
         state.setCarrier(winner);
         winner.setTarget(null);
-        state.setActionDelayTicks(20);
+        state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
         complete("DUEL: " + winner.getLabel() + " wins | " + reason);
     }
 
-    /** Good shot lost to the goalkeeper duel; no goal is scored. */
+    /** Good shot lost to the goalkeeper duel; starts a smooth rebound sequence. */
     public void shotSaved(Player goalkeeper) {
+        Action action = state.getAction();
+        state.getBall().setCarrier(null);
+        state.getBall().setPosition(GOAL_POSITION);
+        boolean corner = state.getRandom().nextInt(3) == 2;
+        if (corner) {
+            boolean right = state.getRandom().nextBoolean();
+            action.setSaveType(Action.SaveType.CORNER_REBOUND);
+            action.setActualTarget(new Position(0, right ? 6 : 1));
+            state.getBall().setTarget(action.getActualTarget());
+            state.setStatus("SHOT saved — GK deflects to " + (right ? "right" : "left") + " corner");
+        } else {
+            action.setSaveType(Action.SaveType.FIELD_REBOUND);
+            Position rebound = new Position(5 + state.getRandom().nextInt(3),
+                    1 + state.getRandom().nextInt(6));
+            action.setActualTarget(rebound);
+            state.getBall().setTarget(rebound);
+            state.setStatus("SHOT saved — ball rebounds into field");
+        }
+        state.log("SHOT outcome: SAVE | GK: " + goalkeeper.getLabel()
+                + " | variant: " + action.getSaveType());
+        completeSaveContactLogOnly(goalkeeper);
+    }
+
+    private void completeSaveContactLogOnly(Player goalkeeper) {
+        // Akcija ostaje aktivna dok lopta ne završi rebound putanju.
+        state.setCarrier(null);
+        state.log("Action completed: SHOT | SAVE contact: " + goalkeeper.getLabel());
+    }
+
+    public void finishFieldRebound() {
         state.getBall().setTarget(null);
-        state.getBall().setPosition(goalkeeper.getPosition());
-        state.getBall().setCarrier(goalkeeper);
-        state.setCarrier(goalkeeper);
-        state.setStatus("SHOT saved by " + goalkeeper.getLabel());
-        complete("SHOT | SAVE by " + goalkeeper.getLabel());
+        state.getBall().setCarrier(null);
+        state.setCarrier(null);
+        state.setStatus("SAVE rebound — LOOSE BALL");
+        complete("SHOT | SAVE rebound into field");
+    }
+
+    public void finishCornerRebound() {
+        state.getBall().setTarget(null);
+        state.getBall().setCarrier(null);
+        state.setCarrier(null);
+        state.setStatus("SAVE rebound — CORNER");
+        complete("SHOT | SAVE rebound to corner");
+    }
+
+    /** Nastavlja do reda 8 tek kada je šutant dobio duel sa golmanom. */
+    public void continueGoalAfterGkDuel() {
+        Action action = state.getAction();
+        action.setActualTarget(GOAL_EXIT_POSITION);
+        state.getBall().setTarget(GOAL_EXIT_POSITION);
+        state.log("SHOT outcome: GOAL path | ball crosses goal line and continues to row 8");
     }
 
     /** Gol je postignut — simulacija se zamrzava do reset-a. */
@@ -275,14 +321,14 @@ public void passFailed() {
                         state.getBall().getPosition()) <= 1e-9) {
                     state.getBall().setCarrier(state.getCarrier());
                     state.getCarrier().setTarget(null);
-                    state.setActionDelayTicks(20);
+                    state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
                     complete("CHASE: " + state.getCarrier().getLabel() + " has the ball");
                 }
             }
             case CARRY -> {
                 // If carrier has the ball and target is null, action completes
                 if (state.getCarrier().getTarget() == null && state.getBall().getCarrier() == state.getCarrier()) {
-                    state.setActionDelayTicks(20);
+                    state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
                     complete("CARRY: " + state.getCarrier().getLabel());
                 }
             }

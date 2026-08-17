@@ -18,6 +18,8 @@ package org.example.footballmanager.demo;
  */
 public class Action {
 
+    public enum SaveType { NONE, FIELD_REBOUND, CORNER_REBOUND }
+
     public enum Type {
         CHASE,
         CARRY,
@@ -36,6 +38,7 @@ public class Action {
     private Position intendedTarget;
     private Position actualTarget;
     private boolean goodExecution;
+    private SaveType saveType = SaveType.NONE;
 
     public Action(Type type, Player actingPlayer) {
         this.type = type;
@@ -121,6 +124,9 @@ public class Action {
     public void setGoodExecution(boolean goodExecution) {
         this.goodExecution = goodExecution;
     }
+
+    public SaveType getSaveType() { return saveType; }
+    public void setSaveType(SaveType saveType) { this.saveType = saveType; }
 
     @Override
     public String toString() {

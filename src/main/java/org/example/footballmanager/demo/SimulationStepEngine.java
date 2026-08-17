@@ -93,7 +93,17 @@ public class SimulationStepEngine {
             if (!SimulationState.TEAM_HOME.equals(carrier.getTeam())) {
                 state.setReturningPlayer(carrier);
                 carrier.setTarget(carrier.getAlternativePosition());
-                actions.executePassTo(selection.closestHomeGoalkeeper());
+                if (state.getCornerTaker() == carrier) {
+                    Player cornerReceiver = selection.nearestAwayTo(new Position(3.5, 3.5), true, carrier);
+                    state.setCornerTaker(null);
+                    if (cornerReceiver != null) {
+                        actions.executePassTo(cornerReceiver);
+                    } else {
+                        actions.executePassTo(selection.closestHomeGoalkeeper());
+                    }
+                } else {
+                    actions.executePassTo(selection.closestHomeGoalkeeper());
+                }
             } else {
                 // Gol-kick: HOME golman izvodi loptu sa svoje pozicije.
                 actions.executePass();

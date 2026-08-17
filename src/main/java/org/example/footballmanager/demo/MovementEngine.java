@@ -30,6 +30,9 @@ public class MovementEngine {
             if (p.isLocked()) {
                 continue;
             }
+            if (state.isBlockedAfterDuel(p) && p != state.getBall().getCarrier()) {
+                continue;
+            }
             Position target = p.getTarget();
             if (target == null) {
                 continue;

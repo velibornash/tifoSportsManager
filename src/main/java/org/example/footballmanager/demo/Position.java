@@ -1,5 +1,7 @@
 package org.example.footballmanager.demo;
 
+import java.util.Locale;
+
 /**
  * Pozicija na mrezi 9x8, izrazena koordinatom (row, column) u model koordinatama
  * (red 1 = fizički DONJI red terena, red 7 = GORNJI; kolone rastu levo na desno).
@@ -31,6 +33,6 @@ public class Position {
 
     @Override
     public String toString() {
-        return "(" + row + "," + column + ")";
+        return String.format(Locale.ROOT, "(%.2f,%.2f)", row, column);
     }
 }

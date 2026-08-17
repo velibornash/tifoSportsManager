@@ -48,7 +48,8 @@ class SimulationArchitectureTest {
         switch (action.getType()) {
             case CHASE -> {
                 assertTrue(status.startsWith("CHASE") || status.contains("chasing ball")
-                        || status.contains("moving to ball") || status.contains("still moving"),
+                        || status.contains("moving to ball") || status.contains("still moving")
+                        || status.contains("action in progress"),
                     "CHASE status ne poklapa se: " + status);
                 assertTrue(engine.getBall().getCarrier() == null
                         || engine.getBall().getCarrier() == engine.getCarrier());
@@ -85,7 +86,8 @@ class SimulationArchitectureTest {
 
     /**
      * Sekvenca akcija za fiksni seed mora pocinjati isto:
-     * CARRY, PASS, PASS... (prva akcija uvek CARRY jer je HSTL u blizini lopte).
+     * CHASE, pa normalna akcija... (prva akcija je eksplicitni Chase do tacne
+     * koordinate lopte; carrier ne nastaje pre fizičkog dolaska).
      * Statusi sada sadrze skill info, pa proveravamo samo POCETAK stringa.
      */
     @Test
@@ -104,12 +106,11 @@ class SimulationArchitectureTest {
                 engine.reset();
             }
         }
-        // Prva akcija: CARRY (HSTL uvek najblizi lopti)
-        assertTrue(statuses.get(0).startsWith("CARRY: HSTL"),
-                "prva akcija mora biti CARRY: HSTL, bio: " + statuses.get(0));
-        // Druga akcija: PASS (HSTL dodaje)
-        assertTrue(statuses.get(1).startsWith("PASS: HSTL"),
-                "druga akcija mora biti PASS: HSTL, bio: " + statuses.get(1));
+        assertTrue(statuses.get(0).contains("HSTL chasing ball"),
+                "prva akcija mora biti tacan CHASE: HSTL, bio: " + statuses.get(0));
+        assertTrue(statuses.stream().anyMatch(s -> s.startsWith("PASS: HSTL")
+                        || s.startsWith("CARRY: HSTL")),
+                "posle Chase-a HSTL mora dobiti normalnu akciju: " + statuses);
     }
 
     @Test

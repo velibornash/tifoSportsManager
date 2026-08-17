@@ -24,6 +24,11 @@ import java.util.Random;
 public class SimulationState {
 
     private static final int MAX_MESSAGES = 8;
+    public static final int SIMULATION_TICKS_PER_SECOND = 20;
+    public static final int ACTION_PAUSE_TICKS = 6;       // 0.3 s
+    public static final int DUEL_LOSS_TICKS = 60;          // 3 s
+    public static final int SET_PIECE_HOLD_TICKS = 60;    // 3 s
+    public static final int CORNER_TAKER_HOLD_TICKS = 40; // 2 s
 
     public static final String TEAM_HOME = "HOME";
 
@@ -52,6 +57,11 @@ public class SimulationState {
     private long restartHoldUntilMs;
     private int actionDelayTicks;
     private int restartHoldTicks;
+    private final Map<Player, Integer> duelCooldownTicks = new HashMap<>();
+    private boolean pendingCorner;
+    private boolean pendingCornerRight;
+    private Player cornerTaker;
+    private int cornerHoldTicks;
 
     // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -194,6 +204,21 @@ public class SimulationState {
     public int getRestartHoldTicks() { return restartHoldTicks; }
     public void setRestartHoldTicks(int ticks) { restartHoldTicks = Math.max(0, ticks); }
     public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
+    public void blockAfterDuel(Player player) { if (player != null) duelCooldownTicks.put(player, DUEL_LOSS_TICKS); }
+    public boolean isBlockedAfterDuel(Player player) { return duelCooldownTicks.getOrDefault(player, 0) > 0; }
+    public void consumeDuelCooldownTick() {
+        duelCooldownTicks.replaceAll((player, ticks) -> Math.max(0, ticks - 1));
+        duelCooldownTicks.entrySet().removeIf(entry -> entry.getValue() == 0);
+    }
+    public boolean isPendingCorner() { return pendingCorner; }
+    public void setPendingCorner(boolean value) { pendingCorner = value; }
+    public boolean isPendingCornerRight() { return pendingCornerRight; }
+    public void setPendingCornerRight(boolean value) { pendingCornerRight = value; }
+    public Player getCornerTaker() { return cornerTaker; }
+    public void setCornerTaker(Player player) { cornerTaker = player; }
+    public int getCornerHoldTicks() { return cornerHoldTicks; }
+    public void setCornerHoldTicks(int ticks) { cornerHoldTicks = Math.max(0, ticks); }
+    public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
     public long getRestartHoldUntilMs() { return restartHoldUntilMs; }
     public void setRestartHoldUntilMs(long value) { restartHoldUntilMs = value; }
 
@@ -201,6 +226,7 @@ public class SimulationState {
 
     public void log(String message) {
         messages.addLast(message);
+        System.out.println("[AppLog] " + message);
         while (messages.size() > MAX_MESSAGES) {
             messages.removeFirst();
         }
@@ -356,6 +382,11 @@ public class SimulationState {
         restartHoldUntilMs = 0;
         actionDelayTicks = 0;
         restartHoldTicks = 0;
+        duelCooldownTicks.clear();
+        pendingCorner = false;
+        pendingCornerRight = false;
+        cornerTaker = null;
+        cornerHoldTicks = 0;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();

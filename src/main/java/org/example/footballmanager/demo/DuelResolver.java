@@ -47,4 +47,11 @@ public final class DuelResolver {
         };
         return Math.max(1, (int) Math.round(value * 10.0));
     }
+
+    /** Tekstualni trag identičan formuli korišćenoj u resolve(). */
+    public String skillDescription(Duel duel, boolean attacker) {
+        Player player = attacker ? duel.getAttacker() : duel.getDefender();
+        int base = skillValue(player, duel.getType(), attacker);
+        return "skill=" + base + "/10 + random(0..5)";
+    }
 }
