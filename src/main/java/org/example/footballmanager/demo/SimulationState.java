@@ -55,6 +55,7 @@ public class SimulationState {
 
     private String status = "ready";
     private int goalCount;
+    private int awayGoalCount;
     private int actionCount;
     private int shotCount;
     private int round;
@@ -81,6 +82,8 @@ public class SimulationState {
     private boolean pendingCorner;
     private boolean pendingCornerRight;
     private Player cornerTaker;
+    private String cornerTeam;
+    private String kickoffTeam = TEAM_HOME;
     private int cornerHoldTicks;
     private Player duelVisualAttacker;
     private Player duelVisualDefender;
@@ -150,7 +153,8 @@ public class SimulationState {
 
     /** Returns a stable read model for replay and future statistics exporters. */
     public SimulationRecording getRecording() {
-        return new SimulationRecording(eventStore.snapshot(), snapshotStore.snapshot(), goalCount);
+        return new SimulationRecording(eventStore.snapshot(), snapshotStore.snapshot(),
+                goalCount, awayGoalCount);
     }
 
     /** Applies a saved frame for replay rendering; it does not execute an action. */
@@ -176,6 +180,7 @@ public class SimulationState {
         action = null;
         status = snapshot.status();
         goalCount = snapshot.goalCount();
+        awayGoalCount = snapshot.awayGoalCount();
         matchTicks = snapshot.matchTicks();
         halfTime = snapshot.halfTime();
         matchFinished = snapshot.matchFinished();
@@ -205,7 +210,7 @@ public class SimulationState {
                         ? null : currentAction.getTargetPlayer().getId(),
                 currentAction == null ? null : currentAction.getIntendedTarget(),
                 currentAction == null ? null : currentAction.getActualTarget(),
-                status, goalCount, matchTicks, halfTime, matchFinished,
+                status, goalCount, awayGoalCount, matchTicks, halfTime, matchFinished,
                 passAttempts, passCompletions, shotsOnTarget));
     }
 
@@ -249,6 +254,9 @@ public class SimulationState {
     public int getGoalCount() {
         return goalCount;
     }
+
+    public int getAwayGoalCount() { return awayGoalCount; }
+    public void incrementAwayGoalCount() { awayGoalCount++; }
 
     public void incrementGoalCount() {
         goalCount++;
@@ -377,6 +385,10 @@ public class SimulationState {
     public void setPendingCornerRight(boolean value) { pendingCornerRight = value; }
     public Player getCornerTaker() { return cornerTaker; }
     public void setCornerTaker(Player player) { cornerTaker = player; }
+    public String getCornerTeam() { return cornerTeam; }
+    public void setCornerTeam(String team) { cornerTeam = team; }
+    public String getKickoffTeam() { return kickoffTeam; }
+    public void setKickoffTeam(String team) { kickoffTeam = team; }
     public int getCornerHoldTicks() { return cornerHoldTicks; }
     public void setCornerHoldTicks(int ticks) { cornerHoldTicks = Math.max(0, ticks); }
     public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
@@ -555,6 +567,8 @@ public class SimulationState {
         shotsOnTarget = 0;
         goals.clear();
         goalCount = 0;
+        awayGoalCount = 0;
+        kickoffTeam = TEAM_HOME;
         status = "ready";
         captureSnapshot();
     }
@@ -587,6 +601,7 @@ public class SimulationState {
         pendingCorner = false;
         pendingCornerRight = false;
         cornerTaker = null;
+        cornerTeam = null;
         cornerHoldTicks = 0;
         duelVisualAttacker = null;
         duelVisualDefender = null;

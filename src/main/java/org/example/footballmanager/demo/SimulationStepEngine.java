@@ -61,9 +61,11 @@ public class SimulationStepEngine {
 
         Player carrier = state.getCarrier();
         if (carrier == null) {
-            carrier = selection.closestHomeTo(state.getBall().getPosition());
+            carrier = selection.closestTeamTo(state.getBall().getPosition(), state.getKickoffTeam());
+            if (carrier == null) carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 state.setCarrier(carrier);
+                state.setKickoffTeam(SimulationState.TEAM_HOME);
                 selection.clearChaseTargetsExcept(carrier);
                 carrier.setTarget(state.getBall().getPosition());
                 state.recordDesiredPositions();
@@ -74,6 +76,7 @@ public class SimulationStepEngine {
             // Preuzimanje je dozvoljeno samo na TACNOJ koordinati lopte.
             state.getBall().setCarrier(carrier);
             state.setCarrier(carrier);
+            state.setKickoffTeam(SimulationState.TEAM_HOME);
         } else if (state.getBall().getCarrier() != carrier) {
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 selection.clearChaseTargetsExcept(carrier);
@@ -92,29 +95,30 @@ public class SimulationStepEngine {
         double row = carrier.getPosition().getRow();
         if (state.isAwayRestartPending()) {
             state.setAwayRestartPending(false);
+            boolean cornerRestart = state.getCornerTaker() == carrier;
             if (!SimulationState.TEAM_HOME.equals(carrier.getTeam())) {
                 state.setReturningPlayer(carrier);
                 carrier.setTarget(carrier.getAlternativePosition());
-                if (state.getCornerTaker() == carrier) {
-                    Player cornerReceiver = selection.nearestAwayTo(new Position(3.5, 3.5), true, carrier);
+                if (cornerRestart) {
+                    Player cornerReceiver = selection.closestTeamTo(
+                            new Position(3.5, 3.5), carrier.getTeam(), carrier);
                     state.setCornerTaker(null);
                     if (cornerReceiver != null) {
                         actions.executePassTo(cornerReceiver);
                     } else {
                         actions.executePassTo(selection.closestHomeGoalkeeper());
                     }
-                } else {
-                    actions.executePassTo(selection.closestHomeGoalkeeper());
-                }
+                } else actions.executePass();
             } else {
-                // Gol-kick: HOME golman izvodi loptu sa svoje pozicije.
+                if (cornerRestart) state.setCornerTaker(null);
                 actions.executePass();
             }
             state.incrementRound();
             return state.getStatus();
         }
         boolean goalkeeper = "GK".equals(carrier.getRole());
-        boolean canShoot = row >= ActionEngine.SHOOT_MIN_ROW && !goalkeeper;
+        boolean canShoot = !goalkeeper && (SimulationState.TEAM_HOME.equals(carrier.getTeam())
+                ? row >= ActionEngine.SHOOT_MIN_ROW : row <= 3);
         String[] options = goalkeeper
             ? new String[] {"PASS", "CLEAR"}
             : canShoot

@@ -19,6 +19,7 @@ public record SimulationSnapshot(
         Position actualTarget,
         String status,
         int goalCount,
+        int awayGoalCount,
         int matchTicks,
         boolean halfTime,
         boolean matchFinished,

@@ -25,12 +25,6 @@ public class MovementEngine {
 
     public void moveAllTowardTargets() {
         for (Player p : state.getPlayers()) {
-            if (!SimulationState.TEAM_HOME.equals(p.getTeam())
-                    && p != state.getReturningPlayer()
-                    && !isActiveChase(p)
-                    && p != state.getBall().getCarrier()) {
-                continue;
-            }
             if (p.isLocked()) {
                 continue;
             }

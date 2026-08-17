@@ -118,6 +118,22 @@ public class TacticsRules {
         return new Position(1, 3.5);
     }
 
+    /** Same editor rules, interpreted from the selected team's perspective. */
+    public Position desiredCell(String role, Position ball, String team) {
+        Position ballInEditorPerspective =
+                TacticalPerspectiveTransformer.toHomePerspective(ball, team);
+        Position targetInEditorPerspective = desiredCell(role, ballInEditorPerspective);
+        return TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
+    }
+
+    /** Tactical-editor position for one of the four explicit corner contexts. */
+    public Position cornerCell(String role, String cornerContext, String team) {
+        Position target = lookup(role, cornerContext);
+        if (target == null) target = anchorByRole.get(role);
+        if (target == null) target = new Position(1, 3.5);
+        return TacticalPerspectiveTransformer.toPhysical(target, team);
+    }
+
     private Position lookup(String role, String ballStateKey) {
         Map<String, Position> byState = desiredByRoleByState.get(role);
         return byState == null ? null : byState.get(ballStateKey);

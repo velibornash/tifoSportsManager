@@ -18,6 +18,16 @@ public class ActionEngine {
     public static final Position GOAL_POSITION = new Position(7, 3.5); // away gol — linija gola je red 7
     public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
 
+    public static Position goalPositionFor(String team) {
+        return SimulationState.TEAM_HOME.equals(team)
+                ? GOAL_POSITION : new Position(1, 3.5);
+    }
+
+    public static Position goalExitPositionFor(String team) {
+        return SimulationState.TEAM_HOME.equals(team)
+                ? GOAL_EXIT_POSITION : new Position(0, 3.5);
+    }
+
     private final SimulationState state;
     private final PlayerSelectionEngine selection;
     private final ExecutionQuality executionQuality;
@@ -69,7 +79,7 @@ public class ActionEngine {
     public void executePass() {
         Player carrier = state.getCarrier();
         int candidateCount = "GK".equals(carrier.getRole()) ? 2 : 6;
-        List<Player> nearest = selection.nearestHomeTo(carrier, candidateCount);
+        List<Player> nearest = selection.nearestTeamTo(carrier, candidateCount);
         if (nearest.isEmpty()) {
             executeClearance();
             return;
@@ -77,7 +87,7 @@ public class ActionEngine {
         Player receiver = nearest.get(state.getRandom().nextInt(nearest.size()));
         // Hard rule: normal HOME play never returns the ball to row 1 or GK.
         // Restart-specific calls use executePassTo() directly and remain valid.
-        if ("GK".equals(receiver.getRole()) || receiver.getPosition().getRow() <= 1.0) {
+        if (isOwnGoalkeeperOrDefensiveRow(receiver, carrier.getTeam())) {
             executeClearance();
             return;
         }
@@ -85,8 +95,7 @@ public class ActionEngine {
     }
 
     public void executePassTo(Player receiver) {
-        if (SimulationState.TEAM_HOME.equals(state.getCarrier().getTeam())
-                && ("GK".equals(receiver.getRole()) || receiver.getPosition().getRow() <= 1.0)) {
+        if (isOwnGoalkeeperOrDefensiveRow(receiver, state.getCarrier().getTeam())) {
             executeClearance();
             return;
         }
@@ -153,7 +162,8 @@ public class ActionEngine {
         if (dr == 0 && dc == 0) {
             dr = 1;
         }
-        double nr = MovementEngine.clamp(r + dr, 1, 7);
+        double direction = SimulationState.TEAM_HOME.equals(carrier.getTeam()) ? 1 : -1;
+        double nr = MovementEngine.clamp(r + direction * dr, 1, 7);
         double nc = MovementEngine.clamp(c + dc, 1, 6);
         carrier.setTarget(new Position(nr, nc));
         Position carryTarget = new Position(nr, nc);
@@ -220,7 +230,9 @@ public class ActionEngine {
     public void executeClearance() {
         Player carrier = state.getCarrier();
         Position current = carrier.getPosition();
-        double targetRow = Math.min(7.0, current.getRow() + 2.0 + state.getRandom().nextInt(3));
+        double direction = SimulationState.TEAM_HOME.equals(carrier.getTeam()) ? 1 : -1;
+        double targetRow = MovementEngine.clamp(current.getRow()
+                + direction * (2.0 + state.getRandom().nextInt(3)), 1, 7);
         Position target = new Position(targetRow, 1.0 + state.getRandom().nextInt(6));
         state.getBall().setCarrier(null);
         state.getBall().setTarget(target);
@@ -237,14 +249,17 @@ public class ActionEngine {
 /** Odluka o sutu: lopta leti ka away golu sa odstupanjem zavisnim od skill-a. */
     public void executeShot() {
         Position shotOrigin = state.getCarrier().getPosition();
-        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(GOAL_POSITION);
+        String shootingTeam = state.getCarrier().getTeam();
+        Position goalPosition = goalPositionFor(shootingTeam);
+        Position goalExit = goalExitPositionFor(shootingTeam);
+        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(goalPosition);
 
         state.getBall().setCarrier(null);
         // For a goal, set target to row 8 (through the goal) so animation shows ball flying through
         // For a miss, actualTarget already has the out-of-bounds position
         Position shotTarget = result.goal()
-                ? GOAL_EXIT_POSITION
-                : new Position(8.0, result.actualTarget().getColumn());
+                ? goalExit
+                : new Position(goalExit.getRow(), result.actualTarget().getColumn());
         state.getBall().setTarget(shotTarget);
 
         String qualityLabel = result.goal() ? "GOOD" : "POOR";
@@ -254,10 +269,11 @@ public class ActionEngine {
         start(Action.Type.SHOT, description);
 
         Action action = state.getAction();
-        action.setTargetPosition(GOAL_POSITION);
+        action.setTargetPosition(goalPosition);
         action.setExecutionOrigin(shotOrigin);
+        action.setLogicalGoalPosition(goalPosition);
         action.setSkill(result.skill());
-        action.setIntendedTarget(GOAL_POSITION);
+        action.setIntendedTarget(goalPosition);
         // Dobar šut prvo mora fizički da stigne do gol-linije. Tek posle
         // duela sa GK lopta nastavlja kroz gol do reda 8.
         action.setActualTarget(shotTarget);
@@ -346,18 +362,22 @@ public class ActionEngine {
         state.incrementShotsOnTarget();
         Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
-        state.getBall().setPosition(GOAL_POSITION);
+        Position goalPosition = goalPositionFor(action.getActingPlayer().getTeam());
+        state.getBall().setPosition(goalPosition);
         boolean corner = state.getRandom().nextInt(3) == 2;
         if (corner) {
             boolean right = state.getRandom().nextBoolean();
             action.setSaveType(Action.SaveType.CORNER_REBOUND);
-            action.setActualTarget(new Position(0, right ? 6 : 1));
+            int cornerRow = SimulationState.TEAM_HOME.equals(action.getActingPlayer().getTeam()) ? 8 : 0;
+            action.setActualTarget(new Position(cornerRow, right ? 6 : 1));
             state.getBall().setTarget(action.getActualTarget());
             state.setStatus("SHOT saved — GK deflects to " + (right ? "right" : "left") + " corner");
         } else {
             action.setSaveType(Action.SaveType.FIELD_REBOUND);
-            Position rebound = new Position(5 + state.getRandom().nextInt(3),
-                    1 + state.getRandom().nextInt(6));
+            int reboundRow = SimulationState.TEAM_HOME.equals(action.getActingPlayer().getTeam())
+                    ? 5 + state.getRandom().nextInt(3)
+                    : 1 + state.getRandom().nextInt(3);
+            Position rebound = new Position(reboundRow, 1 + state.getRandom().nextInt(6));
             action.setActualTarget(rebound);
             state.getBall().setTarget(rebound);
             state.setStatus("SHOT saved — ball rebounds into field");
@@ -404,9 +424,17 @@ public class ActionEngine {
         recordActionResult(ActionOutcome.SHOT_GOAL, previousState, Ball.BallState.LOOSE, null);
         state.incrementShotsOnTarget();
         state.recordGoal(scorer);
-        state.incrementGoalCount();
+        if (SimulationState.TEAM_HOME.equals(scorer.getTeam())) {
+            state.incrementGoalCount();
+        } else {
+            state.incrementAwayGoalCount();
+        }
+        state.setKickoffTeam(SimulationState.TEAM_HOME.equals(scorer.getTeam())
+                ? "AWAY" : SimulationState.TEAM_HOME);
         state.setCelebrating(true);
-        state.setStatus("GOAL for HOME! (" + state.getGoalCount() + ")");
+        int score = SimulationState.TEAM_HOME.equals(scorer.getTeam())
+                ? state.getGoalCount() : state.getAwayGoalCount();
+        state.setStatus("GOAL for " + scorer.getTeam() + "! (" + score + ")");
         state.log(state.getStatus());
         complete("SHOT (GOAL!) | striker: " + state.getAction().getSkill() + "/20");
         // Bez odmah reset(): demo prikazuje proslavu ~5s, pa tek onda reset.
@@ -515,5 +543,12 @@ public void passFailed() {
 
     private static String playerId(Player player) {
         return player == null ? null : player.getLabel();
+    }
+
+    private boolean isOwnGoalkeeperOrDefensiveRow(Player player, String team) {
+        if ("GK".equals(player.getRole())) return true;
+        return SimulationState.TEAM_HOME.equals(team)
+                ? player.getPosition().getRow() <= 1.0
+                : player.getPosition().getRow() >= 7.0;
     }
 }

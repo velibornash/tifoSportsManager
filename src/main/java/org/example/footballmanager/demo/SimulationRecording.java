@@ -9,7 +9,8 @@ import java.util.List;
 public record SimulationRecording(
         List<SimulationEventStore.StoredSimulationEvent> events,
         List<SimulationSnapshot> snapshots,
-        int goalCount
+        int goalCount,
+        int awayGoalCount
 ) {
     public SimulationRecording {
         events = List.copyOf(events);

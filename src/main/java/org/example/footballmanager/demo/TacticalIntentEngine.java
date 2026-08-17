@@ -3,7 +3,7 @@ package org.example.footballmanager.demo;
 /**
  * Odgovornost: TAKTICKA NAMERA / TAKTICKO CILJANJE.
  *
- * Granica koja izdvaja dodelu taktickih ciljeva kretanja:
+ * Granica koja izdvaja dodelu taktickih ciljeva kretanja za obe ekipe:
  *  - uzima trenutnu poziciju lopte
  *  - pita {@link TacticsRules} za desired poziciju role igraca
  *  - dodeljuje sledeci takticki cilj kretanja (max 1 celija)
@@ -28,13 +28,12 @@ public class TacticalIntentEngine {
         state.setTacticalBallPosition(state.getBall().getPosition());
         state.setLastTacticalBallStateKey(TacticsRules.ballStateKey(state.getBall().getPosition()));
         for (Player p : state.getPlayers()) {
-            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
-                continue;
-            }
             if (p == state.getCarrier() || p.isLocked()) {
                 continue;
             }
-            Position desired = state.getTacticsRules().desiredCell(p.getRole(), state.getBall().getPosition());
+            if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
+            Position desired = state.getTacticsRules().desiredCell(p.getRole(),
+                    state.getBall().getPosition(), p.getTeam());
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(MovementEngine.oneCellToward(p.getPosition(), desired));
         }
@@ -54,15 +53,20 @@ public class TacticalIntentEngine {
         state.setTacticalBallPosition(state.getBall().getPosition());
         state.setLastTacticalBallStateKey(currentKey);
         for (Player p : state.getPlayers()) {
-            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
-                continue;
-            }
             if (p == state.getCarrier() || p.isLocked()) {
                 continue;
             }
-            Position desired = state.getTacticsRules().desiredCell(p.getRole(), state.getBall().getPosition());
+            if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
+            Position desired = state.getTacticsRules().desiredCell(p.getRole(),
+                    state.getBall().getPosition(), p.getTeam());
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(MovementEngine.oneCellToward(p.getPosition(), desired));
         }
+    }
+
+    private boolean isActiveChase(Player player) {
+        Action action = state.getAction();
+        return action != null && action.getType() == Action.Type.CHASE
+                && action.getActingPlayer() == player;
     }
 }

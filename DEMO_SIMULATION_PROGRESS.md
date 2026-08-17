@@ -402,6 +402,22 @@ The match clock is gated by an explicit `matchStarted` state. The Swing control
 is labelled `Start match simulation` before kickoff and `Stop match simulation`
 while automatic execution is active; it uses a pale-green button style.
 
+## AWAY tactical movement and restarts
+
+AWAY now reads the same tactical-editor rules through
+`TacticalPerspectiveTransformer`. Both the progress axis and lateral axis are
+mirrored, so a HOME left-back target on columns 1–2 becomes an AWAY left-back
+target on columns 5–6. The ball-state lookup is mirrored before the shared rule
+lookup and the resulting target is transformed back to physical coordinates.
+
+Normal team movement is enabled for both sides while chase, carrier, locked and
+restart players retain their specialized targets. Side restarts belong to the
+opposite team, goal kicks belong to the defending goalkeeper, and kickoff after
+a goal belongs to the team that conceded. Restart takers pass to their own
+team. Corner setup selects the attacking team's taker and applies the four
+`ATTACK_LEFT/RIGHT_CORNER` and `DEFEND_LEFT/RIGHT_CORNER` editor contexts,
+including the AWAY perspective mirror.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:

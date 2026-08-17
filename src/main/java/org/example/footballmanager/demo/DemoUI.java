@@ -297,9 +297,7 @@ public class DemoUI {
     }
 
     private int awayGoals() {
-        return (int) simulation.getGoals().stream()
-                .filter(goal -> !SimulationState.TEAM_HOME.equals(goal.team()))
-                .count();
+        return simulation.getAwayGoalCount();
     }
 
     private void updateStatistics() {

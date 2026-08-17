@@ -39,6 +39,7 @@ public class Action {
     private Position intendedTarget;
     private Position actualTarget;
     private Position executionOrigin;
+    private Position logicalGoalPosition;
     private Position dribbleBypassTarget;
     private boolean goalLineResolved;
     private boolean goodExecution;
@@ -126,6 +127,10 @@ public class Action {
 
     public Position getExecutionOrigin() { return executionOrigin; }
     public void setExecutionOrigin(Position executionOrigin) { this.executionOrigin = executionOrigin; }
+    public Position getLogicalGoalPosition() { return logicalGoalPosition; }
+    public void setLogicalGoalPosition(Position logicalGoalPosition) {
+        this.logicalGoalPosition = logicalGoalPosition;
+    }
 
     public Position getDribbleBypassTarget() { return dribbleBypassTarget; }
     public void setDribbleBypassTarget(Position dribbleBypassTarget) {

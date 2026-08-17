@@ -18,7 +18,8 @@ import java.util.Random;
  * Pravila ove faze (svesno pojednostavljena — bez golmana, duela, skillsa,
  * offsajda, scoringa):
  *
- *  - Krecu se SAMO igraci HOME ekipe; AWAY igraci se NIKAD ne pomeraju.
+ *  - HOME i AWAY igraci se krecu prema istim tactical-editor pravilima,
+ *    uz perspektivno preslikavanje za AWAY.
  *  - U jednoj rundi (jedan {@link #step()}) igrac dobija cilj udaljen
  *    najvise 1 celiju (8 smerova); glatko kretanje ka cilju radi
  *    {@link #advance()} na svakom tick-u animacije.
@@ -163,7 +164,8 @@ public class SimulationEngine {
                 return;
             }
             boolean right = state.isPendingCornerRight();
-            Position corner = new Position(7, right ? 6 : 1);
+            int cornerRow = SimulationState.TEAM_HOME.equals(state.getCornerTeam()) ? 7 : 1;
+            Position corner = new Position(cornerRow, right ? 6 : 1);
             Player taker = state.getCornerTaker();
             state.setPendingCorner(false);
             state.setPendingRestartPosition(corner);
@@ -192,8 +194,9 @@ public class SimulationEngine {
                 if (action.isClearance()) {
                     actionEngine.finishAwayClearance();
                 } else if (isOutsidePitch(action.getActualTarget())) {
+                    String lastTouchTeam = action.getActingPlayer().getTeam();
                     actionEngine.passOutOfBounds();
-                    scheduleAwayRestart(action.getActualTarget());
+                    scheduleRestart(action.getActualTarget(), lastTouchTeam);
                 } else if (action.isGoodExecution()) {
                     DuelResult duelResult = duelResolution.resolve(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
@@ -223,16 +226,16 @@ public class SimulationEngine {
                     && MovementEngine.distance(state.getBall().getPosition(), action.getActualTarget()) <= 1e-9) {
                 if (action.getSaveType() == Action.SaveType.CORNER_REBOUND) {
                     boolean right = action.getActualTarget().getColumn() > 3.5;
+                    String attackingTeam = action.getActingPlayer().getTeam();
                     actionEngine.finishCornerRebound();
                     state.setPendingCorner(true);
                     state.setPendingCornerRight(right);
+                    state.setCornerTeam(attackingTeam);
                     state.setCornerHoldTicks(SimulationState.SET_PIECE_HOLD_TICKS);
-                    Player taker = playerSelectionEngine.awayByRole(right ? "MR" : "ML");
+                    Player taker = playerSelectionEngine.teamByRole(attackingTeam, right ? "MR" : "ML");
                     state.setCornerTaker(taker);
                     if (taker != null) {
-                        state.setTacticalDesiredPosition(taker,
-                                state.getTacticsRules().desiredCell(taker.getRole(),
-                                        new Position(7, right ? 6 : 1)));
+                        applyCornerTacticalTargets(right, attackingTeam);
                     }
                     state.log("CORNER sequence started: " + (right ? "right" : "left")
                             + " | hold 3.00s");
@@ -246,8 +249,11 @@ public class SimulationEngine {
             // The goal line is a calculation boundary only. A good shot flies
             // directly to row 8; resolve the GK duel when that visual path
             // crosses row 7, without redirecting the ball to (7, 3.5).
-            if (action.isGoodExecution() && !action.isGoalLineResolved()
-                    && state.getBall().getPosition().getRow() >= ActionEngine.GOAL_POSITION.getRow()) {
+            Position logicalGoal = action.getLogicalGoalPosition();
+            boolean crossedGoalLine = SimulationState.TEAM_HOME.equals(action.getActingPlayer().getTeam())
+                    ? state.getBall().getPosition().getRow() >= logicalGoal.getRow()
+                    : state.getBall().getPosition().getRow() <= logicalGoal.getRow();
+            if (action.isGoodExecution() && !action.isGoalLineResolved() && crossedGoalLine) {
                 DuelResult duelResult = duelResolution.resolve(action);
                 if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                     actionEngine.shotSaved(duelResult.winner());
@@ -264,7 +270,7 @@ public class SimulationEngine {
                     && MovementEngine.distance(state.getBall().getPosition(),
                                                action.getActualTarget()) <= 1e-9) {
                 actionEngine.shotMissed();
-                scheduleAwayRestart(state.getBall().getPosition());
+                scheduleRestart(state.getBall().getPosition(), action.getActingPlayer().getTeam());
             }
             duelEngine.update(state.getAction());
             return;
@@ -387,7 +393,7 @@ public class SimulationEngine {
         return String.format(java.util.Locale.ROOT, "(%.2f,%.2f)", p.getRow(), p.getColumn());
     }
 
-    private void scheduleAwayRestart(Position outPosition) {
+    private void scheduleRestart(Position outPosition, String lastTouchTeam) {
         boolean homeGoalKick = outPosition.getRow() <= 0;
         boolean awayGoalKick = outPosition.getRow() >= 8;
         Player restartPlayer;
@@ -401,17 +407,35 @@ public class SimulationEngine {
         } else if (awayGoalKick) {
             restartPlayer = playerSelectionEngine.closestAwayGoalkeeper();
             restartPosition = restartPlayer.getPosition();
-            passToHomeGoalkeeper = true;
+            passToHomeGoalkeeper = false;
         } else {
-            restartPlayer = playerSelectionEngine.closestAwayTo(outPosition);
+            String restartingTeam = SimulationState.TEAM_HOME.equals(lastTouchTeam)
+                    ? "AWAY" : SimulationState.TEAM_HOME;
+            restartPlayer = playerSelectionEngine.closestTeamTo(outPosition, restartingTeam);
             restartPosition = restartPosition(outPosition);
-            passToHomeGoalkeeper = true;
+            passToHomeGoalkeeper = false;
         }
         state.setPendingRestartPlayer(restartPlayer);
         state.setPendingRestartPosition(restartPosition);
         state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
         state.setRestartHoldTicks(60);
         state.setRoundComplete(false);
+    }
+
+    private void applyCornerTacticalTargets(boolean physicalRight, String attackingTeam) {
+        boolean editorRight = SimulationState.TEAM_HOME.equals(attackingTeam)
+                ? physicalRight : !physicalRight;
+        String side = editorRight ? "RIGHT" : "LEFT";
+        for (Player player : state.getPlayers()) {
+            String context = player.getTeam().equals(attackingTeam)
+                    ? "ATTACK_" + side : "DEFEND_" + side;
+            Position desired = state.getTacticsRules().cornerCell(
+                    player.getRole(), context, player.getTeam());
+            state.setTacticalDesiredPosition(player, desired);
+            if (player != state.getCornerTaker() && !player.isLocked()) {
+                player.setTarget(MovementEngine.oneCellToward(player.getPosition(), desired));
+            }
+        }
     }
 
     /**
@@ -512,6 +536,8 @@ public class SimulationEngine {
     public int getGoalCount() {
         return state.getGoalCount();
     }
+
+    public int getAwayGoalCount() { return state.getAwayGoalCount(); }
 
     public int getActionCount() {
         return state.getActionCount();

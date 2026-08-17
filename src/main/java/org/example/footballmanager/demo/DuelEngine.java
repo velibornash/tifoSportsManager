@@ -113,7 +113,9 @@ public final class DuelEngine {
     private Position contestPosition(Action action, Player attacker, Player target) {
         if (action.getType() == Action.Type.CHASE) return state.getBall().getPosition();
         if (action.getType() == Action.Type.PASS) return target.getPosition();
-        if (action.getType() == Action.Type.SHOT) return ActionEngine.GOAL_POSITION;
+        if (action.getType() == Action.Type.SHOT) {
+            return ActionEngine.goalPositionFor(action.getActingPlayer().getTeam());
+        }
         return attacker.getPosition();
     }
 

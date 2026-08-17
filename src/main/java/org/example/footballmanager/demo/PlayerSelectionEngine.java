@@ -28,6 +28,33 @@ public class PlayerSelectionEngine {
         return closestHomeTo(pos, null);
     }
 
+    public Player closestTeamTo(Position pos, String team) {
+        return closestTeamTo(pos, team, null);
+    }
+
+    public Player closestTeamTo(Position pos, String team, Player excluded) {
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : state.getPlayers()) {
+            if (player == excluded || !team.equals(player.getTeam()) || player.isLocked()
+                    || state.isBlockedAfterDuel(player)) continue;
+            double distance = MovementEngine.distance(player.getPosition(), pos);
+            if (distance < bestDistance) {
+                best = player;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    public Player teamByRole(String team, String role) {
+        return state.getPlayers().stream()
+                .filter(player -> team.equals(player.getTeam()))
+                .filter(player -> role.equals(player.getRole()))
+                .filter(player -> !state.isBlockedAfterDuel(player) && !player.isLocked())
+                .findFirst().orElse(null);
+    }
+
     /** Najblizi HOME igrac, uz mogucnost da se prethodni Chase igrac izuzme. */
     public Player closestHomeTo(Position pos, Player excluded) {
         Player best = null;
@@ -121,6 +148,18 @@ public class PlayerSelectionEngine {
         }
         Position fromPos = from.getPosition();
         candidates.sort(Comparator.comparingDouble(p -> MovementEngine.distance(p.getPosition(), fromPos)));
+        return candidates.subList(0, Math.min(n, candidates.size()));
+    }
+
+    public List<Player> nearestTeamTo(Player from, int n) {
+        List<Player> candidates = new ArrayList<>();
+        for (Player player : state.getPlayers()) {
+            if (player == from || !from.getTeam().equals(player.getTeam())
+                    || player.isLocked() || state.isBlockedAfterDuel(player)) continue;
+            candidates.add(player);
+        }
+        candidates.sort(Comparator.comparingDouble(player ->
+                MovementEngine.distance(player.getPosition(), from.getPosition())));
         return candidates.subList(0, Math.min(n, candidates.size()));
     }
 
