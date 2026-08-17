@@ -52,16 +52,29 @@ public class ActionEngine {
      * Generise demo passing skill i racuna odstupnu metu.
      */
     public void executePass() {
-        List<Player> nearest = selection.nearestHomeTo(state.getCarrier(), 6);
+        Player carrier = state.getCarrier();
+        int candidateCount = "GK".equals(carrier.getRole()) ? 2 : 6;
+        List<Player> nearest = selection.nearestHomeTo(carrier, candidateCount);
         if (nearest.isEmpty()) {
-            executeCarry();
+            executeClearance();
             return;
         }
         Player receiver = nearest.get(state.getRandom().nextInt(nearest.size()));
+        // Hard rule: normal HOME play never returns the ball to row 1 or GK.
+        // Restart-specific calls use executePassTo() directly and remain valid.
+        if ("GK".equals(receiver.getRole()) || receiver.getPosition().getRow() <= 1.0) {
+            executeClearance();
+            return;
+        }
         executePassTo(receiver);
     }
 
     public void executePassTo(Player receiver) {
+        if (SimulationState.TEAM_HOME.equals(state.getCarrier().getTeam())
+                && ("GK".equals(receiver.getRole()) || receiver.getPosition().getRow() <= 1.0)) {
+            executeClearance();
+            return;
+        }
         receiver.setLocked(true);
 
         Position intendedTarget = receiver.getPosition();
@@ -113,6 +126,10 @@ public class ActionEngine {
     /** Odluka o kretanju: 1 celija (blagi nagib napred), lopta prati nosioca. */
     public void executeCarry() {
         Player carrier = state.getCarrier();
+        if ("GK".equals(carrier.getRole())) {
+            executeClearance();
+            return;
+        }
         double r = carrier.getPosition().getRow();
         double c = carrier.getPosition().getColumn();
         int dr = weightedForwardDr();
@@ -134,6 +151,24 @@ public class ActionEngine {
         if (roll < 50) return 1;
         if (roll < 75) return 0;
         return -1;
+    }
+
+    /** Clearance ide nekoliko redova napred, ka AWAY golu, pa lopta ostaje loose. */
+    public void executeClearance() {
+        Player carrier = state.getCarrier();
+        Position current = carrier.getPosition();
+        double targetRow = Math.min(7.0, current.getRow() + 2.0 + state.getRandom().nextInt(3));
+        Position target = new Position(targetRow, 1.0 + state.getRandom().nextInt(6));
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(target);
+        start(Action.Type.PASS, "CLEAR: " + carrier.getLabel() + " -> "
+                + formatPosition(target));
+        Action action = state.getAction();
+        action.setClearance(true);
+        action.setActualTarget(target);
+        action.setIntendedTarget(target);
+        action.setGoodExecution(true);
+        state.incrementActionCount();
     }
 
 /** Odluka o sutu: lopta leti ka away golu sa odstupanjem zavisnim od skill-a. */

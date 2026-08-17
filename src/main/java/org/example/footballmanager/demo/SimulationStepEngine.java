@@ -64,6 +64,7 @@ public class SimulationStepEngine {
             carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 state.setCarrier(carrier);
+                selection.clearChaseTargetsExcept(carrier);
                 carrier.setTarget(state.getBall().getPosition());
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " chasing ball");
@@ -75,6 +76,7 @@ public class SimulationStepEngine {
             state.setCarrier(carrier);
         } else if (state.getBall().getCarrier() != carrier) {
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
+                selection.clearChaseTargetsExcept(carrier);
                 carrier.setTarget(state.getBall().getPosition());
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " moving to ball");
@@ -111,14 +113,18 @@ public class SimulationStepEngine {
             state.incrementRound();
             return state.getStatus();
         }
-        boolean canShoot = row >= ActionEngine.SHOOT_MIN_ROW;
-        String[] options = canShoot
-            ? new String[] {"PASS", "CARRY", "SHOT"}
-            : new String[] {"PASS", "CARRY"};
+        boolean goalkeeper = "GK".equals(carrier.getRole());
+        boolean canShoot = row >= ActionEngine.SHOOT_MIN_ROW && !goalkeeper;
+        String[] options = goalkeeper
+            ? new String[] {"PASS", "CLEAR"}
+            : canShoot
+                ? new String[] {"PASS", "CARRY", "SHOT"}
+                : new String[] {"PASS", "CARRY"};
         String action = options[state.getRandom().nextInt(options.length)];
 
         switch (action) {
             case "PASS" -> actions.executePass();
+            case "CLEAR" -> actions.executeClearance();
             case "CARRY" -> actions.executeCarry();
             default -> actions.executeShot();
         }

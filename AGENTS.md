@@ -109,6 +109,11 @@ is a side-effect-free resolution layer: it maps existing `PlayerSkills` extensio
 points to the relevant skill, adds only `random(0..5)`, and returns `DuelResult`
 with winner, outcome, ball state, possession, and power values.
 
+`DuelResolutionCoordinator` is the boundary between detection/resolution and
+match consequences. It applies the shared duel calculation log and loser
+cooldown exactly once, while `SimulationEngine` remains responsible for the
+resulting possession, clearance, carry, pass, save, or shot consequence.
+
 `PlayerSkills` does not yet expose receiving, tackling, or goalkeeping fields;
 `positioning` is the documented neutral placeholder for those roles.
 `SimulationEngine` applies the result after execution: Chase/Carry/Receive can

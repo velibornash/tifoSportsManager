@@ -78,6 +78,13 @@ public final class DuelEngine {
         return resolver.resolve(activeDuel);
     }
 
+    /** Zatvara duel odmah posle resolution-a da isti događaj ne traje kroz tickove. */
+    public void closeAfterResolution() {
+        if (activeDuel != null && activeDuelResolved) {
+            closeActiveDuel();
+        }
+    }
+
     private Player contestTarget(Action action, Player attacker) {
         return switch (action.getType()) {
             case PASS -> action.getTargetPlayer();

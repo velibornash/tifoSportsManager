@@ -415,7 +415,6 @@ public class DemoUI {
     /** Action Log — poruke iz simulacije + UI poruke, append-only. */
     private void logAction(String message) {
         actionLogMessages.addLast(message);
-        System.out.println("[ActionLog] " + message);
         if (actionLogArea != null) {
             actionLogArea.setText(String.join("\n", actionLogMessages));
             actionLogArea.setCaretPosition(actionLogArea.getDocument().getLength());

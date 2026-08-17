@@ -48,6 +48,16 @@ public class PlayerSelectionEngine {
         return best;
     }
 
+    /** Tokom loose-ball chase-a tačno jedan HOME igrač sme imati ball target. */
+    public void clearChaseTargetsExcept(Player chaser) {
+        for (Player p : state.getPlayers()) {
+            if (SimulationState.TEAM_HOME.equals(p.getTeam()) && p != chaser
+                    && p.getTarget() != null) {
+                p.setTarget(null);
+            }
+        }
+    }
+
     public Player closestAwayTo(Position pos) {
         Player best = null;
         double bestDist = Double.MAX_VALUE;

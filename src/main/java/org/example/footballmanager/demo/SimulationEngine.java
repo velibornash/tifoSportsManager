@@ -46,7 +46,7 @@ public class SimulationEngine {
     private final TacticalIntentEngine tacticalIntentEngine;
     private final PlayerSelectionEngine playerSelectionEngine;
     private final DuelEngine duelEngine;
-    private final DuelResolver duelResolver;
+    private final DuelResolutionCoordinator duelResolution;
     private int blockedCarryTicks;
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules) {
@@ -59,7 +59,7 @@ public class SimulationEngine {
         this.ballMovementEngine = new BallMovementEngine(state);
         this.playerSelectionEngine = new PlayerSelectionEngine(state);
         this.duelEngine = new DuelEngine(state);
-        this.duelResolver = new DuelResolver(random);
+        this.duelResolution = new DuelResolutionCoordinator(state, duelEngine, new DuelResolver(random));
         this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
         this.tacticalIntentEngine = new TacticalIntentEngine(state);
         this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine);
@@ -155,7 +155,7 @@ public class SimulationEngine {
                     actionEngine.passOutOfBounds();
                     scheduleAwayRestart(action.getActualTarget());
                 } else if (action.isGoodExecution()) {
-                    DuelResult duelResult = resolveDuel(action);
+                    DuelResult duelResult = duelResolution.resolve(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                         actionEngine.giveBallTo(duelResult.winner(), "RECEIVE_PASS defender");
                         if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
@@ -207,7 +207,7 @@ public class SimulationEngine {
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) <= 1e-9) {
                 if (action.isGoodExecution()) {
-                    DuelResult duelResult = resolveDuel(action);
+                    DuelResult duelResult = duelResolution.resolve(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                         actionEngine.shotSaved(duelResult.winner());
                     } else {
@@ -246,14 +246,19 @@ public class SimulationEngine {
 
         if (action != null && (action.getType() == Action.Type.CHASE
                 || action.getType() == Action.Type.CARRY)) {
-            DuelResult duelResult = duelEngine.resolveActiveDuel(duelResolver);
-            if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
-                actionEngine.giveBallTo(duelResult.winner(), action.getType().name());
-                if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
-                    actionEngine.executeAwayClearance(duelResult.winner());
+            DuelResult duelResult = duelResolution.resolve(action);
+            if (duelResult != null) {
+                if (action.getType() == Action.Type.CHASE
+                        || duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                    actionEngine.giveBallTo(duelResult.winner(), action.getType().name());
+                    if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
+                        actionEngine.executeAwayClearance(duelResult.winner());
+                    }
+                    duelEngine.update(state.getAction());
+                    return;
                 }
-                duelEngine.update(state.getAction());
-                return;
+                // Dribbler attacker wins: continue carry, but close this duel.
+                duelEngine.closeAfterResolution();
             }
         }
 
@@ -286,6 +291,7 @@ public class SimulationEngine {
                     state.getBall().getPosition(), actionPlayer);
             if (replacement != null) {
                 actionPlayer.setTarget(null);
+                playerSelectionEngine.clearChaseTargetsExcept(replacement);
                 state.setCarrier(replacement);
                 replacement.setTarget(state.getBall().getPosition());
                 actionEngine.start(Action.Type.CHASE, replacement.getLabel() + " chasing ball");
@@ -298,31 +304,6 @@ public class SimulationEngine {
 
         actionEngine.checkActionCompletion();
         duelEngine.update(state.getAction());
-    }
-
-    private DuelResult resolveDuel(Action action) {
-        duelEngine.update(action);
-        Duel duel = duelEngine.getActiveDuel();
-        DuelResult result = duelEngine.resolveActiveDuel(duelResolver);
-        if (duel != null && result != null) {
-            Player loser = result.winner() == duel.getAttacker()
-                    ? duel.getDefender() : duel.getAttacker();
-            state.log("DUEL CALC: " + duel.getType() + " | "
-                    + duel.getAttacker().getLabel() + " [" + duelResolver.skillDescription(duel, true)
-                    + " = " + result.attackerPower() + "] vs " + duel.getDefender().getLabel() + " ["
-                    + duelResolver.skillDescription(duel, false) + " = " + result.defenderPower() + "]"
-                    + " | winner: " + result.winner().getLabel());
-            // Posle svakog izgubljenog duela igrač je van akcije 3 sekunde.
-            // Golman koji je odbranio šut je izuzetak: mora odmah biti dostupan
-            // za sledeći odbitak/akciju sa loptom.
-            if (!(duel.getType() == DuelType.SHOT
-                    && duel.getDefender() == result.winner()
-                    && "GK".equals(duel.getDefender().getRole()))) {
-                state.blockAfterDuel(loser);
-                loser.setTarget(null);
-            }
-        }
-        return result;
     }
 
     private boolean isOutsidePitch(Position position) {
