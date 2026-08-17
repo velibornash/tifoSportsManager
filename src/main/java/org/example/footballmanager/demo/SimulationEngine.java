@@ -82,29 +82,28 @@ public class SimulationEngine {
 
         Action action = state.getAction();
 
-        // PASS u toku — lopta leti ka primaocu.
+        // PASS u toku — lopta leti ka primaocu. Igraci reaguju na poziciju lopte.
         if (action != null && action.isPassInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
+            movementEngine.moveAllTowardTargets();
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getTargetPlayer().getPosition()) < BallMovementEngine.PICKUP_DISTANCE) {
                 actionEngine.pickupPass();
-            } else {
-                movementEngine.moveAllTowardTargets();
             }
             return;
         }
 
-        // SHOT u toku — lopta leti ka golu.
+        // SHOT u toku — lopta leti ka golu. Igraci reaguju na poziciju lopte.
         if (action != null && action.isShotInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
+            movementEngine.moveAllTowardTargets();
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         ActionEngine.GOAL_POSITION) < BallMovementEngine.PICKUP_DISTANCE) {
                 actionEngine.goalScored();
                 return;
             }
-            movementEngine.moveAllTowardTargets();
             return;
         }
 

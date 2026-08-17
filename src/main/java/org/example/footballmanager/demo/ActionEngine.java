@@ -99,6 +99,7 @@ public class ActionEngine {
     public void pickupPass() {
         Player receiver = state.getAction().getTargetPlayer();
         receiver.setLocked(false);
+        receiver.setTarget(null);  // nosilac ne treba stari takticki target
         state.getBall().setCarrier(receiver);
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
@@ -129,6 +130,10 @@ public class ActionEngine {
             case CHASE -> {
                 if (state.getBall().getCarrier() == state.getCarrier()) {
                     complete("CHASE: " + state.getCarrier().getLabel() + " has the ball");
+                } else if (state.getCarrier() != null && state.getCarrier().getTarget() == null) {
+                    String label = state.getCarrier().getLabel();
+                    state.setCarrier(null);
+                    complete("CHASE: " + label + " stuck, gave up");
                 }
             }
             case CARRY -> {

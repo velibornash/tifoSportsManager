@@ -104,13 +104,14 @@ Extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `Movem
 `ActionCandidate`. Next sprint introduces real skill/selection/action logic here — do NOT
 add more abstractions beyond these.
 
-### Mid-Action Tactical Refresh
+### Mid-Action Movement (All Actions)
 
-During a PASS or SHOT in flight, `TacticalIntentEngine.refreshTargetsIfBallStateChanged()`
-is called every animation tick in `SimulationEngine.advance()`. When the ball crosses into
-a new grid cell (new `ballStateKey`), all non-carrier HOME players recalculate their
-tactical desired position from `TacticsRules`. This makes players reposition *during*
-the action, not just at the start/end.
+During ANY action (PASS, SHOT, CARRY, CHASE), every `advance()` tick:
+1. `TacticalIntentEngine.refreshTargetsIfBallStateChanged()` — when ball crosses a new grid cell,
+   all non-carrier HOME players recalculate their tactical desired position from `TacticsRules`.
+2. `MovementEngine.moveAllTowardTargets()` — players move toward their recalculated targets.
+
+This means players reposition dynamically during ball flight AND during carrier movement.
 
 **Design principle — three-phase action lifecycle:**
 1. **Decision** (once, at `step()`) — PASS/CARRY/SHOT chosen; does NOT change during action
@@ -120,27 +121,32 @@ the action, not just at the start/end.
 The decision is fixed for the action's duration. Movement reacts to ball trajectory.
 When the action completes (regardless of outcome), a new action starts with the same principles.
 
-### Velocity-Based Smooth Movement (Inertia)
+### Collision Avoidance (Wall Behavior)
 
-Players (non-carrier) use velocity-based inertia instead of instant direction changes.
-Each player has `velX`/`velY` velocity components. Each tick, the velocity is blended
-toward the desired direction at `TURN_RATE = 0.25` (25% per tick). This creates smooth
-turning — players decelerate, rotate, then accelerate in the new direction.
+Players act as **walls** — cannot pass through each other. When blocked:
+1. Try perpendicular slide (left/right relative to movement direction)
+2. Try component-only fallback (X only, Y only)
+3. If all blocked, stay in place
 
+When a carrier is stuck (can't move at all), target is cleared so the action completes.
+When a CHASE carrier is stuck (can't reach ball), carrier gives up and CHASE completes.
+This prevents simulation freezes from deadlocks.
+
+### Movement Constraints
+
+- **1-cell round limit**: non-carrier players cannot move more than 1 cell from their round-start position
 - **Carrier**: moves directly toward target (no inertia) — action completion depends on carrier reaching destination
-- **Non-carrier tactical**: uses inertia blending — smooth direction changes when ball crosses grid cells
-- **1-cell limit**: non-carrier players cannot move more than 1 cell from their round-start position (enforced per tick)
-- Velocity resets to (0,0) when target is reached, when player is locked, or on round reset
+- **Speed**: `PLAYER_SPEED = 0.03` cells/tick (non-carrier), carrier speed varies by action type
 
 ### Ball Speed
 
-- `BALL_SPEED = 0.09` cells/tick (pass/shot flight)
-- `CARRIER_FOLLOW_SPEED = 0.10` cells/tick (ball follows carrier)
+- `BALL_SPEED = 0.094` cells/tick (pass/shot flight)
+- `CARRIER_FOLLOW_SPEED = 0.11` cells/tick (ball follows carrier)
 
 ### UI Circle Sizes
 
-Player radius: 18px, ball radius: 14px (down from 30/24). Carrier ring: 26px outer.
-Allows precise positioning visibility within grid cells.
+Player radius: 18px, ball radius: 12px. Carrier ring: 26px outer. Select radius: 25px.
+Fan-stack rendering removed — players overlap directly on same cell.
 
 ### API Route Prefixes
 

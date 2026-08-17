@@ -52,7 +52,7 @@ public class DemoUI {
     // Veličina "razmicanja" igrača koji dele isto polje — nasloženi kao karte
     private static final int FAN_STEP_X = 15;
     private static final int FAN_STEP_Y = 12;
-    private static final int MAX_ACTION_LOG_LINES = 6;
+    private static final int MAX_ACTION_LOG_LINES = 50;
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
     private static final long BALL_TRAIL_MS = 2500;    // trail se skloni posle ~2.5 sekunde
     private static final int ANIMATION_DELAY_MS = 50;  // sporija ANIMACIJA: sim-tick na svakih 50ms (20fps)
@@ -412,12 +412,10 @@ public class DemoUI {
         }
     }
 
-    /** Action Log — poruke iz simulacije + UI poruke, ogranicen broj redova. */
+    /** Action Log — poruke iz simulacije + UI poruke, append-only. */
     private void logAction(String message) {
         actionLogMessages.addLast(message);
-        while (actionLogMessages.size() > MAX_ACTION_LOG_LINES) {
-            actionLogMessages.removeFirst();
-        }
+        System.out.println("[ActionLog] " + message);
         if (actionLogArea != null) {
             actionLogArea.setText(String.join("\n", actionLogMessages));
             actionLogArea.setCaretPosition(actionLogArea.getDocument().getLength());

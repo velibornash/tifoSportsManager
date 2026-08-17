@@ -3,21 +3,15 @@ package org.example.footballmanager.demo;
 /**
  * Odgovornost: KRETANJE IGRACA.
  *
- * Pokriva postojece ponasanje kretanja:
- *  - jedno-celijski takticki korak ({@link #oneCellToward} — 8 smerova, max 1 celija)
- *  - glatko pomeranje ka cilju konstantnom brzinom ({@link #moveToward})
- *  - pomeranje svih HOME igraca ka ciljevima na svakom tick-u
- *    ({@link #moveAllTowardTargets})
- *
- * Semantika kretanja je IDENTICNA kao pre refaktora: bez ubrzanja, stamina,
- * brzinskih atributa, kolizija i pathfinding-a. {@link #PLAYER_SPEED} se ne menja.
- *
- * Sadrzi i staticke geometrijske pomocnike ({@link #distance}, {@link #clamp})
- * koje koriste ostale komponente.
+ * Igraci se glatko krece ka svom targetu (max 1 celija po akciji).
+ * Igraci se ponasaju kao zidovi — ne mogu da prodju jedan kroz drugog.
+ * Kad naidje na prepreku, pokusava da je obidje pomeranjem u stranu
+ * (perpendicularno na smer kretanja), pa nastavi ka cilju.
  */
 public class MovementEngine {
 
-    public static final double PLAYER_SPEED = 0.03; // celija po tick-u simulacije (SIM logika — ne menja se)
+    public static final double PLAYER_SPEED = 0.03;
+    private static final double MIN_PLAYER_DISTANCE = 0.35;
 
     private final SimulationState state;
 
@@ -25,39 +19,47 @@ public class MovementEngine {
         this.state = state;
     }
 
-    /** Pomera sve HOME igrace (osim zakljucanih) ka njihovim ciljevima. */
     public void moveAllTowardTargets() {
         for (Player p : state.getPlayers()) {
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
                 continue;
             }
             if (p.isLocked()) {
-                continue; // zakljucani igrac (npr. primaoc pasa) ne sme da se pomera
+                continue;
             }
             Position target = p.getTarget();
             if (target == null) {
                 continue;
             }
-            moveToward(p, target, PLAYER_SPEED);
-            if (distance(p.getPosition(), target) < 1e-6) {
+            boolean isCarrier = p == state.getCarrier();
+            if (!isCarrier) {
+                Position roundStart = state.getRoundStartPosition(p);
+                if (roundStart != null) {
+                    double alreadyMoved = Math.max(
+                            Math.abs(p.getPosition().getRow() - roundStart.getRow()),
+                            Math.abs(p.getPosition().getColumn() - roundStart.getColumn()));
+                    if (alreadyMoved >= 1.0 - 1e-6) {
+                        p.setTarget(null);
+                        continue;
+                    }
+                }
+            }
+            Position current = p.getPosition();
+            Position proposed = moveProposal(p, target, PLAYER_SPEED);
+            Position safe = findSafePosition(p, proposed, target);
+            p.setPosition(safe);
+            if (distance(safe, target) < 1e-6) {
+                p.setTarget(null);
+            } else if (distance(safe, current) < 1e-6) {
                 p.setTarget(null);
             }
         }
     }
 
-    /**
-     * EXTENSION POINT za buduce brzinske sposobnosti po igracu.
-     *
-     * OVAJ SPRINT: metoda se NE POZIVA iz {@link #moveAllTowardTargets()} —
-     * brzina je i dalje konstanta {@link #PLAYER_SPEED}. Mesto gde ce buduci
-     * sprint citati per-player {@link MovementProfile} (speed/acceleration) je
-     * ovde. Za sada se uvek vraca {@link MovementProfile#standard()}.
-     */
     public MovementProfile profileFor(Player player) {
         return MovementProfile.standard();
     }
 
-    /** Cilj udaljen najvise 1 celiju (8 smerova) od trenutne pozicije ka desired. */
     public static Position oneCellToward(Position from, Position to) {
         double dr = Math.signum(to.getRow() - from.getRow());
         double dc = Math.signum(to.getColumn() - from.getColumn());
@@ -66,18 +68,82 @@ public class MovementEngine {
         return new Position(nr, nc);
     }
 
-    /** Glatko pomeranje igraca ka cilju za fiksni korak (bez teleporta). */
-    public static void moveToward(Player p, Position target, double speed) {
+    /**
+     * Predlaze novu poziciju: glatko pomera igraca ka targetu za fiksni korak.
+     */
+    private static Position moveProposal(Player p, Position target, double speed) {
         Position pos = p.getPosition();
         double dx = target.getColumn() - pos.getColumn();
         double dy = target.getRow() - pos.getRow();
         double dist = Math.hypot(dx, dy);
         if (dist <= speed) {
-            p.setPosition(new Position(target.getRow(), target.getColumn()));
-        } else {
-            p.setPosition(new Position(pos.getRow() + dy / dist * speed,
-                                        pos.getColumn() + dx / dist * speed));
+            return target;
         }
+        return new Position(
+                clamp(pos.getRow() + dy / dist * speed, 1, 7),
+                clamp(pos.getColumn() + dx / dist * speed, 1, 6));
+    }
+
+    /**
+     * Ako bi se igrac preklopio sa nekim na proposed poziciji, pokusava
+     * da nadje sigurnu poziciju: prvo perpendicularno u jednu pa drugu
+     * stranu, zatim samo X ili samo Y komponentu. Ako nista ne prolazi —
+     * igrac ostaje gde jeste (glatko staje).
+     */
+    private Position findSafePosition(Player p, Position proposed, Position target) {
+        if (!wouldOverlap(p, proposed)) {
+            return proposed;
+        }
+        Position current = p.getPosition();
+        double dx = proposed.getColumn() - current.getColumn();
+        double dy = proposed.getRow() - current.getRow();
+        double len = Math.hypot(dx, dy);
+        if (len < 1e-6) {
+            return current;
+        }
+
+        double step = Math.min(PLAYER_SPEED, len);
+        double perpX = -dy / len * step;
+        double perpY = dx / len * step;
+
+        Position best = null;
+        double bestScore = Double.MAX_VALUE;
+
+        Position[] candidates = {
+            clampPos(current.getRow() + perpY, current.getColumn() + perpX),
+            clampPos(current.getRow() - perpY, current.getColumn() - perpX),
+            clampPos(current.getRow() + perpY * 0.5, current.getColumn() + perpX * 0.5),
+            clampPos(current.getRow() - perpY * 0.5, current.getColumn() - perpX * 0.5),
+            clampPos(current.getRow(), current.getColumn() + dx),
+            clampPos(current.getRow() + dy, current.getColumn()),
+        };
+
+        for (Position alt : candidates) {
+            if (!wouldOverlap(p, alt)) {
+                double score = distance(alt, target);
+                if (score < bestScore) {
+                    best = alt;
+                    bestScore = score;
+                }
+            }
+        }
+        return best != null ? best : current;
+    }
+
+    private boolean wouldOverlap(Player p, Position candidate) {
+        for (Player other : state.getPlayers()) {
+            if (other == p) {
+                continue;
+            }
+            if (distance(candidate, other.getPosition()) < MIN_PLAYER_DISTANCE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Position clampPos(double row, double col) {
+        return new Position(clamp(row, 1, 7), clamp(col, 1, 6));
     }
 
     public static double distance(Position a, Position b) {
