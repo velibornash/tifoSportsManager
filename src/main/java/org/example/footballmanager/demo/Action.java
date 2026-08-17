@@ -32,6 +32,7 @@ public class Action {
     private Player targetPlayer;
     private Position targetPosition;
     private final boolean inFlight;
+    private String actionId;
 
     // --- execution quality (PASS / SHOT) ---
     private int skill;
@@ -50,6 +51,9 @@ public class Action {
     public Type getType() {
         return type;
     }
+
+    public String getActionId() { return actionId; }
+    public void setActionId(String actionId) { this.actionId = actionId; }
 
     /** Igrac koji izvodi akciju (nosioc / jurioc / dodavac / suter). */
     public Player getActingPlayer() {

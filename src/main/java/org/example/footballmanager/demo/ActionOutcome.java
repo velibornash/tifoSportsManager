@@ -5,6 +5,7 @@ public enum ActionOutcome {
     PASS_COMPLETED,
     PASS_LOOSE,
     PASS_OUT,
+    PASS_DUEL_LOST,
     CARRY_COMPLETED,
     CARRY_DUEL_LOST,
     SHOT_GOAL,

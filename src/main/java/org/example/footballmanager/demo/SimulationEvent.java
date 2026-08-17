@@ -8,6 +8,7 @@ public interface SimulationEvent {
     Type type();
 
     enum Type {
+        ACTION_STARTED,
         ACTION_RESULT,
         BALL_STATE_CHANGED,
         DUEL

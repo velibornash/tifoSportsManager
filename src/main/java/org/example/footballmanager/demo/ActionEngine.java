@@ -31,8 +31,13 @@ public class ActionEngine {
 
     /** Startuje novu akciju: postavlja Action, status i log. */
     public void start(Action.Type type, String description) {
-        state.setAction(new Action(type, state.getCarrier()));
+        Action action = new Action(type, state.getCarrier());
+        action.setActionId(state.nextActionId());
+        state.setAction(action);
         state.setStatus(description);
+        state.getEventStore().append(new ActionStartedEvent(
+                state.getSimulationTick(), state.getRound(), action.getActionId(),
+                type, playerId(action.getActingPlayer()), description));
         state.log("Action started: " + description);
     }
 
@@ -209,6 +214,7 @@ public class ActionEngine {
     /** Primaoc hvata loptu — PASS se zavrsava, nosilac postaje primaoc. */
     public void pickupPass() {
         Player receiver = state.getAction().getTargetPlayer();
+        Ball.BallState previousState = state.getBall().getBallState();
         receiver.setLocked(false);
         receiver.setTarget(null);
         state.getBall().setCarrier(receiver);
@@ -216,12 +222,14 @@ public class ActionEngine {
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
         state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
+        recordActionResult(ActionOutcome.PASS_COMPLETED, previousState, null, null);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
 
     /** Duel winner takes the ball; used by CHASE/CARRY/RECEIVE resolution. */
     public void giveBallTo(Player winner, String reason) {
         Action action = state.getAction();
+        Ball.BallState previousState = state.getBall().getBallState();
         if (action != null && action.getTargetPlayer() != null) {
             action.getTargetPlayer().setLocked(false);
         }
@@ -231,6 +239,14 @@ public class ActionEngine {
         state.setCarrier(winner);
         winner.setTarget(null);
         state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
+        ActionOutcome outcome = action == null ? ActionOutcome.CHASE_POSSESSION
+                : switch (action.getType()) {
+                    case CHASE -> ActionOutcome.CHASE_POSSESSION;
+                    case CARRY -> ActionOutcome.CARRY_DUEL_LOST;
+                    case PASS -> ActionOutcome.PASS_DUEL_LOST;
+                    case SHOT -> ActionOutcome.SHOT_SAVE;
+                };
+        recordActionResult(outcome, previousState, null, winner.getLabel());
         complete("DUEL: " + winner.getLabel() + " wins | " + reason);
     }
 
@@ -255,15 +271,18 @@ public class ActionEngine {
     }
 
     public void finishAwayClearance() {
+        Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
         state.getBall().setTarget(null);
         state.setCarrier(null);
+        recordActionResult(ActionOutcome.CLEAR_LOOSE, previousState, null, null);
         complete("CLEARANCE -> LOOSE BALL");
     }
 
     /** Good shot lost to the goalkeeper duel; starts a smooth rebound sequence. */
     public void shotSaved(Player goalkeeper) {
         Action action = state.getAction();
+        Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
         state.getBall().setPosition(GOAL_POSITION);
         boolean corner = state.getRandom().nextInt(3) == 2;
@@ -283,6 +302,7 @@ public class ActionEngine {
         }
         state.log("SHOT outcome: SAVE | GK: " + goalkeeper.getLabel()
                 + " | variant: " + action.getSaveType());
+        recordActionResult(ActionOutcome.SHOT_SAVE, previousState, null, goalkeeper.getLabel());
         completeSaveContactLogOnly(goalkeeper);
     }
 
@@ -318,6 +338,8 @@ public class ActionEngine {
 
     /** Gol je postignut — simulacija se zamrzava do reset-a. */
     public void goalScored() {
+        Ball.BallState previousState = state.getBall().getBallState();
+        recordActionResult(ActionOutcome.SHOT_GOAL, previousState, Ball.BallState.LOOSE, null);
         state.incrementGoalCount();
         state.setCelebrating(true);
         state.setStatus("GOAL for HOME! (" + state.getGoalCount() + ")");
@@ -332,6 +354,7 @@ public class ActionEngine {
  */
 public void passFailed() {
     Player receiver = state.getAction().getTargetPlayer();
+    Ball.BallState previousState = state.getBall().getBallState();
     receiver.setLocked(false);
     state.getBall().setCarrier(null);
     state.getBall().setTarget(null);
@@ -341,29 +364,34 @@ public void passFailed() {
     }
     state.setCarrier(null);
     state.setStatus("LOOSE BALL — pass missed");
+    recordActionResult(ActionOutcome.PASS_LOOSE, previousState, null, null);
     complete("PASS -> " + receiver.getLabel()
             + " | LOOSE BALL");
 }
 
     /** Promasaj stize do reda 8; zatim AWAY golman izvodi restart. */
     public void shotMissed() {
+        Ball.BallState previousState = state.getBall().getBallState();
         Position missPosition = state.getAction().getActualTarget();
         state.getBall().setPosition(missPosition != null ? missPosition : state.getBall().getPosition());
         state.getBall().setCarrier(null);
         state.getBall().setTarget(null);
         state.setCarrier(null);
         state.setStatus("SHOT missed — AWAY goalkeeper restart");
+        recordActionResult(ActionOutcome.SHOT_MISS, previousState, null, null);
         complete("SHOT | striker: " + state.getAction().getSkill() + "/20"
                 + " | MISS — ball reached row 8");
     }
 
     public void passOutOfBounds() {
         Player receiver = state.getAction().getTargetPlayer();
+        Ball.BallState previousState = state.getBall().getBallState();
         if (receiver != null) receiver.setLocked(false);
         state.getBall().setCarrier(null);
         state.getBall().setTarget(null);
         state.setCarrier(null);
         state.setStatus("BALL OUT — AWAY throw-in restart");
+        recordActionResult(ActionOutcome.PASS_OUT, previousState, null, null);
         complete("PASS -> OUT OF BOUNDS");
     }
 
@@ -384,6 +412,8 @@ public void passFailed() {
                     state.getBall().setCarrier(state.getCarrier());
                     state.getCarrier().setTarget(null);
                     state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
+                    recordActionResult(ActionOutcome.CHASE_POSSESSION,
+                            Ball.BallState.LOOSE, null, null);
                     complete("CHASE: " + state.getCarrier().getLabel() + " has the ball");
                 }
             }
@@ -391,10 +421,35 @@ public void passFailed() {
                 // If carrier has the ball and target is null, action completes
                 if (state.getCarrier().getTarget() == null && state.getBall().getCarrier() == state.getCarrier()) {
                     state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
+                    recordActionResult(ActionOutcome.CARRY_COMPLETED,
+                            Ball.BallState.IN_POSSESSION, null, null);
                     complete("CARRY: " + state.getCarrier().getLabel());
                 }
             }
             default -> { /* PASS/SHOT se zavrsavaju u pickupPass()/goalScored()/passFailed()/shotMissed() */ }
         }
+    }
+
+    private void recordActionResult(ActionOutcome outcome, Ball.BallState previousState,
+                                    Ball.BallState expectedNewState, String duelWinnerId) {
+        Action action = state.getAction();
+        if (action == null || action.getActionId() == null) return;
+        Ball.BallState newState = expectedNewState != null
+                ? expectedNewState : state.getBall().getBallState();
+        state.getEventStore().append(new ActionResultEvent(
+                state.getSimulationTick(), state.getRound(), action.getActionId(), action.getType(),
+                outcome, playerId(action.getActingPlayer()), playerId(action.getTargetPlayer()),
+                action.getIntendedTarget(), action.getActualTarget(), action.getSkill(),
+                previousState, newState, playerId(state.getCarrier()), duelWinnerId));
+        if (previousState != newState) {
+            state.getEventStore().append(new BallStateChangedEvent(
+                    state.getSimulationTick(), state.getRound(), action.getActionId(),
+                    previousState, newState, state.getBall().getPosition(),
+                    playerId(state.getCarrier()), outcome.name()));
+        }
+    }
+
+    private static String playerId(Player player) {
+        return player == null ? null : player.getLabel();
     }
 }

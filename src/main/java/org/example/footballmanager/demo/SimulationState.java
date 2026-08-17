@@ -48,6 +48,8 @@ public class SimulationState {
     private int actionCount;
     private int shotCount;
     private int round;
+    private long simulationTick;
+    private long nextActionSequence = 1;
     private boolean celebrating;
     private boolean awayRestartPending;
     private Player returningPlayer;
@@ -123,6 +125,10 @@ public class SimulationState {
     public SimulationEventStore getEventStore() {
         return eventStore;
     }
+
+    public long getSimulationTick() { return simulationTick; }
+    public void advanceSimulationTick() { simulationTick++; }
+    public String nextActionId() { return "A-" + nextActionSequence++; }
 
     // --- nosilac i akcija ---
 

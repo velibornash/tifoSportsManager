@@ -269,8 +269,7 @@ These are intentionally not complete yet:
 - initial player positions are scenario data, not DB tactical targets;
 - action choice is random, without playmaking evaluation;
 - receiving, tackling and goalkeeping are positioning placeholders;
-- no unified `ActionResult` model exists for every action type;
-- ball state changes are not yet emitted as dedicated `BALL STATE` events;
+- the timeline is intentionally separate from the legacy UI message buffer;
 - corner tactical setup does not yet fully arrange every player in the box;
 - movement has collision avoidance but no full pathfinding or inertia model;
 - there is no fatigue, pressing, offside, foul or card layer in this demo;
@@ -303,18 +302,24 @@ telemetry, real player skills, and a dedicated set-piece positioning service.
 Do not put these responsibilities back into one large `SimulationEngine`
 method.
 
-## Event timeline — Sprint A
+## Event timeline — Sprint B
 
 The first persistence-oriented sprint introduced an append-only
-`SimulationEventStore` in `SimulationState` and immutable event models:
+`SimulationEventStore` in `SimulationState` and immutable event models. Every
+started action receives a stable action id (`A-...`) and a monotonic simulation
+tick. The runtime now appends:
 
 ```text
+ActionStartedEvent
 ActionResultEvent
 BallStateChangedEvent
-DuelEvent
+DuelEvent (STARTED / RESOLVED / ENDED)
 ```
 
 `ActionOutcome` contains the stable outcome vocabulary for PASS, CARRY, SHOT,
-CLEAR and CHASE. The models are currently recording-ready but are intentionally
-not wired into action execution yet; that is the next sprint. Existing console
-and UI messages therefore remain unchanged until event projection is connected.
+CLEAR and CHASE, including pass interception by a duel winner. Action result
+events retain intended target, actual target, execution skill, previous/new ball
+state, carrier and duel winner. Duel events retain participants, type,
+contest position, calculated powers and winner. This timeline is the source
+for future replay/statistics projections; console/UI messages remain a separate
+presentation path and existing behavior is unchanged.

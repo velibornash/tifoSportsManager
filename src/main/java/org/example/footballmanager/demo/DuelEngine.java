@@ -67,9 +67,13 @@ public final class DuelEngine {
         }
 
         closeActiveDuel();
-        activeDuel = new Duel(attacker, defender, contestPosition, type);
+        activeDuel = new Duel(attacker, defender, contestPosition, type, action.getActionId());
         activeDuelResolved = false;
         state.showDuelVisual(activeDuel);
+        state.getEventStore().append(new DuelEvent(
+                state.getSimulationTick(), state.getRound(), activeDuel.getActionId(),
+                DuelEvent.Phase.STARTED, type, playerId(attacker), playerId(defender),
+                contestPosition, null, null, 0, 0));
         state.log("DUEL START: " + attacker.getLabel() + " vs " + defender.getLabel()
                 + " | " + type + " | position " + format(contestPosition));
     }
@@ -82,7 +86,14 @@ public final class DuelEngine {
     public DuelResult resolveActiveDuel(DuelResolver resolver) {
         if (activeDuel == null || activeDuelResolved) return null;
         activeDuelResolved = true;
-        return resolver.resolve(activeDuel);
+        DuelResult result = resolver.resolve(activeDuel);
+        state.getEventStore().append(new DuelEvent(
+                state.getSimulationTick(), state.getRound(), activeDuel.getActionId(),
+                DuelEvent.Phase.RESOLVED, activeDuel.getType(),
+                playerId(activeDuel.getAttacker()), playerId(activeDuel.getDefender()),
+                activeDuel.getContestPosition(), playerId(result.winner()),
+                result.outcome(), result.attackerPower(), result.defenderPower()));
+        return result;
     }
 
     /** Zatvara duel odmah posle resolution-a da isti događaj ne traje kroz tickove. */
@@ -137,6 +148,11 @@ public final class DuelEngine {
         if (activeDuel == null) return;
         state.log("DUEL END: " + activeDuel.getAttacker().getLabel() + " vs "
                 + activeDuel.getDefender().getLabel() + " | " + activeDuel.getType());
+        state.getEventStore().append(new DuelEvent(
+                state.getSimulationTick(), state.getRound(), activeDuel.getActionId(),
+                DuelEvent.Phase.ENDED, activeDuel.getType(),
+                playerId(activeDuel.getAttacker()), playerId(activeDuel.getDefender()),
+                activeDuel.getContestPosition(), null, null, 0, 0));
         activeDuel = null;
         activeDuelResolved = false;
     }
@@ -144,5 +160,9 @@ public final class DuelEngine {
     private static String format(Position position) {
         return "(" + String.format(Locale.ROOT, "%.2f", position.getRow())
                 + "," + String.format(Locale.ROOT, "%.2f", position.getColumn()) + ")";
+    }
+
+    private static String playerId(Player player) {
+        return player == null ? null : player.getLabel();
     }
 }

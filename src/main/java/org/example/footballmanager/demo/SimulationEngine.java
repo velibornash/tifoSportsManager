@@ -81,6 +81,7 @@ public class SimulationEngine {
      * primaoc preuzima loptu, gol se resetuje.
      */
     public void advance() {
+        state.advanceSimulationTick();
         state.consumeDuelCooldownTick();
         state.consumeDuelVisualTick();
         if (state.isCelebrating()) {
