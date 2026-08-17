@@ -100,7 +100,22 @@ Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` 
 `MovementEngine`/`BallMovementEngine` (geometry), `TacticalIntentEngine` + `TacticsRules`
 (DB-loaded tactical rules), `PlayerSelectionEngine` (closest/nearest selection).
 
-Extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `MovementProfile`
+### Demo duel architecture
+
+`DuelEngine` detects one deterministic active opponent contest using continuous
+coordinates and a configurable 0.5-cell radius. It supports `CHASE_BALL`,
+`DRIBBLE`, `RECEIVE_PASS`, and `SHOT`, and logs lifecycle events without
+changing current action outcomes. `DuelResolver` is a side-effect-free
+resolution layer: it maps existing `PlayerSkills` extension points to the
+relevant skill, adds only `random(0..5)`, and returns `DuelResult` with winner,
+outcome, ball state, possession, and power values.
+
+`PlayerSkills` does not yet expose receiving, tackling, or goalkeeping fields;
+`positioning` is the documented neutral placeholder for those roles.
+Resolution is explicit through `DuelEngine.resolveActiveDuel()` and is not
+automatically applied to possession, passing, carrying, or shooting yet.
+
+Other extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `MovementProfile`
 (returned by `MovementEngine.profileFor()`), `PlayerSelectionEngine.selectBestCandidate()`,
 `ActionCandidate`. Next sprint introduces real skill/selection/action logic here — do NOT
 add more abstractions beyond these.

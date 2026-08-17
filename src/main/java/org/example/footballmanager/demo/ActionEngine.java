@@ -179,6 +179,7 @@ public class ActionEngine {
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
+        state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
 
@@ -249,13 +250,14 @@ public void passFailed() {
                         state.getBall().getPosition()) <= 1e-9) {
                     state.getBall().setCarrier(state.getCarrier());
                     state.getCarrier().setTarget(null);
-                    state.setActionDelayUntilMs(System.currentTimeMillis() + 750);
+                    state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
                     complete("CHASE: " + state.getCarrier().getLabel() + " has the ball");
                 }
             }
             case CARRY -> {
                 // If carrier has the ball and target is null, action completes
                 if (state.getCarrier().getTarget() == null && state.getBall().getCarrier() == state.getCarrier()) {
+                    state.setActionDelayUntilMs(System.currentTimeMillis() + 1000);
                     complete("CARRY: " + state.getCarrier().getLabel());
                 }
             }

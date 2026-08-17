@@ -34,6 +34,17 @@ public class SimulationStepEngine {
             return state.getStatus();
         }
 
+        // Dok lopta ceka restart, nikakav novi HOME Chase ne sme da pocne.
+        if (state.getPendingRestartPosition() != null) {
+            state.setStatus("restart waiting");
+            return state.getStatus();
+        }
+
+        if (System.currentTimeMillis() < state.getActionDelayUntilMs()) {
+            state.setStatus("carrier holding ball");
+            return state.getStatus();
+        }
+
         // Ako je akcija pokrenuta (pas/sut u letu, CARRY u toku) — cekamo da zavrsi.
         if (state.hasActiveAction()) {
             state.setStatus("action in progress: " + state.getAction().getType().name());

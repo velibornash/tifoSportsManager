@@ -45,6 +45,7 @@ public class SimulationEngine {
     private final BallMovementEngine ballMovementEngine;
     private final TacticalIntentEngine tacticalIntentEngine;
     private final PlayerSelectionEngine playerSelectionEngine;
+    private final DuelEngine duelEngine;
     private int blockedCarryTicks;
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules) {
@@ -56,6 +57,7 @@ public class SimulationEngine {
         this.movementEngine = new MovementEngine(state);
         this.ballMovementEngine = new BallMovementEngine(state);
         this.playerSelectionEngine = new PlayerSelectionEngine(state);
+        this.duelEngine = new DuelEngine(state);
         this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
         this.tacticalIntentEngine = new TacticalIntentEngine(state);
         this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine);
@@ -93,7 +95,8 @@ public class SimulationEngine {
 
         // Prvi frejm ostavlja loptu na stvarnoj aut-liniji. Tek u sledecem
         // tick-u vracamo je na liniju celije i pokrecemo AWAY izvodjaca.
-        if (action == null && state.getPendingRestartPosition() != null) {
+        if (action == null && state.getPendingRestartPosition() != null
+                && System.currentTimeMillis() >= state.getRestartHoldUntilMs()) {
             Position restartPosition = state.getPendingRestartPosition();
             Player restartPlayer = state.getPendingRestartPlayer();
             boolean passToHomeGoalkeeper = state.isRestartPassToHomeGoalkeeper();
@@ -114,6 +117,7 @@ public class SimulationEngine {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+            duelEngine.update(action);
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
@@ -126,6 +130,7 @@ public class SimulationEngine {
                     actionEngine.passFailed();
                 }
             }
+            duelEngine.update(state.getAction());
             return;
         }
 
@@ -134,6 +139,7 @@ public class SimulationEngine {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+            duelEngine.update(action);
             // Lopta je stigla do svoje STVARNE mete (ne gola)
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
@@ -144,6 +150,7 @@ public class SimulationEngine {
                     scheduleAwayRestart(state.getBall().getPosition());
                 }
             }
+            duelEngine.update(state.getAction());
             return;
         }
 
@@ -163,6 +170,7 @@ public class SimulationEngine {
         double carryDistanceBefore = carryTarget == null || actionPlayer == null
                 ? Double.NaN : MovementEngine.distance(beforeMove, carryTarget);
         movementEngine.moveAllTowardTargets();
+        duelEngine.update(action);
 
         // Carrier ne ostaje zaglavljen: ako ne moze ni minimalno da se
         // pomeri oko prepreke, odmah bira pas umesto da prekine akciju.
@@ -204,6 +212,7 @@ public class SimulationEngine {
         tacticalIntentEngine.refreshTargetsIfBallStateChanged();
 
         actionEngine.checkActionCompletion();
+        duelEngine.update(state.getAction());
     }
 
     private boolean isOutsidePitch(Position position) {
@@ -256,6 +265,7 @@ public class SimulationEngine {
         state.setPendingRestartPlayer(restartPlayer);
         state.setPendingRestartPosition(restartPosition);
         state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
+        state.setRestartHoldUntilMs(System.currentTimeMillis() + 3000);
         state.setRoundComplete(false);
     }
 

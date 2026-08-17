@@ -49,6 +49,7 @@ public class SimulationState {
     private Player pendingRestartPlayer;
     private boolean restartPassToHomeGoalkeeper;
     private long actionDelayUntilMs;
+    private long restartHoldUntilMs;
 
     // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -185,6 +186,8 @@ public class SimulationState {
     public void setRestartPassToHomeGoalkeeper(boolean value) { restartPassToHomeGoalkeeper = value; }
     public long getActionDelayUntilMs() { return actionDelayUntilMs; }
     public void setActionDelayUntilMs(long value) { actionDelayUntilMs = value; }
+    public long getRestartHoldUntilMs() { return restartHoldUntilMs; }
+    public void setRestartHoldUntilMs(long value) { restartHoldUntilMs = value; }
 
     // --- log poruke (Action Log) ---
 
@@ -342,6 +345,7 @@ public class SimulationState {
         pendingRestartPlayer = null;
         restartPassToHomeGoalkeeper = false;
         actionDelayUntilMs = 0;
+        restartHoldUntilMs = 0;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();
