@@ -55,7 +55,7 @@ public class SimulationEngine {
         this.movementEngine = new MovementEngine(state);
         this.ballMovementEngine = new BallMovementEngine(state);
         this.playerSelectionEngine = new PlayerSelectionEngine(state);
-        this.actionEngine = new ActionEngine(state, playerSelectionEngine);
+        this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
         this.tacticalIntentEngine = new TacticalIntentEngine(state);
         this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine);
     }
@@ -82,27 +82,36 @@ public class SimulationEngine {
 
         Action action = state.getAction();
 
-        // PASS u toku — lopta leti ka primaocu. Igraci reaguju na poziciju lopte.
+        // PASS u toku — lopta leti ka odstupnoj meti. Igraci reaguju na poziciju lopte.
         if (action != null && action.isPassInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+            // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
-                                        action.getTargetPlayer().getPosition()) < BallMovementEngine.PICKUP_DISTANCE) {
-                actionEngine.pickupPass();
+                                        action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
+                if (action.isGoodExecution()) {
+                    actionEngine.pickupPass();
+                } else {
+                    actionEngine.passFailed();
+                }
             }
             return;
         }
 
-        // SHOT u toku — lopta leti ka golu. Igraci reaguju na poziciju lopte.
+        // SHOT u toku — lopta leti ka odstupnoj meti. Igraci reaguju na poziciju lopte.
         if (action != null && action.isShotInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+            // Lopta je stigla do svoje STVARNE mete (ne gola)
             if (MovementEngine.distance(state.getBall().getPosition(),
-                                        ActionEngine.GOAL_POSITION) < BallMovementEngine.PICKUP_DISTANCE) {
-                actionEngine.goalScored();
-                return;
+                                        action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
+                if (action.isGoodExecution()) {
+                    actionEngine.goalScored();
+                } else {
+                    actionEngine.shotMissed();
+                }
             }
             return;
         }

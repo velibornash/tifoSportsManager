@@ -95,7 +95,8 @@ TacticalGridDemo          → composition root (main, static test delegates)
 ```
 
 Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` (mutable state),
-`SimulationStepEngine` (decisions), `ActionEngine`/`Action` (PASS/CARRY/SHOT/CHASE lifecycle),
+`SimulationStepEngine` (decisions), `ActionEngine`/`Action` (PASS/CARRY/PASS/SHOT/CHASE lifecycle),
+`ExecutionQuality` (skill-based deviation for PASS/SHOT),
 `MovementEngine`/`BallMovementEngine` (geometry), `TacticalIntentEngine` + `TacticsRules`
 (DB-loaded tactical rules), `PlayerSelectionEngine` (closest/nearest selection).
 
@@ -116,10 +117,43 @@ This means players reposition dynamically during ball flight AND during carrier 
 **Design principle — three-phase action lifecycle:**
 1. **Decision** (once, at `step()`) — PASS/CARRY/SHOT chosen; does NOT change during action
 2. **Movement** (every `advance()` tick) — players reposition relative to ball; updates mid-action
-3. **Outcome** (future) — result of the action (pass completed/intercepted, shot saved/goal)
+3. **Outcome** — result of the action (pass received/loose, shot goal/miss)
 
 The decision is fixed for the action's duration. Movement reacts to ball trajectory.
 When the action completes (regardless of outcome), a new action starts with the same principles.
+
+### Execution Quality (PASS / SHOT)
+
+Every PASS and SHOT generates a temporary demo skill (`random.nextInt(20) + 1`, value 1–20).
+This skill determines how accurately the ball reaches its intended target:
+
+- **PASS**: `maxDeviation = (20 - skill) * 0.15` cells. Skill 1 → up to 2.85 cells off, skill 20 → perfect.
+  - If actual target is within 1.5 cells of receiver → **RECEIVED** (receiver gets ball)
+  - If further → **LOOSE BALL** (ball free, triggers automatic CHASE recovery)
+- **SHOT**: `maxDeviation = (20 - skill) * 0.12` cells. Goal at (7, 3.5).
+  - If actual target is within 1.0 cells of goal → **GOAL** (celebration)
+  - If further → **MISS — LOOSE BALL** (ball resets to center)
+
+`ExecutionQuality` class encapsulates all deviation logic. `Action` stores skill, intendedTarget,
+actualTarget, goodExecution for logging and result evaluation.
+
+### Ball States
+
+`Ball.BallState` — derived from carrier/target fields:
+- **IN_POSSESSION** — `carrier != null` (ball controlled by player)
+- **IN_TRANSITION** — `target != null, carrier == null` (ball flying: PASS/SHOT)
+- **LOOSE** — `carrier == null && target == null` (free ball, triggers CHASE)
+
+### Loose Ball Recovery
+
+When PASS/SHOT results in LOOSE ball:
+1. `carrier = null` (cleared in `passFailed()`/`shotMissed()`)
+2. Next `step()` finds nearest HOME player via `PlayerSelectionEngine.closestHomeTo()`
+3. Starts CHASE action — player moves 1 cell toward ball
+4. If player can't reach in 1 cell → CHASE completes → next step → ball still LOOSE → another CHASE
+5. Repeats until a player reaches the ball → carrier set → normal action selection resumes
+
+SHOT miss additionally resets ball position to initial center.
 
 ### Collision Avoidance (Wall Behavior)
 

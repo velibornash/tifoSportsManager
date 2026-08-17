@@ -7,19 +7,24 @@ import java.util.List;
  *
  * Pokrece akcije (CHASE/CARRY/PASS/SHOT), izvrsava izabrane odluke
  * (pas / kretanje / sut), prati kraj akcije, hvatanje pasa, gol i proslavu.
- * Sva pravila, poruke i redosled su IDENTICNI kao pre refaktora.
+ *
+ * PASS i SHOT imaju execution quality: generise se demo skill (1-20),
+ * lopta leti ka odstupnoj meti, ishod zavisi od kvaliteta izvodjenja.
  */
 public class ActionEngine {
 
     public static final int SHOOT_MIN_ROW = 6;                    // iz kog reda nosilac moze na gol (ne menja se)
-    public static final Position GOAL_POSITION = new Position(8, 3.5); // away gol (ne menja se)
+    public static final Position GOAL_POSITION = new Position(7, 3.5); // away gol — linija gola je red 7
 
     private final SimulationState state;
     private final PlayerSelectionEngine selection;
+    private final ExecutionQuality executionQuality;
 
-    public ActionEngine(SimulationState state, PlayerSelectionEngine selection) {
+    public ActionEngine(SimulationState state, PlayerSelectionEngine selection,
+                        ExecutionQuality executionQuality) {
         this.state = state;
         this.selection = selection;
+        this.executionQuality = executionQuality;
     }
 
     /** Startuje novu akciju: postavlja Action, status i log. */
@@ -42,7 +47,7 @@ public class ActionEngine {
 
     /**
      * Odluka o pasu: nasumicni primaoc iz 6 najblizih HOME igraca.
-     * Primaoc je LOCKED u toj rundi; lopta leti ka primaocu.
+     * Generise demo passing skill i racuna odstupnu metu.
      */
     public void executePass() {
         List<Player> nearest = selection.nearestHomeTo(state.getCarrier(), 6);
@@ -52,11 +57,27 @@ public class ActionEngine {
         }
         Player receiver = nearest.get(state.getRandom().nextInt(nearest.size()));
         receiver.setLocked(true);
+
+        Position intendedTarget = receiver.getPosition();
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(intendedTarget, receiver);
+
         state.getBall().setCarrier(null);
-        state.getBall().setTarget(receiver.getPosition());
-        start(Action.Type.PASS, "PASS: " + state.getCarrier().getLabel() + " -> " + receiver.getLabel());
-        state.getAction().setTargetPlayer(receiver);
-        state.getAction().setTargetPosition(receiver.getPosition());
+        state.getBall().setTarget(result.actualTarget());
+
+        String qualityLabel = result.received() ? "GOOD" : "POOR";
+        String description = "PASS: " + state.getCarrier().getLabel() + " -> " + receiver.getLabel()
+                + " | passing: " + result.skill() + "/20 | " + qualityLabel
+                + " | target: (" + String.format("%.1f", result.actualTarget().getRow())
+                + "," + String.format("%.1f", result.actualTarget().getColumn()) + ")";
+        start(Action.Type.PASS, description);
+
+        Action action = state.getAction();
+        action.setTargetPlayer(receiver);
+        action.setTargetPosition(intendedTarget);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(result.actualTarget());
+        action.setGoodExecution(result.received());
         state.incrementActionCount();
     }
 
@@ -85,12 +106,26 @@ public class ActionEngine {
         return -1;
     }
 
-    /** Odluka o sutu: lopta leti ka away golu (8, 3.5). */
+    /** Odluka o sutu: lopta leti ka away golu sa odstupanjem zavisnim od skill-a. */
     public void executeShot() {
+        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(GOAL_POSITION);
+
         state.getBall().setCarrier(null);
-        state.getBall().setTarget(GOAL_POSITION);
-        start(Action.Type.SHOT, "SHOT by " + state.getCarrier().getLabel() + "!");
-        state.getAction().setTargetPosition(GOAL_POSITION);
+        state.getBall().setTarget(result.actualTarget());
+
+        String qualityLabel = result.goal() ? "GOOD" : "POOR";
+        String description = "SHOT by " + state.getCarrier().getLabel()
+                + " | striker: " + result.skill() + "/20 | " + qualityLabel
+                + " | target: (" + String.format("%.1f", result.actualTarget().getRow())
+                + "," + String.format("%.1f", result.actualTarget().getColumn()) + ")";
+        start(Action.Type.SHOT, description);
+
+        Action action = state.getAction();
+        action.setTargetPosition(GOAL_POSITION);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(GOAL_POSITION);
+        action.setActualTarget(result.actualTarget());
+        action.setGoodExecution(result.goal());
         state.incrementActionCount();
         state.incrementShotCount();
     }
@@ -99,12 +134,12 @@ public class ActionEngine {
     public void pickupPass() {
         Player receiver = state.getAction().getTargetPlayer();
         receiver.setLocked(false);
-        receiver.setTarget(null);  // nosilac ne treba stari takticki target
+        receiver.setTarget(null);
         state.getBall().setCarrier(receiver);
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
-        complete("PASS -> " + receiver.getLabel());
+        complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
 
     /** Gol je postignut — simulacija se zamrzava do reset-a. */
@@ -113,14 +148,41 @@ public class ActionEngine {
         state.setCelebrating(true);
         state.setStatus("GOAL for HOME! (" + state.getGoalCount() + ")");
         state.log(state.getStatus());
-        complete("SHOT (GOAL!)");
+        complete("SHOT (GOAL!) | striker: " + state.getAction().getSkill() + "/20");
         // Bez odmah reset(): demo prikazuje proslavu ~5s, pa tek onda reset.
+    }
+
+    /**
+     * Pass nije stigao do primaoca — lopta postaje LOOSE.
+     * Nosilac = null, sledeca akcija ce automatski biti CHASE.
+     */
+    public void passFailed() {
+        Player receiver = state.getAction().getTargetPlayer();
+        receiver.setLocked(false);
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        state.setStatus("LOOSE BALL — pass missed");
+        complete("PASS -> " + receiver.getLabel()
+                + " | passing: " + state.getAction().getSkill() + "/20"
+                + " | LOOSE BALL");
+    }
+
+    /** Shot je promasen — lopta se vraca na centar (pocetno stanje). */
+    public void shotMissed() {
+        state.getBall().setPosition(state.getBall().getInitialPosition());
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        state.setStatus("LOOSE BALL — shot missed");
+        complete("SHOT | striker: " + state.getAction().getSkill() + "/20"
+                + " | MISS — LOOSE BALL (ball reset to center)");
     }
 
     /**
      * Detektuje kraj akcije na kraju tick-a:
      * CHASE/CARRY se zavrsavaju kad nosilac preuzme loptu / stigne na cilj.
-     * PASS/SHOT se zavrsavaju u pickupPass()/goalScored().
+     * PASS/SHOT se zavrsavaju u pickupPass()/goalScored()/passFailed()/shotMissed().
      */
     public void checkActionCompletion() {
         if (!state.hasActiveAction()) {
@@ -141,7 +203,7 @@ public class ActionEngine {
                     complete("CARRY: " + state.getCarrier().getLabel());
                 }
             }
-            default -> { /* PASS/SHOT se zavrsavaju u pickupPass()/goalScored() */ }
+            default -> { /* PASS/SHOT se zavrsavaju u pickupPass()/goalScored()/passFailed()/shotMissed() */ }
         }
     }
 }

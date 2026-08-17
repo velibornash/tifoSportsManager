@@ -1,9 +1,7 @@
 package org.example.footballmanager.demo;
 
 /**
- * Eksplicitan model TEKUCE akcije simulacije. Zamenjuje ranije rasute
- * primitive ({@code actionType}, {@code actionInProgress},
- * {@code pendingCarrier}, {@code shotInFlight}) jednim koherentnim objektom.
+ * Eksplicitan model TEKUCE akcije simulacije.
  *
  * Akcija poseduje:
  *  - tip ({@link Type}: CHASE / CARRY / PASS / SHOT)
@@ -12,8 +10,11 @@ package org.example.footballmanager.demo;
  *  - ciljnu poziciju kad je primenjivo (meta pasa / suta)
  *  - zivotni ciklus (da li je lopta u letu kod PASS/SHOT)
  *
- * Bez ikakve ocene kvaliteta akcije, skillsa ili taktickog scoringa — samo
- * nosi podatke koji su simulaciji potrebni da izvrsi tekuci tok.
+ * EXECUTION QUALITY ( PASS i SHOT):
+ *  - skill — generisan demo skill (1-20), zamenice se pravim skillom kasnije
+ *  - intendedTarget — pozicija gde je akcija BILA zamišljena
+ *  - actualTarget — pozicija gde lopta ZAISTA leti (odstupanje od skill-a)
+ *  - goodExecution — da li je izvedba dovoljno dobra za normalan ishod
  */
 public class Action {
 
@@ -29,6 +30,12 @@ public class Action {
     private Player targetPlayer;
     private Position targetPosition;
     private final boolean inFlight;
+
+    // --- execution quality (PASS / SHOT) ---
+    private int skill;
+    private Position intendedTarget;
+    private Position actualTarget;
+    private boolean goodExecution;
 
     public Action(Type type, Player actingPlayer) {
         this.type = type;
@@ -76,6 +83,43 @@ public class Action {
     /** Lopta u letu ka golu (SHOT u toku). */
     public boolean isShotInFlight() {
         return inFlight && type == Type.SHOT;
+    }
+
+    // --- execution quality getters / setters ---
+
+    public int getSkill() {
+        return skill;
+    }
+
+    public void setSkill(int skill) {
+        this.skill = skill;
+    }
+
+    /** Pozicija gde je lopta trebala da ide (primaoc za PASS, gol za SHOT). */
+    public Position getIntendedTarget() {
+        return intendedTarget;
+    }
+
+    public void setIntendedTarget(Position intendedTarget) {
+        this.intendedTarget = intendedTarget;
+    }
+
+    /** Pozicija gde lopta zaista leti (odstupanje od skill-a). */
+    public Position getActualTarget() {
+        return actualTarget;
+    }
+
+    public void setActualTarget(Position actualTarget) {
+        this.actualTarget = actualTarget;
+    }
+
+    /** Da li je izvedba dovoljno dobra za normalan ishod (gol / primaoc hvata). */
+    public boolean isGoodExecution() {
+        return goodExecution;
+    }
+
+    public void setGoodExecution(boolean goodExecution) {
+        this.goodExecution = goodExecution;
     }
 
     @Override

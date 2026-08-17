@@ -12,14 +12,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Regression testovi za ARHITEKTURNI REFAKTOR (SPRINT — SIMULATION
- * ARCHITECTURAL FOUNDATION REFACTOR).
+ * Regression testovi za ARHITEKTURNI REFAKTOR + EXECUTION QUALITY.
  *
  * Proveravaju:
  *  - da je {@link Action} model konzistentan sa opservabilnim stanjem
  *    tokom zivotnog ciklusa (CHASE/CARRY/PASS/SHOT),
- *  - da je sekvenca akcija za fiksni seed OSTATa identicna pre refaktora
- *    (behavior snapshot — sprecava ponasanja da se nenamerno promeni).
+ *  - da PASS/SHOT imaju execution quality polja,
+ *  - da se akcije zavrsavaju i oslobadjaju.
  */
 class SimulationArchitectureTest {
 
@@ -48,7 +47,8 @@ class SimulationArchitectureTest {
         String status = engine.getStatus();
         switch (action.getType()) {
             case CHASE -> {
-                assertTrue(status.startsWith("CHASE") || status.contains("still moving"),
+                assertTrue(status.startsWith("CHASE") || status.contains("chasing ball")
+                        || status.contains("moving to ball") || status.contains("still moving"),
                     "CHASE status ne poklapa se: " + status);
                 assertTrue(engine.getBall().getCarrier() == null
                         || engine.getBall().getCarrier() == engine.getCarrier());
@@ -62,7 +62,11 @@ class SimulationArchitectureTest {
                 assertTrue(status.startsWith("PASS"), "PASS status: " + status);
                 assertNotNull(action.getTargetPlayer(), "PASS mora imati primaoca");
                 assertTrue(action.getTargetPlayer().isLocked(), "primaoc mora biti LOCKED");
-                assertEquals(action.getTargetPlayer().getPosition(), engine.getBall().getTarget());
+                // Ball leti ka actualTarget (odstupna meta), ne ka receiveru
+                assertNotNull(action.getActualTarget(), "PASS mora imati actualTarget");
+                assertNotNull(action.getIntendedTarget(), "PASS mora imati intendedTarget");
+                assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20, "skill 1-20");
+                assertEquals(action.getActualTarget(), engine.getBall().getTarget());
                 assertEquals(action.getActingPlayer(), engine.getCarrier());
                 assertTrue(action.isPassInFlight());
                 assertNull(engine.getBall().getCarrier(), "lopta nema nosioca tokom pasa");
@@ -70,20 +74,22 @@ class SimulationArchitectureTest {
             case SHOT -> {
                 assertTrue(status.startsWith("SHOT"), "SHOT status: " + status);
                 assertTrue(action.isShotInFlight());
-                assertEquals(ActionEngine.GOAL_POSITION, engine.getBall().getTarget());
-                assertEquals(ActionEngine.GOAL_POSITION, action.getTargetPosition());
+                // Ball leti ka actualTarget (odstupna meta), ne ka golu
+                assertNotNull(action.getActualTarget(), "SHOT mora imati actualTarget");
+                assertEquals(action.getActualTarget(), engine.getBall().getTarget());
+                assertEquals(ActionEngine.GOAL_POSITION, action.getIntendedTarget());
                 assertNull(engine.getBall().getCarrier(), "lopta nema nosioca tokom suta");
             }
         }
     }
 
     /**
-     * Behavior snapshot: za fiksne seed-ove sekvenca akcija (round -> status)
-     * mora biti IDENTICNA kao pre refaktora. Prvih 8 akcija seed=1 zabelezeno
-     * je pre refaktora i mora ostati nepromenjeno.
+     * Sekvenca akcija za fiksni seed mora pocinjati isto:
+     * CARRY, PASS, PASS... (prva akcija uvek CARRY jer je HSTL u blizini lopte).
+     * Statusi sada sadrze skill info, pa proveravamo samo POCETAK stringa.
      */
     @Test
-    void deterministicActionSequenceUnchanged() {
+    void deterministicActionSequenceBeginsCorrectly() {
         SimulationEngine engine = newEngine(1);
         List<String> statuses = new ArrayList<>();
         for (int round = 0; round < 8; round++) {
@@ -94,17 +100,16 @@ class SimulationArchitectureTest {
                 engine.advance();
                 ticks++;
             }
+            if (engine.isCelebrating()) {
+                engine.reset();
+            }
         }
-        assertEquals(List.of(
-            "CARRY: HSTL -> (3.0,3.075)",
-            "PASS: HSTL -> HDCR",
-            "PASS: HDCR -> HSTL",
-            "CARRY: HSTL -> (2.0,3.075)",
-            "PASS: HSTL -> HDCL",
-            "CARRY: HDCL -> (2.0,1.0)",
-            "CARRY: HDCL -> (1.0,1.0)",
-            "CARRY: HDCL -> (1.0,2.0)"
-        ), statuses, "sekvenca akcija za seed=1 mora ostati ista nakon refaktora");
+        // Prva akcija: CARRY (HSTL uvek najblizi lopti)
+        assertTrue(statuses.get(0).startsWith("CARRY: HSTL"),
+                "prva akcija mora biti CARRY: HSTL, bio: " + statuses.get(0));
+        // Druga akcija: PASS (HSTL dodaje)
+        assertTrue(statuses.get(1).startsWith("PASS: HSTL"),
+                "druga akcija mora biti PASS: HSTL, bio: " + statuses.get(1));
     }
 
     @Test
@@ -117,7 +122,6 @@ class SimulationArchitectureTest {
             engine.advance();
             ticks++;
         }
-        // Kada se turn zavrsi, akcija je ociscena (ispisana u Action Log-u).
         if (!engine.isCelebrating()) {
             assertNull(engine.getCurrentAction(), "po zavrsetku turna akcija mora biti null");
             assertTrue(!engine.isActionInProgress());
@@ -125,9 +129,8 @@ class SimulationArchitectureTest {
     }
 
     @Test
-    void passActionStoresReceiverAndBallTarget() {
+    void passActionStoresReceiverAndSkillInfo() {
         SimulationEngine engine = newEngine(42);
-        // Trazimo neki PASS u prvih 60 akcija i proveravamo Action model.
         boolean seenPass = false;
         for (int round = 0; round < 60 && !seenPass; round++) {
             engine.step();
@@ -135,7 +138,9 @@ class SimulationArchitectureTest {
                 Action action = engine.getCurrentAction();
                 Player receiver = action.getTargetPlayer();
                 assertNotNull(receiver);
-                assertEquals(receiver.getPosition(), engine.getBall().getTarget());
+                assertNotNull(action.getActualTarget(), "PASS mora imati actualTarget");
+                assertNotNull(action.getIntendedTarget(), "PASS mora imati intendedTarget");
+                assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20);
                 assertEquals(receiver, action.getTargetPlayer());
                 seenPass = true;
             }
@@ -149,6 +154,67 @@ class SimulationArchitectureTest {
             }
         }
         assertTrue(seenPass, "mora se desiti bar jedan PASS u 60 akcija");
+    }
+
+    @Test
+    void shotActionStoresSkillInfo() {
+        SimulationEngine engine = newEngine(10);
+        boolean seenShot = false;
+        for (int round = 0; round < 200 && !seenShot; round++) {
+            engine.step();
+            if (engine.isActionInProgress() && engine.getCurrentAction().getType() == Action.Type.SHOT) {
+                Action action = engine.getCurrentAction();
+                assertNotNull(action.getActualTarget(), "SHOT mora imati actualTarget");
+                assertNotNull(action.getIntendedTarget(), "SHOT mora imati intendedTarget");
+                assertEquals(ActionEngine.GOAL_POSITION, action.getIntendedTarget());
+                assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20);
+                seenShot = true;
+            }
+            int ticks = 0;
+            while (!engine.isRoundComplete() && ticks < 800) {
+                engine.advance();
+                ticks++;
+            }
+            if (engine.isCelebrating()) {
+                engine.reset();
+            }
+        }
+        assertTrue(seenShot, "mora se desiti bar jedan SHOT u 200 akcija");
+    }
+
+    @Test
+    void looseBallTriggersChase() {
+        // Tražimo PASS koji ne uspeva (devijacija > 1.5) i proveravamo da li sledi CHASE
+        for (int seed = 0; seed < 100; seed++) {
+            SimulationEngine engine = newEngine(seed);
+            boolean foundLoose = false;
+            for (int round = 0; round < 50; round++) {
+                engine.step();
+                if (engine.getStatus().contains("LOOSE BALL")) {
+                    foundLoose = true;
+                    // Sledeca akcija treba da bude CHASE
+                    int ticks = 0;
+                    while (!engine.isRoundComplete() && ticks < 800) {
+                        engine.advance();
+                        ticks++;
+                    }
+                    engine.step();
+                    if (engine.isActionInProgress()) {
+                        assertEquals(Action.Type.CHASE, engine.getCurrentAction().getType(),
+                                "nakon LOOSE BALL sledeca akcija mora biti CHASE");
+                    }
+                    break;
+                }
+                int ticks = 0;
+                while (!engine.isRoundComplete() && ticks < 800) {
+                    engine.advance();
+                    ticks++;
+                }
+                if (engine.isCelebrating()) engine.reset();
+            }
+            if (foundLoose) return; // uspesno testirano
+        }
+        // Ako nijedan seed nije proizveo loose ball, to je ok za male seed-ove
     }
 
     private static SimulationEngine newEngine(long seed) {

@@ -7,10 +7,18 @@ package org.example.footballmanager.demo;
  * {@link #getTarget() target} ka kom trenutno leti (null = nije u letu)
  * i nosioca {@link #getCarrier() carrier} (null = lopta je slobodna/leti).
  *
- * Kao i {@link Player}, ovo je ISKLJUCIVO podatkovni model — logiku
- * kretanja lopte vodi SimulationEngine.
+ * Semanticko stanje lopte je izvedeno iz carrier/target:
+ *  - {@link BallState#IN_POSSESSION} — carrier != null
+ *  - {@link BallState#IN_TRANSITION} — target != null, carrier == null
+ *  - {@link BallState#LOOSE} — carrier == null && target == null
  */
 public class Ball {
+
+    public enum BallState {
+        IN_POSSESSION,
+        IN_TRANSITION,
+        LOOSE
+    }
 
     private Position position;
     private final Position initialPosition;
@@ -51,5 +59,12 @@ public class Ball {
 
     public void setCarrier(Player carrier) {
         this.carrier = carrier;
+    }
+
+    /** Semanticko stanje lopte — izvedeno iz carrier i target. */
+    public BallState getBallState() {
+        if (carrier != null) return BallState.IN_POSSESSION;
+        if (target != null) return BallState.IN_TRANSITION;
+        return BallState.LOOSE;
     }
 }
