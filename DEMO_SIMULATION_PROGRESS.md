@@ -323,3 +323,15 @@ state, carrier and duel winner. Duel events retain participants, type,
 contest position, calculated powers and winner. This timeline is the source
 for future replay/statistics projections; console/UI messages remain a separate
 presentation path and existing behavior is unchanged.
+
+## Tick snapshots — Sprint C
+
+The demo now also stores a complete immutable `SimulationSnapshot` after every
+animation tick in an append-only `SimulationSnapshotStore`. A snapshot contains
+the ball position/target/state, carrier, active action metadata, score/status,
+and every player's identity, position, target, lock and velocity.
+
+The snapshot is captured in a `finally` block around tick execution, so early
+return paths (holds, restarts, celebrations and completed actions) are recorded
+as well. Replay consumers can read the saved scene timeline directly instead
+of rebuilding it from console output or re-running random simulation decisions.

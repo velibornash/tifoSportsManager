@@ -75,6 +75,16 @@ public class SimulationEngine {
         return stepEngine.step();
     }
 
+    /** Read-only access to recorded action/duel events for replay consumers. */
+    public SimulationEventStore getEventStore() {
+        return state.getEventStore();
+    }
+
+    /** Read-only access to recorded per-tick scene snapshots for replay consumers. */
+    public SimulationSnapshotStore getSnapshotStore() {
+        return state.getSnapshotStore();
+    }
+
     /**
      * Jedan TICK animacije (poziva ga Timer svakih ~16ms):
      * pomera igrace ka ciljevima, lopta leti ka cilju (pas/sut),
@@ -82,6 +92,14 @@ public class SimulationEngine {
      */
     public void advance() {
         state.advanceSimulationTick();
+        try {
+            advanceInternal();
+        } finally {
+            state.captureSnapshot();
+        }
+    }
+
+    private void advanceInternal() {
         state.consumeDuelCooldownTick();
         state.consumeDuelVisualTick();
         if (state.isCelebrating()) {

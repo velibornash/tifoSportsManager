@@ -38,6 +38,7 @@ public class SimulationState {
     private final TacticsRules tacticsRules;
     private final Random random;
     private final SimulationEventStore eventStore = new SimulationEventStore();
+    private final SimulationSnapshotStore snapshotStore = new SimulationSnapshotStore();
     private final ArrayDeque<String> messages = new ArrayDeque<>();
 
     private Player carrier;
@@ -124,6 +125,34 @@ public class SimulationState {
     /** Timeline for replay/statistics consumers; UI messages remain separate. */
     public SimulationEventStore getEventStore() {
         return eventStore;
+    }
+
+    public SimulationSnapshotStore getSnapshotStore() {
+        return snapshotStore;
+    }
+
+    /** Captures the complete immutable scene without deriving it later from logs. */
+    public void captureSnapshot() {
+        Action currentAction = action;
+        List<PlayerSnapshot> playerSnapshots = players.stream()
+                .map(player -> new PlayerSnapshot(
+                        player.getId(), player.getLabel(), player.getTeam(), player.getRole(),
+                        player.getPosition(), player.getTarget(), player.isLocked(),
+                        player.getVelX(), player.getVelY()))
+                .toList();
+        snapshotStore.append(new SimulationSnapshot(
+                simulationTick, round, playerSnapshots,
+                ball.getPosition(), ball.getTarget(), ball.getBallState(),
+                carrier == null ? null : carrier.getId(),
+                currentAction == null ? null : currentAction.getActionId(),
+                currentAction == null ? null : currentAction.getType(),
+                currentAction == null || currentAction.getActingPlayer() == null
+                        ? null : currentAction.getActingPlayer().getId(),
+                currentAction == null || currentAction.getTargetPlayer() == null
+                        ? null : currentAction.getTargetPlayer().getId(),
+                currentAction == null ? null : currentAction.getIntendedTarget(),
+                currentAction == null ? null : currentAction.getActualTarget(),
+                status, goalCount));
     }
 
     public long getSimulationTick() { return simulationTick; }
