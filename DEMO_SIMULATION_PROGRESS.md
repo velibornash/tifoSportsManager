@@ -302,3 +302,19 @@ Good next additions are a shared action-result model, explicit ball-state
 telemetry, real player skills, and a dedicated set-piece positioning service.
 Do not put these responsibilities back into one large `SimulationEngine`
 method.
+
+## Event timeline — Sprint A
+
+The first persistence-oriented sprint introduced an append-only
+`SimulationEventStore` in `SimulationState` and immutable event models:
+
+```text
+ActionResultEvent
+BallStateChangedEvent
+DuelEvent
+```
+
+`ActionOutcome` contains the stable outcome vocabulary for PASS, CARRY, SHOT,
+CLEAR and CHASE. The models are currently recording-ready but are intentionally
+not wired into action execution yet; that is the next sprint. Existing console
+and UI messages therefore remain unchanged until event projection is connected.

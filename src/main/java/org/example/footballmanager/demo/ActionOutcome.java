@@ -1,0 +1,17 @@
+package org.example.footballmanager.demo;
+
+/** Stable, persistence-friendly outcomes of completed demo actions. */
+public enum ActionOutcome {
+    PASS_COMPLETED,
+    PASS_LOOSE,
+    PASS_OUT,
+    CARRY_COMPLETED,
+    CARRY_DUEL_LOST,
+    SHOT_GOAL,
+    SHOT_MISS,
+    SHOT_SAVE,
+    CLEAR_LOOSE,
+    CLEAR_OUT,
+    CHASE_POSSESSION,
+    CHASE_CONTINUE
+}

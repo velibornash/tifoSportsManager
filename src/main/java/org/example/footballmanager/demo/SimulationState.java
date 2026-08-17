@@ -37,6 +37,7 @@ public class SimulationState {
     private final Ball ball;
     private final TacticsRules tacticsRules;
     private final Random random;
+    private final SimulationEventStore eventStore = new SimulationEventStore();
     private final ArrayDeque<String> messages = new ArrayDeque<>();
 
     private Player carrier;
@@ -116,6 +117,11 @@ public class SimulationState {
 
     public Random getRandom() {
         return random;
+    }
+
+    /** Timeline for replay/statistics consumers; UI messages remain separate. */
+    public SimulationEventStore getEventStore() {
+        return eventStore;
     }
 
     // --- nosilac i akcija ---
