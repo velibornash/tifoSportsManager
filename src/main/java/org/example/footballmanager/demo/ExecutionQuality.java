@@ -41,16 +41,29 @@ public class ExecutionQuality {
      * @return PassResult sa skill-om, odstupnom metom i ishodom
      */
     public PassResult evaluatePass(Position intendedTarget, Player receiver) {
-        int skill = random.nextInt(20) + 1;
-        double maxDeviation = (20 - skill) * PASS_DEVIATION_PER_SKILL_POINT;
-        double deviation = random.nextDouble() * maxDeviation;
-        double angle = random.nextDouble() * 2 * Math.PI;
+        return evaluatePass(intendedTarget, intendedTarget, receiver);
+    }
 
-        double actualRow = intendedTarget.getRow() + Math.sin(angle) * deviation;
-        double actualCol = intendedTarget.getColumn() + Math.cos(angle) * deviation;
+    public PassResult evaluatePass(Position origin, Position intendedTarget, Player receiver) {
+        int skill = random.nextInt(20) + 1;
+        double dx = intendedTarget.getColumn() - origin.getColumn();
+        double dy = intendedTarget.getRow() - origin.getRow();
+        double length = Math.hypot(dx, dy);
+        double maxDeviation = Math.min(
+                (20 - skill) * PASS_DEVIATION_PER_SKILL_POINT,
+                Math.max(0.15, length * 0.65));
+        double dirRow = length < 1e-9 ? 0 : dy / length;
+        double dirCol = length < 1e-9 ? 1 : dx / length;
+        double sideRow = -dirCol;
+        double sideCol = dirRow;
+        double longitudinal = (random.nextDouble() * 2 - 1) * maxDeviation;
+        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 0.35;
+
+        double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
+        double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
         Position actualTarget = new Position(
-                MovementEngine.clamp(actualRow, 1, 7),
-                MovementEngine.clamp(actualCol, 1, 6));
+                MovementEngine.clamp(actualRow, 0, 8),
+                MovementEngine.clamp(actualCol, 0, 7));
 
         double distance = MovementEngine.distance(actualTarget, receiver.getPosition());
         boolean received = distance < PASS_SUCCESS_THRESHOLD;
@@ -72,10 +85,13 @@ public class ExecutionQuality {
 
         double actualRow = goalPosition.getRow() + Math.sin(angle) * deviation;
         double actualCol = goalPosition.getColumn() + Math.cos(angle) * deviation;
+        // Allow animation to extend beyond pitch for visual goal/miss effects
+        // but clamp to reasonable bounds for gameplay
         Position actualTarget = new Position(
-                MovementEngine.clamp(actualRow, 1, 7),
+                MovementEngine.clamp(actualRow, 0, 8),
                 MovementEngine.clamp(actualCol, 1, 6));
 
+        // Goal detection: check if shot is on target (near goal mouth)
         double distance = MovementEngine.distance(actualTarget, goalPosition);
         boolean goal = distance < SHOT_GOAL_THRESHOLD;
 

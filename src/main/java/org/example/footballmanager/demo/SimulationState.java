@@ -43,12 +43,19 @@ public class SimulationState {
     private int shotCount;
     private int round;
     private boolean celebrating;
+    private boolean awayRestartPending;
+    private Player returningPlayer;
+    private Position pendingRestartPosition;
+    private Player pendingRestartPlayer;
+    private boolean restartPassToHomeGoalkeeper;
+    private long actionDelayUntilMs;
 
     // --- pozicije po rundi (za Player Log): start, desired cilj i kraj turna ---
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
     private final Map<Player, Position> roundEndPositions = new HashMap<>();
     private final Map<Player, Position> desiredPositions = new HashMap<>();
     private final Map<Player, Position> tacticalDesiredPositions = new HashMap<>();
+    private final Map<Player, Integer> roundPaceSkills = new HashMap<>();
     private Position roundStartBallPosition;
     private Position roundEndBallPosition;
     private Position tacticalBallPosition;
@@ -166,6 +173,19 @@ public class SimulationState {
         this.celebrating = celebrating;
     }
 
+    public boolean isAwayRestartPending() { return awayRestartPending; }
+    public void setAwayRestartPending(boolean pending) { awayRestartPending = pending; }
+    public Player getReturningPlayer() { return returningPlayer; }
+    public void setReturningPlayer(Player player) { returningPlayer = player; }
+    public Position getPendingRestartPosition() { return pendingRestartPosition; }
+    public void setPendingRestartPosition(Position position) { pendingRestartPosition = position; }
+    public Player getPendingRestartPlayer() { return pendingRestartPlayer; }
+    public void setPendingRestartPlayer(Player player) { pendingRestartPlayer = player; }
+    public boolean isRestartPassToHomeGoalkeeper() { return restartPassToHomeGoalkeeper; }
+    public void setRestartPassToHomeGoalkeeper(boolean value) { restartPassToHomeGoalkeeper = value; }
+    public long getActionDelayUntilMs() { return actionDelayUntilMs; }
+    public void setActionDelayUntilMs(long value) { actionDelayUntilMs = value; }
+
     // --- log poruke (Action Log) ---
 
     public void log(String message) {
@@ -259,15 +279,21 @@ public class SimulationState {
         this.roundComplete = roundComplete;
     }
 
+    public int getRoundPaceSkill(Player p) {
+        return roundPaceSkills.getOrDefault(p, 20);
+    }
+
     /** Snima pozicije na pocetku novog turna (kraj se osvezava kad turn zavrsi). */
     public void beginRound() {
         roundComplete = false;
         roundStartBallPosition = ball.getPosition();
         roundEndBallPosition = ball.getPosition();
+        roundPaceSkills.clear();
         for (Player p : players) {
             Position pos = p.getPosition();
             roundStartPositions.put(p, pos);
             roundEndPositions.put(p, pos);
+            roundPaceSkills.put(p, random.nextInt(20) + 1);
         }
     }
 
@@ -310,17 +336,25 @@ public class SimulationState {
         carrier = null;
         action = null;
         celebrating = false;
+        awayRestartPending = false;
+        returningPlayer = null;
+        pendingRestartPosition = null;
+        pendingRestartPlayer = null;
+        restartPassToHomeGoalkeeper = false;
+        actionDelayUntilMs = 0;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();
         tacticalBallPosition = ball.getInitialPosition();
         lastTacticalBallStateKey = TacticsRules.ballStateKey(ball.getInitialPosition());
+        roundPaceSkills.clear();
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             roundStartPositions.put(p, p.getPosition());
             roundEndPositions.put(p, p.getPosition());
             desiredPositions.put(p, p.getPosition());
             tacticalDesiredPositions.put(p, p.getPosition());
+            roundPaceSkills.put(p, 20);
         }
         if (status.startsWith("GOAL")) {
             status += " (reset)";

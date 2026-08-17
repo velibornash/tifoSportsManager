@@ -50,31 +50,45 @@ public class SimulationStepEngine {
         Player carrier = state.getCarrier();
         if (carrier == null) {
             carrier = selection.closestHomeTo(state.getBall().getPosition());
-            state.setCarrier(carrier);
-            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition())
-                    >= BallMovementEngine.PICKUP_DISTANCE) {
-                carrier.setTarget(MovementEngine.oneCellToward(carrier.getPosition(), state.getBall().getPosition()));
+            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
+                state.setCarrier(carrier);
+                carrier.setTarget(state.getBall().getPosition());
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " chasing ball");
                 state.incrementRound();
                 return state.getStatus();
             }
-            // Nosilac je vec pri lopti — preuzima je odmah (lopta glatko prati,
-            // bez teleporta), i ista runda nastavlja na odluku (PASS/CARRY/SHOT).
+            // Preuzimanje je dozvoljeno samo na TACNOJ koordinati lopte.
             state.getBall().setCarrier(carrier);
+            state.setCarrier(carrier);
         } else if (state.getBall().getCarrier() != carrier) {
-            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition())
-                    >= BallMovementEngine.PICKUP_DISTANCE) {
-                carrier.setTarget(MovementEngine.oneCellToward(carrier.getPosition(), state.getBall().getPosition()));
+            if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
+                carrier.setTarget(state.getBall().getPosition());
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " moving to ball");
                 state.incrementRound();
                 return state.getStatus();
             }
             state.getBall().setCarrier(carrier);
+            state.setCarrier(carrier);
+            // Clear target since we've reached the ball
+            carrier.setTarget(null);
         }
 
         double row = carrier.getPosition().getRow();
+        if (state.isAwayRestartPending()) {
+            state.setAwayRestartPending(false);
+            if (!SimulationState.TEAM_HOME.equals(carrier.getTeam())) {
+                state.setReturningPlayer(carrier);
+                carrier.setTarget(carrier.getAlternativePosition());
+                actions.executePassTo(selection.closestHomeGoalkeeper());
+            } else {
+                // Gol-kick: HOME golman izvodi loptu sa svoje pozicije.
+                actions.executePass();
+            }
+            state.incrementRound();
+            return state.getStatus();
+        }
         boolean canShoot = row >= ActionEngine.SHOOT_MIN_ROW;
         String[] options = canShoot
             ? new String[] {"PASS", "CARRY", "SHOT"}

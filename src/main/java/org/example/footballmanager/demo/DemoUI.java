@@ -56,7 +56,7 @@ public class DemoUI {
     private static final int BALL_TRAIL_POINTS = 60;   // koliko tacaka traga lopte crtamo
     private static final long BALL_TRAIL_MS = 2500;    // trail se skloni posle ~2.5 sekunde
     private static final int ANIMATION_DELAY_MS = 50;  // sporija ANIMACIJA: sim-tick na svakih 50ms (20fps)
-    private static final int GOAL_CELEBRATION_MS = 5000; // pauza (proslava) pre reseta nakon gola
+    private static final int GOAL_CELEBRATION_MS = 7000; // proslava pre reseta nakon gola
 
     private final DemoScenario scenario;
     private final SimulationEngine simulation;

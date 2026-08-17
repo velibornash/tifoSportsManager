@@ -45,6 +45,7 @@ public class SimulationEngine {
     private final BallMovementEngine ballMovementEngine;
     private final TacticalIntentEngine tacticalIntentEngine;
     private final PlayerSelectionEngine playerSelectionEngine;
+    private int blockedCarryTicks;
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules) {
         this(players, ball, tacticsRules, new Random());
@@ -77,10 +78,36 @@ public class SimulationEngine {
      */
     public void advance() {
         if (state.isCelebrating()) {
-            return; // zamrznuto tokom proslave gola
+            // During celebration: move home players toward goal area (row 8, cols 1-3)
+            // in a slow celebration pattern, no teleport
+            if (state.getGoalCount() > 0 && state.getAction() == null) {
+                movePlayersDuringGoalCelebration();
+            }
+            return;
         }
 
         Action action = state.getAction();
+        if (action == null || action.getType() != Action.Type.CARRY) {
+            blockedCarryTicks = 0;
+        }
+
+        // Prvi frejm ostavlja loptu na stvarnoj aut-liniji. Tek u sledecem
+        // tick-u vracamo je na liniju celije i pokrecemo AWAY izvodjaca.
+        if (action == null && state.getPendingRestartPosition() != null) {
+            Position restartPosition = state.getPendingRestartPosition();
+            Player restartPlayer = state.getPendingRestartPlayer();
+            boolean passToHomeGoalkeeper = state.isRestartPassToHomeGoalkeeper();
+            state.setPendingRestartPosition(null);
+            state.setPendingRestartPlayer(null);
+            state.setRestartPassToHomeGoalkeeper(false);
+            state.getBall().setPosition(restartPosition);
+            startRestart(restartPosition, restartPlayer, passToHomeGoalkeeper);
+            return;
+        }
+
+        if (action == null && System.currentTimeMillis() < state.getActionDelayUntilMs()) {
+            return;
+        }
 
         // PASS u toku — lopta leti ka odstupnoj meti. Igraci reaguju na poziciju lopte.
         if (action != null && action.isPassInFlight()) {
@@ -90,7 +117,10 @@ public class SimulationEngine {
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) < BallMovementEngine.PICKUP_DISTANCE) {
-                if (action.isGoodExecution()) {
+                if (isOutsidePitch(action.getActualTarget())) {
+                    actionEngine.passOutOfBounds();
+                    scheduleAwayRestart(action.getActualTarget());
+                } else if (action.isGoodExecution()) {
                     actionEngine.pickupPass();
                 } else {
                     actionEngine.passFailed();
@@ -111,27 +141,199 @@ public class SimulationEngine {
                     actionEngine.goalScored();
                 } else {
                     actionEngine.shotMissed();
+                    scheduleAwayRestart(state.getBall().getPosition());
                 }
             }
             return;
         }
 
-        // Nosilac juri loptu — preuzima je kad je dovoljno blizu.
-        if (state.getCarrier() != null && state.getBall().getCarrier() != state.getCarrier()) {
-            if (MovementEngine.distance(state.getCarrier().getPosition(),
-                                        state.getBall().getPosition()) < BallMovementEngine.PICKUP_DISTANCE) {
-                state.getBall().setCarrier(state.getCarrier());
-                state.getCarrier().setTarget(null);
-                state.setStatus(state.getCarrier().getLabel() + " has the ball");
+        if (state.getReturningPlayer() != null
+                && (state.getReturningPlayer().getTarget() == null
+                || MovementEngine.distance(state.getReturningPlayer().getPosition(),
+                state.getReturningPlayer().getTarget()) <= 1e-9)) {
+            state.setReturningPlayer(null);
+        }
+
+        // CHASE: player moves toward ball. Ball NEVER moves.
+        // Pickup only happens in step() when player reaches exact ball position.
+        Player actionPlayer = action != null ? action.getActingPlayer() : null;
+        Position beforeMove = actionPlayer != null ? actionPlayer.getPosition() : null;
+        Position carryTarget = action != null && action.getType() == Action.Type.CARRY
+                && actionPlayer != null ? actionPlayer.getTarget() : null;
+        double carryDistanceBefore = carryTarget == null || actionPlayer == null
+                ? Double.NaN : MovementEngine.distance(beforeMove, carryTarget);
+        movementEngine.moveAllTowardTargets();
+
+        // Carrier ne ostaje zaglavljen: ako ne moze ni minimalno da se
+        // pomeri oko prepreke, odmah bira pas umesto da prekine akciju.
+        if (action != null && action.getType() == Action.Type.CARRY
+                && actionPlayer != null && carryTarget != null
+                && actionPlayer.getTarget() != null) {
+            double carryDistanceAfter = MovementEngine.distance(actionPlayer.getPosition(), carryTarget);
+            if (carryDistanceAfter >= carryDistanceBefore - 1e-6) {
+                blockedCarryTicks++;
+            } else {
+                blockedCarryTicks = 0;
+            }
+            if (blockedCarryTicks >= 3) {
+                blockedCarryTicks = 0;
+                actionEngine.executePass();
+                return;
             }
         }
 
-        movementEngine.moveAllTowardTargets();
+        // Ako je Chase igrac potpuno okruzen, menjamo jurioca. Akcija se ne
+        // zavrsava kao neuspeh i lopta ostaje potpuno nepomicna dok neko ne
+        // stigne tacno na njenu koordinatu.
+        if (action != null && action.getType() == Action.Type.CHASE
+                && actionPlayer != null && beforeMove != null
+                && actionPlayer.getTarget() != null
+                && MovementEngine.distance(beforeMove, actionPlayer.getPosition()) <= 1e-12) {
+            Player replacement = playerSelectionEngine.closestHomeTo(
+                    state.getBall().getPosition(), actionPlayer);
+            if (replacement != null) {
+                actionPlayer.setTarget(null);
+                state.setCarrier(replacement);
+                replacement.setTarget(state.getBall().getPosition());
+                actionEngine.start(Action.Type.CHASE, replacement.getLabel() + " chasing ball");
+                return;
+            }
+        }
 
         ballMovementEngine.followCarrier();
         tacticalIntentEngine.refreshTargetsIfBallStateChanged();
 
         actionEngine.checkActionCompletion();
+    }
+
+    private boolean isOutsidePitch(Position position) {
+        return position.getRow() < 1 || position.getRow() > 7
+                || position.getColumn() < 1 || position.getColumn() > 6;
+    }
+
+    private void startRestart(Position ballPosition, Player restartPlayer,
+                              boolean passToHomeGoalkeeper) {
+        Player away = restartPlayer;
+        if (away == null) return;
+        Position restartPosition = restartPosition(ballPosition);
+        state.setRoundComplete(false);
+        state.setCarrier(away);
+        state.getBall().setCarrier(null);
+        away.setTarget(restartPosition);
+        state.setAwayRestartPending(true);
+        state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
+        actionEngine.start(Action.Type.CHASE, away.getLabel() + " moving to restart");
+    }
+
+    private Position restartPosition(Position outPosition) {
+        // Bocna linija je izmedju celija: leva ivica celije 1 = 0.5,
+        // desna ivica celije 6 = 6.5. To nije centar celije 1/6.
+        double col = outPosition.getColumn() <= 0 ? 0.5
+                : outPosition.getColumn() >= 7 ? 6.5 : outPosition.getColumn();
+        return new Position(outPosition.getRow(), col);
+    }
+
+    private void scheduleAwayRestart(Position outPosition) {
+        boolean homeGoalKick = outPosition.getRow() <= 0;
+        boolean awayGoalKick = outPosition.getRow() >= 8;
+        Player restartPlayer;
+        Position restartPosition;
+        boolean passToHomeGoalkeeper;
+
+        if (homeGoalKick) {
+            restartPlayer = playerSelectionEngine.closestHomeGoalkeeper();
+            restartPosition = restartPlayer.getPosition();
+            passToHomeGoalkeeper = false;
+        } else if (awayGoalKick) {
+            restartPlayer = playerSelectionEngine.closestAwayGoalkeeper();
+            restartPosition = restartPlayer.getPosition();
+            passToHomeGoalkeeper = true;
+        } else {
+            restartPlayer = playerSelectionEngine.closestAwayTo(outPosition);
+            restartPosition = restartPosition(outPosition);
+            passToHomeGoalkeeper = true;
+        }
+        state.setPendingRestartPlayer(restartPlayer);
+        state.setPendingRestartPosition(restartPosition);
+        state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
+        state.setRoundComplete(false);
+    }
+
+    /**
+     * Pomera domace igrace ka cilju gola tokom proslave (red 8, kolone 1-3).
+     * Igraci se pomeraju glatko bez teleportacije, kao animacija proslave.
+     * Prosledjuje se i kretanje oko svoje osovine.
+     */
+    private void movePlayersDuringGoalCelebration() {
+        for (Player p : state.getPlayers()) {
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            if (p.isLocked()) {
+                continue;
+            }
+            // Cilj: celije 8_1 do 8_3 (koordinate red 8, kolone 1-3)
+            double targetCol = 2.0; // sredina izmedju 1 i 3
+            double targetRow = 8.0;
+            Position currentPos = p.getPosition();
+            // Glatko kretanje ka cilju za manji speed
+            double dx = targetCol - currentPos.getColumn();
+            double dy = targetRow - currentPos.getRow();
+            double dist = Math.hypot(dx, dy);
+            double celebSpeed = 0.12; // oko 2.4 celije u sekundi pri timeru od 50ms
+            if (dist > celebSpeed) {
+                p.setPosition(new Position(
+                        currentPos.getRow() + dy / dist * celebSpeed,
+                        currentPos.getColumn() + dx / dist * celebSpeed));
+            }
+            // Ako je igrac gotovo na cilju, pomeri ga malo oko sebe
+            if (dist <= celebSpeed) {
+                // Mini-proslava: glatko kretanje oko pozicije
+                double orbitAngle = System.currentTimeMillis() / 100.0 % (2 * Math.PI);
+                double orbitRadius = 0.1;
+                p.setPosition(new Position(
+                        targetRow + Math.sin(orbitAngle) * orbitRadius,
+                        targetCol + Math.cos(orbitAngle) * orbitRadius));
+            }
+        }
+    }
+
+    /** Pomera domace igrace ka cilju gola tokom proslave (red 8, kolone 1-3).
+     * Igraci se pomeraju glatko bez teleportacije, kao animacija proslave.
+     * Prosledjuje se i kretanje oko svoje osovine.
+     */
+    private void movePlayersDuringGoalCelebration_old() {
+        for (Player p : state.getPlayers()) {
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            if (p.isLocked()) {
+                continue;
+            }
+            // Cilj: celije 8_1 do 8_3 (koordinate red 8, kolone 1-3)
+            double targetCol = 2.0; // sredina izmedju 1 i 3
+            double targetRow = 8.0;
+            Position currentPos = p.getPosition();
+            // Glatko kretanje ka cilju za manji speed
+            double dx = targetCol - currentPos.getColumn();
+            double dy = targetRow - currentPos.getRow();
+            double dist = Math.hypot(dx, dy);
+            double celebSpeed = 0.01; // sporza kretanje tokom proslave
+            if (dist > celebSpeed) {
+                p.setPosition(new Position(
+                        currentPos.getRow() + dy / dist * celebSpeed,
+                        currentPos.getColumn() + dx / dist * celebSpeed));
+            }
+            // Ako je igrac gotovo na cilju, pomeri ga malo oko sebe
+            if (dist <= celebSpeed) {
+                // Mini-proslava: glatko kretanje oko pozicije
+                double orbitAngle = System.currentTimeMillis() / 100.0 % (2 * Math.PI);
+                double orbitRadius = 0.1;
+                p.setPosition(new Position(
+                        targetRow + Math.sin(orbitAngle) * orbitRadius,
+                        targetCol + Math.cos(orbitAngle) * orbitRadius));
+            }
+        }
     }
 
     /** Reset na pocetno stanje (nakon gola ili klikom na "Reset State"). */

@@ -25,10 +25,18 @@ public class PlayerSelectionEngine {
 
     /** Najblizi HOME igrac datoj poziciji. */
     public Player closestHomeTo(Position pos) {
+        return closestHomeTo(pos, null);
+    }
+
+    /** Najblizi HOME igrac, uz mogucnost da se prethodni Chase igrac izuzme. */
+    public Player closestHomeTo(Position pos, Player excluded) {
         Player best = null;
         double bestDist = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+                continue;
+            }
+            if (p == excluded || p.isLocked()) {
                 continue;
             }
             double d = MovementEngine.distance(p.getPosition(), pos);
@@ -38,6 +46,34 @@ public class PlayerSelectionEngine {
             }
         }
         return best;
+    }
+
+    public Player closestAwayTo(Position pos) {
+        Player best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (!"AWAY".equals(p.getTeam()) || p.isLocked()) continue;
+            double d = MovementEngine.distance(p.getPosition(), pos);
+            if (d < bestDist) {
+                bestDist = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    public Player closestHomeGoalkeeper() {
+        for (Player p : state.getPlayers()) {
+            if (SimulationState.TEAM_HOME.equals(p.getTeam()) && "GK".equals(p.getRole())) return p;
+        }
+        return closestHomeTo(new Position(1, 3.5));
+    }
+
+    public Player closestAwayGoalkeeper() {
+        for (Player p : state.getPlayers()) {
+            if ("AWAY".equals(p.getTeam()) && "GK".equals(p.getRole())) return p;
+        }
+        return closestAwayTo(new Position(7, 3.5));
     }
 
     /** N najblizih HOME igraca od date pozicije, bez datog igraca. */

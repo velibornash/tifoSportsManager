@@ -21,7 +21,9 @@ public class MovementEngine {
 
     public void moveAllTowardTargets() {
         for (Player p : state.getPlayers()) {
-            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+            if (!SimulationState.TEAM_HOME.equals(p.getTeam())
+                    && p != state.getReturningPlayer()
+                    && !isActiveChase(p)) {
                 continue;
             }
             if (p.isLocked()) {
@@ -31,15 +33,21 @@ public class MovementEngine {
             if (target == null) {
                 continue;
             }
-            boolean isCarrier = p == state.getCarrier();
-            if (!isCarrier) {
+            // Only the player who actually HAS the ball (picked up) bypasses pace limit.
+            // A player CHASING the ball is limited by their pace skill.
+            boolean isCarrier = p == state.getBall().getCarrier();
+            if (!isCarrier && !isActiveChase(p)) {
                 Position roundStart = state.getRoundStartPosition(p);
+                int pace = state.getRoundPaceSkill(p);
+                double maxDistance = pace / 20.0;
                 if (roundStart != null) {
                     double alreadyMoved = Math.max(
                             Math.abs(p.getPosition().getRow() - roundStart.getRow()),
                             Math.abs(p.getPosition().getColumn() - roundStart.getColumn()));
-                    if (alreadyMoved >= 1.0 - 1e-6) {
-                        p.setTarget(null);
+                    if (alreadyMoved >= maxDistance - 1e-6) {
+                        // Target se ne sme obrisati samo zato sto je igrac
+                        // potrosio kretanje ove runde. Sledeci tick/runda mora
+                        // da nastavi isti Chase ka lopti.
                         continue;
                     }
                 }
@@ -51,9 +59,18 @@ public class MovementEngine {
             if (distance(safe, target) < 1e-6) {
                 p.setTarget(null);
             } else if (distance(safe, current) < 1e-6) {
-                p.setTarget(null);
+                // Igrac je trenutno blokiran. Target ostaje sacuvan da bi
+                // mogao da se obidje prepreka; nikakav "stuck" ishod se ne
+                // proizvodi iz jednog neuspesnog tick-a.
             }
         }
+    }
+
+    private boolean isActiveChase(Player player) {
+        Action action = state.getAction();
+        return action != null
+                && action.getType() == Action.Type.CHASE
+                && action.getActingPlayer() == player;
     }
 
     public MovementProfile profileFor(Player player) {
@@ -79,9 +96,13 @@ public class MovementEngine {
         if (dist <= speed) {
             return target;
         }
+        double minRow = target.getRow() < 1 ? 0 : 1;
+        double maxRow = target.getRow() > 7 ? 8 : 7;
+        double minCol = target.getColumn() < 1 ? 0 : 1;
+        double maxCol = target.getColumn() > 6 ? 7 : 6;
         return new Position(
-                clamp(pos.getRow() + dy / dist * speed, 1, 7),
-                clamp(pos.getColumn() + dx / dist * speed, 1, 6));
+                clamp(pos.getRow() + dy / dist * speed, minRow, maxRow),
+                clamp(pos.getColumn() + dx / dist * speed, minCol, maxCol));
     }
 
     /**
@@ -116,6 +137,16 @@ public class MovementEngine {
             clampPos(current.getRow() - perpY * 0.5, current.getColumn() - perpX * 0.5),
             clampPos(current.getRow(), current.getColumn() + dx),
             clampPos(current.getRow() + dy, current.getColumn()),
+            // Dodatni radijalni koraci daju igracu prostor da izadje iz
+            // uskog prolaza kada su obe direktne bočne putanje zauzete.
+            clampPos(current.getRow() + step, current.getColumn()),
+            clampPos(current.getRow() - step, current.getColumn()),
+            clampPos(current.getRow(), current.getColumn() + step),
+            clampPos(current.getRow(), current.getColumn() - step),
+            clampPos(current.getRow() + step, current.getColumn() + step),
+            clampPos(current.getRow() + step, current.getColumn() - step),
+            clampPos(current.getRow() - step, current.getColumn() + step),
+            clampPos(current.getRow() - step, current.getColumn() - step),
         };
 
         for (Position alt : candidates) {
@@ -143,8 +174,16 @@ public class MovementEngine {
     }
 
     private static Position clampPos(double row, double col) {
-        return new Position(clamp(row, 1, 7), clamp(col, 1, 6));
+    // Allow row 8 for goal celebrations (ball moves through goal mouth)
+    // Allow row 0 for misses (ball goes out of bounds)
+    if (row == 8.0) {
+        return new Position(8.0, clamp(col, 1, 6));
     }
+    if (row == 0.0) {
+        return new Position(0.0, clamp(col, 1, 6));
+    }
+    return new Position(clamp(row, 1, 7), clamp(col, 1, 6));
+}
 
     public static double distance(Position a, Position b) {
         double dr = a.getRow() - b.getRow();
