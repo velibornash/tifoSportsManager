@@ -325,6 +325,7 @@ public class SimulationEngine {
                     state.getBall().getPosition(), actionPlayer);
             if (replacement != null) {
                 actionPlayer.setTarget(null);
+                actionEngine.completeBlockedChase();
                 playerSelectionEngine.clearChaseTargetsExcept(replacement);
                 state.setCarrier(replacement);
                 replacement.setTarget(state.getBall().getPosition());

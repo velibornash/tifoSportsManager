@@ -52,6 +52,16 @@ public class ActionEngine {
         state.log("Action completed: " + description);
     }
 
+    /** Records a blocked chase before handing pursuit to a replacement player. */
+    public void completeBlockedChase() {
+        Action action = state.getAction();
+        if (action == null || action.getType() != Action.Type.CHASE) return;
+        recordActionResult(ActionOutcome.CHASE_CONTINUE,
+                state.getBall().getBallState(), state.getBall().getBallState(), null);
+        complete("CHASE: " + action.getActingPlayer().getLabel()
+                + " blocked, switching chaser");
+    }
+
     /**
      * Odluka o pasu: nasumicni primaoc iz 6 najblizih HOME igraca.
      * Generise demo passing skill i racuna odstupnu metu.

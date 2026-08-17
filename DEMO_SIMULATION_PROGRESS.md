@@ -372,6 +372,10 @@ scenes are also captured, so replay consumers do not need to infer them from
 the first or last action. `SimulationEngine#getRecording()` exposes this
 aggregate without exposing mutable `SimulationState` internals.
 
+The action audit also records a `CHASE_CONTINUE` result when a blocked chaser
+is replaced. A replay can therefore distinguish an unfinished pursuit handed
+to a new player from a possession pickup or a silent action reset.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:
