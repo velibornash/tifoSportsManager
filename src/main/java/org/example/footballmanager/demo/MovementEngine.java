@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public class MovementEngine {
 
-    public static final double PLAYER_SPEED = 0.03;
+    public static final double PLAYER_SPEED = 0.015;
     private static final double MIN_PLAYER_DISTANCE = 0.35;
 
     private final SimulationState state;
@@ -103,10 +103,7 @@ public class MovementEngine {
     }
 
     private boolean isActiveChase(Player player) {
-        Action action = state.getAction();
-        return action != null
-                && action.getType() == Action.Type.CHASE
-                && action.getActingPlayer() == player;
+        return state.isActiveChaser(player);
     }
 
     public MovementProfile profileFor(Player player) {

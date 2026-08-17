@@ -303,11 +303,16 @@ public class DemoUI {
     private void updateStatistics() {
         int attempts = simulation.getPassAttempts();
         double passPercent = attempts == 0 ? 0 : simulation.getPassCompletions() * 100.0 / attempts;
+        double awayPassPercent = simulation.getAwayPassAttempts() == 0 ? 0
+                : simulation.getAwayPassCompletions() * 100.0 / simulation.getAwayPassAttempts();
         statisticsLabel.setText(String.format(java.util.Locale.ROOT,
-                "HOME STATS  |  Pass attempted: %d  Pass completed: %d  Pass accuracy: %.1f%%"
-                        + "  |  Shots on target: %d  Goals: %d",
+                "<html>HOME  | Pass attempted: %d  Pass completed: %d  Accuracy: %.1f%%"
+                        + " | Shots on target: %d  Goals: %d<br>AWAY  | Pass attempted: %d"
+                        + " Pass completed: %d  Accuracy: %.1f%% | Shots on target: %d  Goals: %d</html>",
                 attempts, simulation.getPassCompletions(), passPercent,
-                simulation.getShotsOnTarget(), simulation.getGoalCount()));
+                simulation.getShotsOnTarget(), simulation.getGoalCount(),
+                simulation.getAwayPassAttempts(), simulation.getAwayPassCompletions(),
+                awayPassPercent, simulation.getAwayShotsOnTarget(), simulation.getAwayGoalCount()));
     }
 
     private void handleHalfTimeTiming() {

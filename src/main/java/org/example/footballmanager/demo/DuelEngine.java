@@ -42,6 +42,11 @@ public final class DuelEngine {
             closeActiveDuel();
             return;
         }
+        if (action.getType() == Action.Type.CHASE
+                && MovementEngine.distance(attacker.getPosition(), state.getBall().getPosition()) > 1e-9) {
+            closeActiveDuel();
+            return;
+        }
         if (state.isBlockedAfterDuel(attacker)) {
             closeActiveDuel();
             return;
@@ -135,6 +140,7 @@ public final class DuelEngine {
         double bestDistance = Double.MAX_VALUE;
         for (Player candidate : players) {
             if (candidate == attacker || candidate.getTeam().equals(contestTarget.getTeam())) continue;
+            if (action.getType() == Action.Type.CHASE && !state.isActiveChaser(candidate)) continue;
             if (state.isBlockedAfterDuel(candidate)) continue;
             if (action.getType() == Action.Type.SHOT && !"GK".equals(candidate.getRole())) continue;
             double distance = MovementEngine.distance(candidate.getPosition(), position);

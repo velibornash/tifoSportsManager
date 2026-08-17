@@ -12,8 +12,8 @@ package org.example.footballmanager.demo;
  */
 public class BallMovementEngine {
 
-    public static final double BALL_SPEED = 0.074;          // celija po tick-u simulacije (sporo za bolju vizuelizaciju)
-    public static final double CARRIER_FOLLOW_SPEED = 0.11; // lopta glatko prati nosioca (bez teleporta)
+    public static final double BALL_SPEED = 0.037;          // 50% sporije
+    public static final double CARRIER_FOLLOW_SPEED = 0.055; // 50% sporije
     public static final double PICKUP_DISTANCE = 0.5;       // na koliko igrac "hvata" loptu
 
     private final SimulationState state;

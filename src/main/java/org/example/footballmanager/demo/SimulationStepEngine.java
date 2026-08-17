@@ -61,7 +61,16 @@ public class SimulationStepEngine {
 
         Player carrier = state.getCarrier();
         if (carrier == null) {
-            carrier = selection.closestTeamTo(state.getBall().getPosition(), state.getKickoffTeam());
+            if (state.isKickoffPending()) {
+                carrier = selection.closestTeamTo(state.getBall().getPosition(), state.getKickoffTeam());
+                state.setKickoffPending(false);
+                state.setActiveChasers(carrier, null);
+            } else {
+                Player closestHome = selection.closestTeamTo(state.getBall().getPosition(), "HOME");
+                Player closestAway = selection.closestTeamTo(state.getBall().getPosition(), "AWAY");
+                carrier = closestOf(closestHome, closestAway, state.getBall().getPosition());
+                state.setActiveChasers(closestHome, closestAway);
+            }
             if (carrier == null) carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 state.setCarrier(carrier);
@@ -77,6 +86,7 @@ public class SimulationStepEngine {
             state.getBall().setCarrier(carrier);
             state.setCarrier(carrier);
             state.setKickoffTeam(SimulationState.TEAM_HOME);
+            state.clearActiveChasers();
         } else if (state.getBall().getCarrier() != carrier) {
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 selection.clearChaseTargetsExcept(carrier);
@@ -90,6 +100,7 @@ public class SimulationStepEngine {
             state.setCarrier(carrier);
             // Clear target since we've reached the ball
             carrier.setTarget(null);
+            state.clearActiveChasers();
         }
 
         double row = carrier.getPosition().getRow();
@@ -137,5 +148,13 @@ public class SimulationStepEngine {
         state.recordDesiredPositions();
         state.incrementRound();
         return state.getStatus();
+    }
+
+    private Player closestOf(Player home, Player away, Position ball) {
+        if (home == null) return away;
+        if (away == null) return home;
+        double homeDistance = MovementEngine.distance(home.getPosition(), ball);
+        double awayDistance = MovementEngine.distance(away.getPosition(), ball);
+        return homeDistance <= awayDistance ? home : away;
     }
 }

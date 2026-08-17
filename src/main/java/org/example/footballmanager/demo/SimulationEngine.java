@@ -335,26 +335,6 @@ public class SimulationEngine {
             }
         }
 
-        // Ako je Chase igrac potpuno okruzen, menjamo jurioca. Akcija se ne
-        // zavrsava kao neuspeh i lopta ostaje potpuno nepomicna dok neko ne
-        // stigne tacno na njenu koordinatu.
-        if (action != null && action.getType() == Action.Type.CHASE
-                && actionPlayer != null && beforeMove != null
-                && actionPlayer.getTarget() != null
-                && MovementEngine.distance(beforeMove, actionPlayer.getPosition()) <= 1e-12) {
-            Player replacement = playerSelectionEngine.closestHomeTo(
-                    state.getBall().getPosition(), actionPlayer);
-            if (replacement != null) {
-                actionPlayer.setTarget(null);
-                actionEngine.completeBlockedChase();
-                playerSelectionEngine.clearChaseTargetsExcept(replacement);
-                state.setCarrier(replacement);
-                replacement.setTarget(state.getBall().getPosition());
-                actionEngine.start(Action.Type.CHASE, replacement.getLabel() + " chasing ball");
-                return;
-            }
-        }
-
         ballMovementEngine.followCarrier();
         tacticalIntentEngine.refreshTargetsIfBallStateChanged();
 
@@ -555,6 +535,9 @@ public class SimulationEngine {
     public int getPassAttempts() { return state.getPassAttempts(); }
     public int getPassCompletions() { return state.getPassCompletions(); }
     public int getShotsOnTarget() { return state.getShotsOnTarget(); }
+    public int getAwayPassAttempts() { return state.getAwayPassAttempts(); }
+    public int getAwayPassCompletions() { return state.getAwayPassCompletions(); }
+    public int getAwayShotsOnTarget() { return state.getAwayShotsOnTarget(); }
 
     public void startSecondHalf() { state.startSecondHalf(); }
     public void startMatchSimulation() { state.startMatchSimulation(); }

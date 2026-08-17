@@ -41,6 +41,7 @@ public class ActionEngine {
 
     /** Startuje novu akciju: postavlja Action, status i log. */
     public void start(Action.Type type, String description) {
+        if (type != Action.Type.CHASE) state.clearActiveChasers();
         Action action = new Action(type, state.getCarrier());
         action.setActionId(state.nextActionId());
         state.setAction(action);
@@ -53,6 +54,7 @@ public class ActionEngine {
 
     /** Zavrsava tekuci turn: cisti akciju i osvezava kraj pozicija. */
     public void complete(String description) {
+        state.clearActiveChasers();
         state.setAction(null);
         state.setRoundComplete(true);
         state.setRoundEndBallPosition(state.getBall().getPosition());
@@ -100,7 +102,7 @@ public class ActionEngine {
             return;
         }
         receiver.setLocked(true);
-        state.incrementPassAttempts();
+        state.incrementPassAttempts(state.getCarrier().getTeam());
 
         Position intendedTarget = receiver.getPosition();
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
@@ -298,7 +300,7 @@ public class ActionEngine {
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
         state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
-        state.incrementPassCompletions();
+        state.incrementPassCompletions(receiver.getTeam());
         recordActionResult(ActionOutcome.PASS_COMPLETED, previousState, null, null);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
@@ -359,7 +361,7 @@ public class ActionEngine {
     /** Good shot lost to the goalkeeper duel; starts a smooth rebound sequence. */
     public void shotSaved(Player goalkeeper) {
         Action action = state.getAction();
-        state.incrementShotsOnTarget();
+        state.incrementShotsOnTarget(action.getActingPlayer().getTeam());
         Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
         Position goalPosition = goalPositionFor(action.getActingPlayer().getTeam());
@@ -422,7 +424,7 @@ public class ActionEngine {
         Ball.BallState previousState = state.getBall().getBallState();
         Player scorer = state.getAction().getActingPlayer();
         recordActionResult(ActionOutcome.SHOT_GOAL, previousState, Ball.BallState.LOOSE, null);
-        state.incrementShotsOnTarget();
+        state.incrementShotsOnTarget(scorer.getTeam());
         state.recordGoal(scorer);
         if (SimulationState.TEAM_HOME.equals(scorer.getTeam())) {
             state.incrementGoalCount();

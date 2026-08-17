@@ -3,9 +3,11 @@ package org.example.footballmanager.demo;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -49,6 +51,7 @@ public class SimulationState {
     private final SimulationSnapshotStore snapshotStore = new SimulationSnapshotStore();
     private final ArrayDeque<String> messages = new ArrayDeque<>();
     private final List<GoalRecord> goals = new ArrayList<>();
+    private final Set<Player> activeChasers = new HashSet<>();
 
     private Player carrier;
     private Action action;
@@ -66,6 +69,9 @@ public class SimulationState {
     private int passAttempts;
     private int passCompletions;
     private int shotsOnTarget;
+    private int awayPassAttempts;
+    private int awayPassCompletions;
+    private int awayShotsOnTarget;
     private long simulationTick;
     private long nextActionSequence = 1;
     private boolean celebrating;
@@ -84,6 +90,7 @@ public class SimulationState {
     private Player cornerTaker;
     private String cornerTeam;
     private String kickoffTeam = TEAM_HOME;
+    private boolean kickoffPending = true;
     private int cornerHoldTicks;
     private Player duelVisualAttacker;
     private Player duelVisualDefender;
@@ -290,9 +297,21 @@ public class SimulationState {
     public int getPassAttempts() { return passAttempts; }
     public int getPassCompletions() { return passCompletions; }
     public int getShotsOnTarget() { return shotsOnTarget; }
+    public int getAwayPassAttempts() { return awayPassAttempts; }
+    public int getAwayPassCompletions() { return awayPassCompletions; }
+    public int getAwayShotsOnTarget() { return awayShotsOnTarget; }
     public void incrementPassAttempts() { passAttempts++; }
     public void incrementPassCompletions() { passCompletions++; }
     public void incrementShotsOnTarget() { shotsOnTarget++; }
+    public void incrementPassAttempts(String team) {
+        if (TEAM_HOME.equals(team)) passAttempts++; else awayPassAttempts++;
+    }
+    public void incrementPassCompletions(String team) {
+        if (TEAM_HOME.equals(team)) passCompletions++; else awayPassCompletions++;
+    }
+    public void incrementShotsOnTarget(String team) {
+        if (TEAM_HOME.equals(team)) shotsOnTarget++; else awayShotsOnTarget++;
+    }
     public void recordGoal(Player scorer) {
         goals.add(new GoalRecord(matchMinute(), scorer.getId(), scorer.getLabel(), scorer.getTeam()));
     }
@@ -327,6 +346,8 @@ public class SimulationState {
         if (!halfTime) return;
         halfTime = false;
         matchTicks = 46 * MATCH_TICKS_PER_MINUTE;
+        kickoffTeam = "AWAY";
+        kickoffPending = true;
         status = "SECOND HALF";
     }
 
@@ -336,6 +357,17 @@ public class SimulationState {
             status = "MATCH STARTED";
         }
     }
+
+    public boolean isKickoffPending() { return kickoffPending; }
+    public void setKickoffPending(boolean value) { kickoffPending = value; }
+    public void clearActiveChasers() { activeChasers.clear(); }
+    public void setActiveChasers(Player first, Player second) {
+        activeChasers.clear();
+        if (first != null) activeChasers.add(first);
+        if (second != null) activeChasers.add(second);
+    }
+    public boolean isActiveChaser(Player player) { return activeChasers.contains(player); }
+    public Set<Player> getActiveChasers() { return Set.copyOf(activeChasers); }
 
     private void enterHalfTime() {
         halfTime = true;
@@ -565,10 +597,15 @@ public class SimulationState {
         passAttempts = 0;
         passCompletions = 0;
         shotsOnTarget = 0;
+        awayPassAttempts = 0;
+        awayPassCompletions = 0;
+        awayShotsOnTarget = 0;
         goals.clear();
         goalCount = 0;
         awayGoalCount = 0;
         kickoffTeam = TEAM_HOME;
+        kickoffPending = true;
+        activeChasers.clear();
         status = "ready";
         captureSnapshot();
     }

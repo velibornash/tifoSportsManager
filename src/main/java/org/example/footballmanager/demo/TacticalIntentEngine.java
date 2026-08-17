@@ -65,8 +65,6 @@ public class TacticalIntentEngine {
     }
 
     private boolean isActiveChase(Player player) {
-        Action action = state.getAction();
-        return action != null && action.getType() == Action.Type.CHASE
-                && action.getActingPlayer() == player;
+        return state.isActiveChaser(player);
     }
 }
