@@ -39,6 +39,7 @@ public class Action {
     private Position actualTarget;
     private boolean goodExecution;
     private SaveType saveType = SaveType.NONE;
+    private boolean clearance;
 
     public Action(Type type, Player actingPlayer) {
         this.type = type;
@@ -127,6 +128,8 @@ public class Action {
 
     public SaveType getSaveType() { return saveType; }
     public void setSaveType(SaveType saveType) { this.saveType = saveType; }
+    public boolean isClearance() { return clearance; }
+    public void setClearance(boolean clearance) { this.clearance = clearance; }
 
     @Override
     public String toString() {

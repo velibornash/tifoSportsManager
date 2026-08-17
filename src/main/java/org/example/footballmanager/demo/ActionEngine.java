@@ -199,6 +199,33 @@ public class ActionEngine {
         complete("DUEL: " + winner.getLabel() + " wins | " + reason);
     }
 
+    /** AWAY ne napada ka svom golu posle osvojenog duela: čisti loptu. */
+    public void executeAwayClearance(Player winner) {
+        Position current = winner.getPosition();
+        double targetRow = Math.max(1.0, current.getRow() - 1.0 - state.getRandom().nextInt(3));
+        Position target = new Position(targetRow, 1.0 + state.getRandom().nextInt(6));
+        state.setReturningPlayer(winner);
+        state.setRoundComplete(false);
+        winner.setTarget(winner.getAlternativePosition());
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(target);
+        start(Action.Type.PASS, "CLEARANCE: " + winner.getLabel() + " -> "
+                + formatPosition(target));
+        Action action = state.getAction();
+        action.setClearance(true);
+        action.setActualTarget(target);
+        action.setIntendedTarget(target);
+        action.setGoodExecution(true);
+        state.incrementActionCount();
+    }
+
+    public void finishAwayClearance() {
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        complete("CLEARANCE -> LOOSE BALL");
+    }
+
     /** Good shot lost to the goalkeeper duel; starts a smooth rebound sequence. */
     public void shotSaved(Player goalkeeper) {
         Action action = state.getAction();

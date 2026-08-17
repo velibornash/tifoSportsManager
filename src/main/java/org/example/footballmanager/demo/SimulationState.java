@@ -25,7 +25,7 @@ public class SimulationState {
 
     private static final int MAX_MESSAGES = 8;
     public static final int SIMULATION_TICKS_PER_SECOND = 20;
-    public static final int ACTION_PAUSE_TICKS = 6;       // 0.3 s
+    public static final int ACTION_PAUSE_TICKS = 0;       // nema pauze između akcija
     public static final int DUEL_LOSS_TICKS = 60;          // 3 s
     public static final int SET_PIECE_HOLD_TICKS = 60;    // 3 s
     public static final int CORNER_TAKER_HOLD_TICKS = 40; // 2 s

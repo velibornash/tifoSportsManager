@@ -116,9 +116,9 @@ change the carrier, while a goalkeeper can save a good shot. Poor shot
 execution remains a miss and does not create a duel result. The resolver itself
 never mutates state; consequences are centralized in `ActionEngine`.
 
-The demo action lifecycle uses a 0.30 second post-action hold (6 simulation
-ticks at 20 ticks/second), and PASS/SHOT completion is checked only after the
-ball reaches its exact animation target. Duel losers are blocked for 3 seconds;
+The demo action lifecycle has no artificial post-action hold, and PASS/SHOT
+completion is checked only after the ball reaches its exact animation target.
+Duel losers are blocked for 3 seconds;
 the goalkeeper is exempt when the goalkeeper wins a shot duel. All action and
 duel lifecycle/calculation messages are appended to the Action Log and mirrored
 to the App log.

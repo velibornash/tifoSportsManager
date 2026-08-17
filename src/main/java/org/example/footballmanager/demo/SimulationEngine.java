@@ -149,13 +149,18 @@ public class SimulationEngine {
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) <= 1e-9) {
-                if (isOutsidePitch(action.getActualTarget())) {
+                if (action.isClearance()) {
+                    actionEngine.finishAwayClearance();
+                } else if (isOutsidePitch(action.getActualTarget())) {
                     actionEngine.passOutOfBounds();
                     scheduleAwayRestart(action.getActualTarget());
                 } else if (action.isGoodExecution()) {
                     DuelResult duelResult = resolveDuel(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                         actionEngine.giveBallTo(duelResult.winner(), "RECEIVE_PASS defender");
+                        if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
+                            actionEngine.executeAwayClearance(duelResult.winner());
+                        }
                     } else {
                         actionEngine.pickupPass();
                     }
@@ -244,6 +249,9 @@ public class SimulationEngine {
             DuelResult duelResult = duelEngine.resolveActiveDuel(duelResolver);
             if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                 actionEngine.giveBallTo(duelResult.winner(), action.getType().name());
+                if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
+                    actionEngine.executeAwayClearance(duelResult.winner());
+                }
                 duelEngine.update(state.getAction());
                 return;
             }
