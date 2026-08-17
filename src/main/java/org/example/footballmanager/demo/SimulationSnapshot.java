@@ -18,7 +18,13 @@ public record SimulationSnapshot(
         Position intendedTarget,
         Position actualTarget,
         String status,
-        int goalCount
+        int goalCount,
+        int matchTicks,
+        boolean halfTime,
+        boolean matchFinished,
+        int passAttempts,
+        int passCompletions,
+        int shotsOnTarget
 ) {
     public SimulationSnapshot {
         players = List.copyOf(players);

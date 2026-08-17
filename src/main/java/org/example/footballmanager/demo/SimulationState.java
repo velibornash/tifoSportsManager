@@ -33,6 +33,10 @@ public class SimulationState {
     public static final int DUEL_LOSS_TICKS = 60;          // 3 s
     public static final int SET_PIECE_HOLD_TICKS = 60;    // 3 s
     public static final int CORNER_TAKER_HOLD_TICKS = 40; // 2 s
+    public static final int MATCH_TICKS_PER_MINUTE = 20;
+    public static final int REGULATION_MINUTES = 90;
+    public static final int EXTRA_TIME_MINUTES = 3;
+    public static final int HALF_TIME_PAUSE_SECONDS = 12;
 
     public static final String TEAM_HOME = "HOME";
 
@@ -44,6 +48,7 @@ public class SimulationState {
     private final SimulationEventStore eventStore = new SimulationEventStore();
     private final SimulationSnapshotStore snapshotStore = new SimulationSnapshotStore();
     private final ArrayDeque<String> messages = new ArrayDeque<>();
+    private final List<GoalRecord> goals = new ArrayList<>();
 
     private Player carrier;
     private Action action;
@@ -53,6 +58,12 @@ public class SimulationState {
     private int actionCount;
     private int shotCount;
     private int round;
+    private int matchTicks;
+    private boolean halfTime;
+    private boolean matchFinished;
+    private int passAttempts;
+    private int passCompletions;
+    private int shotsOnTarget;
     private long simulationTick;
     private long nextActionSequence = 1;
     private boolean celebrating;
@@ -164,6 +175,12 @@ public class SimulationState {
         action = null;
         status = snapshot.status();
         goalCount = snapshot.goalCount();
+        matchTicks = snapshot.matchTicks();
+        halfTime = snapshot.halfTime();
+        matchFinished = snapshot.matchFinished();
+        passAttempts = snapshot.passAttempts();
+        passCompletions = snapshot.passCompletions();
+        shotsOnTarget = snapshot.shotsOnTarget();
     }
 
     /** Captures the complete immutable scene without deriving it later from logs. */
@@ -187,7 +204,8 @@ public class SimulationState {
                         ? null : currentAction.getTargetPlayer().getId(),
                 currentAction == null ? null : currentAction.getIntendedTarget(),
                 currentAction == null ? null : currentAction.getActualTarget(),
-                status, goalCount));
+                status, goalCount, matchTicks, halfTime, matchFinished,
+                passAttempts, passCompletions, shotsOnTarget));
     }
 
     public long getSimulationTick() { return simulationTick; }
@@ -253,6 +271,59 @@ public class SimulationState {
 
     public int getRound() {
         return round;
+    }
+
+    public int getMatchTicks() { return matchTicks; }
+    public boolean isHalfTime() { return halfTime; }
+    public boolean isMatchFinished() { return matchFinished; }
+    public List<GoalRecord> getGoals() { return List.copyOf(goals); }
+    public int getPassAttempts() { return passAttempts; }
+    public int getPassCompletions() { return passCompletions; }
+    public int getShotsOnTarget() { return shotsOnTarget; }
+    public void incrementPassAttempts() { passAttempts++; }
+    public void incrementPassCompletions() { passCompletions++; }
+    public void incrementShotsOnTarget() { shotsOnTarget++; }
+    public void recordGoal(Player scorer) {
+        goals.add(new GoalRecord(matchMinute(), scorer.getId(), scorer.getLabel(), scorer.getTeam()));
+    }
+
+    public void advanceMatchClock() {
+        if (halfTime || matchFinished) return;
+        matchTicks++;
+        if (matchTicks == 45 * MATCH_TICKS_PER_MINUTE) {
+            enterHalfTime();
+        } else if (matchTicks >= (REGULATION_MINUTES + EXTRA_TIME_MINUTES) * MATCH_TICKS_PER_MINUTE) {
+            matchFinished = true;
+            status = "MATCH FINISHED";
+        }
+    }
+
+    public String matchClockLabel() {
+        int minute = matchTicks / MATCH_TICKS_PER_MINUTE;
+        int second = (matchTicks % MATCH_TICKS_PER_MINUTE) * 3;
+        if (minute > REGULATION_MINUTES) {
+            return REGULATION_MINUTES + "+" + (minute - REGULATION_MINUTES)
+                    + ":" + String.format("%02d", second);
+        }
+        return minute + ":" + String.format("%02d", second);
+    }
+
+    public int matchMinute() {
+        return Math.max(1, (matchTicks + MATCH_TICKS_PER_MINUTE - 1)
+                / MATCH_TICKS_PER_MINUTE);
+    }
+
+    public void startSecondHalf() {
+        if (!halfTime) return;
+        halfTime = false;
+        matchTicks = 46 * MATCH_TICKS_PER_MINUTE;
+        status = "SECOND HALF";
+    }
+
+    private void enterHalfTime() {
+        halfTime = true;
+        status = "HALF-TIME";
+        resetPositionsOnly();
     }
 
     public void incrementRound() {
@@ -454,6 +525,31 @@ public class SimulationState {
 
     /** Reset na pocetno stanje (nakon gola ili klikom na "Reset State"). */
     public void reset() {
+        resetPositionsOnly();
+        if (status.startsWith("GOAL")) {
+            status += " (reset)";
+        } else {
+            status = "reset";
+        }
+        captureSnapshot();
+    }
+
+    /** Starts a fresh match while keeping the append-only recording history. */
+    public void resetMatch() {
+        resetPositionsOnly();
+        matchTicks = 0;
+        halfTime = false;
+        matchFinished = false;
+        passAttempts = 0;
+        passCompletions = 0;
+        shotsOnTarget = 0;
+        goals.clear();
+        goalCount = 0;
+        status = "ready";
+        captureSnapshot();
+    }
+
+    private void resetPositionsOnly() {
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             p.setPosition(initialPositions.get(i));
@@ -501,11 +597,5 @@ public class SimulationState {
             tacticalDesiredPositions.put(p, p.getPosition());
             roundPaceSkills.put(p, 20);
         }
-        if (status.startsWith("GOAL")) {
-            status += " (reset)";
-        } else {
-            status = "reset";
-        }
-        captureSnapshot();
     }
 }

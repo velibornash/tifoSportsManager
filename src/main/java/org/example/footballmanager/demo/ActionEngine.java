@@ -91,6 +91,7 @@ public class ActionEngine {
             return;
         }
         receiver.setLocked(true);
+        state.incrementPassAttempts();
 
         Position intendedTarget = receiver.getPosition();
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
@@ -281,6 +282,7 @@ public class ActionEngine {
         state.getBall().setTarget(null);
         state.setStatus(receiver.getLabel() + " received pass");
         state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
+        state.incrementPassCompletions();
         recordActionResult(ActionOutcome.PASS_COMPLETED, previousState, null, null);
         complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
     }
@@ -341,6 +343,7 @@ public class ActionEngine {
     /** Good shot lost to the goalkeeper duel; starts a smooth rebound sequence. */
     public void shotSaved(Player goalkeeper) {
         Action action = state.getAction();
+        state.incrementShotsOnTarget();
         Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
         state.getBall().setPosition(GOAL_POSITION);
@@ -397,7 +400,10 @@ public class ActionEngine {
     /** Gol je postignut — simulacija se zamrzava do reset-a. */
     public void goalScored() {
         Ball.BallState previousState = state.getBall().getBallState();
+        Player scorer = state.getAction().getActingPlayer();
         recordActionResult(ActionOutcome.SHOT_GOAL, previousState, Ball.BallState.LOOSE, null);
+        state.incrementShotsOnTarget();
+        state.recordGoal(scorer);
         state.incrementGoalCount();
         state.setCelebrating(true);
         state.setStatus("GOAL for HOME! (" + state.getGoalCount() + ")");

@@ -45,6 +45,8 @@ import java.util.Map;
  * poseduje simulacionu logiku. Vizuelni izgled je IDENTICAN kao pre refaktora.
  */
 public class DemoUI {
+    private static final String HOME_TEAM_NAME = "OFK Omladinac";
+    private static final String AWAY_TEAM_NAME = "FK Mladost";
 
     // --- UI / interakcija ---
     private static final int CONTROLS_WIDTH = 300;
@@ -70,6 +72,8 @@ public class DemoUI {
     // --- UI komponente ---
     private DrawingPanel drawingPanel;
     private final JLabel statusLabel = new JLabel(" ");
+    private final JLabel scoreboardLabel = new JLabel(" ");
+    private final JLabel statisticsLabel = new JLabel(" ");
     private JButton runAllButton;
     private JButton replayButton;
     private JButton replayGoalsButton;
@@ -82,6 +86,8 @@ public class DemoUI {
     private boolean autoRunActive;
     private boolean stopRequested;
     private long celebrationEndMs; // kraj proslave gola (0 = nema proslave)
+    private long halfTimeEndMs;
+    private boolean matchFinishedLogged;
     private javax.swing.Timer animationTimer;
     private javax.swing.Timer autoRunTimer;
     private final SimulationReplayPlayer replayPlayer = new SimulationReplayPlayer();
@@ -164,11 +170,18 @@ public class DemoUI {
         controls.add(statusLabel);
 
         JPanel content = new JPanel(new BorderLayout());
+        scoreboardLabel.setHorizontalAlignment(JLabel.CENTER);
+        scoreboardLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        scoreboardLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        content.add(scoreboardLabel, BorderLayout.NORTH);
         // Skrol samo ako prozor nije dovoljno velik da prikaze ceo grid.
         content.add(new JScrollPane(drawingPanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
         content.add(controls, BorderLayout.EAST);
+        statisticsLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        statisticsLabel.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        content.add(statisticsLabel, BorderLayout.SOUTH);
 
         frame.setContentPane(content);
         frame.pack();
@@ -195,13 +208,19 @@ public class DemoUI {
                     simulation.applySnapshot(frame);
                 }
             } else {
-                simulation.advance();
-                handleCelebrationTiming();
+                if (!simulation.isHalfTime() && !simulation.isMatchFinished()) {
+                    simulation.advance();
+                    handleCelebrationTiming();
+                }
+                handleHalfTimeTiming();
+                handleMatchFinished();
             }
             trackBallTrail();
             drainActionLog();
             refreshPlayerLog();
             statusLabel.setText(simulationStatus());
+            updateScoreboard();
+            updateStatistics();
             drawingPanel.repaint();
         });
         animationTimer.start();
@@ -251,6 +270,13 @@ public class DemoUI {
     }
 
     private String simulationStatus() {
+        if (simulation.isHalfTime()) {
+            long left = Math.max(0, halfTimeEndMs - System.currentTimeMillis());
+            return "HALF-TIME — second half in " + ((left + 999) / 1000) + "s";
+        }
+        if (simulation.isMatchFinished()) {
+            return "MATCH FINISHED";
+        }
         if (simulation.isCelebrating()) {
             long left = Math.max(0, celebrationEndMs - System.currentTimeMillis());
             return "GOAL! Reset in " + ((left + 999) / 1000) + "s";
@@ -259,6 +285,55 @@ public class DemoUI {
             + " | goals " + simulation.getGoalCount()
             + " | shots " + simulation.getShotCount()
             + " | " + simulation.getStatus();
+    }
+
+    private void updateScoreboard() {
+        scoreboardLabel.setText(HOME_TEAM_NAME + "  " + simulation.getGoalCount()
+                + " : " + awayGoals() + "  " + AWAY_TEAM_NAME
+                + "        " + simulation.getMatchClockLabel());
+    }
+
+    private int awayGoals() {
+        return (int) simulation.getGoals().stream()
+                .filter(goal -> !SimulationState.TEAM_HOME.equals(goal.team()))
+                .count();
+    }
+
+    private void updateStatistics() {
+        int attempts = simulation.getPassAttempts();
+        double passPercent = attempts == 0 ? 0 : simulation.getPassCompletions() * 100.0 / attempts;
+        statisticsLabel.setText(String.format(java.util.Locale.ROOT,
+                "HOME STATS  |  Pass attempted: %d  Pass completed: %d  Pass accuracy: %.1f%%"
+                        + "  |  Shots on target: %d  Goals: %d",
+                attempts, simulation.getPassCompletions(), passPercent,
+                simulation.getShotsOnTarget(), simulation.getGoalCount()));
+    }
+
+    private void handleHalfTimeTiming() {
+        if (!simulation.isHalfTime()) {
+            halfTimeEndMs = 0;
+            return;
+        }
+        if (halfTimeEndMs == 0) {
+            halfTimeEndMs = System.currentTimeMillis()
+                    + SimulationState.HALF_TIME_PAUSE_SECONDS * 1000L;
+            logAction("HALF-TIME — positions reset");
+        }
+        if (System.currentTimeMillis() >= halfTimeEndMs) {
+            simulation.startSecondHalf();
+            halfTimeEndMs = 0;
+            logAction("SECOND HALF started");
+        }
+    }
+
+    private void handleMatchFinished() {
+        if (!simulation.isMatchFinished() || matchFinishedLogged) return;
+        matchFinishedLogged = true;
+        logAction("MATCH FINISHED — " + HOME_TEAM_NAME + " "
+                + simulation.getGoalCount() + ":" + awayGoals() + " " + AWAY_TEAM_NAME);
+        for (GoalRecord goal : simulation.getGoals()) {
+            logAction("GOAL " + goal.minute() + "' — " + goal.scorerLabel());
+        }
     }
 
     /**
@@ -329,9 +404,11 @@ public class DemoUI {
         if (autoRunActive) {
             stopAutoRun();
         }
-        simulation.reset();
+        simulation.resetMatch();
         selectedPlayer = null;
         celebrationEndMs = 0;
+        halfTimeEndMs = 0;
+        matchFinishedLogged = false;
         ballTrail.clear();
         refreshPlayerLog();
         statusLabel.setText(simulationStatus());

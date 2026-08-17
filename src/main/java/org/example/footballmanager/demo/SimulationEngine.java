@@ -72,6 +72,9 @@ public class SimulationEngine {
      * ciljeve igracima (max 1 celija). Glatko kretanje radi {@link #advance()}.
      */
     public String step() {
+        if (state.isHalfTime() || state.isMatchFinished()) {
+            return state.getStatus();
+        }
         return stepEngine.step();
     }
 
@@ -110,6 +113,13 @@ public class SimulationEngine {
     }
 
     private void advanceInternal() {
+        if (state.isHalfTime() || state.isMatchFinished()) {
+            return;
+        }
+        state.advanceMatchClock();
+        if (state.isHalfTime() || state.isMatchFinished()) {
+            return;
+        }
         state.consumeDuelCooldownTick();
         state.consumeDuelVisualTick();
         if (state.isCelebrating()) {
@@ -489,6 +499,10 @@ public class SimulationEngine {
         state.reset();
     }
 
+    public void resetMatch() {
+        state.resetMatch();
+    }
+
     // --- javni API (nepromenjen) ---
 
     public String getStatus() {
@@ -506,6 +520,16 @@ public class SimulationEngine {
     public int getShotCount() {
         return state.getShotCount();
     }
+
+    public String getMatchClockLabel() { return state.matchClockLabel(); }
+    public boolean isHalfTime() { return state.isHalfTime(); }
+    public boolean isMatchFinished() { return state.isMatchFinished(); }
+    public List<GoalRecord> getGoals() { return state.getGoals(); }
+    public int getPassAttempts() { return state.getPassAttempts(); }
+    public int getPassCompletions() { return state.getPassCompletions(); }
+    public int getShotsOnTarget() { return state.getShotsOnTarget(); }
+
+    public void startSecondHalf() { state.startSecondHalf(); }
 
     public int getRound() {
         return state.getRound();

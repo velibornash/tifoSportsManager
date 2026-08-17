@@ -386,6 +386,18 @@ Replay applies one saved frame per animation timer tick; stopping it leaves the
 simulation ready for a fresh live decision instead of reconstructing a stale
 in-flight action.
 
+## Match presentation
+
+The Swing demo now displays `OFK Omladinac` as HOME and `FK Mladost` as AWAY,
+with a live score and match clock. The clock advances at 20 simulation ticks
+per match minute, pauses for 12 seconds at half-time, resumes at minute 46,
+and runs through three minutes of added time (`90+1` to `90+3`) before marking
+the match finished. Home presentation statistics currently include pass
+attempts, completed passes, pass accuracy, shots on target and goals. These
+values and the match-clock state are included in tick snapshots for replay.
+The manual `Reset State` control starts a fresh match; the automatic reset after
+a goal only resets positions and preserves the running score/clock.
+
 ## Runtime diagnostics and carrier fallback
 
 Every console application log line now starts with a local 24-hour timestamp:
