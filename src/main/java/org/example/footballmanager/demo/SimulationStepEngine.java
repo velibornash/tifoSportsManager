@@ -61,22 +61,30 @@ public class SimulationStepEngine {
 
         Player carrier = state.getCarrier();
         if (carrier == null) {
+            // LOOSE BALL: both closest HOME and AWAY chase, others go tactical
             if (state.isKickoffPending()) {
                 carrier = selection.closestTeamTo(state.getBall().getPosition(), state.getKickoffTeam());
                 state.setKickoffPending(false);
                 state.setActiveChasers(carrier, null);
+                carrier.setTarget(state.getBall().getPosition());
+                tactics.assignTargets();
             } else {
                 Player closestHome = selection.closestTeamTo(state.getBall().getPosition(), "HOME");
                 Player closestAway = selection.closestTeamTo(state.getBall().getPosition(), "AWAY");
                 carrier = closestOf(closestHome, closestAway, state.getBall().getPosition());
                 state.setActiveChasers(closestHome, closestAway);
+                // Both chasers chase the ball; others get tactical targets
+                if (closestHome != null) closestHome.setTarget(state.getBall().getPosition());
+                if (closestAway != null) closestAway.setTarget(state.getBall().getPosition());
+                tactics.assignTargets();
             }
             if (carrier == null) carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
                 state.setCarrier(carrier);
                 state.setKickoffTeam(SimulationState.TEAM_HOME);
-                selection.clearChaseTargetsExcept(carrier);
-                carrier.setTarget(state.getBall().getPosition());
+                if (carrier.getTarget() == null) {
+                    carrier.setTarget(state.getBall().getPosition());
+                }
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " chasing ball");
                 state.incrementRound();
@@ -89,8 +97,11 @@ public class SimulationStepEngine {
             state.clearActiveChasers();
         } else if (state.getBall().getCarrier() != carrier) {
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
-                selection.clearChaseTargetsExcept(carrier);
-                carrier.setTarget(state.getBall().getPosition());
+                if (carrier.getTarget() == null) {
+                    carrier.setTarget(state.getBall().getPosition());
+                }
+                // Refresh tactical targets for non-chasing players each CHASE round
+                tactics.assignTargets();
                 state.recordDesiredPositions();
                 actions.start(Action.Type.CHASE, carrier.getLabel() + " moving to ball");
                 state.incrementRound();
@@ -98,7 +109,6 @@ public class SimulationStepEngine {
             }
             state.getBall().setCarrier(carrier);
             state.setCarrier(carrier);
-            // Clear target since we've reached the ball
             carrier.setTarget(null);
             state.clearActiveChasers();
         }
@@ -130,11 +140,15 @@ public class SimulationStepEngine {
         boolean goalkeeper = "GK".equals(carrier.getRole());
         boolean canShoot = !goalkeeper && (SimulationState.TEAM_HOME.equals(carrier.getTeam())
                 ? row >= ActionEngine.SHOOT_MIN_ROW : row <= 3);
+        boolean inFinalThird = SimulationState.TEAM_HOME.equals(carrier.getTeam())
+                ? row >= 6 : row <= 2;
         String[] options = goalkeeper
             ? new String[] {"PASS", "CLEAR"}
-            : canShoot
-                ? new String[] {"PASS", "CARRY", "SHOT"}
-                : new String[] {"PASS", "CARRY"};
+            : inFinalThird
+                ? new String[] {"CARRY", "SHOT"}
+                : canShoot
+                    ? new String[] {"PASS", "CARRY", "SHOT"}
+                    : new String[] {"PASS", "CARRY"};
         String action = options[state.getRandom().nextInt(options.length)];
 
         switch (action) {

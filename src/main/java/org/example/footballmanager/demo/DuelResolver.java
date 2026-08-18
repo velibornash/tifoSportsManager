@@ -32,26 +32,23 @@ public final class DuelResolver {
     }
 
     /**
-     * PlayerSkills trenutno nema receiving/tackling/goalkeeping polja.
-     * Existing extension points se koriste kao neutralni placeholderi:
-     * positioning predstavlja prijem/tackling/GK dok se model kasnije ne
-     * prosiri namenskim atributima.
+     * Maps duel type + role to the relevant skill (1–20).
      */
     private int skillValue(Player player, DuelType type, boolean attacker) {
         PlayerSkills skills = player.getSkills();
         double value = switch (type) {
-            case CHASE_BALL -> skills.speed();
-            case DRIBBLE -> attacker ? skills.dribbling() : skills.positioning();
-            case RECEIVE_PASS -> attacker ? skills.positioning() : skills.positioning();
-            case SHOT -> attacker ? skills.shooting() : skills.positioning();
+            case CHASE_BALL -> skills.pace();
+            case DRIBBLE -> attacker ? skills.technique() : skills.defender();
+            case RECEIVE_PASS -> attacker ? skills.technique() : skills.technique();
+            case SHOT -> attacker ? skills.striker() : skills.keeper();
         };
-        return Math.max(1, (int) Math.round(value * 10.0));
+        return Math.max(1, (int) Math.round(value));
     }
 
     /** Tekstualni trag identičan formuli korišćenoj u resolve(). */
     public String skillDescription(Duel duel, boolean attacker) {
         Player player = attacker ? duel.getAttacker() : duel.getDefender();
         int base = skillValue(player, duel.getType(), attacker);
-        return "skill=" + base + "/10 + random(0..5)";
+        return "skill=" + base + "/20 + random(0..5)";
     }
 }

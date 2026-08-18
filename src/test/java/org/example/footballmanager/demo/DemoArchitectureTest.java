@@ -74,14 +74,14 @@ class DemoArchitectureTest {
     @Test
     void playerSkillsAreNeutralPlaceholders() {
         PlayerSkills skills = PlayerSkills.neutral();
-        assertEquals(1.0, skills.speed());
-        assertEquals(1.0, skills.acceleration());
-        assertEquals(1.0, skills.stamina());
-        assertEquals(1.0, skills.passing());
-        assertEquals(1.0, skills.shooting());
-        assertEquals(1.0, skills.dribbling());
-        assertEquals(1.0, skills.positioning());
-        assertEquals(1.0, skills.decisionMaking());
+        assertEquals(10, skills.pace());
+        assertEquals(10, skills.stamina());
+        assertEquals(10, skills.keeper());
+        assertEquals(10, skills.technique());
+        assertEquals(10, skills.playmaking());
+        assertEquals(10, skills.passing());
+        assertEquals(10, skills.striker());
+        assertEquals(10, skills.defender());
 
         Player p = new Player("x", "x", "HOME", "GK", java.awt.Color.YELLOW,
             new Position(1, 3.5), new Position(1, 3.5));

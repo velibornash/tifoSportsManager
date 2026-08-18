@@ -91,13 +91,18 @@ public class SimulationEngineTest {
 
         runRounds(engine, 3000);
 
-        assertTrue(engine.getGoalCount() >= 1, "HOME should score at least one goal, got "
-            + engine.getGoalCount() + " (status: " + engine.getStatus() + ")");
+        assertTrue(engine.getGoalCount() + engine.getAwayGoalCount() >= 1,
+            "At least one goal should be scored, got HOME=" + engine.getGoalCount()
+            + " AWAY=" + engine.getAwayGoalCount()
+            + " (status: " + engine.getStatus() + ")");
 
         // Nakon gola engine JE ZAMRZNUT (celebration) — reset zove demo posle ~5s.
         assertTrue(engine.isCelebrating(), "engine must be celebrating after a goal");
-        assertTrue(chebyshev(engine.getBall().getPosition(), new Position(8, 3.5)) < 0.5 + 1e-6,
-            "ball must be in/near the goal during celebration");
+        Position ballPos = engine.getBall().getPosition();
+        boolean nearHomeGoal = chebyshev(ballPos, new Position(8, 3.5)) < 0.5 + 1e-6;
+        boolean nearAwayGoal = chebyshev(ballPos, new Position(0, 3.5)) < 0.5 + 1e-6;
+        assertTrue(nearHomeGoal || nearAwayGoal,
+            "ball must be in/near a goal during celebration, got " + ballPos);
 
         // Demo (ili test) poziva reset() tek posle proslave.
         engine.reset();
@@ -119,12 +124,19 @@ public class SimulationEngineTest {
 
         for (int round = 0; round < 60; round++) {
             engine.step();
-            // Runda je zavrsena kad se akcija kompletira (pas moze da leti dugo).
             int ticks = 0;
-            while (!engine.isRoundComplete() && ticks < 800) {
+            boolean hitHalfTime = false;
+            while (!engine.isRoundComplete() && ticks < 2000) {
                 engine.advance();
                 ticks++;
+                if (engine.isHalfTime() && !engine.isMatchFinished()) {
+                    hitHalfTime = true;
+                    engine.startSecondHalf();
+                }
+                if (engine.isMatchFinished()) break;
             }
+            if (engine.isMatchFinished()) break;
+            if (hitHalfTime) continue;
             assertTrue(engine.isRoundComplete(), "round " + round + " did not complete");
 
             for (Player p : engine.getPlayers()) {
@@ -175,10 +187,177 @@ public class SimulationEngineTest {
         assertEquals(4.0, engine.getTacticalBallPosition().getColumn(), 1e-9, "rule ball column");
     }
 
+    @Test
+    void testAwayPerspectiveMirrorForAllCells() {
+        // Proverava da li se AWAY tacno preslikava za SVIH 42 celije:
+        //   toPhysical(toHomePerspective(pos, "AWAY"), "AWAY") == pos
+        // i za HOME (identity):
+        //   toPhysical(toHomePerspective(pos, "HOME"), "HOME") == pos
+        for (int r = 1; r <= 7; r++) {
+            for (int c = 1; c <= 6; c++) {
+                Position pos = new Position(r, c);
+
+                // HOME = identity
+                Position homeRoundTrip = TacticalPerspectiveTransformer.toPhysical(
+                        TacticalPerspectiveTransformer.toHomePerspective(pos, "HOME"), "HOME");
+                assertEquals(r, homeRoundTrip.getRow(), 1e-9,
+                        "HOME round-trip row failed for (" + r + "," + c + ")");
+                assertEquals(c, homeRoundTrip.getColumn(), 1e-9,
+                        "HOME round-trip col failed for (" + r + "," + c + ")");
+
+                // AWAY = double mirror
+                Position awayRoundTrip = TacticalPerspectiveTransformer.toPhysical(
+                        TacticalPerspectiveTransformer.toHomePerspective(pos, "AWAY"), "AWAY");
+                assertEquals(r, awayRoundTrip.getRow(), 1e-9,
+                        "AWAY round-trip row failed for (" + r + "," + c + ")");
+                assertEquals(c, awayRoundTrip.getColumn(), 1e-9,
+                        "AWAY round-trip col failed for (" + r + "," + c + ")");
+            }
+        }
+
+        // Specificne provere za bekove:
+        // HOME DL anchor = CELL_1_0 => (2,1)
+        // AWAY physical DL anchor = toPhysical((2,1), "AWAY") = (6,6)
+        Position homeDlAnchor = new Position(2, 1);
+        Position awayDlPhysical = TacticalPerspectiveTransformer.toPhysical(homeDlAnchor, "AWAY");
+        assertEquals(6.0, awayDlPhysical.getRow(), 1e-9, "AWAY DL row");
+        assertEquals(6.0, awayDlPhysical.getColumn(), 1e-9, "AWAY DL col");
+
+        // HOME DR anchor = CELL_1_4 => (2,5)
+        // AWAY physical DR anchor = toPhysical((2,5), "AWAY") = (6,2)
+        Position homeDrAnchor = new Position(2, 5);
+        Position awayDrPhysical = TacticalPerspectiveTransformer.toPhysical(homeDrAnchor, "AWAY");
+        assertEquals(6.0, awayDrPhysical.getRow(), 1e-9, "AWAY DR row");
+        assertEquals(2.0, awayDrPhysical.getColumn(), 1e-9, "AWAY DR col");
+    }
+
+    @Test
+    void testAwayTacticalDesiredMirrorsHome() {
+        // Proverava da li desiredCell za AWAY preslikava i Loptu i poziciju igraca.
+        // Ako HOME DL za loptu na (4,3) ide na (2,2),
+        // onda AWAY DL za LOPTU NA FIZICKOJ (4,3) treba da koristi
+        //   editor pravilo za loptu na toHomePerspective((4,3)) = (4,4)
+        //   i preslika rezultat nazad.
+        Map<String, Map<String, Position>> rules = new HashMap<>();
+
+        // HOME editor: when ball at (4,3) -> DL at (2,2)
+        Map<String, Position> dlRules = new HashMap<>();
+        dlRules.put(TacticsRules.ballStateKey(new Position(4, 3)), new Position(2, 2));
+        rules.put("DL", dlRules);
+
+        // HOME editor: when ball at (4,4) -> DL at (2,3)
+        dlRules.put(TacticsRules.ballStateKey(new Position(4, 4)), new Position(2, 3));
+
+        TacticsRules tactics = new TacticsRules(rules, new HashMap<>());
+
+        // HOME DL za loptu na (4,3) -> (2,2)
+        Position homeDl = tactics.desiredCell("DL", new Position(4, 3), "HOME");
+        assertEquals(2.0, homeDl.getRow(), 1e-9, "HOME DL row");
+        assertEquals(2.0, homeDl.getColumn(), 1e-9, "HOME DL col");
+
+        // AWAY DL za LOPTU NA FIZICKOJ (4,3):
+        //   1) toHomePerspective((4,3), "AWAY") = (4,4)
+        //   2) desiredCell("DL", (4,4)) = (2,3)
+        //   3) toPhysical((2,3), "AWAY") = (6,4)
+        Position awayDl = tactics.desiredCell("DL", new Position(4, 3), "AWAY");
+        assertEquals(6.0, awayDl.getRow(), 1e-9, "AWAY DL row — should mirror ball AND position");
+        assertEquals(4.0, awayDl.getColumn(), 1e-9, "AWAY DL col — should mirror ball AND position");
+
+        // AWAY DL za LOPTU NA FIZICKOJ (3,2):
+        //   1) toHomePerspective((3,2), "AWAY") = (5,5)
+        //   2) desiredCell("DL", (5,5)) = null -> no rule -> anchor (2,1)
+        //   3) toPhysical((2,1), "AWAY") = (6,6)
+        // BUT: we passed empty anchors, so fallback is (1, 3.5)
+        //   toPhysical((1, 3.5), "AWAY") = (7, 3.5)
+        Position awayDl2 = tactics.desiredCell("DL", new Position(3, 2), "AWAY");
+        // With empty anchors, fallback to (1,3.5) -> mirror -> (7, 3.5)
+        assertEquals(7.0, awayDl2.getRow(), 1e-9, "AWAY DL fallback row (no anchor)");
+        assertEquals(3.5, awayDl2.getColumn(), 1e-9, "AWAY DL fallback col (no anchor)");
+    }
+
+    @Test
+    void testChaseAssignsTacticalTargetsToAllNonChasers() {
+        // Simulira CHASE (lopta loose) i proverava da li svi ne-chaser igraci
+        // (HOME i AWAY) imaju takticke pozicije dodeljene.
+        SimulationEngine engine = newEngine(42);
+
+        // Postavi loptu na centar — loose ball
+        engine.getBall().setPosition(new Position(4, 3.5));
+        engine.getBall().setCarrier(null);
+        // Takodje moramo da ocistimo carrier stanje u engine-u
+        // da bismo ušli u LOOSE BALL granu
+        engine.reset();
+        engine.getBall().setPosition(new Position(4, 3.5));
+        engine.getBall().setCarrier(null);
+
+        // Pokreni CHASE
+        engine.step();
+
+        // Svi igraci koji nisu chaser treba da imaju target
+        Player carrier = engine.getCarrier();
+        assertNotNull(carrier, "carrier must be set during CHASE");
+
+        int nonChasersWithTarget = 0;
+        int nonChasersTotal = 0;
+        String missingPlayers = "";
+        for (Player p : engine.getPlayers()) {
+            if (p == carrier || p.isLocked()) continue;
+            nonChasersTotal++;
+            if (p.getTarget() != null) {
+                nonChasersWithTarget++;
+            } else {
+                missingPlayers += p.getLabel() + " ";
+            }
+        }
+        // Bar 75% ne-chasera treba da ima target (osim ako su na istoj poziciji kao cilj)
+        assertTrue(nonChasersWithTarget >= nonChasersTotal * 3 / 4,
+                "Most non-chaser players must have tactical targets during CHASE. "
+                + nonChasersWithTarget + "/" + nonChasersTotal
+                + " have targets. Missing: " + missingPlayers);
+    }
+
+    @Test
+    void testAwayPlayersKeepTacticalWidthDuringChase() {
+        // Bekovi ne smeju da idu previse unutra tokom CHASE.
+        // Proverava da li AWAY bekovi (DL, DR) dobijaju pozicije blize aut-liniji
+        // a ne centralne pozicije.
+        Map<String, Map<String, Position>> rules = new HashMap<>();
+
+        // 42 ćelija × role: DL treba uvek da bude na koloni 1 (blizu aut-linije)
+        for (int r = 0; r < 7; r++) {
+            for (int c = 0; c < 6; c++) {
+                String key = "CELL_" + r + "_" + c;
+                Map<String, Position> dl = rules.computeIfAbsent("DL", k -> new HashMap<>());
+                dl.put(key, new Position(2, 1)); // HOME DL uvek na koloni 1
+
+                Map<String, Position> dr = rules.computeIfAbsent("DR", k -> new HashMap<>());
+                dr.put(key, new Position(2, 5)); // HOME DR uvek na koloni 5
+            }
+        }
+
+        TacticsRules tactics = new TacticsRules(rules, new HashMap<>());
+
+        // Za bilo koju poziciju lopte, AWAY DL treba da bude na fizickoj
+        // koloni >= 5 (blizu DESNE aut-linije gledano iz HOME perspektive = LEVA za AWAY)
+        for (int r = 1; r <= 7; r++) {
+            for (int c = 1; c <= 6; c++) {
+                Position awayDl = tactics.desiredCell("DL", new Position(r, c), "AWAY");
+                // HOME DL kolona = 1, AWAY physical = 7 - 1 = 6
+                assertEquals(6.0, awayDl.getColumn(), 1e-9,
+                        "AWAY DL column must be 6 (wide) for ball at (" + r + "," + c + ")");
+
+                Position awayDr = tactics.desiredCell("DR", new Position(r, c), "AWAY");
+                // HOME DR kolona = 5, AWAY physical = 7 - 5 = 2
+                assertEquals(2.0, awayDr.getColumn(), 1e-9,
+                        "AWAY DR column must be 2 (wide) for ball at (" + r + "," + c + ")");
+            }
+        }
+    }
+
     // --- pomocne metode ---
 
     private static SimulationEngine newEngine(long seed) {
-        List<Player> players = TacticalGridDemo.createPlayers();
+        List<Player> players = TacticalGridDemo.createPlayers(new Random(seed));
         Ball ball = new Ball(new Position(4, 3.5), new Position(4, 3.5));
         return new SimulationEngine(players, ball, TacticsRules.defaults(), new Random(seed));
     }

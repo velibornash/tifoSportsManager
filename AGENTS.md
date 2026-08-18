@@ -91,7 +91,7 @@ maintained in [DEMO_SIMULATION_PROGRESS.md](DEMO_SIMULATION_PROGRESS.md).
 ```
 TacticalGridDemo          → composition root (main, static test delegates)
   ├── DemoScenario        → grid config, colors, teams, 22 player defs, ball start
-  ├── DemoPlayerFactory   → PlayerDef → Player objects (fresh instances per call)
+  ├── DemoPlayerFactory   → PlayerDef → Player objects (random skills 1–20 per role)
   ├── DemoSimulationFactory → assembles SimulationEngine (+ TacticsRules)
   ├── DemoScenarioValidator → validateGrid / validatePlayers
   └── DemoUI              → all Swing rendering + interaction (speaks to engine API only)
@@ -108,17 +108,19 @@ Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` 
 `DuelEngine` detects one deterministic active opponent contest using continuous
 coordinates and a configurable 0.5-cell radius. It supports `CHASE_BALL`,
 `DRIBBLE`, `RECEIVE_PASS`, and `SHOT`, and logs lifecycle events. `DuelResolver`
-is a side-effect-free resolution layer: it maps existing `PlayerSkills` extension
-points to the relevant skill, adds only `random(0..5)`, and returns `DuelResult`
-with winner, outcome, ball state, possession, and power values.
+is a side-effect-free resolution layer: it maps `PlayerSkills` fields
+(`pace`, `technique`, `striker`, `defender`, `keeper`) to the relevant skill,
+adds only `random(0..5)`, and returns `DuelResult` with winner, outcome, ball
+state, possession, and power values.
 
 `DuelResolutionCoordinator` is the boundary between detection/resolution and
 match consequences. It applies the shared duel calculation log and loser
 cooldown exactly once, while `SimulationEngine` remains responsible for the
 resulting possession, clearance, carry, pass, save, or shot consequence.
 
-`PlayerSkills` does not yet expose receiving, tackling, or goalkeeping fields;
-`positioning` is the documented neutral placeholder for those roles.
+`PlayerSkills` has 8 football-relevant fields (each 1–20):
+`pace`, `stamina`, `keeper`, `technique`, `playmaking`, `passing`, `striker`, `defender`.
+`DemoPlayerFactory` generates random skills per role via `PlayerSkills.randomForRole()`.
 `SimulationEngine` applies the result after execution: Chase/Carry/Receive can
 change the carrier, while a goalkeeper can save a good shot. Poor shot
 execution remains a miss and does not create a duel result. The resolver itself
@@ -147,7 +149,7 @@ add more abstractions beyond these.
 
 During ANY action (PASS, SHOT, CARRY, CHASE), every `advance()` tick:
 1. `TacticalIntentEngine.refreshTargetsIfBallStateChanged()` — when ball crosses a new grid cell,
-   all non-carrier HOME players recalculate their tactical desired position from `TacticsRules`.
+   all non-carrier players (both teams) recalculate their tactical desired position from `TacticsRules`.
 2. `MovementEngine.moveAllTowardTargets()` — players move toward their recalculated targets.
 
 This means players reposition dynamically during ball flight AND during carrier movement.
@@ -186,10 +188,10 @@ actualTarget, goodExecution for logging and result evaluation.
 
 When PASS/SHOT results in LOOSE ball:
 1. `carrier = null` (cleared in `passFailed()`/`shotMissed()`)
-2. Next `step()` finds nearest HOME player via `PlayerSelectionEngine.closestHomeTo()`
-3. Starts CHASE action — player moves 1 cell toward ball
-4. If player can't reach in 1 cell → CHASE completes → next step → ball still LOOSE → another CHASE
-5. Repeats until a player reaches the ball → carrier set → normal action selection resumes
+2. Next `step()` finds closest HOME and closest AWAY player via `PlayerSelectionEngine.closestTeamTo()`
+3. Both chase the ball; whichever reaches first becomes carrier (all others get tactical targets)
+4. The carrier chooses a normal action: PASS, CARRY, or SHOT
+5. Both teams play by the same principles — AWAY tactical positions are mirrored via `TacticalPerspectiveTransformer`
 
 SHOT miss additionally resets ball position to initial center.
 
@@ -214,6 +216,13 @@ This prevents simulation freezes from deadlocks.
 
 - `BALL_SPEED = 0.094` cells/tick (pass/shot flight)
 - `CARRIER_FOLLOW_SPEED = 0.11` cells/tick (ball follows carrier)
+
+### Action Constraints
+
+- **No backward carry**: carrier cannot dribble backward; if `weightedForwardDr()` would return -1, it rerolls until forward (+1) or lateral (0). Result: ~67% forward, ~33% lateral.
+- **No backward pass in final 2 rows**: in rows 6–7 (HOME attacking away goal) or rows 1–2 (AWAY attacking home goal), PASS is removed from action options. Carrier can only SHOT or CARRY (dribble).
+- **Both teams play by the same principles**: AWAY team chooses PASS/CARRY/SHOT just like HOME when they have the ball. Tactical positions are mirrored via `TacticalPerspectiveTransformer` (both axes: `8-row, 7-col`).
+- **Loose ball**: both teams chase equally — closest HOME and closest AWAY pursue; all other players get tactical targets.
 
 ### UI Circle Sizes
 

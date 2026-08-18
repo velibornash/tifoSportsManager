@@ -87,11 +87,11 @@ public final class DemoScenario {
         defs.add(new PlayerDef("HDCR", TEAM_HOME, "DCR", COLOR_HOME, new Position(2, 4)));
         defs.add(new PlayerDef("HDR", TEAM_HOME, "DR", COLOR_HOME, new Position(2, 5)));
 
-        // Odbrana gostujuce ekipe (crveni) u redu 6
-        defs.add(new PlayerDef("ADL", TEAM_AWAY, "DL", COLOR_AWAY, new Position(6, 2)));
-        defs.add(new PlayerDef("ADCL", TEAM_AWAY, "DCL", COLOR_AWAY, new Position(6, 3)));
-        defs.add(new PlayerDef("ADCR", TEAM_AWAY, "DCR", COLOR_AWAY, new Position(6, 4)));
-        defs.add(new PlayerDef("ADR", TEAM_AWAY, "DR", COLOR_AWAY, new Position(6, 5)));
+        // Odbrana gostujuce ekipe (crveni) u redu 6 — L/R zamena jer AWAY gleda na dole
+        defs.add(new PlayerDef("ADL", TEAM_AWAY, "DL", COLOR_AWAY, new Position(6, 5)));
+        defs.add(new PlayerDef("ADCL", TEAM_AWAY, "DCL", COLOR_AWAY, new Position(6, 4)));
+        defs.add(new PlayerDef("ADCR", TEAM_AWAY, "DCR", COLOR_AWAY, new Position(6, 3)));
+        defs.add(new PlayerDef("ADR", TEAM_AWAY, "DR", COLOR_AWAY, new Position(6, 2)));
 
         // Veznjaci domace ekipe (plavi) u redu 3
         defs.add(new PlayerDef("HML", TEAM_HOME, "ML", COLOR_HOME, new Position(3, 1)));
@@ -99,15 +99,15 @@ public final class DemoScenario {
         defs.add(new PlayerDef("HCMR", TEAM_HOME, "CMR", COLOR_HOME, new Position(3, 4)));
         defs.add(new PlayerDef("HMR", TEAM_HOME, "MR", COLOR_HOME, new Position(3, 6)));
 
-        // Veznjaci gostujuce ekipe (crveni) u redu 5
-        defs.add(new PlayerDef("AML", TEAM_AWAY, "ML", COLOR_AWAY, new Position(5, 1)));
-        defs.add(new PlayerDef("ACML", TEAM_AWAY, "CML", COLOR_AWAY, new Position(5, 3)));
-        defs.add(new PlayerDef("ACMR", TEAM_AWAY, "CMR", COLOR_AWAY, new Position(5, 4)));
-        defs.add(new PlayerDef("AMR", TEAM_AWAY, "MR", COLOR_AWAY, new Position(5, 6)));
+        // Veznjaci gostujuce ekipe (crveni) u redu 5 — L/R zamena
+        defs.add(new PlayerDef("AML", TEAM_AWAY, "ML", COLOR_AWAY, new Position(5, 6)));
+        defs.add(new PlayerDef("ACML", TEAM_AWAY, "CML", COLOR_AWAY, new Position(5, 4)));
+        defs.add(new PlayerDef("ACMR", TEAM_AWAY, "CMR", COLOR_AWAY, new Position(5, 3)));
+        defs.add(new PlayerDef("AMR", TEAM_AWAY, "MR", COLOR_AWAY, new Position(5, 1)));
 
-        // Napadaci gostujuce ekipe (crveni) na liniji izmedju redova 4 i 5
-        defs.add(new PlayerDef("ASTL", TEAM_AWAY, "STL", COLOR_AWAY, new Position(4.5, 2)));
-        defs.add(new PlayerDef("ASTR", TEAM_AWAY, "STR", COLOR_AWAY, new Position(4.5, 5)));
+        // Napadaci gostujuce ekipe (crveni) na liniji izmedju redova 4 i 5 — L/R zamena
+        defs.add(new PlayerDef("ASTL", TEAM_AWAY, "STL", COLOR_AWAY, new Position(4.5, 5)));
+        defs.add(new PlayerDef("ASTR", TEAM_AWAY, "STR", COLOR_AWAY, new Position(4.5, 2)));
 
         // Napadaci domace ekipe (plavi): HSTL na centru pored lopte, HSTR na srednjoj liniji u c4_4
         defs.add(new PlayerDef("HSTL", TEAM_HOME, "STL", COLOR_HOME, new Position(4, 3.075)));

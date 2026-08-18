@@ -355,6 +355,16 @@ public class SimulationState {
         if (!matchFinished) {
             matchStarted = true;
             status = "MATCH STARTED";
+            log("=== PLAYER ROSTER & SKILLS ===");
+            for (Player p : players) {
+                PlayerSkills s = p.getSkills();
+                log(String.format(java.util.Locale.ROOT,
+                        "%-5s %-4s %s | P:%2.0f ST:%2.0f GK:%2.0f T:%2.0f PM:%2.0f PA:%2.0f S:%2.0f D:%2.0f",
+                        p.getLabel(), p.getRole(), p.getTeam(),
+                        s.pace(), s.stamina(), s.keeper(), s.technique(),
+                        s.playmaking(), s.passing(), s.striker(), s.defender()));
+            }
+            log("================================");
         }
     }
 
@@ -626,6 +636,7 @@ public class SimulationState {
         action = null;
         celebrating = false;
         awayRestartPending = false;
+        kickoffPending = true;
         returningPlayer = null;
         pendingRestartPosition = null;
         pendingRestartPlayer = null;

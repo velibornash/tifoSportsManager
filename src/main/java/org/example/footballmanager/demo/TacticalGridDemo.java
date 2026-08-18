@@ -3,6 +3,7 @@ package org.example.footballmanager.demo;
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;
 import java.util.List;
+import java.util.Random;
 
 /**
  * TacticalGridDemo — KOMPOZICIONI KOREN / UL AZNA TACKA demoa.
@@ -27,6 +28,11 @@ public class TacticalGridDemo {
     /** Kreira sve igrace standardnog scenarija (delegira u DemoPlayerFactory). */
     public static List<Player> createPlayers() {
         return new DemoPlayerFactory().createPlayers(DemoScenario.standard());
+    }
+
+    /** Kreira igrace sa deterministickim skillovima (za testove). */
+    public static List<Player> createPlayers(Random random) {
+        return new DemoPlayerFactory(random).createPlayers(DemoScenario.standard());
     }
 
     /** Validacija grid-a (delegira u DemoScenarioValidator). */

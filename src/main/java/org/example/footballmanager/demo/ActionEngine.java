@@ -159,7 +159,8 @@ public class ActionEngine {
         }
         double r = carrier.getPosition().getRow();
         double c = carrier.getPosition().getColumn();
-        int dr = weightedForwardDr();
+        int dr;
+        do { dr = weightedForwardDr(); } while (dr < 0);
         int dc = state.getRandom().nextInt(3) - 1; // -1, 0, 1
         if (dr == 0 && dc == 0) {
             dr = 1;
@@ -313,7 +314,6 @@ public class ActionEngine {
             action.getTargetPlayer().setLocked(false);
         }
         state.getBall().setTarget(null);
-        state.getBall().setPosition(winner.getPosition());
         state.getBall().setCarrier(winner);
         state.setCarrier(winner);
         winner.setTarget(null);
@@ -327,26 +327,6 @@ public class ActionEngine {
                 };
         recordActionResult(outcome, previousState, null, winner.getLabel());
         complete("DUEL: " + winner.getLabel() + " wins | " + reason);
-    }
-
-    /** AWAY ne napada ka svom golu posle osvojenog duela: čisti loptu. */
-    public void executeAwayClearance(Player winner) {
-        Position current = winner.getPosition();
-        double targetRow = Math.max(1.0, current.getRow() - 1.0 - state.getRandom().nextInt(3));
-        Position target = new Position(targetRow, 1.0 + state.getRandom().nextInt(6));
-        state.setReturningPlayer(winner);
-        state.setRoundComplete(false);
-        winner.setTarget(winner.getAlternativePosition());
-        state.getBall().setCarrier(null);
-        state.getBall().setTarget(target);
-        start(Action.Type.PASS, "CLEARANCE: " + winner.getLabel() + " -> "
-                + formatPosition(target));
-        Action action = state.getAction();
-        action.setClearance(true);
-        action.setActualTarget(target);
-        action.setIntendedTarget(target);
-        action.setGoodExecution(true);
-        state.incrementActionCount();
     }
 
     public void finishAwayClearance() {
@@ -512,12 +492,16 @@ public void passFailed() {
                 }
             }
             case CARRY -> {
-                // If carrier has the ball and target is null, action completes
-                if (state.getCarrier().getTarget() == null && state.getBall().getCarrier() == state.getCarrier()) {
+                Player carrier = state.getCarrier();
+                boolean targetReached = carrier.getTarget() == null
+                        || (carrier.getTarget() != null
+                            && MovementEngine.distance(carrier.getPosition(), carrier.getTarget()) < MovementEngine.PLAYER_SPEED * 2);
+                if (targetReached && state.getBall().getCarrier() == carrier) {
+                    carrier.setTarget(null);
                     state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
                     recordActionResult(ActionOutcome.CARRY_COMPLETED,
                             Ball.BallState.IN_POSSESSION, null, null);
-                    complete("CARRY: " + state.getCarrier().getLabel());
+                    complete("CARRY: " + carrier.getLabel());
                 }
             }
             default -> { /* PASS/SHOT se zavrsavaju u pickupPass()/goalScored()/passFailed()/shotMissed() */ }

@@ -187,10 +187,10 @@ public class SimulationEngine {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
-            duelEngine.update(action);
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
                                         action.getActualTarget()) <= 1e-9) {
+                duelEngine.update(action);
                 if (action.isClearance()) {
                     actionEngine.finishAwayClearance();
                 } else if (isOutsidePitch(action.getActualTarget())) {
@@ -201,9 +201,6 @@ public class SimulationEngine {
                     DuelResult duelResult = duelResolution.resolve(action);
                     if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                         actionEngine.giveBallTo(duelResult.winner(), "RECEIVE_PASS defender");
-                        if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
-                            actionEngine.executeAwayClearance(duelResult.winner());
-                        }
                     } else {
                         actionEngine.pickupPass();
                     }
@@ -211,7 +208,6 @@ public class SimulationEngine {
                     actionEngine.passFailed();
                 }
             }
-            duelEngine.update(state.getAction());
             return;
         }
 
@@ -220,7 +216,6 @@ public class SimulationEngine {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
-            duelEngine.update(action);
             // SAVE ima sopstvenu glatku putanju posle kontakta sa golmanom.
             if (action.getSaveType() != Action.SaveType.NONE
                     && MovementEngine.distance(state.getBall().getPosition(), action.getActualTarget()) <= 1e-9) {
@@ -254,6 +249,7 @@ public class SimulationEngine {
                     ? state.getBall().getPosition().getRow() >= logicalGoal.getRow()
                     : state.getBall().getPosition().getRow() <= logicalGoal.getRow();
             if (action.isGoodExecution() && !action.isGoalLineResolved() && crossedGoalLine) {
+                duelEngine.update(action);
                 DuelResult duelResult = duelResolution.resolve(action);
                 if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                     actionEngine.shotSaved(duelResult.winner());
@@ -272,7 +268,6 @@ public class SimulationEngine {
                 actionEngine.shotMissed();
                 scheduleRestart(state.getBall().getPosition(), action.getActingPlayer().getTeam());
             }
-            duelEngine.update(state.getAction());
             return;
         }
 
@@ -301,9 +296,6 @@ public class SimulationEngine {
                 if (action.getType() == Action.Type.CHASE
                         || duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
                     actionEngine.giveBallTo(duelResult.winner(), action.getType().name());
-                    if (!SimulationState.TEAM_HOME.equals(duelResult.winner().getTeam())) {
-                        actionEngine.executeAwayClearance(duelResult.winner());
-                    }
                     duelEngine.update(state.getAction());
                     return;
                 }
@@ -354,10 +346,11 @@ public class SimulationEngine {
         Position restartPosition = restartPosition(ballPosition);
         state.setRoundComplete(false);
         state.setCarrier(away);
-        state.getBall().setCarrier(null);
+        state.getBall().setCarrier(away);
         away.setTarget(restartPosition);
         state.setAwayRestartPending(true);
         state.setRestartPassToHomeGoalkeeper(passToHomeGoalkeeper);
+        state.setActiveChasers(away, null);
         actionEngine.start(Action.Type.CHASE, away.getLabel() + " moving to restart");
     }
 

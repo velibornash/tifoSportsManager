@@ -91,11 +91,12 @@ Pickup is not based on the old broad half-cell tolerance.
 |---|---|---|
 | `IN_POSSESSION` | `carrier != null` | carrier chooses next action |
 | `IN_TRANSITION` | `target != null`, no carrier | ball continues smooth flight |
-| `LOOSE` | no carrier and no target | one HOME player starts CHASE |
+| `LOOSE` | no carrier and no target | closest HOME and closest AWAY chase the ball |
 
-During a loose-ball chase, exactly one HOME player owns the active chase target.
-If a chase player is blocked, old chase targets are cleared before selecting a
-replacement. The ball itself does not move until a player wins possession.
+During a loose-ball chase, both the closest HOME and closest AWAY players
+pursue the ball; whichever reaches first becomes carrier. All other players
+receive tactical movement targets. The ball itself does not move until a
+player wins possession.
 
 ## Tactical movement
 
@@ -108,17 +109,18 @@ replacement. The ball itself does not move until a player wins possession.
 The current `DemoScenario` still owns the initial player positions. Tactical
 rules control desired movement, not initial setup.
 
-HOME players recalculate targets when the ball enters a new tactical cell,
-including during PASS and SHOT flight. AWAY players are intentionally mostly
-static in this demo. They may move only for active chase/restart, clearance,
-corner and other explicitly modelled set-piece situations.
+Both HOME and AWAY players recalculate targets when the ball enters a new
+tactical cell, including during PASS and SHOT flight. AWAY tactical positions
+are mirrored via `TacticalPerspectiveTransformer` (both axes: `8-row, 7-col`).
+AWAY team plays by the same principles as HOME — they choose PASS/CARRY/SHOT
+when they have the ball, and they chase loose balls equally.
 
 Movement is smooth and collision-aware, but it is not a complete physics,
 pathfinding or inertia system.
 
 ## Decisions and hard action rules
 
-For normal HOME outfield play, the available decisions are:
+For normal outfield play (both HOME and AWAY), the available decisions are:
 
 ```text
 PASS, CARRY, SHOT (when the row allows shooting)
@@ -127,16 +129,18 @@ PASS, CARRY, SHOT (when the row allows shooting)
 Hard rules currently enforced:
 
 - a goalkeeper can never CARRY or SHOT;
-- a goalkeeper chooses PASS to one of the two nearest eligible HOME players,
+- a goalkeeper chooses PASS to one of the two nearest eligible players,
   or CLEAR;
-- a normal HOME pass may not target row 1 or a goalkeeper;
+- a normal pass may not target row 1 (HOME) or row 7 (AWAY) or a goalkeeper;
 - such a forbidden pass is converted into CLEAR;
-- CLEAR sends the ball two to four rows forward toward the AWAY goal and then
-  produces a loose ball;
-- an AWAY player who wins a duel does not start a normal attack toward its own
-  goal; it performs a clearance and returns to its alternative position;
+- CLEAR sends the ball two to four rows forward toward the opponent's goal and
+  then produces a loose ball;
+- **no backward carry**: carrier cannot dribble backward; if `weightedForwardDr()`
+  would return -1, it rerolls until forward (+1) or lateral (0);
+- **no backward pass in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
+  PASS is removed from action options; carrier can only SHOT or CARRY (dribble);
 - restart-specific passes, such as AWAY restart to the HOME goalkeeper, are
-  explicit exceptions to the normal-pass restrictions.
+  explicit exceptions to the normal-pass restrictions;
 
 ## Execution quality
 
@@ -273,6 +277,7 @@ These are intentionally not complete yet:
 - corner tactical setup does not yet fully arrange every player in the box;
 - movement has collision avoidance but no full pathfinding or inertia model;
 - there is no fatigue, pressing, offside, foul or card layer in this demo;
+- action choice is random (no skill-weighted selection yet);
 - the demo is not the production `newLogic` match engine.
 
 ## Duel visualization and restart protection
@@ -280,8 +285,8 @@ These are intentionally not complete yet:
 When a duel is detected, the UI briefly shows an orange contest line, a
 pulsing contest ring and a `DUEL <type>` label at the contest position. This is
 visual-only state; the ball and players still move through the normal engine.
-The effect makes the possession change readable before the winner starts a
-clearance or the next action.
+The effect makes the possession change readable before the winner starts their
+next action (PASS, CARRY, or SHOT).
 
 Restart approaches are protected from normal duel resolution. The restart
 taker must first reach the restart coordinate; only after that does the normal
@@ -338,11 +343,13 @@ of rebuilding it from console output or re-running random simulation decisions.
 
 ## Chase and goal-animation correction
 
-An active loose-ball chase now creates a side waypoint around a blocking player
-when the direct movement proposal is fully blocked. Once the waypoint is
-reached, the chaser resumes the exact ball coordinate; the ball itself never
-moves during this detour. This keeps one active chaser while preventing a
-permanent visual deadlock.
+An active loose-ball chase sets both the closest HOME and closest AWAY players
+as active chasers. Both pursue the ball simultaneously; whichever reaches first
+becomes carrier. A side waypoint is created around a blocking player when the
+direct movement proposal is fully blocked. Once the waypoint is reached, the
+chaser resumes the exact ball coordinate; the ball itself never moves during
+this detour. This keeps both chasers active while preventing a permanent visual
+deadlock.
 
 Goal qualification still uses the actual goal line at `(7, 3.5)`. After the
 goalkeeper duel, the visual exit target is calculated as a continuation of the

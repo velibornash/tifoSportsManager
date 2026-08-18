@@ -458,9 +458,6 @@ public class DemoUI {
     private void selectPlayerAt(int x, int y) {
         List<Player> candidates = new ArrayList<>();
         for (Player p : players) {
-            if (!DemoScenario.TEAM_HOME.equals(p.getTeam())) {
-                continue;
-            }
             int cx = DemoScenario.cellCenterX(p.getPosition().getColumn());
             int cy = DemoScenario.cellCenterY(p.getPosition().getRow());
             if (Math.hypot(x - cx, y - cy) <= PLAYER_SELECT_RADIUS) {
