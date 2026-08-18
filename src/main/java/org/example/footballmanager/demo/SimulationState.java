@@ -35,7 +35,7 @@ public class SimulationState {
     public static final int DUEL_LOSS_TICKS = 60;          // 3 s
     public static final int SET_PIECE_HOLD_TICKS = 60;    // 3 s
     public static final int CORNER_TAKER_HOLD_TICKS = 40; // 2 s
-    public static final int MATCH_TICKS_PER_MINUTE = 20;
+    public static final int MATCH_TICKS_PER_MINUTE = 40;
     public static final int REGULATION_MINUTES = 90;
     public static final int EXTRA_TIME_MINUTES = 3;
     public static final int HALF_TIME_PAUSE_SECONDS = 12;
@@ -75,6 +75,7 @@ public class SimulationState {
     private long simulationTick;
     private long nextActionSequence = 1;
     private boolean celebrating;
+    private String celebratingTeam;
     private boolean awayRestartPending;
     private Player returningPlayer;
     private Position pendingRestartPosition;
@@ -329,7 +330,7 @@ public class SimulationState {
 
     public String matchClockLabel() {
         int minute = matchTicks / MATCH_TICKS_PER_MINUTE;
-        int second = (matchTicks % MATCH_TICKS_PER_MINUTE) * 3;
+        int second = (int) Math.round((matchTicks % MATCH_TICKS_PER_MINUTE) * 60.0 / MATCH_TICKS_PER_MINUTE);
         if (minute > REGULATION_MINUTES) {
             return REGULATION_MINUTES + "+" + (minute - REGULATION_MINUTES)
                     + ":" + String.format("%02d", second);
@@ -395,6 +396,14 @@ public class SimulationState {
 
     public void setCelebrating(boolean celebrating) {
         this.celebrating = celebrating;
+    }
+
+    public String getCelebratingTeam() {
+        return celebratingTeam;
+    }
+
+    public void setCelebratingTeam(String celebratingTeam) {
+        this.celebratingTeam = celebratingTeam;
     }
 
     public boolean isAwayRestartPending() { return awayRestartPending; }
@@ -635,6 +644,7 @@ public class SimulationState {
         carrier = null;
         action = null;
         celebrating = false;
+        celebratingTeam = null;
         awayRestartPending = false;
         kickoffPending = true;
         returningPlayer = null;

@@ -846,14 +846,103 @@ public class DemoUI {
         g2d.setColor(blink ? new Color(255, 215, 0) : new Color(0, 200, 0));
         g2d.drawString(text, cx - tw / 2, cy);
 
-        // Podnaslov sa brojem gola.
+        // Podnaslov sa brojem gola i timom.
+        String lastTeam = simulation.getGoals().isEmpty()
+                ? "HOME"
+                : simulation.getGoals().get(simulation.getGoals().size() - 1).team();
+        int goalNum = "HOME".equals(lastTeam)
+                ? simulation.getGoalCount() : simulation.getAwayGoalCount();
+        String teamLabel = "HOME".equals(lastTeam) ? HOME_TEAM_NAME : AWAY_TEAM_NAME;
         g2d.setFont(new Font("Arial", Font.BOLD, 26));
-        String sub = "HOME goal number " + simulation.getGoalCount();
+        String sub = teamLabel + " goal number " + goalNum;
         int tw2 = g2d.getFontMetrics().stringWidth(sub);
         g2d.setColor(Color.BLACK);
         g2d.drawString(sub, cx - tw2 / 2 + 2, cy + 52 + 2);
         g2d.setColor(Color.WHITE);
         g2d.drawString(sub, cx - tw2 / 2, cy + 52);
+    }
+
+    /**
+     * Poluvreme: overlay sa rezultatom i strelcima.
+     */
+    private void drawHalfTimeOverlay(Graphics2D g2d) {
+        if (!simulation.isHalfTime()) return;
+        int cx = DemoScenario.PANEL_WIDTH / 2;
+        int cy = DemoScenario.PANEL_HEIGHT / 2;
+
+        // Poluprozirna pozadina
+        g2d.setColor(new Color(0, 0, 0, 160));
+        g2d.fillRect(0, cy - 120, DemoScenario.PANEL_WIDTH, 240);
+
+        // HALF-TIME naslov
+        g2d.setFont(new Font("Arial", Font.BOLD, 48));
+        g2d.setColor(new Color(255, 215, 0));
+        String ht = "HALF TIME";
+        FontMetrics fm = g2d.getFontMetrics();
+        g2d.drawString(ht, cx - fm.stringWidth(ht) / 2, cy - 70);
+
+        // Rezultat
+        g2d.setFont(new Font("Arial", Font.BOLD, 36));
+        g2d.setColor(Color.WHITE);
+        String score = HOME_TEAM_NAME + "  " + simulation.getGoalCount()
+                + " : " + awayGoals() + "  " + AWAY_TEAM_NAME;
+        fm = g2d.getFontMetrics();
+        g2d.drawString(score, cx - fm.stringWidth(score) / 2, cy - 15);
+
+        // Strelci
+        List<GoalRecord> goals = simulation.getGoals();
+        if (!goals.isEmpty()) {
+            g2d.setFont(new Font("Arial", Font.PLAIN, 18));
+            int y = cy + 25;
+            for (GoalRecord goal : goals) {
+                String scorerText = goal.minute() + "' — " + goal.scorerLabel();
+                fm = g2d.getFontMetrics();
+                g2d.setColor("HOME".equals(goal.team())
+                        ? new Color(120, 200, 255) : new Color(255, 180, 120));
+                g2d.drawString(scorerText, cx - fm.stringWidth(scorerText) / 2, y);
+                y += 26;
+            }
+        }
+    }
+
+    /**
+     * Kraj utakmice: overlay sa konacnim rezultatom.
+     */
+    private void drawFullTimeOverlay(Graphics2D g2d) {
+        if (!simulation.isMatchFinished()) return;
+        int cx = DemoScenario.PANEL_WIDTH / 2;
+        int cy = DemoScenario.PANEL_HEIGHT / 2;
+
+        g2d.setColor(new Color(0, 0, 0, 180));
+        g2d.fillRect(0, cy - 140, DemoScenario.PANEL_WIDTH, 280);
+
+        g2d.setFont(new Font("Arial", Font.BOLD, 48));
+        g2d.setColor(new Color(255, 215, 0));
+        String ft = "FULL TIME";
+        FontMetrics fm = g2d.getFontMetrics();
+        g2d.drawString(ft, cx - fm.stringWidth(ft) / 2, cy - 90);
+
+        g2d.setFont(new Font("Arial", Font.BOLD, 36));
+        g2d.setColor(Color.WHITE);
+        String score = HOME_TEAM_NAME + "  " + simulation.getGoalCount()
+                + " : " + awayGoals() + "  " + AWAY_TEAM_NAME;
+        fm = g2d.getFontMetrics();
+        g2d.drawString(score, cx - fm.stringWidth(score) / 2, cy - 40);
+
+        // Svi strelci
+        List<GoalRecord> goals = simulation.getGoals();
+        if (!goals.isEmpty()) {
+            g2d.setFont(new Font("Arial", Font.PLAIN, 18));
+            int y = cy + 10;
+            for (GoalRecord goal : goals) {
+                String scorerText = goal.minute() + "' — " + goal.scorerLabel();
+                fm = g2d.getFontMetrics();
+                g2d.setColor("HOME".equals(goal.team())
+                        ? new Color(120, 200, 255) : new Color(255, 180, 120));
+                g2d.drawString(scorerText, cx - fm.stringWidth(scorerText) / 2, y);
+                y += 26;
+            }
+        }
     }
 
     private class DrawingPanel extends JPanel {
@@ -957,6 +1046,8 @@ public class DemoUI {
             if (simulation.isCelebrating()) {
                 drawGoalCelebration(g2d);
             }
+            drawHalfTimeOverlay(g2d);
+            drawFullTimeOverlay(g2d);
         }
     }
 }

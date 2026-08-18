@@ -126,7 +126,7 @@ public class SimulationEngineTest {
             engine.step();
             int ticks = 0;
             boolean hitHalfTime = false;
-            while (!engine.isRoundComplete() && ticks < 2000) {
+            while (!engine.isRoundComplete() && ticks < 20000) {
                 engine.advance();
                 ticks++;
                 if (engine.isHalfTime() && !engine.isMatchFinished()) {
@@ -137,7 +137,7 @@ public class SimulationEngineTest {
             }
             if (engine.isMatchFinished()) break;
             if (hitHalfTime) continue;
-            assertTrue(engine.isRoundComplete(), "round " + round + " did not complete");
+            assertTrue(engine.isRoundComplete(), "round " + round + " did not complete in " + ticks + " ticks");
 
             for (Player p : engine.getPlayers()) {
                 Position start = engine.getRoundStartPosition(p);

@@ -31,8 +31,12 @@ public class Player {
     private double velX;
     private double velY;
 
-    /** Buduce sposobnosti igraca — OVAJ SPRINT INERTNE (neutralne), niko ih ne cita. */
+    /** Buduce sposobnosti igraca. */
     private final PlayerSkills skills;
+
+    /** Fizicke karakteristike. */
+    private final double heightCm;
+    private final double weightKg;
 
     public Player(String id, String label, String team, String role, Color color,
                   Position position, Position alternativePosition) {
@@ -41,6 +45,12 @@ public class Player {
 
     public Player(String id, String label, String team, String role, Color color,
                   Position position, Position alternativePosition, PlayerSkills skills) {
+        this(id, label, team, role, color, position, alternativePosition, skills, 180, 75);
+    }
+
+    public Player(String id, String label, String team, String role, Color color,
+                  Position position, Position alternativePosition, PlayerSkills skills,
+                  double heightCm, double weightKg) {
         this.id = Objects.requireNonNull(id);
         this.label = Objects.requireNonNull(label);
         this.team = Objects.requireNonNull(team);
@@ -49,6 +59,8 @@ public class Player {
         this.position = Objects.requireNonNull(position);
         this.alternativePosition = Objects.requireNonNull(alternativePosition);
         this.skills = Objects.requireNonNull(skills);
+        this.heightCm = heightCm;
+        this.weightKg = weightKg;
     }
 
     public String getId() {
@@ -118,11 +130,25 @@ public class Player {
     }
 
     /**
-     * Sposobnosti igraca — extension point za sledeci sprint. Trenutno uvek
-     * neutralne; simulacija ih NE koristi.
+     * Sposobnosti igraca — extension point za sledeci sprint.
      */
     public PlayerSkills getSkills() {
         return skills;
+    }
+
+    /** Visina u centimetrima. */
+    public double getHeightCm() {
+        return heightCm;
+    }
+
+    /** Tezina u kilogramima. */
+    public double getWeightKg() {
+        return weightKg;
+    }
+
+    /** Visina na skali 1-20 (160cm=1, 200cm=20). */
+    public int heightSkill() {
+        return Math.max(1, Math.min(20, (int) Math.round((heightCm - 160) / 2.0)));
     }
 
     @Override

@@ -77,6 +77,11 @@ public class SimulationStepEngine {
                 if (closestHome != null) closestHome.setTarget(state.getBall().getPosition());
                 if (closestAway != null) closestAway.setTarget(state.getBall().getPosition());
                 tactics.assignTargets();
+                // Log both chasers for visibility
+                if (closestHome != null && closestAway != null) {
+                    state.log("CHASE race: " + closestHome.getLabel()
+                            + " vs " + closestAway.getLabel());
+                }
             }
             if (carrier == null) carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 1e-9) {
@@ -142,19 +147,31 @@ public class SimulationStepEngine {
                 ? row >= ActionEngine.SHOOT_MIN_ROW : row <= 3);
         boolean inFinalThird = SimulationState.TEAM_HOME.equals(carrier.getTeam())
                 ? row >= 6 : row <= 2;
-        String[] options = goalkeeper
-            ? new String[] {"PASS", "CLEAR"}
-            : inFinalThird
-                ? new String[] {"CARRY", "SHOT"}
-                : canShoot
-                    ? new String[] {"PASS", "CARRY", "SHOT"}
-                    : new String[] {"PASS", "CARRY"};
+        boolean onWing = carrier.getPosition().getColumn() <= 2
+                || carrier.getPosition().getColumn() >= 5;
+        boolean inOpponentHalf = SimulationState.TEAM_HOME.equals(carrier.getTeam())
+                ? row >= 4 : row <= 4;
+        String[] options;
+        if (goalkeeper) {
+            options = new String[] {"PASS", "CLEAR"};
+        } else if (inFinalThird && onWing && inOpponentHalf) {
+            // On wing in final third: cross/center are options but SHOT still frequent
+            options = new String[] {"CROSS", "CENTER", "CARRY", "SHOT", "SHOT"};
+        } else if (inFinalThird && !onWing) {
+            options = new String[] {"CENTER", "PASS", "CARRY", "SHOT", "SHOT"};
+        } else if (canShoot) {
+            options = new String[] {"PASS", "CARRY", "SHOT", "SHOT"};
+        } else {
+            options = new String[] {"PASS", "CARRY"};
+        }
         String action = options[state.getRandom().nextInt(options.length)];
 
         switch (action) {
             case "PASS" -> actions.executePass();
             case "CLEAR" -> actions.executeClearance();
             case "CARRY" -> actions.executeCarry();
+            case "CROSS" -> actions.executeCross();
+            case "CENTER" -> actions.executeCenter();
             default -> actions.executeShot();
         }
 

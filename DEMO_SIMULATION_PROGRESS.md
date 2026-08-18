@@ -409,27 +409,90 @@ The match clock is gated by an explicit `matchStarted` state. The Swing control
 is labelled `Start match simulation` before kickoff and `Stop match simulation`
 while automatic execution is active; it uses a pale-green button style.
 
-## AWAY tactical movement and restarts
+## Updated Duel Model (2026-08-18)
 
-AWAY now reads the same tactical-editor rules through
-`TacticalPerspectiveTransformer`. Both the progress axis and lateral axis are
-mirrored, so a HOME left-back target on columns 1–2 becomes an AWAY left-back
-target on columns 5–6. The ball-state lookup is mirrored before the shared rule
-lookup and the resulting target is transformed back to physical coordinates.
+**PlayerSkills (1–20):**
+- `pace` — movement speed, fatigue resistance
+- `stamina` — duel physical component + fatigue resistance
+- `keeper` — shot saving (GK primary)
+- `technique` — execution of all actions (receive, dribble, control)
+- `playmaking` — decision quality / breadth of available choices
+- `passing` — pass execution accuracy
+- `striker` — shot quality + power
+- `defender` — defensive duel / tackle / deflection
 
-Normal team movement is enabled for both sides while chase, carrier, locked and
-restart players retain their specialized targets. Side restarts belong to the
-opposite team, goal kicks belong to the defending goalkeeper, and kickoff after
-a goal belongs to the team that conceded. Restart takers pass to their own
-team. Corner setup selects the attacking team's taker and applies the four
-`ATTACK_LEFT/RIGHT_CORNER` and `DEFEND_LEFT/RIGHT_CORNER` editor contexts,
-including the AWAY perspective mirror.
+**Physical attributes (Player):**
+- `heightCm` — 170–200 cm per role (DEF/ST: 180–200, GK: 185–200, MID: 170–190)
+- `heightSkill()` — normalized 1–20: `(heightCm - 160) / 2`
 
-## Runtime diagnostics and carrier fallback
+**Duel formulas — EFFECTIVE POWER = weighted_skills + situational + random(0..3)**
 
-Every console application log line now starts with a local 24-hour timestamp:
-`[AppLog] DD-MM-YYYY HH:MM:ss`. CARRY obstruction detection uses meaningful
-distance progress rather than only exact zero movement. Tiny collision-avoidance
-slides therefore still count as blocked; after three such ticks the carrier
-falls back to PASS so two HOME players cannot keep the action in an apparent
-collision loop.
+| Duel | Attacker | Defender |
+|---|---|---|
+| `SHOT` | STRIKER×0.50 + TECHNIQUE×0.30 + distance_bonus(0–5) + angle_bonus(0–3) | KEEPER×0.60 + TECHNIQUE×0.25 + height_bonus(0–4) |
+| `DRIBBLE` | TECHNIQUE×0.45 + PLAYMAKING×0.25 + PACE×0.20 + STAMINA×0.10 | DEFENDER×0.45 + PACE×0.25 + PLAYMAKING×0.20 + STAMINA×0.10 |
+| `RECEIVE_PASS` | TECHNIQUE×0.50 + PLAYMAKING×0.30 + PACE×0.20 | DEFENDER×0.45 + PLAYMAKING×0.25 + PACE×0.20 + STAMINA×0.10 |
+| `CHASE_BALL` | PACE×0.60 + STAMINA×0.20 + TECHNIQUE×0.20 | (same) |
+| `AERIAL` | HEIGHT×0.40 + TECHNIQUE×0.30 + STRIKER×0.20 + PACE×0.10 | HEIGHT×0.40 + DEFENDER×0.30 + TECHNIQUE×0.20 + PACE×0.10 |
+| `TACKLE/PRESS` | — | DEFENDER×0.40 + PACE×0.25 + PLAYMAKING×0.15 + STAMINA×0.10 + TECHNIQUE×0.10 |
+
+Random range reduced to `0..3` so skill differences are decisive.
+
+---
+
+## Pass System (2026-08-18)
+
+Every pass has two independent properties:
+
+### Length (namera)
+- **SHORT** ≤ 5 cells — high accuracy, ground preferred
+- **LONG** 5–15 cells — lower accuracy, can be air
+- **THRU** — targets space ahead of runner, not current player position
+
+### Height (visina)
+- **GROUND** — precise, controllable, **can be intercepted** during flight
+- **AIR** — cannot be intercepted mid-flight, **deflection only at start** if opponent ≤ 1.0 cells from passer
+
+Combinations: SHORT_GROUND, SHORT_AIR, LONG_GROUND, LONG_AIR, THRU_GROUND, THRU_AIR.
+
+### Interception (GROUND only, per tick)
+- Ball progress along pass line checked each tick (10%–90%)
+- Defender time-to-intercept-point vs ball time-to-intercept-point
+- Skills: DEFENDER×0.40 + PLAYMAKING×0.25 + PACE×0.20 + TECHNIQUE×0.15
+- Must arrive before ball + skill threshold (10 + random)
+
+### Deflection (AIR only, at start)
+- If opponent ≤ 1.0 cells from passer at kick
+- Deflection power: HEIGHT×0.40 + TECHNIQUE×0.30 + DEFENDER×0.30
+- Passer protection: HEIGHT×0.20 + TECHNIQUE×0.30
+
+### THRU pass specifics
+- Target = space ahead of runner (receiver position + movement vector)
+- Success threshold: 2.0 cells from runner (vs 1.5 for regular pass)
+- Same interception/deflection rules by height
+
+### Execution quality
+- Skill 1–20 generates deviation
+- SHORT multiplier 0.6, LONG 1.3, THRU 0.9
+- AIR passes: 1.4× lateral deviation (harder to control)
+
+---
+
+## Action Types Added
+- `PASS` with `PassLength` (SHORT/LONG/THRU) and `PassHeight` (GROUND/AIR)
+- `CROSS` — wing to box, aerial target selection
+- `CENTER` (centaršut) — final third to box, aerial target
+- `AERIAL` — header duel in box
+- Duel types extended: `AERIAL`
+
+## Decision Logic (SimulationStepEngine)
+- Final third on wing → CROSS, CENTER, CARRY, SHOT×2
+- Final third central → CENTER, PASS, CARRY, SHOT×2
+- Shoot zone not final third → PASS, CARRY, SHOT×2
+- Elsewhere → PASS, CARRY
+
+## Testing
+All 23 demo tests pass:
+- SimulationEngineTest (11)
+- DemoArchitectureTest (8)
+- DuelResolutionTest (4)

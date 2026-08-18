@@ -15,7 +15,7 @@ class DuelResolutionTest {
     @Test
     void resolverUsesRelevantSkillAndSmallRandom() {
         Player attacker = player("A", "HOME", new Position(4, 3),
-                new PlayerSkills(2.0, 1, 1, 1, 1, 2.0, 1, 1));
+                new PlayerSkills(2.0, 1, 1, 10, 1, 2.0, 1, 1));
         Player defender = player("D", "AWAY", new Position(4, 3.4),
                 new PlayerSkills(1.0, 1, 1, 1, 1, 1.0, 1, 1));
         Duel duel = new Duel(attacker, defender, attacker.getPosition(), DuelType.DRIBBLE);
@@ -65,8 +65,9 @@ class DuelResolutionTest {
     void receiveDuelWinnerCanBecomeCarrier() {
         Player passer = player("P", "HOME", new Position(3, 2), PlayerSkills.neutral());
         Player receiver = player("R", "HOME", new Position(3, 3),
-                new PlayerSkills(1, 1, 1, 1, 1, 1, 2.0, 1));
-        Player defender = player("D", "AWAY", new Position(3, 3.4), PlayerSkills.neutral());
+                new PlayerSkills(1, 1, 1, 15, 1, 1, 2.0, 1));
+        Player defender = player("D", "AWAY", new Position(3, 3.4),
+                new PlayerSkills(1, 1, 1, 1, 1, 1, 1, 1));
         SimulationState state = state(passer, receiver, defender);
         state.setCarrier(passer);
         state.getBall().setCarrier(null);

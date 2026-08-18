@@ -87,8 +87,6 @@ public class ActionEngine {
             return;
         }
         Player receiver = nearest.get(state.getRandom().nextInt(nearest.size()));
-        // Hard rule: normal HOME play never returns the ball to row 1 or GK.
-        // Restart-specific calls use executePassTo() directly and remain valid.
         if (isOwnGoalkeeperOrDefensiveRow(receiver, carrier.getTeam())) {
             executeClearance();
             return;
@@ -105,12 +103,12 @@ public class ActionEngine {
         state.incrementPassAttempts(state.getCarrier().getTeam());
 
         Position intendedTarget = receiver.getPosition();
+        Action.PassLength passLength = choosePassLength(state.getCarrier().getPosition(), intendedTarget);
+        Action.PassHeight passHeight = choosePassHeight(state.getCarrier().getPosition(), intendedTarget, receiver);
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
-                state.getCarrier().getPosition(), intendedTarget, receiver);
+                state.getCarrier().getPosition(), intendedTarget, receiver, passLength, passHeight);
         boolean actualOutside = isOutsidePitch(result.actualTarget());
         boolean received = result.received() && !actualOutside;
-        // Kada je pas dovoljno dobar, lopta leti direktno do primaoca.
-        // Odstupanje se koristi samo za los pas, pa nema naknadnog skretanja.
         Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
 
         state.getBall().setCarrier(null);
@@ -118,12 +116,185 @@ public class ActionEngine {
 
         String qualityLabel = received ? "GOOD" : "POOR";
         String description = "PASS: " + state.getCarrier().getLabel() + " -> " + receiver.getLabel()
+                + " | " + passLength + " " + passHeight
                 + " | passing: " + result.skill() + "/20 | " + qualityLabel
                 + " | target: " + formatPosition(flightTarget);
         start(Action.Type.PASS, description);
 
         Action action = state.getAction();
         action.setTargetPlayer(receiver);
+        action.setTargetPosition(intendedTarget);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        action.setPassLength(passLength);
+        action.setPassHeight(passHeight);
+        state.incrementActionCount();
+
+        // AIR pass deflection check at start: if opponent very close to passer
+        if (passHeight == Action.PassHeight.AIR) {
+            checkAirPassDeflectionAtStart(action);
+        }
+    }
+
+    /** Check if AIR pass gets deflected at start by nearby opponent. */
+    private void checkAirPassDeflectionAtStart(Action action) {
+        Player passer = action.getActingPlayer();
+        Player closestOpponent = null;
+        double minDist = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(passer.getTeam())) continue;
+            double dist = MovementEngine.distance(p.getPosition(), passer.getPosition());
+            if (dist < minDist) {
+                minDist = dist;
+                closestOpponent = p;
+            }
+        }
+        if (closestOpponent != null && minDist <= 1.0) {
+            // Deflection chance based on opponent's height, technique, defender
+            PlayerSkills s = closestOpponent.getSkills();
+            double deflectionPower = closestOpponent.heightSkill() * 0.40
+                    + s.technique() * 0.30 + s.defender() * 0.30;
+            double passerProtection = passer.heightSkill() * 0.20 + s.technique() * 0.30;
+            if (deflectionPower + state.getRandom().nextDouble() * 5 > passerProtection + 10) {
+                // Deflection occurs
+                action.setActualTarget(action.getIntendedTarget()); // stays near passer
+                action.setGoodExecution(false);
+                state.log("AIR PASS DEFLECTED at start by " + closestOpponent.getLabel());
+            }
+        }
+    }
+
+    /** Choose pass length based on distance to target. */
+    private Action.PassLength choosePassLength(Position from, Position to) {
+        double dist = MovementEngine.distance(from, to);
+        if (dist <= 5) return Action.PassLength.SHORT;
+        if (dist <= 15) return Action.PassLength.LONG;
+        return Action.PassLength.LONG; // very long treated as LONG
+    }
+
+    /** Choose pass height based on situation. */
+    private Action.PassHeight choosePassHeight(Position from, Position to, Player receiver) {
+        double dist = MovementEngine.distance(from, to);
+        // Short passes usually ground; long passes can be air to avoid interception
+        if (dist <= 8) return Action.PassHeight.GROUND;
+        // Long passes: 50% air to avoid ground interception
+        return state.getRandom().nextBoolean() ? Action.PassHeight.AIR : Action.PassHeight.GROUND;
+    }
+
+    /**
+     * CROSS: igrac sa krila salje loptu u box.
+     * Cilj je protivnicki box (red 5-6 za HOME, 2-3 za AWAY), sredina.
+     */
+    public void executeCross() {
+        Player carrier = state.getCarrier();
+        String team = carrier.getTeam();
+        boolean home = SimulationState.TEAM_HOME.equals(team);
+        // Target zone: central box area
+        double targetRow = home ? 5.5 + state.getRandom().nextDouble() * 1.0
+                               : 2.5 - state.getRandom().nextDouble() * 1.0;
+        double targetCol = 2.5 + state.getRandom().nextDouble() * 3.0;
+        Position intendedTarget = new Position(targetRow, targetCol);
+
+        // Find best aerial candidate in the box
+        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
+        Player aerialTarget = null;
+        double bestAerialScore = -1;
+        for (Player p : boxAttackers) {
+            if (p == carrier) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBox) continue;
+            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30
+                    + p.getSkills().striker() * 0.20;
+            if (score > bestAerialScore) {
+                bestAerialScore = score;
+                aerialTarget = p;
+            }
+        }
+
+        if (aerialTarget == null) {
+            // No one in the box — fallback to regular pass
+            executePass();
+            return;
+        }
+
+        aerialTarget.setLocked(true);
+        state.incrementPassAttempts(team);
+
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                carrier.getPosition(), intendedTarget, aerialTarget);
+        boolean received = result.received() && !isOutsidePitch(result.actualTarget());
+        Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        String qualityLabel = received ? "GOOD" : "POOR";
+        start(Action.Type.CROSS, "CROSS: " + carrier.getLabel() + " -> " + aerialTarget.getLabel()
+                + " | passing: " + result.skill() + "/20 | " + qualityLabel
+                + " | target: " + formatPosition(flightTarget));
+
+        Action action = state.getAction();
+        action.setTargetPlayer(aerialTarget);
+        action.setTargetPosition(intendedTarget);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        state.incrementActionCount();
+    }
+
+    /**
+     * CENTER (centarsut): igrac iz poslednjeg treceg salje loptu u box
+     * za AERIAL duel. Ide direktno ka najboljem napadacku u boxu.
+     */
+    public void executeCenter() {
+        Player carrier = state.getCarrier();
+        String team = carrier.getTeam();
+        boolean home = SimulationState.TEAM_HOME.equals(team);
+
+        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
+        Player aerialTarget = null;
+        double bestAerialScore = -1;
+        for (Player p : boxAttackers) {
+            if (p == carrier) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBox) continue;
+            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30
+                    + p.getSkills().striker() * 0.20;
+            if (score > bestAerialScore) {
+                bestAerialScore = score;
+                aerialTarget = p;
+            }
+        }
+
+        if (aerialTarget == null) {
+            executePass();
+            return;
+        }
+
+        aerialTarget.setLocked(true);
+        state.incrementPassAttempts(team);
+
+        Position intendedTarget = aerialTarget.getPosition();
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                carrier.getPosition(), intendedTarget, aerialTarget);
+        boolean received = result.received() && !isOutsidePitch(result.actualTarget());
+        Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        String qualityLabel = received ? "GOOD" : "POOR";
+        start(Action.Type.CENTER, "CENTER: " + carrier.getLabel() + " -> " + aerialTarget.getLabel()
+                + " | passing: " + result.skill() + "/20 | " + qualityLabel
+                + " | target: " + formatPosition(flightTarget));
+
+        Action action = state.getAction();
+        action.setTargetPlayer(aerialTarget);
         action.setTargetPosition(intendedTarget);
         action.setSkill(result.skill());
         action.setIntendedTarget(intendedTarget);
@@ -324,6 +495,9 @@ public class ActionEngine {
                     case CARRY -> ActionOutcome.CARRY_DUEL_LOST;
                     case PASS -> ActionOutcome.PASS_DUEL_LOST;
                     case SHOT -> ActionOutcome.SHOT_SAVE;
+                    case CROSS -> ActionOutcome.CROSS_DUEL_LOST;
+                    case CENTER -> ActionOutcome.CENTER_DUEL_LOST;
+                    case AERIAL -> ActionOutcome.AERIAL_LOST;
                 };
         recordActionResult(outcome, previousState, null, winner.getLabel());
         complete("DUEL: " + winner.getLabel() + " wins | " + reason);
@@ -344,8 +518,9 @@ public class ActionEngine {
         state.incrementShotsOnTarget(action.getActingPlayer().getTeam());
         Ball.BallState previousState = state.getBall().getBallState();
         state.getBall().setCarrier(null);
-        Position goalPosition = goalPositionFor(action.getActingPlayer().getTeam());
-        state.getBall().setPosition(goalPosition);
+        // Ball goes to GK's ACTUAL position (not goal center)
+        Position gkPos = goalkeeper.getPosition();
+        state.getBall().setPosition(gkPos);
         boolean corner = state.getRandom().nextInt(3) == 2;
         if (corner) {
             boolean right = state.getRandom().nextBoolean();
@@ -365,6 +540,7 @@ public class ActionEngine {
             state.setStatus("SHOT saved — ball rebounds into field");
         }
         state.log("SHOT outcome: SAVE | GK: " + goalkeeper.getLabel()
+                + " | position: " + formatPosition(gkPos)
                 + " | variant: " + action.getSaveType());
         recordActionResult(ActionOutcome.SHOT_SAVE, previousState, null, goalkeeper.getLabel());
         completeSaveContactLogOnly(goalkeeper);
@@ -413,6 +589,7 @@ public class ActionEngine {
         }
         state.setKickoffTeam(SimulationState.TEAM_HOME.equals(scorer.getTeam())
                 ? "AWAY" : SimulationState.TEAM_HOME);
+        state.setCelebratingTeam(scorer.getTeam());
         state.setCelebrating(true);
         int score = SimulationState.TEAM_HOME.equals(scorer.getTeam())
                 ? state.getGoalCount() : state.getAwayGoalCount();

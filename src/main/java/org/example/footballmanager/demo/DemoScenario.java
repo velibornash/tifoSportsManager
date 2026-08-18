@@ -25,7 +25,7 @@ public final class DemoScenario {
     // --- grid / layout ---
     public static final int GRID_ROWS = 9;
     public static final int GRID_COLS = 8;
-    public static final int CELL_SIZE = 100;          // ceo grid staje na ekran bez skrola (1080x1680)
+    public static final int CELL_SIZE = 90;           // grid je 10% manji (original 100)
     public static final int PANEL_WIDTH = GRID_COLS * CELL_SIZE;
     public static final int PANEL_HEIGHT = GRID_ROWS * CELL_SIZE;
 

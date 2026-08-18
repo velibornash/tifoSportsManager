@@ -124,9 +124,9 @@ public class SimulationEngine {
         state.consumeDuelCooldownTick();
         state.consumeDuelVisualTick();
         if (state.isCelebrating()) {
-            // During celebration: move home players toward goal area (row 8, cols 1-3)
-            // in a slow celebration pattern, no teleport
-            if (state.getGoalCount() > 0 && state.getAction() == null) {
+            // During celebration: move scoring team players toward their goal area
+            // (HOME -> row 8, AWAY -> row 0) in a slow celebration pattern
+            if (state.getGoalCount() + state.getAwayGoalCount() > 0 && state.getAction() == null) {
                 movePlayersDuringGoalCelebration();
             }
             return;
@@ -187,9 +187,19 @@ public class SimulationEngine {
             ballMovementEngine.moveBallTowardCurrentTarget();
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+
+            // GROUND pass interception check (each tick)
+            if (action.getPassHeight() == Action.PassHeight.GROUND) {
+                Player interceptor = checkGroundPassInterception(action);
+                if (interceptor != null) {
+                    handleInterception(action, interceptor);
+                    return;
+                }
+            }
+
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
             if (MovementEngine.distance(state.getBall().getPosition(),
-                                        action.getActualTarget()) <= 1e-9) {
+                                        action.getActualTarget()) <= 0.01) {
                 duelEngine.update(action);
                 if (action.isClearance()) {
                     actionEngine.finishAwayClearance();
@@ -211,6 +221,33 @@ public class SimulationEngine {
             return;
         }
 
+        // CROSS/CENTER u toku — isti mehanizam kao PASS
+        if (action != null && action.isCrossInFlight()) {
+            ballMovementEngine.moveBallTowardCurrentTarget();
+            tacticalIntentEngine.refreshTargetsIfBallStateChanged();
+            movementEngine.moveAllTowardTargets();
+            if (MovementEngine.distance(state.getBall().getPosition(),
+                                        action.getActualTarget()) <= 0.01) {
+                duelEngine.update(action);
+                if (isOutsidePitch(action.getActualTarget())) {
+                    String lastTouchTeam = action.getActingPlayer().getTeam();
+                    actionEngine.passOutOfBounds();
+                    scheduleRestart(action.getActualTarget(), lastTouchTeam);
+                } else if (action.isGoodExecution()) {
+                    DuelResult duelResult = duelResolution.resolve(action);
+                    if (duelResult != null && duelResult.outcome() == DuelOutcome.DEFENDER_WINS) {
+                        actionEngine.giveBallTo(duelResult.winner(), "AERIAL defender");
+                    } else {
+                        // Attacker wins aerial — becomes carrier in the box
+                        actionEngine.pickupPass();
+                    }
+                } else {
+                    actionEngine.passFailed();
+                }
+            }
+            return;
+        }
+
         // SHOT u toku — lopta leti ka odstupnoj meti. Igraci reaguju na poziciju lopte.
         if (action != null && action.isShotInFlight()) {
             ballMovementEngine.moveBallTowardCurrentTarget();
@@ -218,7 +255,7 @@ public class SimulationEngine {
             movementEngine.moveAllTowardTargets();
             // SAVE ima sopstvenu glatku putanju posle kontakta sa golmanom.
             if (action.getSaveType() != Action.SaveType.NONE
-                    && MovementEngine.distance(state.getBall().getPosition(), action.getActualTarget()) <= 1e-9) {
+                    && MovementEngine.distance(state.getBall().getPosition(), action.getActualTarget()) <= 0.01) {
                 if (action.getSaveType() == Action.SaveType.CORNER_REBOUND) {
                     boolean right = action.getActualTarget().getColumn() > 3.5;
                     String attackingTeam = action.getActingPlayer().getTeam();
@@ -260,11 +297,11 @@ public class SimulationEngine {
 
             if (state.hasActiveAction() && action.isGoalLineResolved()
                     && MovementEngine.distance(state.getBall().getPosition(),
-                                               action.getActualTarget()) <= 1e-9) {
+                                               action.getActualTarget()) <= 0.01) {
                 actionEngine.goalScored();
             } else if (state.hasActiveAction() && !action.isGoodExecution()
                     && MovementEngine.distance(state.getBall().getPosition(),
-                                               action.getActualTarget()) <= 1e-9) {
+                                               action.getActualTarget()) <= 0.01) {
                 actionEngine.shotMissed();
                 scheduleRestart(state.getBall().getPosition(), action.getActingPlayer().getTeam());
             }
@@ -274,7 +311,7 @@ public class SimulationEngine {
         if (state.getReturningPlayer() != null
                 && (state.getReturningPlayer().getTarget() == null
                 || MovementEngine.distance(state.getReturningPlayer().getPosition(),
-                state.getReturningPlayer().getTarget()) <= 1e-9)) {
+                state.getReturningPlayer().getTarget()) <= 0.01)) {
             state.setReturningPlayer(null);
         }
 
@@ -332,6 +369,78 @@ public class SimulationEngine {
 
         actionEngine.checkActionCompletion();
         duelEngine.update(state.getAction());
+    }
+
+    /** Check if any defender can intercept a GROUND pass. */
+    private Player checkGroundPassInterception(Action action) {
+        Position ballPos = state.getBall().getPosition();
+        Position target = action.getActualTarget();
+        Position origin = action.getExecutionOrigin() != null
+                ? action.getExecutionOrigin() : action.getActingPlayer().getPosition();
+
+        // Pass line vector
+        double dx = target.getColumn() - origin.getColumn();
+        double dy = target.getRow() - origin.getRow();
+        double passLength = Math.hypot(dx, dy);
+        if (passLength < 1e-9) return null;
+
+        // Ball progress along pass line (0 to 1)
+        double ballDx = ballPos.getColumn() - origin.getColumn();
+        double ballDy = ballPos.getRow() - origin.getRow();
+        double ballProgress = (ballDx * dx + ballDy * dy) / (passLength * passLength);
+        if (ballProgress < 0.1 || ballProgress > 0.9) return null; // too close to ends
+
+        // Interception point on pass line
+        double interceptRow = origin.getRow() + dy * ballProgress;
+        double interceptCol = origin.getColumn() + dx * ballProgress;
+        Position interceptPos = new Position(interceptRow, interceptCol);
+
+        // Time for ball to reach interception point
+        double ballDistToIntercept = passLength * (1.0 - ballProgress);
+        double ballTime = ballDistToIntercept / BallMovementEngine.BALL_SPEED;
+
+        // Find best interceptor
+        String attackingTeam = action.getActingPlayer().getTeam();
+        String defendingTeam = SimulationState.TEAM_HOME.equals(attackingTeam) ? "AWAY" : SimulationState.TEAM_HOME;
+        Player bestInterceptor = null;
+        double bestTimeDiff = Double.MAX_VALUE;
+
+        for (Player p : state.getPlayers()) {
+            if (!p.getTeam().equals(defendingTeam)) continue;
+            if (state.isBlockedAfterDuel(p)) continue;
+            if (p == action.getTargetPlayer()) continue; // receiver can't intercept own pass
+
+            double distToIntercept = MovementEngine.distance(p.getPosition(), interceptPos);
+            double playerTime = distToIntercept / (MovementEngine.PLAYER_SPEED * (p.getSkills().pace() / 20.0));
+
+            // Interceptor must arrive before ball
+            double timeDiff = playerTime - ballTime;
+            if (timeDiff < bestTimeDiff) {
+                // Skill check: defender + playmaking + pace + technique
+                PlayerSkills s = p.getSkills();
+                double interceptSkill = s.defender() * 0.40 + s.playmaking() * 0.25
+                        + s.pace() * 0.20 + s.technique() * 0.15;
+                if (interceptSkill + state.getRandom().nextDouble() * 3 > 10) {
+                    bestTimeDiff = timeDiff;
+                    bestInterceptor = p;
+                }
+            }
+        }
+        return bestInterceptor;
+    }
+
+    /** Handle successful interception. */
+    private void handleInterception(Action action, Player interceptor) {
+        state.getBall().setTarget(null);
+        state.getBall().setCarrier(interceptor);
+        state.setCarrier(interceptor);
+        interceptor.setTarget(null);
+        interceptor.setLocked(false);
+        if (action.getTargetPlayer() != null) {
+            action.getTargetPlayer().setLocked(false);
+        }
+        state.log("INTERCEPTION by " + interceptor.getLabel() + " on " + action.getActingPlayer().getLabel() + "'s pass");
+        actionEngine.giveBallTo(interceptor, "INTERCEPTION");
     }
 
     private boolean isOutsidePitch(Position position) {
@@ -412,23 +521,27 @@ public class SimulationEngine {
     }
 
     /**
-     * Pomera domace igrace ka cilju gola tokom proslave (red 8, kolone 1-3).
+     * Pomera igrace koji su postigli gol ka cilju gola tokom proslave.
+     * HOME gol: domaci igraci na red 8, kolone 1-3.
+     * AWAY gol: gostujuci igraci na red 0, kolone 1-3.
      * Igraci se pomeraju glatko bez teleportacije, kao animacija proslave.
      * Prosledjuje se i kretanje oko svoje osovine.
      */
     private void movePlayersDuringGoalCelebration() {
+        String celebratingTeam = state.getCelebratingTeam();
+        if (celebratingTeam == null) celebratingTeam = SimulationState.TEAM_HOME;
+        double targetRow = SimulationState.TEAM_HOME.equals(celebratingTeam) ? 8.0 : 0.0;
         for (Player p : state.getPlayers()) {
-            if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {
+            if (!celebratingTeam.equals(p.getTeam())) {
                 continue;
             }
             if (p.isLocked()) {
                 continue;
             }
-            // Cilj: celije 8_1 do 8_3 (koordinate red 8, kolone 1-3)
+            // Cilj: celije 8_1 do 8_3 za HOME gol, odnosno 0_1 do 0_3 za AWAY gol
             double sourceCol = p.getAlternativePosition().getColumn();
             double targetCol = sourceCol <= 2.33 ? 1.0
                     : sourceCol <= 4.33 ? 2.0 : 3.0;
-            double targetRow = 8.0;
             Position currentPos = p.getPosition();
             // Glatko kretanje ka cilju za manji speed
             double dx = targetCol - currentPos.getColumn();
@@ -453,10 +566,8 @@ public class SimulationEngine {
         }
     }
 
-    /** Pomera domace igrace ka cilju gola tokom proslave (red 8, kolone 1-3).
-     * Igraci se pomeraju glatko bez teleportacije, kao animacija proslave.
-     * Prosledjuje se i kretanje oko svoje osovine.
-     */
+    /** Pomera igrace koji su postigli gol ka cilju gola tokom proslave.
+     *  (HOME -> red 8, AWAY -> red 0, kolone 1-3). */
     private void movePlayersDuringGoalCelebration_old() {
         for (Player p : state.getPlayers()) {
             if (!SimulationState.TEAM_HOME.equals(p.getTeam())) {

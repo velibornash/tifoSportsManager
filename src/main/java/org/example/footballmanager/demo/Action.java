@@ -24,7 +24,21 @@ public class Action {
         CHASE,
         CARRY,
         PASS,
-        SHOT
+        SHOT,
+        CROSS,
+        CENTER,
+        AERIAL
+    }
+
+    public enum PassLength {
+        SHORT,
+        LONG,
+        THRU
+    }
+
+    public enum PassHeight {
+        GROUND,
+        AIR
     }
 
     private final Type type;
@@ -45,11 +59,14 @@ public class Action {
     private boolean goodExecution;
     private SaveType saveType = SaveType.NONE;
     private boolean clearance;
+    private PassLength passLength = PassLength.SHORT;
+    private PassHeight passHeight = PassHeight.GROUND;
 
     public Action(Type type, Player actingPlayer) {
         this.type = type;
         this.actingPlayer = actingPlayer;
-        this.inFlight = type == Type.PASS || type == Type.SHOT;
+        this.inFlight = type == Type.PASS || type == Type.SHOT
+                || type == Type.CROSS || type == Type.CENTER;
     }
 
     public Type getType() {
@@ -95,6 +112,11 @@ public class Action {
     /** Lopta u letu ka golu (SHOT u toku). */
     public boolean isShotInFlight() {
         return inFlight && type == Type.SHOT;
+    }
+
+    /** Lopta u letu ka boxu (CROSS/CENTER u toku). */
+    public boolean isCrossInFlight() {
+        return inFlight && (type == Type.CROSS || type == Type.CENTER);
     }
 
     // --- execution quality getters / setters ---
@@ -155,6 +177,12 @@ public class Action {
     public void setSaveType(SaveType saveType) { this.saveType = saveType; }
     public boolean isClearance() { return clearance; }
     public void setClearance(boolean clearance) { this.clearance = clearance; }
+
+    public PassLength getPassLength() { return passLength; }
+    public void setPassLength(PassLength passLength) { this.passLength = passLength; }
+
+    public PassHeight getPassHeight() { return passHeight; }
+    public void setPassHeight(PassHeight passHeight) { this.passHeight = passHeight; }
 
     @Override
     public String toString() {
