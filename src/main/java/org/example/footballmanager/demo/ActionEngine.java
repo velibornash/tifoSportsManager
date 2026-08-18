@@ -119,6 +119,9 @@ public class ActionEngine {
         boolean home = SimulationState.TEAM_HOME.equals(carrier.getTeam());
         boolean inFinalRows = home ? (carrierRow >= 6) : (carrierRow <= 2);
 
+        // Filter za kickoff: primaoc mora biti unazad (u sopstvenoj polovini)
+        boolean isKickoff = carrierRow == 4 && carrier.getPosition().getColumn() == 3.5;
+
         List<Player> eligibleReceivers = new java.util.ArrayList<>();
         for (Player candidate : nearest) {
             if (isOwnGoalkeeperOrDefensiveRow(candidate, carrier.getTeam())) {
@@ -129,6 +132,13 @@ public class ActionEngine {
                 // HOME redovi 6-7: samo napred (row >= carrierRow) ili isti red
                 // AWAY redovi 1-2: samo napred (row <= carrierRow) ili isti red
                 boolean validRow = home ? (candidateRow >= carrierRow) : (candidateRow <= carrierRow);
+                if (!validRow) continue;
+            }
+            if (isKickoff) {
+                double candidateRow = candidate.getPosition().getRow();
+                // Kickoff: primaoc mora biti unazad (u sopstvenoj polovini)
+                // HOME: row < 4, AWAY: row > 4
+                boolean validRow = home ? (candidateRow < 4) : (candidateRow > 4);
                 if (!validRow) continue;
             }
             eligibleReceivers.add(candidate);
@@ -178,8 +188,7 @@ public class ActionEngine {
      */
     public void executeThruPass(Player runner) {
         Player carrier = state.getCarrier();
-        String team = carrier.getTeam();
-        boolean home = SimulationState.TEAM_HOME.equals(team);
+        boolean home = SimulationState.TEAM_HOME.equals(carrier.getTeam());
         double forwardRow = home ? 1.0 : -1.0;
 
         // Meta = prostor ispred trkača (1–2 celije napred ka golu)
@@ -192,7 +201,7 @@ public class ActionEngine {
         Position thruTarget = new Position(targetRow, targetCol);
 
         runner.setLocked(true);
-        state.incrementPassAttempts(team);
+        state.incrementPassAttempts(carrier.getTeam());
 
         Action.PassHeight passHeight = choosePassHeight(carrier.getPosition(), thruTarget, runner);
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
@@ -334,8 +343,7 @@ public class ActionEngine {
      */
     public void executeCross() {
         Player carrier = state.getCarrier();
-        String team = carrier.getTeam();
-        boolean home = SimulationState.TEAM_HOME.equals(team);
+        boolean home = SimulationState.TEAM_HOME.equals(carrier.getTeam());
         // Target zone: central box area
         double targetRow = home ? 5.5 + state.getRandom().nextDouble() * 1.0
                                : 2.5 - state.getRandom().nextDouble() * 1.0;
@@ -366,7 +374,7 @@ public class ActionEngine {
         }
 
         aerialTarget.setLocked(true);
-        state.incrementPassAttempts(team);
+        state.incrementPassAttempts(carrier.getTeam());
 
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
                 carrier, carrier.getPosition(), intendedTarget, aerialTarget);
@@ -397,8 +405,7 @@ public class ActionEngine {
      */
     public void executeCenter() {
         Player carrier = state.getCarrier();
-        String team = carrier.getTeam();
-        boolean home = SimulationState.TEAM_HOME.equals(team);
+        boolean home = SimulationState.TEAM_HOME.equals(carrier.getTeam());
 
         List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
         Player aerialTarget = null;
@@ -422,7 +429,7 @@ public class ActionEngine {
         }
 
         aerialTarget.setLocked(true);
-        state.incrementPassAttempts(team);
+        state.incrementPassAttempts(carrier.getTeam());
 
         Position intendedTarget = aerialTarget.getPosition();
         ExecutionQuality.PassResult result = executionQuality.evaluatePass(
@@ -902,6 +909,8 @@ public void passFailed() {
         state.setActionDelayTicks(SimulationState.ACTION_PAUSE_TICKS);
         recordActionResult(ActionOutcome.CHASE_POSSESSION, previousState, null, null);
         state.log("CHASE RESOLUTION: " + winner.getLabel() + " | " + reason);
+        // Move winner to exact ball position
+        winner.setPosition(state.getBall().getPosition());
         complete("CHASE: " + winner.getLabel() + " has the ball | " + reason);
     }
 
@@ -961,9 +970,10 @@ public void passFailed() {
                     return;
                 }
                 Player winner = selection.closestEligibleActiveChaser(ballPos);
+                // CHASE pickup zahteva tačnu lokaciju lopte (ne samo radius)
                 if (winner != null
-                        && MovementEngine.distance(winner.getPosition(), ballPos) <= POSSESSION_RADIUS) {
-                    completeChasePossession(winner, "within possession radius");
+                        && MovementEngine.distance(winner.getPosition(), ballPos) <= 0.01) {
+                    completeChasePossession(winner, "at exact ball position");
                 }
             }
             case CARRY -> {

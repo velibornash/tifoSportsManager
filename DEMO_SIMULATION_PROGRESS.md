@@ -524,6 +524,12 @@ THRU_AIR.
 - **AWAY rows 1-2**: PASS allowed but receiver filter only allows same/forward row (no backward passes)
 - **HOME rows 6-7**: CARRY only forward (+1) or lateral (0), never backward
 - **AWAY rows 1-2**: CARRY only forward (-1) or lateral (0), never backward
+
+### Kickoff and chase fixes (2026-08-18)
+- **Kickoff**: striker positioned exactly at center (row 4, column 3.5), first action must be pass backward
+- **Pass stats**: fixed inconsistent team parameter in incrementPass calls
+- **CHASE pickup**: player must reach exact ball position (0.01 tolerance), not just possession radius
+- **General pickup**: exact coordinate requirement (0.01 tolerance) for all ball pickups
 - Contest position for AIR: `actualTarget` (landing point), not receiver position
 - `pickupPass` requires receiver within `PICKUP_DISTANCE`; else loose ball
 

@@ -47,12 +47,53 @@ public class PlayerSelectionEngine {
         return best;
     }
 
+    /** Closest active loose-ball chaser within possession radius, if any. */
+    public Player closestEligibleActiveChaser(Position ballPos) {
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player chaser : state.getActiveChasers()) {
+            if (chaser.isLocked() || state.isBlockedAfterDuel(chaser)) continue;
+            double distance = MovementEngine.distance(chaser.getPosition(), ballPos);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = chaser;
+            }
+        }
+        return best;
+    }
+
+    /** Closest eligible player to the ball — used by CHASE safety resolution. */
+    public Player closestEligibleToBall(Position ballPos) {
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player player : state.getPlayers()) {
+            if (player.isLocked() || state.isBlockedAfterDuel(player)) continue;
+            double distance = MovementEngine.distance(player.getPosition(), ballPos);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = player;
+            }
+        }
+        return best;
+    }
+
     public Player teamByRole(String team, String role) {
         return state.getPlayers().stream()
                 .filter(player -> team.equals(player.getTeam()))
                 .filter(player -> role.equals(player.getRole()))
                 .filter(player -> !state.isBlockedAfterDuel(player) && !player.isLocked())
                 .findFirst().orElse(null);
+    }
+
+    /** Svi igraci iz datog tima (za kickoff selekciju). */
+    public List<Player> teamPlayers(String team) {
+        List<Player> players = new ArrayList<>();
+        for (Player p : state.getPlayers()) {
+            if (team.equals(p.getTeam())) {
+                players.add(p);
+            }
+        }
+        return players;
     }
 
     /** Najblizi HOME igrac, uz mogucnost da se prethodni Chase igrac izuzme. */
