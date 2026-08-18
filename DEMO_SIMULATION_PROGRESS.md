@@ -140,9 +140,7 @@ Hard rules currently enforced:
 - **no backward carry in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
   carrier can only carry forward (+1) or lateral (0), never backward;
 - **no backward pass in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
-  PASS is removed from action options; carrier can only SHOT or CARRY (dribble);
-- **pass receiver filter in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
-  pass receiver must be in same row or forward (cannot be backward);
+  PASS receiver filter only allows same/forward row (cannot be backward);
 - restart-specific passes, such as AWAY restart to the HOME goalkeeper, are
   explicit exceptions to the normal-pass restrictions;
 
@@ -521,9 +519,9 @@ THRU_AIR.
 - GROUND pass → `RECEIVE_PASS`
 - AIR pass / CROSS / CENTER → `AERIAL`
 
-### Final row pass restrictions (2026-08-18)
-- **HOME rows 6-7**: PASS removed from options; receiver filter only allows same/forward row
-- **AWAY rows 1-2**: PASS removed from options; receiver filter only allows same/forward row
+### Final row pass/carry restrictions (2026-08-18)
+- **HOME rows 6-7**: PASS allowed but receiver filter only allows same/forward row (no backward passes)
+- **AWAY rows 1-2**: PASS allowed but receiver filter only allows same/forward row (no backward passes)
 - **HOME rows 6-7**: CARRY only forward (+1) or lateral (0), never backward
 - **AWAY rows 1-2**: CARRY only forward (-1) or lateral (0), never backward
 - Contest position for AIR: `actualTarget` (landing point), not receiver position
