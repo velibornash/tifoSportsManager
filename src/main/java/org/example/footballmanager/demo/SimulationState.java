@@ -72,6 +72,9 @@ public class SimulationState {
     private int awayPassAttempts;
     private int awayPassCompletions;
     private int awayShotsOnTarget;
+    private int chaseCount;
+    private int chaseResolutionCount;
+    private int chaseTimeoutCount;
     private long simulationTick;
     private long nextActionSequence = 1;
     private boolean celebrating;
@@ -313,6 +316,12 @@ public class SimulationState {
     public void incrementShotsOnTarget(String team) {
         if (TEAM_HOME.equals(team)) shotsOnTarget++; else awayShotsOnTarget++;
     }
+    public int getChaseCount() { return chaseCount; }
+    public int getChaseResolutionCount() { return chaseResolutionCount; }
+    public int getChaseTimeoutCount() { return chaseTimeoutCount; }
+    public void incrementChaseCount() { chaseCount++; }
+    public void incrementChaseResolutionCount() { chaseResolutionCount++; }
+    public void incrementChaseTimeoutCount() { chaseTimeoutCount++; }
     public void recordGoal(Player scorer) {
         goals.add(new GoalRecord(matchMinute(), scorer.getId(), scorer.getLabel(), scorer.getTeam()));
     }

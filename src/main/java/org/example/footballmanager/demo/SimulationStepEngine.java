@@ -7,11 +7,13 @@ package org.example.footballmanager.demo;
  * POSTOJECA pravila:
  *  - ceka ako je pas/sut u letu ili ako nosilac jos hoda
  *  - CHASE kad nema nosioca ili je daleko od lopte
- *  - nasumican izbor PASS/CARRY/SHOT (ISTI mehanizam kao pre refaktora)
+ *  - playmaking-informisana odluka PASS/THRU/CARRY/CLEAR/SHOT/CROSS/CENTER
+ *    (zamena nasumičnom izboru — {@link PlaymakingDecisionEngine})
  *  - dodela taktickih ciljeva i snimanje desired pozicija
  *
- * Bez ikakvog "pametnijeg" odlucivanja — bez taktickog scoringa, skillsa i AI.
- * Odluka se NE menja; samo je iza ciste arhitektonske granice.
+ * Playmaking određuje kvalitet odluke (šta igrač vidi i koliko često bira
+ * najbolje), NE kvalitet izvođenja (to je {@link ExecutionQuality}).
+ * Odluka se NE menja tokom akcije; samo je iza ciste arhitektonske granice.
  */
 public class SimulationStepEngine {
 
@@ -19,13 +21,16 @@ public class SimulationStepEngine {
     private final PlayerSelectionEngine selection;
     private final ActionEngine actions;
     private final TacticalIntentEngine tactics;
+    private final PlaymakingDecisionEngine playmakingEngine;
 
     public SimulationStepEngine(SimulationState state, PlayerSelectionEngine selection,
-                                ActionEngine actions, TacticalIntentEngine tactics) {
+                                ActionEngine actions, TacticalIntentEngine tactics,
+                                PlaymakingDecisionEngine playmakingEngine) {
         this.state = state;
         this.selection = selection;
         this.actions = actions;
         this.tactics = tactics;
+        this.playmakingEngine = playmakingEngine;
     }
 
     public String step() {
@@ -63,57 +68,77 @@ public class SimulationStepEngine {
         if (carrier == null) {
             // LOOSE BALL: both closest HOME and AWAY chase, others go tactical
             if (state.isKickoffPending()) {
-                // Kickoff: spic mora tačno doći na loptu (red 4, granica 3-4)
-                // Prva akcija mora biti pass unazad
-                String kickoffTeam = state.getKickoffTeam();
-                Player striker = selection.teamByRole(kickoffTeam, "ST");
-                if (striker == null) {
-                    // Fallback to closest forward if no ST
-                    boolean home = SimulationState.TEAM_HOME.equals(kickoffTeam);
-                    for (Player p : state.getPlayers()) {
-                        if (!kickoffTeam.equals(p.getTeam())) continue;
-                        if (home && p.getPosition().getRow() >= 4) {
-                            striker = p;
-                            break;
-                        }
-                        if (!home && p.getPosition().getRow() <= 4) {
-                            striker = p;
-                            break;
+                // Check if players from BOTH teams are already converging on the ball —
+                // contested loose ball at center. If so, skip kickoff placement
+                // and let CHASE logic handle it.
+                Position ballPos = state.getBall().getPosition();
+                boolean homeNear = state.getPlayers().stream()
+                        .filter(p -> SimulationState.TEAM_HOME.equals(p.getTeam()))
+                        .anyMatch(p -> MovementEngine.distance(p.getPosition(), ballPos) < 1.0);
+                boolean awayNear = state.getPlayers().stream()
+                        .filter(p -> p.getTeam().equals("AWAY"))
+                        .anyMatch(p -> MovementEngine.distance(p.getPosition(), ballPos) < 1.0);
+
+                if (!homeNear || !awayNear) {
+                    // Normal kickoff — no players already close to ball
+                    // Kickoff: spic mora tačno doći na loptu (red 4, granica 3-4)
+                    // Prva akcija mora biti pass unazad
+                    String kickoffTeam = state.getKickoffTeam();
+                    Player striker = selection.teamByRole(kickoffTeam, "ST");
+                    if (striker == null) {
+                        // Fallback to closest forward if no ST
+                        boolean home = SimulationState.TEAM_HOME.equals(kickoffTeam);
+                        for (Player p : state.getPlayers()) {
+                            if (!kickoffTeam.equals(p.getTeam())) continue;
+                            if (home && p.getPosition().getRow() >= 4) {
+                                striker = p;
+                                break;
+                            }
+                            if (!home && p.getPosition().getRow() <= 4) {
+                                striker = p;
+                                break;
+                            }
                         }
                     }
-                }
-                if (striker == null) {
-                    striker = selection.closestTeamTo(state.getBall().getPosition(), kickoffTeam);
-                }
+                    if (striker == null) {
+                        striker = selection.closestTeamTo(state.getBall().getPosition(), kickoffTeam);
+                    }
 
-                // Postavi spic tačno na loptu (red 4, granica 3-4)
-                Position centerSpot = new Position(4, 3.5);
-                striker.setPosition(centerSpot);
-                striker.setTarget(null);
-                state.getBall().setPosition(centerSpot);
-                state.getBall().setCarrier(striker);
-                state.setCarrier(striker);
-                state.setKickoffPending(false);
-                state.setKickoffTeam(kickoffTeam);
-                state.clearActiveChasers();
-                state.log("KICKOFF: " + striker.getLabel() + " at center (4, 3.5)");
-                state.recordDesiredPositions();
-                state.incrementRound();
-                return state.getStatus();
-            } else {
-                Player closestHome = selection.closestTeamTo(state.getBall().getPosition(), "HOME");
-                Player closestAway = selection.closestTeamTo(state.getBall().getPosition(), "AWAY");
-                carrier = closestOf(closestHome, closestAway, state.getBall().getPosition());
-                state.setActiveChasers(closestHome, closestAway);
-                // Both chasers chase the ball; others get tactical targets
-                if (closestHome != null) closestHome.setTarget(state.getBall().getPosition());
-                if (closestAway != null) closestAway.setTarget(state.getBall().getPosition());
-                tactics.assignTargets();
-                // Log both chasers for visibility
-                if (closestHome != null && closestAway != null) {
-                    state.log("CHASE race: " + closestHome.getLabel()
-                            + " vs " + closestAway.getLabel());
+                    // Postavi spic tačno na loptu (red 4, granica 3-4)
+                    Position centerSpot = new Position(4, 3.5);
+                    striker.setPosition(centerSpot);
+                    striker.setTarget(null);
+                    state.getBall().setPosition(centerSpot);
+                    state.getBall().setCarrier(striker);
+                    state.setCarrier(striker);
+                    state.setKickoffPending(false);
+                    state.setKickoffTeam(kickoffTeam);
+                    state.clearActiveChasers();
+                    state.setStatus("KICKOFF: " + striker.getLabel() + " at center (4, 3.5)");
+                    state.setRoundComplete(true);
+                    state.log("KICKOFF: " + striker.getLabel() + " at center (4, 3.5)");
+                    state.recordDesiredPositions();
+                    state.incrementRound();
+                    return state.getStatus();
                 }
+                // Players from both teams converging on ball — skip kickoff, fall through to CHASE
+                state.setKickoffPending(false);
+            }
+
+            // Loose ball CHASE setup (runs when kickoff skipped due to convergence,
+            // or when no kickoff is pending)
+            Player closestHome = selection.closestTeamTo(state.getBall().getPosition(), "HOME");
+            Player closestAway = selection.closestTeamTo(state.getBall().getPosition(), "AWAY");
+            carrier = closestOf(closestHome, closestAway, state.getBall().getPosition());
+            state.setActiveChasers(closestHome, closestAway);
+            // Both chasers chase the ball; others get tactical targets
+            if (closestHome != null) closestHome.setTarget(state.getBall().getPosition());
+            if (closestAway != null) closestAway.setTarget(state.getBall().getPosition());
+            tactics.assignTargets();
+            // Log both chasers for visibility
+            if (closestHome != null && closestAway != null) {
+                state.log("CHASE race: " + closestHome.getLabel()
+                        + " vs " + closestAway.getLabel());
             }
             if (carrier == null) carrier = selection.closestHomeTo(state.getBall().getPosition());
             if (MovementEngine.distance(carrier.getPosition(), state.getBall().getPosition()) > 0.01) {
@@ -177,52 +202,47 @@ public class SimulationStepEngine {
             state.incrementRound();
             return state.getStatus();
         }
-        boolean goalkeeper = "GK".equals(carrier.getRole());
-        boolean canShoot = !goalkeeper && (SimulationState.TEAM_HOME.equals(carrier.getTeam())
-                ? row >= ActionEngine.SHOOT_MIN_ROW : row <= 3);
-        boolean inFinalThird = SimulationState.TEAM_HOME.equals(carrier.getTeam())
-                ? row >= 6 : row <= 2;
-        boolean onWing = carrier.getPosition().getColumn() <= 2
-                || carrier.getPosition().getColumn() >= 5;
-        boolean inOpponentHalf = SimulationState.TEAM_HOME.equals(carrier.getTeam())
-                ? row >= 4 : row <= 4;
 
         // Provera za kickoff ili gol - prva akcija mora biti pass unazad
         boolean isKickoffAction = row == 4 && carrier.getPosition().getColumn() == 3.5
                 && (state.getRound() == 1 || state.isCelebrating());
 
-        String[] options;
-        if (isKickoffAction) {
-            // Kickoff ili posle gola: samo pass unazad
-            options = new String[] {"PASS", "PASS"};
-        } else if (goalkeeper) {
-            options = new String[] {"PASS", "CLEAR"};
-        } else if (inFinalThird && onWing && inOpponentHalf) {
-            // On wing in final third: cross/center are options but SHOT still frequent
-            options = new String[] {"CROSS", "CENTER", "CARRY", "SHOT", "SHOT"};
-        } else if (inFinalThird && !onWing) {
-            // In final third central: PASS allowed but receiver filter prevents backward passes
-            options = new String[] {"CENTER", "PASS", "CARRY", "SHOT", "SHOT"};
-        } else if (canShoot) {
-            options = new String[] {"PASS", "CARRY", "SHOT", "SHOT"};
-        } else {
-            options = new String[] {"PASS", "CARRY"};
-        }
-        String action = options[state.getRandom().nextInt(options.length)];
-
-        switch (action) {
-            case "PASS" -> actions.executePass();
-            case "CLEAR" -> actions.executeClearance();
-            case "CARRY" -> actions.executeCarry();
-            case "CROSS" -> actions.executeCross();
-            case "CENTER" -> actions.executeCenter();
-            default -> actions.executeShot();
-        }
+        // Playmaking-based decision (zamena nasumičnom izboru).
+        // Engine generiše opcije, filtrira po PM vidnom tieru, boduje i bira.
+        // THRU i PASS biraju se direktno — executePass() više nije pozvan
+        // (on je imao ugrađenu 40% THRU logiku koju playmaking sada upravlja).
+        DecisionOption decision = playmakingEngine.decide();
+        executeDecisionOption(decision);
 
         tactics.assignTargets();
         state.recordDesiredPositions();
         state.incrementRound();
         return state.getStatus();
+    }
+
+    /**
+     * Dispatches a playmaking DecisionOption to the corresponding ActionEngine
+     * method. PASS and THRU route directly to executePassTo / executeThruPass
+     * (bypassing the old executePass which had an internal 40% THRU roll).
+     * If a PASS/THRU option has no target (no eligible receiver found),
+     * falls back to executePass / executeClearance respectively.
+     */
+    private void executeDecisionOption(DecisionOption option) {
+        switch (option.getType()) {
+            case PASS -> {
+                if (option.getTarget() != null) {
+                    actions.executePassTo(option.getTarget());
+                } else {
+                    actions.executePass();
+                }
+            }
+            case THRU -> actions.executeThruPass(option.getTarget());
+            case CARRY -> actions.executeCarry();
+            case CLEAR -> actions.executeClearance();
+            case SHOT -> actions.executeShot();
+            case CROSS -> actions.executeCross();
+            case CENTER -> actions.executeCenter();
+        }
     }
 
     private Player closestOf(Player home, Player away, Position ball) {

@@ -103,6 +103,12 @@ Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` 
 `MovementEngine`/`BallMovementEngine` (geometry), `TacticalIntentEngine` + `TacticsRules`
 (DB-loaded tactical rules), `PlayerSelectionEngine` (closest/nearest selection).
 
+**Decision quality layer** (playmaking): `PlaymakingDecisionEngine` delegates to
+`VisionFilter` (PM vision tiers — which action types are visible) and
+`OptionSelector` (PM decision-accuracy table + weighted-random fallback).
+`DecisionContext` / `DecisionOption` / `DecisionType` are the immutable data
+model passed between them. See `DEMO_SIMULATION_PROGRESS.md` for full details.
+
 ### Demo duel architecture
 
 `DuelEngine` detects one deterministic active opponent contest using continuous
@@ -140,10 +146,15 @@ then the side-specific ML/MR taker holds for 2 seconds and passes into the box.
 The receiver is still subject to the normal RECEIVE_PASS duel flow. Coordinates
 printed in demo logs are formatted to two decimal places.
 
-Other extension points (INERT, no behaviour yet): `PlayerSkills` (on `Player`), `MovementProfile`
-(returned by `MovementEngine.profileFor()`), `PlayerSelectionEngine.selectBestCandidate()`,
-`ActionCandidate`. Next sprint introduces real skill/selection/action logic here — do NOT
-add more abstractions beyond these.
+**Playmaking** is implemented as a decision-quality layer
+(`PlaymakingDecisionEngine`). PM determines (1) which action types a player
+*can see* via `VisionFilter` (vision tiers by PM bracket), and (2) the
+probability of selecting the highest-scoring visible option via
+`OptionSelector` (PM→accuracy table with linear interpolation, plus
+weighted-random fallback for character). PLAYMAKING ≠ PASSING: passing controls
+execution quality, playmaking controls decision quality. `PlayerSelectionEngine.selectBestCandidate()`
+and `ActionCandidate` remain INERT — next sprint introduces real positioning
+selection logic there.
 
 ### Mid-Action Movement (All Actions)
 
@@ -155,7 +166,7 @@ During ANY action (PASS, SHOT, CARRY, CHASE), every `advance()` tick:
 This means players reposition dynamically during ball flight AND during carrier movement.
 
 **Design principle — three-phase action lifecycle:**
-1. **Decision** (once, at `step()`) — PASS/CARRY/SHOT chosen; does NOT change during action
+1. **Decision** (once, at `step()`) — playmaking decision engine chooses PASS/CARRY/SHOT/CLEAR/THRU/CROSS/CENTER; does NOT change during action
 2. **Movement** (every `advance()` tick) — players reposition relative to ball; updates mid-action
 3. **Outcome** — result of the action (pass received/loose, shot goal/miss)
 
@@ -203,7 +214,8 @@ Players act as **walls** — cannot pass through each other. When blocked:
 3. If all blocked, stay in place
 
 When a carrier is stuck (can't move at all), target is cleared so the action completes.
-When a CHASE carrier is stuck (can't reach ball), carrier gives up and CHASE completes.
+When a CHASE stalls with zero progress, a blocked chaser may hand off via
+`CHASE_CONTINUE`; timeout/no-progress guards force resolution before match hang.
 This prevents simulation freezes from deadlocks.
 
 ### Movement Constraints
@@ -223,6 +235,7 @@ This prevents simulation freezes from deadlocks.
 - **No backward pass in final 2 rows**: in rows 6–7 (HOME attacking away goal) or rows 1–2 (AWAY attacking home goal), PASS is removed from action options. Carrier can only SHOT or CARRY (dribble).
 - **Both teams play by the same principles**: AWAY team chooses PASS/CARRY/SHOT just like HOME when they have the ball. Tactical positions are mirrored via `TacticalPerspectiveTransformer` (both axes: `8-row, 7-col`).
 - **Loose ball**: both teams chase equally — closest HOME and closest AWAY pursue; all other players get tactical targets.
+- **CHASE pickup**: possession radius 0.5 cells (not exact coordinate); progress guard + 600-tick safety timeout prevent deadlocks when chasers collide.
 
 ### UI Circle Sizes
 
@@ -317,6 +330,7 @@ src/test/java/org/example/footballmanager/
   engines/                         → Unit tests for RealisticMatchEngine, MatchEngine, AIDecisionMaker, DuelResolver
   service/                         → Unit tests for services
   util/                            → Unit tests for utilities
+  demo/                            → Unit tests for SimulationArchitectureTest, ChaseDeadlockTest, ExecutionQualityTest, etc.
   integration/
     TifoBackendIntegrationTest     → REST Assured integration tests against H2
     TifoE2ETest                    → REST Assured E2E flows (auth → CTeam → match)

@@ -1,6 +1,7 @@
 package org.example.footballmanager.demo;
 
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * Pozicija na mrezi 9x8, izrazena koordinatom (row, column) u model koordinatama
@@ -29,6 +30,20 @@ public class Position {
 
     public double getColumn() {
         return column;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Position other = (Position) o;
+        return Double.compare(row, other.row) == 0
+                && Double.compare(column, other.column) == 0;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(row, column);
     }
 
     @Override

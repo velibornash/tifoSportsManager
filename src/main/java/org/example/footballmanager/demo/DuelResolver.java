@@ -15,12 +15,17 @@ import java.util.Random;
  *             defender = KEEPER*0.60  + TECHNIQUE*0.25 + height_bonus
  * DRIBBLE:    attacker = TECHNIQUE*0.45 + PLAYMAKING*0.25 + PACE*0.20 + STAMINA*0.10
  *             defender = DEFENDER*0.45 + PACE*0.25 + PLAYMAKING*0.20 + STAMINA*0.10
- * RECEIVE:    attacker = TECHNIQUE*0.50 + PLAYMAKING*0.30 + PACE*0.20
+ * RECEIVE:    attacker = TECHNIQUE*0.50 + PLAYMAKING*0.30 + PACE*0.20 + pass_quality_bonus
  *             defender = DEFENDER*0.45 + PLAYMAKING*0.25 + PACE*0.20 + STAMINA*0.10
  * CHASE:      player   = PACE*0.60 + STAMINA*0.20 + TECHNIQUE*0.20
  * AERIAL:     attacker = HEIGHT*0.40 + TECHNIQUE*0.30 + STRIKER*0.20 + PACE*0.10
  *             defender = HEIGHT*0.40 + DEFENDER*0.30 + TECHNIQUE*0.20 + PACE*0.10
  * TACKLE:     defender = DEFENDER*0.40 + PACE*0.25 + PLAYMAKING*0.15 + STAMINA*0.10 + TECHNIQUE*0.10
+ *
+ * pass_quality_bonus: (pass_skill - 10) * 0.15
+ *   - skill 10 = no bonus
+ *   - skill 20 = +1.5 bonus (quality pass helps receiver)
+ *   - skill 1 = -1.35 penalty (poor pass hurts receiver)
  * </pre>
  */
 public final class DuelResolver {
@@ -54,7 +59,7 @@ public final class DuelResolver {
                     ? s.technique() * 0.45 + s.playmaking() * 0.25 + s.pace() * 0.20 + s.stamina() * 0.10
                     : s.defender() * 0.45 + s.pace() * 0.25 + s.playmaking() * 0.20 + s.stamina() * 0.10;
             case RECEIVE_PASS -> attacker
-                    ? s.technique() * 0.50 + s.playmaking() * 0.30 + s.pace() * 0.20
+                    ? receivePassAttacker(s, player, duel)
                     : s.defender() * 0.45 + s.playmaking() * 0.25 + s.pace() * 0.20 + s.stamina() * 0.10;
             case CHASE_BALL -> s.pace() * 0.60 + s.stamina() * 0.20 + s.technique() * 0.20;
             case AERIAL -> attacker
@@ -83,6 +88,22 @@ public final class DuelResolver {
     private double shotDefender(PlayerSkills s, Player player) {
         double heightBonus = Math.max(0, (player.getHeightCm() - 175) / 6.25);
         return s.keeper() * 0.60 + s.technique() * 0.25 + heightBonus;
+    }
+
+    /** RECEIVE_PASS attacker: TECHNIQUE*0.50 + PLAYMAKING*0.30 + PACE*0.20 + pass_quality_bonus */
+    private double receivePassAttacker(PlayerSkills s, Player player, Duel duel) {
+        double basePower = s.technique() * 0.50 + s.playmaking() * 0.30 + s.pace() * 0.20;
+
+        // Pass quality bonus: bolji pas = prednost za receiver
+        Action action = duel.getAction();
+        if (action != null && action.getSkill() > 0) {
+            // Skill je 1-20, bonus je (skill - 10) * 0.15
+            // Skill 10 = no bonus, skill 20 = +1.5 bonus, skill 1 = -1.35 penalty
+            double passQualityBonus = (action.getSkill() - 10) * 0.15;
+            basePower += passQualityBonus;
+        }
+
+        return basePower;
     }
 
     /** Tekstualni trag formule za log. */

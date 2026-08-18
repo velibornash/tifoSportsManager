@@ -28,8 +28,11 @@ Ball state
 Next action
 ```
 
-The action decision is intentionally still random. Decision, execution and
-actual result must remain separate concepts.
+The action decision layer is now driven by the **playmaking decision engine**
+(`PlaymakingDecisionEngine`), which replaces random action selection with
+PM-weighted decision quality. Decision, execution and actual result remain
+separate concepts — playmaking only affects *which* action is chosen, not
+*how well* it is executed (`ExecutionQuality` handles execution).
 
 ## Composition root and responsibilities
 
@@ -60,6 +63,11 @@ Simulation components:
 | `DuelEngine` | Spatial duel detection and active-duel lifecycle |
 | `DuelResolver` | Side-effect-free skill/random duel calculation |
 | `DuelResolutionCoordinator` | Shared duel logging and loser cooldown |
+| `PlaymakingDecisionEngine` | Decision-quality layer: PM-weighted action selection |
+| `OptionSelector` | PM decision accuracy + weighted-random option selection |
+| `VisionFilter` | PM vision tiers: which action types are visible to the carrier |
+| `DecisionContext` | Immutable snapshot of decision-relevant state |
+| `DecisionOption` / `DecisionType` | Candidate action with type, score, target, visibility |
 
 ## Action lifecycle
 
@@ -118,31 +126,85 @@ when they have the ball, and they chase loose balls equally.
 Movement is smooth and collision-aware, but it is not a complete physics,
 pathfinding or inertia system.
 
-## Decisions and hard action rules
+## Action decision — Playmaking decision-quality layer
 
-For normal outfield play (both HOME and AWAY), the available decisions are:
+When a player receives the ball, `SimulationStepEngine` delegates to
+`PlaymakingDecisionEngine#decide()`. The pipeline is:
 
 ```text
-PASS, CARRY, SHOT (when the row allows shooting)
+PLAYER GETS BALL
+       ↓
+GENERATE POSSIBLE ACTIONS   (PASS, CARRY, CLEAR, THRU, SHOT, CROSS, CENTER)
+       ↓
+VISION FILTER               (which action types are visible, via VisionFilter)
+       ↓
+SCORE OPTIONS               (graceful scoring, see below)
+       ↓
+SELECT ACTION               (accuracy roll + weighted-random, via OptionSelector)
+       ↓
+EXECUTE EXISTING ACTION ENGINE  (ActionEngine lifecycle, unchanged)
 ```
 
-Hard rules currently enforced:
+### Vision tiers (PM determines what the player *sees*)
 
-- a goalkeeper can never CARRY or SHOT;
-- a goalkeeper chooses PASS to one of the two nearest eligible players,
-  or CLEAR;
-- a normal pass may not target row 1 (HOME) or row 7 (AWAY) or a goalkeeper;
-- such a forbidden pass is converted into CLEAR;
-- CLEAR sends the ball two to four rows forward toward the opponent's goal and
-  then produces a loose ball;
-- **no backward carry**: carrier cannot dribble backward; if `weightedForwardDr()`
-  would return -1, it rerolls until forward (+1) or lateral (0);
-- **no backward carry in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
-  carrier can only carry forward (+1) or lateral (0), never backward;
-- **no backward pass in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
-  PASS receiver filter only allows same/forward row (cannot be backward);
-- restart-specific passes, such as AWAY restart to the HOME goalkeeper, are
-  explicit exceptions to the normal-pass restrictions;
+| PM range | Visible action types |
+|---|---|
+| 1–5 (Poor) | CLEAR, PASS, CARRY; 10% chance of THRU |
+| 6–10 (Average) | CLEAR, PASS, CARRY; 30% chance of THRU |
+| 11+ (Good/Elite) | All: CLEAR, PASS, CARRY, THRU, SHOT, CROSS, CENTER |
+
+Higher PM also broadens the **receiver search** for PASS (more nearest teammates
+considered). SHOT, CROSS, and CENTER are only visible to PM 11+ players.
+
+### Decision accuracy (PM determines *how often* the best option is chosen)
+
+Playmaking is **not** `max(score)` 100% of the time. The table below gives the
+probability of selecting the highest-scoring visible option. When the accuracy
+roll fails, a weighted-random selection among viable alternatives (score > 0)
+gives lower-PM players character through suboptimal but plausible decisions.
+
+| PM threshold | Accuracy (chance of best) |
+|---|---|
+| 2 | 25% |
+| 5 | 35% |
+| 8 | 50% |
+| 11 | 65% |
+| 14 | 78% |
+| 17 | 88% |
+| 20 | 95% |
+
+Values between thresholds are linearly interpolated.
+
+### CLEAR is a scored option, never automatic
+
+CLEAR's score rises with defensive danger, pressure, and lack of safe passing
+options. It is **zeroed to ~5%** when the carrier is in the opponent's half
+(attacking zone) — CLEAR is never chosen when attacking. Even defenders will
+choose PASS or CARRY when those options score higher. Under pressure, the
+combined effect of high CLEAR score and low PM accuracy produces realistic
+defensive clearances.
+
+### SHOT scoring
+
+SHOT must be competitive with CLEAR when the carrier is in a genuine shooting
+position. Score formula:
+
+```text
+score = goal_proximity × 1.5 + shooting_space × 0.8 + striker_quality − pressure
+```
+
+SHOT is only generated when the row allows shooting (`ActionEngine.SHOOT_MIN_ROW`).
+
+### PLAYMAKING ≠ PASSING
+
+```text
+PASSING   → execution quality  (ExecutionQuality: how well the pass is kicked)
+PLAYMAKING → decision quality  (PlaymakingDecisionEngine: which action is chosen)
+```
+
+A player with PM 18 / PASSING 8 *sees* the perfect pass but executes it poorly.
+A player with PM 8 / PASSING 18 *doesn't see* the perfect pass but when they
+happen to choose a good one, it's executed excellently.
 
 ## Execution quality
 
@@ -273,13 +335,11 @@ Coordinates in demo messages use two decimal places.
 These are intentionally not complete yet:
 
 - initial player positions are scenario data, not DB tactical targets;
-- action choice is random, without playmaking evaluation;
 - receiving, tackling and goalkeeping are positioning placeholders;
 - the timeline is intentionally separate from the legacy UI message buffer;
 - corner tactical setup does not yet fully arrange every player in the box;
 - movement has collision avoidance but no full pathfinding or inertia model;
 - there is no fatigue, pressing, offside, foul or card layer in this demo;
-- action choice is random (no skill-weighted selection yet);
 - the demo is not the production `newLogic` match engine.
 
 ## Duel visualization and restart protection
@@ -437,7 +497,7 @@ while automatic execution is active; it uses a pale-green button style.
 - `stamina` — duel physical component + fatigue resistance
 - `keeper` — shot saving (GK primary)
 - `technique` — execution of all actions (receive, dribble, control)
-- `playmaking` — decision quality / breadth of available choices
+- `playmaking` — **decision quality**: determines vision tier (which action types the player sees) and decision accuracy (PM→accuracy table with weighted-random fallback). Separate from `passing` (execution quality).
 - `passing` — pass execution accuracy
 - `striker` — shot quality + power
 - `defender` — defensive duel / tackle / deflection
@@ -548,15 +608,23 @@ THRU_AIR.
 - `AERIAL` — header duel in box
 - Duel types extended: `AERIAL`
 
-## Decision Logic (SimulationStepEngine)
-- Final third on wing → CROSS, CENTER, CARRY, SHOT×2
-- Final third central → CENTER, PASS, CARRY, SHOT×2
-- Shoot zone not final third → PASS, CARRY, SHOT×2
-- Elsewhere → PASS, CARRY
+## Decision Logic (PlaymakingDecisionEngine via SimulationStepEngine)
+
+`SimulationStepEngine` delegates to `PlaymakingDecisionEngine#decide()` which
+generates all possible actions for the current carrier, applies the PM vision
+filter, scores each option, and selects via PM decision accuracy. The selected
+`DecisionType` is then executed by the existing `ActionEngine`.
+
+The PM layer considers positional context (final third, wing, goal proximity,
+pressure, danger) and player skills (playmaking for vision/accuracy,
+passing/technique/striker for scoring). CLEAR is scored as a defensive option
+that dominates only under high danger/pressure with no safe passing options —
+never in the opponent's half. SHOT is a viable option when the carrier is in a
+genuine shooting position and scores higher than alternatives.
 
 ## Testing
 
-All **29** demo tests pass (`mvn test -Dtest=ChaseDeadlockTest,ChaseDeadlockDiagnosticsTest,SimulationArchitectureTest,DemoArchitectureTest,DuelResolutionTest,ExecutionQualityTest,TacticalPerspectiveTransformerTest`):
+All **36** demo tests pass (`mvn test -Dtest=ChaseDeadlockTest,ChaseDeadlockDiagnosticsTest,SimulationArchitectureTest,DemoArchitectureTest,DuelResolutionTest,ExecutionQualityTest,TacticalPerspectiveTransformerTest`):
 
 | Test class | Focus |
 |---|---|

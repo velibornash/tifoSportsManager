@@ -62,11 +62,41 @@ public class Action {
     private PassLength passLength = PassLength.SHORT;
     private PassHeight passHeight = PassHeight.GROUND;
 
+    // --- CHASE lifecycle tracking ---
+    private int chaseTicks;
+    private double chaseLastDistance = Double.NaN;
+    private int chaseNoProgressTicks;
+
     public Action(Type type, Player actingPlayer) {
         this.type = type;
         this.actingPlayer = actingPlayer;
         this.inFlight = type == Type.PASS || type == Type.SHOT
                 || type == Type.CROSS || type == Type.CENTER;
+        if (type == Type.CHASE) {
+            resetChaseTracking();
+        }
+    }
+
+    public void resetChaseTracking() {
+        chaseTicks = 0;
+        chaseLastDistance = Double.NaN;
+        chaseNoProgressTicks = 0;
+    }
+
+    public int getChaseTicks() { return chaseTicks; }
+
+    public int getChaseNoProgressTicks() { return chaseNoProgressTicks; }
+
+    /** Records one CHASE tick and updates the no-progress streak. */
+    public void recordChaseTick(double distanceToBall, double progressEpsilon) {
+        chaseTicks++;
+        if (!Double.isNaN(chaseLastDistance)
+                && chaseLastDistance - distanceToBall <= progressEpsilon) {
+            chaseNoProgressTicks++;
+        } else {
+            chaseNoProgressTicks = 0;
+        }
+        chaseLastDistance = distanceToBall;
     }
 
     public Type getType() {

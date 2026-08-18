@@ -48,6 +48,7 @@ public class SimulationEngine {
     private final PlayerSelectionEngine playerSelectionEngine;
     private final DuelEngine duelEngine;
     private final DuelResolutionCoordinator duelResolution;
+    private final PlaymakingDecisionEngine playmakingEngine;
     private int blockedCarryTicks;
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules) {
@@ -63,7 +64,8 @@ public class SimulationEngine {
         this.duelResolution = new DuelResolutionCoordinator(state, duelEngine, new DuelResolver(random));
         this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
         this.tacticalIntentEngine = new TacticalIntentEngine(state);
-        this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine);
+        this.playmakingEngine = new PlaymakingDecisionEngine(state, playerSelectionEngine, random);
+        this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine, playmakingEngine);
     }
 
     // --- zivotni ciklus ---
@@ -188,13 +190,15 @@ public class SimulationEngine {
             tacticalIntentEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
 
-            // GROUND pass interception check (each tick)
-            if (action.getPassHeight() == Action.PassHeight.GROUND) {
+            // GROUND pass interception check (each tick). Clearance se ne proverava.
+            if (action.getPassHeight() == Action.PassHeight.GROUND && !action.isClearance()) {
                 Player interceptor = checkGroundPassInterception(action);
                 if (interceptor != null) {
                     handleInterception(action, interceptor);
                     return;
                 }
+                // Deflection može da završi akciju unutar checkGroundPassInterception
+                if (state.getAction() == null) return;
             }
 
             // Lopta je stigla do svoje STVARNE mete (ne primaoca)
@@ -316,7 +320,27 @@ public class SimulationEngine {
         }
 
         // CHASE: player moves toward ball. Ball NEVER moves.
-        // Pickup only happens in step() when player reaches exact ball position.
+        // Pickup uses possession radius — not exact coordinate equality.
+        Action chaseAction = action != null && action.getType() == Action.Type.CHASE ? action : null;
+        if (chaseAction != null) {
+            Position ballPos = state.getBall().getPosition();
+            Player leadChaser = chaseAction.getActingPlayer();
+            double leadDistance = leadChaser == null ? Double.MAX_VALUE
+                    : MovementEngine.distance(leadChaser.getPosition(), ballPos);
+            chaseAction.recordChaseTick(leadDistance, ActionEngine.CHASE_PROGRESS_EPSILON);
+            actionEngine.logChaseTick(chaseAction);
+            if (chaseAction.getChaseTicks() >= ActionEngine.CHASE_MAX_TICKS) {
+                actionEngine.resolveChaseTimeout();
+                duelEngine.update(state.getAction());
+                return;
+            }
+            if (chaseAction.getChaseNoProgressTicks() >= ActionEngine.CHASE_NO_PROGRESS_TICKS) {
+                actionEngine.resolveChaseNoProgress();
+                duelEngine.update(state.getAction());
+                return;
+            }
+        }
+
         Player actionPlayer = action != null ? action.getActingPlayer() : null;
         Position beforeMove = actionPlayer != null ? actionPlayer.getPosition() : null;
         Position carryTarget = action != null && action.getType() == Action.Type.CARRY
@@ -325,6 +349,19 @@ public class SimulationEngine {
                 ? Double.NaN : MovementEngine.distance(beforeMove, carryTarget);
         movementEngine.moveAllTowardTargets();
         duelEngine.update(action);
+
+        if (chaseAction != null && actionPlayer != null) {
+            Position ballPos = state.getBall().getPosition();
+            Player closestChaser = playerSelectionEngine.closestEligibleActiveChaser(ballPos);
+            if (closestChaser != null && closestChaser != actionPlayer
+                    && chaseAction.getChaseNoProgressTicks() >= 10
+                    && MovementEngine.distance(closestChaser.getPosition(), ballPos) + 0.05
+                    < MovementEngine.distance(actionPlayer.getPosition(), ballPos)) {
+                actionEngine.completeBlockedChase();
+                duelEngine.update(state.getAction());
+                return;
+            }
+        }
 
         if (action != null && (action.getType() == Action.Type.CHASE
                 || action.getType() == Action.Type.CARRY)) {
@@ -371,62 +408,120 @@ public class SimulationEngine {
         duelEngine.update(state.getAction());
     }
 
-    /** Check if any defender can intercept a GROUND pass. */
+    /**
+     * Proverava da li neki odbrambeni igrač može da presretne GROUND pas.
+     *
+     * Pravila (drugTi design review):
+     *  - Svaki odbrambeni se evaluira TAČNO JEDNOM po pasu, u tick-u kada
+     *    lopta prolazi pored njegove projekcije na preostalu putanju
+     *    (s_p ∈ [0, BALL_SPEED]). Nema ponovljenog bacanja kocke.
+     *  - Geometrija: projekcija igrača na [ballPos, actualTarget].
+     *    Δ = t_player − t_ball ≤ 0 (igrač stiže pre lopte).
+     *  - Skill u 3 stupnja: READ (12), CONTACT (13), CONTROL (12).
+     *    Pad CONTROL-a → DEFLECTION (loose lopta sa random skretanjem).
+     */
     private Player checkGroundPassInterception(Action action) {
         Position ballPos = state.getBall().getPosition();
         Position target = action.getActualTarget();
         Position origin = action.getExecutionOrigin() != null
                 ? action.getExecutionOrigin() : action.getActingPlayer().getPosition();
 
-        // Pass line vector
+        // Pass line vector (origin → target)
         double dx = target.getColumn() - origin.getColumn();
         double dy = target.getRow() - origin.getRow();
         double passLength = Math.hypot(dx, dy);
         if (passLength < 1e-9) return null;
 
-        // Ball progress along pass line (0 to 1)
+        // Ball progress along full pass line (0..1) — filter ends
         double ballDx = ballPos.getColumn() - origin.getColumn();
         double ballDy = ballPos.getRow() - origin.getRow();
         double ballProgress = (ballDx * dx + ballDy * dy) / (passLength * passLength);
-        if (ballProgress < 0.1 || ballProgress > 0.9) return null; // too close to ends
+        if (ballProgress < 0.1 || ballProgress > 0.9) return null;
 
-        // Interception point on pass line
-        double interceptRow = origin.getRow() + dy * ballProgress;
-        double interceptCol = origin.getColumn() + dx * ballProgress;
-        Position interceptPos = new Position(interceptRow, interceptCol);
+        // Remaining trajectory: ballPos → target
+        double remDx = target.getColumn() - ballPos.getColumn();
+        double remDy = target.getRow() - ballPos.getRow();
+        double remLength = Math.hypot(remDx, remDy);
+        if (remLength < 1e-9) return null;
+        double remUx = remDx / remLength;   // unit vector along remaining line
+        double remUy = remDy / remLength;
 
-        // Time for ball to reach interception point
-        double ballDistToIntercept = passLength * (1.0 - ballProgress);
-        double ballTime = ballDistToIntercept / BallMovementEngine.BALL_SPEED;
-
-        // Find best interceptor
         String attackingTeam = action.getActingPlayer().getTeam();
-        String defendingTeam = SimulationState.TEAM_HOME.equals(attackingTeam) ? "AWAY" : SimulationState.TEAM_HOME;
+        String defendingTeam = SimulationState.TEAM_HOME.equals(attackingTeam)
+                ? "AWAY" : SimulationState.TEAM_HOME;
+
         Player bestInterceptor = null;
-        double bestTimeDiff = Double.MAX_VALUE;
+        double bestDelta = Double.MAX_VALUE;
+        Player deflectionCandidate = null;
+        double deflectionDelta = Double.MAX_VALUE;
+        Position deflectionPos = null;
 
         for (Player p : state.getPlayers()) {
             if (!p.getTeam().equals(defendingTeam)) continue;
             if (state.isBlockedAfterDuel(p)) continue;
-            if (p == action.getTargetPlayer()) continue; // receiver can't intercept own pass
+            if (p == action.getTargetPlayer()) continue;
+
+            // Projekcija igrača na preostalu putanju, relativno od ballPos
+            double pdx = p.getPosition().getColumn() - ballPos.getColumn();
+            double pdy = p.getPosition().getRow() - ballPos.getRow();
+            double s_p = pdx * remUx + pdy * remUy;
+
+            // Evaluiraj samo kada lopta prolazi pored projekcije (jedan tick prozor)
+            if (s_p < 0 || s_p > BallMovementEngine.BALL_SPEED) continue;
+
+            // Tacka presretanja = projekcija na preostalu liniju
+            double interceptRow = ballPos.getRow() + remUy * s_p;
+            double interceptCol = ballPos.getColumn() + remUx * s_p;
+            Position interceptPos = new Position(interceptRow, interceptCol);
 
             double distToIntercept = MovementEngine.distance(p.getPosition(), interceptPos);
-            double playerTime = distToIntercept / (MovementEngine.PLAYER_SPEED * (p.getSkills().pace() / 20.0));
+            double playerTime = distToIntercept
+                    / (MovementEngine.PLAYER_SPEED * (p.getSkills().pace() / 20.0));
+            double ballTime = s_p / BallMovementEngine.BALL_SPEED;
+            double delta = playerTime - ballTime;
 
-            // Interceptor must arrive before ball
-            double timeDiff = playerTime - ballTime;
-            if (timeDiff < bestTimeDiff) {
-                // Skill check: defender + playmaking + pace + technique
-                PlayerSkills s = p.getSkills();
-                double interceptSkill = s.defender() * 0.40 + s.playmaking() * 0.25
-                        + s.pace() * 0.20 + s.technique() * 0.15;
-                if (interceptSkill + state.getRandom().nextDouble() * 3 > 10) {
-                    bestTimeDiff = timeDiff;
-                    bestInterceptor = p;
+            if (delta > 0) continue;   // ne stiže pre lopte
+
+            // READ: PLAYMAKING×0.60 + DEFENDER×0.40, random 0..5, threshold 12
+            PlayerSkills s = p.getSkills();
+            double readSkill = s.playmaking() * 0.60 + s.defender() * 0.40;
+            if (readSkill + state.getRandom().nextDouble() * 5 <= 12) continue;
+
+            // CONTACT: DEFENDER×0.55 + TECHNIQUE×0.30 + PACE×0.15, random 0..4, threshold 13
+            double contactSkill = s.defender() * 0.55 + s.technique() * 0.30 + s.pace() * 0.15;
+            if (contactSkill + state.getRandom().nextDouble() * 4 <= 13) continue;
+
+            // CONTROL: TECHNIQUE×0.50 + DEFENDER×0.30 + PLAYMAKING×0.20, random 0..4, threshold 12
+            double controlSkill = s.technique() * 0.50 + s.defender() * 0.30 + s.playmaking() * 0.20;
+            if (controlSkill + state.getRandom().nextDouble() * 4 <= 12) {
+                // CONTROL pao → DEFLECTION
+                if (delta < deflectionDelta) {
+                    deflectionDelta = delta;
+                    deflectionCandidate = p;
+                    deflectionPos = interceptPos;
                 }
+                continue;
+            }
+
+            // Sva 3 prošla → INTERCEPTION kandidat
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                bestInterceptor = p;
             }
         }
-        return bestInterceptor;
+
+        if (bestInterceptor != null) return bestInterceptor;
+
+        if (deflectionCandidate != null) {
+            // Deflection: lopta odbija u random pravcu od tacke dodira
+            double angle = state.getRandom().nextDouble() * 2 * Math.PI;
+            double dist = 0.3 + state.getRandom().nextDouble() * 0.5;   // 0.3–0.8 celije
+            Position deflected = new Position(
+                    MovementEngine.clamp(deflectionPos.getRow() + Math.sin(angle) * dist, 1, 7),
+                    MovementEngine.clamp(deflectionPos.getColumn() + Math.cos(angle) * dist, 1, 6));
+            actionEngine.deflectionLoose(deflectionCandidate, deflected);
+        }
+        return null;
     }
 
     /** Handle successful interception. */
@@ -642,6 +737,9 @@ public class SimulationEngine {
     public int getAwayPassAttempts() { return state.getAwayPassAttempts(); }
     public int getAwayPassCompletions() { return state.getAwayPassCompletions(); }
     public int getAwayShotsOnTarget() { return state.getAwayShotsOnTarget(); }
+    public int getChaseCount() { return state.getChaseCount(); }
+    public int getChaseResolutionCount() { return state.getChaseResolutionCount(); }
+    public int getChaseTimeoutCount() { return state.getChaseTimeoutCount(); }
 
     public void startSecondHalf() { state.startSecondHalf(); }
     public void startMatchSimulation() { state.startMatchSimulation(); }

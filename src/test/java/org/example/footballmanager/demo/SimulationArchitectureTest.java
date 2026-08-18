@@ -55,18 +55,25 @@ class SimulationArchitectureTest {
                         || engine.getBall().getCarrier() == engine.getCarrier());
             }
             case CARRY -> {
-                assertTrue(status.startsWith("CARRY"), "CARRY status: " + status);
+                assertTrue(status.startsWith("CARRY") || status.contains("action in progress"),
+                        "CARRY status: " + status);
                 assertNotNull(engine.getCarrier().getTarget(), "CARRY nosilac mora imati cilj");
                 assertEquals(engine.getBall().getCarrier(), engine.getCarrier());
             }
             case PASS -> {
-                assertTrue(status.startsWith("PASS"), "PASS status: " + status);
-                assertNotNull(action.getTargetPlayer(), "PASS mora imati primaoca");
-                assertTrue(action.getTargetPlayer().isLocked(), "primaoc mora biti LOCKED");
+                if (action.isClearance()) {
+                    assertTrue(status.startsWith("CLEAR"), "CLEAR status: " + status);
+                    // Clearance nema primaoca ni skill — preskacemo receiver/skill provere
+                } else {
+                    assertTrue(status.startsWith("PASS") || status.startsWith("THRU"),
+                            "PASS status: " + status);
+                    assertNotNull(action.getTargetPlayer(), "PASS mora imati primaoca");
+                    assertTrue(action.getTargetPlayer().isLocked(), "primaoc mora biti LOCKED");
+                    assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20, "skill 1-20");
+                }
                 // Ball leti ka actualTarget (odstupna meta), ne ka receiveru
                 assertNotNull(action.getActualTarget(), "PASS mora imati actualTarget");
                 assertNotNull(action.getIntendedTarget(), "PASS mora imati intendedTarget");
-                assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20, "skill 1-20");
                 assertEquals(action.getActualTarget(), engine.getBall().getTarget());
                 assertEquals(action.getActingPlayer(), engine.getCarrier());
                 assertTrue(action.isPassInFlight());
@@ -78,7 +85,9 @@ class SimulationArchitectureTest {
                 // Ball leti ka actualTarget (odstupna meta), ne ka golu
                 assertNotNull(action.getActualTarget(), "SHOT mora imati actualTarget");
                 assertEquals(action.getActualTarget(), engine.getBall().getTarget());
-                assertEquals(ActionEngine.GOAL_POSITION, action.getIntendedTarget());
+                assertEquals(ActionEngine.goalPositionFor(action.getActingPlayer().getTeam()),
+                        action.getIntendedTarget(),
+                        "intendedTarget mora biti gol protivnicke ekipe");
                 assertNull(engine.getBall().getCarrier(), "lopta nema nosioca tokom suta");
             }
         }
@@ -86,9 +95,8 @@ class SimulationArchitectureTest {
 
     /**
      * Sekvenca akcija za fiksni seed mora pocinjati isto:
-     * CHASE, pa normalna akcija... (prva akcija je eksplicitni Chase do tacne
-     * koordinate lopte; carrier ne nastaje pre fizičkog dolaska).
-     * Statusi sada sadrze skill info, pa proveravamo samo POCETAK stringa.
+     * Kickoff setup (prvi korak), pa prva prava akcija.
+     * Prvi korak je kickoff postavljanje, a drugi korak je prva playmaking odluka.
      */
     @Test
     void deterministicActionSequenceBeginsCorrectly() {
@@ -106,17 +114,23 @@ class SimulationArchitectureTest {
                 engine.reset();
             }
         }
-        assertTrue(statuses.get(0).contains("HSTL chasing ball"),
-                "prva akcija mora biti tacan CHASE: HSTL, bio: " + statuses.get(0));
+        assertTrue(statuses.get(0).contains("KICKOFF: HSTL"),
+                "prvi korak mora biti kickoff: HSTL, bio: " + statuses.get(0));
+        assertTrue(statuses.get(1).contains("HSTL"),
+                "prva prava akcija mora biti za HSTL, bio: " + statuses.get(1));
         assertTrue(statuses.stream().anyMatch(s -> s.startsWith("PASS: HSTL")
-                        || s.startsWith("CARRY: HSTL")),
-                "posle Chase-a HSTL mora dobiti normalnu akciju: " + statuses);
+                        || s.startsWith("CARRY: HSTL")
+                        || s.startsWith("THRU: HSTL")
+                        || s.startsWith("CLEAR: HSTL")
+                        || s.startsWith("SHOT: HSTL")),
+                "HSTL mora dobiti normalnu akciju: " + statuses);
     }
 
     @Test
     void actionLifecycleClearsActionOnCompletion() {
         SimulationEngine engine = newEngine(3);
-        engine.step();
+        engine.step(); // kickoff setup
+        engine.step(); // prva prava akcija
         assertTrue(engine.isActionInProgress());
         int ticks = 0;
         while (!engine.isRoundComplete() && ticks < 800) {
@@ -167,7 +181,9 @@ class SimulationArchitectureTest {
                 Action action = engine.getCurrentAction();
                 assertNotNull(action.getActualTarget(), "SHOT mora imati actualTarget");
                 assertNotNull(action.getIntendedTarget(), "SHOT mora imati intendedTarget");
-                assertEquals(ActionEngine.GOAL_POSITION, action.getIntendedTarget());
+                assertEquals(ActionEngine.goalPositionFor(action.getActingPlayer().getTeam()),
+                        action.getIntendedTarget(),
+                        "intendedTarget mora biti gol protivnicke ekipe");
                 assertTrue(action.getSkill() >= 1 && action.getSkill() <= 20);
                 seenShot = true;
             }
@@ -219,7 +235,7 @@ class SimulationArchitectureTest {
     }
 
     private static SimulationEngine newEngine(long seed) {
-        List<Player> players = TacticalGridDemo.createPlayers();
+        List<Player> players = TacticalGridDemo.createPlayers(new Random(seed));
         Ball ball = new Ball(new Position(4, 3.5), new Position(4, 3.5));
         return new SimulationEngine(players, ball, TacticsRules.defaults(), new Random(seed));
     }

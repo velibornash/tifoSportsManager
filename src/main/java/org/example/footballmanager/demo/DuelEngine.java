@@ -40,12 +40,17 @@ public final class DuelEngine {
                 || action.getType() == Action.Type.CROSS
                 || action.getType() == Action.Type.CENTER)
                 ? action.getTargetPlayer() : action.getActingPlayer();
+        if (action.getType() == Action.Type.CHASE) {
+            attacker = closestActiveChaserToBall();
+            if (attacker == null) attacker = action.getActingPlayer();
+        }
         if (attacker == null) {
             closeActiveDuel();
             return;
         }
         if (action.getType() == Action.Type.CHASE
-                && MovementEngine.distance(attacker.getPosition(), state.getBall().getPosition()) > 1e-9) {
+                && MovementEngine.distance(attacker.getPosition(), state.getBall().getPosition())
+                        > ActionEngine.POSSESSION_RADIUS) {
             closeActiveDuel();
             return;
         }
@@ -74,7 +79,7 @@ public final class DuelEngine {
         }
 
         closeActiveDuel();
-        activeDuel = new Duel(attacker, defender, contestPosition, type, action.getActionId());
+        activeDuel = new Duel(attacker, defender, contestPosition, type, action.getActionId(), action);
         activeDuelResolved = false;
         state.showDuelVisual(activeDuel);
         state.getEventStore().append(new DuelEvent(
@@ -119,7 +124,13 @@ public final class DuelEngine {
 
     private Position contestPosition(Action action, Player attacker, Player target) {
         if (action.getType() == Action.Type.CHASE) return state.getBall().getPosition();
-        if (action.getType() == Action.Type.PASS) return target.getPosition();
+        if (action.getType() == Action.Type.PASS) {
+            // AIR pas: duel na mestu gde lopta pada (actualTarget), ne na primaocu
+            if (action.getPassHeight() == Action.PassHeight.AIR) {
+                return action.getActualTarget() != null ? action.getActualTarget() : target.getPosition();
+            }
+            return target.getPosition();
+        }
         if (action.getType() == Action.Type.CROSS || action.getType() == Action.Type.CENTER) {
             return action.getActualTarget() != null ? action.getActualTarget() : target.getPosition();
         }
@@ -133,7 +144,9 @@ public final class DuelEngine {
         return switch (action.getType()) {
             case CHASE -> DuelType.CHASE_BALL;
             case CARRY -> DuelType.DRIBBLE;
-            case PASS, CROSS, CENTER -> DuelType.RECEIVE_PASS;
+            case PASS -> action.getPassHeight() == Action.PassHeight.AIR
+                    ? DuelType.AERIAL : DuelType.RECEIVE_PASS;
+            case CROSS, CENTER -> DuelType.AERIAL;
             case SHOT -> DuelType.SHOT;
             case AERIAL -> DuelType.AERIAL;
         };
@@ -170,6 +183,21 @@ public final class DuelEngine {
                 activeDuel.getContestPosition(), null, null, 0, 0));
         activeDuel = null;
         activeDuelResolved = false;
+    }
+
+    private Player closestActiveChaserToBall() {
+        Position ballPos = state.getBall().getPosition();
+        Player best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Player chaser : state.getActiveChasers()) {
+            if (chaser.isLocked() || state.isBlockedAfterDuel(chaser)) continue;
+            double distance = MovementEngine.distance(chaser.getPosition(), ballPos);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = chaser;
+            }
+        }
+        return best;
     }
 
     private static String format(Position position) {
