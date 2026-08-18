@@ -156,9 +156,11 @@ public class SimulationStepEngine {
             options = new String[] {"PASS", "CLEAR"};
         } else if (inFinalThird && onWing && inOpponentHalf) {
             // On wing in final third: cross/center are options but SHOT still frequent
+            // NO PASS in final rows (6-7 for HOME, 1-2 for AWAY)
             options = new String[] {"CROSS", "CENTER", "CARRY", "SHOT", "SHOT"};
         } else if (inFinalThird && !onWing) {
-            options = new String[] {"CENTER", "PASS", "CARRY", "SHOT", "SHOT"};
+            // In final third central: NO PASS in final rows (6-7 for HOME, 1-2 for AWAY)
+            options = new String[] {"CENTER", "CARRY", "SHOT", "SHOT"};
         } else if (canShoot) {
             options = new String[] {"PASS", "CARRY", "SHOT", "SHOT"};
         } else {

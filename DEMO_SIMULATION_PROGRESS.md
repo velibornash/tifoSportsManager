@@ -137,8 +137,12 @@ Hard rules currently enforced:
   then produces a loose ball;
 - **no backward carry**: carrier cannot dribble backward; if `weightedForwardDr()`
   would return -1, it rerolls until forward (+1) or lateral (0);
+- **no backward carry in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
+  carrier can only carry forward (+1) or lateral (0), never backward;
 - **no backward pass in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
   PASS is removed from action options; carrier can only SHOT or CARRY (dribble);
+- **pass receiver filter in final 2 rows**: in rows 6–7 (HOME) or 1–2 (AWAY),
+  pass receiver must be in same row or forward (cannot be backward);
 - restart-specific passes, such as AWAY restart to the HOME goalkeeper, are
   explicit exceptions to the normal-pass restrictions;
 
@@ -347,9 +351,28 @@ An active loose-ball chase sets both the closest HOME and closest AWAY players
 as active chasers. Both pursue the ball simultaneously; whichever reaches first
 becomes carrier. A side waypoint is created around a blocking player when the
 direct movement proposal is fully blocked. Once the waypoint is reached, the
-chaser resumes the exact ball coordinate; the ball itself never moves during
-this detour. This keeps both chasers active while preventing a permanent visual
-deadlock.
+chaser resumes the ball target; the ball itself never moves during this detour.
+
+### CHASE lifecycle fix (2026-08-18)
+
+**Problem fixed:** end-of-match deadlock when two chasers converged on a loose
+ball but collision avoidance prevented exact coordinate pickup (`1e-9` threshold).
+
+**Current rules:**
+- Pickup uses **`POSSESSION_RADIUS = PICKUP_DISTANCE` (0.5 cells)**, not exact
+  coordinate equality.
+- `DuelEngine` opens `CHASE_BALL` when the closest active chaser is within
+  possession radius and an opposing chaser is within duel radius.
+- **Progress guard:** 40 consecutive ticks without meaningful distance reduction
+  → forced resolution to closest eligible player.
+- **Hard timeout:** 600 ticks (~30s) → `CHASE TIMEOUT` with closest-player
+  assignment.
+- **Blocked chaser handoff:** if acting chaser stalls and rival is closer,
+  `CHASE_CONTINUE` is recorded and a new chase starts on the next `step()`.
+- Logging: `CHASE START`, `CHASE TICK`, `CHASE RESOLUTION`, `CHASE TIMEOUT`,
+  `CHASE NO PROGRESS`.
+
+**Regression tests:** `ChaseDeadlockTest`, `ChaseDeadlockDiagnosticsTest`.
 
 Goal qualification still uses the actual goal line at `(7, 3.5)`. After the
 goalkeeper duel, the visual exit target is calculated as a continuation of the
@@ -440,41 +463,77 @@ Random range reduced to `0..3` so skill differences are decisive.
 
 ---
 
-## Pass System (2026-08-18)
+## Pass System (2026-08-18) — IMPLEMENTED
+
+Pragmatic pass model: **occasional** ground interception, **occasional**
+deflection, no separate trajectory service classes. Geometry, skill and outcome
+are handled inline in `SimulationEngine` / `ActionEngine`.
 
 Every pass has two independent properties:
 
 ### Length (namera)
 - **SHORT** ≤ 5 cells — high accuracy, ground preferred
 - **LONG** 5–15 cells — lower accuracy, can be air
-- **THRU** — targets space ahead of runner, not current player position
+- **THRU** — targets space 1–2 cells ahead of runner (40% chance in opponent
+  half via `ActionEngine.executePass`)
 
 ### Height (visina)
-- **GROUND** — precise, controllable, **can be intercepted** during flight
-- **AIR** — cannot be intercepted mid-flight, **deflection only at start** if opponent ≤ 1.0 cells from passer
+- **GROUND** — can be intercepted during flight; deflection on failed control
+- **AIR** — no mid-flight interception; start deflection if opponent ≤ 1.0
+  cells from passer; destination contest uses `AERIAL` duel
 
-Combinations: SHORT_GROUND, SHORT_AIR, LONG_GROUND, LONG_AIR, THRU_GROUND, THRU_AIR.
+Combinations: SHORT_GROUND, SHORT_AIR, LONG_GROUND, LONG_AIR, THRU_GROUND,
+THRU_AIR.
 
-### Interception (GROUND only, per tick)
-- Ball progress along pass line checked each tick (10%–90%)
-- Defender time-to-intercept-point vs ball time-to-intercept-point
-- Skills: DEFENDER×0.40 + PLAYMAKING×0.25 + PACE×0.20 + TECHNIQUE×0.15
-- Must arrive before ball + skill threshold (10 + random)
+### Pass execution quality
+- Skill source: **`passer.getSkills().passing()`** (not random 1–20)
+- Deviation: `(20 − skill) × 0.15 × lengthMultiplier`, capped by pass length
+- SHORT ×0.6, LONG ×1.3, THRU ×0.9; AIR ×1.4 lateral multiplier
+- Success: SHORT/LONG within **1.5** cells of receiver; THRU within **2.0**
+  cells of runner
+- `executionOrigin` stored on every pass for interception geometry
 
-### Deflection (AIR only, at start)
-- If opponent ≤ 1.0 cells from passer at kick
-- Deflection power: HEIGHT×0.40 + TECHNIQUE×0.30 + DEFENDER×0.30
-- Passer protection: HEIGHT×0.20 + TECHNIQUE×0.30
+### GROUND interception (per tick, not every pass)
+- Skipped for **clearance** (`!action.isClearance()`)
+- Ball progress filter: **10%–90%** along pass line
+- Defender projected onto **remaining** trajectory `[ballPos, actualTarget]`
+- Evaluated only in the tick window where projection falls within one
+  `BALL_SPEED` segment ahead of the ball
+- Timing: `Δ = t_player − t_ball ≤ 0` (PACE scales movement speed)
+- Three skill stages (short-circuit):
+  - **READ:** PLAYMAKING×0.60 + DEFENDER×0.40 + random(0..5) > **12**
+  - **CONTACT:** DEFENDER×0.55 + TECHNIQUE×0.30 + PACE×0.15 + random(0..4) > **13**
+  - **CONTROL:** TECHNIQUE×0.50 + DEFENDER×0.30 + PLAYMAKING×0.20 + random(0..4) > **12**
+- All three pass → **INTERCEPTION** (possession to defender)
+- READ+CONTACT pass, CONTROL fail → **GROUND DEFLECTION** (loose ball at
+  random offset 0.3–0.8 cells from contact point via `deflectionLoose`)
+- Best candidate: smallest `Δ` among eligible interceptors
 
-### THRU pass specifics
-- Target = space ahead of runner (receiver position + movement vector)
-- Success threshold: 2.0 cells from runner (vs 1.5 for regular pass)
-- Same interception/deflection rules by height
+### AIR deflection (at pass start only)
+- Opponent ≤ 1.0 cells from passer
+- Roll: deflector HEIGHT×0.40 + TECHNIQUE×0.30 + DEFENDER×0.30 vs passer
+  protection HEIGHT×0.20 + TECHNIQUE×0.30
+- On success: **`actualTarget`** redirected 0.5–1.5 cells from passer in random
+  direction; ball flies to new target; `goodExecution = false`
+- On arrival: normal pass-fail / loose flow (not instant termination)
 
-### Execution quality
-- Skill 1–20 generates deviation
-- SHORT multiplier 0.6, LONG 1.3, THRU 0.9
-- AIR passes: 1.4× lateral deviation (harder to control)
+### Destination duels
+- GROUND pass → `RECEIVE_PASS`
+- AIR pass / CROSS / CENTER → `AERIAL`
+
+### Final row pass restrictions (2026-08-18)
+- **HOME rows 6-7**: PASS removed from options; receiver filter only allows same/forward row
+- **AWAY rows 1-2**: PASS removed from options; receiver filter only allows same/forward row
+- **HOME rows 6-7**: CARRY only forward (+1) or lateral (0), never backward
+- **AWAY rows 1-2**: CARRY only forward (-1) or lateral (0), never backward
+- Contest position for AIR: `actualTarget` (landing point), not receiver position
+- `pickupPass` requires receiver within `PICKUP_DISTANCE`; else loose ball
+
+### Intentionally NOT implemented (kept simple)
+- Separate `PassTrajectory` / `InterceptionWindow` / `DeflectionResolver` classes
+- Full earliest-interception-point optimization from design review 2.1
+- Form / fatigue modifiers on skills
+- Dedicated `ActionOutcome.DEFLECTION` (uses `PASS_LOOSE`)
 
 ---
 
@@ -492,7 +551,15 @@ Combinations: SHORT_GROUND, SHORT_AIR, LONG_GROUND, LONG_AIR, THRU_GROUND, THRU_
 - Elsewhere → PASS, CARRY
 
 ## Testing
-All 23 demo tests pass:
-- SimulationEngineTest (11)
-- DemoArchitectureTest (8)
-- DuelResolutionTest (4)
+
+All **29** demo tests pass (`mvn test -Dtest=ChaseDeadlockTest,ChaseDeadlockDiagnosticsTest,SimulationArchitectureTest,DemoArchitectureTest,DuelResolutionTest,ExecutionQualityTest,TacticalPerspectiveTransformerTest`):
+
+| Test class | Focus |
+|---|---|
+| `SimulationArchitectureTest` | Action lifecycle, PASS/SHOT/THRU consistency |
+| `ChaseDeadlockTest` | Loose-ball chase termination regression |
+| `ChaseDeadlockDiagnosticsTest` | Full match to final whistle (seed=7) |
+| `DemoArchitectureTest` | Composition root / scenario validation |
+| `DuelResolutionTest` | Duel formulas and coordinator |
+| `ExecutionQualityTest` | Pass/shot deviation |
+| `TacticalPerspectiveTransformerTest` | AWAY mirroring |
