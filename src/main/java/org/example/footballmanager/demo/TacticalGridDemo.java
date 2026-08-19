@@ -57,7 +57,7 @@ public class TacticalGridDemo {
 
         SwingUtilities.invokeLater(() -> {
             DemoScenario scenario = DemoScenario.standard();
-            SimulationEngine simulation = new DemoSimulationFactory().create(scenario);
+            SimulationEngine simulation = new DemoSimulationFactory().createWithThreatOverride(scenario);
             new DemoUI(simulation);
         });
     }

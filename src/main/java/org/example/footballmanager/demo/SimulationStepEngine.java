@@ -212,6 +212,20 @@ public class SimulationStepEngine {
         // THRU i PASS biraju se direktno — executePass() više nije pozvan
         // (on je imao ugrađenu 40% THRU logiku koju playmaking sada upravlja).
         DecisionOption decision = playmakingEngine.decide();
+        ThreatEngine threat = tactics.getThreatEngine();
+        if (threat != null && threat.isEnabled()) {
+            ThreatEngine.PassResult passSafety = threat.overrideCarrierPass(decision);
+            if (passSafety.kind == ThreatEngine.PassResult.Kind.VIOLATION) {
+                // Offside violation: ThreatEngine already scheduled the opponent
+                // restart at the exact receiving position. The illegal pass is not executed.
+                state.recordDesiredPositions();
+                state.incrementRound();
+                return state.getStatus();
+            }
+            if (passSafety.kind == ThreatEngine.PassResult.Kind.PASS_LEGAL) {
+                decision = passSafety.replacement;
+            }
+        }
         executeDecisionOption(decision);
 
         tactics.assignTargets();

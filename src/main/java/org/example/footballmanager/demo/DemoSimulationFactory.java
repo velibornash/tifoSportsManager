@@ -36,4 +36,16 @@ public class DemoSimulationFactory {
         Ball ball = new Ball(scenario.getBallStartPosition(), scenario.getBallStartPosition());
         return new SimulationEngine(players, ball, tacticsRules);
     }
+
+    /** Simulation stack with the {@link ThreatEngine} defensive/offside layer enabled (live demo play). */
+    public SimulationEngine createWithThreatOverride(DemoScenario scenario) {
+        return createWithThreatOverride(scenario, new TacticsRules());
+    }
+
+    /** Simulation stack with the {@link ThreatEngine} defensive/offside layer enabled. */
+    public SimulationEngine createWithThreatOverride(DemoScenario scenario, TacticsRules tacticsRules) {
+        java.util.List<Player> players = playerFactory.createPlayers(scenario);
+        Ball ball = new Ball(scenario.getBallStartPosition(), scenario.getBallStartPosition());
+        return new SimulationEngine(players, ball, tacticsRules, new java.util.Random(), true);
+    }
 }

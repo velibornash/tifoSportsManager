@@ -855,7 +855,7 @@ public void passFailed() {
                 : MovementEngine.distance(chaser.getPosition(), ballPos);
         double dRival = rival == null ? Double.NaN
                 : MovementEngine.distance(rival.getPosition(), ballPos);
-        state.log("CHASE TICK: time=" + state.matchClockLabel()
+        state.log("CHASE TICK:"
                 + " ball=" + formatPosition(ballPos)
                 + " chaser=" + formatChasePlayer(chaser, ballPos)
                 + " rival=" + (rival == null ? "none" : formatChasePlayer(rival, ballPos))

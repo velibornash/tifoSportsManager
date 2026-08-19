@@ -56,6 +56,18 @@ public class SimulationEngine {
     }
 
     public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules, Random random) {
+        this(players, ball, tacticsRules, random, false);
+    }
+
+    /**
+     * Constructor that may activate the {@link ThreatEngine} defensive/offside
+     * safety layer (Threat A/B/C, offside-retreat, offside violation restart).
+     * Existing tests and {@code DemoSimulationFactory.create} use the ctors above
+     * (layer OFF). The live demo opts in via
+     * {@link DemoSimulationFactory#createWithThreatOverride}.
+     */
+    public SimulationEngine(List<Player> players, Ball ball, TacticsRules tacticsRules, Random random,
+                            boolean threatOverride) {
         this.state = new SimulationState(players, ball, tacticsRules, random);
         this.movementEngine = new MovementEngine(state);
         this.ballMovementEngine = new BallMovementEngine(state);
@@ -63,9 +75,23 @@ public class SimulationEngine {
         this.duelEngine = new DuelEngine(state);
         this.duelResolution = new DuelResolutionCoordinator(state, duelEngine, new DuelResolver(random));
         this.actionEngine = new ActionEngine(state, playerSelectionEngine, new ExecutionQuality(random));
-        this.tacticalIntentEngine = new TacticalIntentEngine(state);
+        this.tacticalIntentEngine = threatOverride
+                ? new TacticalIntentEngine(state, new ThreatEngine(state, playerSelectionEngine))
+                : new TacticalIntentEngine(state);
         this.playmakingEngine = new PlaymakingDecisionEngine(state, playerSelectionEngine, random);
         this.stepEngine = new SimulationStepEngine(state, playerSelectionEngine, actionEngine, tacticalIntentEngine, playmakingEngine);
+    }
+
+    /**
+     * Per-match toggle for the Type C (local-proximity) threat override (§4:
+     * temporarily disabled). No-op when the threat layer is off
+     * (the {@code threatOverride=false} ctors / {@code DemoSimulationFactory.create}).
+     */
+    public void setThreatTypeCEnabled(boolean enabled) {
+        ThreatEngine te = tacticalIntentEngine.getThreatEngine();
+        if (te != null) {
+            te.setTypeCEnabled(enabled);
+        }
     }
 
     // --- zivotni ciklus ---

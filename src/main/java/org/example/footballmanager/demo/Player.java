@@ -28,6 +28,7 @@ public class Player {
     private final Position alternativePosition;
     private Position target;
     private boolean locked;
+    private boolean offside;
     private double velX;
     private double velY;
 
@@ -111,6 +112,15 @@ public class Player {
 
     public void setLocked(boolean locked) {
         this.locked = locked;
+    }
+
+    /** True when the player is currently in an offside position (threat/safety layer). */
+    public boolean isOffside() {
+        return offside;
+    }
+
+    public void setOffside(boolean offside) {
+        this.offside = offside;
     }
 
     public double getVelX() {

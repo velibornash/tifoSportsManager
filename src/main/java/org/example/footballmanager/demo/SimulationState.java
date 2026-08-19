@@ -473,7 +473,8 @@ public class SimulationState {
     public void log(String message) {
         messages.addLast(message);
         String timestamp = LocalDateTime.now().format(APP_LOG_TIME_FORMAT);
-        System.out.println("[AppLog] " + timestamp + " " + message);
+        String matchClock = "[" + matchClockLabel() + "]";   // §15: vreme utakmice u svaki log
+        System.out.println("[AppLog] " + timestamp + " " + matchClock + " " + message);
         while (messages.size() > MAX_MESSAGES) {
             messages.removeFirst();
         }

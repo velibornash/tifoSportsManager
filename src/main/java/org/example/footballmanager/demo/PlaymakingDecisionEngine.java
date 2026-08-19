@@ -637,10 +637,10 @@ public class PlaymakingDecisionEngine {
     }
 
     private int countBoxAttackers(DecisionContext ctx) {
-        Player carrier = ctx.player();
         boolean home = ctx.isHome();
         int count = 0;
         for (Player p : ctx.teammates()) {
+            if ("GK".equals(p.getRole())) continue; // GK never counts as a box attacker
             double pr = p.getPosition().getRow();
             boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
             if (inBox) count++;
