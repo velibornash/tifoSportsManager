@@ -769,6 +769,10 @@ public class SimulationEngine {
 
     public void startSecondHalf() { state.startSecondHalf(); }
     public void startMatchSimulation() { state.startMatchSimulation(); }
+    public void pauseSimulation() { state.pauseSimulation(); }
+    public void resumeSimulation() { state.resumeSimulation(); }
+    public boolean isSimulationRunning() { return state.isSimulationRunning(); }
+    public void setDiagLogging(boolean enabled) { state.setDiagLogging(enabled); }
 
     public int getRound() {
         return state.getRound();

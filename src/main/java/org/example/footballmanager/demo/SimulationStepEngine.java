@@ -112,6 +112,7 @@ public class SimulationStepEngine {
                     state.getBall().setCarrier(striker);
                     state.setCarrier(striker);
                     state.setKickoffPending(false);
+                    state.setKickoffActionPending(true);
                     state.setKickoffTeam(kickoffTeam);
                     state.clearActiveChasers();
                     state.setStatus("KICKOFF: " + striker.getLabel() + " at center (4, 3.5)");
@@ -178,7 +179,6 @@ public class SimulationStepEngine {
             state.clearActiveChasers();
         }
 
-        double row = carrier.getPosition().getRow();
         if (state.isAwayRestartPending()) {
             state.setAwayRestartPending(false);
             boolean cornerRestart = state.getCornerTaker() == carrier;
@@ -203,15 +203,13 @@ public class SimulationStepEngine {
             return state.getStatus();
         }
 
-        // Provera za kickoff ili gol - prva akcija mora biti pass unazad
-        boolean isKickoffAction = row == 4 && carrier.getPosition().getColumn() == 3.5
-                && (state.getRound() == 1 || state.isCelebrating());
-
-        // Playmaking-based decision (zamena nasumičnom izboru).
-        // Engine generiše opcije, filtrira po PM vidnom tieru, boduje i bira.
-        // THRU i PASS biraju se direktno — executePass() više nije pozvan
-        // (on je imao ugrađenu 40% THRU logiku koju playmaking sada upravlja).
+        // Kickoff: prva akcija mora biti pass unazad ka sopstvenoj polovini.
+        // PlaymakingDecisionEngine.buildContext proverava state.isKickoffActionPending()
+        // (postavljen u kickoff-placement grupu) — vazi za oba tima, uključujući
+        // 2. poluvreme i restart nakon gola (round se ne resetuje, pa round==1
+        // nije dovolan sam za 2. poluvreme / post-goal restart).
         DecisionOption decision = playmakingEngine.decide();
+        state.setKickoffActionPending(false); // kickoff-decizija obrađena — očisti fleg
         ThreatEngine threat = tactics.getThreatEngine();
         if (threat != null && threat.isEnabled()) {
             ThreatEngine.PassResult passSafety = threat.overrideCarrierPass(decision);

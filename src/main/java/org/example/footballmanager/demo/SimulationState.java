@@ -66,6 +66,7 @@ public class SimulationState {
     private boolean halfTime;
     private boolean matchFinished;
     private boolean matchStarted;
+    private boolean simulationRunning;
     private int passAttempts;
     private int passCompletions;
     private int shotsOnTarget;
@@ -78,6 +79,7 @@ public class SimulationState {
     private long simulationTick;
     private long nextActionSequence = 1;
     private boolean celebrating;
+    private boolean diagLogging = false;
     private String celebratingTeam;
     private boolean awayRestartPending;
     private Player returningPlayer;
@@ -95,6 +97,7 @@ public class SimulationState {
     private String cornerTeam;
     private String kickoffTeam = TEAM_HOME;
     private boolean kickoffPending = true;
+    private boolean kickoffActionPending = false;
     private int cornerHoldTicks;
     private Player duelVisualAttacker;
     private Player duelVisualDefender;
@@ -327,7 +330,7 @@ public class SimulationState {
     }
 
     public void advanceMatchClock() {
-        if (!matchStarted || halfTime || matchFinished) return;
+        if (!matchStarted || halfTime || matchFinished || !simulationRunning) return;
         matchTicks++;
         if (matchTicks == 45 * MATCH_TICKS_PER_MINUTE) {
             enterHalfTime();
@@ -362,8 +365,11 @@ public class SimulationState {
     }
 
     public void startMatchSimulation() {
-        if (!matchFinished) {
-            matchStarted = true;
+        if (matchFinished) return;
+        boolean firstStart = !matchStarted;
+        matchStarted = true;
+        simulationRunning = true;
+        if (firstStart) {
             status = "MATCH STARTED";
             log("=== PLAYER ROSTER & SKILLS ===");
             for (Player p : players) {
@@ -378,8 +384,27 @@ public class SimulationState {
         }
     }
 
+    public void pauseSimulation() {
+        simulationRunning = false;
+    }
+
+    public void resumeSimulation() {
+        if (!matchFinished) simulationRunning = true;
+    }
+
+    public boolean isSimulationRunning() {
+        return simulationRunning;
+    }
+
     public boolean isKickoffPending() { return kickoffPending; }
     public void setKickoffPending(boolean value) { kickoffPending = value; }
+
+    public boolean isKickoffActionPending() { return kickoffActionPending; }
+    public void setKickoffActionPending(boolean value) { kickoffActionPending = value; }
+
+    public boolean isDiagLogging() { return diagLogging; }
+    public void setDiagLogging(boolean value) { diagLogging = value; }
+
     public void clearActiveChasers() { activeChasers.clear(); }
     public void setActiveChasers(Player first, Player second) {
         activeChasers.clear();
@@ -634,6 +659,8 @@ public class SimulationState {
         awayGoalCount = 0;
         kickoffTeam = TEAM_HOME;
         kickoffPending = true;
+        kickoffActionPending = false;
+        simulationRunning = false;
         activeChasers.clear();
         status = "ready";
         captureSnapshot();
@@ -657,6 +684,7 @@ public class SimulationState {
         celebratingTeam = null;
         awayRestartPending = false;
         kickoffPending = true;
+        kickoffActionPending = false;
         returningPlayer = null;
         pendingRestartPosition = null;
         pendingRestartPlayer = null;

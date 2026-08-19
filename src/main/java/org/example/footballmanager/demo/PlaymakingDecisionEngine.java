@@ -109,8 +109,9 @@ public class PlaymakingDecisionEngine {
         boolean inFinalThird = home ? row >= 6 : row <= 2;
         boolean onWing = pos.getColumn() <= 2 || pos.getColumn() >= 5;
         boolean inOpponentHalf = home ? row >= 4 : row <= 4;
-        boolean isKickoff = row == 4 && pos.getColumn() == 3.5
-                && (state.getRound() == 1 || state.isCelebrating());
+        boolean isKickoff = state.isKickoffActionPending()
+                || (row == 4 && pos.getColumn() == 3.5
+                    && (state.getRound() == 1 || state.isCelebrating()));
 
         double pressure = calculatePressure(carrier);
         double danger = calculateDanger(carrier);

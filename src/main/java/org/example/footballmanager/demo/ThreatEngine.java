@@ -193,7 +193,7 @@ public final class ThreatEngine {
         if (legal != null) {
             DecisionOption replacement = new DecisionOption(DecisionType.PASS, legal,
                     decision.getScore(), "offside_avoided: legal receiver selected");
-            state.log(String.format(Locale.ROOT,
+            if (state.isDiagLogging()) state.log(String.format(Locale.ROOT,
                     "OFFSIDE SAFETY | PASS_TO_LEGAL | PASSER=%s | OFFSIDE_RECEIVER=%s | LEGAL=%s",
                     carrier.getLabel(), receiver.getLabel(), legal.getLabel()));
             return PassResult.legal(replacement);
@@ -322,6 +322,7 @@ public final class ThreatEngine {
     // ==================================================================
 
     private void logThreatDetected(String type, String reason, Player defender, Player opponent, Position normalCell) {
+        if (!state.isDiagLogging()) return;
         double dist = MovementEngine.distance(defender.getPosition(), opponent.getPosition());
         boolean carrier = opponent == state.getCarrier();
         state.log(String.format(Locale.ROOT,
@@ -331,6 +332,7 @@ public final class ThreatEngine {
     }
 
     private void logOffsideRetreat(Player p, Position retreat) {
+        if (!state.isDiagLogging()) return;
         Position ball = state.getBall().getPosition();
         state.log(String.format(Locale.ROOT,
                 "OFFSIDE DETECTED | PLAYER=%s | POSITION=%s | BALL=%s | ACTION=RETREAT",
@@ -471,7 +473,7 @@ public final class ThreatEngine {
         state.setPendingRestartPlayer(restartPlayer);           // opponent collects it
         state.setRestartPassToHomeGoalkeeper(false);
         state.setRestartHoldTicks((int) Math.round(OFFSIDE_HOLD_TICKS));
-        state.log(String.format(Locale.ROOT,
+        if (state.isDiagLogging()) state.log(String.format(Locale.ROOT,
                 "OFFSIDE VIOLATION | PLAYER=%s | RECEIVE_POSITION=%s | RESTART=OPPONENT",
                 receiver.getLabel(), fmtPos(exactPos)));
     }

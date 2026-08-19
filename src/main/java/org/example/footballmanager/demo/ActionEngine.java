@@ -848,6 +848,7 @@ public void passFailed() {
      * Logs one CHASE animation tick for deadlock diagnosis.
      */
     public void logChaseTick(Action action) {
+        if (!state.isDiagLogging()) return;
         Position ballPos = state.getBall().getPosition();
         Player chaser = action.getActingPlayer();
         Player rival = closestOpposingActiveChaser(chaser, ballPos);

@@ -369,6 +369,7 @@ public class DemoUI {
         stopReplay();
         if (autoRunActive) {
             stopRequested = true;
+            simulation.pauseSimulation();      // Stop also pauses the match clock
             logAction("Stop requested...");
         } else {
             autoRunActive = true;
