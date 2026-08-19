@@ -1,5 +1,6 @@
 package org.example.footballmanager.demo;
 
+import org.example.footballmanager.demo.swingUIDemo.*;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;

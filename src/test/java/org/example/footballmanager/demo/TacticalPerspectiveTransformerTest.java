@@ -1,5 +1,8 @@
 package org.example.footballmanager.demo;
 
+import org.example.footballmanager.demo.swingUIDemo.Position;
+import org.example.footballmanager.demo.swingUIDemo.TacticalPerspectiveTransformer;
+import org.example.footballmanager.demo.swingUIDemo.TacticsRules;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
