@@ -24,11 +24,11 @@ public class MatchRunner {
         MatchSimulator simulator = new MatchSimulator(seed);
 
         // Generate two teams
-        var homePlayers = MatchSimulationController.generateTeam("HOME", "Crvena Zvezda");
+        var homePlayers = MatchSimulationController.generateTeam("HOME", "Omladinac");
         var awayPlayers = MatchSimulationController.generateTeam("AWAY", "Partizan");
 
         // Print lineups
-        printLineup("Crvena Zvezda", homePlayers);
+        printLineup("Omladinac", homePlayers);
         printLineup("Partizan", awayPlayers);
 
         System.out.println("Simulating match...");
@@ -46,7 +46,7 @@ public class MatchRunner {
         for (int i = 0; i < players.size(); i++) {
             var p = players.get(i);
             var s = p.getSkills();
-            System.out.printf("  %2d. %-20s %-3s  P:%-2d T:%-2d K:%-2d Te:%-2d Ps:%-2d Pa:%-2d S:%-2d D:%-2d%n",
+            System.out.printf("  %2d. %-20s %-3s  P:%-2.0f T:%-2.0f K:%-2.0f Te:%-2.0f Ps:%-2.0f Pa:%-2.0f S:%-2.0f D:%-2.0f%n",
                     i + 1, p.getLabel(), p.getRole(),
                     s.pace(), s.stamina(), s.keeper(), s.technique(),
                     s.playmaking(), s.passing(), s.striker(), s.defender());
