@@ -1,0 +1,621 @@
+package org.example.footballmanager.demo.service.engine;
+
+import org.example.footballmanager.demo.service.MatchState;
+import org.example.footballmanager.demo.service.model.*;
+import org.example.footballmanager.demo.service.recording.MatchRecorder;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Action lifecycle — start/complete/execute for all action types.
+ * Simplified headless version: no visual rebound sequences, just state transitions.
+ */
+public class ActionEngine {
+
+    public static final int SHOOT_MIN_ROW = 5;
+    public static final Position GOAL_POSITION = new Position(7, 3.5);
+    public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
+    public static final double POSSESSION_RADIUS = BallMovementEngine.PICKUP_DISTANCE;
+    public static final int CHASE_MAX_TICKS = 600;
+    public static final int CHASE_NO_PROGRESS_TICKS = 40;
+    public static final double CHASE_PROGRESS_EPSILON = MovementEngine.PLAYER_SPEED * 0.25;
+
+    public static Position goalPositionFor(String team) {
+        return "HOME".equals(team) ? GOAL_POSITION : new Position(1, 3.5);
+    }
+
+    public static Position goalExitPositionFor(String team) {
+        return "HOME".equals(team) ? GOAL_EXIT_POSITION : new Position(0, 3.5);
+    }
+
+    private final MatchState state;
+    private final PlayerSelectionEngine selection;
+    private final ExecutionQuality executionQuality;
+    private final MatchRecorder recorder;
+
+    public ActionEngine(MatchState state, PlayerSelectionEngine selection,
+                        ExecutionQuality executionQuality, MatchRecorder recorder) {
+        this.state = state;
+        this.selection = selection;
+        this.executionQuality = executionQuality;
+        this.recorder = recorder;
+    }
+
+    public void start(ActionType type, String description) {
+        if (type != ActionType.CHASE) state.clearActiveChasers();
+        Action action = new Action(type, state.getCarrier());
+        action.setActionId(state.nextActionId());
+        state.setAction(action);
+        state.setStatus(description);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                action.getActionId(), type.name(), description);
+    }
+
+    public void complete(String description) {
+        state.clearActiveChasers();
+        state.setAction(null);
+        state.setRoundComplete(true);
+        state.setRoundEndBallPosition(state.getBall().getPosition());
+        for (Player p : state.getPlayers()) {
+            state.setRoundEndPosition(p, p.getPosition());
+        }
+    }
+
+    public void completeBlockedChase() {
+        Action action = state.getAction();
+        if (action == null || action.getType() != ActionType.CHASE) return;
+        complete("CHASE: " + action.getActingPlayer().getLabel() + " blocked, switching chaser");
+    }
+
+    public void executePass() {
+        Player carrier = state.getCarrier();
+        if (!"GK".equals(carrier.getRole()) && isInOpponentHalf(carrier)) {
+            Player runner = findThruRunner(carrier);
+            if (runner != null && state.getRandom().nextDouble() < 0.40) {
+                executeThruPass(runner);
+                return;
+            }
+        }
+
+        int candidateCount = "GK".equals(carrier.getRole()) ? 2 : 6;
+        List<Player> nearest = selection.nearestTeamTo(carrier, candidateCount);
+        if (nearest.isEmpty()) { executeClearance(); return; }
+
+        double carrierRow = carrier.getPosition().getRow();
+        boolean home = "HOME".equals(carrier.getTeam());
+        boolean inFinalRows = home ? (carrierRow >= 6) : (carrierRow <= 2);
+        boolean isKickoff = carrierRow == 4 && carrier.getPosition().getColumn() == 3.5;
+
+        List<Player> eligibleReceivers = new java.util.ArrayList<>();
+        for (Player candidate : nearest) {
+            if (isOwnGoalkeeperOrDefensiveRow(candidate, carrier.getTeam())) continue;
+            if (inFinalRows) {
+                double candidateRow = candidate.getPosition().getRow();
+                boolean validRow = home ? (candidateRow >= carrierRow) : (candidateRow <= carrierRow);
+                if (!validRow) continue;
+            }
+            if (isKickoff) {
+                double candidateRow = candidate.getPosition().getRow();
+                boolean validRow = home ? (candidateRow < 4) : (candidateRow > 4);
+                if (!validRow) continue;
+            }
+            eligibleReceivers.add(candidate);
+        }
+
+        if (eligibleReceivers.isEmpty()) { executeClearance(); return; }
+        Player receiver = eligibleReceivers.get(state.getRandom().nextInt(eligibleReceivers.size()));
+        executePassTo(receiver);
+    }
+
+    private boolean isInOpponentHalf(Player carrier) {
+        boolean home = "HOME".equals(carrier.getTeam());
+        return home ? carrier.getPosition().getRow() >= 4 : carrier.getPosition().getRow() <= 4;
+    }
+
+    private Player findThruRunner(Player carrier) {
+        boolean home = "HOME".equals(carrier.getTeam());
+        List<Player> nearest = selection.nearestTeamTo(carrier, 6);
+        for (Player p : nearest) {
+            if (p == carrier || "GK".equals(p.getRole())) continue;
+            boolean ahead = home
+                    ? p.getPosition().getRow() > carrier.getPosition().getRow()
+                    : p.getPosition().getRow() < carrier.getPosition().getRow();
+            if (!ahead) continue;
+            if (home && p.getPosition().getRow() <= 1) continue;
+            if (!home && p.getPosition().getRow() >= 7) continue;
+            return p;
+        }
+        return null;
+    }
+
+    public void executeThruPass(Player runner) {
+        Player carrier = state.getCarrier();
+        boolean home = "HOME".equals(carrier.getTeam());
+        double forwardRow = home ? 1.0 : -1.0;
+        double ahead = 1.0 + state.getRandom().nextDouble();
+        double targetRow = SimUtils.clamp(runner.getPosition().getRow() + forwardRow * ahead, 1, 7);
+        double colJitter = (state.getRandom().nextDouble() * 2 - 1) * 0.5;
+        double targetCol = SimUtils.clamp(runner.getPosition().getColumn() + colJitter, 1, 6);
+        Position thruTarget = new Position(targetRow, targetCol);
+
+        runner.setLocked(true);
+        state.incrementPassAttempts(carrier.getTeam());
+
+        PassHeight passHeight = choosePassHeight(carrier.getPosition(), thruTarget, runner);
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                carrier, carrier.getPosition(), thruTarget, runner, PassLength.THRU, passHeight);
+        boolean actualOutside = isOutsidePitch(result.actualTarget());
+        boolean received = result.received() && !actualOutside;
+        Position flightTarget = received ? thruTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        start(ActionType.PASS, "THRU: " + carrier.getLabel() + " -> " + runner.getLabel());
+
+        Action action = state.getAction();
+        action.setTargetPlayer(runner);
+        action.setTargetPosition(thruTarget);
+        action.setExecutionOrigin(carrier.getPosition());
+        action.setSkill(result.skill());
+        action.setIntendedTarget(thruTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        action.setPassLength(PassLength.THRU);
+        action.setPassHeight(passHeight);
+        state.incrementActionCount();
+    }
+
+    public void executePassTo(Player receiver) {
+        if (isOwnGoalkeeperOrDefensiveRow(receiver, state.getCarrier().getTeam())) {
+            executeClearance();
+            return;
+        }
+        receiver.setLocked(true);
+        state.incrementPassAttempts(state.getCarrier().getTeam());
+
+        Position intendedTarget = receiver.getPosition();
+        PassLength passLength = choosePassLength(state.getCarrier().getPosition(), intendedTarget);
+        PassHeight passHeight = choosePassHeight(state.getCarrier().getPosition(), intendedTarget, receiver);
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                state.getCarrier(), state.getCarrier().getPosition(), intendedTarget, receiver, passLength, passHeight);
+        boolean actualOutside = isOutsidePitch(result.actualTarget());
+        boolean received = result.received() && !actualOutside;
+        Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        start(ActionType.PASS, "PASS: " + state.getCarrier().getLabel() + " -> " + receiver.getLabel());
+
+        Action action = state.getAction();
+        action.setTargetPlayer(receiver);
+        action.setTargetPosition(intendedTarget);
+        action.setExecutionOrigin(state.getCarrier().getPosition());
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        action.setPassLength(passLength);
+        action.setPassHeight(passHeight);
+        state.incrementActionCount();
+    }
+
+    public void executeThruPassDirect(Player runner) {
+        executeThruPass(runner);
+    }
+
+    private PassLength choosePassLength(Position from, Position to) {
+        double dist = SimUtils.distance(from, to);
+        if (dist <= 5) return PassLength.SHORT;
+        return PassLength.LONG;
+    }
+
+    private PassHeight choosePassHeight(Position from, Position to, Player receiver) {
+        double dist = SimUtils.distance(from, to);
+        if (dist <= 8) return PassHeight.GROUND;
+        return state.getRandom().nextBoolean() ? PassHeight.AIR : PassHeight.GROUND;
+    }
+
+    public void executeCross() {
+        Player carrier = state.getCarrier();
+        boolean home = "HOME".equals(carrier.getTeam());
+        double targetRow = home ? 5.5 + state.getRandom().nextDouble() * 1.0
+                : 2.5 - state.getRandom().nextDouble() * 1.0;
+        double targetCol = 2.5 + state.getRandom().nextDouble() * 3.0;
+        Position intendedTarget = new Position(targetRow, targetCol);
+
+        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
+        Player aerialTarget = null;
+        double bestAerialScore = -1;
+        for (Player p : boxAttackers) {
+            if (p == carrier) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBox) continue;
+            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30 + p.getSkills().striker() * 0.20;
+            if (score > bestAerialScore) { bestAerialScore = score; aerialTarget = p; }
+        }
+
+        if (aerialTarget == null) { executePass(); return; }
+
+        aerialTarget.setLocked(true);
+        state.incrementPassAttempts(carrier.getTeam());
+
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                carrier, carrier.getPosition(), intendedTarget, aerialTarget);
+        boolean received = result.received() && !isOutsidePitch(result.actualTarget());
+        Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        start(ActionType.CROSS, "CROSS: " + carrier.getLabel() + " -> " + aerialTarget.getLabel());
+
+        Action action = state.getAction();
+        action.setTargetPlayer(aerialTarget);
+        action.setTargetPosition(intendedTarget);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        state.incrementActionCount();
+    }
+
+    public void executeCenter() {
+        Player carrier = state.getCarrier();
+        boolean home = "HOME".equals(carrier.getTeam());
+
+        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
+        Player aerialTarget = null;
+        double bestAerialScore = -1;
+        for (Player p : boxAttackers) {
+            if (p == carrier) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBox) continue;
+            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30 + p.getSkills().striker() * 0.20;
+            if (score > bestAerialScore) { bestAerialScore = score; aerialTarget = p; }
+        }
+
+        if (aerialTarget == null) { executePass(); return; }
+
+        aerialTarget.setLocked(true);
+        state.incrementPassAttempts(carrier.getTeam());
+
+        Position intendedTarget = aerialTarget.getPosition();
+        ExecutionQuality.PassResult result = executionQuality.evaluatePass(
+                carrier, carrier.getPosition(), intendedTarget, aerialTarget);
+        boolean received = result.received() && !isOutsidePitch(result.actualTarget());
+        Position flightTarget = received ? intendedTarget : outOfBoundsEndpoint(result.actualTarget());
+
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(flightTarget);
+
+        start(ActionType.CENTER, "CENTER: " + carrier.getLabel() + " -> " + aerialTarget.getLabel());
+
+        Action action = state.getAction();
+        action.setTargetPlayer(aerialTarget);
+        action.setTargetPosition(intendedTarget);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(intendedTarget);
+        action.setActualTarget(flightTarget);
+        action.setGoodExecution(received);
+        state.incrementActionCount();
+    }
+
+    private Position outOfBoundsEndpoint(Position target) {
+        if (target.getColumn() < 1) return new Position(SimUtils.clamp(target.getRow(), 1, 7), 0);
+        if (target.getColumn() > 6) return new Position(SimUtils.clamp(target.getRow(), 1, 7), 7);
+        if (target.getRow() < 1) return new Position(0, target.getColumn());
+        if (target.getRow() > 7) return new Position(8, target.getColumn());
+        return target;
+    }
+
+    private boolean isOutsidePitch(Position position) {
+        return position.getRow() < 1 || position.getRow() > 7
+                || position.getColumn() < 1 || position.getColumn() > 6;
+    }
+
+    public void executeCarry() {
+        Player carrier = state.getCarrier();
+        if ("GK".equals(carrier.getRole())) { executeClearance(); return; }
+        double r = carrier.getPosition().getRow();
+        double c = carrier.getPosition().getColumn();
+        boolean home = "HOME".equals(carrier.getTeam());
+        int dr;
+        boolean inFinalRows = home ? (r >= 6) : (r <= 2);
+        if (inFinalRows) {
+            do { dr = weightedForwardDr(); } while (home ? dr < 0 : dr > 0);
+        } else {
+            do { dr = weightedForwardDr(); } while (dr < 0);
+        }
+        int dc = state.getRandom().nextInt(3) - 1;
+        if (dr == 0 && dc == 0) dr = 1;
+        double direction = home ? 1 : -1;
+        double nr = SimUtils.clamp(r + direction * dr, 1, 7);
+        double nc = SimUtils.clamp(c + dc, 1, 6);
+        Position carryTarget = new Position(nr, nc);
+        carrier.setTarget(carryTarget);
+        start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
+        state.getAction().setTargetPosition(carryTarget);
+        state.incrementActionCount();
+    }
+
+    public void prepareDribbleBypass(Player defender) {
+        Action action = state.getAction();
+        Player carrier = state.getCarrier();
+        if (action == null || carrier == null || defender == null) return;
+
+        Position current = carrier.getPosition();
+        Position finalTarget = action.getTargetPosition() != null
+                ? action.getTargetPosition() : carrier.getTarget();
+        if (finalTarget == null) return;
+
+        double forwardRow = finalTarget.getRow() - current.getRow();
+        double forwardCol = finalTarget.getColumn() - current.getColumn();
+        double length = Math.hypot(forwardRow, forwardCol);
+        if (length < 1e-9) { forwardRow = 1.0; forwardCol = 0.0; length = 1.0; }
+        forwardRow /= length;
+        forwardCol /= length;
+
+        double toDefenderRow = defender.getPosition().getRow() - current.getRow();
+        double toDefenderCol = defender.getPosition().getColumn() - current.getColumn();
+        double sideRow = -forwardCol;
+        double sideCol = forwardRow;
+        double side = toDefenderRow * sideRow + toDefenderCol * sideCol;
+        if (side > 0) { sideRow = -sideRow; sideCol = -sideCol; }
+
+        Position bypass = new Position(
+                SimUtils.clamp(defender.getPosition().getRow() + forwardRow * 0.5 + sideRow * 0.42, 1, 7),
+                SimUtils.clamp(defender.getPosition().getColumn() + forwardCol * 0.5 + sideCol * 0.42, 1, 6));
+        action.setDribbleBypassTarget(bypass);
+        carrier.setTarget(bypass);
+    }
+
+    private int weightedForwardDr() {
+        int roll = state.getRandom().nextInt(100);
+        if (roll < 50) return 1;
+        if (roll < 75) return 0;
+        return -1;
+    }
+
+    public void executeClearance() {
+        Player carrier = state.getCarrier();
+        Position current = carrier.getPosition();
+        double direction = "HOME".equals(carrier.getTeam()) ? 1 : -1;
+        double targetRow = SimUtils.clamp(current.getRow()
+                + direction * (2.0 + state.getRandom().nextInt(3)), 1, 7);
+        Position target = new Position(targetRow, 1.0 + state.getRandom().nextInt(6));
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(target);
+        start(ActionType.PASS, "CLEAR: " + carrier.getLabel());
+        Action action = state.getAction();
+        action.setClearance(true);
+        action.setActualTarget(target);
+        action.setIntendedTarget(target);
+        action.setGoodExecution(true);
+        state.incrementActionCount();
+    }
+
+    public void executeShot() {
+        Position shotOrigin = state.getCarrier().getPosition();
+        String shootingTeam = state.getCarrier().getTeam();
+        Position goalPosition = goalPositionFor(shootingTeam);
+        Position goalExit = goalExitPositionFor(shootingTeam);
+        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(goalPosition);
+
+        state.getBall().setCarrier(null);
+        Position shotTarget = result.goal()
+                ? goalExit
+                : new Position(goalExit.getRow(), result.actualTarget().getColumn());
+        state.getBall().setTarget(shotTarget);
+
+        start(ActionType.SHOT, "SHOT by " + state.getCarrier().getLabel());
+
+        Action action = state.getAction();
+        action.setTargetPosition(goalPosition);
+        action.setExecutionOrigin(shotOrigin);
+        action.setLogicalGoalPosition(goalPosition);
+        action.setSkill(result.skill());
+        action.setIntendedTarget(goalPosition);
+        action.setActualTarget(shotTarget);
+        action.setGoodExecution(result.goal());
+        state.incrementActionCount();
+        state.incrementShotCount();
+    }
+
+    public void pickupPass() {
+        Action action = state.getAction();
+        Player receiver = action.getTargetPlayer();
+        if (SimUtils.distance(receiver.getPosition(), state.getBall().getPosition())
+                > BallMovementEngine.PICKUP_DISTANCE) {
+            passFailed();
+            return;
+        }
+        receiver.setLocked(false);
+        receiver.setTarget(null);
+        state.getBall().setCarrier(receiver);
+        state.setCarrier(receiver);
+        state.getBall().setTarget(null);
+        state.setStatus(receiver.getLabel() + " received pass");
+        state.setActionDelayTicks(0);
+        state.incrementPassCompletions(receiver.getTeam());
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                action.getActionId(), "PASS_COMPLETED",
+                "PASS -> " + receiver.getLabel() + " | RECEIVED");
+        complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
+    }
+
+    public void giveBallTo(Player winner, String reason) {
+        Action action = state.getAction();
+        if (action != null && action.getTargetPlayer() != null) {
+            action.getTargetPlayer().setLocked(false);
+        }
+        state.getBall().setTarget(null);
+        state.getBall().setCarrier(winner);
+        state.setCarrier(winner);
+        winner.setTarget(null);
+        state.setActionDelayTicks(0);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                action != null ? action.getActionId() : null,
+                "DUEL_WON", winner.getLabel() + " wins | " + reason);
+        complete("DUEL: " + winner.getLabel() + " wins | " + reason);
+    }
+
+    public void finishAwayClearance() {
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        complete("CLEARANCE -> LOOSE BALL");
+    }
+
+    public void shotSaved(Player goalkeeper) {
+        Action action = state.getAction();
+        state.incrementShotsOnTarget(action.getActingPlayer().getTeam());
+        state.getBall().setCarrier(null);
+        Position gkPos = goalkeeper.getPosition();
+        state.getBall().setPosition(gkPos);
+        boolean corner = state.getRandom().nextInt(3) == 2;
+        if (corner) {
+            boolean right = state.getRandom().nextBoolean();
+            action.setSaveType(Action.SaveType.CORNER_REBOUND);
+            int cornerRow = "HOME".equals(action.getActingPlayer().getTeam()) ? 8 : 0;
+            action.setActualTarget(new Position(cornerRow, right ? 6 : 1));
+            state.getBall().setTarget(action.getActualTarget());
+        } else {
+            action.setSaveType(Action.SaveType.FIELD_REBOUND);
+            int reboundRow = "HOME".equals(action.getActingPlayer().getTeam())
+                    ? 5 + state.getRandom().nextInt(3)
+                    : 1 + state.getRandom().nextInt(3);
+            Position rebound = new Position(reboundRow, 1 + state.getRandom().nextInt(6));
+            action.setActualTarget(rebound);
+            state.getBall().setTarget(rebound);
+        }
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                action.getActionId(), "SHOT_SAVED",
+                "SHOT saved by " + goalkeeper.getLabel());
+        state.setCarrier(null);
+        complete("SHOT | SAVE: " + goalkeeper.getLabel());
+    }
+
+    public void passFailed() {
+        Player receiver = state.getAction().getTargetPlayer();
+        receiver.setLocked(false);
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        if (state.getCarrier() != null) state.getCarrier().setTarget(null);
+        state.setCarrier(null);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                state.getAction().getActionId(), "PASS_LOOSE",
+                "PASS -> " + receiver.getLabel() + " | LOOSE BALL");
+        complete("PASS -> " + receiver.getLabel() + " | LOOSE BALL");
+    }
+
+    public void shotMissed() {
+        Position missPosition = state.getAction().getActualTarget();
+        state.getBall().setPosition(missPosition != null ? missPosition : state.getBall().getPosition());
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                state.getAction().getActionId(), "SHOT_MISSED",
+                "SHOT | MISS — ball out of play");
+        complete("SHOT | MISS");
+    }
+
+    public void goalScored() {
+        Player scorer = state.getAction().getActingPlayer();
+        state.incrementShotsOnTarget(scorer.getTeam());
+        state.recordGoal(scorer);
+        if ("HOME".equals(scorer.getTeam())) {
+            state.incrementGoalCount();
+        } else {
+            state.incrementAwayGoalCount();
+        }
+        state.setKickoffTeam("HOME".equals(scorer.getTeam()) ? "AWAY" : "HOME");
+        state.setCelebratingTeam(scorer.getTeam());
+        state.setCelebrating(true);
+        int score = "HOME".equals(scorer.getTeam()) ? state.getGoalCount() : state.getAwayGoalCount();
+        state.setStatus("GOAL for " + scorer.getTeam() + "! (" + score + ")");
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                state.getAction().getActionId(), "GOAL",
+                "GOAL for " + scorer.getTeam() + "! " + scorer.getLabel()
+                        + " (" + score + ")");
+        complete("SHOT (GOAL!)");
+    }
+
+    public void passOutOfBounds() {
+        Player receiver = state.getAction().getTargetPlayer();
+        if (receiver != null) receiver.setLocked(false);
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                state.getAction().getActionId(), "BALL_OUT",
+                "PASS -> OUT OF BOUNDS");
+        complete("PASS -> OUT OF BOUNDS");
+    }
+
+    public void checkActionCompletion() {
+        if (!state.hasActiveAction()) return;
+        switch (state.getAction().getType()) {
+            case CHASE -> {
+                Position ballPos = state.getBall().getPosition();
+                if (hasOpposingChaseContest(ballPos)) return;
+                Player winner = selection.closestEligibleActiveChaser(ballPos);
+                if (winner != null && SimUtils.distance(winner.getPosition(), ballPos) <= 0.01) {
+                    completeChasePossession(winner, "at exact ball position");
+                }
+            }
+            case CARRY -> {
+                Player carrier = state.getCarrier();
+                boolean targetReached = carrier.getTarget() == null
+                        || (carrier.getTarget() != null
+                            && SimUtils.distance(carrier.getPosition(), carrier.getTarget())
+                               < MovementEngine.PLAYER_SPEED * 2);
+                if (targetReached && state.getBall().getCarrier() == carrier) {
+                    carrier.setTarget(null);
+                    state.setActionDelayTicks(0);
+                    recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                            state.getAction().getActionId(), "CARRY_COMPLETED",
+                            "CARRY: " + carrier.getLabel());
+                    complete("CARRY: " + carrier.getLabel());
+                }
+            }
+            default -> {}
+        }
+    }
+
+    private void completeChasePossession(Player winner, String reason) {
+        state.getBall().setTarget(null);
+        state.getBall().setCarrier(winner);
+        state.setCarrier(winner);
+        winner.setTarget(null);
+        state.setActionDelayTicks(0);
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                state.getAction().getActionId(), "CHASE_POSSESSION",
+                "CHASE RESOLUTION: " + winner.getLabel() + " | " + reason);
+        winner.setPosition(state.getBall().getPosition());
+        complete("CHASE: " + winner.getLabel() + " | " + reason);
+    }
+
+    private boolean hasOpposingChaseContest(Position ballPos) {
+        boolean homeNear = false;
+        boolean awayNear = false;
+        for (Player chaser : state.getActiveChasers()) {
+            if (chaser.isLocked() || state.isBlockedAfterDuel(chaser)) continue;
+            if (SimUtils.distance(chaser.getPosition(), ballPos) > POSSESSION_RADIUS) continue;
+            if ("HOME".equals(chaser.getTeam())) homeNear = true;
+            else awayNear = true;
+        }
+        return homeNear && awayNear;
+    }
+
+    private boolean isOwnGoalkeeperOrDefensiveRow(Player player, String team) {
+        if ("GK".equals(player.getRole())) return true;
+        return "HOME".equals(team) ? player.getPosition().getRow() <= 1.0
+                : player.getPosition().getRow() >= 7.0;
+    }
+}
