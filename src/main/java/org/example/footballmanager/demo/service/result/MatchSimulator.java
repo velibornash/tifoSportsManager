@@ -344,7 +344,12 @@ public class MatchSimulator {
                             action.getActingPlayer().getId(), receiver.getId());
                     actionEngine.complete("PASS -> " + receiver.getLabel() + " | RECEIVED");
                 } else {
-                    actionEngine.passFailed();
+                    // Pass failed — clear action and make ball loose
+                    if (receiver != null) receiver.setLocked(false);
+                    state.getBall().setCarrier(null);
+                    state.getBall().setTarget(null);
+                    state.setCarrier(null);
+                    actionEngine.complete("PASS -> LOOSE BALL");
                 }
             }
         }
