@@ -73,7 +73,7 @@ public class MatchSimulationController {
         return resultToMap(result);
     }
 
-    private List<Player> generateTeam(String teamSide, String teamName) {
+    public static List<Player> generateTeam(String teamSide, String teamName) {
         String[] roles = {"GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "ATT", "ATT"};
         List<Player> players = new ArrayList<>();
         Random rng = new Random(teamName.hashCode());
@@ -97,7 +97,7 @@ public class MatchSimulationController {
         return players;
     }
 
-    private PlayerSkills randomSkills(String role, Random rng) {
+    private static PlayerSkills randomSkills(String role, Random rng) {
         return switch (role) {
             case "GK" -> new PlayerSkills(
                     10 + rng.nextInt(8), 12 + rng.nextInt(6),
