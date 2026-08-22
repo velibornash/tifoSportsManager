@@ -18,16 +18,30 @@ public class MatchStatsCollector {
 
     private String lastPasserId = null;
     private String lastPasserTeam = null;
+    private int homePossessionTicks = 0;
+    private int awayPossessionTicks = 0;
+    private int thruAttemptsHome = 0, thruAttemptsAway = 0;
+    private int thruCompletedHome = 0, thruCompletedAway = 0;
+    private int throwInCount = 0, goalKickCount = 0, cornerFromPassCount = 0;
+    private int interceptionCount = 0, looseBallCount = 0;
+    private int passInterceptionCount = 0;
+    private int passOutOfBoundsCount = 0;
 
     public MatchStatsCollector(String homeTeam, String awayTeam) {
-        teamStats.put(homeTeam, new TeamStatsAccumulator(homeTeam));
-        teamStats.put(awayTeam, new TeamStatsAccumulator(awayTeam));
+        teamStats.put("HOME", new TeamStatsAccumulator(homeTeam));
+        teamStats.put("AWAY", new TeamStatsAccumulator(awayTeam));
+        teamStats.put(homeTeam, teamStats.get("HOME"));
+        teamStats.put(awayTeam, teamStats.get("AWAY"));
     }
 
     public void registerPlayers(List<Player> players) {
         for (Player p : players) {
             playerStats.put(p.getId(), new PlayerStatsAccumulator(p));
         }
+    }
+
+    public void registerPlayer(Player player) {
+        playerStats.put(player.getId(), new PlayerStatsAccumulator(player));
     }
 
     /** Record a pass attempt. */
@@ -123,11 +137,82 @@ public class MatchStatsCollector {
         if (ps != null) ps.tackles++;
     }
 
+    /** Record possession tick for a team. */
+    public void addPossessionTick(String team) {
+        if ("HOME".equals(team)) homePossessionTicks++;
+        else awayPossessionTicks++;
+    }
+
+    /** Record a throw-in. */
+    public void onThrowIn(String team) {
+        throwInCount++;
+    }
+
+    /** Record a goal kick. */
+    public void onGoalKick(String team) {
+        goalKickCount++;
+    }
+
     /** Record an interception. */
     public void onInterception(String playerId) {
         PlayerStatsAccumulator ps = playerStats.get(playerId);
         if (ps != null) ps.interceptions++;
+        interceptionCount++;
     }
+
+    /** Record a THRU pass attempt. */
+    public void onThruAttempt(String team) {
+        if ("HOME".equals(team)) thruAttemptsHome++;
+        else thruAttemptsAway++;
+        teamStats.get(team).thruAttempts++;
+    }
+
+    /** Record a completed THRU pass. */
+    public void onThruCompleted(String team) {
+        if ("HOME".equals(team)) thruCompletedHome++;
+        else thruCompletedAway++;
+        teamStats.get(team).thruCompleted++;
+    }
+
+    /** Record a loose ball (pass not received). */
+    public void onLooseBall() {
+        looseBallCount++;
+    }
+
+    /** Record a pass going out of bounds (throw-in, goal kick, or corner). */
+    public void onPassOutOfBounds() {
+        passOutOfBoundsCount++;
+    }
+
+    /** Record a pass interception (defender reaches the ball before the receiver). */
+    public void onPassInterception() {
+        passInterceptionCount++;
+    }
+
+    /** Get pass interception count (from findPassInterceptor, not duels). */
+    public int getPassInterceptionCount() { return passInterceptionCount; }
+
+    /** Record a corner from a pass going out of bounds. */
+    public void onCornerFromPass() {
+        cornerFromPassCount++;
+    }
+
+    /** Get total THRU pass attempts across both teams. */
+    public int getThruAttempts() { return thruAttemptsHome + thruAttemptsAway; }
+    /** Get total completed THRU passes. */
+    public int getThruCompleted() { return thruCompletedHome + thruCompletedAway; }
+    /** Get throw-in count. */
+    public int getThrowInCount() { return throwInCount; }
+    /** Get goal kick count. */
+    public int getGoalKickCount() { return goalKickCount; }
+    /** Get corner-from-pass count. */
+    public int getCornerFromPassCount() { return cornerFromPassCount; }
+    /** Get interception count (from passes). */
+    public int getInterceptionCount() { return interceptionCount; }
+    /** Get loose ball count (pass not received). */
+    public int getLooseBallCount() { return looseBallCount; }
+    /** Get pass out-of-bounds count. */
+    public int getPassOutOfBoundsCount() { return passOutOfBoundsCount; }
 
     /** Get the last passer for assist tracking. */
     public String getLastPasserId() { return lastPasserId; }
@@ -136,28 +221,38 @@ public class MatchStatsCollector {
     /** Build final team stats. */
     public TeamMatchStats buildTeamStats(String team, int totalTicks, int matchMinutes) {
         TeamStatsAccumulator ts = teamStats.get(team);
-        String opponent = teamStats.keySet().stream()
-                .filter(t -> !t.equals(team)).findFirst().orElse("");
+        if (ts == null) return new TeamMatchStats(team, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        boolean isHome = ts == teamStats.get("HOME");
 
         double possession = 0;
-        int totalPasses = ts.passesAttempted + teamStats.get(opponent).passesAttempted;
-        if (totalPasses > 0) {
-            possession = 100.0 * ts.passesAttempted / totalPasses;
+        if (homePossessionTicks + awayPossessionTicks > 0) {
+            double denom = homePossessionTicks + awayPossessionTicks;
+            possession = isHome
+                    ? 100.0 * homePossessionTicks / denom
+                    : 100.0 * awayPossessionTicks / denom;
         }
 
         return new TeamMatchStats(
                 team, ts.goals, ts.shots, ts.shotsOnTarget,
                 ts.passesAttempted, ts.passesCompleted,
                 ts.fouls, ts.penalties, ts.yellowCards, ts.redCards,
-                ts.corners, ts.offsides, possession
+                ts.corners, ts.offsides, possession,
+                ts.thruAttempts, ts.thruCompleted,
+                interceptionCount, passInterceptionCount,
+                looseBallCount, throwInCount, goalKickCount, cornerFromPassCount,
+                passOutOfBoundsCount
         );
     }
 
     /** Build final player stats with rating. */
     public List<PlayerMatchStats> buildPlayerStats(String team, int matchMinutes) {
+        TeamStatsAccumulator ts = teamStats.get(team);
+        if (ts == null) return Collections.emptyList();
+        boolean isHome = ts == teamStats.get("HOME");
+        String side = isHome ? "HOME" : "AWAY";
         List<PlayerMatchStats> result = new ArrayList<>();
         for (PlayerStatsAccumulator ps : playerStats.values()) {
-            if (!ps.player.getTeam().equals(team)) continue;
+            if (!ps.player.getTeam().equals(side)) continue;
             double rating = calculateRating(ps, matchMinutes);
             result.add(new PlayerMatchStats(
                     ps.player.getId(), ps.player.getLabel(), team, ps.player.getRole(),
@@ -173,6 +268,12 @@ public class MatchStatsCollector {
 
     /** Build goal details list. */
     public List<GoalDetail> getGoals() { return Collections.unmodifiableList(goals); }
+
+    /** Get overall possession percentage for HOME team. */
+    public double getHomePossessionPct() {
+        if (homePossessionTicks + awayPossessionTicks == 0) return 50.0;
+        return 100.0 * homePossessionTicks / (homePossessionTicks + awayPossessionTicks);
+    }
 
     private double calculateRating(PlayerStatsAccumulator ps, int matchMinutes) {
         double rating = 6.0;
@@ -197,6 +298,7 @@ public class MatchStatsCollector {
         int goals, shots, shotsOnTarget;
         int passesAttempted, passesCompleted;
         int fouls, penalties, yellowCards, redCards, corners, offsides;
+        int thruAttempts, thruCompleted;
 
         TeamStatsAccumulator(String team) { this.team = team; }
     }

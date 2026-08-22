@@ -190,12 +190,15 @@ public class ThreatAssessmentService {
         // GK never overrides
         if ("GK".equals(player.getRole())) return false;
 
+        // Offside retreat: after 3+ consecutive offsides, force player to drop back
+        if (player.getConsecutiveOffsideCount() >= 3) return true;
+
         // High threat + high personal pressure = override
         if (teamThreat.level().severity() >= 0.75 && personalPressure > 0.5) return true;
 
         // Critical team threat = override for defenders and midfielders
         if (teamThreat.level() == ThreatLevel.CRITICAL) {
-            return "DEF".equals(player.getRole()) || "MID".equals(player.getRole());
+            return player.roleLine().equals("DEF") || player.roleLine().equals("MID");
         }
 
         // Very high personal pressure regardless of team threat
@@ -208,6 +211,11 @@ public class ThreatAssessmentService {
         Ball ball = state.getBall();
         Position ballPos = ball.getPosition();
         Position playerPos = player.getPosition();
+
+        // Offside retreat: force player to drop back toward own half
+        if (player.getConsecutiveOffsideCount() >= 3) {
+            return PlayerIntent.RETURN_TO_SHAPE;
+        }
 
         boolean ballOnOurSide = "HOME".equals(player.getTeam())
                 ? ballPos.getRow() >= 5

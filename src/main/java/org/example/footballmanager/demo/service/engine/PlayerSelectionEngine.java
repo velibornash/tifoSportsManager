@@ -29,7 +29,7 @@ public class PlayerSelectionEngine {
         double bestDist = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
             if (!"HOME".equals(p.getTeam())) continue;
-            if (p == excluded || p.isLocked() || state.isBlockedAfterDuel(p)) continue;
+            if (p == excluded || p.isLocked() || p.isSentOff() || p.isInjured() || state.isBlockedAfterDuel(p)) continue;
             double d = SimUtils.distance(p.getPosition(), pos);
             if (d < bestDist) {
                 bestDist = d;
@@ -48,7 +48,8 @@ public class PlayerSelectionEngine {
         double bestDistance = Double.MAX_VALUE;
         for (Player player : state.getPlayers()) {
             if (player == excluded || !team.equals(player.getTeam())
-                    || player.isLocked() || state.isBlockedAfterDuel(player)) continue;
+                    || player.isLocked() || player.isSentOff() || player.isInjured()
+                    || state.isBlockedAfterDuel(player)) continue;
             double distance = SimUtils.distance(player.getPosition(), pos);
             if (distance < bestDistance) {
                 best = player;
@@ -62,7 +63,7 @@ public class PlayerSelectionEngine {
         Player best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Player chaser : state.getActiveChasers()) {
-            if (chaser.isLocked() || state.isBlockedAfterDuel(chaser)) continue;
+            if (chaser.isLocked() || chaser.isSentOff() || chaser.isInjured() || state.isBlockedAfterDuel(chaser)) continue;
             double distance = SimUtils.distance(chaser.getPosition(), ballPos);
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -76,7 +77,7 @@ public class PlayerSelectionEngine {
         Player best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Player player : state.getPlayers()) {
-            if (player.isLocked() || state.isBlockedAfterDuel(player)) continue;
+            if (player.isLocked() || player.isSentOff() || player.isInjured() || state.isBlockedAfterDuel(player)) continue;
             double distance = SimUtils.distance(player.getPosition(), ballPos);
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -90,7 +91,8 @@ public class PlayerSelectionEngine {
         return state.getPlayers().stream()
                 .filter(player -> team.equals(player.getTeam()))
                 .filter(player -> role.equals(player.getRole()))
-                .filter(player -> !state.isBlockedAfterDuel(player) && !player.isLocked())
+                .filter(player -> !state.isBlockedAfterDuel(player) && !player.isLocked()
+                        && !player.isSentOff() && !player.isInjured())
                 .findFirst().orElse(null);
     }
 
@@ -106,17 +108,23 @@ public class PlayerSelectionEngine {
         return candidates.subList(0, Math.min(n, candidates.size()));
     }
 
-    public Player closestHomeGoalkeeper() {
+    public Player findGoalkeeper(String team) {
         for (Player p : state.getPlayers()) {
-            if ("HOME".equals(p.getTeam()) && "GK".equals(p.getRole())) return p;
+            if (team.equals(p.getTeam()) && "GK".equals(p.getRole())
+                    && !p.isSentOff() && !p.isInjured()) return p;
         }
+        return null;
+    }
+
+    public Player closestHomeGoalkeeper() {
+        Player found = findGoalkeeper("HOME");
+        if (found != null) return found;
         return closestHomeTo(new Position(1, 3.5));
     }
 
     public Player closestAwayGoalkeeper() {
-        for (Player p : state.getPlayers()) {
-            if ("AWAY".equals(p.getTeam()) && "GK".equals(p.getRole())) return p;
-        }
+        Player found = findGoalkeeper("AWAY");
+        if (found != null) return found;
         return closestTeamTo(new Position(7, 3.5), "AWAY");
     }
 }

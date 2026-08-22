@@ -13,8 +13,9 @@ import java.util.Map;
  */
 public class MovementEngine {
 
-    public static final double PLAYER_SPEED = 0.015;
+    public static final double PLAYER_SPEED = 0.25;
     private static final double MIN_PLAYER_DISTANCE = 0.35;
+    private static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed reduction from fatigue
 
     private final MatchState state;
     private final Map<Player, Position> chaseDetours = new HashMap<>();
@@ -25,7 +26,7 @@ public class MovementEngine {
 
     public void moveAllTowardTargets() {
         for (Player p : state.getPlayers()) {
-            if (p.isLocked()) continue;
+            if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (state.isBlockedAfterDuel(p) && p != state.getBall().getCarrier()) continue;
             Position target = p.getTarget();
             if (target == null) continue;
@@ -52,7 +53,8 @@ public class MovementEngine {
                 target = p.getTarget();
             }
 
-            Position proposed = moveProposal(p, target, PLAYER_SPEED);
+            double moveSpeed = activeChase ? PLAYER_SPEED * 3 * fatigueSpeedMultiplier(p) : PLAYER_SPEED * fatigueSpeedMultiplier(p);
+            Position proposed = moveProposal(p, target, moveSpeed);
             Position safe = findSafePosition(p, proposed, target);
             if (activeChase && SimUtils.distance(safe, current) <= 1e-12) {
                 Position escape = findChaseDetour(p, target);
@@ -60,7 +62,7 @@ public class MovementEngine {
                     chaseDetours.put(p, escape);
                     p.setTarget(escape);
                     target = escape;
-                    safe = moveProposal(p, escape, PLAYER_SPEED);
+                    safe = moveProposal(p, escape, moveSpeed);
                 }
             }
             p.setPosition(safe);
@@ -200,5 +202,9 @@ public class MovementEngine {
         if (row == 8.0) return new Position(8.0, SimUtils.clamp(col, 1, 6));
         if (row == 0.0) return new Position(0.0, SimUtils.clamp(col, 1, 6));
         return new Position(SimUtils.clamp(row, 1, 7), SimUtils.clamp(col, 1, 6));
+    }
+
+    private double fatigueSpeedMultiplier(Player p) {
+        return 1.0 - p.getFatigue() * MAX_FATIGUE_SPEED_LOSS;
     }
 }

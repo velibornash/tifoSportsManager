@@ -21,4 +21,6 @@ public class AfPlayerDTO {
     private Map<String, Integer> skills;
     private AfPlayerStatsDTO stats;
     private Integer overall;
+
+    public AfPlayerStatsDTO getStats() { return stats; }
 }

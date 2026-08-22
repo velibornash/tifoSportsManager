@@ -177,7 +177,7 @@ public class BbDataInitializer {
                 .build();
     }
 
-    private static final String[] AI_NAMES = {"KK Vojvodina", "KK Crvena Zvezda", "KK Mega Basket",
+    private static final String[] AI_NAMES = {"KK Vojvodina", "KK Omladinac", "KK Mega Basket",
             "KK FMP", "KK Borac", "KK Spartak", "KK Radnički", "KK Sloboda", "KK Tamiš",
             "KK Sloga", "KK Dunav", "KK Vršac", "KK Konstantin", "KK Mladost",
             "KK Metalac", "KK Napredak", "KK Jedinstvo", "KK Budućnost", "KK Zlatibor"};

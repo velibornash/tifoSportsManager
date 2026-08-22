@@ -10,8 +10,8 @@ import org.example.footballmanager.demo.service.model.Position;
  */
 public class BallMovementEngine {
 
-    public static final double BALL_SPEED = 0.037;
-    public static final double CARRIER_FOLLOW_SPEED = 0.055;
+    public static final double BALL_SPEED = 2.0;
+    public static final double CARRIER_FOLLOW_SPEED = 1.5;
     public static final double PICKUP_DISTANCE = 0.5;
 
     private final MatchState state;

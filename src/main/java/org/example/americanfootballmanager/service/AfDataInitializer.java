@@ -175,7 +175,7 @@ public class AfDataInitializer {
                 .build();
     }
 
-    private static final String[] AI_NAMES = {"AF Vojvodina", "AF Crvena Zvezda", "AF Mega",
+    private static final String[] AI_NAMES = {"AF Vojvodina", "AF Omladinac", "AF Mega",
             "AF FMP", "AF Borac", "AF Spartak", "AF Radnički", "AF Sloboda", "AF Tamiš",
             "AF Sloga", "AF Dunav", "AF Vršac", "AF Konstantin", "AF Mladost",
             "AF Metalac", "AF Napredak", "AF Jedinstvo", "AF Budućnost", "AF Zlatibor"};

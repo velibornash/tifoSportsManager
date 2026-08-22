@@ -6,6 +6,7 @@ import org.example.footballmanager.demo.service.model.PlayerSkills;
 import org.example.footballmanager.demo.service.model.Position;
 import org.example.footballmanager.demo.service.result.MatchResult;
 import org.example.footballmanager.demo.service.result.MatchSimulator;
+import org.example.footballmanager.demo.service.tactics.TacticalPerspectiveTransformer;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -74,20 +75,31 @@ public class MatchSimulationController {
     }
 
     public static List<Player> generateTeam(String teamSide, String teamName) {
-        String[] roles = {"GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "ATT", "ATT"};
+        return generateTeam(teamSide, teamName, teamName.hashCode());
+    }
+
+    public static List<Player> generateTeam(String teamSide, String teamName, long skillSeed) {
+        // Positioning mirrors DemoScenario.standard() — the authoritative kickoff layout.
+        // HOME: GK(1,3.5), DEF(2,2-5), MID(3,1/3/4/6), ATT(4,3.075/4)
+        // AWAY: mirrored via TacticalPerspectiveTransformer.
+        // Attackers start at row 4 (center line), NOT row 6 — this prevents
+        // instant offside when AWAY defenders push up from row 6.
+        String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
+        String[] roleLines = {"GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "ATT", "ATT"};
+        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
+        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
         List<Player> players = new ArrayList<>();
-        Random rng = new Random(teamName.hashCode());
+        Random rng = new Random(skillSeed);
 
         for (int i = 0; i < 11; i++) {
             String role = roles[i];
-            int row, col;
-            if ("GK".equals(role)) { row = 0; col = 3; }
-            else if ("DEF".equals(role)) { row = 1; col = 1 + i % 4; }
-            else if ("MID".equals(role)) { row = 3; col = 1 + i % 4; }
-            else { row = 5; col = 2 + i % 3; }
+            String roleLine = roleLines[i];
+            double tacticalRow = tacticalRows[i];
+            double tacticalCol = tacticalCols[i];
 
-            PlayerSkills skills = randomSkills(role, rng);
-            Position pos = new Position(row, col);
+            PlayerSkills skills = randomSkills(roleLine, rng);
+            Position tacticalPos = new Position(tacticalRow, tacticalCol);
+            Position pos = TacticalPerspectiveTransformer.toPhysical(tacticalPos, teamSide);
             players.add(new Player(
                     teamSide.charAt(0) + "-" + (i + 1),
                     teamName + " " + (i + 1),
@@ -97,8 +109,8 @@ public class MatchSimulationController {
         return players;
     }
 
-    private static PlayerSkills randomSkills(String role, Random rng) {
-        return switch (role) {
+    private static PlayerSkills randomSkills(String roleLine, Random rng) {
+        return switch (roleLine) {
             case "GK" -> new PlayerSkills(
                     10 + rng.nextInt(8), 12 + rng.nextInt(6),
                     14 + rng.nextInt(6), 8 + rng.nextInt(8),
@@ -117,12 +129,44 @@ public class MatchSimulationController {
                     12 + rng.nextInt(8), 10 + rng.nextInt(8),
                     8 + rng.nextInt(8), 8 + rng.nextInt(8)
             );
-            default -> new PlayerSkills(
+            default /* ATT */ -> new PlayerSkills(
                     12 + rng.nextInt(8), 10 + rng.nextInt(8),
                     2 + rng.nextInt(4), 10 + rng.nextInt(8),
                     10 + rng.nextInt(8), 8 + rng.nextInt(8),
                     12 + rng.nextInt(8), 6 + rng.nextInt(6)
             );
+        };
+    }
+
+    private static String normalizeRole(String role) {
+        if (role == null) return "CML";
+        return switch (role.toUpperCase()) {
+            case "GK", "GOALIE" -> "GK";
+            case "DL" -> "DL";
+            case "DCL", "DC" -> "DCL";
+            case "DCR" -> "DCR";
+            case "DR" -> "DR";
+            case "DEF", "LB", "CB", "RB" -> "DCR";
+            case "ML" -> "ML";
+            case "CML" -> "CML";
+            case "CM" -> "CML";
+            case "CMR" -> "CMR";
+            case "MR" -> "MR";
+            case "MID", "LM", "RM" -> "CML";
+            case "STL" -> "STL";
+            case "STR", "ST", "ATT", "FW" -> "STR";
+            default -> role;
+        };
+    }
+
+    private static String roleLineFor(String roleKey) {
+        if (roleKey == null) return "MID";
+        return switch (roleKey) {
+            case "GK" -> "GK";
+            case "DL", "DCL", "DCR", "DR" -> "DEF";
+            case "ML", "CML", "CMR", "MR" -> "MID";
+            case "STL", "STR" -> "ATT";
+            default -> "ATT";
         };
     }
 
@@ -133,7 +177,7 @@ public class MatchSimulationController {
         for (int i = 0; i < lineup.size(); i++) {
             Map<String, Object> p = lineup.get(i);
             String name = (String) p.getOrDefault("name", teamSide + " " + (i + 1));
-            String role = (String) p.getOrDefault("role", "MID");
+            String role = normalizeRole((String) p.getOrDefault("role", "CML"));
 
             PlayerSkills skills;
             if (p.containsKey("skills")) {
@@ -150,10 +194,10 @@ public class MatchSimulationController {
                         s.getOrDefault("defender", 8).intValue()
                 );
             } else {
-                skills = randomSkills(role, new Random());
+                skills = randomSkills(roleLineFor(role), new Random());
             }
 
-            Position pos = new Position(3, 3);
+            Position pos = TacticalPerspectiveTransformer.toPhysical(new Position(3, 3), teamSide);
             players.add(new Player(
                     teamSide.charAt(0) + "-" + (i + 1), name,
                     teamSide, role, pos, pos, skills
@@ -166,7 +210,9 @@ public class MatchSimulationController {
             players.add(new Player(
                     teamSide.charAt(0) + "-" + (i + 1),
                     teamSide + " Player " + (i + 1),
-                    teamSide, "MID", new Position(3, 3), new Position(3, 3),
+                    teamSide, "CML",
+                    TacticalPerspectiveTransformer.toPhysical(new Position(3, 3), teamSide),
+                    TacticalPerspectiveTransformer.toPhysical(new Position(3, 3), teamSide),
                     randomSkills("MID", new Random())
             ));
         }
@@ -182,6 +228,11 @@ public class MatchSimulationController {
         map.put("awayGoals", result.awayGoals());
         map.put("finalScore", result.finalScore());
         map.put("seed", result.seed());
+        map.put("matchId", result.matchId());
+
+        // Replay data for the web match viewer (display only)
+        map.put("events", result.events());
+        map.put("snapshots", result.snapshots());
 
         // Lineups
         map.put("homeLineup", result.homeLineup().stream().map(l -> {

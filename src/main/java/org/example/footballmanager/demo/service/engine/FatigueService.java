@@ -15,12 +15,12 @@ import org.example.footballmanager.demo.service.model.Player;
 public class FatigueService {
 
     private static final double MAX_FATIGUE = 1.0;
-    private static final double FATIGUE_RATE_RUNNING = 0.0003; // per tick while running
-    private static final double FATIGUE_RATE_STANDING = 0.00005; // per tick while standing
-    private static final double RECOVERY_RATE = 0.0001; // per tick when standing still
-    private static final double SPRINT_FATIGUE_MULTIPLIER = 3.0;
-    private static final double INJURY_THRESHOLD = 0.92;
-    private static final double INJURY_BASE_CHANCE = 0.001;
+    private static final double FATIGUE_RATE_RUNNING = 0.00008; // per tick while running (reduced from 0.0003)
+    private static final double FATIGUE_RATE_STANDING = 0.00002; // per tick while standing (reduced from 0.00005)
+    private static final double RECOVERY_RATE = 0.00005; // per tick when standing still (reduced from 0.0001)
+    private static final double SPRINT_FATIGUE_MULTIPLIER = 2.0; // reduced from 3.0
+    private static final double INJURY_THRESHOLD = 0.95; // raised from 0.92
+    private static final double INJURY_BASE_CHANCE = 0.00005; // reduced from 0.001 (20x lower)
 
     private final MatchState state;
 

@@ -60,7 +60,11 @@ public class DuelResolver {
 
     private double shotDefender(PlayerSkills s, Player player) {
         double heightBonus = Math.max(0, (player.getHeightCm() - 175) / 6.25);
-        return s.keeper() * 0.60 + s.technique() * 0.25 + heightBonus;
+        if ("GK".equals(player.getRole())) {
+            return s.keeper() * 0.60 + s.technique() * 0.25 + heightBonus;
+        }
+        // Outfield defender blocking a shot: use defender skill, not keeper
+        return s.defender() * 0.50 + s.technique() * 0.25 + s.pace() * 0.15 + heightBonus;
     }
 
     private double receivePassAttacker(PlayerSkills s, Player player, Action action) {

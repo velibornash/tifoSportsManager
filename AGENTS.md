@@ -242,6 +242,72 @@ This prevents simulation freezes from deadlocks.
 Player radius: 18px, ball radius: 12px. Carrier ring: 26px outer. Select radius: 25px.
 Fan-stack rendering removed — players overlap directly on same cell.
 
+### `demo/service/` Engine — Service-Oriented Match Simulation
+
+Standalone service-engine under `org.example.footballmanager.demo.service`.
+**Zero dependency on `demo/`, `newLogic/`, or any other package outside `demo/service/`.**
+Source of truth for architecture: `corePrinciples.md` (inside this package).
+
+Progression tracker: `demoServiceProgression.md`.
+
+```
+demo/service/
+  ├── corePrinciples.md              → authoritative design specification (§1-48)
+  ├── demoServiceProgression.md      → current status, what's done, what's next
+  ├── MatchState.java                → authoritative match state container
+  ├── MatchRunner.java               → orchestrates simulation from initial state
+  ├── MatchBatchRunner.java          → main() — 10-match batch diagnostic
+  ├── MatchChainTrace.java           → main() — first 10-minute chain trace
+  ├── engine/
+  │   ├── PlaymakingDecisionEngine   → action scoring & selection (PASS/CARRY/SHOT/THRU/CROSS/CLEAR)
+  │   ├── VisionFilter               → PM-based action visibility tiers
+  │   ├── OptionSelector             → weighted random among close options (§9.4)
+  │   ├── ActionEngine               → PASS/CARRY/SHOT/THRU/CROSS/CLEAR execution
+  │   ├── ExecutionQuality           → pass/shot deviation based on skill
+  │   ├── MovementEngine             → tactical targets + collision avoidance + fatigue speed
+  │   ├── BallMovementEngine         → ball transit & carrier following
+  │   ├── TacticalIntentEngine       → tactical targets from TacticsRules
+  │   ├── DuelEngine                 → DRIBBLE/RECEIVE/SHOT/CHASE_BALL duel detection
+  │   ├── DuelResolver               → skill-based duel resolution
+  │   ├── FootballRulesService       → offside, fouls, cards, corners, goal kicks, throw-ins
+  │   ├── ThreatAssessmentService    → danger evaluation for defensive overrides
+  │   ├── PlayerPerceptionService    → awareness-based perception
+  │   ├── PlayerSelectionEngine      → nearest/closest player queries
+  │   ├── FatigueService             → stamina drain + speed multiplier
+  │   ├── TransitionService          → possession change transitions
+  │   ├── SimUtils                   → clamp, distance, helpers
+  │   ├── SimulationRandom           → seeded random source
+  │   └── DecisionTraceService       → structured decision debug output
+  ├── model/
+  │   ├── Player, Ball, Position, Action, ActionType, DecisionType, DecisionOption,
+  │   │   DecisionContext, DuelType, DuelOutcome, PlayerSkills, MatchPhase, etc.
+  ├── tactics/
+  │   ├── TacticsRules               → tactical target resolution from config
+  │   ├── TacticalPerspectiveTransformer → mirrors AWAY tactical positions
+  │   ├── FormationSlotCatalog       → formation slot definitions
+  │   └── TacticsSlotDTO/TacticsRuleDTO → tactical configuration DTOs
+  ├── result/
+  │   ├── MatchSimulator             → tick-based simulation loop (§19)
+  │   ├── MatchStatsCollector        → statistics derivation from events (§32)
+  │   ├── ActionLogService           → structured action/decision logging
+  │   └── MatchReport/MatchResult/PlayerMatchStats/TeamMatchStats → result models
+  ├── recording/
+  │   ├── MatchRecorder              → event & snapshot recording
+  │   ├── MatchEvent, MatchSnapshot, MatchRecording, PlayerSnapshot
+  └── controller/
+      └── MatchSimulationController  → REST API for match simulation
+```
+
+**Key design per corePrinciples:**
+- Decision engine scores actions → football rules override illegal actions (§15)
+- Kickoff is special center positioning event, not from TacticalEditor (§20)
+- Threat override modifies movement targets, not the decision (§6)
+- Controlled randomness via seeded Random (§9-10)
+- Movement: ≤1 cell/tick non-carrier, collision avoidance (§11)
+- Ball: POSSESSION / IN_TRANSITION / LOOSE states (§12)
+- Offside: second-to-last defender, checked on forward passes (§16)
+- Duel cooldown: loser blocked for 60 ticks after duel loss
+
 ### API Route Prefixes
 
 | Controller | Prefix |
@@ -475,6 +541,18 @@ All events are sealed records implementing `MatchEvent` interface. Each event ca
 - **checkFoul**: penalty box fouls now always produce penalty (was 8% chance); outside box fouls now produce free kick stoppage (25% chance)
 - **releaseBallAfterStoppage**: ball now properly positioned at corner flag (x=95, y=7/93) for corners, at sideline for throw-ins
 
+### Bug Fixes & Tuning (2026-08-23) — demo/service engine
+- **VAR offside for AWAY**: `VARService.checkOffside()` was always confirming AWAY offside (Double.MAX_VALUE bug). Fixed to compute correct offside line per team
+- **AWAY penalty kick**: `ActionEngine.executePenaltyKick()` used `GOAL_POSITION` (7, 3.5) for both teams. Fixed: AWAY aims at `new Position(1, 3.5)`
+- **Miss ball reset**: shot miss now resets ball to center (4, 3.5) instead of goal position
+- **CROSS/CENTER inFinalThird bug**: `inFinalThird = row >= 6` and `inTheBox = row >= 6` were identical, making CROSS/CENTER impossible. Fixed: `inFinalThird = row >= 5` (HOME) / `row <= 3` (AWAY)
+- **Balanced team generation**: `MatchSimulationController.generateTeam()` now accepts `skillSeed` parameter; batch runner uses same seed for both teams, eliminating skill asymmetry (was: `"Home".hashCode()` vs `"Away".hashCode()` producing 17:1 home bias)
+- **VAR frequency gates**: offside 20%, goal 15%, penalty 25%, red 40%, yellow 10% — reduces VAR reviews from ~14/match
+- **Pass lateral deviation**: increased from 0.40 to 1.20 for more throw-ins
+- **Row clamping**: tightened from 0.85-7.15 to 0.92-7.08 for fewer goal kicks
+- **Column clamping**: widened from 0.0-7.0 to -0.5-7.5 for more sideline exits (throw-ins)
+- **Penalty box foul bonus**: reduced from 0.02 to 0.005
+
 ### Frontend Match Viewer (`/newLogic/index.html`)
 - Dark-themed UI, responsive (mobile + desktop)
 - Fields for home/away CTeam names, "Play Match" button
@@ -493,6 +571,7 @@ All events are sealed records implementing `MatchEvent` interface. Each event ca
 | `AMERICAN_FOOTBALL_PROGRESS.md` | Agent instructions — American Football |
 | `TIFO_TEXT_MANAGER_PROGRESS.md` | Agent instructions — TIFO Text mode |
 | `TIFO_SPORTS_MANAGER_GUIDE.md` | **User-facing guide** in English — all sports explained for end users |
+| `demo/service/demoServiceProgression.md` | Agent instructions — demo/service engine (what's done, what's next) |
 
 The 4 sport-specific `.md` files are written as instructions for AI agents — they describe what's implemented and what's pending. The `TIFO_SPORTS_MANAGER_GUIDE.md` is a user manual written in English.
 
@@ -515,6 +594,7 @@ The 4 sport-specific `.md` files are written as instructions for AI agents — t
 - Round/week advancement is stateful and async — changes to `SimulationController`, `AdvanceWeekAsyncService`, or `RuntimeSaveToDB` can cause inconsistent season state
 - `cleanSheet/` and `old/` packages are legacy — do not add new features there
 - `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
+- **demo/service/** — self-contained service engine; source of truth is `corePrinciples.md`; only modify files under `demo/service/`; test via `MatchBatchRunner` and `MatchChainTrace`
 - **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
 - **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events
 

@@ -35,10 +35,17 @@ public class MatchRunner {
         System.out.println();
 
         // Run match
-        MatchResult result = simulator.simulate(homePlayers, awayPlayers, "Crvena Zvezda", "Partizan");
+        MatchResult result = simulator.simulate(homePlayers, awayPlayers, "Omladinac", "Partizan");
 
         // Print result
         printResult(result);
+
+        // Print action logs
+        System.out.println();
+        System.out.println("--- ACTION LOG (" + result.logs().size() + " entries) ---");
+        for (LogEntry entry : result.logs()) {
+            System.out.println(entry);
+        }
     }
 
     private static void printLineup(String teamName, List<org.example.footballmanager.demo.service.model.Player> players) {

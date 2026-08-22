@@ -12,7 +12,9 @@ import java.util.List;
  */
 public class DuelEngine {
 
-    public static final double DEFAULT_DUEL_RADIUS = 0.5;
+    public static final double DEFAULT_DUEL_RADIUS = 1.0;
+    public static final double DRIBBLE_DUEL_RADIUS = 1.4;
+    public static final double RECEIVE_PASS_RADIUS = 0.7;
 
     private final MatchState state;
     private final DuelResolver resolver;
@@ -67,11 +69,16 @@ public class DuelEngine {
 
         Position contestPosition = contestPosition(action, attacker, contestTarget);
         Player defender = closestOpponentTo(action, contestTarget, attacker, contestPosition);
-        if (defender == null || SimUtils.distance(contestPosition, defender.getPosition()) > duelRadius) {
+        DuelType type = typeFor(action);
+        double radiusForType = switch (type) {
+            case RECEIVE_PASS -> RECEIVE_PASS_RADIUS;
+            case DRIBBLE -> DRIBBLE_DUEL_RADIUS;
+            default -> duelRadius;
+        };
+        if (defender == null || SimUtils.distance(contestPosition, defender.getPosition()) > radiusForType) {
             closeActiveDuel(); return;
         }
 
-        DuelType type = typeFor(action);
         if (activeDuelAttacker == attacker && activeDuelDefender == defender && activeDuelType == type) {
             return;
         }
@@ -106,6 +113,7 @@ public class DuelEngine {
 
     public Player getActiveDuelAttacker() { return activeDuelAttacker; }
     public Player getActiveDuelDefender() { return activeDuelDefender; }
+    public DuelType getActiveDuelType() { return activeDuelType; }
 
     private void closeActiveDuel() {
         activeDuelAttacker = null;
@@ -159,7 +167,15 @@ public class DuelEngine {
             if (candidate == attacker || candidate.getTeam().equals(contestTarget.getTeam())) continue;
             if (action.getType() == ActionType.CHASE && !state.isActiveChaser(candidate)) continue;
             if (state.isBlockedAfterDuel(candidate)) continue;
-            if (action.getType() == ActionType.SHOT && !"GK".equals(candidate.getRole())) continue;
+            // SHOT: allow GK always; allow DEF/MID within 1.0 cells (shot block/tackle)
+            if (action.getType() == ActionType.SHOT) {
+                if ("GK".equals(candidate.getRole())) {
+                    // GK always eligible
+                } else {
+                    double distToAttacker = SimUtils.distance(candidate.getPosition(), attacker.getPosition());
+                    if (distToAttacker > 1.0) continue; // outfield too far to challenge
+                }
+            }
             if (action.getType() == ActionType.AERIAL && "GK".equals(candidate.getRole())) continue;
             double distance = SimUtils.distance(candidate.getPosition(), position);
             if (distance < bestDistance) {
@@ -175,7 +191,7 @@ public class DuelEngine {
         Player best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Player chaser : state.getActiveChasers()) {
-            if (chaser.isLocked() || state.isBlockedAfterDuel(chaser)) continue;
+            if (chaser.isLocked() || chaser.isSentOff() || chaser.isInjured() || state.isBlockedAfterDuel(chaser)) continue;
             double distance = SimUtils.distance(chaser.getPosition(), ballPos);
             if (distance < bestDistance) {
                 bestDistance = distance;

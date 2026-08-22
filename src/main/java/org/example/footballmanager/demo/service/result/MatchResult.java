@@ -2,6 +2,8 @@ package org.example.footballmanager.demo.service.result;
 
 import org.example.footballmanager.demo.service.model.Player;
 import org.example.footballmanager.demo.service.model.PlayerSkills;
+import org.example.footballmanager.demo.service.recording.MatchEvent;
+import org.example.footballmanager.demo.service.recording.MatchSnapshot;
 
 import java.util.List;
 import java.util.Map;
@@ -24,7 +26,11 @@ public record MatchResult(
     List<PlayerMatchStats> awayPlayerStats,
     List<GoalDetail> goals,
     MatchReport report,
-    long seed
+    long seed,
+    List<LogEntry> logs,
+    String matchId,
+    List<MatchEvent> events,
+    List<MatchSnapshot> snapshots
 ) {
     public record LineupPlayer(
         String id,

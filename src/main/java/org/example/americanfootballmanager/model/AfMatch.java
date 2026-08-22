@@ -61,4 +61,8 @@ public class AfMatch {
 
     public Integer getHomeScore() { return played ? homeScore : null; }
     public Integer getAwayScore() { return played ? awayScore : null; }
+
+    public Long getId() { return id; }
+    public String getHomeQuarterScores() { return homeQuarterScores; }
+    public String getAwayQuarterScores() { return awayQuarterScores; }
 }

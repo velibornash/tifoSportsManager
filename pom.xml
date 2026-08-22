@@ -22,6 +22,10 @@
     <properties>
         <java.version>21</java.version>
         <lombok.version>1.18.38</lombok.version>
+        <!-- Disable release flag so Lombok annotation processor works (known issue
+             with maven-compiler-plugin + Spring Boot parent).
+             Source and target plus add-opens provide equivalent isolation. -->
+        <maven.compiler.release></maven.compiler.release>
     </properties>
 
     <dependencies>
@@ -201,6 +205,27 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                    <!-- Lombok needs reflective access on Java 21 without the release flag -->
+                    <compilerArgs>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.lang=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.lang.reflect=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.util=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.util.concurrent=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.util.concurrent.atomic=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.io=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.net=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.nio=ALL-UNNAMED</arg>
+                        <arg>--add-opens</arg>
+                        <arg>java.base/java.nio.file=ALL-UNNAMED</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
         </plugins>

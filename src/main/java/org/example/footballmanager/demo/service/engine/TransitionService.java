@@ -94,8 +94,7 @@ public class TransitionService {
         // Attacking transition: forwards and wingers have higher urgency
         if (state.getPhase() == MatchPhase.TRANSITION_TO_ATTACK) {
             if (sameTeamAsNewCarrier) {
-                return "ATT".equals(player.getRole()) || "WNG".equals(player.getRole())
-                        ? timeDecay * 1.0 : timeDecay * 0.6;
+                return player.isAttacker() ? timeDecay * 1.0 : timeDecay * 0.6;
             }
             return timeDecay * 0.8; // defending team: recover quickly
         }
@@ -105,7 +104,7 @@ public class TransitionService {
             if (sameTeamAsNewCarrier) {
                 return timeDecay * 0.7; // attacking team: keep shape
             }
-            return "DEF".equals(player.getRole()) || "GK".equals(player.getRole())
+            return player.isDefender() || player.isGoalkeeper()
                     ? timeDecay * 1.0 : timeDecay * 0.7;
         }
 

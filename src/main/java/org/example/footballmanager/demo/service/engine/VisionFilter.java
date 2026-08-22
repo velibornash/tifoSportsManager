@@ -9,7 +9,9 @@ import java.util.Random;
 
 /**
  * Playmaking vision filter — which action types are visible to the carrier.
- * PM 1-5: basic only. PM 6-10: basic + occasional THRU. PM 11+: all visible.
+ * SHOT is always visible (even poor players can shoot).
+ * PM 1-5: basic only (PASS/CARRY/CLEAR + SHOT). PM 6-10: + occasional CROSS/THRU.
+ * PM 11+: all visible.
  */
 public class VisionFilter {
 
@@ -28,13 +30,27 @@ public class VisionFilter {
 
             if (type == DecisionType.CLEAR || type == DecisionType.PASS || type == DecisionType.CARRY) {
                 visible = true;
+            } else if (type == DecisionType.SHOT) {
+                visible = true;
             } else if (type == DecisionType.THRU) {
+                // THRU requires vision to spot runners behind defense.
+                // Low PM players simply cannot see through-ball opportunities.
+                if (pm >= 14) {
+                    visible = true;
+                } else if (pm >= 10) {
+                    visible = random.nextDouble() < 0.60;
+                } else if (pm >= 6) {
+                    visible = random.nextDouble() < 0.25;
+                } else {
+                    visible = false; // PM < 6: cannot see thru passes at all
+                }
+            } else if (type == DecisionType.CROSS || type == DecisionType.CENTER) {
                 if (pm >= 11) {
                     visible = true;
                 } else if (pm >= 6) {
-                    visible = random.nextDouble() < 0.30;
+                    visible = random.nextDouble() < 0.40;
                 } else {
-                    visible = random.nextDouble() < 0.10;
+                    visible = random.nextDouble() < 0.15;
                 }
             } else {
                 visible = pm >= 11;

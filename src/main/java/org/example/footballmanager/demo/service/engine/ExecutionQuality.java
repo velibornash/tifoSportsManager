@@ -10,11 +10,11 @@ import java.util.Random;
  */
 public class ExecutionQuality {
 
-    private static final double PASS_DEVIATION_PER_SKILL_POINT = 0.15;
-    private static final double SHOT_DEVIATION_PER_SKILL_POINT = 0.12;
+    private static final double PASS_DEVIATION_PER_SKILL_POINT = 0.10;
+    private static final double SHOT_DEVIATION_PER_SKILL_POINT = 0.22;
     private static final double PASS_SUCCESS_THRESHOLD = 1.5;
-    private static final double THRU_SUCCESS_THRESHOLD = 2.0;
-    private static final double SHOT_GOAL_THRESHOLD = 1.0;
+    public static final double THRU_SUCCESS_THRESHOLD = 2.0;
+    public static final double SHOT_GOAL_THRESHOLD = 0.25;
 
     private final Random random;
 
@@ -40,29 +40,35 @@ public class ExecutionQuality {
 
         double lengthMultiplier = switch (passLength) {
             case SHORT -> 0.6;
-            case LONG -> 1.3;
+            case LONG -> 0.8;
             case THRU -> 0.9;
         };
 
+        // AIR passes are EASIER to execute (less deviation) — they fly over obstacles.
+        // GROUND passes are harder — they must navigate through traffic.
+        double heightMultiplier = passHeight == PassHeight.AIR ? 0.7 : 1.0;
+
         double maxDeviation = Math.min(
-                (20 - skill) * PASS_DEVIATION_PER_SKILL_POINT * lengthMultiplier,
-                Math.max(0.15, length * 0.65));
+                (20 - skill) * PASS_DEVIATION_PER_SKILL_POINT * lengthMultiplier * heightMultiplier,
+                Math.max(0.15, length * 0.30));
 
         double dirRow = length < 1e-9 ? 0 : dy / length;
         double dirCol = length < 1e-9 ? 1 : dx / length;
         double sideRow = -dirCol;
         double sideCol = dirRow;
 
-        double lateralMultiplier = passHeight == PassHeight.AIR ? 1.4 : 1.0;
-
         double longitudinal = (random.nextDouble() * 2 - 1) * maxDeviation;
-        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 0.35 * lateralMultiplier;
+        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 1.20;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
+        // Allow ball to land OUTSIDE pitch boundaries on SIDELINES (for throw-ins)
+        // but keep end-line overshoot very small (fewer goal kicks).
+        // Sidelines: allow up to 1.0 cells past → throw-ins 15-25/match
+        // End lines: allow only 0.15 cells past → goal kicks 8-12/match
         Position actualTarget = new Position(
-                SimUtils.clamp(actualRow, 0, 8),
-                SimUtils.clamp(actualCol, 0, 7));
+                SimUtils.clamp(actualRow, 0.92, 7.08),
+                SimUtils.clamp(actualCol, -0.5, 7.5));
 
         boolean received;
         if (passLength == PassLength.THRU) {
@@ -74,8 +80,8 @@ public class ExecutionQuality {
         return new PassResult(skill, actualTarget, received, passLength, passHeight);
     }
 
-    public ShotResult evaluateShot(Position goalPosition) {
-        int skill = random.nextInt(20) + 1;
+    public ShotResult evaluateShot(Position goalPosition, int carrierStrikerSkill) {
+        int skill = Math.max(1, Math.min(20, carrierStrikerSkill));
         double maxDeviation = (20 - skill) * SHOT_DEVIATION_PER_SKILL_POINT;
         double deviation = random.nextDouble() * maxDeviation;
         double angle = random.nextDouble() * 2 * Math.PI;

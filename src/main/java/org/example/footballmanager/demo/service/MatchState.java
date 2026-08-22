@@ -60,7 +60,10 @@ public class MatchState {
     private boolean restartPassToHomeGoalkeeper;
     private int actionDelayTicks;
     private int restartHoldTicks;
+    private boolean setPiecePending; // free kick, goal kick, throw-in, corner — CARRY not allowed
     private final Map<Player, Integer> duelCooldownTicks = new HashMap<>();
+    private final Map<String, Integer> playerYellowCards = new HashMap<>();
+    private final Map<String, String> playerTeamCache = new HashMap<>();
     private boolean pendingCorner;
     private boolean pendingCornerRight;
     private Player cornerTaker;
@@ -70,6 +73,7 @@ public class MatchState {
     private boolean kickoffPending = true;
     private boolean kickoffActionPending = false;
     private int cornerHoldTicks;
+    private long thruBallArrivalTick = -1;  // tick when THRU ball arrived; -1 = not waiting
     private final Set<Player> activeChasers = new HashSet<>();
     private final List<GoalRecord> goals = new ArrayList<>();
 
@@ -201,7 +205,7 @@ public class MatchState {
     public void startSecondHalf() {
         if (!halfTime) return;
         halfTime = false;
-        matchTicks = 46 * MATCH_TICKS_PER_MINUTE;
+        matchTicks = 45 * MATCH_TICKS_PER_MINUTE; // Start second half at 45:00, not 46:00
         kickoffTeam = "AWAY";
         kickoffPending = true;
         status = "SECOND HALF";
@@ -239,11 +243,31 @@ public class MatchState {
     public void clearActiveChasers() { activeChasers.clear(); }
     public void setActiveChasers(Player first, Player second) {
         activeChasers.clear();
-        if (first != null) activeChasers.add(first);
-        if (second != null) activeChasers.add(second);
+        Position ballPos = ball.getPosition();
+        if (first != null) {
+            activeChasers.add(first);
+            first.setTarget(ballPos);
+        }
+        if (second != null) {
+            activeChasers.add(second);
+            second.setTarget(ballPos);
+        }
     }
     public boolean isActiveChaser(Player player) { return activeChasers.contains(player); }
     public Set<Player> getActiveChasers() { return Set.copyOf(activeChasers); }
+
+    /** Add a single player as an active chaser without clearing existing chasers. */
+    public void addActiveChaser(Player player) {
+        if (player != null) {
+            activeChasers.add(player);
+            player.setTarget(ball.getPosition());
+        }
+    }
+
+    /** Remove a single player from the active chasers set. */
+    public void removeActiveChaser(Player player) {
+        if (player != null) activeChasers.remove(player);
+    }
 
     // --- Duel cooldown ---
 
@@ -258,6 +282,22 @@ public class MatchState {
         duelCooldownTicks.entrySet().removeIf(entry -> entry.getValue() == 0);
     }
 
+    // --- Substitution ---
+
+    /**
+     * Add a substitute player to the match, replacing an injured/sent-off player.
+     * The substitute inherits the replaced player's position and tactical role.
+     */
+    public void addSubstitute(Player substitute, Player replaced) {
+        players.add(substitute);
+        initialPositions.add(replaced.getPosition());
+        substitute.setPosition(replaced.getPosition());
+        roundStartPositions.put(substitute, replaced.getPosition());
+        roundEndPositions.put(substitute, replaced.getPosition());
+        desiredPositions.put(substitute, replaced.getPosition());
+        tacticalDesiredPositions.put(substitute, replaced.getPosition());
+    }
+
     // --- Corner ---
 
     public boolean isPendingCorner() { return pendingCorner; }
@@ -270,6 +310,8 @@ public class MatchState {
     public void setCornerTeam(String team) { cornerTeam = team; }
     public int getCornerHoldTicks() { return cornerHoldTicks; }
     public void setCornerHoldTicks(int ticks) { cornerHoldTicks = Math.max(0, ticks); }
+    public long getThruBallArrivalTick() { return thruBallArrivalTick; }
+    public void setThruBallArrivalTick(long tick) { thruBallArrivalTick = tick; }
     public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
 
     // --- Restart ---
@@ -290,6 +332,8 @@ public class MatchState {
     public int getRestartHoldTicks() { return restartHoldTicks; }
     public void setRestartHoldTicks(int ticks) { restartHoldTicks = Math.max(0, ticks); }
     public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
+    public boolean isSetPiecePending() { return setPiecePending; }
+    public void setSetPiecePending(boolean value) { setPiecePending = value; }
 
     // --- Round tracking ---
 
@@ -380,12 +424,33 @@ public class MatchState {
         status = "ready";
     }
 
+    public int incrementYellowCards(String playerId) {
+        int count = playerYellowCards.getOrDefault(playerId, 0) + 1;
+        playerYellowCards.put(playerId, count);
+        return count;
+    }
+
+    public int getYellowCardCount(String playerId) {
+        return playerYellowCards.getOrDefault(playerId, 0);
+    }
+
+    public void cachePlayerTeam(String playerId, String team) {
+        playerTeamCache.put(playerId, team);
+    }
+
+    public String getPlayerTeam(String playerId) {
+        return playerTeamCache.get(playerId);
+    }
+
     private void resetPositionsOnly() {
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             p.setPosition(initialPositions.get(i));
             p.setTarget(null);
-            p.setLocked(false);
+            // Do NOT unlock sent-off (red card) or injured players at half-time
+            if (!p.isSentOff() && !p.isInjured()) {
+                p.setLocked(false);
+            }
             p.setVelX(0);
             p.setVelY(0);
         }
@@ -411,6 +476,7 @@ public class MatchState {
         cornerTaker = null;
         cornerTeam = null;
         cornerHoldTicks = 0;
+        thruBallArrivalTick = -1;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();
