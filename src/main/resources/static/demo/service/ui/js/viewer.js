@@ -1,8 +1,10 @@
 /**
  * TIFO Demo Service — Match Viewer
  *
- * Horizontal pitch: HOME left (row 1), AWAY right (row 7).
- * ALL events shown in timeline. Smooth interpolated player positions.
+ * Horizontal pitch: HOME left (row 1), attacks left→right (rows 1→7).
+ * AWAY right (row 7), attacks right→left (rows 7→1).
+ * Playing field: rows 1-7, cols 1-6. Rows 0,8 + cols 0,7 = out-of-bounds.
+ * Smooth interpolated player positions.
  */
 
 /* ═══════════════════════════════════════════════════════════════
@@ -15,10 +17,16 @@ const GK_COLOR = '#f0b429';
 const BALL_COLOR = '#ffffff';
 const BALL_SHADOW = 'rgba(0,0,0,.35)';
 const PITCH_GREEN = '#3a7d44';
+const PITCH_OOB = '#2d6a35';      // out-of-bounds area (darker)
 const PITCH_STRIPE = 'rgba(255,255,255,.04)';
 const PITCH_LINE = 'rgba(255,255,255,.55)';
+// Grid: 9 rows (0-8) x 8 cols (0-7). Playing field = rows 1-7, cols 1-6.
 const GRID_ROWS = 9;
 const GRID_COLS = 8;
+const FIELD_ROW_MIN = 1;
+const FIELD_ROW_MAX = 7;
+const FIELD_COL_MIN = 1;
+const FIELD_COL_MAX = 6;
 const CELL_W = 90;
 const CELL_H = 80;
 
@@ -110,6 +118,14 @@ function formatEventDesc(ev) {
 
 /* ═══════════════════════════════════════════════════════════════
    PITCH RENDERER
+
+   Grid: 9 rows × 8 cols (0-indexed).
+   row → X axis (horizontal), col → Y axis (vertical).
+   Playing field: rows 1-7, cols 1-6.
+   Rows 0, 8 and cols 0, 7 = out-of-bounds (corners, goals, etc).
+
+   HOME left (row 1), attacks → right (row 7).
+   AWAY right (row 7), attacks → left (row 1).
    ═══════════════════════════════════════════════════════════════ */
 class PitchRenderer {
   constructor(canvas) {
@@ -138,8 +154,8 @@ class PitchRenderer {
   toCanvas(row, col) {
     const pitchW = (GRID_ROWS - 1) * CELL_W;
     const pitchH = (GRID_COLS - 1) * CELL_H;
-    const x = this.margin.left + (row / 8) * pitchW;
-    const y = this.margin.top + (col / 7) * pitchH;
+    const x = this.margin.left + (row / (GRID_ROWS - 1)) * pitchW;
+    const y = this.margin.top + (col / (GRID_COLS - 1)) * pitchH;
     return [x, y];
   }
 
@@ -148,61 +164,109 @@ class PitchRenderer {
     const pw = (GRID_ROWS - 1) * CELL_W;
     const ph = (GRID_COLS - 1) * CELL_H;
     const [ox, oy] = this.toCanvas(0, 0);
+    const canvasW = this.canvas.width / this.scale;
+    const canvasH = this.canvas.height / this.scale;
 
+    // Background
     ctx.fillStyle = '#0e1117';
-    ctx.fillRect(0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
-    ctx.fillStyle = PITCH_GREEN;
+    // OOB area (darker green behind the field)
+    ctx.fillStyle = PITCH_OOB;
     ctx.fillRect(ox, oy, pw, ph);
 
-    for (let r = 0; r < 8; r += 2) {
+    // Playing field (rows 1-7, cols 1-6) — brighter green
+    const [fx1, fy1] = this.toCanvas(FIELD_ROW_MIN, FIELD_COL_MIN);
+    const [fx2, fy2] = this.toCanvas(FIELD_ROW_MAX, FIELD_COL_MAX);
+    ctx.fillStyle = PITCH_GREEN;
+    ctx.fillRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
+
+    // Stripes on playing field only
+    for (let r = FIELD_ROW_MIN; r < FIELD_ROW_MAX; r += 2) {
       const [sx] = this.toCanvas(r, 0);
       const [ex] = this.toCanvas(r + 1, 0);
       ctx.fillStyle = PITCH_STRIPE;
-      ctx.fillRect(sx, oy, ex - sx, ph);
+      ctx.fillRect(sx, fy1, ex - sx, fy2 - fy1);
     }
 
+    // Field boundary (touchlines + goal lines)
     ctx.strokeStyle = PITCH_LINE;
     ctx.lineWidth = 2;
-    ctx.strokeRect(ox, oy, pw, ph);
+    ctx.strokeRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
 
+    // Center line
     const [cx] = this.toCanvas(4, 0);
     ctx.beginPath();
-    ctx.moveTo(cx, oy);
-    ctx.lineTo(cx, oy + ph);
+    ctx.moveTo(cx, fy1);
+    ctx.lineTo(cx, fy2);
     ctx.stroke();
 
+    // Center circle (radius ~9.15m ≈ 0.55 rows)
     const [ccx, ccy] = this.toCanvas(4, 3.5);
+    const circleR = 0.55 * CELL_W;
     ctx.beginPath();
-    ctx.ellipse(ccx, ccy, 1.5 * CELL_W, 1.2 * CELL_H, 0, 0, Math.PI * 2);
+    ctx.ellipse(ccx, ccy, circleR, circleR * (CELL_H / CELL_W), 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath();
     ctx.arc(ccx, ccy, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    this._box(ctx, 0, 1.5, 2.0, 6.5);
-    this._box(ctx, 6.0, 1.5, 8.0, 6.5);
-    this._box(ctx, 0, 2.5, 1.2, 5.5);
-    this._box(ctx, 6.8, 2.5, 8.0, 5.5);
-    const [p1x, p1y] = this.toCanvas(1.2, 3.5);
-    const [p2x, p2y] = this.toCanvas(6.8, 3.5);
+    // Penalty areas (16.5m ≈ 1 row deep, 40.3m ≈ 3.6 cols wide)
+    // HOME penalty: rows 1-3, cols ~1.2-5.8
+    this._box(ctx, 1, 1.2, 3, 5.8);
+    // AWAY penalty: rows 5-7, cols ~1.2-5.8
+    this._box(ctx, 5, 1.2, 7, 5.8);
+
+    // Goal areas (5.5m ≈ 0.33 rows deep, 18.3m ≈ 1.6 cols wide)
+    // HOME goal area: rows 1-1.5, cols ~1.95-5.05
+    this._box(ctx, 1, 1.95, 1.5, 5.05);
+    // AWAY goal area: rows 6.5-7, cols ~1.95-5.05
+    this._box(ctx, 6.5, 1.95, 7, 5.05);
+
+    // Penalty spots (11m ≈ 0.66 rows from goal line)
+    const [p1x, p1y] = this.toCanvas(1.66, 3.5);
+    const [p2x, p2y] = this.toCanvas(6.34, 3.5);
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath(); ctx.arc(p1x, p1y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(p2x, p2y, 3, 0, Math.PI * 2); ctx.fill();
 
-    this._goal(ctx, 0, 3.5, 'left');
-    this._goal(ctx, 8, 3.5, 'right');
+    // Penalty arcs (outside penalty area)
+    const arcR = 0.55 * CELL_W;
+    // HOME arc (at row 3, only the part outside penalty area)
+    ctx.beginPath();
+    ctx.ellipse(p1x, p1y, arcR, arcR * (CELL_H / CELL_W), 0, -0.7, 0.7);
+    ctx.stroke();
+    // AWAY arc
+    ctx.beginPath();
+    ctx.ellipse(p2x, p2y, arcR, arcR * (CELL_H / CELL_W), 0, Math.PI - 0.7, Math.PI + 0.7);
+    ctx.stroke();
 
+    // Goals (nets behind the goal lines)
+    this._goal(ctx, 1, 3.5, 'left');
+    this._goal(ctx, 7, 3.5, 'right');
+
+    // Team labels
     ctx.font = 'bold 11px system-ui';
     ctx.textAlign = 'center';
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = HOME_COLOR;
-    const [hl, hly] = this.toCanvas(0.5, 0.3);
+    const [hl, hly] = this.toCanvas(0.5, 0.5);
     ctx.fillText('HOME', hl, hly);
     ctx.fillStyle = AWAY_COLOR;
-    const [al, aly] = this.toCanvas(7.5, 0.3);
+    const [al, aly] = this.toCanvas(7.5, 0.5);
     ctx.fillText('AWAY', al, aly);
+    ctx.globalAlpha = 1;
+
+    // Attack direction arrows (subtle)
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = HOME_COLOR;
+    ctx.font = '24px system-ui';
+    const [ar1x, ar1y] = this.toCanvas(3, 3.5);
+    ctx.fillText('▶', ar1x, ar1y);
+    ctx.fillStyle = AWAY_COLOR;
+    const [ar2x, ar2y] = this.toCanvas(5, 3.5);
+    ctx.fillText('◀', ar2x, ar2y);
     ctx.globalAlpha = 1;
   }
 
@@ -216,8 +280,8 @@ class PitchRenderer {
 
   _goal(ctx, row, col, side) {
     const [gx, gy] = this.toCanvas(row, col);
-    const goalH = 2.0 * CELL_H;
-    const depth = 12;
+    const goalH = 1.5 * CELL_H;
+    const depth = 14;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -347,7 +411,7 @@ class MatchViewer {
     this._displayedEventIdx = 0;
     this._prevGoalCount = [0, 0];
 
-    // Snapshot lookup: index array for O(1) access
+    // Snapshot lookup: O(1) access
     this._snapIndex = null;  // Map<tick, snapshot>
     this._snapTicks = null;  // sorted array of ticks
 
@@ -479,11 +543,9 @@ class MatchViewer {
 
   /* ─── Snapshot interpolation ─── */
 
-  /** Find the snapshot at or before the given tick, plus the next one, and the blend fraction. */
   _interpolateTick(tick) {
     if (!this._snapTicks.length) return null;
 
-    // Binary search for the index of the tick at or before `tick`
     let lo = 0, hi = this._snapTicks.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -503,7 +565,6 @@ class MatchViewer {
     return { snap: snapA, next: snapB, frac: clamp(frac, 0, 1) };
   }
 
-  /** Get interpolated player positions for a fractional tick. */
   _getInterpolatedPlayers(interp) {
     if (!interp || !interp.next) {
       return interp?.snap?.players || [];
@@ -511,17 +572,12 @@ class MatchViewer {
     const a = interp.snap;
     const b = interp.next;
     const t = interp.frac;
-    // Build player map from snap A
     const result = [];
     for (const pa of a.players) {
-      // Find matching player in snap B
       const pb = b.players.find(p => p.id === pa.id);
       if (pb) {
         result.push({
-          id: pa.id,
-          label: pa.label,
-          team: pa.team,
-          role: pa.role,
+          id: pa.id, label: pa.label, team: pa.team, role: pa.role,
           row: lerp(pa.position.row, pb.position.row, t),
           col: lerp(pa.position.column, pb.position.column, t),
         });
@@ -535,7 +591,6 @@ class MatchViewer {
     return result;
   }
 
-  /** Get interpolated ball position. */
   _getInterpolatedBall(interp) {
     if (!interp) return null;
     const a = interp.snap.ballPosition;
@@ -546,10 +601,8 @@ class MatchViewer {
     return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t) };
   }
 
-  /** Get carrier ID for the current interpolation point. */
   _getCarrierId(interp) {
     if (!interp) return null;
-    // At high interpolation, prefer snap B's carrier
     if (interp.frac > 0.5 && interp.next) return interp.next.ballCarrierId;
     return interp.snap.ballCarrierId;
   }
@@ -588,7 +641,8 @@ class MatchViewer {
     const dt = (now - this._lastFrame) / 1000;
     this._lastFrame = now;
 
-    const ticksPerSec = 40 * this.speed;
+    // 10 ticks/sec at 1x (was 40, halved twice = 10)
+    const ticksPerSec = 10 * this.speed;
     this._tickAccum += dt * ticksPerSec;
 
     const fromTick = this.currentTick;
@@ -637,7 +691,6 @@ class MatchViewer {
 
   /* ─── UI updates ─── */
   _updateScoreboard() {
-    // Find the nearest integer tick for scoreboard state
     const intTick = Math.floor(this.currentTick);
     const snap = this._snapIndex?.get(intTick) || null;
     const hg = snap?.goalCount ?? this._prevGoalCount[0];
@@ -678,8 +731,8 @@ class MatchViewer {
     li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
     ul.appendChild(li);
 
-    const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 100;
-    if (nearBottom) ul.scrollTop = ul.scrollHeight;
+    // Always auto-scroll to bottom
+    ul.scrollTop = ul.scrollHeight;
   }
 
   _buildTimeline() {
@@ -722,7 +775,7 @@ class MatchViewer {
     if (speedSlider) {
       const speeds = [0.25, 0.5, 1, 2, 5];
       speedSlider.max = speeds.length - 1;
-      speedSlider.value = 1;
+      speedSlider.value = 2;  // default = 1x
       const update = () => {
         this.speed = speeds[Number(speedSlider.value)];
         document.getElementById('speedLabel').textContent = this.speed + 'x';
