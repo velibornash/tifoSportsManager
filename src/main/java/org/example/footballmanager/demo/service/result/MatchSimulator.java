@@ -653,17 +653,48 @@ public class MatchSimulator {
                 // ball just changes direction (becomes loose or goes out).
                 Player deflector = findPassDeflector(action, ball.getPosition(), state);
                 if (deflector != null) {
-                    // Deflection — ball becomes loose or goes out of play
+                    // Deflection — ball hits defender's body, changes direction, slows down
                     if (receiver != null) receiver.setLocked(false);
                     stats.onLooseBall();
+
+                    // Calculate deflection: ball bounces off in a perpendicular direction
+                    Position currentPos = ball.getPosition();
+                    Position deflectorPos = deflector.getPosition();
+                    double dx = currentPos.getColumn() - deflectorPos.getColumn();
+                    double dy = currentPos.getRow() - deflectorPos.getRow();
+                    double dist = Math.hypot(dx, dy);
+                    if (dist < 1e-6) { dx = 1; dy = 0; dist = 1; }
+
+                    // Deflection direction: perpendicular to the line from deflector to ball
+                    // Randomly choose left or right perpendicular
+                    double perpRow, perpCol;
+                    if (state.getRandom().nextBoolean()) {
+                        perpRow = -dx / dist;
+                        perpCol = dy / dist;
+                    } else {
+                        perpRow = dx / dist;
+                        perpCol = -dy / dist;
+                    }
+
+                    // Deflection distance: based on ball speed (faster = stronger deflection)
+                    double deflectionDist = 0.5 + action.getPassSpeed() * 0.2;
+                    Position deflectedPos = new Position(
+                            SimUtils.clamp(currentPos.getRow() + perpRow * deflectionDist, 1, 7),
+                            SimUtils.clamp(currentPos.getColumn() + perpCol * deflectionDist, 1, 6));
+
+                    // Ball slows down after deflection (50-70% of original speed)
+                    double newSpeed = action.getPassSpeed() * (0.5 + state.getRandom().nextDouble() * 0.2);
+                    action.setPassSpeed(newSpeed);
+
+                    ball.setPosition(deflectedPos);
                     ball.setCarrier(null);
                     ball.setTarget(null);
                     state.setCarrier(null);
                     actionEngine.complete("DEFLECTED by " + deflector.getLabel());
                     logger.logActionOutcome(state, action,
-                            "DEFLECTED by " + deflector.getLabel() + " — ball loose",
+                            "DEFLECTED by " + deflector.getLabel() + " — ball loose (slowed to "
+                                    + String.format("%.1f", newSpeed) + " cells/tick)",
                             action.getActingPlayer(), deflector, "OUTCOME");
-                    // Ball becomes loose — triggers chase recovery
                     return;
                 }
 
@@ -850,13 +881,16 @@ public class MatchSimulator {
                     "MISS (distToGoal=" + String.format("%.2f", distToGoal) + ")",
                     shooter, null, "OUTCOME");
 
-            // Ball may be out of bounds after a miss
+            // In real football, any shot that misses the goal results in a goal kick
+            // (or corner if deflected). Always award a restart to prevent shoot-loops.
+            String restartTeam = "HOME".equals(shooterTeam) ? "AWAY" : "HOME";
             FootballRulesService.RestartType restart =
                     rulesService.determineRestart(ball.getPosition(), shooterTeam);
-            if (restart != FootballRulesService.RestartType.NONE) {
-                restartManager.handleBallOutOfBounds(stats, restart, ball.getPosition(),
-                        "HOME".equals(shooterTeam) ? "AWAY" : "HOME");
+            if (restart == FootballRulesService.RestartType.NONE) {
+                // Ball is still in bounds — treat as goal kick (real football rule)
+                restart = FootballRulesService.RestartType.GOAL_KICK;
             }
+            restartManager.handleBallOutOfBounds(stats, restart, ball.getPosition(), restartTeam);
         }
     }
 
@@ -935,12 +969,10 @@ public class MatchSimulator {
                 logger.logInfo(state, "Shot duel won by " + attacker.getLabel()
                         + " — shot continues toward goal", "DUEL", attacker);
             } else if (duelType == DuelType.DRIBBLE) {
-                stats.onInterception(attacker.getId());
                 actionEngine.giveBallTo(attacker, "dribble won past " + defender.getLabel());
             } else if (duelType == DuelType.RECEIVE_PASS) {
                 actionEngine.giveBallTo(attacker, "contested catch won");
             } else if (duelType == DuelType.CHASE_BALL) {
-                stats.onInterception(attacker.getId());
                 actionEngine.giveBallTo(attacker, "loose ball recovered");
                 logger.logChaseWinner(state, attacker, "CHASE");
             } else {
@@ -968,77 +1000,111 @@ public class MatchSimulator {
     }
 
     /**
-     * Find a defender who can intercept a pass in flight.
-     * AIR passes are harder to intercept — need to be closer and have aerial skill.
-     * GROUND passes are easier to intercept — standard interception radius.
+     * Find a defender who can INTERCEPT a pass — NAMERNO presecanje.
+     * 
+     * Interception requires:
+     * 1. HIGH playmaking (≥12) — defender VIDI da će pas ići tamo (čita igru)
+     * 2. HIGH defending (≥12) — defender ima veštinu da stigne do lopte
+     * 3. Blizu putanje lopte — mora biti u blizini
+     * 4. Brzina lopte — sporija lopta = lakše presecanje
+     * 
+     * Ako defanzivac NEMA visok plej, to NIJE interception — to je DEFLECTION.
      */
     private Player findPassInterceptor(Action action, Position ballPos, MatchState state) {
         if (action.getActingPlayer() == null) return null;
         String passingTeam = action.getActingPlayer().getTeam();
         PassHeight passHeight = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
+        double passSpeed = action.getPassSpeed(); // 1.0 to 3.0
 
-        // AIR passes: interceptor must be closer (0.6 cells) — ball is in the air
-        // GROUND passes: normal radius (1.0 cells)
-        double interceptRadius = passHeight == PassHeight.AIR ? 0.6 : 1.0;
+        // Speed modifier: sporija lopta = više vremena za reakciju = lakše presecanje
+        // Brza lopta (3.0) → modifier 0.2, Spora lopta (1.0) → modifier 1.0
+        double speedModifier = Math.max(0.2, 1.0 - (passSpeed - 1.0) / 2.5);
+
+        // AIR passes: interceptor must be closer — ball is in the air
+        double interceptRadius = passHeight == PassHeight.AIR ? 0.6 : 0.8;
 
         Player best = null;
         double bestDist = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
             if (p.getTeam().equals(passingTeam)) continue;
             if ("GK".equals(p.getRole())) continue;
-            if (p.isLocked()) continue;
+            if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+
             double dist = SimUtils.distance(p.getPosition(), ballPos);
-            if (dist < interceptRadius && dist < bestDist) {
-                double skill = p.getSkills().defender() + p.getSkills().technique();
-                // AIR passes: need aerial skill (technique matters more)
-                // GROUND passes: standard interception
-                double interceptChance;
-                if (passHeight == PassHeight.AIR) {
-                    interceptChance = skill / 40.0 * 0.15; // max ~7.5% — harder
-                } else {
-                    interceptChance = skill / 40.0 * 0.30; // max ~15% — easier
-                }
-                if (state.getRandom().nextDouble() < interceptChance) {
-                    best = p;
-                    bestDist = dist;
-                }
+            if (dist >= interceptRadius) continue;
+
+            // KLJUČNO: interception zahteva VISOK plej + VISOK def
+            // Igrač mora da VIDI pas (playmaking ≥ 12) i da IMA VEŠTINU da ga preseče (defending ≥ 12)
+            double playmaking = p.getSkills().playmaking();
+            double defending = p.getSkills().defender();
+
+            // Samo igrači sa visokim plejom i defom mogu NAMERNO da presecaju
+            if (playmaking < 12 || defending < 12) continue;
+
+            // Interception chance = (plej + def) / 40 * speedModifier
+            // Max: (20+20)/40 * 1.0 = 100% za idealne uslove (spora lopta, blizu)
+            // Realno: ~15-25% za dobre igrače
+            double interceptChance = (playmaking + defending) / 40.0 * speedModifier;
+
+            // AIR passes: need aerial skill too
+            if (passHeight == PassHeight.AIR) {
+                interceptChance *= (p.getSkills().technique() / 20.0);
+            }
+
+            if (state.getRandom().nextDouble() < interceptChance && dist < bestDist) {
+                best = p;
+                bestDist = dist;
             }
         }
         return best;
     }
 
     /**
-     * Find a defender who deflects a pass in flight.
-     * AIR passes deflect when near any defender (ball bounces off body/head).
-     * GROUND passes deflect when near a defender (ball hits foot/leg).
-     * Deflection ≠ interception: ball becomes loose, defender doesn't gain possession.
+     * Find a defender who DEFLECTS a pass — SLUČAJNI kontakt.
+     * 
+     * Deflection = lopta udara u defanzivca koji NIJE namerno išao da preseče.
+     * Ovo se dešava kada:
+     * 1. Defanzivac je blizu putanje lopte
+     * 2. Lopta je dovoljno spora da je moguće zakačiti
+     * 3. Defanzivac NEMA visok plej za interception (ili nije blizu dovoljno)
+     * 
+     * Efekat: lopta menja smer, usporava, postaje loose. NE dobija posed.
+     * Brzina lopte utiče na verovatnoću: brza lopta = manja deflection (teže zakačiti)
      */
     private Player findPassDeflector(Action action, Position ballPos, MatchState state) {
         if (action.getActingPlayer() == null) return null;
         String passingTeam = action.getActingPlayer().getTeam();
         PassHeight passHeight = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
+        double passSpeed = action.getPassSpeed();
 
-        // Deflection radius: AIR passes deflect from further (ball is higher, more body contact)
-        // GROUND passes deflect from closer (ball is on the ground, harder to accidentally touch)
-        double deflectionRadius = passHeight == PassHeight.AIR ? 0.7 : 0.4;
+        // Deflection radius: veći za sporije lopte (više vremena za telo)
+        // Brza lopta (3.0) → 0.3 ćelije, Spora lopta (1.0) → 0.6 ćelija
+        double deflectionRadius = 0.3 + (1.0 - (passSpeed - 1.0) / 2.0) * 0.3;
+        if (passHeight == PassHeight.AIR) deflectionRadius += 0.15; // AIR: veći radijus
 
         for (Player p : state.getPlayers()) {
             if (p.getTeam().equals(passingTeam)) continue;
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+
             double dist = SimUtils.distance(p.getPosition(), ballPos);
-            if (dist < deflectionRadius) {
-                // Deflection chance: AIR passes deflect more easily (higher trajectory, more body contact)
-                // GROUND passes deflect less often (ball is lower, harder to accidentally touch)
-                double deflectionChance;
-                if (passHeight == PassHeight.AIR) {
-                    deflectionChance = 0.18; // 18% — AIR passes deflect more
-                } else {
-                    deflectionChance = 0.08; // 8% — GROUND passes deflect less
-                }
-                if (state.getRandom().nextDouble() < deflectionChance) {
-                    return p;
-                }
+            if (dist >= deflectionRadius) continue;
+
+            // Deflection chance: zavisi od brzine lopte i pozicije defanzivca
+            // Brza lopta = manja šansa (teže zakačiti), Spora = veća šansa
+            double baseChance;
+            if (passHeight == PassHeight.AIR) {
+                baseChance = 0.15; // AIR: lopta je viša, više kontakta sa telom
+            } else {
+                baseChance = 0.08; // GROUND: lopta je niza, teže zakačiti
+            }
+
+            // Speed modifier: brza lopta = manja šansa za deflection
+            double speedMod = Math.max(0.3, 1.0 - (passSpeed - 1.0) / 2.0);
+            double deflectionChance = baseChance * speedMod;
+
+            if (state.getRandom().nextDouble() < deflectionChance) {
+                return p;
             }
         }
         return null;

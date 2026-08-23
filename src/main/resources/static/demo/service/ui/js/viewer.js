@@ -391,11 +391,11 @@ class PitchRenderer {
       const isHome = p.team === 'HOME';
       const isGK = p.role === 'GK';
       const isCarrier = carrierId && p.id === carrierId;
-      const r = isGK ? 9 : 7;
+      const r = isGK ? 18 : 14;
 
       if (isCarrier) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 10, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,140,0,.25)';
         ctx.fill();
         ctx.strokeStyle = '#ff8c00';
@@ -412,7 +412,7 @@ class PitchRenderer {
       ctx.stroke();
 
       ctx.fillStyle = '#fff';
-      ctx.font = `bold ${isGK ? 8 : 7}px system-ui`;
+      ctx.font = `bold ${isGK ? 14 : 12}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const num = p.label.replace(/.*\s/, '');
@@ -425,11 +425,11 @@ class PitchRenderer {
     const ctx = this.ctx;
     const [x, y] = this.toCanvas(pos.row, pos.column);
     ctx.beginPath();
-    ctx.arc(x + 1, y + 2, 6, 0, Math.PI * 2);
+    ctx.arc(x + 1, y + 2, 8, 0, Math.PI * 2);
     ctx.fillStyle = BALL_SHADOW;
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
     ctx.fillStyle = BALL_COLOR;
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.3)';
@@ -762,8 +762,8 @@ class MatchViewer {
       // Overlay just dismissed — resume
     }
 
-    // 15 ticks/sec at 1x (was 10, increased for faster match playback)
-    const ticksPerSec = 15 * this.speed;
+    // 1.875 ticks/sec at 1x (half of old 0.25x rate for realistic pacing)
+    const ticksPerSec = 1.875 * this.speed;
     this._tickAccum += dt * ticksPerSec;
 
     const fromTick = this.currentTick;

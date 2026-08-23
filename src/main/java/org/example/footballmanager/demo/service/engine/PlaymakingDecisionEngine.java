@@ -194,7 +194,7 @@ public class PlaymakingDecisionEngine {
                 teammates, opponents, pressure, danger, fieldPosition,
                 carrier.getSkills().playmaking(),
                 home, isGoalkeeper, inFinalThird, onWing, inOpponentHalf, canShoot, isKickoff,
-                new ArrayList<>());
+                state.getMatchTicks(), new ArrayList<>());
     }
 
     private List<DecisionOption> generateOptions(DecisionContext ctx) {
@@ -535,6 +535,13 @@ public class PlaymakingDecisionEngine {
         }
         double score = goalProximity + shootingSpace + strikerQuality - pressure
                 + attackerBonus + boxBonus + pressureToShoot - freshReceivePenalty;
+
+        // Shot cooldown: penalize if player shot recently (100 ticks = ~2.5 min)
+        int ticksSinceShot = ctx.matchTick() - carrier.getLastShotTick();
+        if (ticksSinceShot < 100) {
+            score -= 30.0; // absolute penalty — prevents re-shooting too quickly
+        }
+
         if (distanceToGoal > 4.0) {
             score -= 15.0;
         }

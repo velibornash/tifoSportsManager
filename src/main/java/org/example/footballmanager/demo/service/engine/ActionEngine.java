@@ -213,6 +213,11 @@ public class ActionEngine {
         action.setGoodExecution(received);
         action.setPassLength(passLength);
         action.setPassHeight(passHeight);
+        // Pass speed: high passing skill = fast ball (1.0 to 3.0 cells/tick)
+        // Fast balls are harder to intercept/deflect; slow balls are easier
+        double passSkill = carrier.getSkills().passing();
+        double passSpeed = 1.0 + (passSkill / 20.0) * 2.0; // skill 1→1.1, skill 20→3.0
+        action.setPassSpeed(passSpeed);
 
         state.getBall().setCarrier(null);
         state.getBall().setTarget(flightTarget);
@@ -498,6 +503,7 @@ public class ActionEngine {
         state.setCarrier(null);
         state.incrementActionCount();
         state.incrementShotCount();
+        carrier.setLastShotTick(state.getMatchTicks());
     }
 
     public boolean pickupPass() {

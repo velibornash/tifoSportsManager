@@ -35,6 +35,14 @@ The engine must therefore model the relationship between:
 
 # 2. Core Design Principles
 
+## 2.0 Football Authenticity Over Statistical Targets
+
+**The primary goal is that football actions are justified and realistic — not that statistics match exact targets.**
+
+Goals up to 5.5/match are acceptable. Corners, offsides, shots — if they result from sound football logic, they are correct even if slightly above real-world averages. What matters is that every action (shot, pass, cross, tackle, offside call) is **football-justified** — a player shoots because they are in a good position, not because the engine forces a random shot. A corner happens because the ball was deflected over the line by a defender under pressure, not because a counter says "we need more corners."
+
+> **TL;DR: Football-justified actions > statistical accuracy.**
+
 ## 2.1 The simulator is state-first
 
 The authoritative source of truth is the current match state.

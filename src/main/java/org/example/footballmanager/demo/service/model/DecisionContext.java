@@ -23,5 +23,6 @@ public record DecisionContext(
         boolean inOpponentHalf,
         boolean canShoot,
         boolean isKickoff,
+        int matchTick,
         List<DecisionOption> options
 ) {}

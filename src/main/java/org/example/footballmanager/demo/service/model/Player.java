@@ -28,6 +28,7 @@ public class Player {
     private double fatigue; // 0.0 = fresh, 1.0 = exhausted
     private int consecutiveOffsideCount; // offside retreat: 3+ triggers override
     private int consecutiveCarries; // track consecutive carries to prevent over-dribbling
+    private int lastShotTick = -100; // cooldown: prevent rapid re-shots after miss/save
 
     public Player(String id, String label, String team, String role,
                   Position position, Position alternativePosition, PlayerSkills skills) {
@@ -117,6 +118,9 @@ public class Player {
     public int getConsecutiveCarries() { return consecutiveCarries; }
     public void incrementConsecutiveCarries() { this.consecutiveCarries++; }
     public void resetConsecutiveCarries() { this.consecutiveCarries = 0; }
+
+    public int getLastShotTick() { return lastShotTick; }
+    public void setLastShotTick(int tick) { this.lastShotTick = tick; }
 
     public int heightSkill() {
         return Math.max(1, Math.min(20, (int) Math.round((heightCm - 160) / 2.0)));

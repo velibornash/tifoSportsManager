@@ -10,9 +10,9 @@ import java.util.Random;
  */
 public class ExecutionQuality {
 
-    private static final double PASS_DEVIATION_PER_SKILL_POINT = 0.10;
+    private static final double PASS_DEVIATION_PER_SKILL_POINT = 0.09;
     private static final double SHOT_DEVIATION_PER_SKILL_POINT = 0.22;
-    private static final double PASS_SUCCESS_THRESHOLD = 1.5;
+    private static final double PASS_SUCCESS_THRESHOLD = 2.0;
     public static final double THRU_SUCCESS_THRESHOLD = 2.0;
     public static final double SHOT_GOAL_THRESHOLD = 0.25;
 
@@ -58,8 +58,9 @@ public class ExecutionQuality {
         double sideCol = dirRow;
 
         double longitudinal = (random.nextDouble() * 2 - 1) * maxDeviation;
-        // Lateral deviation 5.0x — pushes passes past the sideline for throw-ins (15-25/match).
-        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 5.0;
+        // Lateral deviation 2.5x — skill 10+ passers succeed (~70-75% completion),
+        // skill <5 passers fail (realistic for poor passers).
+        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 2.5;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;

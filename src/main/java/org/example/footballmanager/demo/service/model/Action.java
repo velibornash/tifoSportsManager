@@ -27,6 +27,7 @@ public class Action {
     private boolean clearance;
     private PassLength passLength = PassLength.SHORT;
     private PassHeight passHeight = PassHeight.GROUND;
+    private double passSpeed = 2.0; // cells/tick — based on passer's passing skill
 
     private int chaseTicks;
     private double chaseLastDistance = Double.NaN;
@@ -95,6 +96,8 @@ public class Action {
     public void setPassLength(PassLength passLength) { this.passLength = passLength; }
     public PassHeight getPassHeight() { return passHeight; }
     public void setPassHeight(PassHeight passHeight) { this.passHeight = passHeight; }
+    public double getPassSpeed() { return passSpeed; }
+    public void setPassSpeed(double passSpeed) { this.passSpeed = passSpeed; }
     public int getChaseTicks() { return chaseTicks; }
     public int getChaseNoProgressTicks() { return chaseNoProgressTicks; }
 
