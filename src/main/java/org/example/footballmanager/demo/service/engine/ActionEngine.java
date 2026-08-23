@@ -13,7 +13,7 @@ import java.util.Locale;
  */
 public class ActionEngine {
 
-    public static final int SHOOT_MIN_ROW = 4;
+    public static final int SHOOT_MIN_ROW = 6; // shots only in last 2 rows (~30m from goal)
     public static final Position GOAL_POSITION = new Position(7, 3.5);
     public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
     public static final Position PENALTY_SPOT_HOME = new Position(6, 3.5);

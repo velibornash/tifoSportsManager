@@ -96,11 +96,10 @@ public class RestartManager {
                                       FootballRulesService.RestartType restart,
                                       Position ballPos, String lastTouchTeam) {
         String defendingTeam = "HOME".equals(lastTouchTeam) ? "AWAY" : "HOME";
-        // For goal kicks, the restart team is lastTouchTeam (team whose goal
-        // the ball went out near). For corners/throw-ins, it's defendingTeam
-        // (team that didn't touch the ball last).
-        String restartTeam = (restart == FootballRulesService.RestartType.GOAL_KICK)
-                ? lastTouchTeam : defendingTeam;
+        // All restarts go to the team that did NOT touch the ball last.
+        // Goal kick: awarded to the team defending the goal the ball went over.
+        // Corner/throw-in: awarded to the team that didn't touch last.
+        String restartTeam = defendingTeam;
         state.setKickoffTeam(restartTeam);
         state.setCelebrating(false);
         // Clear any lingering action / chasers so we get a clean restart

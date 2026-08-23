@@ -43,9 +43,9 @@ public class FootballRulesService {
         if (!inOpponentHalf) return false;
 
         String defendingTeam = home ? "AWAY" : "HOME";
-        // Precision: tolerance of 0.20 cells ≈ 2.8m — real-world VAR tolerance.
+        // Precision: tolerance of 0.15 cells ≈ 2.1m — tight offside line.
         // Defender within this range of the receiver counts as onside.
-        double tolerance = 0.20;
+        double tolerance = 0.15;
         int defendersInFront = 0;
         for (Player p : state.getPlayers()) {
             if (!defendingTeam.equals(p.getTeam())) continue;
@@ -91,9 +91,9 @@ public class FootballRulesService {
                 return RestartType.GOAL_KICK;
             } else {
                 // Defender played ball over end line — corner for attackers
-                // In real football, ~40% of defender clearances over end line yield corners
+                // In real football, ~25% of defender clearances over end line yield corners
                 // (some are goal kicks if clearance goes directly behind the goal)
-                double cornerChance = 0.40;
+                double cornerChance = 0.25;
                 return state.getRandom().nextDouble() < cornerChance
                         ? RestartType.CORNER : RestartType.GOAL_KICK;
             }

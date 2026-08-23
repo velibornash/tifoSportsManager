@@ -58,8 +58,8 @@ public class ExecutionQuality {
         double sideCol = dirRow;
 
         double longitudinal = (random.nextDouble() * 2 - 1) * maxDeviation;
-        // Lateral deviation 3.5x — pushes passes past the sideline for throw-ins (15-25/match).
-        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 3.5;
+        // Lateral deviation 5.0x — pushes passes past the sideline for throw-ins (15-25/match).
+        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 5.0;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;

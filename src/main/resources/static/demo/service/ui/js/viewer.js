@@ -27,8 +27,8 @@ const FIELD_ROW_MIN = 1;
 const FIELD_ROW_MAX = 7;
 const FIELD_COL_MIN = 1;
 const FIELD_COL_MAX = 6;
-const CELL_W = 90;
-const CELL_H = 80;
+const CELL_W = 164;  // 126 * 1.3 — extended 30%
+const CELL_H = 112;  // 80 * 1.4
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
@@ -54,22 +54,22 @@ function matchMinute(tick) {
    EVENT ICONS & CLASSIFICATION
    ═══════════════════════════════════════════════════════════════ */
 const EV_ICON = {
-  GOAL: '⚽', SHOT: '⚽', SHOT_SAVED: '🧤', SHOT_MISSED: '❌',
-  PENALTY_KICK: '🎯', PENALTY_MISS: '❌', PENALTY_SAVED: '🧤',
-  PASS: '➡️', PASS_COMPLETED: '✅', PASS_LOOSE: '💨',
-  CARRY: '🏃', CARRY_COMPLETED: '🏃',
-  DUEL_START: '⚔️', DUEL_RESOLVED: '⚔️', DUEL_WON: '🏆',
-  CROSS: '↗️', CORNER: '🏟️',
-  POSSESSION_CHANGE: '🔄', CHASE: '🏃', CHASE_POSSESSION: '🏃',
-  VAR_OFFSIDE_CONFIRMED: '📺', VAR_OFFSIDE_OVERTURNED: '📺',
-  VAR_GOAL_CONFIRMED: '📺', VAR_GOAL_OVERTURNED: '📺',
-  VAR_RED_CONFIRMED: '📺', VAR_RED_OVERTURNED: '📺',
-  VAR_PENALTY_CONFIRMED: '📺', VAR_PENALTY_OVERTURNED: '📺',
-  YELLOW_CARD: '🟨', RED_CARD: '🟥',
-  FREE_KICK: '🎯', GOAL_KICK: '🧤', THROW_IN: '🤾',
-  DECISION: '🧠', ACTION_EXECUTION: '⚡', ACTION_OUTCOME: '📋',
-  FOUL: '⚠️', CARD: '🟨', RESTART: '🔄', POSSESSION: '📊',
-  INFO: '📝',
+  GOAL: '\u26BD', SHOT: '\u26BD', SHOT_SAVED: '\uD83E\uDD25', SHOT_MISSED: '\u274C',
+  PENALTY_KICK: '\uD83C\uDFAF', PENALTY_MISS: '\u274C', PENALTY_SAVED: '\uD83E\uDD25',
+  PASS: '\u27A1\uFE0F', PASS_COMPLETED: '\u2705', PASS_LOOSE: '\uD83D\uDCA8',
+  CARRY: '\uD83C\uDFC3', CARRY_COMPLETED: '\uD83C\uDFC3',
+  DUEL_START: '\u2694\uFE0F', DUEL_RESOLVED: '\u2694\uFE0F', DUEL_WON: '\uD83C\uDFC6',
+  CROSS: '\u2197\uFE0F', CORNER: '\uD83C\uDFDF\uFE0F',
+  POSSESSION_CHANGE: '\uD83D\uDD04', CHASE: '\uD83C\uDFC3', CHASE_POSSESSION: '\uD83C\uDFC3',
+  VAR_OFFSIDE_CONFIRMED: '\uD83D\uDCFA', VAR_OFFSIDE_OVERTURNED: '\uD83D\uDCFA',
+  VAR_GOAL_CONFIRMED: '\uD83D\uDCFA', VAR_GOAL_OVERTURNED: '\uD83D\uDCFA',
+  VAR_RED_CONFIRMED: '\uD83D\uDCFA', VAR_RED_OVERTURNED: '\uD83D\uDCFA',
+  VAR_PENALTY_CONFIRMED: '\uD83D\uDCFA', VAR_PENALTY_OVERTURNED: '\uD83D\uDCFA',
+  YELLOW_CARD: '\uD83D\uDFE8', RED_CARD: '\uD83D\uDD34',
+  FREE_KICK: '\uD83C\uDFAF', GOAL_KICK: '\uD83E\uDD25', THROW_IN: '\uD83E\uDD39',
+  DECISION: '\uD83E\uDDE0', ACTION_EXECUTION: '\u26A1', ACTION_OUTCOME: '\uD83D\uDCCB',
+  FOUL: '\u26A0\uFE0F', CARD: '\uD83D\uDFE8', RESTART: '\uD83D\uDD04', POSSESSION: '\uD83D\uDCCA',
+  INFO: '\uD83D\uDCDD',
 };
 
 const IMPORTANT_EVENTS = new Set([
@@ -114,6 +114,91 @@ function formatEventDesc(ev) {
     return `${ev.team}: ${ev.description || ev.type}`;
   }
   return ev.description || ev.type || '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   OVERLAY SYSTEM — Halftime, Fulltime, VAR, Goal
+   ═══════════════════════════════════════════════════════════════ */
+class OverlayManager {
+  constructor() {
+    this._el = document.getElementById('overlay');
+    this._textEl = document.getElementById('overlayText');
+    this._subEl = document.getElementById('overlaySub');
+    this._active = false;
+    this._resumeTime = 0;
+    this._type = null;
+    this._goalAnim = null;   // { tick, team, startRealTime }
+  }
+
+  get isActive() { return this._active; }
+  get resumeTime() { return this._resumeTime; }
+
+  /** Show halftime overlay for 12 real seconds */
+  showHalftime(homeName, awayName, homeScore, awayScore) {
+    this._type = 'halftime';
+    this._textEl.textContent = 'HALF TIME';
+    this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
+    this._el.className = 'overlay visible halftime';
+    this._active = true;
+    this._resumeTime = performance.now() + 12000; // 12 seconds
+  }
+
+  /** Show full-time overlay (stays visible, no auto-dismiss) */
+  showFulltime(homeName, awayName, homeScore, awayScore) {
+    this._type = 'fulltime';
+    this._textEl.textContent = 'FULL TIME';
+    this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
+    this._el.className = 'overlay visible fulltime';
+    this._active = true;
+    this._resumeTime = Infinity; // never auto-dismiss
+  }
+
+  /** Show VAR review overlay for a duration in real ms */
+  showVAR(reviewText, durationMs) {
+    this._type = 'var';
+    this._textEl.textContent = 'VAR REVIEW';
+    this._subEl.textContent = reviewText;
+    this._el.className = 'overlay visible var-review';
+    this._active = true;
+    this._resumeTime = performance.now() + durationMs;
+  }
+
+  /** Show goal overlay with ball animation */
+  showGoal(team, homeName, awayName, homeScore, awayScore) {
+    this._type = 'goal';
+    this._textEl.textContent = '\u26BD GOAL!';
+    this._subEl.textContent = `${team === 'HOME' ? homeName : awayName} ${homeScore} - ${awayScore} ${team === 'HOME' ? awayName : homeName}`;
+    this._el.className = 'overlay visible goal';
+    this._active = true;
+    this._resumeTime = performance.now() + 6000; // 6 seconds
+    this._goalAnim = { team, startRealTime: performance.now() };
+  }
+
+  getGoalAnimProgress() {
+    if (!this._goalAnim) return null;
+    const elapsed = (performance.now() - this._goalAnim.startRealTime) / 6000;
+    if (elapsed > 1) { this._goalAnim = null; return null; }
+    return { team: this._goalAnim.team, t: clamp(elapsed, 0, 1) };
+  }
+
+  /** Dismiss overlay early */
+  dismiss() {
+    this._el.className = 'overlay';
+    this._active = false;
+    this._type = null;
+    this._goalAnim = null;
+  }
+
+  /** Check if auto-dismiss timer has elapsed */
+  checkAutoDismiss() {
+    if (!this._active) return false;
+    if (this._resumeTime === Infinity) return false;
+    if (performance.now() >= this._resumeTime) {
+      this.dismiss();
+      return true; // dismissed
+    }
+    return false;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -263,10 +348,10 @@ class PitchRenderer {
     ctx.fillStyle = HOME_COLOR;
     ctx.font = '24px system-ui';
     const [ar1x, ar1y] = this.toCanvas(3, 3.5);
-    ctx.fillText('▶', ar1x, ar1y);
+    ctx.fillText('\u25B6', ar1x, ar1y);
     ctx.fillStyle = AWAY_COLOR;
     const [ar2x, ar2y] = this.toCanvas(5, 3.5);
-    ctx.fillText('◀', ar2x, ar2y);
+    ctx.fillText('\u25C0', ar2x, ar2y);
     ctx.globalAlpha = 1;
   }
 
@@ -352,37 +437,52 @@ class PitchRenderer {
     ctx.stroke();
   }
 
-  drawEventFlash(event) {
-    if (!event) return;
+  drawGoalAnim(goalAnim) {
+    if (!goalAnim) return;
     const ctx = this.ctx;
-    const [x, y] = this.toCanvas(4, 3.5);
-    const t = event._age || 0;
-    if (t > 1) return;
-    const alpha = Math.max(0, 1 - t);
-    if (event.type === 'GOAL') {
-      for (let i = 0; i < 3; i++) {
-        const phase = i / 3 + (1 - t) * 0.5;
-        const r = 40 + phase * 200;
+    const t = goalAnim.t;
+    const isHome = goalAnim.team === 'HOME';
+
+    // Ball travels from center toward the goal
+    const goalRow = isHome ? 7 : 1;
+    const [gx, gy] = this.toCanvas(goalRow, 3.5);
+    const [sx, sy] = this.toCanvas(4, 3.5);
+    const ballX = lerp(sx, gx, t);
+    const ballY = lerp(sy, gy, t);
+
+    // Draw the animated ball (white, glowing)
+    const ballSize = 5 + Math.sin(t * Math.PI) * 3;
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, ballSize + 8, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.3 * (1 - t)})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, ballSize, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // After ball reaches goal, show celebration rings
+    if (t > 0.5) {
+      const celebrationT = (t - 0.5) / 0.5; // 0→1
+      for (let i = 0; i < 4; i++) {
+        const phase = i / 4 + celebrationT * 0.6;
+        const radius = 40 + phase * 180;
+        const alpha = Math.max(0, (1 - celebrationT) * 0.5);
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(240,180,41,${alpha * 0.6})`;
-        ctx.lineWidth = 6;
+        ctx.arc(gx, gy, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(240,180,41,${alpha})`;
+        ctx.lineWidth = 5;
         ctx.stroke();
       }
-      ctx.font = `bold ${48 + Math.sin(Date.now() / 120) * 4}px system-ui`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = `rgba(240,180,41,${alpha})`;
-      ctx.fillText('GOAL!', x, y);
     }
   }
 
-  render(players, ballPos, carrierId, flashEvent) {
+  render(players, ballPos, carrierId, flashEvent, goalAnim) {
     this.ctx.clearRect(0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
     this.drawPitch();
     if (players) this.drawPlayers(players, carrierId);
     if (ballPos) this.drawBall(ballPos);
-    this.drawEventFlash(flashEvent);
+    this.drawGoalAnim(goalAnim);
   }
 }
 
@@ -392,6 +492,7 @@ class PitchRenderer {
 class MatchViewer {
   constructor() {
     this.pitch = new PitchRenderer(document.getElementById('pitch'));
+    this.overlays = new OverlayManager();
     this.snapshots = [];
     this.events = [];
     this.goals = [];
@@ -410,6 +511,10 @@ class MatchViewer {
     this._flashStart = 0;
     this._displayedEventIdx = 0;
     this._prevGoalCount = [0, 0];
+    this._prevHalfTime = false;
+    this._prevMatchFinished = false;
+    this._varOverlayShown = false;
+    this._varOverlayTick = -1;
 
     // Snapshot lookup: O(1) access
     this._snapIndex = null;  // Map<tick, snapshot>
@@ -530,6 +635,10 @@ class MatchViewer {
     this.startTick = this.snapshots[0]?.tick || 0;
     this.endTick = this.snapshots[this.snapshots.length - 1]?.tick || 0;
     this.currentTick = this.startTick;
+    this._prevHalfTime = false;
+    this._prevMatchFinished = false;
+    this._varOverlayShown = false;
+    this._varOverlayTick = -1;
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
@@ -641,8 +750,20 @@ class MatchViewer {
     const dt = (now - this._lastFrame) / 1000;
     this._lastFrame = now;
 
-    // 10 ticks/sec at 1x (was 40, halved twice = 10)
-    const ticksPerSec = 10 * this.speed;
+    // If overlay is active, pause playback
+    if (this.overlays.isActive) {
+      this.overlays.checkAutoDismiss();
+      if (this.overlays.isActive) {
+        // Still active — keep rendering but don't advance ticks
+        this._renderFrame();
+        this._rafId = requestAnimationFrame(() => this._loop());
+        return;
+      }
+      // Overlay just dismissed — resume
+    }
+
+    // 15 ticks/sec at 1x (was 10, increased for faster match playback)
+    const ticksPerSec = 15 * this.speed;
     this._tickAccum += dt * ticksPerSec;
 
     const fromTick = this.currentTick;
@@ -655,6 +776,7 @@ class MatchViewer {
     }
 
     this._processEventsForTick(fromTick, this.currentTick);
+    this._checkSnapshotOverlays();
     this._renderFrame();
     this._rafId = requestAnimationFrame(() => this._loop());
   }
@@ -679,12 +801,50 @@ class MatchViewer {
     }
   }
 
+  /** Check snapshot flags for halftime, fulltime, and VAR events */
+  _checkSnapshotOverlays() {
+    if (!this.data) return;
+    const intTick = Math.floor(this.currentTick);
+    const snap = this._snapIndex?.get(intTick);
+    if (!snap) return;
+
+    const hg = snap.goalCount ?? 0;
+    const ag = snap.awayGoalCount ?? 0;
+    const homeName = this.data.homeTeamName || 'HOME';
+    const awayName = this.data.awayTeamName || 'AWAY';
+
+    // Halftime
+    if (snap.halfTime && !this._prevHalfTime) {
+      this._prevHalfTime = true;
+      this.overlays.showHalftime(homeName, awayName, hg, ag);
+    }
+
+    // Fulltime
+    if (snap.matchFinished && !this._prevMatchFinished) {
+      this._prevMatchFinished = true;
+      this.overlays.showFulltime(homeName, awayName, hg, ag);
+    }
+
+    // VAR events — show overlay when VAR events appear in the event stream
+    while (this._displayedEventIdx < this.events.length) {
+      const ev = this.events[this._displayedEventIdx];
+      if (ev.tick > intTick) break;
+      if (ev.tick <= intTick && ev.type?.startsWith('VAR_') && ev.tick !== this._varOverlayTick) {
+        this._varOverlayTick = ev.tick;
+        const durationMs = 4000 + Math.random() * 4000; // 4-8 seconds
+        this.overlays.showVAR(ev.description || 'Reviewing incident...', durationMs);
+        break;
+      }
+    }
+  }
+
   _renderFrame() {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
     const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
-    this.pitch.render(players, ball, carrierId, this._flashEvent);
+    const goalAnim = this.overlays.getGoalAnimProgress();
+    this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim);
     this._updateScoreboard();
     this._updateSeek();
   }
@@ -718,7 +878,7 @@ class MatchViewer {
     const ul = document.getElementById('timeline');
     const li = document.createElement('li');
     const cls = classifyEvent(ev);
-    const icon = EV_ICON[ev.type] || '📝';
+    const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
     const minute = matchMinute(ev.tick);
     const desc = formatEventDesc(ev);
     const isMinor = MINOR_EVENTS.has(ev.type);
@@ -773,7 +933,7 @@ class MatchViewer {
     if (playMatchBtn) playMatchBtn.addEventListener('click', () => this.loadMatch());
 
     if (speedSlider) {
-      const speeds = [0.25, 0.5, 1, 2, 5];
+      const speeds = [0.25, 0.5, 1, 2, 4];
       speedSlider.max = speeds.length - 1;
       speedSlider.value = 2;  // default = 1x
       const update = () => {

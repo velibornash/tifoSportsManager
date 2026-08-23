@@ -130,3 +130,69 @@ canvas#pitch{
   background:var(--accent);color:#000;border:none;padding:8px 20px;
   border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;
 }
+
+/* ─── Overlay system (Halftime / Fulltime / VAR / Goal) ─── */
+.overlay{
+  position:fixed;inset:0;z-index:200;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;
+  transition:opacity .4s ease;
+}
+.overlay.visible{
+  pointer-events:auto;opacity:1;
+}
+.overlay::before{
+  content:'';position:absolute;inset:0;
+  background:rgba(14,17,23,.88);
+}
+.overlay-inner{
+  position:relative;z-index:1;text-align:center;
+  animation:overlayPulse 1s ease infinite alternate;
+}
+.overlay-text{
+  font-size:56px;font-weight:900;letter-spacing:2px;
+  text-transform:uppercase;color:#fff;
+  text-shadow:0 0 30px rgba(255,255,255,.3);
+}
+.overlay-sub{
+  font-size:22px;font-weight:600;margin-top:12px;
+  color:var(--dim);letter-spacing:.5px;
+}
+
+/* Halftime — gold accent */
+.overlay.halftime .overlay-text{color:var(--gold);text-shadow:0 0 40px rgba(240,180,41,.4)}
+.overlay.halftime::before{background:rgba(14,17,23,.92)}
+
+/* Fulltime — white */
+.overlay.fulltime .overlay-text{color:#fff;text-shadow:0 0 40px rgba(255,255,255,.3)}
+.overlay.fulltime::before{background:rgba(14,17,23,.92)}
+
+/* VAR — blue pulsing */
+.overlay.var-review .overlay-text{
+  color:var(--accent);text-shadow:0 0 40px rgba(88,166,255,.5);
+  animation:varPulse 1.5s ease infinite;
+}
+.overlay.var-review::before{background:rgba(14,17,23,.90)}
+
+/* Goal — gold, big celebration */
+.overlay.goal .overlay-text{
+  font-size:80px;color:var(--gold);
+  text-shadow:0 0 60px rgba(240,180,41,.6);
+  animation:goalBounce .5s ease;
+}
+.overlay.goal::before{background:rgba(14,17,23,.88)}
+.overlay.goal .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+
+@keyframes overlayPulse{
+  from{transform:scale(1)}to{transform:scale(1.02)}
+}
+@keyframes varPulse{
+  0%,100%{opacity:1}50%{opacity:.7}
+}
+@keyframes goalBounce{
+  0%{transform:scale(0.3);opacity:0}
+  50%{transform:scale(1.15)}
+  100%{transform:scale(1);opacity:1}
+}

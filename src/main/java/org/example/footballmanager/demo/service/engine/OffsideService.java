@@ -52,9 +52,9 @@ public class OffsideService {
     public OffsideResult checkOffside(Player receiver, Position passOrigin, Position ballPos,
                                        String carrierTeam, MatchState state, ActionEngine actionEngine) {
         // Offside only applies to forward passes during normal play.
-        // Skip if kickoff, distance too short, or not actually offside.
+        // Skip if kickoff or not actually offside.
+        // NOTE: No distance exemption — real football has none.
         if (state.isKickoffActionPending()
-                || SimUtils.distance(receiver.getPosition(), passOrigin) <= 2.0
                 || !rulesService.isOffside(receiver, passOrigin, ballPos)) {
             return new OffsideResult(false, false);
         }

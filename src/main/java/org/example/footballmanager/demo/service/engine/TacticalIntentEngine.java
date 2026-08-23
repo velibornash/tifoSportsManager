@@ -19,6 +19,11 @@ public class TacticalIntentEngine {
 
     private static final int OFFSIDE_RETREAT_THRESHOLD = 3;
     private static final double RETREAT_BUFFER = 2.0;
+    private static final double PRESS_RADIUS = 0.7;
+    private static final double GK_HOME_ROW_MIN = 0.5;
+    private static final double GK_HOME_ROW_MAX = 2.0;
+    private static final double GK_AWAY_ROW_MIN = 6.0;
+    private static final double GK_AWAY_ROW_MAX = 7.5;
 
     private final MatchState state;
 
@@ -34,7 +39,9 @@ public class TacticalIntentEngine {
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
             Position desired = state.getTacticsRules().desiredCell(
                     p.getRole(), state.getBall().getPosition(), p.getTeam());
+            desired = applyGKAnchor(p, desired);
             desired = applyOffsideRetreat(p, desired);
+            desired = applyThreatOverride(p, desired);
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(SimUtils.oneCellToward(p.getPosition(), desired));
         }
@@ -53,10 +60,61 @@ public class TacticalIntentEngine {
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
             Position desired = state.getTacticsRules().desiredCell(
                     p.getRole(), state.getBall().getPosition(), p.getTeam());
+            desired = applyGKAnchor(p, desired);
             desired = applyOffsideRetreat(p, desired);
+            desired = applyThreatOverride(p, desired);
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(SimUtils.oneCellToward(p.getPosition(), desired));
         }
+    }
+
+    /**
+     * GK anchor — goalkeeper stays within a narrow band around their goal line.
+     * Only leaves the anchor if they are the closest team-mate to the ball
+     * (unambiguously, no other teammate within 0.5 cells of the GK-to-ball distance).
+     */
+    private Position applyGKAnchor(Player player, Position desired) {
+        if (!"GK".equals(player.getRole())) return desired;
+
+        boolean home = "HOME".equals(player.getTeam());
+        double ballRow = state.getBall().getPosition().getRow();
+        double playerRow = player.getPosition().getRow();
+
+        // Check if GK is the closest team-mate to the ball
+        double ballDist = SimUtils.distance(player.getPosition(), state.getBall().getPosition());
+        boolean isClosestTeammate = true;
+        for (Player p : state.getPlayers()) {
+            if (p == player || !p.getTeam().equals(player.getTeam())) continue;
+            if (p.isSentOff() || p.isInjured()) continue;
+            double d = SimUtils.distance(p.getPosition(), state.getBall().getPosition());
+            if (d < ballDist - 0.5) { // another teammate is unambiguously closer
+                isClosestTeammate = false;
+                break;
+            }
+        }
+
+        // If GK is closest to ball, allow them to come out
+        if (isClosestTeammate && ballDist < 3.0) {
+            return desired; // allow tactical movement toward ball
+        }
+
+        // Otherwise anchor to goal area
+        if (home) {
+            double clampedRow = SimUtils.clamp(desired.getRow(), GK_HOME_ROW_MIN, GK_HOME_ROW_MAX);
+            return new Position(clampedRow, desired.getColumn());
+        } else {
+            double clampedRow = SimUtils.clamp(desired.getRow(), GK_AWAY_ROW_MIN, GK_AWAY_ROW_MAX);
+            return new Position(clampedRow, desired.getColumn());
+        }
+    }
+
+    /**
+     * Threat override — currently disabled.
+     * Tactical positions from TacticsRules already react to ball position.
+     * Press override was causing 500+ interceptions/match and zero clearances.
+     */
+    private Position applyThreatOverride(Player player, Position desired) {
+        return desired;
     }
 
     /**
