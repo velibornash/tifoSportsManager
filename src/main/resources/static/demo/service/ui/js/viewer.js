@@ -2,7 +2,7 @@
  * TIFO Demo Service — Match Viewer
  *
  * Horizontal pitch: HOME left (row 1), AWAY right (row 7).
- * ALL events shown in timeline. Animated player positions from snapshots.
+ * ALL events shown in timeline. Smooth interpolated player positions.
  */
 
 /* ═══════════════════════════════════════════════════════════════
@@ -46,30 +46,19 @@ function matchMinute(tick) {
    EVENT ICONS & CLASSIFICATION
    ═══════════════════════════════════════════════════════════════ */
 const EV_ICON = {
-  // Shots
   GOAL: '⚽', SHOT: '⚽', SHOT_SAVED: '🧤', SHOT_MISSED: '❌',
-  // Penalties
   PENALTY_KICK: '🎯', PENALTY_MISS: '❌', PENALTY_SAVED: '🧤',
-  // Passes
   PASS: '➡️', PASS_COMPLETED: '✅', PASS_LOOSE: '💨',
-  // Carry
   CARRY: '🏃', CARRY_COMPLETED: '🏃',
-  // Duels
   DUEL_START: '⚔️', DUEL_RESOLVED: '⚔️', DUEL_WON: '🏆',
-  // Crosses & corners
   CROSS: '↗️', CORNER: '🏟️',
-  // Possession
   POSSESSION_CHANGE: '🔄', CHASE: '🏃', CHASE_POSSESSION: '🏃',
-  // VAR
   VAR_OFFSIDE_CONFIRMED: '📺', VAR_OFFSIDE_OVERTURNED: '📺',
   VAR_GOAL_CONFIRMED: '📺', VAR_GOAL_OVERTURNED: '📺',
   VAR_RED_CONFIRMED: '📺', VAR_RED_OVERTURNED: '📺',
   VAR_PENALTY_CONFIRMED: '📺', VAR_PENALTY_OVERTURNED: '📺',
-  // Cards
   YELLOW_CARD: '🟨', RED_CARD: '🟥',
-  // Other
   FREE_KICK: '🎯', GOAL_KICK: '🧤', THROW_IN: '🤾',
-  // LogEntry types
   DECISION: '🧠', ACTION_EXECUTION: '⚡', ACTION_OUTCOME: '📋',
   FOUL: '⚠️', CARD: '🟨', RESTART: '🔄', POSSESSION: '📊',
   INFO: '📝',
@@ -109,12 +98,10 @@ function classifyEvent(ev) {
 }
 
 function formatEventDesc(ev) {
-  // For log entries, show rich description with team/player prefix
   if (ev.source === 'log' && ev.team) {
     const prefix = ev.playerName ? `${ev.team} ${ev.playerName}` : ev.team;
     return `${prefix}: ${ev.description}`;
   }
-  // For events with team field, show it
   if (ev.team) {
     return `${ev.team}: ${ev.description || ev.type}`;
   }
@@ -168,7 +155,6 @@ class PitchRenderer {
     ctx.fillStyle = PITCH_GREEN;
     ctx.fillRect(ox, oy, pw, ph);
 
-    // Stripes
     for (let r = 0; r < 8; r += 2) {
       const [sx] = this.toCanvas(r, 0);
       const [ex] = this.toCanvas(r + 1, 0);
@@ -180,14 +166,12 @@ class PitchRenderer {
     ctx.lineWidth = 2;
     ctx.strokeRect(ox, oy, pw, ph);
 
-    // Center line
     const [cx] = this.toCanvas(4, 0);
     ctx.beginPath();
     ctx.moveTo(cx, oy);
     ctx.lineTo(cx, oy + ph);
     ctx.stroke();
 
-    // Center circle
     const [ccx, ccy] = this.toCanvas(4, 3.5);
     ctx.beginPath();
     ctx.ellipse(ccx, ccy, 1.5 * CELL_W, 1.2 * CELL_H, 0, 0, Math.PI * 2);
@@ -197,24 +181,19 @@ class PitchRenderer {
     ctx.arc(ccx, ccy, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Penalty areas
     this._box(ctx, 0, 1.5, 2.0, 6.5);
     this._box(ctx, 6.0, 1.5, 8.0, 6.5);
-    // Goal areas
     this._box(ctx, 0, 2.5, 1.2, 5.5);
     this._box(ctx, 6.8, 2.5, 8.0, 5.5);
-    // Penalty spots
     const [p1x, p1y] = this.toCanvas(1.2, 3.5);
     const [p2x, p2y] = this.toCanvas(6.8, 3.5);
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath(); ctx.arc(p1x, p1y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(p2x, p2y, 3, 0, Math.PI * 2); ctx.fill();
 
-    // Goals
     this._goal(ctx, 0, 3.5, 'left');
     this._goal(ctx, 8, 3.5, 'right');
 
-    // Team labels
     ctx.font = 'bold 11px system-ui';
     ctx.textAlign = 'center';
     ctx.globalAlpha = 0.4;
@@ -259,7 +238,7 @@ class PitchRenderer {
   drawPlayers(players, carrierId) {
     const ctx = this.ctx;
     for (const p of players) {
-      const [x, y] = this.toCanvas(p.position.row, p.position.column);
+      const [x, y] = this.toCanvas(p.row, p.col);
       const isHome = p.team === 'HOME';
       const isGK = p.role === 'GK';
       const isCarrier = carrierId && p.id === carrierId;
@@ -334,13 +313,11 @@ class PitchRenderer {
     }
   }
 
-  render(snapshot, carrierId, flashEvent) {
+  render(players, ballPos, carrierId, flashEvent) {
     this.ctx.clearRect(0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
     this.drawPitch();
-    if (snapshot) {
-      this.drawPlayers(snapshot.players, carrierId);
-      this.drawBall(snapshot.ballPosition);
-    }
+    if (players) this.drawPlayers(players, carrierId);
+    if (ballPos) this.drawBall(ballPos);
     this.drawEventFlash(flashEvent);
   }
 }
@@ -356,7 +333,7 @@ class MatchViewer {
     this.goals = [];
     this.data = null;
 
-    this.currentTick = 0;
+    this.currentTick = 0;  // float for smooth interpolation
     this.startTick = 0;
     this.endTick = 0;
     this.playing = false;
@@ -369,9 +346,10 @@ class MatchViewer {
     this._flashStart = 0;
     this._displayedEventIdx = 0;
     this._prevGoalCount = [0, 0];
-    // Interpolation
-    this._prevSnap = null;
-    this._nextSnap = null;
+
+    // Snapshot lookup: index array for O(1) access
+    this._snapIndex = null;  // Map<tick, snapshot>
+    this._snapTicks = null;  // sorted array of ticks
 
     this._bindControls();
     this._showEmpty();
@@ -424,7 +402,15 @@ class MatchViewer {
   _initFromData() {
     this.snapshots = this.data.snapshots || [];
 
-    // ALL events from recorder — no filter
+    // Build O(1) lookup index for snapshots
+    this._snapIndex = new Map();
+    this._snapTicks = [];
+    for (const s of this.snapshots) {
+      this._snapIndex.set(s.tick, s);
+      this._snapTicks.push(s.tick);
+    }
+
+    // ALL events from recorder
     const recorderEvents = (this.data.events || []).map(e => ({
       tick: e.tick,
       type: e.type,
@@ -434,7 +420,7 @@ class MatchViewer {
       source: 'event'
     }));
 
-    // ActionLogService entries — much richer detail (team, player, skill, outcome)
+    // ActionLogService entries
     const logEntries = (this.data.logs || []).map(l => ({
       tick: l.tick || 0,
       type: l.type || '',
@@ -447,13 +433,12 @@ class MatchViewer {
       source: 'log'
     }));
 
-    // Merge: logs are primary (richer), events fill gaps
     const merged = new Map();
     for (const e of recorderEvents) merged.set(`e_${e.tick}_${e.type}`, e);
     for (const l of logEntries) merged.set(`l_${l.tick}_${l.type}`, l);
     this.events = [...merged.values()].sort((a, b) => a.tick - b.tick);
 
-    // Detect goals from snapshot goalCount
+    // Detect goals
     this.goals = [];
     this._prevGoalCount = [0, 0];
     for (const snap of this.snapshots) {
@@ -469,7 +454,6 @@ class MatchViewer {
       }
     }
 
-    // Inject synthetic GOAL events
     for (const g of this.goals) {
       this.events.push({
         tick: g.tick,
@@ -491,6 +475,83 @@ class MatchViewer {
     this._showEmpty(false);
     this.pitch._resize();
     this._renderFrame();
+  }
+
+  /* ─── Snapshot interpolation ─── */
+
+  /** Find the snapshot at or before the given tick, plus the next one, and the blend fraction. */
+  _interpolateTick(tick) {
+    if (!this._snapTicks.length) return null;
+
+    // Binary search for the index of the tick at or before `tick`
+    let lo = 0, hi = this._snapTicks.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this._snapTicks[mid] <= tick) lo = mid;
+      else hi = mid - 1;
+    }
+
+    const snapA = this._snapIndex.get(this._snapTicks[lo]);
+    const nextIdx = lo + 1;
+    if (nextIdx >= this._snapTicks.length) return { snap: snapA, next: null, frac: 0 };
+
+    const snapB = this._snapIndex.get(this._snapTicks[nextIdx]);
+    const tickA = this._snapTicks[lo];
+    const tickB = this._snapTicks[nextIdx];
+    const frac = (tickB > tickA) ? (tick - tickA) / (tickB - tickA) : 0;
+
+    return { snap: snapA, next: snapB, frac: clamp(frac, 0, 1) };
+  }
+
+  /** Get interpolated player positions for a fractional tick. */
+  _getInterpolatedPlayers(interp) {
+    if (!interp || !interp.next) {
+      return interp?.snap?.players || [];
+    }
+    const a = interp.snap;
+    const b = interp.next;
+    const t = interp.frac;
+    // Build player map from snap A
+    const result = [];
+    for (const pa of a.players) {
+      // Find matching player in snap B
+      const pb = b.players.find(p => p.id === pa.id);
+      if (pb) {
+        result.push({
+          id: pa.id,
+          label: pa.label,
+          team: pa.team,
+          role: pa.role,
+          row: lerp(pa.position.row, pb.position.row, t),
+          col: lerp(pa.position.column, pb.position.column, t),
+        });
+      } else {
+        result.push({
+          id: pa.id, label: pa.label, team: pa.team, role: pa.role,
+          row: pa.position.row, col: pa.position.column,
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Get interpolated ball position. */
+  _getInterpolatedBall(interp) {
+    if (!interp) return null;
+    const a = interp.snap.ballPosition;
+    if (!a || !interp.next) return a;
+    const b = interp.next.ballPosition;
+    if (!b) return a;
+    const t = interp.frac;
+    return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t) };
+  }
+
+  /** Get carrier ID for the current interpolation point. */
+  _getCarrierId(interp) {
+    if (!interp) return null;
+    // At high interpolation, prefer snap B's carrier
+    if (interp.frac > 0.5 && interp.next) return interp.next.ballCarrierId;
+    return interp.snap.ballCarrierId;
   }
 
   /* ─── Playback ─── */
@@ -529,11 +590,10 @@ class MatchViewer {
 
     const ticksPerSec = 40 * this.speed;
     this._tickAccum += dt * ticksPerSec;
-    const advance = Math.floor(this._tickAccum);
-    this._tickAccum -= advance;
 
     const fromTick = this.currentTick;
-    this.currentTick += advance;
+    this.currentTick += this._tickAccum;
+    this._tickAccum = 0;
 
     if (this.currentTick >= this.endTick) {
       this.currentTick = this.endTick;
@@ -566,27 +626,20 @@ class MatchViewer {
   }
 
   _renderFrame() {
-    const snap = this._findSnapshot(this.currentTick);
-    const carrierId = snap?.ballCarrierId || null;
-    this.pitch.render(snap, carrierId, this._flashEvent);
+    const interp = this._interpolateTick(this.currentTick);
+    const players = this._getInterpolatedPlayers(interp);
+    const ball = this._getInterpolatedBall(interp);
+    const carrierId = this._getCarrierId(interp);
+    this.pitch.render(players, ball, carrierId, this._flashEvent);
     this._updateScoreboard();
     this._updateSeek();
   }
 
-  _findSnapshot(tick) {
-    if (!this.snapshots.length) return null;
-    let lo = 0, hi = this.snapshots.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (this.snapshots[mid].tick <= tick) lo = mid;
-      else hi = mid - 1;
-    }
-    return this.snapshots[lo];
-  }
-
   /* ─── UI updates ─── */
   _updateScoreboard() {
-    const snap = this._findSnapshot(this.currentTick);
+    // Find the nearest integer tick for scoreboard state
+    const intTick = Math.floor(this.currentTick);
+    const snap = this._snapIndex?.get(intTick) || null;
     const hg = snap?.goalCount ?? this._prevGoalCount[0];
     const ag = snap?.awayGoalCount ?? this._prevGoalCount[1];
     document.getElementById('homeScore').textContent = hg;
@@ -625,14 +678,12 @@ class MatchViewer {
     li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
     ul.appendChild(li);
 
-    // Auto-scroll only if near bottom
     const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 100;
     if (nearBottom) ul.scrollTop = ul.scrollHeight;
   }
 
   _buildTimeline() {
-    const ul = document.getElementById('timeline');
-    ul.innerHTML = '';
+    document.getElementById('timeline').innerHTML = '';
   }
 
   _showEmpty(show = true) {
@@ -669,9 +720,9 @@ class MatchViewer {
     if (playMatchBtn) playMatchBtn.addEventListener('click', () => this.loadMatch());
 
     if (speedSlider) {
-      const speeds = [0.25, 0.5, 1, 2, 4, 8];
+      const speeds = [0.25, 0.5, 1, 2, 5];
       speedSlider.max = speeds.length - 1;
-      speedSlider.value = 2;
+      speedSlider.value = 1;
       const update = () => {
         this.speed = speeds[Number(speedSlider.value)];
         document.getElementById('speedLabel').textContent = this.speed + 'x';
