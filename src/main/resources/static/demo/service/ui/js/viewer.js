@@ -36,7 +36,10 @@ function tickToMinute(tick) {
 }
 
 function matchMinute(tick) {
-  return Math.floor(tick / TICKS_PER_MINUTE);
+  const totalSec = Math.floor(tick / TICKS_PER_MINUTE * 60);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${String(sec).padStart(2, '0')}`;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -486,6 +489,7 @@ class MatchViewer {
     this._buildTimeline();
     this._updateSeekRange();
     this._showEmpty(false);
+    this.pitch._resize();
     this._renderFrame();
   }
 

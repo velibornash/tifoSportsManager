@@ -71,7 +71,7 @@ canvas#pitch{
   font-size:13px;line-height:1.35;animation:fadeIn .25s ease;
 }
 .event:hover{background:rgba(88,166,255,.06)}
-.event .min{color:var(--gold);font-weight:700;white-space:nowrap;min-width:36px;font-variant-numeric:tabular-nums}
+.event .min{color:var(--gold);font-weight:700;white-space:nowrap;min-width:44px;font-variant-numeric:tabular-nums;font-size:12px}
 .event .icon{font-size:15px;min-width:20px;text-align:center}
 .event .desc{color:var(--text);flex:1}
 .event .desc .team-home{color:var(--home);font-weight:600}
