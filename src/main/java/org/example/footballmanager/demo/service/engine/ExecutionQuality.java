@@ -58,17 +58,19 @@ public class ExecutionQuality {
         double sideCol = dirRow;
 
         double longitudinal = (random.nextDouble() * 2 - 1) * maxDeviation;
-        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 1.20;
+        // Lateral deviation 3.5x — pushes passes past the sideline for throw-ins (15-25/match).
+        double lateral = (random.nextDouble() * 2 - 1) * maxDeviation * 3.5;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
-        // Allow ball to land OUTSIDE pitch boundaries on SIDELINES (for throw-ins)
-        // but keep end-line overshoot very small (fewer goal kicks).
-        // Sidelines: allow up to 1.0 cells past → throw-ins 15-25/match
-        // End lines: allow only 0.15 cells past → goal kicks 8-12/match
+        // Allow ball to land OUTSIDE pitch boundaries for restarts.
+        // Row clamp extends to 0.0-8.0 so determineRestart can detect end-line exits.
+        // Column clamp extends to -0.5-8.5 so determineRestart can detect sideline exits.
+        // determineRestart thresholds (0.5/7.5) ensure only balls CLEARLY past the line
+        // trigger restarts — not balls landing just inside the playing area.
         Position actualTarget = new Position(
-                SimUtils.clamp(actualRow, 0.92, 7.08),
-                SimUtils.clamp(actualCol, -0.5, 7.5));
+                SimUtils.clamp(actualRow, 0.0, 8.0),
+                SimUtils.clamp(actualCol, -0.5, 8.5));
 
         boolean received;
         if (passLength == PassLength.THRU) {

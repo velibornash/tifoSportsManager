@@ -196,19 +196,6 @@ public class ComprehensiveBatchRunner {
                     }
                 }
 
-                // ── VAR ──
-                if (ch.equals("VAR") || desc.contains("VAR ") || desc.contains("VAR(")) {
-                    varReviews++;
-                    if (desc.contains("OVERTURNED offside") || desc.contains("OFFSIDE_OVERTURNED")) varOffsideOverturned++;
-                    else if (desc.contains("OFFSIDE")) varOffsideConfirmed++;
-                    if (desc.contains("OVERTURNED GOAL") || desc.contains("GOAL_OVERTURNED")) varGoalOverturned++;
-                    else if (desc.contains("GOAL") && ch.equals("VAR")) varGoalConfirmed++;
-                    if (desc.contains("OVERTURNED red") || desc.contains("RED_OVERTURNED")) varRedOverturned++;
-                    else if (desc.contains("RED")) varRedConfirmed++;
-                    if (desc.contains("OVERTURNED penalty") || desc.contains("PENALTY_OVERTURNED")) varPenaltyOverturned++;
-                    else if (desc.contains("PENALTY")) varPenaltyConfirmed++;
-                }
-
                 // ── Free kick restarts ──
                 if (ch.equals("FREE_KICK")) {
                     freeKicksTotal++;
@@ -238,6 +225,28 @@ public class ComprehensiveBatchRunner {
                         lastCrossAction = null;
                         lastCenterAction = null;
                         lastThruAction = null;
+                    }
+                }
+            }
+
+            // Parse MatchEvents for VAR (VARService writes to MatchRecorder, not ActionLogService)
+            for (var event : result.events()) {
+                if (event.type() != null && event.type().startsWith("VAR_")) {
+                    varReviews++;
+                    String t = event.type();
+                    String d = event.description() != null ? event.description() : "";
+                    if (t.contains("OFFSIDE")) {
+                        if (t.contains("OVERTURNED")) varOffsideOverturned++;
+                        else varOffsideConfirmed++;
+                    } else if (t.contains("GOAL")) {
+                        if (t.contains("OVERTURNED")) varGoalOverturned++;
+                        else varGoalConfirmed++;
+                    } else if (t.contains("RED")) {
+                        if (t.contains("OVERTURNED")) varRedOverturned++;
+                        else varRedConfirmed++;
+                    } else if (t.contains("PENALTY")) {
+                        if (t.contains("OVERTURNED")) varPenaltyOverturned++;
+                        else varPenaltyConfirmed++;
                     }
                 }
             }

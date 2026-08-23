@@ -49,7 +49,7 @@ public class VARService {
 
         // VAR only reviews ~20% of offsides (close calls only)
         if (random.nextDouble() > 0.20) {
-            lastVARDecision = "OFFSIDE_CONFIRMED";
+            lastVARDecision = "NO_REVIEW";
             return true;
         }
 
@@ -110,7 +110,7 @@ public class VARService {
 
         // VAR only reviews ~15% of goals
         if (random.nextDouble() > 0.15) {
-            lastVARDecision = "GOAL_CONFIRMED";
+            lastVARDecision = "NO_REVIEW";
             return true;
         }
 
@@ -135,7 +135,7 @@ public class VARService {
 
         // VAR only reviews ~40% of red cards
         if (random.nextDouble() > 0.40) {
-            lastVARDecision = "RED_CONFIRMED";
+            lastVARDecision = "NO_REVIEW";
             return true;
         }
 
@@ -167,7 +167,7 @@ public class VARService {
 
         // VAR only reviews ~25% of penalties
         if (random.nextDouble() > 0.25) {
-            lastVARDecision = "PENALTY_CONFIRMED";
+            lastVARDecision = "NO_REVIEW";
             return true;
         }
 
@@ -202,7 +202,7 @@ public class VARService {
 
         // VAR only reviews ~10% of yellow cards
         if (state.getRandom().nextDouble() > 0.10) {
-            lastVARDecision = "YELLOW_CONFIRMED";
+            lastVARDecision = "NO_REVIEW";
             return "CONFIRMED";
         }
 

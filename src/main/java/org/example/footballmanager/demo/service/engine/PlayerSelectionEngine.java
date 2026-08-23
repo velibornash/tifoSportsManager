@@ -127,4 +127,38 @@ public class PlayerSelectionEngine {
         if (found != null) return found;
         return closestTeamTo(new Position(7, 3.5), "AWAY");
     }
+
+    /**
+     * Find the nearest non-goalkeeper player from the given team to a position.
+     * Excludes sent-off, injured, and substituted players — but NOT locked players.
+     * This is a deliberate semantic difference from closestTeamTo() which also
+     * excludes locked/blocked players. Restart takers can be locked.
+     */
+    public Player nearestNonGoalkeeperTo(Position pos, String teamSide) {
+        Player nearest = null;
+        double minDist = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (!teamSide.equals(p.getTeam())) continue;
+            if ("GK".equals(p.getRole())) continue;
+            if (p.isSentOff() || p.isInjured() || p.isSubstituted()) continue;
+            double dist = SimUtils.distance(p.getPosition(), pos);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = p;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * Find the goalkeeper for the given team side, regardless of availability.
+     * Unlike findGoalkeeper(), this does NOT filter out sent-off or injured players.
+     * Used for kickoff takers and free-kick-to-GK scenarios where we need
+     * the "original" keeper even if they've been sent off (fallback path).
+     */
+    public Player anyGoalkeeper(String teamSide) {
+        return state.getPlayers().stream()
+                .filter(p -> teamSide.equals(p.getTeam()) && "GK".equals(p.getRole()))
+                .findFirst().orElse(null);
+    }
 }

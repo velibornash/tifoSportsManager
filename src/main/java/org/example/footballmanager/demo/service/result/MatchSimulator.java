@@ -31,6 +31,18 @@ public class MatchSimulator {
     // offside / goal / card reviews.
     private VARService varService;
 
+    // Restart manager. Handles kickoff, corners, goal kicks, throw-ins.
+    // Extracted from MatchSimulator (Phase 1) to enforce §37 boundaries.
+    private RestartManager restartManager;
+
+    // Offside service. Handles offside checks + VAR review + free kick awarding.
+    // Extracted from MatchSimulator (Phase 2) to eliminate duplicated blocks.
+    private OffsideService offsideService;
+
+    // Discipline service. Handles foul→card→VAR→penalty/free-kick decisions.
+    // Extracted from MatchSimulator (Phase 3) to enforce §37 boundaries.
+    private DisciplineService disciplineService;
+
     public MatchSimulator(long seed) {
         this.seed = seed;
         this.random = new SimulationRandom(seed);
@@ -91,6 +103,12 @@ public class MatchSimulator {
         PlaymakingDecisionEngine decisionEngine = new PlaymakingDecisionEngine(state, selection,
                 threatService, perceptionService, random.getRandom());
 
+        this.restartManager = new RestartManager(state, selection, logger, homePlayers, awayPlayers);
+
+        this.offsideService = new OffsideService(varService, rulesService, logger, selection, stats);
+
+        this.disciplineService = new DisciplineService(varService, rulesService, logger, selection, stats);
+
         logger.logInfo(state, "MATCH START: " + homeTeamName + " vs " + awayTeamName + " | seed=" + seed, "MATCH");
 
         // Start match
@@ -120,7 +138,7 @@ public class MatchSimulator {
             // Handle kickoff
             if (state.isKickoffPending()) {
                 tickKickoff++;
-                handleKickoff(state, actionEngine, selection, homePlayers, awayPlayers, stats, logger);
+                restartManager.handleKickoff(stats);
                 totalTicks++;
                 state.advanceMatchClock();
                 state.advanceSimulationTick();
@@ -311,7 +329,7 @@ public class MatchSimulator {
 
             // Handle shot arrival
             if (state.hasActiveAction() && state.getAction().isShotInFlight()) {
-                handleShotArrival(state, actionEngine, stats,
+                handleShotArrival(state, actionEngine, selection, stats,
                         logger, rulesService);
             } else if (state.hasActiveAction() && state.getAction().isPassInFlight()) {
                 // Debug: log pass arrival to see if this is being called
@@ -429,53 +447,6 @@ public class MatchSimulator {
 
     // --- Private helpers ---
 
-    private void handleKickoff(MatchState state, ActionEngine actionEngine,
-                                PlayerSelectionEngine selection,
-                                List<Player> homePlayers, List<Player> awayPlayers,
-                                MatchStatsCollector stats, ActionLogService logger) {
-        String kickoffTeam = state.getKickoffTeam();
-        List<Player> teamPlayers = "HOME".equals(kickoffTeam) ? homePlayers : awayPlayers;
-
-        // Prefer an attacker for the kickoff (mirrors swingUIDemo: finds ST/ATT first),
-        // falling back to any midfielder or attacker, then any player.
-        Player kicker = teamPlayers.stream()
-                .filter(p -> p.isAttacker())
-                .findFirst()
-                .orElse(teamPlayers.stream()
-                        .filter(p -> p.roleLine().equals("MID"))
-                        .findFirst()
-                        .orElse(teamPlayers.get(0)));
-
-        // Place the ball AND the kicker exactly at the center spot.
-        // The carrier's position must match the ball position so that
-        // PlaymakingDecisionEngine.buildContext() detects the kickoff
-        // (row==4 && col==3.5) — matching the reference implementation.
-        Position centerSpot = new Position(4, 3.5);
-        kicker.setPosition(centerSpot);
-        state.getBall().setPosition(centerSpot);
-        state.getBall().setTarget(null);
-        state.getBall().setCarrier(kicker);
-        state.setCarrier(kicker);
-        kicker.setLocked(false);
-        kicker.setTarget(null);
-        state.setKickoffPending(false);
-
-        // Signal to the decision engine that the NEXT decision is a kickoff:
-        //   - generateKickoffPass() will be invoked (only backward PASS + CARRY)
-        //   - CLEAR / SHOT / CROSS / THRU / CENTER are suppressed
-        //   - Offside check is skipped for the kickoff pass
-        state.setKickoffActionPending(true);
-
-        // Increment the round counter so that the round-based kickoff fallback
-        // in buildContext() also works (matches swingUIDemo: incrementRound at L122).
-        state.incrementRound();
-
-        state.setPhase(MatchPhase.OPEN_PLAY);
-        state.setStatus("KICK OFF: " + kicker.getLabel() + " at center (4, 3.5)");
-        logger.logRestart(state, "KICK OFF by " + kicker.getLabel()
-                + " (" + kickoffTeam + ") at center (4, 3.5)", "KICKOFF");
-    }
-
     private void executeDecision(DecisionType decision, DecisionOption chosen, MatchState state,
                                   ActionEngine actionEngine, PlayerSelectionEngine selection,
                                   PlaymakingDecisionEngine decisionEngine,
@@ -499,42 +470,20 @@ public class MatchSimulator {
                     }
                 }
                 if (receiver != null) {
-                    // Offside only applies to forward passes during normal play.
-                    if (!state.isKickoffActionPending()
-                            && SimUtils.distance(receiver.getPosition(), carrier.getPosition()) > 2.0
-                            && rulesService.isOffside(receiver, carrier.getPosition(), state.getBall().getPosition())) {
-                        // VAR check — close offside calls get reviewed
-                        Player[] defenders = state.getPlayers().stream()
-                                .filter(p -> !p.getTeam().equals(team) && !"GK".equals(p.getRole()))
-                                .toArray(Player[]::new);
-                        boolean confirmedOffside = varService.checkOffside(receiver, carrier.getPosition(), defenders);
-                        varService.logVARDecision("OFFSIDE", receiver.getLabel());
+                    OffsideService.OffsideResult offsideResult = offsideService.checkOffside(
+                            receiver, carrier.getPosition(), state.getBall().getPosition(),
+                            team, state, actionEngine);
 
-                        if (confirmedOffside) {
-                            stats.onOffside(team);
-                            receiver.incrementConsecutiveOffside();
+                    if (offsideResult.wasChecked()) {
+                        if (offsideResult.confirmed()) {
+                            // Offside confirmed — free kick already awarded by offsideService
                             logger.logInfo(state, "OFFSIDE (VAR " + varService.getLastVARDecision() + "): "
                                     + receiver.getLabel() + " caught offside on pass from " + carrier.getLabel()
                                     + " (consecutive: " + receiver.getConsecutiveOffsideCount() + ")",
                                     "OFFSIDE", carrier);
-                            // Indirect free kick for the defending team — give to GK for a proper reset
-                            String defendingTeam = "HOME".equals(team) ? "AWAY" : "HOME";
-                            Player freeKickTaker = findKeeper(state, defendingTeam);
-                            if (freeKickTaker == null) {
-                                freeKickTaker = findNearestNonGoalkeeperTo(state,
-                                        receiver.getPosition(), defendingTeam);
-                            }
-                            if (freeKickTaker != null) {
-                                actionEngine.giveBallTo(freeKickTaker,
-                                        "offside → indirect free kick for " + defendingTeam);
-                                state.setSetPiecePending(true);
-                            } else {
-                                actionEngine.executeClearance();
-                            }
                         } else {
                             // VAR overturned — onside, play continues
                             stats.onPassAttempt(team, carrier.getId());
-                            receiver.resetConsecutiveOffside();
                             logger.logInfo(state, "VAR OVERTURNED offside: " + receiver.getLabel()
                                     + " ruled ONSIDE — play continues",
                                     "VAR", receiver);
@@ -544,7 +493,6 @@ public class MatchSimulator {
                         stats.onPassAttempt(team, carrier.getId());
                         receiver.resetConsecutiveOffside();
                         actionEngine.executePassTo(receiver);
-                        // Record pass exchange for limit tracking
                         decisionEngine.recordPassExchange(carrier.getId(), receiver.getId());
                     }
                 } else {
@@ -556,40 +504,21 @@ public class MatchSimulator {
                 if (runner != null && runner != carrier) {
                     Position passOrigin = carrier.getPosition();
                     Position ballPos = state.getBall().getPosition();
-                    if (!state.isKickoffActionPending()
-                            && rulesService.isOffside(runner, passOrigin, ballPos)) {
-                        // VAR check for thru ball offside
-                        Player[] defenders = state.getPlayers().stream()
-                                .filter(p -> !p.getTeam().equals(team) && !"GK".equals(p.getRole()))
-                                .toArray(Player[]::new);
-                        boolean confirmedOffside = varService.checkOffside(runner, passOrigin, defenders);
-                        varService.logVARDecision("OFFSIDE", runner.getLabel());
 
-                        if (confirmedOffside) {
-                            stats.onOffside(team);
-                            runner.incrementConsecutiveOffside();
+                    OffsideService.OffsideResult offsideResult = offsideService.checkOffside(
+                            runner, passOrigin, ballPos, team, state, actionEngine);
+
+                    if (offsideResult.wasChecked()) {
+                        if (offsideResult.confirmed()) {
+                            // Offside confirmed — free kick already awarded by offsideService
                             logger.logInfo(state, "OFFSIDE (VAR " + varService.getLastVARDecision() + "): "
                                     + runner.getLabel() + " caught offside on thru pass from " + carrier.getLabel()
                                     + " (consecutive: " + runner.getConsecutiveOffsideCount() + ")",
                                     "OFFSIDE", carrier);
-                            // Indirect free kick — give to GK for a proper reset
-                            String defendingTeam = "HOME".equals(team) ? "AWAY" : "HOME";
-                            Player freeKickTaker = findKeeper(state, defendingTeam);
-                            if (freeKickTaker == null) {
-                                freeKickTaker = findNearestNonGoalkeeperTo(state,
-                                        runner.getPosition(), defendingTeam);
-                            }
-                            if (freeKickTaker != null) {
-                                actionEngine.giveBallTo(freeKickTaker,
-                                        "offside → indirect free kick for " + defendingTeam);
-                                state.setSetPiecePending(true);
-                            } else {
-                                actionEngine.executeClearance();
-                            }
                         } else {
+                            // VAR overturned — onside, play continues
                             stats.onPassAttempt(team, carrier.getId());
                             stats.onThruAttempt(team);
-                            runner.resetConsecutiveOffside();
                             logger.logInfo(state, "VAR OVERTURNED offside: " + runner.getLabel()
                                     + " ruled ONSIDE — thru pass continues", "VAR", runner);
                             actionEngine.executeThruPass(runner);
@@ -712,7 +641,7 @@ public class MatchSimulator {
                 if (restart == FootballRulesService.RestartType.CORNER) stats.onCornerFromPass();
                 stats.onPassOutOfBounds();
                 actionEngine.complete("BALL OUT: " + restart);
-                handleBallOutOfBounds(state, stats, logger, restart, ball.getPosition(), lastTouchTeam);
+                restartManager.handleBallOutOfBounds(stats, restart, ball.getPosition(), lastTouchTeam);
                 return;
             }
 
@@ -795,6 +724,7 @@ public class MatchSimulator {
     }
 
     private void handleShotArrival(MatchState state, ActionEngine actionEngine,
+                                    PlayerSelectionEngine selection,
                                     MatchStatsCollector stats,
                                     ActionLogService logger, FootballRulesService rulesService) {
         Action action = state.getAction();
@@ -822,7 +752,7 @@ public class MatchSimulator {
         if (distToGoal < ExecutionQuality.SHOT_GOAL_THRESHOLD) {
             // Check for goalkeeper save
             String keeperTeam = "HOME".equals(shooterTeam) ? "AWAY" : "HOME";
-            Player keeper = findKeeper(state, keeperTeam);
+            Player keeper = selection.anyGoalkeeper(keeperTeam);
             if (keeper != null) {
                 double saveChance = keeper.getSkills().keeper() / 20.0 * 0.85;
                 // Reduce save chance if keeper is far from ball
@@ -841,7 +771,7 @@ public class MatchSimulator {
                     if (action.getSaveType() == Action.SaveType.CORNER_REBOUND) {
                         String defendingTeam = "HOME".equals(shooterTeam) ? "AWAY" : "HOME";
                         stats.onCorner(defendingTeam);
-                        handleBallOutOfBounds(state, stats, logger, FootballRulesService.RestartType.CORNER,
+                        restartManager.handleBallOutOfBounds(stats, FootballRulesService.RestartType.CORNER,
                                 ball.getPosition(), defendingTeam);
                     } else {
                         // Field rebound - ball becomes loose, trigger chase immediately
@@ -910,7 +840,7 @@ public class MatchSimulator {
             // Blocked shot near goal → high chance of corner (30%)
             if (defenderDeflected && nearGoal && state.getRandom().nextInt(10) < 4) {
                 actionEngine.shotMissed();
-                handleBallOutOfBounds(state, stats, logger, FootballRulesService.RestartType.CORNER,
+                restartManager.handleBallOutOfBounds(stats, FootballRulesService.RestartType.CORNER,
                         ball.getPosition(), defendingTeam);
                 return;
             }
@@ -924,152 +854,12 @@ public class MatchSimulator {
             FootballRulesService.RestartType restart =
                     rulesService.determineRestart(ball.getPosition(), shooterTeam);
             if (restart != FootballRulesService.RestartType.NONE) {
-                handleBallOutOfBounds(state, stats, logger, restart, ball.getPosition(),
+                restartManager.handleBallOutOfBounds(stats, restart, ball.getPosition(),
                         "HOME".equals(shooterTeam) ? "AWAY" : "HOME");
             }
         }
     }
 
-    /**
-     * Handle ball leaving the pitch: corner, goal kick, or throw-in.
-     * The team that did NOT last touch the ball receives the restart.
-     */
-    private void handleBallOutOfBounds(MatchState state, MatchStatsCollector stats,
-                                        ActionLogService logger,
-                                        FootballRulesService.RestartType restart,
-                                        Position ballPos, String lastTouchTeam) {
-        String defendingTeam = "HOME".equals(lastTouchTeam) ? "AWAY" : "HOME";
-        // For goal kicks, the restart team is lastTouchTeam (team whose goal
-        // the ball went out near). For corners/throw-ins, it's defendingTeam
-        // (team that didn't touch the ball last).
-        String restartTeam = (restart == FootballRulesService.RestartType.GOAL_KICK)
-                ? lastTouchTeam : defendingTeam;
-        state.setKickoffTeam(restartTeam);
-        state.setCelebrating(false);
-        // Clear any lingering action / chasers so we get a clean restart
-        state.setAction(null);
-        state.getBall().setTarget(null);
-        state.getBall().setCarrier(null);
-        state.setCarrier(null);
-        state.clearActiveChasers();
-
-        // Release any locked receivers — the action that went out is abandoned
-        // But do NOT unlock sent-off (red card) or injured players
-        for (Player p : state.getPlayers()) {
-            if (p.isLocked() && !"GK".equals(p.getRole()) && !p.isSentOff() && !p.isInjured()) {
-                p.setLocked(false);
-            }
-        }
-
-        // NOTE: We do NOT set kickoffPending=true here.  That flag is reserved for
-        // true kickoffs (start of match, after a goal, second half).  For
-        // corners / goal-kicks / throw-ins the ball is placed at the correct
-        // restart position and handed to the appropriate player, then a brief
-        // hold delay lets other players reposition before the next decision.
-        // This mirrors the swingUIDemo ScheduleRestart logic (SimEngine L599).
-
-        switch (restart) {
-            case CORNER -> {
-                stats.onCorner(defendingTeam);
-                boolean rightCorner = ballPos.getColumn() < 1;
-                Position cornerPos;
-                if (ballPos.getRow() > 7) {
-                    cornerPos = new Position(6.5, rightCorner ? 0.5 : 6.5);
-                } else {
-                    cornerPos = new Position(1.5, rightCorner ? 0.5 : 6.5);
-                }
-                state.getBall().setPosition(cornerPos);
-                Player cornerTaker = findNearestNonGoalkeeperTo(state, cornerPos, defendingTeam);
-                giveBallToRestartTaker(state, cornerTaker, cornerPos);
-                logger.logCorner(state, defendingTeam, rightCorner, "CORNER");
-                logger.logRestart(state, "CORNER for " + defendingTeam + " at " + cornerPos
-                        + " (ball was at " + ballPos + ")", "CORNER");
-                break;
-            }
-            case GOAL_KICK -> {
-                stats.onGoalKick(restartTeam);
-                Position gkPos = "HOME".equals(restartTeam)
-                        ? new Position(1, 3.5) : new Position(7, 3.5);
-                state.getBall().setPosition(gkPos);
-                Player keeper = findKeeper(state, restartTeam);
-                giveBallToRestartTaker(state, keeper, gkPos);
-                logger.logGoalKick(state, restartTeam, "GOAL_KICK");
-                logger.logRestart(state, "GOAL KICK for " + restartTeam + " at " + gkPos, "GOAL_KICK");
-                break;
-            }
-            case THROW_IN -> {
-                stats.onThrowIn(defendingTeam);
-                double row = SimUtils.clamp(ballPos.getRow(), 1, 7);
-                double col = ballPos.getColumn() < 1 ? 1.0 : 6.0;
-                Position throwInPos = new Position(row, col);
-                state.getBall().setPosition(throwInPos);
-                Player throwInTaker = findNearestNonGoalkeeperTo(state, throwInPos, defendingTeam);
-                giveBallToRestartTaker(state, throwInTaker, throwInPos);
-                logger.logThrowIn(state, defendingTeam, "THROW_IN");
-                logger.logRestart(state, "THROW-IN for " + defendingTeam + " at " + throwInPos
-                        + " (ball was at " + ballPos + ")", "THROW_IN");
-                break;
-            }
-            default -> {
-                // Fallback: loose ball at the out-of-bounds position
-                state.getBall().setPosition(ballPos);
-                // Give to nearest player from the defending team so play can resume
-                Player nearest = findNearestNonGoalkeeperTo(state, ballPos, defendingTeam);
-                if (nearest != null) {
-                    giveBallToRestartTaker(state, nearest, ballPos);
-                }
-                logger.logRestart(state, "LOOSE BALL for " + defendingTeam + " at " + ballPos, "RESTART");
-            }
-        }
-
-        // Brief hold so players can reposition before the restart taker decides
-        state.setActionDelayTicks(5); // Reduced from 20 to 5 ticks (0.125 seconds)
-        state.setStatus("RESTART: " + restart + " for " + defendingTeam);
-    }
-
-    /**
-     * Give the ball to a restart taker at a specific position.
-     * Used for corners, goal kicks, and throw-ins — unlike handleKickoff,
-     * this does NOT go through the center-circle kickoff path.
-     */
-    private void giveBallToRestartTaker(MatchState state, Player taker, Position pos) {
-        if (taker == null) return;
-        taker.setPosition(pos);
-        taker.setTarget(null);
-        taker.setLocked(false);
-        state.getBall().setCarrier(taker);
-        state.setCarrier(taker);
-        state.setSetPiecePending(true);
-    }
-
-    /**
-     * Find the nearest non-goalkeeper player from the given team to a position.
-     */
-    private Player findNearestNonGoalkeeperTo(MatchState state, Position pos, String team) {
-        Player nearest = null;
-        double minDist = Double.MAX_VALUE;
-        for (Player p : state.getPlayers()) {
-            if (!team.equals(p.getTeam())) continue;
-            if ("GK".equals(p.getRole())) continue;
-            if (p.isSentOff() || p.isInjured() || p.isSubstituted()) continue;
-            double dist = SimUtils.distance(p.getPosition(), pos);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = p;
-            }
-        }
-        return nearest;
-    }
-
-    /**
-     * Find the goalkeeper for the given team side.
-     * @param teamSide "HOME" or "AWAY" (NOT team display name)
-     */
-    private Player findKeeper(MatchState state, String teamSide) {
-        return state.getPlayers().stream()
-                .filter(p -> teamSide.equals(p.getTeam()) && "GK".equals(p.getRole()))
-                .findFirst().orElse(null);
-    }
 
     private void resolveChase(MatchState state, ActionEngine actionEngine, DuelEngine duelEngine,
                               PlayerSelectionEngine selection, FootballRulesService rulesService,
@@ -1129,167 +919,24 @@ public class MatchSimulator {
             stats.onTackle(defender.getId());
         }
 
-        String defendingTeam = defender.getTeam();
-
         if (result.outcome() == DuelOutcome.DEFENDER_WINS) {
-            // Shot duels: GK save is not a foul — skip foul check
-            if (duelType == DuelType.SHOT) {
-                logger.logInfo(state, "Shot saved by " + defender.getLabel()
-                        + " — clean save", "DUEL", defender);
-                actionEngine.shotSaved(defender);
-                return;
-            }
-            // Defender won the challenge — evaluate for foul
-            boolean foul = rulesService.isFoul(defender, attacker);
-            if (foul) {
-                stats.onFoul(defendingTeam, defender.getId());
-                // Check for existing yellow BEFORE determining card
-                int existingYellows = state.getYellowCardCount(defender.getId());
-                FootballRulesService.CardType card =
-                        rulesService.determineCard(defender, existingYellows >= 1);
+            // Delegate foul/card/VAR/penalty logic to DisciplineService
+            DisciplineService.DisciplineResult discResult =
+                    disciplineService.evaluateFoul(state, actionEngine, attacker, defender, duelType);
 
-                // Check if foul is in the penalty box → penalty kick
-                // Penalty box: ~16.5m ≈ 1 row deep (rows 6-7 for HOME, rows 1-2 for AWAY)
-                // Use the position closer to goal line
-                boolean homeAttacking = "HOME".equals(attacker.getTeam());
-                Position defenderPos = defender.getPosition();
-                Position attackerPos = attacker.getPosition();
-                Position foulPos = homeAttacking
-                        ? (defenderPos.getRow() >= attackerPos.getRow() ? defenderPos : attackerPos)
-                        : (defenderPos.getRow() <= attackerPos.getRow() ? defenderPos : attackerPos);
-                boolean inPenaltyBox = homeAttacking
-                        ? (foulPos.getRow() >= 6 && foulPos.getColumn() >= 1 && foulPos.getColumn() <= 6)
-                        : (foulPos.getRow() <= 2 && foulPos.getColumn() >= 1 && foulPos.getColumn() <= 6);
-
-                if (card == FootballRulesService.CardType.RED) {
-                    // VAR check for red card
-                    boolean redConfirmed = varService.checkRedCard(defender, existingYellows >= 1);
-                    varService.logVARDecision("RED_CARD", defender.getLabel());
-
-                    if (redConfirmed) {
-                        if (existingYellows >= 1) {
-                            state.incrementYellowCards(defender.getId());
-                        }
-                        stats.onRedCard(defendingTeam, defender.getId());
-                        defender.setSentOff(true);
-                        defender.setLocked(true);
-                        logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                                defender.getLabel(), "RED (VAR " + varService.getLastVARDecision() + ")",
-                                existingYellows + 1, "FOUL");
-                    } else {
-                        // VAR overturned red → downgrade to yellow
-                        state.incrementYellowCards(defender.getId());
-                        stats.onYellowCard(defendingTeam, defender.getId());
-                        logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                                defender.getLabel(), "YELLOW (VAR overturned red)",
-                                existingYellows + 1, "FOUL");
-                    }
-                    if (inPenaltyBox) {
-                        boolean penaltyConfirmed = varService.checkPenalty(foulPos, homeAttacking, true);
-                        varService.logVARDecision("PENALTY", attacker.getLabel());
-                        if (penaltyConfirmed) {
-                            logger.logInfo(state, "PENALTY awarded (foul in box, red card, VAR " + varService.getLastVARDecision() + ")", "PENALTY", attacker);
-                            executePenaltyFromFoul(state, actionEngine, stats, logger, selection, attacker, defender);
-                        } else {
-                            logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                            actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                            state.setSetPiecePending(true);
-                        }
-                    } else {
-                        actionEngine.giveBallTo(attacker,
-                                "foul → free kick to " + attacker.getTeam());
-                        state.setSetPiecePending(true);
-                    }
-                } else if (card == FootballRulesService.CardType.YELLOW) {
-                    // VAR review for yellow card — may upgrade to red or downgrade to none
-                    String varResult = varService.checkYellowCard(defender);
-                    varService.logVARDecision("YELLOW_CARD", defender.getLabel());
-                    if ("UPGRADE_TO_RED".equals(varResult)) {
-                        // VAR upgraded yellow → red
-                        state.incrementYellowCards(defender.getId());
-                        stats.onRedCard(defendingTeam, defender.getId());
-                        defender.setSentOff(true);
-                        defender.setLocked(true);
-                        logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                                defender.getLabel(), "RED (VAR upgraded yellow)", existingYellows + 1, "FOUL");
-                    } else if ("DOWNGRADE_TO_NONE".equals(varResult)) {
-                        // VAR downgraded yellow → no card, play continues
-                        logger.logInfo(state, "VAR DOWNGRADED yellow card — no card given", "VAR", defender);
-                        // Still a foul — free kick
-                        Ball ball = state.getBall();
-                        ball.setCarrier(null);
-                        ball.setTarget(null);
-                        state.setCarrier(null);
-                        actionEngine.complete("FREE_KICK → " + attacker.getTeam());
-                        ball.setPosition(defender.getPosition());
-                        actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                        state.setSetPiecePending(true);
-                    } else {
-                        // Yellow confirmed
-                        state.incrementYellowCards(defender.getId());
-                        stats.onYellowCard(defendingTeam, defender.getId());
-                        logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                                defender.getLabel(), "YELLOW (VAR confirmed)", existingYellows + 1, "FOUL");
-                        if (inPenaltyBox) {
-                            boolean penaltyConfirmed = varService.checkPenalty(foulPos, homeAttacking, true);
-                            varService.logVARDecision("PENALTY", attacker.getLabel());
-                            if (penaltyConfirmed) {
-                                logger.logInfo(state, "PENALTY awarded (foul in box, yellow card, VAR " + varService.getLastVARDecision() + ")", "PENALTY", attacker);
-                                executePenaltyFromFoul(state, actionEngine, stats, logger, selection, attacker, defender);
-                            } else {
-                                logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                                actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                                state.setSetPiecePending(true);
-                            }
-                        } else {
-                            actionEngine.giveBallTo(defender,
-                                    "tackle won (yellow card issued)");
-                            state.setSetPiecePending(true);
-                        }
-                    }
-                } else {
-                    if (inPenaltyBox) {
-                        // VAR review for penalty — may overturn borderline decisions
-                        boolean penaltyConfirmed = varService.checkPenalty(foulPos, homeAttacking, true);
-                        varService.logVARDecision("PENALTY", attacker.getLabel());
-                        if (penaltyConfirmed) {
-                            logger.logInfo(state, "PENALTY awarded (foul in box, VAR " + varService.getLastVARDecision() + ")", "PENALTY", attacker);
-                            executePenaltyFromFoul(state, actionEngine, stats, logger, selection, attacker, defender);
-                        } else {
-                            // VAR overturned penalty — play continues with free kick outside box
-                            logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                            actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                            state.setSetPiecePending(true);
-                        }
-                    } else {
-                        logger.logFoul(state, defendingTeam, defender.getId(),
-                                defender.getLabel(), "Tackle foul (no card) → FREE KICK", "FREE_KICK");
-                        Ball ball = state.getBall();
-                        ball.setCarrier(null);
-                        ball.setTarget(null);
-                        state.setCarrier(null);
-                        actionEngine.complete("FREE_KICK → " + attacker.getTeam());
-                        ball.setPosition(defender.getPosition());
-                        actionEngine.giveBallTo(attacker,
-                                "foul → free kick to " + attacker.getTeam());
-                        state.setSetPiecePending(true);
-                    }
-                }
-            } else {
-                // Clean tackle — defender wins and keeps the ball
-                actionEngine.giveBallTo(defender, "clean tackle won");
+            // If a penalty was awarded, execute the penalty kick
+            if (discResult.penaltyAwarded() && discResult.penaltyTaker() != null) {
+                executePenaltyFromFoul(state, actionEngine, stats, logger, selection,
+                        discResult.penaltyTaker(), defender);
             }
         } else {
             // Attacker won the challenge
-            String winningTeam = attacker.getTeam();
             if (duelType == DuelType.SHOT) {
-                // Shot contest — ball already in flight toward goal
                 logger.logInfo(state, "Shot duel won by " + attacker.getLabel()
                         + " — shot continues toward goal", "DUEL", attacker);
             } else if (duelType == DuelType.DRIBBLE) {
-                stats.onInterception(attacker.getId()); // attacker bypassed defender
-                actionEngine.giveBallTo(attacker,
-                        "dribble won past " + defender.getLabel());
+                stats.onInterception(attacker.getId());
+                actionEngine.giveBallTo(attacker, "dribble won past " + defender.getLabel());
             } else if (duelType == DuelType.RECEIVE_PASS) {
                 actionEngine.giveBallTo(attacker, "contested catch won");
             } else if (duelType == DuelType.CHASE_BALL) {

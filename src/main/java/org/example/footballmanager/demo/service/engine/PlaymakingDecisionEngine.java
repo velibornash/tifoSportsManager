@@ -32,6 +32,7 @@ public class PlaymakingDecisionEngine {
     private final Map<String, Integer> passExchangeCount = new HashMap<>();
     private static final int MAX_PASS_EXCHANGES = 3;
     private String lastCarrierTeam = null;
+    private final java.util.Random random;
 
     public PlaymakingDecisionEngine(MatchState state, PlayerSelectionEngine selection,
                                     ThreatAssessmentService threatService,
@@ -41,6 +42,7 @@ public class PlaymakingDecisionEngine {
         this.selection = selection;
         this.threatService = threatService;
         this.perceptionService = perceptionService;
+        this.random = random;
         this.selector = new OptionSelector(random);
         this.visionFilter = new VisionFilter(random);
     }
@@ -250,7 +252,8 @@ public class PlaymakingDecisionEngine {
         }
 
         // CROSS: from wing in final third only — generates 15-25 crosses/match
-        if (ctx.inFinalThird() && ctx.onWing()) {
+        // 50% frequency gate to prevent excessive crosses (was 30.9/match)
+        if (ctx.inFinalThird() && ctx.onWing() && random.nextDouble() < 0.50) {
             double carrierRow = ctx.player().getPosition().getRow();
             boolean home = ctx.isHome();
             boolean inTheBox = home ? (carrierRow >= 6) : (carrierRow <= 2);
@@ -569,9 +572,9 @@ public class PlaymakingDecisionEngine {
         if (boxAttackers == 0) return null;
         double boxPresence = boxAttackers * 5.0;
         double crossingQuality = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 2.0 * 0.35;
-        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.4;
+        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.35;
         double safety = 8.0 - Math.min(8.0, ctx.pressure() * 0.3);
-        double score = boxPresence * 0.3 + crossingQuality + progression * 0.2 + safety - ctx.pressure() * 0.4;
+        double score = boxPresence * 0.25 + crossingQuality + progression * 0.2 + safety - ctx.pressure() * 0.4;
         return new DecisionOption(DecisionType.CENTER, score, "center scored");
     }
 

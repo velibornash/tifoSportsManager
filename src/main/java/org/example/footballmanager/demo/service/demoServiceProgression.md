@@ -6,27 +6,29 @@
 
 ---
 
-## Current Aggregate Stats (100-match batch)
+## Current Aggregate Stats (30-match batch)
 
-| Metric | Before | After | Real Football | Status |
-|--------|--------|-------|--------------|--------|
-| Goals/match | 4.1 | 1.7 | 2.5-2.8 | ⬇️ Dropped — balanced teams |
-| Home goals/match | 3.8 | 1.2 | 1.6 | ⬇️ More balanced |
-| Away goals/match | 0.2 | 0.5 | 1.0 | ⬆️ 3:1 ratio (was 17:1) |
-| BTTS | 11% | 21% | 50-55% | ⬆️ Improved |
-| Possession (home) | 57% | 50% | 50-55% | ✅ PERFECT |
-| Shots/match | 12.4 | 14.7 | 12-15 | ✅ IN RANGE |
-| Corners/match | 9.4 | 7.0 | 5-8 | ✅ IN RANGE |
-| Crosses/match | 0 | 38.1 | 15-25 | ⚠️ Too high — needs tuning |
-| Centers/match | 0 | 4.3 | 10-15 | ⬆️ Appeared, needs increase |
-| Throw-ins/match | 2.0 | 2.6 | 15-25 | 🔴 Still too low |
-| Goal kicks/match | 38.8 | 36.0 | 8-12 | 🔴 Still too high |
-| Penalties/match | 2.4 | 2.3 | 0.3 | 🔴 Still too high |
-| VAR reviews/match | 14.5 | 9.9 | 1-3 | 🔴 Still too high |
-| Fouls/match | 9.4 | 9.4 | 15-22 | ⚠️ Slightly low |
-| Yellow cards/match | 0.8 | 0.9 | 2-3 | ⚠️ Slightly low |
-| Offsides/match | 4.8 | 5.9 | 2-4 | 🔴 Too high |
-| Air pass ratio | 19% | 18% | 20-25% | ⚠️ Close |
+| Metric | Now | Real Football | Status |
+|--------|-----|--------------|--------|
+| Goals/match | 3.4 | 2.5-2.8 | ✅ User: "up to 5.5 is OK" |
+| Home goals/match | ~1.9 | 1.6 | ✅ |
+| Away goals/match | ~1.5 | 1.0 | ✅ Balanced (was 0.2) |
+| BTTS | 33% | 50-55% | ⚠️ Low — needs improvement |
+| Possession (home) | 50% | 50-55% | ✅ PERFECT |
+| Shots/match | 25.7 | 12-15 | ⚠️ High |
+| Corners/match | 12.8 | 5-8 | ⚠️ High — cornerChance 0.40 |
+| Crosses/match | 18.1 | 15-25 | ✅ IN RANGE |
+| Centers/match | 3.8 | 10-15 | 🔴 Low — needs increase |
+| Throw-ins/match | 6.8 | 15-25 | 🔴 Low — lateral 3.5 insufficient |
+| Goal kicks/match | 8.7 | 8-12 | ✅ IN RANGE |
+| Free kicks/match | 12.4 | 15-22 | ⚠️ Slightly low |
+| Penalties/match | 0.2 | 0.3 | ✅ |
+| Fouls/match | 14.1 | 15-22 | ✅ Close |
+| Yellow cards/match | 1.3 | 2-3 | ⚠️ Slightly low |
+| Red cards/match | 0.17 | 0.1-0.2 | ✅ |
+| VAR reviews/match | 1.6 | 1-3 | ✅ Fixed — was 9.9 |
+| Offsides/match | 2.8 | 2-4 | ✅ IN RANGE |
+| Air pass ratio | 47% | 20-25% | ⚠️ High |
 
 ---
 
@@ -36,50 +38,39 @@
 1. **VAR offside for AWAY** — `VARService.checkOffside()` line 52: `row < minDefenderRow` was always false for AWAY (Double.MAX_VALUE). Fixed to compute correct offside line per team.
 2. **AWAY penalty kick target** — `ActionEngine.executePenaltyKick()` used `GOAL_POSITION` (7, 3.5) for both teams. Fixed: AWAY aims at `new Position(1, 3.5)`.
 3. **Miss ball reset** — Shot miss reset from `(7, 3.5)` to `(4, 3.5)` center.
-4. **VAR batch detection** — Changed from `desc.contains("VAR_")` to `ch.equals("VAR") || desc.contains("VAR ") || desc.contains("VAR(")`.
-5. **Free kick batch detection** — Changed from `desc.contains("FREE_KICK")` to `ch.equals("FREE_KICK")`.
-6. **CROSS/CENTER inFinalThird bug** — `inFinalThird = row >= 6` and `inTheBox = row >= 6` were identical, making CROSS/CENTER impossible. Fixed: `inFinalThird = row >= 5` (HOME) / `row <= 3` (AWAY).
-7. **Balanced team generation** — Added `generateTeam(String teamSide, String teamName, long skillSeed)` overload. Batch runner uses same seed for both teams, eliminating skill asymmetry.
+4. **CROSS/CENTER inFinalThird bug** — `inFinalThird = row >= 6` and `inTheBox = row >= 6` were identical, making CROSS/CENTER impossible. Fixed: `inFinalThird = row >= 5` (HOME) / `row <= 3` (AWAY).
+5. **Balanced team generation** — Added `generateTeam(String teamSide, String teamName, long skillSeed)` overload. Batch runner uses same seed for both teams, eliminating skill asymmetry.
+6. **VAR frequency gates** — All gates now set `lastVARDecision = "NO_REVIEW"` instead of `"_CONFIRMED"` when gate fires. `logVARDecision()` already skips on `"NO_REVIEW"`.
+7. **VAR batch runner bug** — `ComprehensiveBatchRunner` L200 now counts VAR events from `result.events()` (MatchRecorder), not `result.logs()` (ActionLogService). Old code counted INFO log entries mentioning "VAR " as reviews.
 
 ### Tuning
-8. **CROSS conditions** — Restricted to `inFinalThird && onWing` (was broader).
-9. **CENTER conditions** — Restricted to `inFinalThird && !onWing` (was broader).
-10. **CENTER scoring weights** — Reduced from `boxPresence * 0.3` and `crossingQuality * 0.35` to lower CENTER frequency.
-11. **Pass lateral deviation** — Increased from 0.40 to 1.20 for more throw-ins.
-12. **Row clamping** — Tightened from 0.85-7.15 to 0.92-7.08 for fewer goal kicks.
-13. **Column clamping** — Widened from 0.0-7.0 to -0.5-7.5 for more sideline exits.
-14. **Penalty box foul bonus** — Reduced from 0.02 to 0.005.
-15. **VAR frequency gates** — Offside 20%, Goal 15%, Penalty 25%, Red 40%, Yellow 10%.
+8. **Pass lateral deviation** — 0.15 → 0.40 → 1.20 → 3.0 → 6.0 → 3.5 (final)
+9. **Row clamping** — 0.7-7.3 → 0.85-7.15 → 0.92-7.08 → 0.0-8.0 (allows ball past end lines for goal kicks)
+10. **Column clamping** — 0.0-7.0 → -0.5-7.5 → -0.5-8.5 (allows ball past sidelines for throw-ins)
+11. **Penalty box dimensions** — Narrowed from rows 6-7, cols 1-6 to row 7 only, cols 2-5, plus 15% random gate on penalty awards
+12. **Foul probability** — base 0.04 → 0.06, skill modifier 0.04 → 0.05, attacker bonus 0.02 → 0.03
+13. **Offside tolerance** — 0.05 → 0.20 cells (~2.8m real-world)
+14. **Corner chance** — 0.60 → 0.40 (defender clearance over end line)
+15. **Cross frequency gate** — 50% random gate added
+16. **Center scoring weights** — boxPresence 8.0→5.0, crossingQuality 0.5→0.35, progression 0.5→0.35
+17. **DetermineRestart thresholds** — Changed from `< 1`/`> 6` (cols) and `< 1`/`> 7` (rows) to `< 0.5`/`> 7.5` (both) — balls must be clearly past boundary lines
 
 ---
 
 ## What Needs Work — USER-PRIORITIZED
 
-### 🔴 CRITICAL — Fix Immediately
+### 🔴 Fix Soon
 
-1. **Goal kicks 36.0 → 8-12** — Row clamp 0.92-7.08 still too loose. Need tighter end-line control or different mechanism (GK distribution, clearance direction).
+1. **Centers 3.8 → 10-15** — Center gate removed, weights reduced, but still too low. May need scoring weight increase.
+2. **Throw-ins 6.8 → 15-25** — Lateral deviation 3.5 insufficient. Need higher value or different mechanism.
+3. **Corners 12.8 → 5-8** — CornerChance 0.40 still too high. May need further reduction.
+4. **BTTS 33% → 50-55%** — Away team not scoring enough despite balanced teams.
+5. **Shots 25.7 → 12-15** — Too many shots per match.
 
-2. **Throw-ins 2.6 → 15-25** — Lateral deviation 1.20 insufficient. Most passes aimed at center of field. Need: deflection-based OOB, or carrier near sideline auto-throw-in probability.
+### ⚠️ Medium Priority
 
-3. **VAR reviews 9.9 → 1-3** — Gates applied but VAR still counts all offside events (5.9/match). Need to skip VAR event logging when gate fires (set `lastVARDecision = "NO_REVIEW"` instead of "OFFSIDE_CONFIRMED"`).
-
-4. **Crosses 38.1 → 15-25** — `countBoxAttackers` uses same rows as `inFinalThird` (pr >= 5). Fix: use stricter box definition (pr >= 6 for HOME, pr <= 2 for AWAY).
-
-5. **Centers 4.3 → 10-15** — Needs scoring weight increase or box attacker count fix.
-
-6. **Penalties 2.3 → 0.3** — Penalty box foul probability still too high. Need additional gating mechanism.
-
-7. **Offsides 5.9 → 2-4** — Offside check frequency or tolerance needs adjustment.
-
-### ⚠️ MEDIUM — Fix Later
-
-8. **Goals 1.7 → 2.5-2.8** — Dropped from 4.1 after balanced team fix. Need to boost scoring without touching shot mechanics (user constraint: "golove ne diraj").
-
-9. **BTTS 21% → 50-55%** — Away scoring still low (0.5/match). Will improve with better away balance.
-
-10. **Fouls 9.4 → 15-22** — Slightly low, can tune foul probability.
-
-11. **Yellow cards 0.9 → 2-3** — Will improve with more fouls.
+6. **Yellow cards 1.3 → 2-3** — Slightly low, will improve with more fouls.
+7. **Free kicks 12.4 → 15-22** — Slightly low.
 
 ---
 
@@ -87,7 +78,7 @@
 
 ### Core Architecture
 - **MatchState** — authoritative state container (ball, players, score, clock, cards)
-- **MatchSimulator** — tick-based simulation loop
+- **MatchSimulator** — tick-based simulation loop (refactored: 1651→1292 lines via §37 extractions)
 - **PlaymakingDecisionEngine** — action scoring & selection with VisionFilter
 - **ActionEngine** — PASS, CARRY, SHOT, THRU, CROSS, CENTER, CLEARANCE execution
 - **MovementEngine** — tactical targets + collision avoidance + fatigue multiplier
@@ -101,19 +92,44 @@
 - **FatigueService** — stamina drain and speed multiplier
 - **MatchRecorder** — event & snapshot recording
 
+### §37 Refactoring (2026-08-23)
+MatchSimulator reduced from 1,651 → 1,292 lines via three phase extractions:
+1. **RestartManager** — kickoff, corners, goal kicks, throw-ins (~100 lines extracted)
+2. **OffsideService** — offside checks + VAR review + free kick awarding (~60 lines extracted)
+3. **DisciplineService** — foul→card→VAR→penalty/free-kick decisions (~160 lines extracted)
+All 16 existing unit tests pass. Batch stats verified identical to pre-refactoring baseline.
+
+### Match Viewer UI (2026-08-23)
+- **New web-based viewer** at `static/demo/service/ui/index.html`
+- Horizontal pitch: HOME left (row 1), AWAY right (row 7) — opposite of SwingUI vertical layout
+- LED scoreboard with team names, score, match clock
+- Canvas pitch with player dots, ball, carrier highlight
+- Event timeline sidebar: ALL events from MatchRecorder + ActionLogService logs
+- Playback: Play/Pause, seek bar, speed slider (0.25x–8x), keyboard shortcuts
+- Data: `POST /api/service/match/simulate` (live) or load `match.json` (standalone)
+- Export: `MatchSnapshotExporter` runs headless simulation, writes `match.json` to static resources
+- **Auto-load removed** — empty state shown until user clicks Generate or Play
+- **LogEntry enriched** — `tick` field added for viewer timeline positioning, `context` field `@JsonIgnore`d
+- **match.json includes logs** — ActionLogService entries (DECISION, ACTION, OUTCOME, DUEL, etc.) with team, player, tick data
+- **Merged timeline** — viewer merges MatchRecorder events + ActionLogService logs into unified feed
+- **Team attribution** — all log entries show team (HOME/AWAY) with color-coded highlighting
+
 ### Football Rules
-- **Offside** — second-to-last defender, 0.05 cell tolerance, smart retreat after 3 consecutive
-- **Fouls** — reduced base 0.04, skill modifier 0.04, attacker bonus 0.02, penalty box 0.005
+- **Offside** — second-to-last defender, 0.20 cell tolerance (~2.8m real-world)
+- **Fouls** — base 0.06, skill modifier 0.05, attacker bonus 0.03, penalty box 0.005 (row 7/1, cols 2-5, 15% gate)
 - **Cards** — straight red dangerous tackles, yellow → auto second yellow → red
-- **Corners** — 90% deflection → corner, save-rebound 60%, shot-blocked 40%, cross/center end-line projection
-- **Throw-ins** — from sideline exits (2.6/match — needs more)
-- **Goal kicks** — from behind goal exits (36.0/match — too many)
+- **Corners** — 40% deflection → corner (was 60%), save-rebound 60%, shot-blocked 40%, cross/center end-line projection
+- **Throw-ins** — from sideline exits (col < 0.5 or > 7.5) (6.8/match — needs more)
+- **Goal kicks** — from behind goal exits (8.7/match — ✅ in range)
 - **VAR** — frequency-gated: offside 20%, goal 15%, penalty 25%, red 40%, yellow 10%
+- **Cross gate** — 50% random gate added
 
 ### Testing
 - `MatchBatchRunner.java` — 10/100-match batch diagnostic
 - `ComprehensiveBatchRunner.java` — full statistical analysis
 - `MatchChainTrace.java` — action chain trace
+- `MatchSnapshotExporter.java` — headless export for web viewer
+- `MatchViewerLauncher.java` — embedded HTTP server (port 8765) + browser launcher
 
 ---
 

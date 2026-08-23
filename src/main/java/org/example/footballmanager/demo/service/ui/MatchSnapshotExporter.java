@@ -23,9 +23,10 @@ public class MatchSnapshotExporter {
 
     public static void main(String[] args) throws Exception {
         long seed = (args.length > 0) ? Long.parseLong(args[0]) : System.nanoTime();
+        long skillSeed = seed; // Same seed for both teams → balanced
 
-        List<Player> home = MatchSimulationController.generateTeam("HOME", "Home FC");
-        List<Player> away = MatchSimulationController.generateTeam("AWAY", "Away United");
+        List<Player> home = MatchSimulationController.generateTeam("HOME", "Home FC", skillSeed);
+        List<Player> away = MatchSimulationController.generateTeam("AWAY", "Away United", skillSeed);
 
         MatchResult result = new MatchSimulator(seed).simulate(home, away, "Home FC", "Away United");
 
@@ -45,11 +46,13 @@ public class MatchSnapshotExporter {
         view.put("finalScore", result.finalScore());
         view.put("events", result.events());
         view.put("snapshots", result.snapshots());
+        view.put("logs", result.logs());
         om.writerWithDefaultPrettyPrinter().writeValue(out, view);
 
         System.out.println("Wrote " + out.getAbsolutePath()
                 + " | matchId=" + result.matchId()
                 + " events=" + result.events().size()
+                + " logs=" + result.logs().size()
                 + " snapshots=" + result.snapshots().size()
                 + " score=" + result.finalScore());
     }

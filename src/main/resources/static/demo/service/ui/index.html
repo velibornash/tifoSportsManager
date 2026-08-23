@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TIFO — Match Viewer</title>
+  <link rel="stylesheet" href="css/pitch.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─── LED Scoreboard ─── -->
+  <header class="led">
+    <div class="team home">
+      <span class="name" id="homeName">HOME</span>
+      <span class="score" id="homeScore">0</span>
+    </div>
+    <div class="clock" id="clock">00:00</div>
+    <div class="team away">
+      <span class="score" id="awayScore">0</span>
+      <span class="name" id="awayName">AWAY</span>
+    </div>
+    <div class="meta">
+      <span class="label" id="statusLabel"></span>
+    </div>
+  </header>
+
+  <!-- ─── Main ─── -->
+  <div class="main">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <h2>Match Viewer</h2>
+      <p>Generate a new match, then play the replay.</p>
+      <div style="display:flex;gap:12px;margin-top:16px;">
+        <button id="simBtn" style="background:#2ea043;">&#9917; Generate Match</button>
+        <button id="playMatchBtn" style="background:#58a6ff;">&#9654; Play Match</button>
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:#8b949e;">
+        Generate simulates a match and saves it. Play loads the last generated match.
+      </p>
+    </div>
+
+    <!-- Pitch -->
+    <div class="pitch-wrap" style="display:none">
+      <canvas id="pitch" width="800" height="520"></canvas>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" style="display:none">
+      <h3>Events</h3>
+      <ul class="timeline" id="timeline"></ul>
+
+      <div class="controls">
+        <div class="controls-row">
+          <button id="playBtn">&#9654; Play</button>
+          <button id="pauseBtn" class="active">&#9646;&#9646; Pause</button>
+          <input type="range" id="speedSlider" min="0" max="4" value="2">
+          <span class="speed" id="speedLabel">1x</span>
+        </div>
+        <div class="controls-row">
+          <input type="range" id="seek" min="0" max="100" value="0">
+        </div>
+        <div class="controls-row">
+          <button id="simBtn2" style="font-size:11px;padding:3px 8px;">&#9917; New Match</button>
+          <button id="fileBtn" style="font-size:11px;padding:3px 8px;">Load JSON</button>
+          <input id="fileInput" type="file" accept="*.json">
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay hidden" id="loading">
+  <div class="spinner"></div>
+  <span id="loadingText">Simulating match...</span>
+</div>
+
+<script src="js/viewer.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const fileBtnEmpty = document.getElementById('fileBtnEmpty');
+  const fileInput = document.getElementById('fileInput');
+  if (fileBtnEmpty) fileBtnEmpty.addEventListener('click', () => fileInput.click());
+
+  // "New Match" button in sidebar = same as Generate
+  const simBtn2 = document.getElementById('simBtn2');
+  if (simBtn2) simBtn2.addEventListener('click', () => window.viewer?.generateMatch());
+});
+</script>
+
+</body>
+</html>

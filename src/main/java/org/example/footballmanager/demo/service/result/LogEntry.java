@@ -1,5 +1,7 @@
 package org.example.footballmanager.demo.service.result;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * Immutable record of one significant simulation event, formatted
  * for human-readable debugging output.
@@ -23,9 +25,10 @@ public class LogEntry {
         CHASE
     }
 
+    private final long tick;            // simulation tick (for viewer timeline positioning)
     private final String wallClock;     // real-time timestamp (HH:mm:ss.SSS)
     private final EntryType type;
-    private final String matchClock;    // match minute:second (e.g. "45:23")
+    private final String matchClock;    // match minute:second (e.g. "4:23")
     private final String channel;       // logical channel / subsystem
     private final String description;   // human-readable description
 
@@ -37,9 +40,10 @@ public class LogEntry {
     private final String targetPlayerName;
     private final Object context;       // Action, DuelResolver.DuelResult, List<DecisionOption>, etc.
 
-    private LogEntry(String wallClock, EntryType type, String matchClock, String channel,
+    private LogEntry(long tick, String wallClock, EntryType type, String matchClock, String channel,
                      String description, String team, String playerId, String playerName,
                      String targetPlayerId, String targetPlayerName, Object context) {
+        this.tick = tick;
         this.wallClock = wallClock;
         this.type = type;
         this.matchClock = matchClock;
@@ -63,6 +67,7 @@ public class LogEntry {
         private final String matchClock;
         private final String channel;
         private final String description;
+        private long tick;
         private String team;
         private String playerId;
         private String playerName;
@@ -78,19 +83,21 @@ public class LogEntry {
             this.description = description;
         }
 
+        public Builder tick(long tick) { this.tick = tick; return this; }
         public Builder team(String team) { this.team = team; return this; }
         public Builder player(String id, String name) { this.playerId = id; this.playerName = name; return this; }
         public Builder targetPlayer(String id, String name) { this.targetPlayerId = id; this.targetPlayerName = name; return this; }
         public Builder context(Object context) { this.context = context; return this; }
 
         public LogEntry build() {
-            return new LogEntry(wallClock, type, matchClock, channel, description, team,
+            return new LogEntry(tick, wallClock, type, matchClock, channel, description, team,
                     playerId, playerName, targetPlayerId, targetPlayerName, context);
         }
     }
 
     // --- Getters ---
 
+    public long getTick() { return tick; }
     public String getWallClock() { return wallClock; }
     public EntryType getType() { return type; }
     public String getMatchClock() { return matchClock; }
@@ -101,6 +108,7 @@ public class LogEntry {
     public String getPlayerName() { return playerName; }
     public String getTargetPlayerId() { return targetPlayerId; }
     public String getTargetPlayerName() { return targetPlayerName; }
+    @JsonIgnore
     public Object getContext() { return context; }
 
     @Override

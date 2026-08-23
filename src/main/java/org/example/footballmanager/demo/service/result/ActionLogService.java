@@ -41,7 +41,8 @@ public class ActionLogService {
     }
 
     private LogEntry.Builder entry(LogEntry.EntryType type, MatchState state, String channel, String description) {
-        return LogEntry.builder(getTimestamp(), type, matchClock(state), channel, description);
+        return LogEntry.builder(getTimestamp(), type, matchClock(state), channel, description)
+                .tick(state.getMatchTicks());
     }
 
     // ── Decision ──────────────────────────────────────────────────────────
