@@ -22,10 +22,14 @@ public class MatchStatsCollector {
     private int awayPossessionTicks = 0;
     private int thruAttemptsHome = 0, thruAttemptsAway = 0;
     private int thruCompletedHome = 0, thruCompletedAway = 0;
-    private int throwInCount = 0, goalKickCount = 0, cornerFromPassCount = 0;
+    private int cornerFromPassCount = 0;
     private int interceptionCount = 0, looseBallCount = 0;
     private int passInterceptionCount = 0;
     private int passOutOfBoundsCount = 0;
+    private int savesHome = 0, savesAway = 0;
+    private int blocksHome = 0, blocksAway = 0;
+    private int deflectionsHome = 0, deflectionsAway = 0;
+    private int clearancesHome = 0, clearancesAway = 0;
 
     public MatchStatsCollector(String homeTeam, String awayTeam) {
         teamStats.put("HOME", new TeamStatsAccumulator(homeTeam));
@@ -71,6 +75,15 @@ public class MatchStatsCollector {
             ps.shots++;
             if (onTarget) ps.shotsOnTarget++;
         }
+    }
+
+    /** Mark a previously counted shot as on-target (called when ball reaches target). */
+    public void markShotOnTarget(String team, String shooterId) {
+        TeamStatsAccumulator ts = teamStats.get(team);
+        ts.shotsOnTarget++;
+
+        PlayerStatsAccumulator ps = playerStats.get(shooterId);
+        if (ps != null) ps.shotsOnTarget++;
     }
 
     /** Record a goal. */
@@ -145,13 +158,49 @@ public class MatchStatsCollector {
 
     /** Record a throw-in. */
     public void onThrowIn(String team) {
-        throwInCount++;
+        teamStats.get(team).throwIns++;
     }
 
     /** Record a goal kick. */
     public void onGoalKick(String team) {
-        goalKickCount++;
+        teamStats.get(team).goalKicks++;
     }
+
+    /** Record a goalkeeper save. */
+    public void onSave(String team) {
+        if ("HOME".equals(team)) savesHome++;
+        else savesAway++;
+    }
+
+    /** Record a shot block by an outfield defender. */
+    public void onBlock(String team) {
+        if ("HOME".equals(team)) blocksHome++;
+        else blocksAway++;
+    }
+
+    /** Record a deflection (defender touches a pass/shot but doesn't cleanly intercept). */
+    public void onDeflection(String team) {
+        if ("HOME".equals(team)) deflectionsHome++;
+        else deflectionsAway++;
+    }
+
+    /** Record a clearance (defensive boot upfield). */
+    public void onClearance(String team) {
+        if ("HOME".equals(team)) clearancesHome++;
+        else clearancesAway++;
+    }
+
+    /** Get saves count for a team. */
+    public int getSaves(String team) { return "HOME".equals(team) ? savesHome : savesAway; }
+
+    /** Get blocks count for a team. */
+    public int getBlocks(String team) { return "HOME".equals(team) ? blocksHome : blocksAway; }
+
+    /** Get deflections count for a team. */
+    public int getDeflections(String team) { return "HOME".equals(team) ? deflectionsHome : deflectionsAway; }
+
+    /** Get clearances count for a team. */
+    public int getClearances(String team) { return "HOME".equals(team) ? clearancesHome : clearancesAway; }
 
     /** Record an interception. */
     public void onInterception(String playerId) {
@@ -201,10 +250,6 @@ public class MatchStatsCollector {
     public int getThruAttempts() { return thruAttemptsHome + thruAttemptsAway; }
     /** Get total completed THRU passes. */
     public int getThruCompleted() { return thruCompletedHome + thruCompletedAway; }
-    /** Get throw-in count. */
-    public int getThrowInCount() { return throwInCount; }
-    /** Get goal kick count. */
-    public int getGoalKickCount() { return goalKickCount; }
     /** Get corner-from-pass count. */
     public int getCornerFromPassCount() { return cornerFromPassCount; }
     /** Get interception count (from passes). */
@@ -221,7 +266,7 @@ public class MatchStatsCollector {
     /** Build final team stats. */
     public TeamMatchStats buildTeamStats(String team, int totalTicks, int matchMinutes) {
         TeamStatsAccumulator ts = teamStats.get(team);
-        if (ts == null) return new TeamMatchStats(team, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        if (ts == null) return new TeamMatchStats(team, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         boolean isHome = ts == teamStats.get("HOME");
 
         double possession = 0;
@@ -239,8 +284,12 @@ public class MatchStatsCollector {
                 ts.corners, ts.offsides, possession,
                 ts.thruAttempts, ts.thruCompleted,
                 interceptionCount, passInterceptionCount,
-                looseBallCount, throwInCount, goalKickCount, cornerFromPassCount,
-                passOutOfBoundsCount
+                looseBallCount, ts.throwIns, ts.goalKicks, cornerFromPassCount,
+                passOutOfBoundsCount,
+                isHome ? savesHome : savesAway,
+                isHome ? blocksHome : blocksAway,
+                isHome ? deflectionsHome : deflectionsAway,
+                isHome ? clearancesHome : clearancesAway
         );
     }
 
@@ -299,6 +348,7 @@ public class MatchStatsCollector {
         int passesAttempted, passesCompleted;
         int fouls, penalties, yellowCards, redCards, corners, offsides;
         int thruAttempts, thruCompleted;
+        int goalKicks, throwIns;
 
         TeamStatsAccumulator(String team) { this.team = team; }
     }

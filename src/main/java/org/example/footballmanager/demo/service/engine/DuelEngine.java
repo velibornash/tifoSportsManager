@@ -13,8 +13,10 @@ import java.util.List;
 public class DuelEngine {
 
     public static final double DEFAULT_DUEL_RADIUS = 1.0;
-    public static final double DRIBBLE_DUEL_RADIUS = 1.4;
+    public static final double DRIBBLE_DUEL_RADIUS = 1.2;
     public static final double RECEIVE_PASS_RADIUS = 0.7;
+    private static final int DUEL_COOLDOWN_TICKS = 10;
+    private static final int DRIBBLE_DUEL_COOLDOWN_TICKS = 8;
 
     private final MatchState state;
     private final DuelResolver resolver;
@@ -26,6 +28,7 @@ public class DuelEngine {
     private DuelType activeDuelType;
     private Position activeDuelPosition;
     private boolean activeDuelResolved;
+    private int lastDuelTick = -DUEL_COOLDOWN_TICKS;
 
     public DuelEngine(MatchState state, DuelResolver resolver, MatchRecorder recorder) {
         this(state, resolver, recorder, DEFAULT_DUEL_RADIUS);
@@ -73,6 +76,7 @@ public class DuelEngine {
         double radiusForType = switch (type) {
             case RECEIVE_PASS -> RECEIVE_PASS_RADIUS;
             case DRIBBLE -> DRIBBLE_DUEL_RADIUS;
+            case SHOT -> 1.5;  // match the outfield filter radius for shot blocks
             default -> duelRadius;
         };
         if (defender == null || SimUtils.distance(contestPosition, defender.getPosition()) > radiusForType) {
@@ -83,12 +87,30 @@ public class DuelEngine {
             return;
         }
 
+        // Duel cooldown: prevent duels from re-triggering too quickly
+        // (e.g., same pair dueling every tick during carry).
+        // DRIBBLE duels use a shorter cooldown so that a carrier entering a crowd
+        // of defenders triggers multiple tackle attempts during a single CARRY action
+        // instead of being locked out for 20 ticks (~30s of silent play).
+        int cooldownForType = (type == DuelType.DRIBBLE) ? DRIBBLE_DUEL_COOLDOWN_TICKS : DUEL_COOLDOWN_TICKS;
+        if (state.getSimulationTick() - lastDuelTick < cooldownForType) {
+            closeActiveDuel();
+            return;
+        }
+
         closeActiveDuel();
         activeDuelAttacker = attacker;
         activeDuelDefender = defender;
         activeDuelType = type;
         activeDuelPosition = contestPosition;
         activeDuelResolved = false;
+        lastDuelTick = Math.toIntExact(state.getSimulationTick());
+
+        // Snap both players closer together for visual duel effect.
+        // Move each player 60% of the way toward the contest position
+        // so they appear engaged in a tackle/challenge on the canvas.
+        snapPlayersForDuel(attacker, defender, contestPosition);
+
         recorder.appendEvent(state.getSimulationTick(), state.getRound(), action.getActionId(),
                 "DUEL_START", type + " " + attacker.getLabel() + " vs " + defender.getLabel());
     }
@@ -123,6 +145,29 @@ public class DuelEngine {
         activeDuelResolved = false;
     }
 
+    /**
+     * Snap both duel participants toward the contest position so they appear
+     * physically engaged in a tackle/challenge on the viewer canvas.
+     * Each player moves 60% of the way from their current position to the
+     * contest point, making them visually overlap or nearly touch.
+     */
+    private void snapPlayersForDuel(Player attacker, Player defender, Position contestPos) {
+        double snapFactor = 0.60;
+        for (Player p : new Player[]{attacker, defender}) {
+            if (p == null || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+            if (p == state.getCarrier()) continue;
+            double dx = contestPos.getColumn() - p.getPosition().getColumn();
+            double dy = contestPos.getRow() - p.getPosition().getRow();
+            double dist = Math.hypot(dx, dy);
+            if (dist < 0.05) continue;
+            double moveDist = Math.min(dist, dist * snapFactor);
+            Position newPos = new Position(
+                    SimUtils.clamp(p.getPosition().getRow() + dy / dist * moveDist, 0.5, 7.5),
+                    SimUtils.clamp(p.getPosition().getColumn() + dx / dist * moveDist, 0.5, 6.5));
+            p.setPosition(newPos);
+        }
+    }
+
     private Player contestTarget(Action action, Player attacker) {
         return switch (action.getType()) {
             case PASS, CROSS, CENTER -> action.getTargetPlayer();
@@ -142,7 +187,7 @@ public class DuelEngine {
             return action.getActualTarget() != null ? action.getActualTarget() : target.getPosition();
         }
         if (action.getType() == ActionType.SHOT) {
-            return ActionEngine.goalPositionFor(action.getActingPlayer().getTeam());
+            return attacker.getPosition();  // block happens near the shooter, not the goal
         }
         return attacker.getPosition();
     }
@@ -167,13 +212,25 @@ public class DuelEngine {
             if (candidate == attacker || candidate.getTeam().equals(contestTarget.getTeam())) continue;
             if (action.getType() == ActionType.CHASE && !state.isActiveChaser(candidate)) continue;
             if (state.isBlockedAfterDuel(candidate)) continue;
-            // SHOT: allow GK always; allow DEF/MID within 1.0 cells (shot block/tackle)
+            // Goalkeepers must stay in their defensive goal area during CHASE.
+            // HOME GK defends goal at row 1 — must stay in rows 0-2.0.
+            // AWAY GK defends goal at row 7 — must stay in rows 6.0-8.
+            // This prevents GKs from roaming too far upfield during loose-ball chases.
+            // Bounds must match TacticalIntentEngine.applyGKAnchor().
+            if (action.getType() == ActionType.CHASE && "GK".equals(candidate.getRole())) {
+                double row = candidate.getPosition().getRow();
+                String team = candidate.getTeam();
+                if ("HOME".equals(team) && row > 2.0) continue;
+                if ("AWAY".equals(team) && row < 6.0) continue;
+            }
+            // SHOT: allow GK always; allow DEF/MID within 1.5 cells (shot block/tackle)
+            // Match the pressure detection radius in ActionEngine.executeShot()
             if (action.getType() == ActionType.SHOT) {
                 if ("GK".equals(candidate.getRole())) {
                     // GK always eligible
                 } else {
                     double distToAttacker = SimUtils.distance(candidate.getPosition(), attacker.getPosition());
-                    if (distToAttacker > 1.0) continue; // outfield too far to challenge
+                    if (distToAttacker > 1.5) continue; // outfield too far to challenge
                 }
             }
             if (action.getType() == ActionType.AERIAL && "GK".equals(candidate.getRole())) continue;
@@ -192,6 +249,14 @@ public class DuelEngine {
         double bestDistance = Double.MAX_VALUE;
         for (Player chaser : state.getActiveChasers()) {
             if (chaser.isLocked() || chaser.isSentOff() || chaser.isInjured() || state.isBlockedAfterDuel(chaser)) continue;
+            // GK positioning constraints: HOME GK must stay near row 1 (rows 0-2.0),
+            // AWAY GK must stay near row 7 (rows 6.0-8). Bounds match TacticalIntentEngine.applyGKAnchor().
+            if ("GK".equals(chaser.getRole())) {
+                double row = chaser.getPosition().getRow();
+                String team = chaser.getTeam();
+                if ("HOME".equals(team) && row > 2.0) continue;
+                if ("AWAY".equals(team) && row < 6.0) continue;
+            }
             double distance = SimUtils.distance(chaser.getPosition(), ballPos);
             if (distance < bestDistance) {
                 bestDistance = distance;

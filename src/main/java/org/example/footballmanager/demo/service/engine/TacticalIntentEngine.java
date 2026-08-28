@@ -3,6 +3,7 @@ package org.example.footballmanager.demo.service.engine;
 import org.example.footballmanager.demo.service.MatchState;
 import org.example.footballmanager.demo.service.model.Player;
 import org.example.footballmanager.demo.service.model.Position;
+import org.example.footballmanager.demo.service.result.ActionLogService;
 import org.example.footballmanager.demo.service.tactics.TacticsRules;
 
 /**
@@ -26,9 +27,11 @@ public class TacticalIntentEngine {
     private static final double GK_AWAY_ROW_MAX = 7.5;
 
     private final MatchState state;
+    private final ActionLogService logger;
 
-    public TacticalIntentEngine(MatchState state) {
+    public TacticalIntentEngine(MatchState state, ActionLogService logger) {
         this.state = state;
+        this.logger = logger;
     }
 
     public void assignTargets() {
@@ -43,7 +46,7 @@ public class TacticalIntentEngine {
             desired = applyOffsideRetreat(p, desired);
             desired = applyThreatOverride(p, desired);
             state.setTacticalDesiredPosition(p, desired);
-            p.setTarget(SimUtils.oneCellToward(p.getPosition(), desired));
+            p.setTarget(desired); // Smooth movement to exact desired position
         }
     }
 
@@ -51,10 +54,18 @@ public class TacticalIntentEngine {
         String currentKey = TacticsRules.ballStateKey(state.getBall().getPosition());
         String lastKey = state.getLastTacticalBallStateKey();
         boolean cellChanged = !currentKey.equals(lastKey);
-        if (!cellChanged) return;
-
+        // Always update the stored key so we can detect the next change
         state.setTacticalBallPosition(state.getBall().getPosition());
         state.setLastTacticalBallStateKey(currentKey);
+
+        // Refresh ALL player targets every tick when a carrier is active — this
+        // ensures defenders continuously re-target toward the carrier's current
+        // position instead of clinging to a stale cell-boundary target from
+        // 8 ticks ago. The cell-change guard is kept only for the pure tactical
+        // positioning pass (no carrier) to avoid redundant work.
+        boolean carrierActive = state.getCarrier() != null;
+        if (!cellChanged && !carrierActive) return;
+
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
@@ -64,7 +75,7 @@ public class TacticalIntentEngine {
             desired = applyOffsideRetreat(p, desired);
             desired = applyThreatOverride(p, desired);
             state.setTacticalDesiredPosition(p, desired);
-            p.setTarget(SimUtils.oneCellToward(p.getPosition(), desired));
+            p.setTarget(desired); // Smooth movement to exact desired position
         }
     }
 
@@ -77,44 +88,134 @@ public class TacticalIntentEngine {
         if (!"GK".equals(player.getRole())) return desired;
 
         boolean home = "HOME".equals(player.getTeam());
-        double ballRow = state.getBall().getPosition().getRow();
-        double playerRow = player.getPosition().getRow();
 
-        // Check if GK is the closest team-mate to the ball
-        double ballDist = SimUtils.distance(player.getPosition(), state.getBall().getPosition());
-        boolean isClosestTeammate = true;
-        for (Player p : state.getPlayers()) {
-            if (p == player || !p.getTeam().equals(player.getTeam())) continue;
-            if (p.isSentOff() || p.isInjured()) continue;
-            double d = SimUtils.distance(p.getPosition(), state.getBall().getPosition());
-            if (d < ballDist - 0.5) { // another teammate is unambiguously closer
-                isClosestTeammate = false;
-                break;
-            }
-        }
-
-        // If GK is closest to ball, allow them to come out
-        if (isClosestTeammate && ballDist < 3.0) {
-            return desired; // allow tactical movement toward ball
-        }
-
-        // Otherwise anchor to goal area
+        // GK is NEVER allowed to leave their penalty area.
+        // Anchor clamps the GK to a narrow band near the goal line.
+        // The GK can move laterally within the penalty area but not push upfield.
         if (home) {
             double clampedRow = SimUtils.clamp(desired.getRow(), GK_HOME_ROW_MIN, GK_HOME_ROW_MAX);
-            return new Position(clampedRow, desired.getColumn());
+            double clampedCol = SimUtils.clamp(desired.getColumn(), 2.5, 4.5);
+            return new Position(clampedRow, clampedCol);
         } else {
             double clampedRow = SimUtils.clamp(desired.getRow(), GK_AWAY_ROW_MIN, GK_AWAY_ROW_MAX);
-            return new Position(clampedRow, desired.getColumn());
+            double clampedCol = SimUtils.clamp(desired.getColumn(), 2.5, 4.5);
+            return new Position(clampedRow, clampedCol);
         }
     }
 
     /**
-     * Threat override — currently disabled.
-     * Tactical positions from TacticsRules already react to ball position.
-     * Press override was causing 500+ interceptions/match and zero clearances.
+     * Threat override — defensive override layer (corePrinciples §6).
+     *
+     * Runs after normal tactical targeting and may override the desired position
+     * when an opponent presents a local threat.
+     *
+     * Priority order:
+     * 1. OFFSIDE SAFETY — already handled by applyOffsideRetreat
+     * 2. TYPE A — defensive-third isolated opponent (≤ 1.5 cells)
+     * 3. TYPE B — isolated ball carrier (≤ 1.0 cell)
+     * 4. TYPE C — local opponent proximity (≤ 1.0 cell)
+     *
+     * "One defender per threat" — closest eligible defender claims the threat
+     * (§4 in threat_override_spec.md).
      */
     private Position applyThreatOverride(Player player, Position desired) {
-        return desired;
+        // Threat override is defensive movement only. Never override the carrier,
+        // a locked player, a sent-off/injured player, or the goalkeeper.
+        if ("GK".equals(player.getRole())) return desired;
+        if (player.isSentOff() || player.isInjured() || player.isLocked()) return desired;
+
+        // If our team has possession, this player is not a defender for this layer.
+        if (state.getCarrier() != null
+                && player.getTeam().equals(state.getCarrier().getTeam())) {
+            return desired;
+        }
+
+        boolean home = "HOME".equals(player.getTeam());
+        Player bestThreat = null;
+        int bestPriority = Integer.MAX_VALUE;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (Player opponent : state.getPlayers()) {
+            if (player.getTeam().equals(opponent.getTeam())) continue;
+            if (opponent.isSentOff() || opponent.isInjured()) continue;
+
+            double distance = SimUtils.distance(player.getPosition(), opponent.getPosition());
+
+            // TYPE A: opponent in our defensive third, isolated from OUR OTHER
+            // players within 1 cell, and close enough for the defender to press.
+            boolean typeA = isDefensiveThird(opponent.getPosition().getRow(), home)
+                    && isIsolated(opponent, player.getTeam(), 1.0, player)
+                    && distance <= 1.5;
+
+            // TYPE B: isolated opponent ball carrier anywhere, within 1 cell.
+            boolean typeB = state.getBall().getCarrier() == opponent
+                    && isIsolated(opponent, player.getTeam(), 1.0, player)
+                    && distance <= 1.0;
+
+            // TYPE C: local correction — an opponent is already within 1 cell.
+            boolean typeC = distance <= 1.0;
+
+            int priority = typeA ? 1 : (typeB ? 2 : (typeC ? 3 : Integer.MAX_VALUE));
+            if (priority == Integer.MAX_VALUE) continue;
+
+            if (priority < bestPriority
+                    || (priority == bestPriority && distance < bestDistance)) {
+                bestThreat = opponent;
+                bestPriority = priority;
+                bestDistance = distance;
+            }
+        }
+
+        if (bestThreat == null) return desired;
+
+        // One opponent threat is handled by one defender only: the closest
+        // eligible defender wins the assignment.
+        if (!isClosestEligibleDefender(bestThreat, player)) return desired;
+
+        return bestThreat.getPosition();
+    }
+
+    /** Check if opponent is in our defensive third. */
+    private boolean isDefensiveThird(double row, boolean homeAttacking) {
+        if (homeAttacking) {
+            // HOME attacks row 7, defensive third = rows 1-3
+            return row <= 3.0;
+        } else {
+            // AWAY attacks row 1, defensive third = rows 5-7
+            return row >= 5.0;
+        }
+    }
+
+    /** Check if an opponent is isolated from our OTHER teammates within radius. */
+    private boolean isIsolated(Player opponent, String ourTeam, double radius, Player excluding) {
+        for (Player p : state.getPlayers()) {
+            if (!ourTeam.equals(p.getTeam())) continue;
+            if (p == excluding || p.isSentOff() || p.isInjured()) continue;
+            double dist = SimUtils.distance(opponent.getPosition(), p.getPosition());
+            if (dist <= radius) return false;
+        }
+        return true;
+    }
+
+    /** Return true only for the closest eligible defender for this threat. */
+    private boolean isClosestEligibleDefender(Player threat, Player candidate) {
+        double candidateDistance = SimUtils.distance(candidate.getPosition(), threat.getPosition());
+        for (Player teammate : state.getPlayers()) {
+            if (teammate == candidate) continue;
+            if (!candidate.getTeam().equals(teammate.getTeam())) continue;
+            if ("GK".equals(teammate.getRole())) continue;
+            if (teammate.isSentOff() || teammate.isInjured() || teammate.isLocked()) continue;
+            if (teammate == state.getCarrier()) continue;
+            if (state.isActiveChaser(teammate)) continue;
+
+            double otherDistance = SimUtils.distance(teammate.getPosition(), threat.getPosition());
+            if (otherDistance + 1e-9 < candidateDistance) return false;
+        }
+        return true;
+    }
+
+    private String oppositeTeam(boolean homeAttacking) {
+        return homeAttacking ? "AWAY" : "HOME";
     }
 
     /**
@@ -134,69 +235,85 @@ public class TacticalIntentEngine {
         boolean home = "HOME".equals(player.getTeam());
         String defendingTeam = home ? "AWAY" : "HOME";
 
-        // Find the deepest outfield defender
-        double deepestDefenderRow = findDeepestDefenderRow(defendingTeam, home);
-        if (deepestDefenderRow == Double.MAX_VALUE) return desired;
+        // Find the most advanced outfield defender (the offside line).
+        double offsideLineRow = findDeepestDefenderRow(defendingTeam, home);
+        if (offsideLineRow == Double.MAX_VALUE) return desired;
 
-        // Retreat position: pull back RETREAT_BUFFER cells behind the deepest defender
+        // Retreat position: pull back RETREAT_BUFFER cells behind the offside line
         double retreatRow;
         if (home) {
             // HOME attacks toward row 7. Retreat = go LOWER (toward own goal)
-            retreatRow = deepestDefenderRow - RETREAT_BUFFER;
+            retreatRow = offsideLineRow - RETREAT_BUFFER;
             retreatRow = Math.max(1.0, retreatRow);
         } else {
             // AWAY attacks toward row 1. Retreat = go HIGHER (toward own goal)
-            retreatRow = deepestDefenderRow + RETREAT_BUFFER;
+            retreatRow = offsideLineRow + RETREAT_BUFFER;
             retreatRow = Math.min(7.0, retreatRow);
         }
 
-        // Check if player is already clearly onside (no defenders ahead at all)
+        // Check if player is already clearly onside (at least one non-GK defender goal-side)
         boolean isOnside = isClearlyOnside(player, defendingTeam, home);
         if (isOnside) {
             // Retreat successful — reset count and resume normal tactics
+            if (player.getConsecutiveOffsideCount() > 0) {
+                logger.logInfo(state, "OFFSIDE RETREAT END: " + player.getLabel()
+                        + " back onside at row " + String.format("%.2f", player.getPosition().getRow())
+                        + " — resuming normal positioning",
+                        "INFO", player);
+            }
             player.resetConsecutiveOffside();
             return desired;
         }
 
         // Still offside — continue retreating
+        logger.logInfo(state, "OFFSIDE RETREAT: " + player.getLabel()
+                + " dropping to row " + String.format("%.2f", retreatRow)
+                + " (offside line " + String.format("%.2f", offsideLineRow)
+                + ", count=" + player.getConsecutiveOffsideCount() + ")",
+                "INFO", player);
         return new Position(retreatRow, desired.getColumn());
     }
 
     /**
-     * Check if a player is clearly onside: at least one non-GK defender
-     * is between them and the goal they're attacking.
+     * Check if a player is clearly onside: at least TWO opponents (including
+     * the goalkeeper) are closer to the goal they're attacking. Per the user
+     * requirement, the retreat ends only when the player has ≥2 opponents
+     * goal-side (FIFA offside line), then normal tactics resume.
      * Uses exact decimal positions for precision.
      */
     private boolean isClearlyOnside(Player player, String defendingTeam, boolean home) {
         double playerRow = player.getPosition().getRow();
+        int opponentsGoalSide = 0;
         for (Player p : state.getPlayers()) {
             if (!defendingTeam.equals(p.getTeam())) continue;
-            if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             double defRow = p.getPosition().getRow();
             boolean defenderIsGoalSide = home
                     ? defRow > playerRow   // defender is closer to row 7 than the attacker
                     : defRow < playerRow;  // defender is closer to row 1 than the attacker
-            if (defenderIsGoalSide) return true;
+            if (defenderIsGoalSide) opponentsGoalSide++;
+            if (opponentsGoalSide >= 2) return true;
         }
         return false;
     }
 
     private double findDeepestDefenderRow(String defendingTeam, boolean homeAttacking) {
-        double deepest = Double.MAX_VALUE;
+        // "Deepest" defender = most advanced defender, i.e. the one setting the offside line.
+        double deepest = homeAttacking ? -Double.MAX_VALUE : Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
             if (!defendingTeam.equals(p.getTeam())) continue;
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+            double row = p.getPosition().getRow();
             if (homeAttacking) {
-                // Attacking toward row 7. Deepest AWAY defender = LOWEST row.
-                if (p.getPosition().getRow() < deepest) {
-                    deepest = p.getPosition().getRow();
+                // HOME attacks row 7. Most advanced AWAY defender = HIGHEST row.
+                if (row > deepest) {
+                    deepest = row;
                 }
             } else {
-                // Attacking toward row 1. Deepest HOME defender = HIGHEST row.
-                if (p.getPosition().getRow() > deepest) {
-                    deepest = p.getPosition().getRow();
+                // AWAY attacks row 1. Most advanced HOME defender = LOWEST row.
+                if (row < deepest) {
+                    deepest = row;
                 }
             }
         }

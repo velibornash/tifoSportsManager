@@ -1,5 +1,6 @@
 package org.example.footballmanager.demo.service;
 
+import org.example.footballmanager.demo.service.engine.FootballRulesService;
 import org.example.footballmanager.demo.service.model.*;
 import org.example.footballmanager.demo.service.recording.MatchRecorder;
 import org.example.footballmanager.demo.service.tactics.TacticsRules;
@@ -19,6 +20,7 @@ public class MatchState {
     public static final int DUEL_LOSS_TICKS = 60;
     public static final int SET_PIECE_HOLD_TICKS = 60;
     public static final int CORNER_TAKER_HOLD_TICKS = 40;
+    public static final int OOB_HOLD_TICKS = 8;
 
     public static final String TEAM_HOME = "HOME";
 
@@ -53,6 +55,7 @@ public class MatchState {
     private long nextActionSequence = 1;
     private boolean celebrating;
     private String celebratingTeam;
+    private int celebrationHoldTicks = 0;
     private boolean awayRestartPending;
     private Player returningPlayer;
     private Position pendingRestartPosition;
@@ -61,6 +64,7 @@ public class MatchState {
     private int actionDelayTicks;
     private int restartHoldTicks;
     private boolean setPiecePending; // free kick, goal kick, throw-in, corner — CARRY not allowed
+    private Player freeKickTaker;
     private final Map<Player, Integer> duelCooldownTicks = new HashMap<>();
     private final Map<String, Integer> playerYellowCards = new HashMap<>();
     private final Map<String, String> playerTeamCache = new HashMap<>();
@@ -75,6 +79,20 @@ public class MatchState {
     private int cornerHoldTicks;
     private long thruBallArrivalTick = -1;  // tick when THRU ball arrived; -1 = not waiting
     private final Set<Player> activeChasers = new HashSet<>();
+
+    // Pending VAR review (offside/onside check that reviews after next action)
+    private String pendingVARReviewType;    // "OFFSIDE", "ONSIDE_CHECK", or null
+    private Player pendingVARReviewPlayer;
+    private String pendingVARReviewTeam;
+    private int varDelayTicks;              // VAR review delay (1-5 min match time)
+    private String varReviewDescription;    // shown in overlay during review
+    // Deferred close-offside: a potential offside waits to see the NEXT action.
+    // If that action is a goal → the VAR reviews; otherwise a plain offside is
+    // whistled immediately (no VAR).
+    private boolean offsideDeferred;
+    private double offsideDeferredMargin;
+    private boolean offsideLedToGoal;
+    private int offsideDeferredActionCount;
     private final List<GoalRecord> goals = new ArrayList<>();
 
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -87,6 +105,13 @@ public class MatchState {
     private Position tacticalBallPosition;
     private String lastTacticalBallStateKey;
     private boolean roundComplete = true;
+    private String lastTouchTeam = "HOME";  // tracks which team last touched the ball (for OOB restarts)
+
+    // --- Ball OOB pending state ---
+    private boolean ballOOBPending;
+    private FootballRulesService.RestartType ballOOBRestartType;
+    private String ballOOBRestartTeam;
+    private Position ballOOBRestartPosition;
 
     public MatchState(List<Player> players, Ball ball, TacticsRules tacticsRules,
                       Random random, MatchRecorder recorder) {
@@ -223,6 +248,9 @@ public class MatchState {
     public void setCelebrating(boolean celebrating) { this.celebrating = celebrating; }
     public String getCelebratingTeam() { return celebratingTeam; }
     public void setCelebratingTeam(String celebratingTeam) { this.celebratingTeam = celebratingTeam; }
+    public int getCelebrationHoldTicks() { return celebrationHoldTicks; }
+    public void setCelebrationHoldTicks(int ticks) { this.celebrationHoldTicks = Math.max(0, ticks); }
+    public void consumeCelebrationHoldTick() { if (celebrationHoldTicks > 0) celebrationHoldTicks--; }
 
     // --- Kickoff ---
 
@@ -334,6 +362,51 @@ public class MatchState {
     public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
     public boolean isSetPiecePending() { return setPiecePending; }
     public void setSetPiecePending(boolean value) { setPiecePending = value; }
+    public Player getFreeKickTaker() { return freeKickTaker; }
+    public void setFreeKickTaker(Player player) { freeKickTaker = player; }
+
+    // --- Pending VAR review ---
+    public boolean hasPendingVARReview() { return pendingVARReviewType != null; }
+    public String getPendingVARReviewType() { return pendingVARReviewType; }
+    public Player getPendingVARReviewPlayer() { return pendingVARReviewPlayer; }
+    public String getPendingVARReviewTeam() { return pendingVARReviewTeam; }
+    public void setPendingVARReview(String type, Player player, String team) {
+        pendingVARReviewType = type;
+        pendingVARReviewPlayer = player;
+        pendingVARReviewTeam = team;
+    }
+    public void clearPendingVARReview() {
+        pendingVARReviewType = null;
+        pendingVARReviewPlayer = null;
+        pendingVARReviewTeam = null;
+        varDelayTicks = 0;
+        varReviewDescription = null;
+        offsideDeferred = false;
+        offsideLedToGoal = false;
+        offsideDeferredActionCount = 0;
+    }
+
+    // --- VAR delay timer ---
+    public boolean isVARReviewActive() { return varDelayTicks > 0; }
+    public int getVARDelayTicks() { return varDelayTicks; }
+    public void setVARDelayTicks(int ticks) { varDelayTicks = Math.max(0, ticks); }
+    public void consumeVARDelayTick() { if (varDelayTicks > 0) varDelayTicks--; }
+    public String getVARReviewDescription() { return varReviewDescription; }
+    public void setVARReviewDescription(String desc) { this.varReviewDescription = desc; }
+    public void startVARDelay(int ticks, String description) {
+        this.varDelayTicks = ticks;
+        this.varReviewDescription = description;
+    }
+
+    // --- Deferred close-offside state ---
+    public boolean isOffsideDeferred() { return offsideDeferred; }
+    public void setOffsideDeferred(boolean offsideDeferred) { this.offsideDeferred = offsideDeferred; }
+    public double getOffsideDeferredMargin() { return offsideDeferredMargin; }
+    public void setOffsideDeferredMargin(double offsideDeferredMargin) { this.offsideDeferredMargin = offsideDeferredMargin; }
+    public boolean isOffsideLedToGoal() { return offsideLedToGoal; }
+    public void setOffsideLedToGoal(boolean offsideLedToGoal) { this.offsideLedToGoal = offsideLedToGoal; }
+    public int getOffsideDeferredActionCount() { return offsideDeferredActionCount; }
+    public void setOffsideDeferredActionCount(int offsideDeferredActionCount) { this.offsideDeferredActionCount = offsideDeferredActionCount; }
 
     // --- Round tracking ---
 
@@ -365,6 +438,28 @@ public class MatchState {
     public void setLastTacticalBallStateKey(String key) { lastTacticalBallStateKey = key; }
     public boolean isRoundComplete() { return roundComplete; }
     public void setRoundComplete(boolean roundComplete) { this.roundComplete = roundComplete; }
+    public String getLastTouchTeam() { return lastTouchTeam; }
+    public void setLastTouchTeam(String team) { this.lastTouchTeam = team; }
+
+    // --- Ball OOB pending accessors ---
+    public boolean isBallOOBPending() { return ballOOBPending; }
+    public FootballRulesService.RestartType getOobRestartType() { return ballOOBRestartType; }
+    public String getOobLastTouchTeam() { return ballOOBRestartTeam; }
+    public Position getOobRestartPosition() { return ballOOBRestartPosition; }
+
+    public void setBallOOBPending(FootballRulesService.RestartType type, String team, Position position) {
+        this.ballOOBPending = true;
+        this.ballOOBRestartType = type;
+        this.ballOOBRestartTeam = team;
+        this.ballOOBRestartPosition = position;
+    }
+
+    public void clearBallOOBPending() {
+        this.ballOOBPending = false;
+        this.ballOOBRestartType = null;
+        this.ballOOBRestartTeam = null;
+        this.ballOOBRestartPosition = null;
+    }
 
     public int getRoundPaceSkill(Player p) {
         return roundPaceSkills.getOrDefault(p, 20);
@@ -424,6 +519,43 @@ public class MatchState {
         status = "ready";
     }
 
+    /**
+     * Reset all players to their initial positions and place the ball at center
+     * for a kickoff. Other players on their own half, kicker at center.
+     * Only non-sent-off / non-injured players are unlocked.
+     */
+    public void resetPositionsForKickoff() {
+        for (int i = 0; i < players.size(); i++) {
+            Player p = players.get(i);
+            p.setPosition(initialPositions.get(i));
+            p.setTarget(null);
+            if (!p.isSentOff() && !p.isInjured()) {
+                p.setLocked(false);
+            }
+            p.setVelX(0);
+            p.setVelY(0);
+        }
+        ball.setPosition(new Position(4, 3.5));
+        ball.setTarget(null);
+        ball.setCarrier(null);
+        carrier = null;
+        action = null;
+        roundComplete = true;
+        roundStartBallPosition = new Position(4, 3.5);
+        roundEndBallPosition = new Position(4, 3.5);
+        tacticalBallPosition = new Position(4, 3.5);
+        lastTacticalBallStateKey = TacticsRules.ballStateKey(new Position(4, 3.5));
+        roundPaceSkills.clear();
+        for (int i = 0; i < players.size(); i++) {
+            Player p = players.get(i);
+            Position pos = p.getPosition();
+            roundStartPositions.put(p, pos);
+            roundEndPositions.put(p, pos);
+            desiredPositions.put(p, pos);
+            tacticalDesiredPositions.put(p, pos);
+        }
+    }
+
     public int incrementYellowCards(String playerId) {
         int count = playerYellowCards.getOrDefault(playerId, 0) + 1;
         playerYellowCards.put(playerId, count);
@@ -461,6 +593,7 @@ public class MatchState {
         action = null;
         celebrating = false;
         celebratingTeam = null;
+        celebrationHoldTicks = 0;
         awayRestartPending = false;
         kickoffPending = true;
         kickoffActionPending = false;
@@ -477,12 +610,14 @@ public class MatchState {
         cornerTeam = null;
         cornerHoldTicks = 0;
         thruBallArrivalTick = -1;
+        freeKickTaker = null;
         roundComplete = true;
         roundStartBallPosition = ball.getInitialPosition();
         roundEndBallPosition = ball.getInitialPosition();
         tacticalBallPosition = ball.getInitialPosition();
         lastTacticalBallStateKey = TacticsRules.ballStateKey(ball.getInitialPosition());
         roundPaceSkills.clear();
+        clearBallOOBPending();
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             roundStartPositions.put(p, p.getPosition());

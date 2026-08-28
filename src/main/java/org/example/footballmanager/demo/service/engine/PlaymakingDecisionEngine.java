@@ -31,6 +31,9 @@ public class PlaymakingDecisionEngine {
     // Pass exchange tracking: max 3 consecutive passes between same two players
     private final Map<String, Integer> passExchangeCount = new HashMap<>();
     private static final int MAX_PASS_EXCHANGES = 3;
+    // Own-half pass tracking: max 12 consecutive passes in own half
+    private int consecutiveOwnHalfPasses = 0;
+    private static final int MAX_OWN_HALF_PASSES = 12;
     private String lastCarrierTeam = null;
     private final java.util.Random random;
 
@@ -61,14 +64,31 @@ public class PlaymakingDecisionEngine {
 
     /**
      * Record a pass from one player to another for exchange limit tracking.
+     * Also tracks own-half passes for the consecutive limit.
      */
     public void recordPassExchange(String passerId, String receiverId) {
         String key = passerId + "->" + receiverId;
         String reverseKey = receiverId + "->" + passerId;
-        // Count both directions: A→B and B→A count toward the same exchange pair
         int count = Math.max(passExchangeCount.getOrDefault(key, 0),
                 passExchangeCount.getOrDefault(reverseKey, 0));
         passExchangeCount.put(key, count + 1);
+
+        // Track own-half passes
+        Player passer = null;
+        for (Player p : state.getPlayers()) {
+            if (p.getId().equals(passerId)) { passer = p; break; }
+        }
+        if (passer != null) {
+            boolean home = "HOME".equals(passer.getTeam());
+            double row = passer.getPosition().getRow();
+            boolean inOwnHalf = home ? (row < 4) : (row > 4);
+            if (inOwnHalf) {
+                consecutiveOwnHalfPasses++;
+            } else {
+                // Forward pass resets the own-half counter
+                consecutiveOwnHalfPasses = 0;
+            }
+        }
     }
 
     /**
@@ -76,6 +96,7 @@ public class PlaymakingDecisionEngine {
      */
     public void resetPassExchanges() {
         passExchangeCount.clear();
+        consecutiveOwnHalfPasses = 0;
     }
 
     /**
@@ -121,6 +142,79 @@ public class PlaymakingDecisionEngine {
                     .collect(Collectors.toList());
         }
 
+        // HARD RULE: max 3 consecutive carries — remove CARRY from options entirely
+        // so the selector cannot choose it. Prevents players dribbling endlessly.
+        if (carrier.getConsecutiveCarries() >= 3) {
+            visible = visible.stream()
+                    .filter(o -> o.getType() != DecisionType.CARRY)
+                    .collect(Collectors.toList());
+            if (visible.isEmpty()) {
+                // Safety: if all options filtered, force PASS
+                visible = options.stream()
+                        .filter(o -> o.getType() == DecisionType.PASS)
+                        .peek(o -> o.setVisible(true))
+                        .collect(Collectors.toList());
+            }
+        }
+
+        // HARD RULE: max 3 ping-pong passes between same pair — remove PASS to
+        // the exchange-limited receiver. This breaks the Away8↔Away9 infinite loop.
+        List<DecisionOption> filteredByExchange = new ArrayList<>();
+        for (DecisionOption opt : visible) {
+            if (opt.getType() == DecisionType.PASS && opt.getTarget() != null
+                    && isPassExchangeLimitReached(carrier.getId(), opt.getTarget().getId())) {
+                continue; // skip this pass — ping-pong limit reached
+            }
+            filteredByExchange.add(opt);
+        }
+        if (!filteredByExchange.isEmpty()) {
+            visible = filteredByExchange;
+        }
+
+        // HARD RULE: max 10 consecutive passes in own half — force forward action.
+        // Prevents endless sideways/backward passing without progression.
+        if (consecutiveOwnHalfPasses >= MAX_OWN_HALF_PASSES) {
+            List<DecisionOption> forwardOptions = visible.stream()
+                    .filter(o -> o.getType() == DecisionType.SHOT
+                            || o.getType() == DecisionType.THRU
+                            || o.getType() == DecisionType.CROSS
+                            || o.getType() == DecisionType.CENTER
+                            || (o.getType() == DecisionType.CARRY))
+                    .collect(Collectors.toList());
+            if (!forwardOptions.isEmpty()) {
+                visible = forwardOptions;
+            }
+            // If no forward options exist, at least remove PASS to own-half targets
+            // so the player is forced to try something different
+            else {
+                List<DecisionOption> nonBackward = new ArrayList<>();
+                for (DecisionOption opt : visible) {
+                    if (opt.getType() == DecisionType.PASS && opt.getTarget() != null) {
+                        boolean home = ctx.isHome();
+                        double targetRow = opt.getTarget().getPosition().getRow();
+                        boolean targetInOwnHalf = home ? (targetRow < 4) : (targetRow > 4);
+                        if (targetInOwnHalf) continue; // skip backward pass
+                    }
+                    nonBackward.add(opt);
+                }
+                if (!nonBackward.isEmpty()) {
+                    visible = nonBackward;
+                }
+            }
+        }
+
+        // SIDELINE OVERRIDE: wide attacker with space along the line MUST carry/cross.
+        // This is a football-intelligent decision — exploiting the flank.
+        DecisionOption sidelineOverride = checkSidelineOverride(ctx, visible);
+        if (sidelineOverride != null) {
+            // Don't count as consecutive carry — it's a good tactical decision
+            if (sidelineOverride.getType() == DecisionType.CARRY) {
+                ctx.player().resetConsecutiveCarries();
+            }
+            lastSelectionReason = "sideline override: " + sidelineOverride.getReason();
+            return sidelineOverride;
+        }
+
         DecisionOption result = selector.select(ctx, visible);
         lastSelectionReason = selector.getLastSelectionReason();
 
@@ -141,6 +235,34 @@ public class PlaymakingDecisionEngine {
         }
 
         lastScoredOptions = new ArrayList<>(visible);
+
+        // Override: if carrier is close to goal with an open net or only GK ahead,
+        // force SHOT regardless of what was chosen.
+        if (result.getType() != DecisionType.SHOT) {
+            Position goal = ActionEngine.goalPositionFor(carrier.getTeam());
+            double distToGoal = SimUtils.distance(carrier.getPosition(), goal);
+            int defendersBetween = countDefendersNearGoal(carrier, ctx.opponents());
+            Player opponentGK = findOpponentGoalkeeper(carrier.getTeam());
+            double gkDistToGoal = opponentGK != null
+                    ? SimUtils.distance(opponentGK.getPosition(), goal) : 99;
+
+            // Empty goal: GK is out of position (more than 2.0 cells from goal)
+            boolean emptyGoal = gkDistToGoal > 2.0 && distToGoal <= 4.0;
+            // Only GK ahead and close: 0 defenders between + within shooting range
+            boolean onlyGKAhead = defendersBetween == 0 && distToGoal <= 3.0;
+
+            if (emptyGoal || onlyGKAhead) {
+                for (DecisionOption opt : visible) {
+                    if (opt.getType() == DecisionType.SHOT) {
+                        result = opt;
+                        lastSelectionReason = "empty-goal override: GK dist="
+                                + String.format("%.1f", gkDistToGoal)
+                                + " defenders=" + defendersBetween;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Store best PASS option as fallback for THRU/CROSS/CENTER failures
         bestPassFallback = visible.stream()
@@ -202,9 +324,14 @@ public class PlaymakingDecisionEngine {
         double pm = ctx.playmaking();
 
         if (ctx.isKickoff()) {
+            // Kickoff is a hard football rule in the demo: the opening action is
+            // a backward PASS to a teammate. Never expose CARRY (or any other
+            // decision) as a fallback for kickoff.
             DecisionOption pass = generateKickoffPass(ctx);
-            if (pass != null) options.add(pass);
-            options.add(new DecisionOption(DecisionType.CARRY, 0, "kickoff fallback CARRY"));
+            if (pass == null) {
+                throw new IllegalStateException("Kickoff requires a teammate PASS target");
+            }
+            options.add(pass);
             return options;
         }
 
@@ -218,15 +345,18 @@ public class PlaymakingDecisionEngine {
         if (pm < 6) {
             // Low PM: CLEAR dominates, CARRY almost never, SHOT rarely
             pmClearBonus = 10.0;
-            pmCarryPenalty = 15.0;
+            pmCarryPenalty = 10.0;
             pmShotPenalty = 8.0;
         } else if (pm < 11) {
-            // Medium PM: mild CLEAR preference
+            // Medium PM: reduced CARRY preference
             pmClearBonus = 4.0;
-            pmCarryPenalty = 3.0;
+            pmCarryPenalty = 5.0;
             pmShotPenalty = 2.0;
         }
-        // High PM (11+): no adjustment
+        // High PM (11+): small carry penalty — prefers passing but can carry when open
+        else {
+            pmCarryPenalty = 2.0;
+        }
 
         if (!ctx.isGoalkeeper() && !state.isSetPiecePending()) {
             DecisionOption carry = scoreCarry(ctx);
@@ -240,20 +370,35 @@ public class PlaymakingDecisionEngine {
         double passThreshold = pass != null ? pass.getScore() : 0;
         DecisionOption clear = scoreClear(ctx, passThreshold);
         clear.setScore(clear.getScore() + pmClearBonus);
-        options.add(clear);
+        // CLEAR is not a legal attacking action. Do not leave a -999 option in
+        // the selector, because it can still win when every other score is low.
+        boolean inDefensiveThird = ctx.isHome()
+                ? ctx.player().getPosition().getRow() <= 2.0
+                : ctx.player().getPosition().getRow() >= 6.0;
+        if (inDefensiveThird) options.add(clear);
 
-        DecisionOption thru = scoreThru(ctx);
-        if (thru != null) options.add(thru);
+        // THRU: 5% frequency gate to reduce offside (was ~30+ THRU/match, target 2-3)
+        if (random.nextDouble() < 0.05) {
+            DecisionOption thru = scoreThru(ctx);
+            if (thru != null) options.add(thru);
+        }
 
-        if (ctx.canShoot()) {
+        // SHOT: generate option when canShoot is true, with frequency gate
+        // 10% gate targets ~15-20 shots/match at skill=14
+        boolean attackerInOpenScoringPosition = ctx.canShoot()
+                && (ctx.player().isAttacker() || "WNG".equals(ctx.player().roleLine()))
+                && countDefendersNearGoal(ctx.player(), ctx.opponents()) == 0
+                && SimUtils.distance(ctx.player().getPosition(), goalPosition(ctx)) <= 3.5;
+        if (ctx.canShoot() && (attackerInOpenScoringPosition || random.nextDouble() < 0.10)) {
             DecisionOption shot = scoreShot(ctx);
+            if (attackerInOpenScoringPosition) shot.setScore(shot.getScore() + 20.0);
             shot.setScore(shot.getScore() - pmShotPenalty);
             options.add(shot);
         }
 
-        // CROSS: from wing in final third only — generates 15-25 crosses/match
-        // 50% frequency gate to prevent excessive crosses (was 30.9/match)
-        if (ctx.inFinalThird() && ctx.onWing() && random.nextDouble() < 0.50) {
+        // CROSS: from wing in final third only — generates 10-15 crosses/match
+        // 35% frequency gate to get more crosses for corner production
+        if (ctx.inFinalThird() && ctx.onWing() && random.nextDouble() < 0.35) {
             double carrierRow = ctx.player().getPosition().getRow();
             boolean home = ctx.isHome();
             boolean inTheBox = home ? (carrierRow >= 6) : (carrierRow <= 2);
@@ -262,12 +407,15 @@ public class PlaymakingDecisionEngine {
                 if (cross != null) options.add(cross);
             }
         }
-        // CENTER: from central positions in final third — generates 10-15 centers/match
-        if (ctx.inFinalThird() && !ctx.onWing()) {
+        // CENTER: from central positions in final third — generates 10-30 centers/match
+        // 12% frequency gate to prevent excessive centers (was 227+/match without gate)
+        if (ctx.inFinalThird() && !ctx.onWing() && random.nextDouble() < 0.12) {
             double carrierRow = ctx.player().getPosition().getRow();
             boolean home = ctx.isHome();
             boolean inTheBox = home ? (carrierRow >= 6) : (carrierRow <= 2);
-            if (!inTheBox) {
+            // CENTER is a final-third delivery, not a midfield pass.
+            boolean centralDeliveryZone = home ? carrierRow >= 5.5 : carrierRow <= 2.5;
+            if (!inTheBox && centralDeliveryZone) {
                 DecisionOption center = scoreCenter(ctx);
                 if (center != null) options.add(center);
             }
@@ -283,11 +431,13 @@ public class PlaymakingDecisionEngine {
         boolean home = ctx.isHome();
         Player bestReceiver = null;
         double bestScore = -1;
+        Player bestBackwardReceiver = null; // fallback: any teammate in own half (not GK/defensive row)
+        double bestBackwardScore = -1;
+
         for (Player candidate : ctx.teammates()) {
             if (isOwnGoalkeeperOrDefensiveRow(candidate, carrier.getTeam())) continue;
             boolean validRow = home ? (candidate.getPosition().getRow() < 4)
                     : (candidate.getPosition().getRow() > 4);
-            if (!validRow) continue;
             double openness = receiverOpenness(candidate, ctx.opponents());
             double col = candidate.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);
@@ -302,8 +452,44 @@ public class PlaymakingDecisionEngine {
                 bestScore = score;
                 bestReceiver = candidate;
             }
+            // Also track the best teammate in own half (backward direction) as a fallback
+            // This ensures kickoff never defaults to CARRY/clearance when formation is misaligned
+            if (validRow && score > bestBackwardScore) {
+                bestBackwardScore = score;
+                bestBackwardReceiver = candidate;
+            }
         }
-        if (bestReceiver == null) return null;
+        // Guarantee non-null: use best backward receiver as absolute fallback
+        if (bestReceiver == null && bestBackwardReceiver != null) {
+            return new DecisionOption(DecisionType.PASS, bestBackwardReceiver, bestBackwardScore,
+                    "kickoff pass to backward receiver (fallback)");
+        }
+        if (bestReceiver == null) {
+            // Emergency fallback: any non-GK teammate
+            for (Player candidate : ctx.teammates()) {
+                if (isOwnGoalkeeperOrDefensiveRow(candidate, carrier.getTeam())) continue;
+                double candOpenness = receiverOpenness(candidate, ctx.opponents());
+                double candCol = candidate.getPosition().getColumn();
+                double candSidelineDist = Math.min(candCol - 1, 6 - candCol);
+                double candSidelinePenalty = candSidelineDist < 1.5 ? Math.pow(1.5 - candSidelineDist, 2) * -15.0 : 0;
+                double candCenterBonus = (4.0 - Math.abs(candCol - 3.5)) * 3.0;
+                double candScore = candOpenness * 1.2 + 30 + candSidelinePenalty + candCenterBonus;
+                if (candScore > bestScore) {
+                    bestScore = candScore;
+                    bestReceiver = candidate;
+                }
+            }
+            if (bestReceiver == null) {
+                // Absolute rule fallback: kickoff must still be a PASS.
+                // If the formation is unusual, use the first available teammate.
+                bestReceiver = ctx.teammates().stream()
+                        .filter(p -> p != carrier)
+                        .findFirst()
+                        .orElse(null);
+                if (bestReceiver == null) return null;
+                bestScore = 0;
+            }
+        }
         return new DecisionOption(DecisionType.PASS, bestReceiver, bestScore, "kickoff pass to backward receiver");
     }
 
@@ -328,6 +514,7 @@ public class PlaymakingDecisionEngine {
         for (Player receiver : nearest) {
             if (receiver == carrier) continue;
             if (isOwnGoalkeeperOrDefensiveRow(receiver, carrier.getTeam())) continue;
+            if (isClearlyOffsideAtPass(carrier, receiver)) continue;
             if (inFinalRows) {
                 double candidateRow = receiver.getPosition().getRow();
                 boolean validRow = home ? (candidateRow >= carrierRow) : (candidateRow <= carrierRow);
@@ -346,7 +533,7 @@ public class PlaymakingDecisionEngine {
             double pressure = ctx.pressure() * 0.2;
             double col = receiver.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);
-            double sidelinePenalty = sidelineDist < 1.0 ? (1.0 - sidelineDist) * -6.0 : 0;
+            double sidelinePenalty = sidelineDist < 0.5 ? (0.5 - sidelineDist) * -4.0 : 0;  // reduced: allow more wing passes
             boolean clearLane = isPassingLaneClear(carrier, receiver, ctx.opponents());
             double laneBonus = clearLane ? 3.0 : -1.5;
             // Distance penalty: long passes are riskier (higher deviation, more OOB)
@@ -362,8 +549,17 @@ public class PlaymakingDecisionEngine {
             double totalDistancePenalty = distancePenalty + minPassPenalty;
             // Carrier skill bonus: good passers get a boost, bad passers are penalized
             double carrierSkillBonus = (carrierPassing - 10.0) * 0.5;
-            double openSafBuf = (progression > 0) ? (openness * 0.4 + safety) : (openness * 0.3 + safety * 0.5);
-            double score = quality * 0.5 + progression * 0.8 + openSafBuf - pressure
+
+            // PM-based weighting: high PM → more progressive (higher progression weight, lower safety)
+            // low PM → safer passes (lower progression weight, higher safety)
+            double pm = ctx.playmaking();
+            double progressionWeight = 0.8 + (pm / 20.0) * 1.7; // 0.8 at PM=1, 2.5 at PM=20
+            double safetyWeight = 0.8 - (pm / 20.0) * 0.4;    // 0.8 at PM=1, 0.4 at PM=20
+            double openSafBuf = (progression > 0)
+                    ? (openness * 0.4 + safety * safetyWeight)
+                    : (openness * 0.3 + safety * 0.6);
+
+            double score = quality * 0.5 + progression * progressionWeight + openSafBuf - pressure
                     - lateralBackwardPenalty * 0.8 - laneBonus * 0.8 - sidelinePenalty * 0.8 - totalDistancePenalty * 0.8
                     + carrierSkillBonus;
             // Pass exchange limit: penalize passes that would exceed 3 exchanges
@@ -393,9 +589,9 @@ public class PlaymakingDecisionEngine {
                     if (ahead) defendersAhead++;
                 }
                 if (defendersAhead == 0) {
-                    score -= 30.0; // receiver is in offside position — don't pass there
+                    score -= 100.0; // receiver is in deep offside position — MUST avoid
                 } else if (defendersAhead == 1) {
-                    score -= 10.0; // marginal — risky
+                    score -= 30.0; // marginal — risky
                 }
             }
             if (score > 10) goodReceivers++;
@@ -404,23 +600,92 @@ public class PlaymakingDecisionEngine {
                 bestReceiver = receiver;
             }
         }
-        if (bestReceiver == null) return null;
+        if (bestReceiver == null) {
+            // Air pass fallback: when all ground lanes are blocked, try a long ball
+            // over the defenders to the furthest forward teammate. Higher deviation
+            // but at least it's a forward pass rather than backward safety pass.
+            Player furthestForward = null;
+            double bestForwardProgress = -1;
+            for (Player p : selection.nearestTeamTo(carrier, 8)) {
+                if (p == carrier) continue;
+                if (isOwnGoalkeeperOrDefensiveRow(p, carrier.getTeam())) continue;
+                if (isClearlyOffsideAtPass(carrier, p)) continue;
+                double progress = forwardProgression(carrier, p);
+                if (progress > bestForwardProgress) {
+                    bestForwardProgress = progress;
+                    furthestForward = p;
+                }
+            }
+            if (furthestForward != null && bestForwardProgress > 0) {
+                // Air pass: last resort when all ground lanes blocked — low score
+                double airScore = 0.5 + bestForwardProgress * 0.15
+                        - SimUtils.distance(carrier.getPosition(), furthestForward.getPosition()) * 2.5
+                        + (carrier.getSkills().passing() - 10) * 0.15;
+                return new DecisionOption(DecisionType.PASS, furthestForward, airScore,
+                        "air pass forward over blocked lanes");
+            }
+            // Absolute safety: nearest non-GK teammate
+            // In final 2 rows: do NOT pass backward — force null so carrier must SHOT/CARRY
+            List<Player> allTeammates = selection.nearestTeamTo(carrier, 5);
+            for (Player fallback : allTeammates) {
+                if (fallback == carrier) continue;
+                if (isOwnGoalkeeperOrDefensiveRow(fallback, carrier.getTeam())) continue;
+                // In final rows, only allow lateral or forward passes
+                if (inFinalRows) {
+                    double fallbackRow = fallback.getPosition().getRow();
+                    boolean validRow = home ? (fallbackRow >= carrierRow - 0.5) : (fallbackRow <= carrierRow + 0.5);
+                    if (!validRow) continue;
+                }
+                return new DecisionOption(DecisionType.PASS, fallback, -2.0, "safety pass fallback");
+            }
+            // In final rows with no valid pass option: return null so decide() picks SHOT/CARRY
+            if (inFinalRows) return null;
+            return null;
+        }
         // Team option bonus: more open teammates = passing is more viable as a strategy.
         // This prevents CARRY from dominating when there are multiple good pass options.
         double teamBonus = Math.min(goodReceivers * 1.2, 5.0);
         return new DecisionOption(DecisionType.PASS, bestReceiver, bestScore + teamBonus, "pass scored");
     }
 
+    private boolean isClearlyOffsideAtPass(Player passer, Player receiver) {
+        boolean home = "HOME".equals(passer.getTeam());
+        double passerRow = passer.getPosition().getRow();
+        double receiverRow = receiver.getPosition().getRow();
+        boolean forward = home ? receiverRow > passerRow : receiverRow < passerRow;
+        boolean opponentHalf = home ? receiverRow >= 4.0 : receiverRow <= 4.0;
+        if (!forward || !opponentHalf) return false;
+
+        String defendingTeam = home ? "AWAY" : "HOME";
+        List<Double> opponentRows = new ArrayList<>();
+        for (Player opponent : state.getPlayers()) {
+            if (defendingTeam.equals(opponent.getTeam())
+                    && !opponent.isSentOff() && !opponent.isInjured()) {
+                opponentRows.add(opponent.getPosition().getRow());
+            }
+        }
+        if (opponentRows.size() < 2) return true;
+        opponentRows.sort(home ? java.util.Comparator.reverseOrder()
+                : java.util.Comparator.naturalOrder());
+        double secondLastOpponent = opponentRows.get(1);
+        double margin = home ? receiverRow - secondLastOpponent
+                : secondLastOpponent - receiverRow;
+        // Only suppress a pass when the receiver is clearly, deeply offside.
+        // Close calls must still be attempted so the referee/VAR path can decide.
+        return margin > 1.0;
+    }
+
     /**
      * Check if the passing lane from carrier to receiver is clear of opponents.
-     * A lane is clear if no opponent is within 0.8 cells of the line between them.
+     * A lane is clear if no opponent is within 0.5 cells of the line between them.
+     * 0.5 cells ≈ 7m — realistic passing lane width on a compressed pitch.
      */
     private boolean isPassingLaneClear(Player carrier, Player receiver, List<Player> opponents) {
         Position a = carrier.getPosition();
         Position b = receiver.getPosition();
         for (Player opp : opponents) {
             double dist = pointToLineDistance(opp.getPosition(), a, b);
-            if (dist < 0.8) return false;
+            if (dist < 0.5) return false;
         }
         return true;
     }
@@ -453,9 +718,9 @@ public class PlaymakingDecisionEngine {
         // 0 defenders ahead = certain offside, 1 = very risky (level = onside but fragile)
         double offsidePenalty;
         if (nonGkDefendersAhead == 0) {
-            offsidePenalty = -spaceBehind * 2.5; // certain offside — very heavy penalty
+            offsidePenalty = -50.0; // certain offside — heavy penalty (was: -spaceBehind*4 which was 0 when space==0)
         } else if (nonGkDefendersAhead == 1) {
-            offsidePenalty = -10.0; // marginal — high risk of offside
+            offsidePenalty = -25.0; // marginal — high risk of offside
         } else {
             offsidePenalty = 0.0;
         }
@@ -466,98 +731,160 @@ public class PlaymakingDecisionEngine {
         } else if (runner.getConsecutiveOffsideCount() >= 1) {
             offsidePenalty -= 20.0;
         }
-        // Reduce spaceBehind influence — it was making THRU too attractive
-        double score = spaceBehind * 0.35 + receiverRun * 0.2 + progression * 0.3
+        // Reduce spaceBehind and progression weights — THRU was too attractive vs PASS
+        double score = spaceBehind * 0.20 + receiverRun * 0.15 + progression * 0.20
                 - interceptionRisk * 0.4 - pressure + offsidePenalty + wingBonus + paceBonus;
         return new DecisionOption(DecisionType.THRU, runner, score, "thru scored");
     }
 
     private DecisionOption scoreCarry(DecisionContext ctx) {
         Player carrier = ctx.player();
+        
+        // HARD BLOCK: carry only in opponent half
+        if (!ctx.inOpponentHalf()) {
+            return new DecisionOption(DecisionType.CARRY, -999, "carry blocked in own half");
+        }
+        
         double availableSpace = availableForwardSpace(carrier);
         double spaceAround = openSpaceAround(carrier, ctx.opponents());
-        double dribbleAdvantage = (carrier.getSkills().technique() + carrier.getSkills().striker()) / 2.0 * 0.3;
-        double progression = ctx.fieldPosition() / 7.0 * 20;
-        double pressure = ctx.pressure() * 0.3;
-        // Congestion penalty: when opponents are close, carry is dangerous.
-        // spaceAround < 5 means an opponent within ~1 cell — heavy penalty.
-        double congestionMultiplier = spaceAround < 5 ? 0.3 : (spaceAround < 15 ? 0.7 : 1.0);
-        // Consecutive carry penalty: after 2+ carries, strongly discourage more carries.
-        // This prevents players from holding the ball 3+ times in a row.
+        
+        // HARD BLOCK: carry only if at least 1 cell free around or ahead
+        if (availableSpace < 1.0 && spaceAround < 5.0) {
+            return new DecisionOption(DecisionType.CARRY, -999, "carry blocked - no space");
+        }
+        
+        double dribbleAdvantage = (carrier.getSkills().technique() + carrier.getSkills().striker()) / 2.0 * 0.25;
+        double progression = ctx.fieldPosition() / 7.0 * 15;
+        double pressure = ctx.pressure() * 0.4;
+        // Congestion: open space = higher carry viability
+        double congestionMultiplier = spaceAround < 5 ? 0.15 : (spaceAround < 15 ? 0.55 : 0.85);
+        // Global carry weight: target 50-100/match
+        double globalCarryWeight = 0.85;
+        // Consecutive carry penalty: strongly discourage after 1+ carries
         int consecutiveCarries = ctx.player().getConsecutiveCarries();
         double consecutivePenalty;
         if (consecutiveCarries >= 3) {
-            consecutivePenalty = 30.0;
+            consecutivePenalty = 80.0;
         } else if (consecutiveCarries >= 2) {
-            consecutivePenalty = 20.0;
+            consecutivePenalty = 40.0;
         } else if (consecutiveCarries >= 1) {
-            consecutivePenalty = 8.0;
+            consecutivePenalty = 15.0;
         } else {
             consecutivePenalty = 0.0;
         }
-        double score = (availableSpace * 0.8 + spaceAround * 0.4 + dribbleAdvantage + progression - pressure)
-                * congestionMultiplier - consecutivePenalty;
+        double score = (availableSpace * 0.55 + spaceAround * 0.35 + dribbleAdvantage + progression * 0.40 - pressure)
+                * congestionMultiplier * globalCarryWeight - consecutivePenalty;
         return new DecisionOption(DecisionType.CARRY, score, "carry scored");
     }
 
     private DecisionOption scoreClear(DecisionContext ctx, double passThreshold) {
+        // HARD BLOCK: clearance ONLY in own 3 closest rows to goal (defensive third).
+        // HOME defends rows 0-2, AWAY defends rows 5-7. Middle/attacking: no clearance.
+        boolean home = ctx.isHome();
+        double row = ctx.player().getPosition().getRow();
+        boolean inDefensiveThird = home ? (row <= 2.0) : (row >= 6.0);
+        if (!inDefensiveThird) {
+            return new DecisionOption(DecisionType.CLEAR, -999, "clear blocked outside defensive third");
+        }
         double danger = ctx.danger();
         double pressure = ctx.pressure();
         double lackOfSafeOptions = Math.max(0, 40 - passThreshold) * 0.3;
         double score = danger * 0.6 + pressure * 0.4 + lackOfSafeOptions;
-        if (ctx.inOpponentHalf()) score *= 0.05;
         return new DecisionOption(DecisionType.CLEAR, score, "clear scored");
     }
 
-    private DecisionOption scoreShot(DecisionContext ctx) {
+private DecisionOption scoreShot(DecisionContext ctx) {
         Player carrier = ctx.player();
         Position goal = ActionEngine.goalPositionFor(carrier.getTeam());
         double distanceToGoal = SimUtils.distance(carrier.getPosition(), goal);
-        double goalProximity = Math.max(0, (1.0 - distanceToGoal / 4.0)) * 8;
-        double shootingSpace = openSpaceAround(carrier, ctx.opponents()) * 0.2;
-        double strikerQuality = carrier.getSkills().striker() * 0.3;
+        double goalProximity = Math.max(0, (1.0 - distanceToGoal / 5.0)) * 12;
+        double shootingSpace = openSpaceAround(carrier, ctx.opponents()) * 0.50;
+        double strikerQuality = carrier.getSkills().striker() * 0.50;
         double pressure = ctx.pressure() * 0.05;
         boolean isAttacker = carrier.isAttacker() || "WNG".equals(carrier.roleLine());
         boolean home = "HOME".equals(carrier.getTeam());
         double row = carrier.getPosition().getRow();
         boolean inFinalThreeRows = home ? (row >= 4) : (row <= 4);
         boolean inFinalTwoRows = home ? (row >= 5) : (row <= 3);
-        double attackerBonus = (isAttacker && inFinalThreeRows) ? 1.5 : 0.0;
-        double boxBonus = inFinalTwoRows ? 1.0 : 0.0;
-        double pressureToShoot = ctx.pressure() > 35.0 ? (ctx.pressure() - 35.0) * 0.08 : 0.0;
+        boolean inFinalOneRow = home ? (row >= 6) : (row <= 2);
+        double attackerBonus = (isAttacker && inFinalThreeRows) ? 2.0 : 0.0;
+        double boxBonus = inFinalTwoRows ? 4.0 : 0.0;
+        double deepBoxBonus = inFinalOneRow ? 3.0 : 0.0;
+        double pressureToShoot = ctx.pressure() > 30.0 ? (ctx.pressure() - 30.0) * 0.15 : 0.0;
         double freshReceivePenalty;
-        if (carrier.getConsecutiveCarries() == 0) {
-            freshReceivePenalty = 8.0; // just received — settle/pass first, but allow shot if open
+        if (inFinalOneRow) {
+            freshReceivePenalty = 0.5;
+        } else if (inFinalTwoRows) {
+            freshReceivePenalty = 1.5;
+        } else if (carrier.getConsecutiveCarries() == 0) {
+            freshReceivePenalty = 4.0;
         } else if (carrier.getConsecutiveCarries() >= 2) {
-            freshReceivePenalty = 10.0; // carried 2+ times — should pass, not shoot
+            freshReceivePenalty = 5.0;
         } else {
-            freshReceivePenalty = 4.0; // carried once — still prefer pass/carry over shot
+            freshReceivePenalty = 3.0;
         }
+
+        // Empty-goal incentive: no defenders between carrier and goal + GK far away
+        // boosts shot score so attacker shoots instead of dribbling.
+        double defendersNearGoal = countDefendersNearGoal(carrier, ctx.opponents());
+        boolean emptyGoal = defendersNearGoal == 0;
+        Player opponentGK = findOpponentGoalkeeper(carrier.getTeam());
+        double gkDistToGoal = opponentGK != null
+                ? SimUtils.distance(opponentGK.getPosition(), goal) : 99;
+        double emptyGoalBonus = 0;
+        if (emptyGoal && distanceToGoal <= 5.0) {
+            // Base bonus scales with proximity
+            emptyGoalBonus = 5.0 + (5.0 - distanceToGoal) * 3.0; // max 20.0
+            // GK completely out of goal = massive bonus (must shoot)
+            if (gkDistToGoal > 3.0) {
+                emptyGoalBonus += 30.0; // near-guaranteed shot
+            } else if (gkDistToGoal > 2.0) {
+                emptyGoalBonus += 10.0;
+            }
+        }
+
         double score = goalProximity + shootingSpace + strikerQuality - pressure
-                + attackerBonus + boxBonus + pressureToShoot - freshReceivePenalty;
+                + attackerBonus + boxBonus + deepBoxBonus + pressureToShoot
+                - freshReceivePenalty + emptyGoalBonus;
 
-        // Shot cooldown: penalize if player shot recently (100 ticks = ~2.5 min)
-        int ticksSinceShot = ctx.matchTick() - carrier.getLastShotTick();
-        if (ticksSinceShot < 100) {
-            score -= 30.0; // absolute penalty — prevents re-shooting too quickly
+        // Empty goal overrides fresh-receive penalty — MUST shoot
+        if (emptyGoal && distanceToGoal <= 4.0) {
+            score += freshReceivePenalty; // cancel the penalty
         }
 
-        if (distanceToGoal > 4.0) {
-            score -= 15.0;
+        // Shot cooldown: penalize if player shot recently
+        // BUT: empty goal overrides cooldown — MUST shoot
+        int ticksSinceShot = ctx.matchTick() - carrier.getLastShotTick();
+        if (ticksSinceShot < 40 && !emptyGoal) {
+            score -= 8.0;
+        }
+
+        // Distance penalties — but NOT for empty goal (must shoot regardless)
+        if (!emptyGoal) {
+            if (distanceToGoal > 3.5) {
+                score -= 6.0;
+            } else if (distanceToGoal > 2.5) {
+                score -= 3.0;
+            } else if (distanceToGoal > 1.5) {
+                score -= 1.0;
+            }
+        }
+        if (!isAttacker && distanceToGoal > 2.0) {
+            score -= 10.0;
         }
         if (carrier.getSkills().striker() < 8 && distanceToGoal > 3.0) {
-            score -= 20.0;
+            score -= 10.0;
         }
         if (carrier.getSkills().striker() < 5 && distanceToGoal > 2.0) {
-            score -= 25.0;
+            score -= 15.0;
         }
         double angleToGoal = Math.abs(angleToGoal(carrier, goal));
         if (angleToGoal > 60.0) {
             score -= 10.0;
         }
-        double defendersNearGoal = countDefendersNearGoal(carrier, ctx.opponents());
         double defenderPenalty = defendersNearGoal * 5.0;
         score -= defenderPenalty;
+
         return new DecisionOption(DecisionType.SHOT, score, "shot scored");
     }
 
@@ -565,24 +892,24 @@ public class PlaymakingDecisionEngine {
         Player carrier = ctx.player();
         int boxAttackers = countBoxAttackers(ctx);
         if (boxAttackers == 0) return null;
-        double boxPresence = boxAttackers * 8.0;
-        double crossingQuality = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 2.0 * 0.5;
-        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.8;
+        double boxPresence = boxAttackers * 5.0;
+        double crossingQuality = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 2.0 * 0.4;
+        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.5;
         double safety = 10.0 - Math.min(10.0, ctx.pressure() * 0.3);
-        double score = boxPresence * 0.4 + crossingQuality + progression * 0.3 + safety - ctx.pressure() * 0.3;
-        return new DecisionOption(DecisionType.CROSS, score, "cross scored");
+        double score = boxPresence * 0.3 + crossingQuality + progression * 0.2 + safety - ctx.pressure() * 0.4;
+        return new DecisionOption(DecisionType.CROSS, carrier, score, "cross scored");
     }
 
     private DecisionOption scoreCenter(DecisionContext ctx) {
         Player carrier = ctx.player();
         int boxAttackers = countBoxAttackers(ctx);
         if (boxAttackers == 0) return null;
-        double boxPresence = boxAttackers * 5.0;
-        double crossingQuality = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 2.0 * 0.35;
-        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.35;
+        double boxPresence = boxAttackers * 4.0;
+        double crossingQuality = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 2.0 * 0.3;
+        double progression = forwardProgression(carrier, goalPosition(ctx)) * 0.3;
         double safety = 8.0 - Math.min(8.0, ctx.pressure() * 0.3);
-        double score = boxPresence * 0.25 + crossingQuality + progression * 0.2 + safety - ctx.pressure() * 0.4;
-        return new DecisionOption(DecisionType.CENTER, score, "center scored");
+        double score = boxPresence * 0.2 + crossingQuality + progression * 0.15 + safety - ctx.pressure() * 0.45;
+        return new DecisionOption(DecisionType.CENTER, carrier, score, "center scored");
     }
 
     // --- Helpers ---
@@ -706,6 +1033,7 @@ public class PlaymakingDecisionEngine {
         Position runnerPos = runner.getPosition();
         double minDist = Double.MAX_VALUE;
         for (Player opp : opponents) {
+            if ("GK".equals(opp.getRole())) continue;  // GK doesn't count — only outfield defenders
             boolean ahead = home
                     ? opp.getPosition().getRow() > runnerPos.getRow()
                     : opp.getPosition().getRow() < runnerPos.getRow();
@@ -713,7 +1041,7 @@ public class PlaymakingDecisionEngine {
             double dist = SimUtils.distance(runnerPos, opp.getPosition());
             if (dist < minDist) minDist = dist;
         }
-        if (minDist == Double.MAX_VALUE) return 0; // offside — no defenders ahead = bad
+        if (minDist == Double.MAX_VALUE) return 0; // offside — no outfield defenders ahead = bad
         return Math.min(40, Math.max(0, (minDist - 0.5) * 10));
     }
 
@@ -810,13 +1138,15 @@ public class PlaymakingDecisionEngine {
 
     /**
      * Calculate pressure on the ball carrier from nearby opponents.
-     * Unlike ThreatAssessmentService.calculatePersonalPressure() which returns 0 for the
-     * carrier's team, this counts actual defenders within pressing range of the carrier.
-     * With 4-4-2, a striker in the box should have 2-4 defenders within 1.5 cells.
+     * Counts actual defenders within pressing range of the carrier.
+     * Unlike ThreatAssessmentService which returns 0 for carrier's team,
+     * this counts opponents. Each defender within 2.0 cells contributes
+     * 1.0 (closer = more), so multiple defenders compound pressure.
+     * Returns 0-5 (max 5 simultaneous defenders within pressing range).
      */
     private double calculateCarrierPressure(Player carrier) {
         double pressure = 0;
-        double pressingRange = 1.5;
+        double pressingRange = 2.0;
         for (Player p : state.getPlayers()) {
             if (p.getTeam().equals(carrier.getTeam())) continue;
             if ("GK".equals(p.getRole())) continue;
@@ -825,6 +1155,138 @@ public class PlaymakingDecisionEngine {
                 pressure += (pressingRange - dist) / pressingRange;
             }
         }
-        return SimUtils.clamp(pressure, 0, 1);
+        return SimUtils.clamp(pressure, 0, 1.0);
+    }
+
+    /**
+     * Count opponents within a given range of the carrier (excludes GK).
+     */
+    private int countDefendersWithinRange(Player carrier, List<Player> opponents, double range) {
+        int count = 0;
+        for (Player p : opponents) {
+            if (SimUtils.distance(carrier.getPosition(), p.getPosition()) < range) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Find the opponent goalkeeper for the given team.
+     */
+    private Player findOpponentGoalkeeper(String carrierTeam) {
+        String opponentTeam = "HOME".equals(carrierTeam) ? "AWAY" : "HOME";
+        for (Player p : state.getPlayers()) {
+            if (opponentTeam.equals(p.getTeam()) && "GK".equals(p.getRole())) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sideline override: wide attacker (column <= 1.5 or >= 5.5) in opponent's half
+     * with open space along the line ahead must carry/cross — exploiting the flank.
+     * Near corner line (within 1 cell of end line): CENTER or dribble toward goal.
+     * This is a forced tactical decision, not scored.
+     */
+    private DecisionOption checkSidelineOverride(DecisionContext ctx, List<DecisionOption> options) {
+        Player carrier = ctx.player();
+        double col = carrier.getPosition().getColumn();
+        double row = carrier.getPosition().getRow();
+        boolean home = "HOME".equals(carrier.getTeam());
+        boolean attacking = home ? row >= 4.0 : row <= 4.0;
+        if (!attacking) return null;
+
+        // Is the player wide? (on the extreme wings, col 1 or 6)
+        boolean wide = col <= 1.5 || col >= 5.5;
+        if (!wide) return null;
+
+        // --- User Task 2: open-flank condition. The winger is on the attacking
+        // half in col 1/6 with (a) no opponent AHEAD within 1.0 cell toward the
+        // goal line, and (b) no opponent BESIDE within 0.5 cell toward the inner
+        // field. In that case the player must exploit the flank: dribble STRAIGHT
+        // up the line (same column) repeatedly until the last row, then either cut
+        // inside (clear beside) or centre into the box.
+        boolean clearAhead = !anyOpponentWithin(carrier, home, col, row + (home ? 1.0 : -1.0), 1.0);
+        boolean clearBeside = !anyOpponentWithin(carrier, home, col + (col > 3.5 ? -1.0 : 1.0), row, 0.5);
+
+        // Only enforce the straight-line flank run while there is genuinely clear
+        // space ahead. Otherwise fall through to the general wide logic below.
+        if (clearAhead) {
+            // Reached the LAST row? (HOME attacker at row 7, AWAY attacker at row 1)
+            boolean atLastRow = home ? row >= 6.5 : row <= 1.5;
+            if (atLastRow) {
+                // At the byline: cut inside along the byline (carry toward the box)
+                // if clear beside, otherwise whip a centre into the box.
+                if (clearBeside) {
+                    return new DecisionOption(DecisionType.CARRY, 100.0,
+                            "cut inside from byline (col=" + String.format("%.1f", col)
+                                    + ", clear beside)");
+                }
+                return new DecisionOption(DecisionType.CENTER, 100.0,
+                        "center into box from byline (col=" + String.format("%.1f", col) + ")");
+            }
+
+            // Still space ahead: carry STRAIGHT up the line (same column).
+            DecisionOption straight = new DecisionOption(DecisionType.CARRY, 100.0,
+                    "straight carry up the flank (col=" + String.format("%.1f", col)
+                            + ", space ahead)");
+            straight.setStraightLineCarry(true);
+            return straight;
+        }
+
+        // If any defender within 1.5 cells — too much pressure for a sideline carry
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(carrier.getTeam())) continue;
+            if (SimUtils.distance(carrier.getPosition(), p.getPosition()) < 1.5) {
+                return null;
+            }
+        }
+
+        // Near corner line? (within 1 cell of end line)
+        boolean nearCornerLine = home ? row >= 6.0 : row <= 2.0;
+
+        // Check for teammates in the attacking box
+        boolean hasTeammateInBox = false;
+        for (Player p : state.getPlayers()) {
+            if (!p.getTeam().equals(carrier.getTeam())) continue;
+            if ("GK".equals(p.getRole())) continue;
+            if (home ? p.getPosition().getRow() >= 6.0 : p.getPosition().getRow() <= 2.0) {
+                hasTeammateInBox = true;
+                break;
+            }
+        }
+
+        // Near corner line: CENTER if teammates in box, otherwise dribble toward goal
+        if (nearCornerLine) {
+            if (hasTeammateInBox) {
+                return new DecisionOption(DecisionType.CENTER, 100.0,
+                        "center from corner zone (col=" + String.format("%.1f", col) + ")");
+            }
+            return new DecisionOption(DecisionType.CARRY, 100.0,
+                    "dribble toward goal from corner (line=" + String.format("%.1f", col) + ")");
+        }
+
+        // Wide with space: carry along the line or cross
+        if (hasTeammateInBox) {
+            return new DecisionOption(DecisionType.CROSS, 100.0,
+                    "cross from wide position (col=" + String.format("%.1f", col) + ")");
+        }
+
+        return new DecisionOption(DecisionType.CARRY, 100.0,
+                "carry along sideline (col=" + String.format("%.1f", col) + ")");
+    }
+
+    /**
+     * True if no OPPONENT of the carrier is within `radius` cells of the given
+     * point (used to evaluate open flank space).
+     */
+    private boolean anyOpponentWithin(Player carrier, boolean home, double col, double row, double radius) {
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(carrier.getTeam())) continue;
+            double d = Math.sqrt(Math.pow(row - p.getPosition().getRow(), 2)
+                    + Math.pow(col - p.getPosition().getColumn(), 2));
+            if (d < radius) return true;
+        }
+        return false;
     }
 }

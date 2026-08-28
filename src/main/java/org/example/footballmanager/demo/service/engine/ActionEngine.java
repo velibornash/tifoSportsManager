@@ -13,7 +13,7 @@ import java.util.Locale;
  */
 public class ActionEngine {
 
-    public static final int SHOOT_MIN_ROW = 6; // shots only in last 2 rows (~30m from goal)
+    public static final int SHOOT_MIN_ROW = 6; // shots only in last 2 rows (~14-28m from goal)
     public static final Position GOAL_POSITION = new Position(7, 3.5);
     public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
     public static final Position PENALTY_SPOT_HOME = new Position(6, 3.5);
@@ -50,12 +50,22 @@ public class ActionEngine {
         if (actor == null && type == ActionType.CHASE) {
             actor = selection.closestEligibleActiveChaser(state.getBall().getPosition());
         }
+        if (actor != null && type != ActionType.CHASE) {
+            // The actor is the last-touch team until the ball is actually
+            // received, intercepted or deflected by someone else.
+            state.setLastTouchTeam(actor.getTeam());
+        }
         Action action = new Action(type, actor);
         action.setActionId(state.nextActionId());
+        action.setStartTick(state.getSimulationTick());
         state.setAction(action);
         state.setStatus(description);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 action.getActionId(), type.name(), description);
+        // Track consecutive carries for the carry penalty
+        if (type == ActionType.CARRY && actor != null) {
+            actor.incrementConsecutiveCarries();
+        }
     }
 
     public void complete(String description) {
@@ -239,14 +249,14 @@ public class ActionEngine {
         double dist = SimUtils.distance(from, to);
         Player carrier = state.getCarrier();
         // Skill-based air pass selection: better technique/passing players attempt air passes
-        // even at short distance. ~20-25% of passes should be air in real football.
+        // even at short distance. ~10-15% of passes should be air in real football.
         double skillFactor = (carrier.getSkills().technique() + carrier.getSkills().passing()) / 40.0;
-        // Base chance: 15% for short passes, scales up with distance and skill
-        double airChance = 0.10 + skillFactor * 0.25 + dist * 0.02;
+        // Base chance: 3% for short passes, scales up with distance and skill
+        double airChance = 0.03 + skillFactor * 0.10 + dist * 0.015;
         // Long passes are more likely to be air
-        if (dist > 5) airChance += 0.15;
-        // Cap at 40% — most passes should still be ground
-        airChance = Math.min(0.40, airChance);
+        if (dist > 5) airChance += 0.08;
+        // Cap at 15% — most passes should be ground (85%+)
+        airChance = Math.min(0.15, airChance);
         return state.getRandom().nextDouble() < airChance ? PassHeight.AIR : PassHeight.GROUND;
     }
 
@@ -280,10 +290,10 @@ public class ActionEngine {
         boolean received = result.received();
 
         // Cross-out: crosses have higher OOB chance — they're aimed at the box from the wing
-        // ~40% of bad crosses go out (real football: crosses from wing often miss)
+        // ~30% of bad crosses go out (real football: crosses from wing often miss)
         double deviation = SimUtils.distance(result.actualTarget(), intendedTarget);
         double sidelineDist = Math.min(intendedTarget.getColumn() - 1, 6 - intendedTarget.getColumn());
-        double crossOobChance = received ? 0.0 : 0.20 + deviation * 0.12 + (1.0 - Math.min(1.0, sidelineDist)) * 0.25;
+        double crossOobChance = received ? 0.0 : 0.15 + deviation * 0.10 + (1.0 - Math.min(1.0, sidelineDist)) * 0.20;
         boolean crossGoesOut = state.getRandom().nextDouble() < crossOobChance;
 
         Position flightTarget;
@@ -320,18 +330,7 @@ public class ActionEngine {
     public void executeCenter() {
         Player carrier = state.getCarrier();
         boolean home = "HOME".equals(carrier.getTeam());
-
-        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
-        Player aerialTarget = null;
-        double bestAerialScore = -1;
-        for (Player p : boxAttackers) {
-            if (p == carrier) continue;
-            double pr = p.getPosition().getRow();
-            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
-            if (!inBox) continue;
-            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30 + p.getSkills().striker() * 0.20;
-            if (score > bestAerialScore) { bestAerialScore = score; aerialTarget = p; }
-        }
+        Player aerialTarget = selectCenterTarget();
 
         if (aerialTarget == null) { executePass(); return; }
 
@@ -346,7 +345,7 @@ public class ActionEngine {
         // Center-out: similar OOB probability to crosses
         double deviation = SimUtils.distance(result.actualTarget(), intendedTarget);
         double sidelineDist = Math.min(intendedTarget.getColumn() - 1, 6 - intendedTarget.getColumn());
-        double centerOobChance = received ? 0.0 : 0.12 + deviation * 0.08 + (1.0 - Math.min(1.0, sidelineDist)) * 0.15;
+        double centerOobChance = received ? 0.0 : 0.06 + deviation * 0.05 + (1.0 - Math.min(1.0, sidelineDist)) * 0.10;
         boolean centerGoesOut = state.getRandom().nextDouble() < centerOobChance;
 
         Position flightTarget;
@@ -377,6 +376,29 @@ public class ActionEngine {
         state.getBall().setTarget(flightTarget);
         state.setCarrier(null);
         state.incrementActionCount();
+    }
+
+    /** Selects the same receiver used by executeCenter, for rules checks before execution. */
+    public Player selectCenterTarget() {
+        Player carrier = state.getCarrier();
+        if (carrier == null) return null;
+        boolean home = "HOME".equals(carrier.getTeam());
+        List<Player> boxAttackers = selection.nearestTeamTo(carrier, 8);
+        Player aerialTarget = null;
+        double bestAerialScore = -1;
+        for (Player p : boxAttackers) {
+            if (p == carrier) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBox) continue;
+            double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30
+                    + p.getSkills().striker() * 0.20;
+            if (score > bestAerialScore) {
+                bestAerialScore = score;
+                aerialTarget = p;
+            }
+        }
+        return aerialTarget;
     }
 
     private Position outOfBoundsEndpoint(Position target) {
@@ -413,6 +435,29 @@ public class ActionEngine {
         Position carryTarget = new Position(nr, nc);
         carrier.setTarget(carryTarget);
         start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
+        state.getAction().setTargetPosition(carryTarget);
+        state.incrementActionCount();
+    }
+
+    /**
+     * A straight-line carry used by the open-flank (winger) override: the player
+     * drives the ball directly up the touchline, staying in the SAME column so the
+     * run hugs the sideline. Used to repeatedly advance along the flank until the
+     * last row.
+     */
+    public void executeStraightCarry() {
+        Player carrier = state.getCarrier();
+        if ("GK".equals(carrier.getRole())) { executeClearance(); return; }
+        double r = carrier.getPosition().getRow();
+        double c = carrier.getPosition().getColumn();
+        boolean home = "HOME".equals(carrier.getTeam());
+        double direction = home ? 1 : -1;
+        // Straight forward: keep the exact same column (stay on the touchline).
+        double nr = SimUtils.clamp(r + direction * 1, 1, 7);
+        double nc = SimUtils.clamp(c, 1, 6);
+        Position carryTarget = new Position(nr, nc);
+        carrier.setTarget(carryTarget);
+        start(ActionType.CARRY, "CARRY (straight): " + carrier.getLabel());
         state.getAction().setTargetPosition(carryTarget);
         state.incrementActionCount();
     }
@@ -458,11 +503,16 @@ public class ActionEngine {
     public void executeClearance() {
         Player carrier = state.getCarrier();
         Position current = carrier.getPosition();
-        double direction = "HOME".equals(carrier.getTeam()) ? 1 : -1;
+        boolean home = "HOME".equals(carrier.getTeam());
+        double direction = home ? 1 : -1;
+        // Keep clearances inside the central playing area — avoid direct goal kicks
+        // from overhit defensive clearances while still moving the ball upfield.
         double targetRow = SimUtils.clamp(current.getRow()
-                + direction * (2.0 + state.getRandom().nextInt(3)), 1, 7);
-        // Column 1-6 to stay inside pitch and prevent throw-ins from clearances
-        Position target = new Position(targetRow, 1.0 + state.getRandom().nextDouble() * 5.0);
+                        + direction * (1.5 + state.getRandom().nextDouble() * 1.5),
+                home ? 1.0 : 2.0, home ? 6.0 : 7.0);
+        // Allow clearances to go OOB on sidelines — realistic under pressure
+        // Range [0.2, 6.8]: ~27% chance of going OOB on either sideline (col <1 or >6)
+        Position target = new Position(targetRow, 0.2 + state.getRandom().nextDouble() * 6.6);
 
         start(ActionType.PASS, "CLEAR: " + carrier.getLabel());
         Action action = state.getAction();
@@ -477,13 +527,72 @@ public class ActionEngine {
         state.incrementActionCount();
     }
 
-    public void executeShot() {
+    public boolean executeShot() {
         Player carrier = state.getCarrier();
         Position shotOrigin = carrier.getPosition();
         String shootingTeam = carrier.getTeam();
         Position goalPosition = goalPositionFor(shootingTeam);
         int strikerSkill = (int) Math.round(carrier.getSkills().striker());
-        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(goalPosition, strikerSkill);
+        // Calculate pressure: count non-GK opponents within 1.5 cells
+        double pressure = 0;
+        Player closestBlocker = null;
+        double closestBlockerDist = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(carrier.getTeam()) || "GK".equals(p.getRole())) continue;
+            double dist = SimUtils.distance(carrier.getPosition(), p.getPosition());
+            if (dist < 1.5) {
+                pressure += (1.5 - dist) / 1.5;
+                if (dist < closestBlockerDist) {
+                    closestBlockerDist = dist;
+                    closestBlocker = p;
+                }
+            }
+        }
+        pressure = Math.min(pressure, 1.0) * 50.0; // scale 0..1 → 0..50
+
+        Player goalkeeper = selection.anyGoalkeeper("HOME".equals(shootingTeam) ? "AWAY" : "HOME");
+        boolean emptyGoal = goalkeeper == null
+                || SimUtils.distance(goalkeeper.getPosition(), goalPosition) > 2.0;
+        if (emptyGoal) {
+            // An open goal is not a random target. If no outfield opponent is
+            // between the shooter and the goal, the shot must reach the goal.
+            for (Player opponent : state.getPlayers()) {
+                if (opponent.getTeam().equals(shootingTeam) || "GK".equals(opponent.getRole())
+                        || opponent.isSentOff() || opponent.isInjured()) continue;
+                boolean goalSide = "HOME".equals(shootingTeam)
+                        ? opponent.getPosition().getRow() > shotOrigin.getRow()
+                        : opponent.getPosition().getRow() < shotOrigin.getRow();
+                boolean inShootingLane = Math.abs(opponent.getPosition().getColumn()
+                        - shotOrigin.getColumn()) <= 1.0;
+                if (goalSide && inShootingLane) {
+                    emptyGoal = false;
+                    break;
+                }
+            }
+        }
+
+        // Pre-shot block check: defender within 1.5 cells can block the shot
+        // Probability: closer = more likely. At 0.5 cells: ~40%, at 1.5 cells: ~5%
+        if (closestBlocker != null) {
+            double blockChance = Math.max(0.03, 0.30 * (1.5 - closestBlockerDist) / 1.0);
+            if (state.getRandom().nextDouble() < blockChance) {
+                // Shot blocked! Defender throws body in front
+                state.getBall().setCarrier(null);
+                state.getBall().setTarget(null);
+                state.setCarrier(null);
+                state.getBall().setPosition(shotOrigin);
+                start(ActionType.CHASE, "BLOCK: " + closestBlocker.getLabel() + " blocked shot from " + carrier.getLabel());
+                state.setActionDelayTicks(0);
+                return false;  // signal: shot was blocked, don't continue with shot execution
+            }
+        }
+
+        ExecutionQuality.ShotResult result = executionQuality.evaluateShot(
+                goalPosition, strikerSkill, pressure, shotOrigin, goalkeeper);
+        if (emptyGoal) {
+            result = new ExecutionQuality.ShotResult(strikerSkill, goalPosition, true,
+                    Math.max(0.5, strikerSkill / 20.0));
+        }
 
         Position shotTarget = result.actualTarget();
 
@@ -504,12 +613,22 @@ public class ActionEngine {
         state.incrementActionCount();
         state.incrementShotCount();
         carrier.setLastShotTick(state.getMatchTicks());
+        return true;
     }
 
     public boolean pickupPass() {
         Action action = state.getAction();
         Player receiver = action.getTargetPlayer();
         if (receiver == null) {
+            passFailed();
+            return false;
+        }
+        // If ball is past the goal line (OOB), the pass cannot be received.
+        // Check before receiver distance — a receiver standing at row 7.3 should NOT
+        // be able to "receive" a ball at row 7.5 (past the line).
+        Position ballPos = state.getBall().getPosition();
+        if (ballPos.getRow() > 7.0 || ballPos.getRow() < 1.0
+                || ballPos.getColumn() < 1.0 || ballPos.getColumn() > 6.0) {
             passFailed();
             return false;
         }
@@ -533,6 +652,7 @@ public class ActionEngine {
         state.setCarrier(receiver);
         state.getBall().setTarget(null);
         receiver.resetConsecutiveCarries();
+        state.setLastTouchTeam(receiver.getTeam());  // track for OOB restart determination
         state.setStatus(receiver.getLabel() + " received pass");
         state.setActionDelayTicks(0);
         state.incrementPassCompletions(receiver.getTeam());
@@ -554,6 +674,7 @@ public class ActionEngine {
         winner.setTarget(null);
         winner.resetConsecutiveCarries();
         state.setActionDelayTicks(0);
+        state.setLastTouchTeam(winner.getTeam());  // track for OOB restart determination
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 action != null ? action.getActionId() : null,
                 "DUEL_WON", winner.getLabel() + " wins | " + reason);
@@ -574,13 +695,14 @@ public class ActionEngine {
         Position gkPos = goalkeeper.getPosition();
         state.getBall().setPosition(gkPos);
 
-        boolean corner = state.getRandom().nextInt(10) < 6; // 60% of saves → corner
+        boolean corner = state.getRandom().nextInt(10) < 3; // 30% of saves → corner
         String defendingTeam = "HOME".equals(action.getActingPlayer().getTeam()) ? "AWAY" : "HOME";
 
         if (corner) {
-            // Corner rebound - trigger corner immediately
+            // Corner rebound - trigger corner immediately at the proper corner flag
+            // (row 7 for HOME-attacking end, row 1 for AWAY-attacking end)
             action.setSaveType(Action.SaveType.CORNER_REBOUND);
-            int cornerRow = "HOME".equals(action.getActingPlayer().getTeam()) ? 8 : 0;
+            int cornerRow = "HOME".equals(action.getActingPlayer().getTeam()) ? 7 : 1;
             boolean right = state.getRandom().nextBoolean();
             Position cornerPos = new Position(cornerRow, right ? 6 : 1);
             state.getBall().setPosition(cornerPos);
@@ -621,13 +743,29 @@ public class ActionEngine {
     }
 
     public void shotMissed() {
-        Position missPosition = state.getAction().getActualTarget();
-        state.getBall().setPosition(missPosition != null ? missPosition : state.getBall().getPosition());
+        Action action = state.getAction();
+        Position missPosition = action.getActualTarget();
+        if (missPosition == null) missPosition = state.getBall().getPosition();
+
+        // When a shot misses, push ball PAST the end line so it's clearly out of play.
+        // HOME shoots toward row 7 (AWAY goal) → ball goes to row 8.5 (past the line)
+        // AWAY shoots toward row 1 (HOME goal) → ball goes to row -0.5 (past the line)
+        // Wide misses: column also goes past the sideline (col -0.5 or 8.5)
+        Position logicalGoal = action.getLogicalGoalPosition();
+        if (logicalGoal != null) {
+            if (logicalGoal.getRow() == 7.0) {
+                missPosition = new Position(8.5, SimUtils.clamp(missPosition.getColumn(), -0.5, 8.5));
+            } else if (logicalGoal.getRow() == 1.0) {
+                missPosition = new Position(-0.5, SimUtils.clamp(missPosition.getColumn(), -0.5, 8.5));
+            }
+        }
+
+        state.getBall().setPosition(missPosition);
         state.getBall().setCarrier(null);
         state.getBall().setTarget(null);
         state.setCarrier(null);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
-                state.getAction().getActionId(), "SHOT_MISSED",
+                action.getActionId(), "SHOT_MISSED",
                 "SHOT | MISS — ball out of play");
         complete("SHOT | MISS");
     }
@@ -644,8 +782,17 @@ public class ActionEngine {
         state.setKickoffTeam("HOME".equals(scorer.getTeam()) ? "AWAY" : "HOME");
         state.setCelebratingTeam(scorer.getTeam());
         state.setCelebrating(true);
+        // Celebration hold: 20 ticks = 30s @ 1.5s/tick — realistic goal
+        // celebration duration (was 100 ticks = 150s, far too long).
+        state.setCelebrationHoldTicks(20);
         int score = "HOME".equals(scorer.getTeam()) ? state.getGoalCount() : state.getAwayGoalCount();
         state.setStatus("GOAL for " + scorer.getTeam() + "! (" + score + ")");
+        // Set ball to goal exit position so the viewer snapshot shows ball behind the goal line
+        Position exitPos = goalExitPositionFor(scorer.getTeam());
+        state.getBall().setPosition(exitPos);
+        state.getBall().setCarrier(null);
+        state.getBall().setTarget(null);
+        state.setCarrier(null);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 state.getAction().getActionId(), "GOAL",
                 "GOAL for " + scorer.getTeam() + "! " + scorer.getLabel()

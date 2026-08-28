@@ -19,8 +19,13 @@ public class DuelResolver {
     public DuelResult resolve(Player attacker, Player defender, DuelType type, Action action) {
         double attackerPower = computePower(attacker, type, true, action);
         double defenderPower = computePower(defender, type, false, action);
-        int attRounded = (int) Math.round(attackerPower);
-        int defRounded = (int) Math.round(defenderPower);
+        // Small randomness so equal-skill players still have contested outcomes
+        double attNoise = (random.nextDouble() - 0.5) * 6.0; // ±3 on average
+        double defNoise = (random.nextDouble() - 0.5) * 6.0;
+        double attTotal = attackerPower + attNoise;
+        double defTotal = defenderPower + defNoise;
+        int attRounded = (int) Math.round(attTotal);
+        int defRounded = (int) Math.round(defTotal);
 
         if (attRounded >= defRounded) {
             return new DuelResult(attacker, DuelOutcome.ATTACKER_WINS, attRounded, defRounded);

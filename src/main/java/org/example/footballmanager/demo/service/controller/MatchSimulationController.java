@@ -78,6 +78,50 @@ public class MatchSimulationController {
         return generateTeam(teamSide, teamName, teamName.hashCode());
     }
 
+    /** Generate a team where all players have maximum skills (20). Used for testing. */
+    public static List<Player> generateMaxSkillTeam(String teamSide, String teamName) {
+        String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
+        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
+        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
+        List<Player> players = new ArrayList<>();
+        PlayerSkills maxSkills = new PlayerSkills(20, 20, 20, 20, 20, 20, 20, 20);
+        for (int i = 0; i < 11; i++) {
+            String role = roles[i];
+            double tacticalRow = tacticalRows[i];
+            double tacticalCol = tacticalCols[i];
+            Position tacticalPos = new Position(tacticalRow, tacticalCol);
+            Position pos = TacticalPerspectiveTransformer.toPhysical(tacticalPos, teamSide);
+            players.add(new Player(
+                    teamSide.charAt(0) + "-" + (i + 1),
+                    teamName + " " + (i + 1),
+                    teamSide, role, pos, pos, maxSkills, 180
+            ));
+        }
+        return players;
+    }
+
+    /** Generate a team where all players have the same skill level. Used for controlled tests. */
+    public static List<Player> generateTeamWithSkill(String teamSide, String teamName, int skill) {
+        String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
+        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
+        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
+        List<Player> players = new ArrayList<>();
+        PlayerSkills uniformSkills = new PlayerSkills(skill, skill, skill, skill, skill, skill, skill, skill);
+        for (int i = 0; i < 11; i++) {
+            String role = roles[i];
+            double tacticalRow = tacticalRows[i];
+            double tacticalCol = tacticalCols[i];
+            Position tacticalPos = new Position(tacticalRow, tacticalCol);
+            Position pos = TacticalPerspectiveTransformer.toPhysical(tacticalPos, teamSide);
+            players.add(new Player(
+                    teamSide.charAt(0) + "-" + (i + 1),
+                    teamName + " " + (i + 1),
+                    teamSide, role, pos, pos, uniformSkills, 180
+            ));
+        }
+        return players;
+    }
+
     public static List<Player> generateTeam(String teamSide, String teamName, long skillSeed) {
         // Positioning mirrors DemoScenario.standard() — the authoritative kickoff layout.
         // HOME: GK(1,3.5), DEF(2,2-5), MID(3,1/3/4/6), ATT(4,3.075/4)

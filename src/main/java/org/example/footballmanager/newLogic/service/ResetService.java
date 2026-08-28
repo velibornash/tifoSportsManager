@@ -28,10 +28,12 @@ public class ResetService {
     /**
      * Full reset: clears everything and rebuilds from scratch (used by initialize-db).
      * Preserves only the owner account row during truncation.
+     * Tactical editor profiles (team_tactics_profile) are handled via
+     * snapshot/restore in the calling clearDatabaseOnly().
      */
     @Transactional
     public void resetDatabase() {
-        log.warn("RESET DATABASE STARTED - preserving owner account and resetting football data");
+        log.warn("RESET DATABASE STARTED - preserving owner account and resetting all sport data");
         entityManager.flush();
         entityManager.clear();
         sanitizeLegacyLineupOrderSchema();
@@ -61,10 +63,32 @@ public class ResetService {
                 "season",
                 "country",
                 "game_clock",
-                "user"
+                "user",
+                // Basketball tables (children before parents for TRUNCATE CASCADE safety)
+                "bb_match_fixtures",
+                "bb_matches",
+                "bb_player_season_stats",
+                "bb_competition_entries",
+                "bb_season_competitions",
+                "bb_players",
+                "bb_teams",
+                "bb_leagues",
+                // American Football tables
+                "af_match_fixtures",
+                "af_matches",
+                "af_player_season_stats",
+                "af_competition_entries",
+                "af_season_competitions",
+                "af_players",
+                "af_teams"
         );
 
         truncateTables(desiredOrder);
+
+        // Remove basketball and American Football entries from the shared
+        // common_competitions table (now safe — all bb_/af_ tables are empty)
+        entityManager.createNativeQuery(
+                "DELETE FROM common_competitions WHERE sport IN ('BASKETBALL', 'AMERICAN_FOOTBALL')").executeUpdate();
 
         List<String> existingNormalized = getExistingTableNames();
         if (existingNormalized.contains("app_user")) {
@@ -75,12 +99,13 @@ public class ResetService {
                     """).executeUpdate();
         }
 
-        log.warn("RESET DATABASE FINISHED - football data cleared, owner account preserved");
+        log.warn("RESET DATABASE FINISHED - all sport data cleared, owner account preserved");
     }
 
     /**
      * Soft reset: clears only match/season/player/team data.
      * Preserves: all users (app_user, user), tactics profiles, countries, game_clock.
+     * Also clears basketball and American Football match/player data.
      */
     @Transactional
     public void resetFootballDataOnly() {
@@ -108,11 +133,33 @@ public class ResetService {
                 "player",
                 "team",
                 "competition",
-                "season"
+                "season",
+                // Basketball tables
+                "bb_match_fixtures",
+                "bb_matches",
+                "bb_player_season_stats",
+                "bb_competition_entries",
+                "bb_season_competitions",
+                "bb_players",
+                "bb_teams",
+                "bb_leagues",
+                // American Football tables
+                "af_match_fixtures",
+                "af_matches",
+                "af_player_season_stats",
+                "af_competition_entries",
+                "af_season_competitions",
+                "af_players",
+                "af_teams"
                 // deliberately excluded: team_tactics_profile, app_user, user, country, game_clock
         );
 
         truncateTables(desiredOrder);
+
+        // Remove basketball and American Football entries from the shared
+        // common_competitions table (now safe — all bb_/af_ tables are empty)
+        entityManager.createNativeQuery(
+                "DELETE FROM common_competitions WHERE sport IN ('BASKETBALL', 'AMERICAN_FOOTBALL')").executeUpdate();
 
         // Detach all users from their teams (teams are gone after reset)
         List<String> existingNormalized = getExistingTableNames();

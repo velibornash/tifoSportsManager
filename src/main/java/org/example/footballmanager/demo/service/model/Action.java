@@ -29,6 +29,7 @@ public class Action {
     private PassHeight passHeight = PassHeight.GROUND;
     private double passSpeed = 2.0; // cells/tick — based on passer's passing skill
 
+    private long startTick;
     private int chaseTicks;
     private double chaseLastDistance = Double.NaN;
     private int chaseNoProgressTicks;
@@ -100,6 +101,8 @@ public class Action {
     public void setPassSpeed(double passSpeed) { this.passSpeed = passSpeed; }
     public int getChaseTicks() { return chaseTicks; }
     public int getChaseNoProgressTicks() { return chaseNoProgressTicks; }
+    public long getStartTick() { return startTick; }
+    public void setStartTick(long startTick) { this.startTick = startTick; }
 
     @Override
     public String toString() {

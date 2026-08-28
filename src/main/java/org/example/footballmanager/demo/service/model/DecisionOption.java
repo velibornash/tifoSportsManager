@@ -10,6 +10,7 @@ public class DecisionOption {
     private double score;
     private final String reason;
     private boolean visible;
+    private boolean straightLineCarry;
 
     public DecisionOption(DecisionType type, double score, String reason) {
         this(type, null, score, reason);
@@ -30,6 +31,8 @@ public class DecisionOption {
     public void setReason(String reason) { /* reason is final in practice */ }
     public boolean isVisible() { return visible; }
     public void setVisible(boolean visible) { this.visible = visible; }
+    public boolean isStraightLineCarry() { return straightLineCarry; }
+    public void setStraightLineCarry(boolean straightLineCarry) { this.straightLineCarry = straightLineCarry; }
 
     @Override
     public String toString() {

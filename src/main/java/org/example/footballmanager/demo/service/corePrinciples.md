@@ -103,6 +103,29 @@ This is a fundamental principle, not an exception.
 
 ---
 
+## 2.4 Pitch orientation and coordinate system
+
+The playable pitch is a continuous grid with:
+
+* **rows 1–7** (horizontal axis, left-to-right in the viewer);
+* **columns 1–6** (vertical axis, top-to-bottom in the viewer);
+* row `0` and row `8`, and columns `< 1` / `> 6`, are out-of-bounds zones.
+
+**Real-world scale:** the playable grid is **7 rows × 6 columns** and maps to a
+pitch of **98 metres × 60 metres**, so **each cell is a 14 m × 10 m rectangle**
+(14 m along a row step, 10 m along a column step). This conversion supports
+distances, speeds and offside margins in metres where needed.
+
+Team orientation is fixed for the whole match:
+
+* **HOME team** starts on the left, defends the goal at **row 1**, and attacks toward **row 7**;
+* **AWAY team** starts on the right, defends the goal at **row 7**, and attacks toward **row 1**;
+* the centre spot is at **(4, 3.5)**.
+
+This convention is authoritative for all tactical, movement, offside, and restart calculations.  Functions named `goalPositionFor(team)` return the goal that team is **attacking** (row 7 for HOME, row 1 for AWAY), not the goal it defends.
+
+---
+
 # 3. Simulation Model
 
 The simulator operates as a repeated decision-resolution cycle.
@@ -1924,7 +1947,858 @@ That combination, rather than any individual algorithm, defines the intended cha
 
 ---
 
-# 47. Implementation Rule
+# 47. Football Simulation — Action & Event Semantics
+
+This section defines the **football-domain specification** — not implementation details, but what each action and event **means in real football**, when it is a candidate, what its alternatives are, and what happens when it fails.
+
+The specification draws on the current IFAB framework 2026/27, particularly Laws 9–17, offside rules, and VAR/disciplinary provisions. ([IFAB](https://theifab.com/laws-of-the-game-documents/))
+
+## 47.0 Pitch Orientation
+
+```text
+AWAY GOAL
+row 7
+────────────────────────
+row 6
+row 5
+row 4       CENTER
+row 3
+row 2
+row 1
+────────────────────────
+HOME GOAL
+
+       col 1 ... col 6
+```
+
+### HOME
+
+* Attacks from **row 1 → row 7**
+* Own goal = row 1
+* Opponent's goal = row 7
+* col 1 = left from HOME perspective
+* col 6 = right from HOME perspective
+
+### AWAY
+
+* Attacks from **row 7 → row 1**
+* Own goal = row 7
+* Opponent's goal = row 1
+* Left/right from AWAY attacking perspective.
+
+Row is the primary forward/backward axis. Column is width.
+
+---
+
+## 47.1 PASS
+
+The most basic possession action. The ball carrier attempts to relay the ball to a teammate.
+
+### Ground pass
+
+Ball travels along the ground. Typical:
+
+* short distance
+* safe distribution
+* high success rate
+* used between close teammates
+* used under pressure
+* used to maintain possession
+
+Example: `CB → CM`, `CM → FB`
+
+### Air pass
+
+Ball travels through the air. Used when:
+
+* opponent closes the ground passing lane
+* need to bypass the press
+* need to switch the zone
+* need a longer delivery
+* no safe ground option exists
+
+Higher risk of control/receive failure, but can bypass opponents.
+
+### Safe PASS
+
+Candidate when:
+
+* there is a relatively safe teammate
+* passing lane is not seriously blocked
+* no urgent need to break the line
+* player is under pressure
+* possession retention has higher value than progression
+
+Example: `CB → CM`, `CM → FB`
+
+### Risky PASS
+
+Candidate when:
+
+* there is a potential for significant progressive gain
+* receiver is behind the defensive line
+* counter may be exposed
+* few safe options exist
+* player has sufficient vision/playmaking ability
+
+> **A risky PASS is not automatically a bad decision.** A good playmaker may deliberately attempt a risky pass when the potential benefit is large. Similarly, it is **perfectly normal for a poor playmaker to occasionally make a poor/risky pass**, including toward a player in a very tight offside position.
+
+### Short vs Long
+
+**Short** — small distance, higher precision, lower risk, faster control, often ground.
+
+**Long** — larger distance, bigger progression, changes attacking zone, can bypass pressure, higher execution risk.
+
+### Alternatives to PASS
+
+```text
+PASS → THRU, CARRY, CROSS, CENTER, SHOT, CLEAR
+```
+
+The Decision Engine selects based on situation, player ability, and option availability.
+
+---
+
+## 47.2 THRU PASS
+
+A special type of PASS. The target is not a player's feet, but **space behind the defensive line**.
+
+```text
+PASS → player
+THRU  → space behind defenders → runner
+```
+
+Candidate when:
+
+* there is a runner
+* there is space behind the defense
+* the runner can reach the ball
+* the pass can break the defensive line
+
+Critical relationship: `vision + passing + runner position + space + offside risk`
+
+### Alternative
+
+If THRU is too risky: `PASS, CARRY, CROSS, CENTER`
+
+---
+
+## 47.3 CROSS
+
+A cross is a ball delivered from a wide position toward the attacking zone/box. Not the same as CENTER.
+
+```text
+          BOX
+       ↑ ↑ ↑ ↑
+       ↑ ↑ ↑ ↑
+WINGER ───────→
+```
+
+Candidate when:
+
+* carrier is wide
+* positioned high enough
+* there are players in the box
+* there is an attacking finishing opportunity
+* a central passing lane is not better
+
+Cross types: low cross, driven cross, high cross. For the simulator we can start with just `CROSS` with internal selection of height/target.
+
+### Alternative
+
+`PASS back, CARRY, THRU, CENTER, SHOT if the angle is good`
+
+---
+
+## 47.4 CENTER
+
+> **CENTER = ball toward the central box area / central attacking target zone.**
+
+Unlike CROSS:
+
+```text
+CROSS  = wide → box
+CENTER = central/attacking zone → box
+```
+
+Candidate when:
+
+* carrier has a sufficiently high position
+* there is a target in the box
+* a central ball makes sense
+* there is numerical presence in the box
+
+Important: **CENTER does not mean "any pass toward the middle."** It is an attacking delivery toward the box.
+
+### Alternative
+
+`CROSS if wide, PASS if safer, SHOT if in shooting position, CARRY if space exists`
+
+---
+
+## 47.5 CARRY / DRIBBLE
+
+The carrier retains the ball and moves with it. This is not a pass.
+
+### CARRY
+
+More: `space → advance`
+
+### DRIBBLE
+
+More: `defender → attempt to beat him`
+
+For the simulator both can share a `DecisionType`, but outcomes differ.
+
+Candidate when:
+
+* space ahead
+* no good passing option
+* can gain territory
+* can draw an opponent
+* can attack a defender 1v1
+
+### When NOT carry
+
+* opponent close
+* no space
+* player is weak at dribbling
+* much better PASS exists
+* clear pressure
+
+Alternative: `PASS, CLEAR, SHOT`
+
+---
+
+## 47.6 SHOT
+
+An attempt to score a goal.
+
+Candidate when:
+
+* player has a sufficiently good shooting position
+* distance/angle are acceptable
+* there is an open shooting lane
+* shot has greater value than pass
+
+On our grid:
+
+```text
+row 7
+   GOAL
+   ↑
+row 6
+   ↑ attacking shooting zone
+row 5
+```
+
+For HOME, the closer to row 7, the higher the shooting opportunity. For AWAY, the reverse.
+
+### Shot outcome
+
+Not simply `SHOT → GOAL / MISS`, but:
+
+```text
+SHOT
+ ↓
+Execution
+ ↓
+trajectory
+ ↓
+defender interaction?
+ ↓
+GK?
+ ↓
+goal / save / deflection / miss
+```
+
+This matters because of: DEFLECTION, SAVE, REBOUND, CORNER, GOAL, VAR.
+
+---
+
+## 47.7 CLEAR
+
+CLEAR is a **defensive emergency action**. The goal is not progression.
+
+> **The goal is: remove the ball from the dangerous zone.**
+
+Candidate when:
+
+* player is under serious pressure
+* no safe PASS
+* ball is in the defensive zone
+* danger of immediate loss exists
+* possession retention is no longer a rational option
+
+Typically: `CB under pressure → CLEAR → ball away`
+
+### CLEAR alternative
+
+If `SAFE PASS` exists, it is better. If not, `CLEAR`.
+
+Important: **CLEAR is not a failed PASS.** It is a deliberate decision to eject the ball.
+
+---
+
+## 47.8 OFFSIDE
+
+We must strictly separate:
+
+### Offside position
+
+Being in an offside position is not itself an offence. ([IFAB Law 11](https://www.theifab.com/laws/latest/offside/))
+
+For the simulator, a player is in offside position when in the opponent's half and closer to the goal line than the ball and the second-last opponent. But:
+
+```text
+OFFSIDE POSITION ≠ OFFSIDE OFFENCE
+```
+
+Offside offence occurs when a player from that position becomes actively involved in play.
+
+### For the simulator
+
+Critical snapshot:
+
+```text
+PASS START
+    ↓
+capture positions
+    ↓
+was receiver offside?
+    ↓
+if yes:
+    PASS continues
+    ↓
+receiver receives/touches ball
+    ↓
+OFFSIDE EVENT
+```
+
+### Restart
+
+Offside → **indirect free kick** for the opposing team at the place of the offence. ([IFAB](https://theifab.com/laws/chapter/31/section/88/))
+
+### Exceptions
+
+No offside offence directly from:
+
+* goal kick
+* throw-in
+* corner kick
+
+This should be a **hard rule**, not a decision probability.
+
+---
+
+## 47.9 OFFSIDE RETREAT
+
+This is a **simulation/gameplay rule we can add above the real Law 11**, because the football law itself does not say "after three actions the player must return."
+
+Our rule:
+
+```text
+player remains offside
++
+3 consecutive actions while remaining offside
+        ↓
+FORCE RETREAT
+```
+
+The player receives at minimum: `RETREAT, RETREAT, ...` until entering a safe row.
+
+### What is safe
+
+For HOME: `position ≤ defensive line relative to ball/opponents`
+
+For AWAY, the same but reversed direction.
+
+This should not be implemented as "go three cells back." Better:
+
+> **retreat toward the nearest row in which the player is no longer offside.**
+
+The Movement Engine still limits per-tick movement.
+
+---
+
+## 47.10 When to attempt risky pass toward offside player
+
+This is good AI material. Not:
+
+```text
+offside distance = 0 → NEVER PASS
+```
+
+But:
+
+```text
+small offside margin
++
+high potential reward
++
+good playmaker
++
+good runner
++
+risk acceptable
+→ risky pass candidate
+```
+
+Example:
+
+```text
+runner: barely offside
+space behind defence: HUGE
+playmaker: high vision
+pass: difficult but possible
+→ THRU/RISKY PASS remains candidate
+```
+
+While:
+
+```text
+runner: clearly offside
+space: small
+playmaker: poor
+pressure: high
+→ don't attempt
+```
+
+This produces natural behavior: > a poor player may foolishly pass into offside, while a good player may deliberately attempt it "on the edge."
+
+---
+
+## 47.11 VAR
+
+VAR is not an engine that decides every event. VAR is:
+
+> **A review mechanism activated only for specific reviewable incidents.**
+
+Current IFAB framework 2026/27 includes VAR capabilities for goals/penalties and certain red cards; IFAB has specifically expanded/clarified some VAR areas for 2026.
+
+For the simulator:
+
+```text
+VAR EVENT
+  ↓
+Was incident reviewable?
+  ↓
+Was evidence sufficient?
+  ↓
+CONFIRM / OVERTURN
+```
+
+### VAR: GOAL
+
+Review: `possible offside? possible foul? possible handball? possible illegal action?`
+
+Result: `GOAL CONFIRMED` or `GOAL OVERTURNED → restart determined by actual offence`
+
+### VAR — OFFSIDE
+
+Not every offside needs VAR. In the simulator:
+
+* **Obvious offside** (large distance) → referee/offside engine confirms
+* **Marginal offside** (small distance) → VAR review candidate
+
+Example: `OFFSIDE_MARGIN <= threshold → VAR_REVIEW_OFFSIDE`
+
+This is especially elegant for simulation because it enables:
+
+```text
+GOAL → VAR → offside 0.2 cell → GOAL OVERTURNED
+```
+
+or:
+
+```text
+offside 0.05 → VAR → ON SIDE → GOAL
+```
+
+### VAR — RED CARD / FOUL
+
+Distinguish:
+
+* **Yellow** — normal disciplinary action
+* **Straight red** — potential VAR review: `foul → possible red → VAR → RED CONFIRMED / OVERTURNED`
+* **Second yellow**: `yellow + yellow = red + player sent off` — not the same as straight red. IFAB 2026/27 specifically provides VAR review for **factual errors involving a second yellow card**.
+
+### VAR — PENALTY
+
+```text
+DUEL → DEFENDER wins → no foul called
+→ but attacker was in penalty area
+→ VAR candidate
+```
+
+If VAR determines: `foul + inside penalty area → PENALTY`. If no offence: `play continues`.
+
+---
+
+## 47.12 DEFLECTION
+
+This is not a decision. This is a **physical event**.
+
+```text
+SHOT → ball trajectory → DEFENDER intersects trajectory → DEFLECTION
+```
+
+or:
+
+```text
+PASS → defender touches ball → DEFLECTION
+```
+
+After deflection, re-evaluate: `ball direction, ball position, carrier?, possession?, out?, goal?, corner?, interception?`
+
+> **Deflection does not choose a new action. It changes the ball state.**
+
+---
+
+## 47.13 INTERCEPTION
+
+Not the same as a tackle.
+
+### Interception
+
+The defender **intercepts the ball**.
+
+```text
+PASS → ball trajectory → defender enters passing lane → INTERCEPTION → defender becomes carrier
+```
+
+No physical duel with the carrier is necessarily involved.
+
+---
+
+## 47.14 TACKLE
+
+A tackle is a **defensive action against a player who has the ball**.
+
+```text
+carrier → defender enters duel radius → TACKLE
+```
+
+Outcome:
+
+```text
+successful tackle → defender gets ball
+failed tackle → carrier keeps ball
+foul → free kick / penalty
+serious foul → yellow / red / VAR candidate
+```
+
+This is why `Tackle/Duel` should be kept separate from `Interception`.
+
+---
+
+## 47.15 GOAL KICK
+
+If the ball completely crosses the goal line and the last player to touch it was an attacking player, and it is not a goal:
+
+```text
+GOAL KICK
+```
+
+([IFAB Law 16](https://www.theifab.com/laws/latest/the-goal-kick/))
+
+For the simulator:
+
+```text
+HOME attacking → shot/pass → ball exits over AWAY goal line
+→ last touch = HOME → AWAY GOAL KICK
+```
+
+---
+
+## 47.16 CORNER
+
+If the ball completely crosses the goal line, is not a goal, and the last player to touch it was the defending team:
+
+```text
+CORNER
+```
+
+([IFAB Law 17](https://www.theifab.com/laws/latest/the-corner-kick/))
+
+Example:
+
+```text
+HOME SHOT → AWAY defender deflects → ball crosses AWAY goal line → CORNER HOME
+```
+
+This is the classic `DEFLECTION → CORNER` scenario.
+
+---
+
+## 47.17 OUT OF BOUNDS / THROW-IN
+
+If the ball completely crosses the touchline:
+
+```text
+THROW-IN
+```
+
+for the opposing team of the last player who touched the ball. ([IFAB Law 15](https://www.theifab.com/laws/latest/the-throw-in/))
+
+For our pitch: `col < 1` or `col > 6` → out.
+
+Important: **it does not matter whether the ball went out on the ground or through the air.**
+
+---
+
+## 47.18 SAVE
+
+This must be explicitly modeled, because currently we have SHOT but the physical event between shot and goal must exist.
+
+```text
+SHOT → GK reaches ball → SAVE
+```
+
+After save:
+
+```text
+SAVE → CONTROLLED?
+├── yes → GK carrier
+└── no → REBOUND
+```
+
+If it goes behind the goal line: `SAVE/DEFLECTION → CORNER`
+
+---
+
+## 47.19 REBOUND
+
+Also added as a separate event.
+
+```text
+SHOT → GK SAVE / DEFLECTION → ball remains playable → REBOUND
+```
+
+Then: `nearest player → CHASE` or if someone is already in good position: `player → carrier`
+
+---
+
+## 47.20 BALL OUT / DEAD BALL
+
+This should be an **event state**, not an action.
+
+```text
+BALL_OUT
+```
+
+Then the resolver determines: `GOAL KICK, CORNER, THROW-IN, FREE KICK, PENALTY, OFFSIDE RESTART`
+
+This is much cleaner than having every engine know the restart type independently.
+
+---
+
+## 47.21 FOUL
+
+This is definitely missing as a separate domain event.
+
+```text
+FOUL
+```
+
+with: `fouler, victim, location, severity, advantage?, insidePenaltyArea?, disciplinaryAction`
+
+Outcome:
+
+```text
+DIRECT_FREE_KICK, INDIRECT_FREE_KICK, PENALTY, YELLOW, RED, PLAY_ON
+```
+
+---
+
+## 47.22 ADVANTAGE
+
+Also to be added.
+
+If a foul situation occurs, but the fouled team has clear benefit:
+
+```text
+FOUL → ADVANTAGE → PLAY CONTINUES
+```
+
+Later we can decide whether the simulator needs delayed cards.
+
+---
+
+## 47.23 FREE KICK
+
+Another **restart type**, not just an action.
+
+```text
+DIRECT_FREE_KICK
+INDIRECT_FREE_KICK
+```
+
+**Direct** — can score directly. **Indirect** — cannot score directly. Offside restarts with an indirect free kick.
+
+---
+
+## 47.24 PENALTY
+
+A special restart/action.
+
+```text
+FOUL + inside penalty area + direct-free-kick offence → PENALTY
+```
+
+Then:
+
+```text
+PENALTY KICK → SHOT → GOAL / SAVE / MISS / REBOUND
+```
+
+So a penalty is not the same as a `SHOT`.
+
+---
+
+## 47.25 CHASE
+
+This must be in the base model, especially given the existing architecture.
+
+If:
+
+```text
+ball has no carrier + ball is playable → CHASE
+```
+
+CHASE is not a player decision like PASS/SHOT. It is:
+
+> **A state-recovery mechanism.** The nearest valid player moves toward the ball.
+
+---
+
+## 47.26 BALL CONTROL / RECEIVE
+
+Another thing to be explicit about.
+
+```text
+BALL MOVEMENT → player reaches ball → CONTROL / RECEIVE → carrier established
+```
+
+Only then does the `Decision Engine` get the carrier. Without this, the simulator silently skips an important part of football.
+
+---
+
+## 47.27 POSSESSION CHANGE
+
+Also an event:
+
+```text
+POSSESSION_CHANGED
+```
+
+Can arise from: tackle, interception, successful duel, loose ball recovery, rebound, save/recovery, failed pass, deflection.
+
+This is a **trigger**, not a decision.
+
+---
+
+## 47.28 Final Division
+
+### Player Decisions
+
+```text
+PASS, THRU, CARRY / DRIBBLE, CROSS, CENTER, SHOT, CLEAR
+```
+
+### Defensive Actions
+
+```text
+TACKLE, PRESS / THREAT, INTERCEPTION, BLOCK
+```
+
+### Ball Events
+
+```text
+DEFLECTION, SAVE, REBOUND, BALL CONTROL, POSSESSION CHANGE, BALL OUT, GOAL
+```
+
+### Rules / Referee Events
+
+```text
+OFFSIDE, FOUL, YELLOW, RED, ADVANTAGE
+```
+
+### Restart Events
+
+```text
+KICK-OFF, FREE KICK, PENALTY, THROW-IN, GOAL KICK, CORNER
+```
+
+### Automatic Recovery
+
+```text
+CHASE
+```
+
+### Technology
+
+```text
+VAR_GOAL, VAR_OFFSIDE, VAR_PENALTY, VAR_RED_CARD
+```
+
+### Special Tactical Safety
+
+```text
+OFFSIDE RETREAT
+```
+
+---
+
+## 47.29 The Key Architectural Insight
+
+> **Not everything should be `DecisionEngine`.**
+
+```text
+DecisionEngine → PASS, CARRY, SHOT, CROSS, CENTER, CLEAR, THRU
+```
+
+But:
+
+```text
+OFFSIDE, DEFLECTION, INTERCEPTION, SAVE, CORNER, GOAL KICK, THROW-IN, FOUL, VAR
+```
+
+**are not player decisions.** They are **events / rules / resolution**.
+
+And `TACKLE` is a player action but is mainly driven by **defensive/duel resolution**, not the playmaking decision of the carrier.
+
+And `CHASE` is an automatic state-recovery action.
+
+This separation is the **correct boundary between "an engine that plays football" and "an engine that runs a match simulation"**.
+
+The best model:
+
+```text
+             ┌───────────────┐
+             │ ORCHESTRATOR  │
+             └───────┬───────┘
+                     │
+          ┌──────────┴───────────┐
+          ↓                      ↓
+   PLAYER DECISION          GAME STATE
+          │                      │
+          ↓                      ↓
+    EXECUTION              RULE/EVENT ENGINE
+          │                      │
+          └──────────┬───────────┘
+                     ↓
+                 NEW STATE
+                     ↓
+              ACTION COMPLETE
+                     ↓
+               NEXT ACTION
+```
+
+---
+
+# 48. Implementation Rule
+
 
 When implementing any new feature, the engineer must first answer:
 
@@ -1943,7 +2817,7 @@ If these questions cannot be answered clearly, the feature is not yet sufficient
 
 ---
 
-# 48. Final Principle
+# 49. Final Principle
 
 The simulator must not attempt to script football.
 

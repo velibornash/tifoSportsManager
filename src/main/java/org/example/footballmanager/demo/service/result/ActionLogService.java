@@ -78,7 +78,7 @@ public class ActionLogService {
         if (carrier != null) {
             b.team(carrier.getTeam()).player(carrier.getId(), carrier.getLabel());
         }
-        logEntries.add(b.build());
+        recordLog(b.build(), state);
     }
 
     // ── Action execution ──────────────────────────────────────────────────
@@ -86,7 +86,9 @@ public class ActionLogService {
     /** Log the moment an action (pass / shot / dribble / chase) is dispatched. */
     public void logActionExecution(MatchState state, Action action, String outcome, Player actor, Player target, String channel) {
         StringBuilder desc = new StringBuilder();
-        desc.append("ACTION: ").append(action.getType()).append(" by ").append(actor.getLabel());
+        // Use CLEAR instead of PASS for clearances
+        String actionType = action.isClearance() ? "CLEAR" : action.getType().name();
+        desc.append("ACTION: ").append(actionType).append(" by ").append(actor.getLabel());
         if (target != null) desc.append(" → ").append(target.getLabel());
         desc.append("  skill=").append(action.getSkill());
         desc.append("  intended=").append(action.getIntendedTarget());
@@ -246,6 +248,27 @@ public class ActionLogService {
         LogEntry.Builder b = entry(LogEntry.EntryType.INFO, state, channel, description);
         if (actor != null) b.player(actor.getId(), actor.getLabel()).team(actor.getTeam());
         logEntries.add(b.build());
+    }
+
+    private void recordLog(LogEntry entry, MatchState state) {
+        logEntries.add(entry);
+        
+        // Print to standard console (app log) in real-time
+        StringBuilder sb = new StringBuilder();
+        sb.append("APP_LOG [").append(entry.getMatchClock()).append("] [").append(entry.getType()).append("] ");
+        if (entry.getChannel() != null) sb.append("<").append(entry.getChannel()).append("> ");
+        sb.append(entry.getDescription());
+        
+        if (state != null) {
+            sb.append(" | Ball=(").append(String.format(java.util.Locale.US, "%.2f, %.2f", state.getBall().getPosition().getRow(), state.getBall().getPosition().getColumn())).append(")");
+            if (state.getCarrier() != null) {
+                sb.append(" | Carrier=").append(state.getCarrier().getLabel()).append(" (")
+                  .append(String.format(java.util.Locale.US, "%.2f, %.2f", state.getCarrier().getPosition().getRow(), state.getCarrier().getPosition().getColumn())).append(")");
+            } else {
+                sb.append(" | No Carrier");
+            }
+        }
+        System.out.println(sb.toString());
     }
 
     // ── Output ───────────────────────────────────────────────────────────

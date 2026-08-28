@@ -97,14 +97,15 @@ public class TacticsRules {
     /**
      * Desired cell for a player role given the ball position.
      * Returns demo-model coordinates (row 1-7, col 1-6).
+     * parseCell() may produce edge values (e.g. CELL_6_5 → 7.5,6.5) that
+     * exceed field bounds — clamp to keep all players on-pitch.
      */
     public Position desiredCell(String role, Position ball) {
         String state = ballStateKey(ball);
         Position fromRules = lookup(role, state);
-        if (fromRules != null) return fromRules;
-        Position fromAnchor = anchorByRole.get(role);
-        if (fromAnchor != null) return fromAnchor;
-        return new Position(1, 3.5);
+        Position raw = fromRules != null ? fromRules : anchorByRole.get(role);
+        if (raw == null) raw = new Position(1, 3.5);
+        return clampToField(raw);
     }
 
     /** Same rules, interpreted from the selected team's perspective. */
@@ -112,7 +113,15 @@ public class TacticsRules {
         Position ballInEditorPerspective =
                 TacticalPerspectiveTransformer.toHomePerspective(ball, team);
         Position targetInEditorPerspective = desiredCell(role, ballInEditorPerspective);
-        return TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
+        Position physical = TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
+        return clampToField(physical);
+    }
+
+    /** Clamp position to field boundaries (rows 1-7, cols 1-6). */
+    private static Position clampToField(Position pos) {
+        return new Position(
+                Math.max(1.0, Math.min(7.0, pos.getRow())),
+                Math.max(1.0, Math.min(6.0, pos.getColumn())));
     }
 
     /** Tactical-editor position for corner contexts. */
@@ -139,12 +148,14 @@ public class TacticsRules {
         return Math.max(min, Math.min(max, value));
     }
 
-    /** Parse "CELL_r_c" (0-based) into demo Position(r+1, c+1). */
+    /** Parse "CELL_r_c" (0-based) into demo Position center (r+1.5, c+1.5). */
     private static Position parseCell(String cellKey) {
         if (cellKey == null) return null;
         Matcher m = CELL_PATTERN.matcher(cellKey);
         if (!m.matches()) return null;
-        return new Position(Integer.parseInt(m.group(1)) + 1, Integer.parseInt(m.group(2)) + 1);
+        // Return the CENTER of the cell, not the corner.
+        // CELL_0_0 spans rows 1-2, cols 1-2 → center is (1.5, 1.5)
+        return new Position(Integer.parseInt(m.group(1)) + 1.5, Integer.parseInt(m.group(2)) + 1.5);
     }
 
     private static Map<String, Position> anchorsFromCatalog() {

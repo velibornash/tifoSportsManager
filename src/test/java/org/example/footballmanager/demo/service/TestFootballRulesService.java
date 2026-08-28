@@ -77,7 +77,7 @@ class TestFootballRulesService {
         FootballRulesService rules = new FootballRulesService(state);
         // Ball out left sideline
         assertEquals(FootballRulesService.RestartType.THROW_IN,
-                rules.determineRestart(new Position(4, 0), "HOME"));
+                rules.determineRestart(new Position(4, 0), "HOME", false));
     }
 
     @Test
@@ -87,7 +87,7 @@ class TestFootballRulesService {
         // HOME attacking (toward row 7), ball over top line — 45% deflection chance
         // Accept either CORNER or GOAL_KICK
         FootballRulesService.RestartType restart =
-                rules.determineRestart(new Position(7.5, 4), "HOME");
+                rules.determineRestart(new Position(7.5, 4), "HOME", false);
         assertTrue(restart == FootballRulesService.RestartType.CORNER
                 || restart == FootballRulesService.RestartType.GOAL_KICK,
                 "Attacking end-line out can be CORNER or GOAL_KICK (deflection), got: " + restart);
@@ -100,7 +100,7 @@ class TestFootballRulesService {
         // AWAY last touched the ball but it went out at the TOP (row>7, HOME's goal end).
         // AWAY attacks toward row 1, so outTop with AWAY touch = wasAttacking=false → CORNER (deterministic)
         FootballRulesService.RestartType restart =
-                rules.determineRestart(new Position(7.5, 4), "AWAY");
+                rules.determineRestart(new Position(7.5, 4), "AWAY", false);
         assertEquals(FootballRulesService.RestartType.CORNER, restart,
                 "Defending team's touch out over end-line → CORNER (deterministic)");
     }

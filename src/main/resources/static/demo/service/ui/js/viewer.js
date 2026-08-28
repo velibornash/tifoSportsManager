@@ -128,14 +128,17 @@ class OverlayManager {
     this._resumeTime = 0;
     this._type = null;
     this._goalAnim = null;   // { tick, team, startRealTime }
+    this._blocking = false;  // true = pause playback while visible (kickoff/goal/HT/FT/offside)
   }
 
   get isActive() { return this._active; }
+  get isBlocking() { return this._blocking; }
   get resumeTime() { return this._resumeTime; }
 
   /** Show halftime overlay for 12 real seconds */
   showHalftime(homeName, awayName, homeScore, awayScore) {
     this._type = 'halftime';
+    this._blocking = true;
     this._textEl.textContent = 'HALF TIME';
     this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
     this._el.className = 'overlay visible halftime';
@@ -146,6 +149,7 @@ class OverlayManager {
   /** Show full-time overlay (stays visible, no auto-dismiss) */
   showFulltime(homeName, awayName, homeScore, awayScore) {
     this._type = 'fulltime';
+    this._blocking = true;
     this._textEl.textContent = 'FULL TIME';
     this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
     this._el.className = 'overlay visible fulltime';
@@ -153,25 +157,62 @@ class OverlayManager {
     this._resumeTime = Infinity; // never auto-dismiss
   }
 
-  /** Show VAR review overlay for a duration in real ms */
+  /** Show VAR review overlay for a duration in real ms — NON-BLOCKING (play flows during review) */
   showVAR(reviewText, durationMs) {
     this._type = 'var';
-    this._textEl.textContent = 'VAR REVIEW';
+    this._blocking = false; // play continues while VAR reviews
+    this._textEl.textContent = '\uD83D\uDCFA VAR IN PROGRESS';
     this._subEl.textContent = reviewText;
     this._el.className = 'overlay visible var-review';
     this._active = true;
     this._resumeTime = performance.now() + durationMs;
   }
 
+  /** Show VAR decision result overlay (confirmed/overturned) — NON-BLOCKING */
+  showVARDecision(decisionText) {
+    this._type = 'var-decision';
+    this._blocking = false; // play continues while the verdict is shown
+    this._textEl.textContent = '\uD83D\uDCFA ' + decisionText;
+    this._subEl.textContent = '';
+    this._el.className = 'overlay visible var-decision';
+    this._active = true;
+    this._resumeTime = performance.now() + 2500; // 2.5 seconds
+  }
+
+  /** Show kickoff overlay (0:0, ball at center, waiting to start) */
+  showKickoff(homeName, awayName) {
+    this._type = 'kickoff';
+    this._blocking = true;
+    this._textEl.textContent = 'KICK OFF';
+    this._subEl.textContent = `${homeName} 0 - 0 ${awayName}`;
+    this._el.className = 'overlay visible kickoff';
+    this._active = true;
+    this._resumeTime = performance.now() + 3000; // 3 seconds, then auto-start
+  }
+
   /** Show goal overlay with ball animation */
   showGoal(team, homeName, awayName, homeScore, awayScore) {
     this._type = 'goal';
+    this._blocking = true;
     this._textEl.textContent = '\u26BD GOAL!';
     this._subEl.textContent = `${team === 'HOME' ? homeName : awayName} ${homeScore} - ${awayScore} ${team === 'HOME' ? awayName : homeName}`;
     this._el.className = 'overlay visible goal';
     this._active = true;
     this._resumeTime = performance.now() + 6000; // 6 seconds
     this._goalAnim = { team, startRealTime: performance.now() };
+  }
+
+  /** Show offside overlay: yellow flag + player + team */
+  showOffside(playerName, team, margin) {
+    this._type = 'offside';
+    this._blocking = true;
+    this._textEl.textContent = '\uD83D\uDEA9 OFFSIDE';
+    const teamLabel = team || '';
+    const marginText = margin ? ` (${margin})` : '';
+    this._subEl.textContent = `${playerName}${marginText} — ${teamLabel}`;
+    this._el.className = 'overlay visible offside';
+    this._active = true;
+    this._resumeTime = performance.now() + 3500; // 3.5 seconds
   }
 
   getGoalAnimProgress() {
@@ -186,6 +227,7 @@ class OverlayManager {
     this._el.className = 'overlay';
     this._active = false;
     this._type = null;
+    this._blocking = false;
     this._goalAnim = null;
   }
 
@@ -217,6 +259,7 @@ class PitchRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.margin = { top: 30, left: 40, right: 40, bottom: 30 };
+    this.showGrid = false;  // grid overlay toggle (default off)
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -279,6 +322,22 @@ class PitchRenderer {
     ctx.lineWidth = 2;
     ctx.strokeRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
 
+    // Grid overlay (toggleable, default off)
+    if (this.showGrid) {
+      ctx.strokeStyle = 'rgba(255,255,255,.12)';
+      ctx.lineWidth = 1;
+      for (let r = FIELD_ROW_MIN; r <= FIELD_ROW_MAX; r++) {
+        const [rx] = this.toCanvas(r, 0);
+        const [rx2] = this.toCanvas(r, GRID_COLS - 1);
+        ctx.beginPath(); ctx.moveTo(rx, fy1); ctx.lineTo(rx, fy2); ctx.stroke();
+      }
+      for (let c = FIELD_COL_MIN; c <= FIELD_COL_MAX; c++) {
+        const [, cy1] = this.toCanvas(0, c);
+        const [, cy2] = this.toCanvas(GRID_ROWS - 1, c);
+        ctx.beginPath(); ctx.moveTo(fx1, cy1); ctx.lineTo(fx2, cy1); ctx.stroke();
+      }
+    }
+
     // Center line
     const [cx] = this.toCanvas(4, 0);
     ctx.beginPath();
@@ -297,11 +356,11 @@ class PitchRenderer {
     ctx.arc(ccx, ccy, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Penalty areas (16.5m ≈ 1 row deep, 40.3m ≈ 3.6 cols wide)
-    // HOME penalty: rows 1-3, cols ~1.2-5.8
-    this._box(ctx, 1, 1.2, 3, 5.8);
-    // AWAY penalty: rows 5-7, cols ~1.2-5.8
-    this._box(ctx, 5, 1.2, 7, 5.8);
+    // Penalty areas (16.5m ≈ 1.0 row deep, 40.3m ≈ 3.6 cols wide)
+    // HOME penalty: rows 1-2, cols ~1.2-5.8
+    this._box(ctx, 1, 1.2, 2, 5.8);
+    // AWAY penalty: rows 6-7, cols ~1.2-5.8
+    this._box(ctx, 6, 1.2, 7, 5.8);
 
     // Goal areas (5.5m ≈ 0.33 rows deep, 18.3m ≈ 1.6 cols wide)
     // HOME goal area: rows 1-1.5, cols ~1.95-5.05
@@ -315,17 +374,6 @@ class PitchRenderer {
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath(); ctx.arc(p1x, p1y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(p2x, p2y, 3, 0, Math.PI * 2); ctx.fill();
-
-    // Penalty arcs (outside penalty area)
-    const arcR = 0.55 * CELL_W;
-    // HOME arc (at row 3, only the part outside penalty area)
-    ctx.beginPath();
-    ctx.ellipse(p1x, p1y, arcR, arcR * (CELL_H / CELL_W), 0, -0.7, 0.7);
-    ctx.stroke();
-    // AWAY arc
-    ctx.beginPath();
-    ctx.ellipse(p2x, p2y, arcR, arcR * (CELL_H / CELL_W), 0, Math.PI - 0.7, Math.PI + 0.7);
-    ctx.stroke();
 
     // Goals (nets behind the goal lines)
     this._goal(ctx, 1, 3.5, 'left');
@@ -365,10 +413,10 @@ class PitchRenderer {
 
   _goal(ctx, row, col, side) {
     const [gx, gy] = this.toCanvas(row, col);
-    const goalH = 1.5 * CELL_H;
-    const depth = 14;
+    const goalH = 2.2 * CELL_H;
+    const depth = 25;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     if (side === 'left') {
       ctx.moveTo(gx, gy - goalH / 2);
@@ -443,12 +491,18 @@ class PitchRenderer {
     const t = goalAnim.t;
     const isHome = goalAnim.team === 'HOME';
 
-    // Ball travels from center toward the goal
+    // Ball travels from center (row 4) toward the goal, then continues
+    // beyond the goal line into the out-of-bounds area (row 8 for HOME,
+    // row 0 for AWAY) — simulating the ball crossing the goal line.
     const goalRow = isHome ? 7 : 1;
+    const exitRow = isHome ? 8 : 0;
     const [gx, gy] = this.toCanvas(goalRow, 3.5);
+    const [ex, ey] = this.toCanvas(exitRow, 3.5);
     const [sx, sy] = this.toCanvas(4, 3.5);
-    const ballX = lerp(sx, gx, t);
-    const ballY = lerp(sy, gy, t);
+
+    // Animate ball: 0.0 → reaches goal line (row 1/7), 1.0 → exits beyond goal line (row 0/8)
+    const targetRow = t < 0.5 ? lerp(4, goalRow, t * 2) : lerp(goalRow, exitRow, (t - 0.5) * 2);
+    const [ballX, ballY] = this.toCanvas(targetRow, 3.5);
 
     // Draw the animated ball (white, glowing)
     const ballSize = 5 + Math.sin(t * Math.PI) * 3;
@@ -461,7 +515,7 @@ class PitchRenderer {
     ctx.fillStyle = '#fff';
     ctx.fill();
 
-    // After ball reaches goal, show celebration rings
+    // After ball crosses goal line, show celebration rings at the goal position
     if (t > 0.5) {
       const celebrationT = (t - 0.5) / 0.5; // 0→1
       for (let i = 0; i < 4; i++) {
@@ -516,6 +570,9 @@ class MatchViewer {
     this._varOverlayShown = false;
     this._varOverlayTick = -1;
 
+    // Grid overlay toggle (default off)
+    this.showGrid = false;
+
     // Snapshot lookup: O(1) access
     this._snapIndex = null;  // Map<tick, snapshot>
     this._snapTicks = null;  // sorted array of ticks
@@ -533,8 +590,8 @@ class MatchViewer {
       const mres = await fetch('/match.json?' + Date.now());
       if (!mres.ok) throw new Error('match.json not found');
       this.data = await mres.json();
-      this._initFromData();
-      this.play();
+     // this._initFromData();
+      // Do NOT auto-play — user clicks Play Match
     } catch (e) {
       alert('Failed: ' + e.message);
     } finally {
@@ -549,7 +606,11 @@ class MatchViewer {
       if (!res.ok) throw new Error('No match.json — generate first');
       this.data = await res.json();
       this._initFromData();
-      this.play();
+      // Show kickoff overlay, then auto-start after 3s
+      const homeName = this.data.homeTeamName || 'HOME';
+      const awayName = this.data.awayTeamName || 'AWAY';
+      this.overlays.showKickoff(homeName, awayName);
+      this.play(); // will pause on overlay, then resume when dismissed
     } catch (e) {
       alert(e.message);
     } finally {
@@ -627,6 +688,9 @@ class MatchViewer {
       this.events.push({
         tick: g.tick,
         type: 'GOAL',
+        team: g.team,
+        homeScore: parseInt(g.score.split('-')[0]),
+        awayScore: parseInt(g.score.split('-')[1]),
         description: `⚽ GOAL for ${g.team}! (${g.score})`,
       });
     }
@@ -750,10 +814,11 @@ class MatchViewer {
     const dt = (now - this._lastFrame) / 1000;
     this._lastFrame = now;
 
-    // If overlay is active, pause playback
-    if (this.overlays.isActive) {
+    // If a BLOCKING overlay is active, pause playback (kickoff/goal/HT/FT/offside).
+    // Non-blocking overlays (VAR) keep the match flowing.
+    if (this.overlays.isBlocking) {
       this.overlays.checkAutoDismiss();
-      if (this.overlays.isActive) {
+      if (this.overlays.isBlocking) {
         // Still active — keep rendering but don't advance ticks
         this._renderFrame();
         this._rafId = requestAnimationFrame(() => this._loop());
@@ -791,6 +856,28 @@ class MatchViewer {
           this._flashEvent = ev;
           this._flashStart = performance.now();
           this._flashEvent._age = 0;
+          const homeName = this.data.homeTeamName || 'HOME';
+          const awayName = this.data.awayTeamName || 'AWAY';
+          const hg = ev.homeScore ?? this.data.homeGoals ?? 0;
+          const ag = ev.awayScore ?? this.data.awayGoals ?? 0;
+          const goalTeam = ev.team === 'HOME' || ev.team === 'AWAY' ? ev.team : 'HOME';
+          this.overlays.showGoal(goalTeam, homeName, awayName, hg, ag);
+        }
+        // OFFSIDE overlay
+        if (ev.type === 'OFFSIDE') {
+          const desc = ev.description || '';
+          const playerName = desc.replace(/^.*offside\s+/i, '').replace(/\s*\(.*/, '').trim() || 'Player';
+          const team = ev.team || '';
+          const marginMatch = desc.match(/margin=([0-9.]+)/);
+          const margin = marginMatch ? marginMatch[1] : '';
+          this.overlays.showOffside(playerName, team, margin);
+        }
+        // VAR decision overlays (confirmed/overturned)
+        if (ev.type?.startsWith('VAR_OFFSIDE_') || ev.type?.startsWith('VAR_GOAL_')
+            || ev.type?.startsWith('VAR_RED_') || ev.type?.startsWith('VAR_PENALTY_')) {
+          const decisionLabel = ev.type.includes('CONFIRMED') ? 'CONFIRMED' : 'OVERTURNED';
+          const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
+          this.overlays.showVARDecision(`VAR ${reviewType}: ${decisionLabel}`);
         }
       }
       this._displayedEventIdx++;
@@ -844,6 +931,7 @@ class MatchViewer {
     const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
     const goalAnim = this.overlays.getGoalAnimProgress();
+    this.pitch.showGrid = this.showGrid;
     this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim);
     this._updateScoreboard();
     this._updateSeek();
@@ -853,8 +941,8 @@ class MatchViewer {
   _updateScoreboard() {
     const intTick = Math.floor(this.currentTick);
     const snap = this._snapIndex?.get(intTick) || null;
-    const hg = snap?.goalCount ?? this._prevGoalCount[0];
-    const ag = snap?.awayGoalCount ?? this._prevGoalCount[1];
+    const hg = snap?.goalCount ?? this._prevGoalCount[0] ?? this.data.homeGoals ?? 0;
+    const ag = snap?.awayGoalCount ?? this._prevGoalCount[1] ?? this.data.awayGoals ?? 0;
     document.getElementById('homeScore').textContent = hg;
     document.getElementById('awayScore').textContent = ag;
     document.getElementById('clock').textContent = tickToMinute(this.currentTick);
@@ -942,6 +1030,29 @@ class MatchViewer {
       };
       speedSlider.addEventListener('input', update);
       update();
+    }
+
+    // Grid overlay toggle (default off) — created dynamically since we
+    // don't control the HTML from viewer.js alone.
+    const gridControlsRow = document.querySelector('.controls-row:last-child');
+    if (gridControlsRow) {
+      const gridLabel = document.createElement('label');
+      gridLabel.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:#8b949e;cursor:pointer;';
+      gridLabel.title = 'Toggle grid overlay';
+      const gridCheck = document.createElement('input');
+      gridCheck.type = 'checkbox';
+      gridCheck.id = 'gridToggle';
+      gridCheck.style.width = '14px';
+      gridCheck.style.height = '14px';
+      gridLabel.appendChild(gridCheck);
+      const gridText = document.createTextNode(' GRID');
+      gridLabel.appendChild(gridText);
+      gridControlsRow.appendChild(gridLabel);
+      gridCheck.addEventListener('change', () => {
+        this.showGrid = gridCheck.checked;
+        this.pitch.showGrid = this.showGrid;
+        this._renderFrame();
+      });
     }
 
     document.addEventListener('keydown', (e) => {

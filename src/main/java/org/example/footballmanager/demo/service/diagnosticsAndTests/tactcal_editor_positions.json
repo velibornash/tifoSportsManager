@@ -1,0 +1,3038 @@
+[
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_1_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_2_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_3_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_4_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_5_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_6_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "CELL_7_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_4"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "ATTACK_LEFT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "ATTACK_RIGHT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "DEFEND_LEFT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "GK",
+    "ballStateKey": "DEFEND_RIGHT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_3"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_1_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_2_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_3"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_3_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_2_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_4_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_3_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_5_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_6_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_1",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_2",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_3",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_4",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_5",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "CELL_7_6",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "ATTACK_LEFT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "ATTACK_RIGHT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_4_1"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "DEFEND_LEFT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+  {
+    "slotKey": "DL",
+    "ballStateKey": "DEFEND_RIGHT_CORNER",
+    "possessionContext": "WE_HAVE_BALL",
+    "targetCellKey": "CELL_1_2"
+  },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCL",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DCR",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_6"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_6"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "DR",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_5"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_1"
+    },
+    {
+      "slotKey": "ML",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CML",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "CMR",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_3_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_6"
+    },
+    {
+      "slotKey": "MR",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_2_6"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_2"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_3"
+    },
+    {
+      "slotKey": "STL",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_1_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_2_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_5"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_3_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_5_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_5"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_4_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_6_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_5_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_6_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_1",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_2",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_3",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_3"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_4",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_5",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_5"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "CELL_7_6",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "ATTACK_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "ATTACK_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_7_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "DEFEND_LEFT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_1_4"
+    },
+    {
+      "slotKey": "STR",
+      "ballStateKey": "DEFEND_RIGHT_CORNER",
+      "possessionContext": "WE_HAVE_BALL",
+      "targetCellKey": "CELL_4_4"
+    }
+]

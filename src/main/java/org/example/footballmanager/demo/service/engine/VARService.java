@@ -233,4 +233,36 @@ public class VARService {
                 null, "VAR_" + lastVARDecision,
                 "VAR " + lastVARDecision + " — " + incidentType + ": " + detail);
     }
+
+    /**
+     * Record a VAR DECISION event with an explicit, well-formed event type
+     * (e.g. "VAR_OFFSIDE_CONFIRMED") and set lastVARDecision so the viewer /
+     * reporter can render a CONFIRMED / OVERTURNED overlay.
+     */
+    public void recordVARDecision(String eventType, String detail) {
+        this.lastVARDecision = eventType;
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                null, eventType,
+                "VAR " + eventType + " — " + detail);
+    }
+
+    /**
+     * Like {@link #recordVARDecision} but stamps the event with an explicit tick
+     * so the viewer can render the review as taking time before the verdict.
+     */
+    public void recordVARDecisionAtTick(String eventType, String detail, long tick) {
+        this.lastVARDecision = eventType;
+        recorder.appendEvent(tick, state.getRound(),
+                null, eventType,
+                "VAR " + eventType + " — " + detail);
+    }
+
+    /**
+     * Log that a VAR review is in progress.
+     */
+    public void logVARReviewStarted(String team, String reviewType) {
+        recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                null, "VAR_IN_PROGRESS",
+                "VAR IN PROGRESS — " + team + " — " + reviewType);
+    }
 }

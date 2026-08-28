@@ -1,5 +1,7 @@
 package org.example.basketballmanager.data;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.example.basketballmanager.model.*;
@@ -35,6 +37,9 @@ public class BbDataInitializer {
     private final UserRepository userRepository;
     private final Random random = new Random();
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public BbDataInitializer(BbTeamRepository teamRepository,
                              BbPlayerRepository playerRepository,
                              BbMatchRepository matchRepository,
@@ -61,6 +66,14 @@ public class BbDataInitializer {
         if (commonCompetitionRepository.findBySport("BASKETBALL").size() > 0) {
             log.info("Basketball data already seeded");
             return;
+        }
+
+        // Guard against orphaned bb_teams left behind when common_competitions
+        // entries were removed (e.g. by a partial DB reset) but bb_teams survived.
+        if (teamRepository.count() > 0) {
+            log.warn("Orphaned basketball teams detected ({} teams) without competitions — " +
+                    "cleaning up before re-seed", teamRepository.count());
+            cleanOrphanedBasketballData();
         }
 
         log.info("Seeding basketball data...");
@@ -99,6 +112,27 @@ public class BbDataInitializer {
 
         log.info("Basketball data seeded: {} competitions, {} teams, competitions.size={}",
                 competitions.size(), allTeams.size(), competitions.size());
+    }
+
+    /**
+     * Removes orphaned basketball data when bb_teams exist without corresponding
+     * common_competitions entries. This happens when a partial reset clears
+     * common_competitions but leaves bb_* tables intact, causing a duplicate-key
+     * crash on the next seeding attempt.
+     */
+    private void cleanOrphanedBasketballData() {
+        // TRUNCATE all bb_* tables in dependency-safe order (CASCADE handles inter-bb FKs)
+        entityManager.createNativeQuery(
+                "TRUNCATE TABLE bb_match_fixtures, bb_matches, bb_player_season_stats, " +
+                "bb_competition_entries, bb_season_competitions, bb_players, bb_teams " +
+                "RESTART IDENTITY CASCADE").executeUpdate();
+
+        // Remove basketball entries from the shared common_competitions table
+        // (now safe — no bb_teams or bb_season_competitions reference them)
+        entityManager.createNativeQuery(
+                "DELETE FROM common_competitions WHERE sport = 'BASKETBALL'").executeUpdate();
+
+        log.info("Orphaned basketball data cleaned up (bb_teams, bb_players, common_competitions)");
     }
 
     private List<CommonCompetition> createCompetitions(CommonSeason season) {
@@ -177,7 +211,7 @@ public class BbDataInitializer {
                 .build();
     }
 
-    private static final String[] AI_NAMES = {"KK Vojvodina", "KK Omladinac", "KK Mega Basket",
+    private static final String[] AI_NAMES = {"KK Vojvodina", "KK Vardar", "KK Mega Basket",
             "KK FMP", "KK Borac", "KK Spartak", "KK Radnički", "KK Sloboda", "KK Tamiš",
             "KK Sloga", "KK Dunav", "KK Vršac", "KK Konstantin", "KK Mladost",
             "KK Metalac", "KK Napredak", "KK Jedinstvo", "KK Budućnost", "KK Zlatibor"};

@@ -89,17 +89,5 @@
 
 <script src="js/viewer.js"></script>
 
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const fileBtnEmpty = document.getElementById('fileBtnEmpty');
-  const fileInput = document.getElementById('fileInput');
-  if (fileBtnEmpty) fileBtnEmpty.addEventListener('click', () => fileInput.click());
-
-  // "New Match" button in sidebar = same as Generate
-  const simBtn2 = document.getElementById('simBtn2');
-  if (simBtn2) simBtn2.addEventListener('click', () => window.viewer?.generateMatch());
-});
-</script>
-
 </body>
 </html>

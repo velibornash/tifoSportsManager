@@ -43,46 +43,48 @@ public class FootballRulesService {
         if (!inOpponentHalf) return false;
 
         String defendingTeam = home ? "AWAY" : "HOME";
-        // Precision: tolerance of 0.15 cells ≈ 2.1m — tight offside line.
-        // Defender within this range of the receiver counts as onside.
-        double tolerance = 0.15;
-        int defendersInFront = 0;
+        // FIFA Rule 11: offside if fewer than 2 opponents (including GK) between
+        // receiver and goal line at the moment the ball is played.
+        // "Second-last opponent" defines the offside line — GK is usually the last.
+        int opponentsGoalSide = 0;
         for (Player p : state.getPlayers()) {
             if (!defendingTeam.equals(p.getTeam())) continue;
-            if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
-            // Exact decimal check: is this defender between the receiver and the goal?
-            boolean defenderIsGoalSide = home
-                    ? p.getPosition().getRow() >= receiver.getPosition().getRow() - tolerance
-                    : p.getPosition().getRow() <= receiver.getPosition().getRow() + tolerance;
-            if (defenderIsGoalSide) defendersInFront++;
+            boolean goalSide = home
+                    ? p.getPosition().getRow() > receiver.getPosition().getRow()
+                    : p.getPosition().getRow() < receiver.getPosition().getRow();
+            if (goalSide) opponentsGoalSide++;
         }
 
-        return defendersInFront < 1;
+        return opponentsGoalSide < 2;
     }
 
     /**
      * Determine ball out-of-bounds result.
      * Returns the type of restart: CORNER, GOAL_KICK, THROW_IN.
      */
-    public RestartType determineRestart(Position ballPos, String lastTouchTeam) {
-        // Ball must be clearly past the pitch boundaries (not just near the edge).
-        // Pitch is rows 1-7, cols 1-6 (playing area). End lines at rows 0/8, sidelines at cols 0/8.
-        // Thresholds 0.5 / 7.5 ensure balls at row 0.92 or 7.08 (from ExecutionQuality clamp)
-        // do NOT trigger false restarts.
-        boolean outLeft = ballPos.getColumn() < 0.5;
-        boolean outRight = ballPos.getColumn() > 7.5;
-        boolean outTop = ballPos.getRow() > 7.5;
-        boolean outBottom = ballPos.getRow() < 0.5;
+    public RestartType determineRestart(Position ballPos, String lastTouchTeam, boolean wasInsideField) {
+        // Ball is OOB if it crosses any field boundary.
+        // Playing area: rows 1-7, cols 1-6. Lines are AT the boundary.
+        // Any ball with row < 1 or row > 7 or col < 1 or col > 6 is OOB.
+        boolean outLeft = ballPos.getColumn() < 1.0;
+        boolean outRight = ballPos.getColumn() > 6.0;
+        boolean outTop = ballPos.getRow() > 7.0;
+        boolean outBottom = ballPos.getRow() < 1.0;
 
         // Side out (left/right) → always throw-in (corners only from end-line)
         if (outLeft || outRight) {
             return RestartType.THROW_IN;
         }
 
-        // End line (top/bottom) — corner or goal kick
+        // End line (top/bottom) — goal, goal kick, or corner
         // HOME attacks toward row 7 (up/outTop), AWAY attacks toward row 1 (down/outBottom)
         if (outTop || outBottom) {
+            if (wasInsideField) {
+                // Ball was inside the field before the shot, then went over the goal line → GOAL
+                return RestartType.GOAL;
+            }
+            // Ball was already over the goal line → GOAL_KICK or CORNER
             String attackingTeam = lastTouchTeam;
             boolean wasAttacking = ("HOME".equals(attackingTeam) && outTop)
                     || ("AWAY".equals(attackingTeam) && outBottom);
@@ -90,12 +92,9 @@ public class FootballRulesService {
                 // Attacker played ball over end line — goal kick for defenders
                 return RestartType.GOAL_KICK;
             } else {
-                // Defender played ball over end line — corner for attackers
-                // In real football, ~25% of defender clearances over end line yield corners
-                // (some are goal kicks if clearance goes directly behind the goal)
-                double cornerChance = 0.25;
-                return state.getRandom().nextDouble() < cornerChance
-                        ? RestartType.CORNER : RestartType.GOAL_KICK;
+                // Defender played ball over end line — ALWAYS corner for attacking team
+                // (real football: defensive clearance over end line = corner)
+                return RestartType.CORNER;
             }
         }
 
@@ -107,20 +106,20 @@ public class FootballRulesService {
      * @return foul probability based on defender skill and pressure
      */
     public boolean isFoul(Player defender, Player attacker) {
-        // Base foul chance: ~6% per contested tackle (real football: ~5-8%)
-        double foulChance = 0.06;
+        // Base foul chance: ~20% per contested tackle (real football: ~15-20%)
+        double foulChance = 0.20;
         // Lower-skill defenders foul more
-        foulChance += (1.0 - defender.getSkills().defender() / 20.0) * 0.05;
+        foulChance += (1.0 - defender.getSkills().defender() / 20.0) * 0.08;
         // Higher-skill attackers draw more fouls
-        foulChance += (attacker.getSkills().technique() / 20.0) * 0.03;
+        foulChance += (attacker.getSkills().technique() / 20.0) * 0.05;
         // Penalty box: ~1 row deep (row 7 for HOME, row 1 for AWAY), columns 2-5
         Position pos = defender.getPosition();
         boolean homeAttacking = "HOME".equals(attacker.getTeam());
         boolean inPenaltyBox = homeAttacking
                 ? (pos.getRow() >= 7 && pos.getColumn() >= 2 && pos.getColumn() <= 5)
                 : (pos.getRow() <= 1 && pos.getColumn() >= 2 && pos.getColumn() <= 5);
-        // In the penalty box, very slightly more fouls (last-ditch tackles) but NOT double the chance
-        if (inPenaltyBox) foulChance += 0.005;
+        // In the penalty box, slightly more fouls
+        if (inPenaltyBox) foulChance += 0.02;
         return state.getRandom().nextDouble() < foulChance;
     }
 
@@ -133,13 +132,13 @@ public class FootballRulesService {
         boolean inPenaltyBox = ((defenderPos.getRow() >= 7 && defenderPos.getColumn() >= 2 && defenderPos.getColumn() <= 5)
                 || (defenderPos.getRow() <= 1 && defenderPos.getColumn() >= 2 && defenderPos.getColumn() <= 5));
 
-        // Straight red: very rare (0.2% base, 0.5% in penalty box)
-        double redChance = inPenaltyBox ? 0.005 : 0.002;
+        // Straight red: rare (1% base, 2% in penalty box)
+        double redChance = inPenaltyBox ? 0.02 : 0.01;
         if (state.getRandom().nextDouble() < redChance) return CardType.RED;
 
-        // Yellow card: ~10% of fouls (real football: ~10-15%)
-        double yellowChance = 0.10;
-        if (inPenaltyBox) yellowChance += 0.02;
+        // Yellow card: ~25% of fouls (real football: ~10-15%)
+        double yellowChance = 0.25;
+        if (inPenaltyBox) yellowChance += 0.05;
 
         if (state.getRandom().nextDouble() < yellowChance) {
             return isSecondYellow ? CardType.RED : CardType.YELLOW;
@@ -148,7 +147,7 @@ public class FootballRulesService {
     }
 
     public enum RestartType {
-        NONE, CORNER, GOAL_KICK, THROW_IN, FREE_KICK, PENALTY, KICK_OFF
+        NONE, CORNER, GOAL_KICK, THROW_IN, FREE_KICK, PENALTY, KICK_OFF, GOAL
     }
 
     public enum CardType {

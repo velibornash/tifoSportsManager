@@ -27,7 +27,11 @@ public record TeamMatchStats(
     int throwInCount,
     int goalKickCount,
     int cornerFromPassCount,
-    int passOutOfBoundsCount
+    int passOutOfBoundsCount,
+    int saves,
+    int blocks,
+    int deflections,
+    int clearances
 ) {
     public int passAccuracy() {
         if (passesAttempted == 0) return 0;

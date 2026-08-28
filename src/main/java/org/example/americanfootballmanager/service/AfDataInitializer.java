@@ -1,5 +1,7 @@
 package org.example.americanfootballmanager.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.example.americanfootballmanager.model.*;
@@ -35,6 +37,9 @@ public class AfDataInitializer {
     private final UserRepository userRepository;
     private final Random random = new Random();
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public AfDataInitializer(AfTeamRepository teamRepository,
                               AfPlayerRepository playerRepository,
                               AfMatchRepository matchRepository,
@@ -61,6 +66,14 @@ public class AfDataInitializer {
         if (commonCompetitionRepository.findBySport("AMERICAN_FOOTBALL").size() > 0) {
             log.info("American Football data already seeded");
             return;
+        }
+
+        // Guard against orphaned af_teams left behind when common_competitions
+        // entries were removed (e.g. by a partial DB reset) but af_teams survived.
+        if (teamRepository.count() > 0) {
+            log.warn("Orphaned American Football teams detected ({} teams) without competitions — " +
+                    "cleaning up before re-seed", teamRepository.count());
+            cleanOrphanedAfData();
         }
 
         log.info("Seeding American Football data...");
@@ -98,6 +111,22 @@ public class AfDataInitializer {
         assignOwnerTeam(superLiga, allTeams);
 
         log.info("American Football data seeded: {} competitions, {} teams", competitions.size(), allTeams.size());
+    }
+
+    /**
+     * Removes orphaned American Football data when af_teams exist without corresponding
+     * common_competitions entries. This happens when a partial reset clears
+     * common_competitions but leaves af_* tables intact, causing a duplicate-key
+     * crash on the next seeding attempt.
+     */
+    private void cleanOrphanedAfData() {
+        entityManager.createNativeQuery(
+                "TRUNCATE TABLE af_match_fixtures, af_matches, af_player_season_stats, " +
+                "af_competition_entries, af_season_competitions, af_players, af_teams " +
+                "RESTART IDENTITY CASCADE").executeUpdate();
+        entityManager.createNativeQuery(
+                "DELETE FROM common_competitions WHERE sport = 'AMERICAN_FOOTBALL'").executeUpdate();
+        log.info("Orphaned American Football data cleaned up (af_teams, af_players, common_competitions)");
     }
 
     private List<CommonCompetition> createCompetitions(CommonSeason season) {
@@ -175,11 +204,11 @@ public class AfDataInitializer {
                 .build();
     }
 
-    private static final String[] AI_NAMES = {"AF Vojvodina", "AF Omladinac", "AF Mega",
+    private static final String[] AI_NAMES = {"AF Vojvodina", "AF Vardar", "AF Mega",
             "AF FMP", "AF Borac", "AF Spartak", "AF Radnički", "AF Sloboda", "AF Tamiš",
             "AF Sloga", "AF Dunav", "AF Vršac", "AF Konstantin", "AF Mladost",
             "AF Metalac", "AF Napredak", "AF Jedinstvo", "AF Budućnost", "AF Zlatibor"};
-    private static final String[] AI_SHORT = {"VOJ", "CZV", "MEG", "FMP", "BOR", "SPA", "RAD", "SLO", "TAM",
+    private static final String[] AI_SHORT = {"VOJ", "VAR", "MEG", "FMP", "BOR", "SPA", "RAD", "SLO", "TAM",
             "SLG", "DUN", "VRS", "KON", "MLA", "MET", "NAP", "JED", "BUD", "ZLA"};
     private static final String[] AI_CITIES = {"Novi Sad", "Beograd", "Beograd", "Beograd", "Čačak",
             "Subotica", "Kragujevac", "Užice", "Pančevo", "Kraljevo", "Stari Banovci",

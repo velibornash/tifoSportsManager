@@ -35,12 +35,14 @@ public class VisionFilter {
             } else if (type == DecisionType.THRU) {
                 // THRU requires vision to spot runners behind defense.
                 // Low PM players simply cannot see through-ball opportunities.
-                if (pm >= 14) {
+                if (pm >= 16) {
                     visible = true;
+                } else if (pm >= 14) {
+                    visible = random.nextDouble() < 0.50; // even top PM: 50% gate
                 } else if (pm >= 10) {
-                    visible = random.nextDouble() < 0.60;
+                    visible = random.nextDouble() < 0.30;
                 } else if (pm >= 6) {
-                    visible = random.nextDouble() < 0.25;
+                    visible = random.nextDouble() < 0.15;
                 } else {
                     visible = false; // PM < 6: cannot see thru passes at all
                 }
