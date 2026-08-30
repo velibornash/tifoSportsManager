@@ -404,7 +404,7 @@ class PitchRenderer {
 
     // Goals (nets behind the goal lines)
     this._goal(ctx, 1, 3.5, 'left');
-    this._goal(ctx, 7, 3.5, 'right');
+    this._goal(ctx, 8, 3.5, 'right');
 
     // Team labels
     ctx.font = 'bold 11px system-ui';

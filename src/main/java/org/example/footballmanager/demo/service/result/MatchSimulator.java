@@ -1577,8 +1577,10 @@ public class MatchSimulator {
 
         if (result.outcome() == DuelOutcome.DEFENDER_WINS) {
             // Delegate foul/card/VAR/penalty logic to DisciplineService
+            // hadDuel=true: a duel was just actively resolved this tick (line 514),
+            // so card/yVAR logic is eligible to fire.
             DisciplineService.DisciplineResult discResult =
-                    disciplineService.evaluateFoul(state, actionEngine, attacker, defender, duelType);
+                    disciplineService.evaluateFoul(state, actionEngine, attacker, defender, duelType, true);
 
             // If a penalty was awarded, execute the penalty kick
             if (discResult.penaltyAwarded() && discResult.penaltyTaker() != null) {

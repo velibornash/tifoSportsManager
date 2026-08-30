@@ -47,7 +47,7 @@ public class DisciplineService {
             boolean playContinues       // true when VAR downgraded to no card and no penalty
     ) {}
 
-    /**
+/**
      * Evaluate a foul after a defender wins a duel.
      *
      * @param state          current match state
@@ -55,10 +55,18 @@ public class DisciplineService {
      * @param attacker       the player who was fouled
      * @param defender       the player who committed the foul
      * @param duelType       what kind of duel this was
+     * @param hadDuel        true if a duel was actively resolved this tick (card can only be issued if true)
      * @return DisciplineResult telling the caller what action to take
      */
     public DisciplineResult evaluateFoul(MatchState state, ActionEngine actionEngine,
-                                          Player attacker, Player defender, DuelType duelType) {
+                                           Player attacker, Player defender, DuelType duelType,
+                                           boolean hadDuel) {
+        // A card/yVAR can only be issued if a duel was actively resolved this tick.
+        // If no duel occurred, award a free kick without card (same as handleNoCard logic).
+        if (!hadDuel) {
+            return handleNoCard(state, actionEngine, defender, attacker,
+                    defender.getTeam(), false, false, null);
+        }
         // Shot duels: GK save is not a foul — skip foul check
         if (duelType == DuelType.SHOT) {
             logger.logInfo(state, "Shot saved by " + defender.getLabel()
