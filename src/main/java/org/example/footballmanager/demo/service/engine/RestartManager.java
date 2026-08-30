@@ -301,14 +301,23 @@ public class RestartManager {
      * Give the ball to a restart taker at a specific position.
      * Used for corners, goal kicks, and throw-ins — unlike handleKickoff,
      * this does NOT go through the center-circle kickoff path.
+     *
+     * The taker is NOT teleported to the spot. Instead the ball is left at the
+     * restart position with no carrier, the taker is designated as the
+     * free-kick taker, and the MatchSimulator walk-to-ball block walks him to
+     * the ball via the movement engine (corePrinciples §11 — no teleport).
+     * When he arrives he becomes carrier and his FIRST decision is restricted
+     * to PASS/CENTER/SHOT/CLEAR (no CARRY) via the restart-first-touch flag.
      */
     private void giveBallToRestartTaker(Player taker, Position pos) {
         if (taker == null) return;
-        taker.setPosition(pos);
-        taker.setTarget(null);
-        taker.setLocked(false);
-        state.getBall().setCarrier(taker);
-        state.setCarrier(taker);
+        state.getBall().setPosition(pos);
+        state.getBall().setCarrier(null);
+        state.setCarrier(null);
         state.setSetPiecePending(true);
+        state.setRestartFirstTouch(true);
+        taker.setLocked(false);
+        taker.setTarget(pos);
+        state.setFreeKickTaker(taker);
     }
 }

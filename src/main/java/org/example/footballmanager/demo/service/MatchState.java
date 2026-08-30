@@ -17,7 +17,7 @@ public class MatchState {
     public static final int MATCH_TICKS_PER_MINUTE = 40;
     public static final int REGULATION_MINUTES = 90;
     public static final int EXTRA_TIME_MINUTES = 3;
-    public static final int DUEL_LOSS_TICKS = 60;
+    public static final int DUEL_LOSS_TICKS = 6;
     public static final int SET_PIECE_HOLD_TICKS = 60;
     public static final int CORNER_TAKER_HOLD_TICKS = 40;
     public static final int OOB_HOLD_TICKS = 8;
@@ -64,6 +64,7 @@ public class MatchState {
     private int actionDelayTicks;
     private int restartHoldTicks;
     private boolean setPiecePending; // free kick, goal kick, throw-in, corner — CARRY not allowed
+    private boolean restartFirstTouch; // true until the restart taker's FIRST decision — CARRY forbidden
     private Player freeKickTaker;
     private final Map<Player, Integer> duelCooldownTicks = new HashMap<>();
     private final Map<String, Integer> playerYellowCards = new HashMap<>();
@@ -93,6 +94,11 @@ public class MatchState {
     private double offsideDeferredMargin;
     private boolean offsideLedToGoal;
     private int offsideDeferredActionCount;
+    // Whether the deferred offside's NEXT action advanced toward the opponent
+    // goal (a shot or a forward pass). Per the user rule, marginal offside is
+    // only whistled when that action attacked — harmless short/sideways
+    // continuations are let go without a whistle.
+    private boolean offsideDeferredDecisionForward;
     private final List<GoalRecord> goals = new ArrayList<>();
 
     private final Map<Player, Position> roundStartPositions = new HashMap<>();
@@ -131,6 +137,7 @@ public class MatchState {
             roundEndPositions.put(p, p.getPosition());
             desiredPositions.put(p, p.getPosition());
             tacticalDesiredPositions.put(p, p.getPosition());
+            roundPaceSkills.put(p, roundPaceOf(p));
         }
     }
 
@@ -157,6 +164,8 @@ public class MatchState {
     public int getAwayGoalCount() { return awayGoalCount; }
     public void incrementGoalCount() { goalCount++; }
     public void incrementAwayGoalCount() { awayGoalCount++; }
+    public void decrementGoalCount() { goalCount = Math.max(0, goalCount - 1); }
+    public void decrementAwayGoalCount() { awayGoalCount = Math.max(0, awayGoalCount - 1); }
     public int getActionCount() { return actionCount; }
     public void incrementActionCount() { actionCount++; }
     public int getShotCount() { return shotCount; }
@@ -324,6 +333,7 @@ public class MatchState {
         roundEndPositions.put(substitute, replaced.getPosition());
         desiredPositions.put(substitute, replaced.getPosition());
         tacticalDesiredPositions.put(substitute, replaced.getPosition());
+        roundPaceSkills.put(substitute, roundPaceOf(substitute));
     }
 
     // --- Corner ---
@@ -362,6 +372,8 @@ public class MatchState {
     public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
     public boolean isSetPiecePending() { return setPiecePending; }
     public void setSetPiecePending(boolean value) { setPiecePending = value; }
+    public boolean isRestartFirstTouch() { return restartFirstTouch; }
+    public void setRestartFirstTouch(boolean value) { restartFirstTouch = value; }
     public Player getFreeKickTaker() { return freeKickTaker; }
     public void setFreeKickTaker(Player player) { freeKickTaker = player; }
 
@@ -384,6 +396,7 @@ public class MatchState {
         offsideDeferred = false;
         offsideLedToGoal = false;
         offsideDeferredActionCount = 0;
+        offsideDeferredDecisionForward = false;
     }
 
     // --- VAR delay timer ---
@@ -407,6 +420,8 @@ public class MatchState {
     public void setOffsideLedToGoal(boolean offsideLedToGoal) { this.offsideLedToGoal = offsideLedToGoal; }
     public int getOffsideDeferredActionCount() { return offsideDeferredActionCount; }
     public void setOffsideDeferredActionCount(int offsideDeferredActionCount) { this.offsideDeferredActionCount = offsideDeferredActionCount; }
+    public boolean isOffsideDeferredDecisionForward() { return offsideDeferredDecisionForward; }
+    public void setOffsideDeferredDecisionForward(boolean offsideDeferredDecisionForward) { this.offsideDeferredDecisionForward = offsideDeferredDecisionForward; }
 
     // --- Round tracking ---
 
@@ -416,6 +431,10 @@ public class MatchState {
     public Position getDesiredPosition(Player p) {
         return desiredPositions.getOrDefault(p, p.getPosition());
     }
+    public int getRoundPaceSkill(Player p) {
+        return roundPaceSkills.getOrDefault(p, 20);
+    }
+
     public Position getRoundEndPosition(Player p) {
         return roundEndPositions.getOrDefault(p, p.getPosition());
     }
@@ -461,10 +480,6 @@ public class MatchState {
         this.ballOOBRestartPosition = null;
     }
 
-    public int getRoundPaceSkill(Player p) {
-        return roundPaceSkills.getOrDefault(p, 20);
-    }
-
     public void beginRound() {
         roundComplete = false;
         roundStartBallPosition = ball.getPosition();
@@ -474,8 +489,20 @@ public class MatchState {
             Position pos = p.getPosition();
             roundStartPositions.put(p, pos);
             roundEndPositions.put(p, pos);
-            roundPaceSkills.put(p, random.nextInt(20) + 1);
+            roundPaceSkills.put(p, roundPaceOf(p));
         }
+    }
+
+    /**
+     * A player's pace skill (1-20) determines how far they can travel in one
+     * round/action: pace 20 = up to 1 full cell, pace 10 = half a cell. This
+     * must be the FIXED per-player skill value, never a random per-round roll —
+     * randomizing it causes erratic speed / apparent teleporting and mid-round
+     * stalls on the pitch (corePrinciples §11).
+     */
+    public int roundPaceOf(Player p) {
+        double pace = p.getSkills().pace();
+        return (int) Math.max(1, Math.min(20, Math.round(pace)));
     }
 
     public void recordDesiredPositions() {
@@ -545,7 +572,6 @@ public class MatchState {
         roundEndBallPosition = new Position(4, 3.5);
         tacticalBallPosition = new Position(4, 3.5);
         lastTacticalBallStateKey = TacticsRules.ballStateKey(new Position(4, 3.5));
-        roundPaceSkills.clear();
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             Position pos = p.getPosition();
@@ -553,6 +579,7 @@ public class MatchState {
             roundEndPositions.put(p, pos);
             desiredPositions.put(p, pos);
             tacticalDesiredPositions.put(p, pos);
+            roundPaceSkills.put(p, roundPaceOf(p));
         }
     }
 
@@ -616,15 +643,15 @@ public class MatchState {
         roundEndBallPosition = ball.getInitialPosition();
         tacticalBallPosition = ball.getInitialPosition();
         lastTacticalBallStateKey = TacticsRules.ballStateKey(ball.getInitialPosition());
-        roundPaceSkills.clear();
         clearBallOOBPending();
+        roundPaceSkills.clear();
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             roundStartPositions.put(p, p.getPosition());
             roundEndPositions.put(p, p.getPosition());
             desiredPositions.put(p, p.getPosition());
             tacticalDesiredPositions.put(p, p.getPosition());
-            roundPaceSkills.put(p, 20);
+            roundPaceSkills.put(p, roundPaceOf(p));
         }
     }
 }

@@ -23,6 +23,8 @@ public class Action {
     private Position dribbleBypassTarget;
     private boolean goalLineResolved;
     private boolean goodExecution;
+    private double gkInLane = 1.0;    // 0..1: how much the keeper sits in the shot lane (save chance driver)
+    private double angleFactor = 1.0; // 1.0 central .. ~0.42 acute; feeds save difficulty
     private SaveType saveType = SaveType.NONE;
     private boolean clearance;
     private PassLength passLength = PassLength.SHORT;
@@ -89,6 +91,10 @@ public class Action {
     public void setGoalLineResolved(boolean goalLineResolved) { this.goalLineResolved = goalLineResolved; }
     public boolean isGoodExecution() { return goodExecution; }
     public void setGoodExecution(boolean goodExecution) { this.goodExecution = goodExecution; }
+    public void setGkInLane(double gkInLane) { this.gkInLane = gkInLane; }
+    public double getGkInLane() { return gkInLane; }
+    public void setAngleFactor(double angleFactor) { this.angleFactor = angleFactor; }
+    public double getAngleFactor() { return angleFactor; }
     public SaveType getSaveType() { return saveType; }
     public void setSaveType(SaveType saveType) { this.saveType = saveType; }
     public boolean isClearance() { return clearance; }

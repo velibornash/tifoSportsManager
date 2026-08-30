@@ -190,8 +190,8 @@ public class ThreatAssessmentService {
         // GK never overrides
         if ("GK".equals(player.getRole())) return false;
 
-        // Offside retreat: after 3+ consecutive offsides, force player to drop back
-        if (player.getConsecutiveOffsideCount() >= 3) return true;
+        // Offside retreat: after 2+ consecutive offsides, force player to drop back
+        if (player.getConsecutiveOffsideCount() >= 2) return true;
 
         // High threat + high personal pressure = override
         if (teamThreat.level().severity() >= 0.75 && personalPressure > 0.5) return true;
@@ -213,7 +213,7 @@ public class ThreatAssessmentService {
         Position playerPos = player.getPosition();
 
         // Offside retreat: force player to drop back toward own half
-        if (player.getConsecutiveOffsideCount() >= 3) {
+        if (player.getConsecutiveOffsideCount() >= 2) {
             return PlayerIntent.RETURN_TO_SHAPE;
         }
 

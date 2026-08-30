@@ -69,11 +69,11 @@ const EV_ICON = {
   FREE_KICK: '\uD83C\uDFAF', GOAL_KICK: '\uD83E\uDD25', THROW_IN: '\uD83E\uDD39',
   DECISION: '\uD83E\uDDE0', ACTION_EXECUTION: '\u26A1', ACTION_OUTCOME: '\uD83D\uDCCB',
   FOUL: '\u26A0\uFE0F', CARD: '\uD83D\uDFE8', RESTART: '\uD83D\uDD04', POSSESSION: '\uD83D\uDCCA',
-  INFO: '\uD83D\uDCDD',
+  INFO: '\uD83D\uDCDD', GOAL_DISALLOWED: '\u26A0\uFE0F',
 };
 
 const IMPORTANT_EVENTS = new Set([
-  'GOAL', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
+  'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
   'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
   'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN',
   'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
@@ -91,7 +91,7 @@ const MINOR_EVENTS = new Set([
   'DUEL_START', 'DUEL_RESOLVED',
   'CHASE', 'CHASE_POSSESSION',
   'DECISION', 'ACTION_EXECUTION', 'ACTION_OUTCOME',
-  'INFO', 'RESTART', 'POSSESSION',
+  'INFO', 'RESTART', 'POSSESSION', 'VAR_IN_PROGRESS',
 ]);
 
 function classifyEvent(ev) {
@@ -157,10 +157,10 @@ class OverlayManager {
     this._resumeTime = Infinity; // never auto-dismiss
   }
 
-  /** Show VAR review overlay for a duration in real ms — NON-BLOCKING (play flows during review) */
+  /** Show VAR review overlay for a duration in real ms — BLOCKING (game stops during review) */
   showVAR(reviewText, durationMs) {
     this._type = 'var';
-    this._blocking = false; // play continues while VAR reviews
+    this._blocking = true; // game stands while the review is shown
     this._textEl.textContent = '\uD83D\uDCFA VAR IN PROGRESS';
     this._subEl.textContent = reviewText;
     this._el.className = 'overlay visible var-review';
@@ -168,15 +168,15 @@ class OverlayManager {
     this._resumeTime = performance.now() + durationMs;
   }
 
-  /** Show VAR decision result overlay (confirmed/overturned) — NON-BLOCKING */
+  /** Show VAR decision result overlay (confirmed/overturned) — BLOCKING */
   showVARDecision(decisionText) {
     this._type = 'var-decision';
-    this._blocking = false; // play continues while the verdict is shown
+    this._blocking = true; // hold during the brief verdict display
     this._textEl.textContent = '\uD83D\uDCFA ' + decisionText;
     this._subEl.textContent = '';
     this._el.className = 'overlay visible var-decision';
     this._active = true;
-    this._resumeTime = performance.now() + 2500; // 2.5 seconds
+    this._resumeTime = performance.now() + 2200; // 2.2 seconds
   }
 
   /** Show kickoff overlay (0:0, ball at center, waiting to start) */
@@ -213,6 +213,33 @@ class OverlayManager {
     this._el.className = 'overlay visible offside';
     this._active = true;
     this._resumeTime = performance.now() + 3500; // 3.5 seconds
+  }
+
+  /** Show GOAL DISALLOWED overlay — cancels any active goal overlay */
+  showGoalDisallowed(reason) {
+    this._type = 'goal-disallowed';
+    this._blocking = false;
+    this._textEl.textContent = '\u26A0\uFE0F GOAL DISALLOWED';
+    this._subEl.textContent = reason || '';
+    this._el.className = 'overlay visible goal-disallowed';
+    this._active = true;
+    this._resumeTime = performance.now() + 4000; // 4 seconds
+    // Clear goal animation if active
+    this._goalAnim = null;
+  }
+
+  /** Show card overlay (yellow/red) with team name, player name, VAR indicator */
+  showCard(cardType, playerName, team, isVar) {
+    this._type = cardType === 'RED' ? 'red-card' : 'yellow-card';
+    this._blocking = true;
+    const cardLabel = cardType === 'RED' ? 'RED CARD' : 'YELLOW CARD';
+    const icon = cardType === 'RED' ? '\uD83D\uDD34' : '\uD83D\uDFE8';
+    const varSuffix = isVar ? ' \uD83D\uDCFA VAR' : '';
+    this._textEl.innerHTML = `${icon} ${cardLabel}${varSuffix}`;
+    this._subEl.textContent = `${playerName} — ${team}`;
+    this._el.className = `overlay visible ${cardType === 'RED' ? 'red-card' : 'yellow-card'}`;
+    this._active = true;
+    this._resumeTime = performance.now() + 3000; // 3 seconds
   }
 
   getGoalAnimProgress() {
@@ -414,7 +441,7 @@ class PitchRenderer {
   _goal(ctx, row, col, side) {
     const [gx, gy] = this.toCanvas(row, col);
     const goalH = 2.2 * CELL_H;
-    const depth = 25;
+    const depth = 50;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -432,14 +459,81 @@ class PitchRenderer {
     ctx.stroke();
   }
 
-  drawPlayers(players, carrierId) {
+  drawPlayers(players, carrierId, duelPairs) {
     const ctx = this.ctx;
+
+    // Build a set of labels involved in an active duel for quick lookup
+    const duelLabels = new Set();
+    if (duelPairs) {
+      for (const pair of duelPairs) {
+        if (pair[0]?.label) duelLabels.add(pair[0].label);
+        if (pair[1]?.label) duelLabels.add(pair[1].label);
+      }
+    }
+
+    // For duel convergence: if both duel participants exist, draw them
+    // at touching positions (center-to-center ≈ 2 × player radius).
+    // Pre-compute converged positions for dueling players.
+    const convergedPos = new Map(); // id → {row, col}
+    if (duelPairs) {
+      for (const pair of duelPairs) {
+        const pa = players.find(p => p.label === pair[0]?.label);
+        const pb = players.find(p => p.label === pair[1]?.label);
+        if (pa && pb && pa.id && pb.id) {
+          const rA = pa.role === 'GK' ? 18 : 14;
+          const rB = pb.role === 'GK' ? 18 : 14;
+          // Two circles touching: center-to-center = rA + rB (in canvas px)
+          // In grid units: (rA + rB) / CELL_W rows and / CELL_H cols
+          const contactDistRows = (rA + rB) / CELL_W * 0.8; // 0.8 = pixel-to-grid scale approx
+          const contactDistCols = (rA + rB) / CELL_H * 0.8;
+          const midRow = (pa.row + pb.row) / 2;
+          const midCol = (pa.col + pb.col) / 2;
+          const dx = pb.col - pa.col;
+          const dy = pb.row - pa.row;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0.001) {
+            // Only converge players if they are genuinely near each other
+            // (duel proximity check). If they are far apart, drawing them at
+            // "touching" positions would teleport them — NIKAD no teleporting.
+            const MAX_CONVERGE_DIST = 2.0; // grid cells
+            if (dist > MAX_CONVERGE_DIST) continue;
+            const overlap = (contactDistRows + contactDistCols) / 2;
+            const moveFrac = Math.max(0, (dist - overlap) / 2 / dist);
+            convergedPos.set(pa.id, {
+              row: pa.row + dy / dist * moveFrac,
+              col: pa.col + dx / dist * moveFrac,
+            });
+            convergedPos.set(pb.id, {
+              row: pb.row - dy / dist * moveFrac,
+              col: pb.col - dx / dist * moveFrac,
+            });
+          }
+        }
+      }
+    }
+
     for (const p of players) {
-      const [x, y] = this.toCanvas(p.row, p.col);
+      let pos = { row: p.row, col: p.col };
+      if (convergedPos.has(p.id)) {
+        pos = convergedPos.get(p.id);
+      }
+      const [x, y] = this.toCanvas(pos.row, pos.col);
       const isHome = p.team === 'HOME';
       const isGK = p.role === 'GK';
       const isCarrier = carrierId && p.id === carrierId;
       const r = isGK ? 18 : 14;
+      const inDuel = duelLabels.has(p.label);
+
+      // Duel highlight circle behind the player
+      if (inDuel) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,0,.35)';
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.fill();
+      }
 
       if (isCarrier) {
         ctx.beginPath();
@@ -491,50 +585,60 @@ class PitchRenderer {
     const t = goalAnim.t;
     const isHome = goalAnim.team === 'HOME';
 
-    // Ball travels from center (row 4) toward the goal, then continues
-    // beyond the goal line into the out-of-bounds area (row 8 for HOME,
-    // row 0 for AWAY) — simulating the ball crossing the goal line.
+    // Ball travels from center (row 4) toward the goal line and STOPS there
+    // (row 7 for HOME, row 1 for AWAY). It does NOT continue into the
+    // out-of-bounds area — the ball is "frozen" at the goal line so it is
+    // visually distinct from a miss (which goes to row 8/0).
     const goalRow = isHome ? 7 : 1;
-    const exitRow = isHome ? 8 : 0;
     const [gx, gy] = this.toCanvas(goalRow, 3.5);
-    const [ex, ey] = this.toCanvas(exitRow, 3.5);
-    const [sx, sy] = this.toCanvas(4, 3.5);
 
-    // Animate ball: 0.0 → reaches goal line (row 1/7), 1.0 → exits beyond goal line (row 0/8)
-    const targetRow = t < 0.5 ? lerp(4, goalRow, t * 2) : lerp(goalRow, exitRow, (t - 0.5) * 2);
+    // Animate ball: 0.0 → center, 0.7 → reaches goal line, 0.7-1.0 → celebration
+    const animThreshold = 0.7;
+    let targetRow;
+    if (t <= animThreshold) {
+      targetRow = lerp(4, goalRow, t / animThreshold);
+    } else {
+      // Hold at the goal line
+      targetRow = goalRow;
+    }
     const [ballX, ballY] = this.toCanvas(targetRow, 3.5);
 
     // Draw the animated ball (white, glowing)
-    const ballSize = 5 + Math.sin(t * Math.PI) * 3;
+    const ballScale = t <= animThreshold ? 5 + Math.sin((t / animThreshold) * Math.PI) * 3 : 8;
     ctx.beginPath();
-    ctx.arc(ballX, ballY, ballSize + 8, 0, Math.PI * 2);
+    ctx.arc(ballX, ballY, ballScale + 8, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255,255,255,${0.3 * (1 - t)})`;
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(ballX, ballY, ballSize, 0, Math.PI * 2);
+    ctx.arc(ballX, ballY, ballScale, 0, Math.PI * 2);
     ctx.fillStyle = '#fff';
     ctx.fill();
 
-    // After ball crosses goal line, show celebration rings at the goal position
-    if (t > 0.5) {
-      const celebrationT = (t - 0.5) / 0.5; // 0→1
-      for (let i = 0; i < 4; i++) {
-        const phase = i / 4 + celebrationT * 0.6;
-        const radius = 40 + phase * 180;
+    // After ball reaches goal line, show celebration rings + player spray
+    if (t >= animThreshold) {
+      const celebrationT = (t - animThreshold) / (1 - animThreshold); // 0→1
+      const glowT = Math.sin(celebrationT * Math.PI) * 0.4 + 0.3;
+      ctx.beginPath();
+      ctx.arc(ballX, ballY, 30 + celebrationT * 60, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(240,180,41,${glowT})`;
+      ctx.fill();
+      for (let i = 0; i < 6; i++) {
+        const phase = (i / 6 + celebrationT * 0.4) % 1;
+        const radius = 30 + phase * 200;
         const alpha = Math.max(0, (1 - celebrationT) * 0.5);
         ctx.beginPath();
         ctx.arc(gx, gy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(240,180,41,${alpha})`;
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 4 + celebrationT * 2;
         ctx.stroke();
       }
     }
   }
 
-  render(players, ballPos, carrierId, flashEvent, goalAnim) {
+  render(players, ballPos, carrierId, flashEvent, goalAnim, duelPairs) {
     this.ctx.clearRect(0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
     this.drawPitch();
-    if (players) this.drawPlayers(players, carrierId);
+    if (players) this.drawPlayers(players, carrierId, duelPairs);
     if (ballPos) this.drawBall(ballPos);
     this.drawGoalAnim(goalAnim);
   }
@@ -556,7 +660,7 @@ class MatchViewer {
     this.startTick = 0;
     this.endTick = 0;
     this.playing = false;
-    this.speed = 1;
+    this.speed = 0.5;
     this._lastFrame = 0;
     this._tickAccum = 0;
     this._rafId = null;
@@ -569,6 +673,8 @@ class MatchViewer {
     this._prevMatchFinished = false;
     this._varOverlayShown = false;
     this._varOverlayTick = -1;
+    this._varReviewQueued = false;
+    this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
 
     // Grid overlay toggle (default off)
     this.showGrid = false;
@@ -703,6 +809,8 @@ class MatchViewer {
     this._prevMatchFinished = false;
     this._varOverlayShown = false;
     this._varOverlayTick = -1;
+    this._varReviewQueued = false;
+    this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
@@ -874,10 +982,62 @@ class MatchViewer {
         }
         // VAR decision overlays (confirmed/overturned)
         if (ev.type?.startsWith('VAR_OFFSIDE_') || ev.type?.startsWith('VAR_GOAL_')
-            || ev.type?.startsWith('VAR_RED_') || ev.type?.startsWith('VAR_PENALTY_')) {
+            || ev.type?.startsWith('VAR_RED_') || ev.type?.startsWith('VAR_PENALTY_')
+            || ev.type?.startsWith('VAR_YELLOW_')) {
           const decisionLabel = ev.type.includes('CONFIRMED') ? 'CONFIRMED' : 'OVERTURNED';
           const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
           this.overlays.showVARDecision(`VAR ${reviewType}: ${decisionLabel}`);
+          this._varReviewQueued = false;
+        }
+        // GOAL DISALLOWED overlay — cancels any active goal overlay
+        if (ev.type === 'GOAL_DISALLOWED') {
+          this.overlays.showGoalDisallowed(ev.description || 'GOAL DISALLOWED');
+        }
+        // VAR IN PROGRESS overlay — BLOCKING, shows team + incident. Breaks the
+        // event batch so the CONFIRMED/OVERTURNED verdict (emitted on the same
+        // tick) is shown only AFTER this review overlay is dismissed — creating
+        // the IN PROGRESS -> decision sequence instead of them overwriting.
+        if (ev.type === 'VAR_IN_PROGRESS') {
+          if (!this._varReviewQueued) {
+            this._varReviewQueued = true;
+            this._varOverlayTick = ev.tick;
+            this.overlays.showVAR(ev.description || 'Reviewing incident...', 3500);
+            break;
+          }
+          // Re-entry after the review overlay dismissed — fall through to the
+          // confirmed/overturned decision that immediately follows on this tick.
+        }
+        // CARD overlay — yellow/red card with team name, player name, VAR indicator
+        if (ev.type === 'CARD' || ev.type === 'YELLOW_CARD' || ev.type === 'RED_CARD') {
+          const isRed = ev.type === 'RED_CARD' || ev.description?.includes('RED');
+          const cardType = isRed ? 'RED' : 'YELLOW';
+          const desc = ev.description || '';
+          // Parse player name and team from description like:
+          // "CARD: YELLOW ... (previous yellows=1)" or "AWAY Player 11: FOUL → card YELLOW"
+          const teamFromEv = ev.team || (desc.includes('HOME') ? 'HOME' : 'AWAY');
+          const nameMatch = desc.match(/(?:HOME|AWAY)\s+(\w+\s+\d+)/);
+          const playerName = ev.playerName || (nameMatch ? nameMatch[1] : 'Player');
+          const teamLabel = teamFromEv === 'HOME'
+            ? (this.data.homeTeamName || 'HOME')
+            : (this.data.awayTeamName || 'AWAY');
+          const isVar = desc.includes('VAR') || ev.channel?.includes('VAR');
+          this.overlays.showCard(cardType, playerName, teamLabel, !!isVar);
+        }
+        // FOUL overlay — brief foul notification
+        if (ev.type === 'FOUL') {
+          const desc = ev.description || '';
+          const teamMatch = desc.match(/(HOME|AWAY)/);
+          const team = teamMatch ? teamMatch[1] : (ev.team || '');
+          const teamLabel = team === 'HOME'
+            ? (this.data.homeTeamName || 'HOME')
+            : (team === 'AWAY' ? (this.data.awayTeamName || 'AWAY') : '');
+          const playerMatch = desc.match(/(?:HOME|AWAY)\s+(\w+\s+\d+)/);
+          const playerName = ev.playerName || (playerMatch ? playerMatch[1] : 'Player');
+          const foulTypeMatch = desc.match(/foul type[:\s]+(\w+)/i) || desc.match(/\(([^)]+)\)/);
+          const foulType = foulTypeMatch ? foulTypeMatch[1] : 'Tackle foul';
+          // Show as a brief non-blocking flash in the timeline (not a blocking overlay)
+          this._flashEvent = { type: 'FOUL', team, playerName, description: `${playerName} (${foulType})`, _age: 0 };
+          this._flashStart = performance.now();
         }
       }
       this._displayedEventIdx++;
@@ -886,6 +1046,58 @@ class MatchViewer {
       this._flashEvent._age = (performance.now() - this._flashStart) / 2000;
       if (this._flashEvent._age > 1.5) this._flashEvent = null;
     }
+    this._updateDuelState(this.currentTick);
+  }
+
+  /** Parse DUEL_START / DUEL_RESOLVED events and track active duel pairs per tick */
+  _updateDuelState(currentTick) {
+    if (!this.data) return;
+    if (currentTick <= this._duelState.currentTick) return; // already processed
+
+    // Process duel events in chronological order
+    for (const ev of this.events) {
+      if (ev.tick > currentTick) break;
+      if (ev.tick <= this._duelState.currentTick) continue; // already processed
+
+      if (ev.type === 'DUEL_START') {
+        // Parse "TYPE AttackerLabel vs DefenderLabel" from description
+        // Example: "RECEIVE_PASS Home FC 11 vs Away United 7"
+        // Player labels are like "Home FC 11" or "Away United 7" (team name + number)
+        const desc = ev.description || '';
+        const parts = desc.split(' vs ');
+        if (parts.length === 2) {
+          // Strip the action type prefix from the first part (e.g. "RECEIVE_PASS ")
+          const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
+          const defenderPart = parts[1].trim();
+          const pairKey = attackerPart + '|' + defenderPart;
+          this._duelState.resolved.delete(pairKey);
+          this._duelState.pairs.push({ tick: ev.tick, a: attackerPart, b: defenderPart });
+        }
+      } else if (ev.type === 'DUEL_RESOLVED') {
+        // Immediately mark this duel pair as resolved so circles disappear
+        // without the 1-2 tick delay from time-window expiry.
+        // Description format: "TYPE labelA vs labelB | winner=..."
+        const desc = ev.description || '';
+        const parts = desc.split(' vs ');
+        if (parts.length === 2) {
+          const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
+          // Strip any trailing detail (e.g. "| winner=...") from the defender label
+          const defenderPart = parts[1].split('|')[0].trim();
+          this._duelState.resolved.add(attackerPart + '|' + defenderPart);
+        }
+      }
+    }
+    this._duelState.currentTick = currentTick;
+  }
+
+  /** Return list of active duel player-label pairs at the current tick */
+  _getActiveDuelPairs(tick) {
+    const intTick = Math.floor(tick);
+    const DUEL_DURATION = 2; // ticks — duels typically resolve within 1-2 ticks
+    return this._duelState.pairs
+      .filter(dp => dp.tick <= intTick && dp.tick + DUEL_DURATION >= intTick)
+      .filter(dp => !this._duelState.resolved.has(dp.a + '|' + dp.b))
+      .map(dp => [{ label: dp.a }, { label: dp.b }]);
   }
 
   /** Check snapshot flags for halftime, fulltime, and VAR events */
@@ -916,10 +1128,9 @@ class MatchViewer {
     while (this._displayedEventIdx < this.events.length) {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > intTick) break;
-      if (ev.tick <= intTick && ev.type?.startsWith('VAR_') && ev.tick !== this._varOverlayTick) {
+      if (ev.tick <= intTick && ev.type === 'VAR_IN_PROGRESS' && ev.tick !== this._varOverlayTick) {
         this._varOverlayTick = ev.tick;
-        const durationMs = 4000 + Math.random() * 4000; // 4-8 seconds
-        this.overlays.showVAR(ev.description || 'Reviewing incident...', durationMs);
+        this.overlays.showVAR(ev.description || 'Reviewing incident...', 3500);
         break;
       }
     }
@@ -931,8 +1142,9 @@ class MatchViewer {
     const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
     const goalAnim = this.overlays.getGoalAnimProgress();
+    const duelPairs = this._getActiveDuelPairs(this.currentTick);
     this.pitch.showGrid = this.showGrid;
-    this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim);
+    this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim, duelPairs);
     this._updateScoreboard();
     this._updateSeek();
   }
@@ -1023,7 +1235,7 @@ class MatchViewer {
     if (speedSlider) {
       const speeds = [0.25, 0.5, 1, 2, 4];
       speedSlider.max = speeds.length - 1;
-      speedSlider.value = 2;  // default = 1x
+      speedSlider.value = 1;  // default = 0.5x
       const update = () => {
         this.speed = speeds[Number(speedSlider.value)];
         document.getElementById('speedLabel').textContent = this.speed + 'x';

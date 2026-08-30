@@ -154,13 +154,27 @@ public class OffsideService {
      */
     public OffsideResult checkOffside(Player receiver, Position passOrigin, Position ballPos,
                                        String carrierTeam, MatchState state, ActionEngine actionEngine) {
-        if (state.isKickoffActionPending()
-                || state.isSetPiecePending()
-                || !rulesService.isOffside(receiver, passOrigin, ballPos)) {
+        if (state.isKickoffActionPending() || state.isSetPiecePending()) {
             return new OffsideResult(false, false);
         }
 
         double margin = calculateOffsideMargin(receiver, carrierTeam, state);
+
+        // Onside receiver (no offside). If they are hugging the line (within
+        // 0.8 cells of the second-to-last defender), hold a pending ONSIDE_CHECK:
+        // per user rule a shot/goal that follows is reviewed and confirmed. If the
+        // receiver is clearly onside (> 0.8 clear) there is nothing to do.
+        if (!rulesService.isOffside(receiver, passOrigin, ballPos)) {
+            if (margin > -0.8) {
+                state.setPendingVARReview("ONSIDE_CHECK", receiver, carrierTeam);
+                state.setOffsideDeferred(true);
+                state.setOffsideDeferredMargin(margin);
+                state.setOffsideLedToGoal(false);
+                state.setOffsideDeferredActionCount(state.getActionCount() + 1);
+                return new OffsideResult(false, true); // pass continues; VAR may confirm a goal
+            }
+            return new OffsideResult(false, false);
+        }
 
         // Clear offside (> 0.5 cells past the line) — an obvious call, the
         // referee whistles immediately. No VAR, no deferral.
@@ -170,8 +184,10 @@ public class OffsideService {
 
         // Marginal offside (0 < margin <= 0.5) — HOLD the flag. Play continues
         // only to observe the NEXT action: if that action ends in a GOAL we run a
-        // full VAR review (was the shooter offside?); otherwise we whistle a PLAIN
-        // offside immediately — VAR is NEVER invoked for an offside alone.
+        // full VAR review (was the shooter offside?); otherwise, per the user rule,
+        // we whistle a PLAIN offside only when that next action ATTACKED (a shot
+        // or meaningful forward pass). Harmless sideways/backward continuations are
+        // let go. VAR is NEVER invoked for a bare offside.
         if (margin > 0) {
             state.setPendingVARReview("OFFSIDE", receiver, carrierTeam);
             state.setOffsideDeferred(true);
@@ -181,7 +197,7 @@ public class OffsideService {
             return new OffsideResult(false, true); // pass continues, receiver touches ball
         }
 
-        // Onside (margin <= 0) — no call, no deferral, no VAR.
+        // Clear onside (margin <= -0.8) — no call, no deferral, no VAR.
         return new OffsideResult(false, false);
     }
 
@@ -215,9 +231,27 @@ public class OffsideService {
 
         state.setOffsideDeferred(false);
 
+        // A pending ONSIDE_CHECK is a tight-onside marker, not an offside: if the
+        // move's next action was not a goal (goal path consumes it), there is
+        // nothing to whistle — clear it.
+        if ("ONSIDE_CHECK".equals(state.getPendingVARReviewType())) {
+            state.clearPendingVARReview();
+            return;
+        }
+
         // If a goal had been scored in the move, the goal path already consumed
         // this pending review synchronously — nothing left to whistle.
         if (state.isOffsideLedToGoal() || !state.hasPendingVARReview()) {
+            state.clearPendingVARReview();
+            return;
+        }
+
+        // User rule: marginal offside is whistled ONLY when the deferred (next)
+        // action actually ATTACKED — a shot or a forward pass. If the receiver
+        // merely continued sideways/backward/short, no offside offence follows
+        // the flag; let play run on and drop the pending call (no whistle, no
+        // stat, no free kick).
+        if (!state.isOffsideDeferredDecisionForward()) {
             state.clearPendingVARReview();
             return;
         }
@@ -240,34 +274,52 @@ public class OffsideService {
         }
         double margin = state.getOffsideDeferredMargin();
         Player receiver = state.getPendingVARReviewPlayer();
+        String defendingTeam = "HOME".equals(shootingTeam) ? "AWAY" : "HOME";
+
+        // TIGHT ONSIDE CHECK (user rule): the scorer was onside but within 0.8
+        // cells of the offside line when the pass was played — VAR reviews and
+        // CONFIRMS the goal stands.
+        if ("ONSIDE_CHECK".equals(state.getPendingVARReviewType())) {
+            state.setOffsideDeferred(false);
+            varService.logVARReviewStarted(shootingTeam,
+                    "ONSIDE — " + receiver.getLabel()
+                            + " was ONSIDE (defending: " + defendingTeam
+                            + ") — reviewing imminent goal");
+            varService.recordVARDecisionAtTick("VAR_GOAL_CONFIRMED",
+                    (receiver.getLabel()) + " onside margin=" + String.format("%.2f", margin),
+                    state.getSimulationTick() + Math.max(1, VAR_OFFSIDE_TICKS / 2));
+            logger.logInfo(state, "VAR CONFIRMED GOAL — " + receiver.getLabel()
+                    + " was ONSIDE (tight, margin=" + String.format("%.2f", margin) + ")",
+                    "VAR", receiver);
+            state.clearPendingVARReview();
+            return true; // goal stands
+        }
 
         // VAR IN PROGRESS — non-blocking overlay, play flows during review.
-        varService.logVARReviewStarted(shootingTeam, "OFFSIDE — " + shooter.getLabel() + " (goal review)");
+        // Include BOTH teams so the viewer knows which side is attacking
+        // and which is defending during the review.
+        String reviewDetail = "OFFSIDE — " + shooter.getLabel()
+                + " (goal review) — attacking: " + shootingTeam
+                + " defending: " + defendingTeam;
+        varService.logVARReviewStarted(shootingTeam, reviewDetail);
 
-        // Overturn (rule onside) probability is higher for smaller margins.
-        double overturnChance = Math.max(0.1, 0.5 - margin * 0.8);
-        boolean overturned = state.getRandom().nextDouble() < overturnChance;
+        // Marginal offside (0 < margin <= 0.5) held to a goal: per user rule the
+        // move WAS offside, so the goal is ALWAYS disallowed — a hard rule, not a
+        // probability. (On the compressed pitch the held receiver was the shooter;
+        // margin > 0 means the scorer was offside when the pass was played.)
+        boolean overturned = false;
 
         // Record the decision ~VAR_OFFSIDE_TICKS later so the viewer shows the
         // full review duration before the CONFIRMED / OVERTURNED verdict.
         long decisionTick = state.getSimulationTick() + Math.max(1, VAR_OFFSIDE_TICKS / 2);
-        if (overturned) {
-            receiver.resetConsecutiveOffside();
-            varService.recordVARDecisionAtTick("VAR_OFFSIDE_OVERTURNED",
-                    shooter.getLabel() + " margin=" + String.format("%.2f", margin), decisionTick);
-            logger.logInfo(state, "VAR OVERTURNED offside: " + shooter.getLabel()
-                    + " ruled ONSIDE — GOAL STANDS (margin=" + String.format("%.2f", margin) + ")",
-                    "VAR", shooter);
-        } else {
-            varService.recordVARDecisionAtTick("VAR_OFFSIDE_CONFIRMED",
-                    shooter.getLabel() + " margin=" + String.format("%.2f", margin), decisionTick);
-            logger.logInfo(state, "VAR CONFIRMED offside: " + shooter.getLabel()
-                    + " — GOAL DISALLOWED (margin=" + String.format("%.2f", margin) + ")",
-                    "VAR", shooter);
-            // Offside confirmed → indirect free kick for the defending team.
-            confirmOffside(receiver, shootingTeam, state, actionEngine,
-                    "VAR confirmed offside (margin=" + String.format("%.2f", margin) + ")");
-        }
+        varService.recordVARDecisionAtTick("VAR_OFFSIDE_CONFIRMED",
+                shooter.getLabel() + " margin=" + String.format("%.2f", margin), decisionTick);
+        logger.logInfo(state, "VAR CONFIRMED offside: " + shooter.getLabel()
+                + " — GOAL DISALLOWED (margin=" + String.format("%.2f", margin) + ")",
+                "VAR", shooter);
+        // Offside confirmed → indirect free kick for the defending team.
+        confirmOffside(receiver, shootingTeam, state, actionEngine,
+                "VAR confirmed offside (margin=" + String.format("%.2f", margin) + ")");
 
         state.clearPendingVARReview();
         return overturned;

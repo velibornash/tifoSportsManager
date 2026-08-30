@@ -13,22 +13,22 @@ import java.util.Locale;
  */
 public class ActionEngine {
 
-    public static final int SHOOT_MIN_ROW = 6; // shots only in last 2 rows (~14-28m from goal)
-    public static final Position GOAL_POSITION = new Position(7, 3.5);
-    public static final Position GOAL_EXIT_POSITION = new Position(8, 3.5);
-    public static final Position PENALTY_SPOT_HOME = new Position(6, 3.5);
-    public static final Position PENALTY_SPOT_AWAY = new Position(2, 3.5);
+    public static final int SHOOT_MIN_ROW = 6; // shots only from the last 2 field cells (~14-28m from goal)
+    public static final Position GOAL_POSITION = new Position(8.0, 3.5);
+    public static final Position GOAL_EXIT_POSITION = new Position(8.5, 3.5);
+    public static final Position PENALTY_SPOT_HOME = new Position(7.0, 3.5);
+    public static final Position PENALTY_SPOT_AWAY = new Position(2.0, 3.5);
     public static final double POSSESSION_RADIUS = BallMovementEngine.PICKUP_DISTANCE;
     public static final int CHASE_MAX_TICKS = 60;
     public static final int CHASE_NO_PROGRESS_TICKS = 15;
     public static final double CHASE_PROGRESS_EPSILON = MovementEngine.PLAYER_SPEED * 0.25;
 
     public static Position goalPositionFor(String team) {
-        return "HOME".equals(team) ? GOAL_POSITION : new Position(1, 3.5);
+        return "HOME".equals(team) ? GOAL_POSITION : new Position(1.0, 3.5);
     }
 
     public static Position goalExitPositionFor(String team) {
-        return "HOME".equals(team) ? GOAL_EXIT_POSITION : new Position(0, 3.5);
+        return "HOME".equals(team) ? GOAL_EXIT_POSITION : new Position(-0.5, 3.5);
     }
 
     private final MatchState state;
@@ -69,6 +69,17 @@ public class ActionEngine {
     }
 
     public void complete(String description) {
+        // Safety: unlock any player locked as a pass/cross/center target
+        // who hasn't been explicitly unlocked yet (e.g. when the action is
+        // resolved by a duel at the decision phase rather than by a normal
+        // arrival via handleInFlightArrival / pickupPass / passFailed).
+        // Without this, the receiver can remain locked if the action is
+        // completed out-of-band (e.g. free kick awarded for a foul), causing
+        // the receiver to freeze when it later gains possession.
+        Action pending = state.getAction();
+        if (pending != null && pending.getTargetPlayer() != null) {
+            pending.getTargetPlayer().setLocked(false);
+        }
         state.clearActiveChasers();
         state.setAction(null);
         state.setRoundComplete(true);
@@ -223,11 +234,8 @@ public class ActionEngine {
         action.setGoodExecution(received);
         action.setPassLength(passLength);
         action.setPassHeight(passHeight);
-        // Pass speed: high passing skill = fast ball (1.0 to 3.0 cells/tick)
-        // Fast balls are harder to intercept/deflect; slow balls are easier
-        double passSkill = carrier.getSkills().passing();
-        double passSpeed = 1.0 + (passSkill / 20.0) * 2.0; // skill 1→1.1, skill 20→3.0
-        action.setPassSpeed(passSpeed);
+        // Ball speed is always the constant BALL_SPEED (2.0) — never varies by skill.
+        // The default passSpeed in Action is already 2.0 = BallMovementEngine.BALL_SPEED.
 
         state.getBall().setCarrier(null);
         state.getBall().setTarget(flightTarget);
@@ -421,12 +429,10 @@ public class ActionEngine {
         double c = carrier.getPosition().getColumn();
         boolean home = "HOME".equals(carrier.getTeam());
         int dr;
-        boolean inFinalRows = home ? (r >= 6) : (r <= 2);
-        if (inFinalRows) {
-            do { dr = weightedForwardDr(); } while (home ? dr < 0 : dr > 0);
-        } else {
-            do { dr = weightedForwardDr(); } while (dr < 0);
-        }
+        // Carriers can only move forward or laterally — never backward — to
+        // prevent oscillation that would cause carry freezes. This applies to
+        // BOTH teams (HOME direction=+1, AWAY direction=-1).
+        do { dr = weightedForwardDr(); } while (dr < 0);
         int dc = state.getRandom().nextInt(3) - 1;
         if (dr == 0 && dc == 0) dr = 1;
         double direction = home ? 1 : -1;
@@ -528,6 +534,15 @@ public class ActionEngine {
     }
 
     public boolean executeShot() {
+        return executeShot(false);
+    }
+
+    /**
+     * Execute a shot. When the decision layer has determined the goal is EMPTY
+     * (no goalkeeper and no defender in the shooting lane) it passes that flag
+     * so even a weak finisher aims on frame — the ball then reaches the goal.
+     */
+    public boolean executeShot(boolean emptyGoalDecided) {
         Player carrier = state.getCarrier();
         Position shotOrigin = carrier.getPosition();
         String shootingTeam = carrier.getTeam();
@@ -553,6 +568,11 @@ public class ActionEngine {
         Player goalkeeper = selection.anyGoalkeeper("HOME".equals(shootingTeam) ? "AWAY" : "HOME");
         boolean emptyGoal = goalkeeper == null
                 || SimUtils.distance(goalkeeper.getPosition(), goalPosition) > 2.0;
+        if (emptyGoalDecided) {
+            // The playmaker already ruled the goal totally open (no GK, no
+            // defenders on frame); force the shot onto target regardless.
+            emptyGoal = true;
+        }
         if (emptyGoal) {
             // An open goal is not a random target. If no outfield opponent is
             // between the shooter and the goal, the shot must reach the goal.
@@ -576,11 +596,27 @@ public class ActionEngine {
         if (closestBlocker != null) {
             double blockChance = Math.max(0.03, 0.30 * (1.5 - closestBlockerDist) / 1.0);
             if (state.getRandom().nextDouble() < blockChance) {
-                // Shot blocked! Defender throws body in front
+                // Shot blocked! Defender throws body in front.
+                // Place the ball at the midpoint between shooter and blocker so the
+                // DEFENDING team has a head start (realistic: blocked shots favor
+                // the defense), but keep the CHASE mechanism so the recovery is
+                // contested and properly logged (no silent gaps).
                 state.getBall().setCarrier(null);
                 state.getBall().setTarget(null);
                 state.setCarrier(null);
-                state.getBall().setPosition(shotOrigin);
+                Position shotBlockPos = new Position(
+                        (shotOrigin.getRow() + closestBlocker.getPosition().getRow()) / 2.0,
+                        (shotOrigin.getColumn() + closestBlocker.getPosition().getColumn()) / 2.0);
+                state.getBall().setPosition(shotBlockPos);
+                // Set up active chasers so resolveChase / CHASE progress log works.
+                // Without this, the CHASE starts with no active chasers → actor is null,
+                // progress log never fires, and resolveChase can't find duels or
+                // resolve possession → 15-tick silent gap until no-progress timeout.
+                Player closestHome = selection.closestOutfieldHomeTo(shotBlockPos);
+                Player closestAway = selection.closestOutfieldTeamTo(shotBlockPos, "AWAY");
+                state.setActiveChasers(closestHome, closestAway);
+                if (closestHome != null) closestHome.setTarget(shotBlockPos);
+                if (closestAway != null) closestAway.setTarget(shotBlockPos);
                 start(ActionType.CHASE, "BLOCK: " + closestBlocker.getLabel() + " blocked shot from " + carrier.getLabel());
                 state.setActionDelayTicks(0);
                 return false;  // signal: shot was blocked, don't continue with shot execution
@@ -590,8 +626,10 @@ public class ActionEngine {
         ExecutionQuality.ShotResult result = executionQuality.evaluateShot(
                 goalPosition, strikerSkill, pressure, shotOrigin, goalkeeper);
         if (emptyGoal) {
+            // Truly empty goal (keeper > 2 cells from goal): force the shot on frame
+            // with effectively no save chance (gkInLane ~ 0.05).
             result = new ExecutionQuality.ShotResult(strikerSkill, goalPosition, true,
-                    Math.max(0.5, strikerSkill / 20.0));
+                    Math.max(0.5, strikerSkill / 20.0), 0.05, 1.0);
         }
 
         Position shotTarget = result.actualTarget();
@@ -606,6 +644,8 @@ public class ActionEngine {
         action.setIntendedTarget(goalPosition);
         action.setActualTarget(shotTarget);
         action.setGoodExecution(result.goal());
+        action.setGkInLane(result.gkInLane());
+        action.setAngleFactor(result.angleFactor());
 
         state.getBall().setCarrier(null);
         state.getBall().setTarget(shotTarget);
@@ -691,11 +731,12 @@ public class ActionEngine {
     public void shotSaved(Player goalkeeper) {
         Action action = state.getAction();
         state.incrementShotsOnTarget(action.getActingPlayer().getTeam());
+        goalkeeper.setLastSaveTick(state.getMatchTicks());
         state.getBall().setCarrier(null);
         Position gkPos = goalkeeper.getPosition();
         state.getBall().setPosition(gkPos);
 
-        boolean corner = state.getRandom().nextInt(10) < 3; // 30% of saves → corner
+        boolean corner = state.getRandom().nextInt(10) < 1; // 10% of saves → corner (was 30% — corona loop created too many header goals)
         String defendingTeam = "HOME".equals(action.getActingPlayer().getTeam()) ? "AWAY" : "HOME";
 
         if (corner) {

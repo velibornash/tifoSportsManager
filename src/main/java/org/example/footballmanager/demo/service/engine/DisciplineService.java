@@ -109,6 +109,30 @@ public class DisciplineService {
         }
     }
 
+    /**
+     * Awards an indirect free kick to the fouled attacker's team. The ball is
+     * placed at the foul spot, opponents within 1 cell are pushed back (via
+     * MovementEngine.enforceRestartPushback during the next walk tick), the
+     * attacker is designated as the free-kick taker, and the carrier is left
+     * NULL so the restart-walk logic in MatchSimulator kicks in (the taker
+     * walks to the ball at RESTART_WALK_SPEED rather than being teleported).
+     *
+     * The last-touch team is set to the attacker's team so that any subsequent
+     * OOB (e.g. a shot going out) awards possession to the defending side.
+     */
+    private void awardFreeKick(MatchState state, ActionEngine actionEngine,
+                               Player attacker, Position foulSpot) {
+        Ball ball = state.getBall();
+        ball.setCarrier(null);
+        ball.setTarget(null);
+        state.setCarrier(null);
+        actionEngine.complete("FREE KICK → " + attacker.getTeam());
+        ball.setPosition(foulSpot);
+        state.setFreeKickTaker(attacker);
+        state.setSetPiecePending(true);
+        state.setLastTouchTeam(attacker.getTeam());
+    }
+
     private DisciplineResult handleRedCard(MatchState state, ActionEngine actionEngine,
                                             Player defender, Player attacker, String defendingTeam,
                                             int existingYellows, boolean inPenaltyBox,
@@ -125,14 +149,14 @@ public class DisciplineService {
             defender.setLocked(true);
             logger.logFoulWithCard(state, defendingTeam, defender.getId(),
                     defender.getLabel(), "RED (VAR " + varService.getLastVARDecision() + ")",
-                    existingYellows + 1, "FOUL");
+                    existingYellows, "FOUL");
         } else {
             // VAR overturned red → downgrade to yellow
             state.incrementYellowCards(defender.getId());
             stats.onYellowCard(defendingTeam, defender.getId());
             logger.logFoulWithCard(state, defendingTeam, defender.getId(),
                     defender.getLabel(), "YELLOW (VAR overturned red)",
-                    existingYellows + 1, "FOUL");
+                    existingYellows, "FOUL");
         }
 
         if (inPenaltyBox) {
@@ -143,13 +167,11 @@ public class DisciplineService {
                 return new DisciplineResult(true, redConfirmed, false, true, null, attacker, attacker, false);
             } else {
                 logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                state.setSetPiecePending(true);
+                awardFreeKick(state, actionEngine, attacker, foulPos);
                 return new DisciplineResult(true, redConfirmed, false, false, attacker, null, attacker, false);
             }
         } else {
-            actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-            state.setSetPiecePending(true);
+            awardFreeKick(state, actionEngine, attacker, foulPos);
             return new DisciplineResult(true, redConfirmed, false, false, attacker, null, attacker, false);
         }
     }
@@ -168,7 +190,7 @@ public class DisciplineService {
             defender.setSentOff(true);
             defender.setLocked(true);
             logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                    defender.getLabel(), "RED (VAR upgraded yellow)", existingYellows + 1, "FOUL");
+                    defender.getLabel(), "RED (VAR upgraded yellow)", existingYellows, "FOUL");
             if (inPenaltyBox) {
                 boolean penaltyConfirmed = varService.checkPenalty(foulPos, homeAttacking, true);
                 varService.logVARDecision("PENALTY", attacker.getLabel());
@@ -176,34 +198,27 @@ public class DisciplineService {
                     logger.logInfo(state, "PENALTY awarded (foul in box, red card)", "PENALTY", attacker);
                     return new DisciplineResult(true, true, false, true, null, attacker, attacker, false);
                 } else {
-                    actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                    state.setSetPiecePending(true);
+                    awardFreeKick(state, actionEngine, attacker, foulPos);
                     return new DisciplineResult(true, true, false, false, attacker, null, attacker, false);
                 }
             }
-            actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-            state.setSetPiecePending(true);
+            awardFreeKick(state, actionEngine, attacker, foulPos);
             return new DisciplineResult(true, true, false, false, attacker, null, attacker, false);
 
         } else if ("DOWNGRADE_TO_NONE".equals(varResult)) {
             // VAR downgraded yellow → no card, play continues
             logger.logInfo(state, "VAR DOWNGRADED yellow card — no card given", "VAR", defender);
-            Ball ball = state.getBall();
-            ball.setCarrier(null);
-            ball.setTarget(null);
-            state.setCarrier(null);
-            actionEngine.complete("FREE_KICK → " + attacker.getTeam());
-            ball.setPosition(defender.getPosition());
-            actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-            state.setSetPiecePending(true);
+            awardFreeKick(state, actionEngine, attacker, foulPos);
             return new DisciplineResult(true, false, false, false, attacker, null, attacker, true);
 
         } else {
-            // Yellow confirmed
+            // Yellow confirmed — BUG FIX: give the ball to the ATTACKER (fouled team),
+            // NOT the defender. Previously called giveBallTo(defender, ...) which
+            // incorrectly awarded possession to the player who committed the foul.
             state.incrementYellowCards(defender.getId());
             stats.onYellowCard(defendingTeam, defender.getId());
             logger.logFoulWithCard(state, defendingTeam, defender.getId(),
-                    defender.getLabel(), "YELLOW (VAR confirmed)", existingYellows + 1, "FOUL");
+                    defender.getLabel(), "YELLOW (VAR confirmed)", existingYellows, "FOUL");
             if (inPenaltyBox) {
                 boolean penaltyConfirmed = varService.checkPenalty(foulPos, homeAttacking, true);
                 varService.logVARDecision("PENALTY", attacker.getLabel());
@@ -212,13 +227,11 @@ public class DisciplineService {
                     return new DisciplineResult(true, false, true, true, null, attacker, attacker, false);
                 } else {
                     logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                    actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                    state.setSetPiecePending(true);
+                    awardFreeKick(state, actionEngine, attacker, foulPos);
                     return new DisciplineResult(true, false, true, false, attacker, null, attacker, false);
                 }
             }
-            actionEngine.giveBallTo(defender, "tackle won (yellow card issued)");
-            state.setSetPiecePending(true);
+            awardFreeKick(state, actionEngine, attacker, foulPos);
             return new DisciplineResult(true, false, true, false, attacker, null, attacker, false);
         }
     }
@@ -234,21 +247,13 @@ public class DisciplineService {
                 return new DisciplineResult(true, false, false, true, null, attacker, attacker, false);
             } else {
                 logger.logInfo(state, "VAR OVERTURNED penalty — free kick outside box", "VAR", attacker);
-                actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-                state.setSetPiecePending(true);
+                awardFreeKick(state, actionEngine, attacker, foulPos);
                 return new DisciplineResult(true, false, false, false, attacker, null, attacker, false);
             }
         }
         logger.logFoul(state, defendingTeam, defender.getId(),
                 defender.getLabel(), "Tackle foul (no card) → FREE KICK", "FREE_KICK");
-        Ball ball = state.getBall();
-        ball.setCarrier(null);
-        ball.setTarget(null);
-        state.setCarrier(null);
-        actionEngine.complete("FREE_KICK → " + attacker.getTeam());
-        ball.setPosition(defender.getPosition());
-        actionEngine.giveBallTo(attacker, "foul → free kick to " + attacker.getTeam());
-        state.setSetPiecePending(true);
+        awardFreeKick(state, actionEngine, attacker, foulPos);
         return new DisciplineResult(true, false, false, false, attacker, null, attacker, false);
     }
 }

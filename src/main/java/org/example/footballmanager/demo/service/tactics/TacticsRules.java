@@ -117,11 +117,14 @@ public class TacticsRules {
         return clampToField(physical);
     }
 
-    /** Clamp position to field boundaries (rows 1-7, cols 1-6). */
+    /** Clamp position to the field of play (rows 1-7 cells, cols 1-6 cells;
+     *  goal lines at row 1.0/7.0, touchlines at col 1.0/6.0).
+     *  Row 0 = OOB behind HOME goal, row 8 = OOB behind AWAY goal — never allow.
+     *  Col 0 = OOB left, col 7 = OOB right — never allow. */
     private static Position clampToField(Position pos) {
         return new Position(
                 Math.max(1.0, Math.min(7.0, pos.getRow())),
-                Math.max(1.0, Math.min(6.0, pos.getColumn())));
+                Math.max(1.0, Math.min(6.9, pos.getColumn())));
     }
 
     /** Tactical-editor position for corner contexts. */
@@ -155,7 +158,16 @@ public class TacticsRules {
         if (!m.matches()) return null;
         // Return the CENTER of the cell, not the corner.
         // CELL_0_0 spans rows 1-2, cols 1-2 → center is (1.5, 1.5)
-        return new Position(Integer.parseInt(m.group(1)) + 1.5, Integer.parseInt(m.group(2)) + 1.5);
+        double rowCenter = Integer.parseInt(m.group(1)) + 1.5;
+        double colCenter = Integer.parseInt(m.group(2)) + 1.5;
+        // CELL_r_c (0-based) covers field row cell (r+1) spanning [r+1, r+2),
+        // so the exact centre is (r+1.5, c+1.5). The field is rows 1-7 and
+        // cols 1-6; row 0 = OOB behind HOME goal, row 8 = OOB behind AWAY goal;
+        // col 0 = OOB left, col 7 = OOB right. Clamp to keep within the 7×6
+        // playable grid (max cell centre 7.5/6.5). Do NOT allow row 8 or col 7.
+        rowCenter = Math.max(1.0, Math.min(7.0, rowCenter));
+        colCenter = Math.max(1.0, Math.min(6.9, colCenter));
+        return new Position(rowCenter, colCenter);
     }
 
     private static Map<String, Position> anchorsFromCatalog() {

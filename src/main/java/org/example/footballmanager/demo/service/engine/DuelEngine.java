@@ -106,9 +106,11 @@ public class DuelEngine {
         activeDuelResolved = false;
         lastDuelTick = Math.toIntExact(state.getSimulationTick());
 
-        // Snap both players closer together for visual duel effect.
-        // Move each player 60% of the way toward the contest position
-        // so they appear engaged in a tackle/challenge on the canvas.
+        // Visually engage the two contestants: pull each (non-carrier) player
+        // 60% of the way toward the contest point so they appear to collide on
+        // the canvas at the moment of the tackle. This is their NEW position for
+        // the duel — they must NOT be reset/clamped back to where they came from
+        // after resolution (that would look like teleporting back).
         snapPlayersForDuel(attacker, defender, contestPosition);
 
         recorder.appendEvent(state.getSimulationTick(), state.getRound(), action.getActionId(),
@@ -124,7 +126,8 @@ public class DuelEngine {
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 action != null ? action.getActionId() : null,
                 "DUEL_RESOLVED",
-                activeDuelType + " " + result.winner().getLabel() + " wins"
+                activeDuelType + " " + activeDuelAttacker.getLabel() + " vs "
+                        + activeDuelDefender.getLabel() + " | winner=" + result.winner().getLabel()
                         + " (att=" + result.attackerPower() + " def=" + result.defenderPower() + ")");
         return result;
     }
@@ -149,7 +152,9 @@ public class DuelEngine {
      * Snap both duel participants toward the contest position so they appear
      * physically engaged in a tackle/challenge on the viewer canvas.
      * Each player moves 60% of the way from their current position to the
-     * contest point, making them visually overlap or nearly touch.
+     * contest point. Per corePrinciples §13, the tugged position IS their new
+     * current position — the simulation must never reset/clamp them back toward
+     * the position they came from (that reads as a teleport back).
      */
     private void snapPlayersForDuel(Player attacker, Player defender, Position contestPos) {
         double snapFactor = 0.60;
@@ -210,6 +215,7 @@ public class DuelEngine {
         double bestDistance = Double.MAX_VALUE;
         for (Player candidate : players) {
             if (candidate == attacker || candidate.getTeam().equals(contestTarget.getTeam())) continue;
+            if (candidate.isSentOff() || candidate.isInjured()) continue;
             if (action.getType() == ActionType.CHASE && !state.isActiveChaser(candidate)) continue;
             if (state.isBlockedAfterDuel(candidate)) continue;
             // Goalkeepers must stay in their defensive goal area during CHASE.

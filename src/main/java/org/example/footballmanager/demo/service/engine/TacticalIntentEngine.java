@@ -12,26 +12,29 @@ import org.example.footballmanager.demo.service.tactics.TacticsRules;
  * The tactical editor is authoritative — the manager decides positioning.
  * We do NOT hard-cap attackers behind the defensive line.
  *
- * Instead, after 3 consecutive offsides, the player enters an offside retreat:
+ * Instead, after 2 consecutive offsides, the player enters an offside retreat:
  * they drop back ~2 cells behind the deepest defender until they are clearly onside,
  * then resume normal tactical positioning.
  */
 public class TacticalIntentEngine {
 
-    private static final int OFFSIDE_RETREAT_THRESHOLD = 3;
+    private static final int OFFSIDE_RETREAT_THRESHOLD = 2;
     private static final double RETREAT_BUFFER = 2.0;
     private static final double PRESS_RADIUS = 0.7;
-    private static final double GK_HOME_ROW_MIN = 0.5;
-    private static final double GK_HOME_ROW_MAX = 2.0;
-    private static final double GK_AWAY_ROW_MIN = 6.0;
-    private static final double GK_AWAY_ROW_MAX = 7.5;
 
     private final MatchState state;
     private final ActionLogService logger;
+    private final GoalkeeperMovementEngine goalkeeperMovement;
 
     public TacticalIntentEngine(MatchState state, ActionLogService logger) {
         this.state = state;
         this.logger = logger;
+        this.goalkeeperMovement = new GoalkeeperMovementEngine(state);
+    }
+
+    /** Returns the movement target for a goalkeeper, overriding the tactical editor. */
+    private Position goalkeeperTarget(Player p) {
+        return goalkeeperMovement.goalkeeperTarget(p);
     }
 
     public void assignTargets() {
@@ -40,13 +43,109 @@ public class TacticalIntentEngine {
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
-            Position desired = state.getTacticsRules().desiredCell(
-                    p.getRole(), state.getBall().getPosition(), p.getTeam());
-            desired = applyGKAnchor(p, desired);
-            desired = applyOffsideRetreat(p, desired);
-            desired = applyThreatOverride(p, desired);
+            Position desired;
+            if ("GK".equals(p.getRole())) {
+                // Goalkeeper movement is a dedicated reactive override (user rule).
+                desired = goalkeeperTarget(p);
+            } else {
+                Position tacticalDesired = state.getTacticsRules().desiredCell(
+                        p.getRole(), state.getBall().getPosition(), p.getTeam());
+                // User rule: defenders must NOT push deep into the opponent's
+                // half when there is no tactical reason. When the ball is in our
+                // own half, DEF/CB/LB/RB/DM must stay out of the opponent's half
+                // (never cross the halfway line). When the ball is in the attack,
+                // a defender tracks up but no further than a sensible cap so we
+                // don't leave acres of space behind the line.
+                tacticalDesired = applyDefensivePositionConstraint(p, tacticalDesired);
+                desired = applyOffsideRetreat(p, tacticalDesired);
+                desired = applyThreatOverride(p, desired);
+            }
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(desired); // Smooth movement to exact desired position
+        }
+    }
+
+    /**
+     * Keep deep defensive players (DEF/CB/LB/RB/DM) at sane depths.
+     *
+     * corePrinciples §47.8: " defenders track the ball but do NOT rush
+     * premasno in the opponent's half." When the ball is in our defensive half
+     * the defensive line holds; full-backs may overlap only when the ball is in
+     * the final third. CB/DM never cross the halfway line unless the ball is
+     * already in the attacking half.
+     */
+    private Position applyDefensivePositionConstraint(Player p, Position desired) {
+        String role = p.getRole();
+        boolean home = "HOME".equals(p.getTeam());
+        boolean isDefender = role.equals("DEF") || role.equals("CB")
+                || role.equals("LB") || role.equals("RB") || role.equals("DM");
+        if (!isDefender) return desired;
+
+        double ballRow = state.getBall().getPosition().getRow();
+        boolean ballInOwnHalf = home ? ballRow <= 4.0 : ballRow >= 4.0;
+        double desiredRow = desired.getRow();
+        boolean isCenterBack = role.equals("DEF") || role.equals("CB");
+        boolean isDM = role.equals("DM");
+
+        if (ballInOwnHalf) {
+            // Ball in own half: strict defense. No crossing halfway line.
+            // CB/DM hold very deep.
+            double maxForward;
+            if (isCenterBack) {
+                maxForward = home ? 2.8 : 5.2;
+            } else if (isDM) {
+                maxForward = home ? 3.3 : 4.7;
+            } else { // LB/RB
+                maxForward = home ? 3.5 : 4.5;
+            }
+
+            double clampedRow;
+            if (home) {
+                clampedRow = Math.min(desiredRow, maxForward);
+                clampedRow = Math.max(1.5, clampedRow); // Keep clear of GK
+            } else {
+                clampedRow = Math.max(desiredRow, maxForward);
+                clampedRow = Math.min(6.5, clampedRow); // Keep clear of GK
+            }
+            return new Position(clampedRow, desired.getColumn());
+        } else {
+            // Ball in opponent's half: support but do NOT push too high.
+            double maxForward;
+            if (isCenterBack) {
+                // CBs never go beyond halfway line + 0.3 cells (row 4.3 for HOME / 3.7 for AWAY)
+                maxForward = home ? 4.3 : 3.7;
+            } else if (isDM) {
+                // DM never goes beyond halfway line + 0.6 cells (row 4.6 for HOME / 3.4 for AWAY)
+                maxForward = home ? 4.6 : 3.4;
+            } else { // LB/RB fullbacks
+                // LB/RB can overlap, but cap them at row 5.2 (HOME) / 2.8 (AWAY)
+                maxForward = home ? 5.2 : 2.8;
+            }
+
+            // Also, defenders should always stay behind the ball!
+            // Let's ensure they are at least 0.8 cells behind the ball (except maybe fullbacks who can reach the ball's row)
+            double ballBehindLimit;
+            if (isCenterBack) {
+                ballBehindLimit = home ? (ballRow - 1.2) : (ballRow + 1.2);
+            } else if (isDM) {
+                ballBehindLimit = home ? (ballRow - 0.8) : (ballRow + 0.8);
+            } else {
+                ballBehindLimit = home ? (ballRow - 0.4) : (ballRow + 0.4);
+            }
+
+            double clampedRow = desiredRow;
+            if (home) {
+                // Must be <= maxForward AND <= ballBehindLimit
+                double limit = Math.min(maxForward, ballBehindLimit);
+                clampedRow = Math.min(desiredRow, limit);
+                clampedRow = Math.max(4.0, clampedRow); // At least up to halfway line
+            } else {
+                // Must be >= maxForward AND >= ballBehindLimit
+                double limit = Math.max(maxForward, ballBehindLimit);
+                clampedRow = Math.max(desiredRow, limit);
+                clampedRow = Math.min(4.0, clampedRow); // At least up to halfway line
+            }
+            return new Position(clampedRow, desired.getColumn());
         }
     }
 
@@ -58,22 +157,26 @@ public class TacticalIntentEngine {
         state.setTacticalBallPosition(state.getBall().getPosition());
         state.setLastTacticalBallStateKey(currentKey);
 
-        // Refresh ALL player targets every tick when a carrier is active — this
-        // ensures defenders continuously re-target toward the carrier's current
-        // position instead of clinging to a stale cell-boundary target from
-        // 8 ticks ago. The cell-change guard is kept only for the pure tactical
-        // positioning pass (no carrier) to avoid redundant work.
-        boolean carrierActive = state.getCarrier() != null;
-        if (!cellChanged && !carrierActive) return;
-
+        // User rule (per-tick ball-position refresh): every tick every non-carrier
+        // re-derives its TACTICAL desired position from the CURRENT ball position.
+        // Without this, players cling to a stale cell-boundary target when the ball
+        // is in flight (no carrier active) — ball drifts mid-cell while players
+        // freeze. Refreshing every tick keeps everyone moving toward the shape for
+        // the ball's exact current spot.
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
-            Position desired = state.getTacticsRules().desiredCell(
-                    p.getRole(), state.getBall().getPosition(), p.getTeam());
-            desired = applyGKAnchor(p, desired);
-            desired = applyOffsideRetreat(p, desired);
-            desired = applyThreatOverride(p, desired);
+            Position desired;
+            if ("GK".equals(p.getRole())) {
+                // Goalkeeper movement is a dedicated reactive override (user rule).
+                desired = goalkeeperTarget(p);
+            } else {
+                desired = state.getTacticsRules().desiredCell(
+                        p.getRole(), state.getBall().getPosition(), p.getTeam());
+                desired = applyDefensivePositionConstraint(p, desired);
+                desired = applyOffsideRetreat(p, desired);
+                desired = applyThreatOverride(p, desired);
+            }
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(desired); // Smooth movement to exact desired position
         }
@@ -84,25 +187,6 @@ public class TacticalIntentEngine {
      * Only leaves the anchor if they are the closest team-mate to the ball
      * (unambiguously, no other teammate within 0.5 cells of the GK-to-ball distance).
      */
-    private Position applyGKAnchor(Player player, Position desired) {
-        if (!"GK".equals(player.getRole())) return desired;
-
-        boolean home = "HOME".equals(player.getTeam());
-
-        // GK is NEVER allowed to leave their penalty area.
-        // Anchor clamps the GK to a narrow band near the goal line.
-        // The GK can move laterally within the penalty area but not push upfield.
-        if (home) {
-            double clampedRow = SimUtils.clamp(desired.getRow(), GK_HOME_ROW_MIN, GK_HOME_ROW_MAX);
-            double clampedCol = SimUtils.clamp(desired.getColumn(), 2.5, 4.5);
-            return new Position(clampedRow, clampedCol);
-        } else {
-            double clampedRow = SimUtils.clamp(desired.getRow(), GK_AWAY_ROW_MIN, GK_AWAY_ROW_MAX);
-            double clampedCol = SimUtils.clamp(desired.getColumn(), 2.5, 4.5);
-            return new Position(clampedRow, clampedCol);
-        }
-    }
-
     /**
      * Threat override — defensive override layer (corePrinciples §6).
      *
@@ -207,11 +291,20 @@ public class TacticalIntentEngine {
             if (teammate.isSentOff() || teammate.isInjured() || teammate.isLocked()) continue;
             if (teammate == state.getCarrier()) continue;
             if (state.isActiveChaser(teammate)) continue;
+            // Only OTHER defenders contest this assignment — a forward/midfielder
+            // being geometrically closer must not stop the nearest defender from
+            // pressing the dangerous attacker (user rule).
+            if (!isDefender(teammate.getRole())) continue;
 
             double otherDistance = SimUtils.distance(teammate.getPosition(), threat.getPosition());
             if (otherDistance + 1e-9 < candidateDistance) return false;
         }
         return true;
+    }
+
+    private boolean isDefender(String role) {
+        return role.equals("DEF") || role.equals("CB")
+                || role.equals("LB") || role.equals("RB") || role.equals("DM");
     }
 
     private String oppositeTeam(boolean homeAttacking) {

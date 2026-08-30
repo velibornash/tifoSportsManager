@@ -105,16 +105,34 @@ This is a fundamental principle, not an exception.
 
 ## 2.4 Pitch orientation and coordinate system
 
-The playable pitch is a continuous grid with:
+The playable pitch is a **continuous** grid (manufactured coordinates are used
+directly, never cell-centre snapping):
 
-* **rows 1–7** (horizontal axis, left-to-right in the viewer);
-* **columns 1–6** (vertical axis, top-to-bottom in the viewer);
-* row `0` and row `8`, and columns `< 1` / `> 6`, are out-of-bounds zones.
+* **rows 1–7** (horizontal axis, left-to-right in the viewer) are the playing
+  field; the row axis is the primary forward/backward axis;
+* **columns 1–6** (vertical axis, top-to-bottom in the viewer) are the playing
+  width.
+
+**Out-of-bounds zones (explicit):**
+
+* **row `0`** is the OOB row **behind the HOME goal**;
+* **row `8`** is the OOB row **behind the AWAY goal**;
+* **column `0`** is OOB beside the **left touchline** (from HOME's perspective);
+* **column `7`** is OOB beside the **right touchline** (from HOME's perspective).
+
+**Goal position:** both goals sit on their goal line at the **column 3.5**
+(centre of the 1–6 width): HOME's goal at **(1, 3.5)**, AWAY's goal at **(7, 3.5)**.
 
 **Real-world scale:** the playable grid is **7 rows × 6 columns** and maps to a
 pitch of **98 metres × 60 metres**, so **each cell is a 14 m × 10 m rectangle**
-(14 m along a row step, 10 m along a column step). This conversion supports
-distances, speeds and offside margins in metres where needed.
+(14 m along a row step, 10 m along a column step). Because a cell is ~14 m deep,
+*everything* is decided on the exact floating-point position of the ball/shooter/
+keeper/offside line at that moment — a whole cell is far too coarse for shot
+angles, keeper footwork or offside margins.
+
+**Exact-coordinate rule:** every simulation calculation (shot goal/save, keeper
+positioning, duel geometry, offside margin, corner/throw-in/restart) must use the
+current precise `Position` of the entities involved — never the containing cell.
 
 Team orientation is fixed for the whole match:
 
@@ -122,7 +140,7 @@ Team orientation is fixed for the whole match:
 * **AWAY team** starts on the right, defends the goal at **row 7**, and attacks toward **row 1**;
 * the centre spot is at **(4, 3.5)**.
 
-This convention is authoritative for all tactical, movement, offside, and restart calculations.  Functions named `goalPositionFor(team)` return the goal that team is **attacking** (row 7 for HOME, row 1 for AWAY), not the goal it defends.
+This convention is authoritative for all tactical, movement, offside, and restart calculations.  Functions named `goalPositionFor(team)` return the goal that team is **attacking** (row 7 for HOME, row 1 for AWAY), not the goal it defends. A goalkeeper defends the goal that its own team defends: HOME's goalkeeper defends **(1, 3.5)**, AWAY's goalkeeper defends **(7, 3.5)**.
 
 ---
 

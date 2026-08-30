@@ -33,12 +33,23 @@ public class MovementEngine {
         }
         for (Player p : state.getPlayers()) {
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
-            if (state.isBlockedAfterDuel(p) && p != state.getBall().getCarrier()) continue;
+            if (state.isBlockedAfterDuel(p) && p != state.getBall().getCarrier()) {
+                // A player recovering from a lost duel does NOT freeze — he drifts
+                // back toward his own goal (the recovery is short, 3-4s) instead of
+                // standing dead still while play continues around him.
+                retreatTowardOwnGoal(p);
+                continue;
+            }
             Position target = p.getTarget();
             if (target == null) continue;
 
             boolean isCarrier = p == state.getBall().getCarrier();
-            if (!isCarrier && !isActiveChase(p)) {
+            // Goalkeepers are exempt from the non-carrier 1-cell/round positional
+            // cap: a keeper must cut the angle and track the ball laterally in
+            // real time (a 14m cell is far too coarse for keeper footwork). Let
+            // the goalkeeper move toward its reactive target at full speed.
+            boolean isGoalkeeper = "GK".equals(p.getRole());
+            if (!isCarrier && !isGoalkeeper && !isActiveChase(p)) {
                 Position roundStart = state.getRoundStartPosition(p);
                 int pace = state.getRoundPaceSkill(p);
                 double maxDistance = pace / 20.0;
@@ -60,19 +71,39 @@ public class MovementEngine {
             }
 
             double moveSpeed = activeChase ? PLAYER_SPEED * 3 * fatigueSpeedMultiplier(p) : PLAYER_SPEED * fatigueSpeedMultiplier(p);
+            // Carrier always uses the raw proposed position — collision avoidance
+            // does NOT apply to the ball carrier. The carrier has ball priority;
+            // other players yield to it. The carrier is the only player that moves
+            // toward its target regardless of collisions.
             Position proposed = moveProposal(p, target, moveSpeed);
-            Position safe = findSafePosition(p, proposed, target);
-            if (activeChase && SimUtils.distance(safe, current) <= 1e-12) {
-                Position escape = findChaseDetour(p, target);
-                if (escape != null) {
-                    chaseDetours.put(p, escape);
-                    p.setTarget(escape);
-                    target = escape;
-                    safe = moveProposal(p, escape, moveSpeed);
+            Position safe;
+            if (isCarrier) {
+                safe = proposed;
+            } else {
+                safe = findSafePosition(p, proposed, target);
+                // Active chasers (receivers/chasers) must never move backward
+                // away from the ball: if collision avoidance pushes them to a
+                // position farther from the target, fall back to proposed.
+                if (activeChase && SimUtils.distance(safe, target) > SimUtils.distance(current, target)) {
+                    safe = proposed;
+                }
+                if (activeChase && SimUtils.distance(safe, current) <= 1e-12) {
+                    Position escape = findChaseDetour(p, target);
+                    if (escape != null) {
+                        chaseDetours.put(p, escape);
+                        p.setTarget(escape);
+                        target = escape;
+                        safe = moveProposal(p, escape, moveSpeed);
+                    }
+                }
+                if (activeChase && SimUtils.distance(safe, current) <= 1e-12) {
+                    safe = proposed;
                 }
             }
-            // Clamp to playable area (rows 1-7, cols 1-6) — players must never
-            // appear at OOB columns 0/7 or rows 0/8 in the viewer.
+            // Clamp to the field of play — goal lines at row 1.0 (home) and
+            // row 8.0 (away), touchlines at col 1.0/7.0. EVERY player,
+            // including the ball carrier, stays within the field. Nothing may
+            // appear past the goal lines or touchlines in the viewer.
             safe = clampToField(safe);
             p.setPosition(safe);
             if (SimUtils.distance(safe, target) < 1e-6) {
@@ -84,10 +115,13 @@ public class MovementEngine {
             }
         }
 
-        // Idle drift: players with no target drift slightly toward the ball
+        // Idle drift: players with no target drift slightly toward the ball.
+        // Goalkeepers are EXCLUDED — a keeper must hold its goal-side reactive
+        // position, never drift out toward a loose/far ball.
         Position ballPos = state.getBall().getPosition();
         for (Player p : state.getPlayers()) {
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+            if ("GK".equals(p.getRole())) continue;
             if (p == state.getBall().getCarrier()) continue;
             if (state.isBlockedAfterDuel(p)) continue;
             if (isActiveChase(p)) continue;
@@ -99,11 +133,11 @@ public class MovementEngine {
             double dy = ballPos.getRow() - current.getRow();
             double dist = Math.hypot(dx, dy);
             if (dist < 0.5) continue; // too close to ball, no drift
-            double driftSpeed = IDLE_DRIFT_SPEED * fatigueSpeedMultiplier(p);
+            double driftSpeed = IDLE_DRIFT_SPEED;
             double step = Math.min(driftSpeed, dist);
             Position proposed = new Position(
-                    SimUtils.clamp(current.getRow() + dy / dist * step, 1, 7),
-                    SimUtils.clamp(current.getColumn() + dx / dist * step, 1, 6));
+                    SimUtils.clamp(current.getRow() + dy / dist * step, 1.0, 8.0),
+                    SimUtils.clamp(current.getColumn() + dx / dist * step, 1.0, 6.9));
             if (!wouldOverlap(p, proposed)) {
                 p.setPosition(proposed);
             }
@@ -167,11 +201,28 @@ public class MovementEngine {
         if (dist <= speed) return target;
         double minRow = target.getRow() < 1 ? 0 : 1;
         double maxRow = target.getRow() > 7 ? 8 : 7;
-        double minCol = target.getColumn() < 1 ? 1 : 1;
-        double maxCol = target.getColumn() > 6 ? 6 : 6;
+        double minCol = target.getColumn() < 1 ? 0 : 1;
+        double maxCol = target.getColumn() > 6 ? 6.9 : 6;
         return new Position(
                 SimUtils.clamp(pos.getRow() + dy / dist * speed, minRow, maxRow),
                 SimUtils.clamp(pos.getColumn() + dx / dist * speed, minCol, maxCol));
+    }
+
+    /**
+     * A player recovering from a lost duel drifts back toward his own goal cell
+     * at reduced speed (own goal: HOME row 1, AWAY row 7). This keeps the beaten
+     * player alive on the pitch instead of standing frozen for the short cooldown.
+     */
+    private void retreatTowardOwnGoal(Player p) {
+        Position pos = p.getPosition();
+        boolean home = "HOME".equals(p.getTeam());
+        double ownRow = home ? 1.0 : 8.0;
+        double step = PLAYER_SPEED * 0.6;
+        double dir = Math.signum(ownRow - pos.getRow());
+        double newRow = SimUtils.clamp(pos.getRow() + dir * step, 1.0, 8.0);
+        double newCol = SimUtils.clamp(pos.getColumn(), 1.0, 6.9);
+        p.setPosition(new Position(newRow, newCol));
+        p.setTarget(null);
     }
 
     private Position findSafePosition(Player p, Position proposed, Position target) {
@@ -277,19 +328,24 @@ public class MovementEngine {
         return best;
     }
 
-    /** Clamp a position to the playable field area (rows 1-7, cols 1-6). */
+    /**
+     * Clamp a position to the field of play. Goal lines at row 1.0 (home) and
+     * row 8.0 (away); touchlines at col 1.0 and 7.0. A player on the field can
+     * reach the exact goal line / touchline but never cross into OOB.
+     */
     private static Position clampToField(Position pos) {
-        double r = SimUtils.clamp(pos.getRow(), 1.0, 7.0);
-        double c = SimUtils.clamp(pos.getColumn(), 1.0, 6.0);
+        // Touchlines at col 1.0 and 7.0. A player's CENTER must stay inside the
+        // line (col ≤ 6.9) so his body radius never pokes past the 7.0 touchline.
+        double r = SimUtils.clamp(pos.getRow(), 1.0, 8.0);
+        double c = SimUtils.clamp(pos.getColumn(), 1.0, 6.9);
         return new Position(r, c);
     }
 
     private static Position clampPos(double row, double col) {
-        if (row == 8.0) return new Position(8.0, SimUtils.clamp(col, 1, 6));
-        if (row == 0.0) return new Position(0.0, SimUtils.clamp(col, 1, 6));
-        return new Position(SimUtils.clamp(row, 1, 7), SimUtils.clamp(col, 1, 6));
+        return new Position(SimUtils.clamp(row, 1.0, 8.0), SimUtils.clamp(col, 1.0, 6.9));
     }
 
+    /** Fatigue reduces movement speed — tired players are slower (corePrinciples §11). */
     private double fatigueSpeedMultiplier(Player p) {
         return 1.0 - p.getFatigue() * MAX_FATIGUE_SPEED_LOSS;
     }

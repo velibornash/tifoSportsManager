@@ -1,7 +1,6 @@
 package org.example.footballmanager.demo.service.engine;
 
 import org.example.footballmanager.demo.service.MatchState;
-import org.example.footballmanager.demo.service.model.Action;
 import org.example.footballmanager.demo.service.model.Ball;
 import org.example.footballmanager.demo.service.model.Position;
 
@@ -23,10 +22,8 @@ public class BallMovementEngine {
 
     public void moveBallTowardCurrentTarget() {
         Ball ball = state.getBall();
-        Action action = state.getAction();
-        // Use pass speed from action (skill-based) instead of fixed BALL_SPEED
-        double speed = (action != null && action.isInFlight()) ? action.getPassSpeed() : BALL_SPEED;
-        moveBallToward(ball, ball.getTarget(), speed);
+        // Ball speed is always the constant BALL_SPEED — never slows down from default.
+        moveBallToward(ball, ball.getTarget(), BALL_SPEED);
     }
 
     public void followCarrier() {

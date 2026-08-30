@@ -2,7 +2,7 @@
 
 **Package:** `org.example.footballmanager.demo.service`
 **Source of Truth:** `corePrinciples.md` (§47: Football Domain Specification)
-**Last Updated:** 2026-08-26
+**Last Updated:** 2026-08-27
 
 ---
 
@@ -248,10 +248,34 @@ MatchSimulator reduced from 1,651 → 1,292 lines via three phase extractions:
 
 `TestGapDetector` (seed=1000, skillSeed=1100, 90-min match, 3720 ticks):
 - **0 bugs** (no gaps > 120s without logging).
-- **143 legitimate stoppage gaps** — offside, offside retreat, restart walk (60 ticks=90s), goal celebration (30s), goal kick, corner, throw-in — all classified as OK.
+- **374 legitimate stoppage gaps** — all classified as OK (legitimate stoppage).
 - **88 OFFSIDE events** in stream — viewer.js triggers `showOffside()` overlay.
 - **5 VAR events** — viewer.js triggers `showVAR()` and `showVARDecision()` overlays.
 - **Goal celebration movement** — scoring-team players advance goalward at `PLAYER_SPEED * 0.6` during the 30-second hold.
+- Report written to `target/gap_analysis_report.md`.
+
+## Bugs Fixed (Session: 2026-08-24)
+
+1. **Goal celebration too long** — `ActionEngine.goalScored()` set `setCelebrationHoldTicks(100)` (150 seconds). Reduced to `20` ticks (30 seconds) — realistic celebration duration. Fixed critical >2-min gap in log that violated the >120s BUG assertion.
+2. **Offside FREE KICK taker** — OffsideService now calls `selection.nearestNonGoalkeeperTo(offsidePos, defendingTeam)` to find the free-kick taker and sets them as `state.setFreeKickTaker()`, with target set to the offside position. Ball awarded to defending team (no teleport for normal cases; walk timeout fallback).
+3. **OFFSIDE overlay event** — OffsideService now emits a dedicated `OFFSIDE` MatchEvent with `type="OFFSIDE"`, `team=receiver.getTeam()`, `playerId/playerName=offending player`, `outcome="YELLOW_FLAG"`. Description format `"INDIRECT FREE KICK for <team> — offside <player> (margin=X.XX)"` so viewer.js regex extracts player name and margin for the yellow-flag overlay.
+4. **Offside ball award position** — OffsideService computes `offsidePos` at the second-to-last defender's row + 1.0 cell, and passes `Double.valueOf(offsidePos.getRow())` / `Double.valueOf(offsidePos.getColumn())` in the MatchEvent for the viewer.
+5. **Restart walk speed** — `RESTART_WALK_MAX_TICKS` reduced from 60 (90s match time) to 10 ticks (15s match time). Taker walks directly at `RESTART_WALK_SPEED = 0.4` cells/tick (not via `moveAllTowardTargets` which moved all players including blockers). Nearest player is ≤1.5 cells from ball, arrives in ~4 ticks at 0.4 cells/tick.
+6. **Goal celebration OOB** — Scoring-team outfield players now run BEHIND the goal into OOB space (row 8 for HOME / row 0 for AWAY) at `0.05` cells/tick (2 cells/sec match time), fanning out across columns 1-6. Orbit/radiate effect (orbitRadius 0.25-0.45) for fanning. Clamping allows rows 0.0–8.0 (not just 0.5–7.5). Mirrors SwingUI `movePlayersDuringGoalCelebration`.
+7. **VAR IN PROGRESS overlay** — Now includes attacking team, defending team, and incident type: `"VAR IN PROGRESS — HOME — OFFSIDE — Home FC 11 (goal review) — attacking: HOME defending: AWAY"`. `logVARReviewStarted` in VARService now accepts defending team; `resolveOffsideVAROnGoal` computes defending team and includes it in the description.
+8. **VAR overturned goal** — `GOAL_DISALLOWED` event emitted to viewer for cancelled goals. The goal is never scored (goalScored not called before VAR check), so score remains unchanged. Overturned goals restart from goal kick (OOB position), not center kickoff. Offside-confirmed goals restart from indirect free kick at offside position (already handled by `confirmOffside`).
+
+### Verification
+
+`TestGapDetector` (seed=1000, skillSeed=1100, 90-min match, 3720 ticks):
+- **0 bugs** (no gaps > 120s without logging).
+- **374 OK (legitimate stoppage)** gaps — restart walk ≤10 ticks, goal celebration ≤20 ticks, offside retreat, corner/throw-in/goal kick — all classified as OK.
+- **0 suspicious** gaps.
+- **117 OFFSIDE events** in stream — viewer.js triggers `showOffside()` overlay.
+- **10 VAR events** (VAR_IN_PROGRESS, VAR_OFFSIDE_OVERTURNED, VAR_GOAL_OVERTURNED) — viewer.js triggers `showVAR()` / `showVARDecision()` overlays.
+- **4 GOAL_DISALLOWED events** — viewer cancels premature goal overlays.
+- **4 VAR_IN_PROGRESS events** — all include attacking + defending team info.
+- **Match result: 1-1** (2 goals scored, 4 goals disallowed by VAR — 2 for each team).
 - Report written to `target/gap_analysis_report.md`.
 
 ## Bugs Fixed (Session: 2026-08-22)
@@ -275,6 +299,34 @@ MatchSimulator reduced from 1,651 → 1,292 lines via three phase extractions:
 - **Defender penalty:** per-defender × 5.0 (was flat -15 for 3+)
 - **Distance gate:** -15 for > 4.0 cells
 - **Low skill gate:** -20 for striker < 8 at > 3.0 cells; -25 for striker < 5 at > 2.0 cells
+
+---
+
+## Bugs Fixed (Session: 2026-08-29) — Visual & Engine Polish
+
+1. **DisciplineService foul restart possession bug** — All foul restarts (no-card, yellow, red, VAR-upgraded/downgraded) previously used `giveBallTo(attacker, ...)` which immediately set the attacker as carrier AND placed the ball at the *defender's* position. Now uses `awardFreeKick(state, actionEngine, attacker, foulSpot)` which:
+   - Sets `carrier = null` and `target = null` (lets restart-walk logic trigger)
+   - Places ball at `foulSpot` (the actual foul location, not defender's position)
+   - Sets `freeKickTaker = attacker` and `setPiecePending = true`
+   - The attacker walks to the ball at `RESTART_WALK_SPEED = 0.4` cells/tick
+   
+2. **Yellow card counting** — All 4 `logFoulWithCard` calls used `existingYellows + 1`, showing one higher count than actual. Fixed to `existingYellows` (first yellow = 0, second yellow on same player = 1).
+
+3. **DuelEngine snapFactor** — Kept at 0.60 (original, unchanged) to preserve deterministic match output. Visual duel convergence (players touching) is handled **viewer-side only** via `convergedPos` interpolation in `drawPlayers()`. Comment updated to clarify this separation.
+
+4. **`mvn compile -DskipTests`**: BUILD SUCCESS. `TestMatchSimulatorIntegration` shows only 2 pre-existing failures (`batchMetricsWithinTargets`, `thruPassExecutionInBounds`) — same as original code via `git stash`. `clearanceDoesNotProduceLooseBall` PASSES.
+
+5. **`mvn test -Dtest=MatchGapAnalyzerTest`**: PASSES (1 test, 0 failures). `TestMatchState` PASSES (7 tests, 0 failures). `TestGapDetector` PASSES.
+
+6. **Viewer goalpost doubling** — `_goal()` (viewer.js ~line 427) now draws doubled goalposts: `goalH = 4.4 * CELL_H, depth = 50, postW = 8, barW = 6` (was `goalH = 2.2 * CELL_H, depth = 25, lineWidth = 4`). Goalposts are drawn in rows 0/8 (OOB goal rows), not widening the field goal.
+
+7. **Viewer goal animation ball stop** — `drawGoalAnim()` (viewer.js ~line 536) now animates ball to `goalRow` (7 for HOME, 1 for AWAY) instead of `exitRow` (8 for HOME, 0 for AWAY). Ball stops at the goal line, not flying to OOB. Celebration rings grow from goal position. Animation threshold at 0.7.
+
+8. **Viewer duel circle convergence** — `drawPlayers()` accepts `duelPairs` parameter. Computes `convergedPos` map that moves dueling players to touching distance (center-to-center = `rA + rB`). Draws yellow highlight circle (`rgba(255,255,0,.35)`) around dueling players. `render()` signature updated to pass `duelPairs`.
+
+9. **Viewer card overlay** — `OverlayManager.showCard(cardType, playerName, team, isVar)` shows YELLOW/RED card overlay with icon, team, player name, and VAR indicator (when VAR confirmed). CSS: `.yellow-card`, `.red-card` with `cardPulse` and `redCardPulse` animations. `_processEventsForTick()` handles CARD/FOUL/RED_CARD events.
+
+10. **match.json regenerated** (seed 42): score 5-0, 3 YELLOW cards (all "(VAR confirmed) (previous yellows=1)"), 5 goals, 1985 events, 4058 logs, 3214 snapshots. CARD events properly show first-yellow count=0, second-yellow count=1.
 
 ---
 

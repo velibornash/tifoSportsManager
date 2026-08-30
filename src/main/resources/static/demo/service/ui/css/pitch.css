@@ -224,6 +224,51 @@ canvas#pitch{
 @keyframes varPulse{
   0%,100%{opacity:1}50%{opacity:.7}
 }
+/* ─── Card overlay (Yellow / Red) ─── */
+.overlay.yellow-card .overlay-text{
+  font-size:64px;color:var(--gold);
+  text-shadow:0 0 50px rgba(240,180,41,.6);
+  animation:cardPulse .8s ease infinite alternate;
+}
+.overlay.yellow-card .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+.overlay.yellow-card::before{
+  background:linear-gradient(135deg,rgba(240,180,41,.15) 0%,rgba(14,17,23,.92) 100%);
+}
+
+.overlay.red-card .overlay-text{
+  font-size:64px;color:var(--red);
+  text-shadow:0 0 50px rgba(248,81,73,.7);
+  animation:redCardPulse 1s ease infinite;
+}
+.overlay.red-card .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+.overlay.red-card::before{
+  background:linear-gradient(135deg,rgba(248,81,73,.15) 0%,rgba(14,17,23,.92) 100%);
+}
+
+@keyframes cardPulse{
+  from{transform:scale(1)}to{transform:scale(1.03)}
+}
+@keyframes redCardPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.08)}
+}
+
+/* Goal Disallowed */
+.overlay.goal-disallowed .overlay-text{
+  font-size:56px;color:var(--accent);
+  text-shadow:0 0 50px rgba(88,166,255,.5);
+  animation:disallowFlash .6s ease infinite alternate;
+}
+.overlay.goal-disallowed::before{background:rgba(14,17,23,.88)}
+
+@keyframes disallowFlash{
+  from{opacity:.8}to{opacity:1}
+}
+
 @keyframes goalBounce{
   0%{transform:scale(0.3);opacity:0}
   50%{transform:scale(1.15)}

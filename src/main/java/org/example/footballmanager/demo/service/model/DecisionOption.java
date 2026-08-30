@@ -11,6 +11,7 @@ public class DecisionOption {
     private final String reason;
     private boolean visible;
     private boolean straightLineCarry;
+    private boolean emptyGoal;
 
     public DecisionOption(DecisionType type, double score, String reason) {
         this(type, null, score, reason);
@@ -33,6 +34,8 @@ public class DecisionOption {
     public void setVisible(boolean visible) { this.visible = visible; }
     public boolean isStraightLineCarry() { return straightLineCarry; }
     public void setStraightLineCarry(boolean straightLineCarry) { this.straightLineCarry = straightLineCarry; }
+    public boolean isEmptyGoal() { return emptyGoal; }
+    public void setEmptyGoal(boolean emptyGoal) { this.emptyGoal = emptyGoal; }
 
     @Override
     public String toString() {

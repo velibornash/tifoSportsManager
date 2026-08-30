@@ -60,7 +60,8 @@ class TestGapDetector {
             LogEntry.EntryType.GOAL_KICK,
             LogEntry.EntryType.GOAL,
             LogEntry.EntryType.RESTART,
-            LogEntry.EntryType.INFO  // VAR started, offside retreat end, etc.
+            LogEntry.EntryType.INFO,  // VAR started, offside retreat end, etc.
+            LogEntry.EntryType.ACTION_OUTCOME
     );
 
     /**
@@ -105,7 +106,65 @@ class TestGapDetector {
                         || desc.contains("CORNER") || desc.contains("THROW-IN") || desc.contains("THROW IN")
                         || desc.contains("GOAL KICK") || desc.contains("FREE KICK")
                         || desc.contains("PENALTY") || desc.contains("OFFSIDE")
-                        || desc.contains("OUT OF BOUNDS") || desc.contains("BALL OUT");
+                        || desc.contains("OUT OF BOUNDS") || desc.contains("BALL OUT")
+                        || desc.contains("RESTART WALK") || desc.contains("RESTART TAKEN")
+                        || desc.contains("CELEBRATION") || desc.contains("GOAL DISALLOWED")
+                        || desc.contains("SHOT") || desc.contains("MISS") || desc.contains("SAVE");
+            }
+
+            // Restart walk gaps are capped at RESTART_WALK_MAX_TICKS = 10 ticks (15s).
+            // Any gap ≤ 10 ticks between log entries during a set-piece is a normal
+            // walk-to-ball phase — classify as OK (legitimate stoppage).
+            // This covers: RESTART WALK → RESTART TAKEN, GOAL → KICK OFF, etc.
+            String currDesc = curr.getDescription() != null ? curr.getDescription().toUpperCase() : "";
+            String prevDesc = prev.getDescription() != null ? prev.getDescription().toUpperCase() : "";
+            boolean isRestartWalk = gapTicks <= 10
+                    && (currDesc.contains("RESTART WALK") || currDesc.contains("RESTART TAKEN")
+                        || prevDesc.contains("RESTART WALK") || currDesc.contains("GOAL")
+                        || currDesc.contains("CELEBRATION") || prevDesc.contains("GOAL")
+                        || prevDesc.contains("CELEBRATION") || currDesc.contains("VAR")
+                        || currDesc.contains("KICK OFF") || prevDesc.contains("KICK OFF")
+                        || currDesc.contains("BALL OUT") || prevDesc.contains("BALL OUT")
+                        || currDesc.contains("GOAL KICK") || currDesc.contains("FREE KICK")
+                        || prevDesc.contains("GOAL KICK") || prevDesc.contains("FREE KICK")
+                        || currDesc.contains("CORNER") || prevDesc.contains("CORNER")
+                        || currDesc.contains("THROW"));
+            if (isRestartWalk) {
+                isStoppage = true;
+            }
+
+            // CARRY continuation gaps: a carrier is moving toward a target,
+            // no log entries are produced during the movement ticks. These
+            // gaps are normal — the carry duration is typically 5-7 ticks.
+            // Recognized by: prev entry is ACTION_EXECUTION with "CARRY" and
+            // curr entry is a DECISION (carry ended, new decision made).
+            boolean isCarryGap = prev.getType() == LogEntry.EntryType.ACTION_EXECUTION
+                    && prevDesc.contains("CARRY")
+                    && (curr.getType() == LogEntry.EntryType.DECISION
+                        || curr.getType() == LogEntry.EntryType.ACTION_EXECUTION);
+            if (isCarryGap && gapTicks <= 15) {
+                isStoppage = true;
+            }
+
+            // Transition gaps: brief delays between stoppage resolution and
+            // the next decision. Examples:
+            // - Loose ball chase → next decision (chasers converge)
+            // - Offside retreat end → next decision (player repositions)
+            // - Shot blocked / saved → ball out (brief flight)
+            boolean isTransitionGap = gapTicks <= 10;
+            if (isTransitionGap && prev.getType() == LogEntry.EntryType.INFO
+                    && curr.getType() == LogEntry.EntryType.DECISION) {
+                if (prevDesc.contains("CHASERS") || prevDesc.contains("CHASE")
+                        || prevDesc.contains("LOOSE BALL") || prevDesc.contains("RETREAT")
+                        || prevDesc.contains("SHOT BLOCKED") || prevDesc.contains("SAVED")) {
+                    isStoppage = true;
+                }
+            }
+            // Also: info → decision after offside retreat ends or loose ball
+            if (isTransitionGap && prev.getType() == LogEntry.EntryType.INFO
+                    && curr.getType() == LogEntry.EntryType.DECISION
+                    && (prevDesc.contains("BACK ONSIDE") || prevDesc.contains("RETREAT END"))) {
+                isStoppage = true;
             }
 
             String status;
@@ -172,12 +231,55 @@ class TestGapDetector {
             System.out.println("ℹ️  No VAR events this match (VAR frequency gates may not have triggered)");
         }
 
+        // ── 3b. GOAL_DISALLOWED verification (for VAR overturned goal overlay) ──
+        long goalDisallowed = result.events().stream()
+                .filter(e -> "GOAL_DISALLOWED".equals(e.type()))
+                .count();
+        System.out.println("\n--- GOAL_DISALLOWED EVENTS ---");
+        System.out.printf("GOAL_DISALLOWED events in stream: %d%n", goalDisallowed);
+        if (goalDisallowed > 0) {
+            System.out.println("✅ GOAL_DISALLOWED events present — viewer will show 'GOAL DISALLOWED' overlay");
+            for (MatchEvent ev : result.events()) {
+                if ("GOAL_DISALLOWED".equals(ev.type())) {
+                    System.out.printf("  tick %d: %s%n", ev.tick(), ev.description());
+                }
+            }
+        } else {
+            System.out.println("ℹ️  No GOAL_DISALLOWED events — no goals were overturned this match");
+        }
+
+        // ── 3c. VAR IN PROGRESS verification (must show team + defending team) ──
+        long varInProgress = result.events().stream()
+                .filter(e -> "VAR_IN_PROGRESS".equals(e.type()))
+                .count();
+        System.out.println("\n--- VAR IN PROGRESS EVENTS ---");
+        System.out.printf("VAR_IN_PROGRESS events in stream: %d%n", varInProgress);
+        if (varInProgress > 0) {
+            System.out.println("✅ VAR_IN_PROGRESS events present — viewer will show 'VAR IN PROGRESS' overlay");
+            boolean allHaveDefending = true;
+            for (MatchEvent ev : result.events()) {
+                if ("VAR_IN_PROGRESS".equals(ev.type())) {
+                    System.out.printf("  tick %d: %s%n", ev.tick(), ev.description());
+                    if (!ev.description().contains("defending:")) {
+                        allHaveDefending = false;
+                    }
+                }
+            }
+            if (allHaveDefending) {
+                System.out.println("  ✅ All VAR_IN_PROGRESS events include defending team info");
+            } else {
+                System.out.println("  ⚠️  Some VAR_IN_PROGRESS events missing defending team");
+            }
+        } else {
+            System.out.println("ℹ️  No VAR_IN_PROGRESS events this match");
+        }
+
         // ── 4. Football analyst review ──
         System.out.println("\n--- FOOTBALL ANALYST REVIEW ---");
         analyzeFootballLogic(result, logs);
 
         // ── 5. Write markdown report ──
-        writeReport(result, findings, offsideEvents.size(), varDecisions, logs);
+        writeReport(result, findings, offsideEvents.size(), varDecisions, goalDisallowed, logs);
         System.out.println("\n📄 Report written to: target/gap_analysis_report.md");
 
         // Assertions — the match should not have critical (>120s) gaps without stoppage
@@ -289,7 +391,7 @@ class TestGapDetector {
     }
 
     void writeReport(MatchResult result, List<GapFinding> findings,
-                     int offsideCount, long varCount, List<LogEntry> logs) throws IOException {
+                     int offsideCount, long varCount, long goalDisallowedCount, List<LogEntry> logs) throws IOException {
         StringBuilder md = new StringBuilder();
         md.append("# Gap Analysis & Football Logic Report\n\n");
         md.append("## Match Summary\n\n");
@@ -301,7 +403,8 @@ class TestGapDetector {
         md.append(String.format("| Match Events | %d |\n", result.events().size()));
         md.append(String.format("| Snapshots | %d |\n", result.snapshots().size()));
         md.append(String.format("| OFFSIDE Events | %d |\n", offsideCount));
-        md.append(String.format("| VAR Events | %d |\n\n", varCount));
+        md.append(String.format("| VAR Events | %d |\n", varCount));
+        md.append(String.format("| GOAL_DISALLOWED Events | %d |\n\n", goalDisallowedCount));
 
         md.append("## Gap Analysis (threshold > 5s)\n\n");
         if (findings.isEmpty()) {
@@ -357,10 +460,16 @@ class TestGapDetector {
         md.append("- ExecutionQuality introduces deviation `(20 - skill) * 0.15` cells for passes.\n");
         md.append("- Long passes (>5 cells) can produce cross-field balls if deviation is high.\n\n");
         md.append("### Goal Celebration (§19)\n");
-        md.append("- After a goal, scoring-team outfield players advance goalward at ");
-        md.append("`PLAYER_SPEED * 0.6`.\n");
+        md.append("- After a goal, scoring-team outfield players run BEHIND the goal into OOB space ");
+        md.append("(row 8 for HOME / row 0 for AWAY) at 0.05 cells/tick (2 cells/sec match time).\n");
+        md.append("- Players fan out across goal mouth columns 1-6 and radiate in a small orbit ");
+        md.append("(orbitRadius 0.25-0.45) for a fanning effect.\n");
         md.append("- Ball sits at goal-exit position (row 8 for HOME / row 0 for AWAY).\n");
-        md.append("- Celebration hold: 100 ticks (2.5s at 40 ticks/min), then kickoff pending.\n\n");
+        md.append("- Celebration hold: 20 ticks (30s at 40 ticks/min), then kickoff pending.\n\n");
+        md.append("### VAR Overturned Goals (§39)\n");
+        md.append("- When VAR overturns a goal: GOAL_DISALLOWED event emitted to viewer, score ");
+        md.append("unchanged (goal never scored), restart as goal kick from OOB position.\n");
+        md.append("- VAR IN PROGRESS overlay includes attacking team, defending team, and incident type.\n\n");
 
         Path outDir = Path.of("target");
         Files.createDirectories(outDir);

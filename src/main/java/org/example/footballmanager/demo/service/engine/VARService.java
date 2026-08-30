@@ -100,6 +100,8 @@ public class VARService {
     /**
      * VAR check for a goal.
      * Reviews potential fouls, offside, or handball in the buildup.
+     * Emits a VAR_IN_PROGRESS event at the current tick so the viewer
+     * shows the review overlay BEFORE the goal overlay fires.
      *
      * @param scoringTeam the team that scored
      * @param goalPosition where the ball ended up
@@ -113,6 +115,13 @@ public class VARService {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
+
+        // Emit VAR_IN_PROGRESS so the viewer shows "REVIEWING" overlay before
+        // the goal is confirmed or overturned.
+        String defendingTeam = "HOME".equals(scoringTeam) ? "AWAY" : "HOME";
+        logVARReviewStarted(scoringTeam,
+                "GOAL — reviewing build-up for " + scoringTeam
+                        + " (defending: " + defendingTeam + ")");
 
         // ~8% chance of goal being overturned (foul in buildup, offside, handball)
         double overturnChance = 0.08;
@@ -138,6 +147,12 @@ public class VARService {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
+
+        // Signal to the viewer that a review is in progress so the blocking
+        // IN PROGRESS overlay shows before the verdict.
+        logVARReviewStarted(defender == null ? "" : defender.getTeam(),
+                "RED CARD — reviewing " + (defender == null ? "player" : defender.getLabel())
+                        + " tackle");
 
         // Second yellows are almost never overturned by VAR
         if (isSecondYellow) {
@@ -170,6 +185,11 @@ public class VARService {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
+
+        // Signal to the viewer that a review is in progress before the verdict.
+        logVARReviewStarted(homeAttacking ? "HOME" : "AWAY",
+                "PENALTY — reviewing " + (wasCalledPenalty ? "awarded" : "non-awarded")
+                        + " penalty near box edge");
 
         // Penalty box edge: rows 6-7 for HOME, rows 1-2 for AWAY (≈16.5m deep)
         double penaltyBoxEdgeRow = homeAttacking ? 6.0 : 2.0;
@@ -205,6 +225,11 @@ public class VARService {
             lastVARDecision = "NO_REVIEW";
             return "CONFIRMED";
         }
+
+        // Signal to the viewer that a review is in progress before the verdict.
+        logVARReviewStarted(defender == null ? "" : defender.getTeam(),
+                "YELLOW CARD — reviewing " + (defender == null ? "player" : defender.getLabel())
+                        + " tackle");
 
         // ~8% chance of upgrading yellow to red (dangerous tackle)
         double upgradeChance = 0.08;

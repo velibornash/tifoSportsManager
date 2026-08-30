@@ -81,8 +81,12 @@ public class MatchSimulationController {
     /** Generate a team where all players have maximum skills (20). Used for testing. */
     public static List<Player> generateMaxSkillTeam(String teamSide, String teamName) {
         String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
-        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
-        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
+        // Cell-center tactical positions (matching FormationSlotCatalog CELL_xx_xx):
+        // GK(1.5,3.5), DEF(2.5,1.5-5.5), MID(3.5,1.5-5.5), ATT(5.5,2.5-4.5).
+        // Mirror formula 9-row / 7-col correctly maps cell centers:
+        //   GK 1.5->7.5, DEF 2.5->6.5, MID 3.5->5.5, ATT 5.5->3.5 — all on-field.
+        double[] tacticalRows = {1.5, 2.5, 2.5, 2.5, 2.5, 3.5, 3.5, 3.5, 3.5, 5.5, 5.5};
+        double[] tacticalCols = {3.5, 1.5, 2.5, 4.5, 5.5, 1.5, 2.5, 4.5, 5.5, 2.5, 4.5};
         List<Player> players = new ArrayList<>();
         PlayerSkills maxSkills = new PlayerSkills(20, 20, 20, 20, 20, 20, 20, 20);
         for (int i = 0; i < 11; i++) {
@@ -103,8 +107,9 @@ public class MatchSimulationController {
     /** Generate a team where all players have the same skill level. Used for controlled tests. */
     public static List<Player> generateTeamWithSkill(String teamSide, String teamName, int skill) {
         String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
-        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
-        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
+        // Cell-center tactical positions (matching FormationSlotCatalog).
+        double[] tacticalRows = {1.5, 2.5, 2.5, 2.5, 2.5, 3.5, 3.5, 3.5, 3.5, 5.5, 5.5};
+        double[] tacticalCols = {3.5, 1.5, 2.5, 4.5, 5.5, 1.5, 2.5, 4.5, 5.5, 2.5, 4.5};
         List<Player> players = new ArrayList<>();
         PlayerSkills uniformSkills = new PlayerSkills(skill, skill, skill, skill, skill, skill, skill, skill);
         for (int i = 0; i < 11; i++) {
@@ -124,14 +129,16 @@ public class MatchSimulationController {
 
     public static List<Player> generateTeam(String teamSide, String teamName, long skillSeed) {
         // Positioning mirrors DemoScenario.standard() — the authoritative kickoff layout.
-        // HOME: GK(1,3.5), DEF(2,2-5), MID(3,1/3/4/6), ATT(4,3.075/4)
-        // AWAY: mirrored via TacticalPerspectiveTransformer.
-        // Attackers start at row 4 (center line), NOT row 6 — this prevents
-        // instant offside when AWAY defenders push up from row 6.
+        // HOME: GK(1.5,3.5), DEF(2.5,1.5-5.5), MID(3.5,1.5-5.5), ATT(5.5,2.5-4.5)
+        // AWAY: mirrored via TacticalPerspectiveTransformer (9-row, 7-col).
+        // Cell-center positions (1.5, 2.5, 3.5, 5.5) mirror to on-field positions:
+        //   GK 1.5->7.5, DEF 2.5->6.5, MID 3.5->5.5, ATT 5.5->3.5.
+        // Attackers at row 5.5 (just past center) — symmetric with AWAY at 3.5,
+        // prevents instant offside when AWAY defenders push up from row 6.5.
         String[] roles = {"GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"};
         String[] roleLines = {"GK", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "ATT", "ATT"};
-        double[] tacticalRows = {1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
-        double[] tacticalCols = {3.5, 2, 3, 4, 5, 1, 3, 4, 6, 3.075, 4};
+        double[] tacticalRows = {1.5, 2.5, 2.5, 2.5, 2.5, 3.5, 3.5, 3.5, 3.5, 5.5, 5.5};
+        double[] tacticalCols = {3.5, 1.5, 2.5, 4.5, 5.5, 1.5, 2.5, 4.5, 5.5, 2.5, 4.5};
         List<Player> players = new ArrayList<>();
         Random rng = new Random(skillSeed);
 

@@ -106,50 +106,51 @@ public class ExecutionQuality {
         double dist = shotOrigin == null ? 4.0 : SimUtils.distance(shotOrigin, goalPosition);
 
         // ---- Angle factor: shooter column vs goal centre column (3.5). ----
-        // Straight down the middle (cols 3-4) is easy; the wings are increasingly
-        // acute (col 2/5 moderate, col 1/6 very hard). A winger shooting from col 1
-        // or 6 should rarely beat the keeper cleanly. With no origin recorded the
-        // look is treated as central (penalty-style kick, colOffset = 0).
+        // Goes into save difficulty and the miss scatter (tight angle = easier for
+        // the keeper / wider miss). It does NOT decide whether the ball stays on
+        // frame — a keeper sitting in the lane means a save, not a whiff.
         double colOffset = shotOrigin == null ? 0.0 : Math.abs(shotOrigin.getColumn() - 3.5);
         double angleFactor = SimUtils.clamp(1.0 - colOffset * 0.185, 0.42, 1.0); // 3.5→1.0, 2/5→0.72, 1/6→0.45
 
-        // ---- Distance factor: closer = far easier to finish. ----
-        // 1 cell ≈ 10m. <16m → close range (generally a finish), 16-25m, then long.
-        double distanceFactor;
-        if (dist <= 1.6) distanceFactor = 1.0;
-        else if (dist <= 2.5) distanceFactor = 0.78;
-        else distanceFactor = 0.55;
+        // ---- ON-TARGET (in-frame) probability ----
+        // A near-goal clear look stays on frame regardless of skill: a poor
+        // finisher misses, but a close-range open goal must NOT fly wide. Only
+        // distance, angle and pressure (real "shot quality") pull it off frame.
+        // The goalkeeper's position does NOT reduce on-target — a keeper in the
+        // line produces a SAVE, not a whiff (that separation is made downstream).
+        //
+        // Base on-frame chance by finisher skill (1..20 → 0.50..0.73 for a clean,
+        // close, central, unpressured look — few shots are genuinely this clean).
+        double onTargetFactor = 0.28 + skill / 20.0 * 0.45;        // 0.305..0.73 clean look
+        // Distance: sharp falloff past ~1.3 cells (real football: most shot
+        // attempts are wide / high from range). Around the box (~1.2 cells)
+        // still on frame; from deeper they drop fast.
+        double distOnFrame = dist <= 1.3 ? 1.0 : Math.max(0.0, 1.0 - (dist - 1.3) / 1.6);
+        // Tight angle makes the shot far easier to put off the frame.
+        double angleOnFrame = SimUtils.clamp(1.0 - colOffset * 0.30, 0.12, 1.0);
+        // Pressure (defenders hurrying the shot) drags it off frame.
+        double pressureFactor = 1.0 - SimUtils.clamp(pressure / 50.0, 0, 1) * 0.60;
+        double onTargetProb = SimUtils.clamp(
+                onTargetFactor * distOnFrame * angleOnFrame * pressureFactor, 0.05, 0.90);
 
-        // ---- Goalkeeper obstruction: how much the keeper sits in the shot lane. ----
-        // 1.0 = open goal / keeper way off the lane, 0.25 = keeper fully in the way.
-        double gkObstruction = computeGkObstruction(shotOrigin, goalPosition, goalkeeper, dist);
-
-        // ---- Pressure (defenders closing) ----
-        double pressureFactor = 1.0 - SimUtils.clamp(pressure / 50.0, 0, 1) * 0.35;
-
-        // ---- Striker skill ----
-        double skillFactor = 0.55 + skill / 20.0 * 0.45; // skill1→0.575, skill20→1.0
-
-        // Clear-path close-range guarantee: with the goal path clear and distance
-        // small, even a poor finisher must not fluff an open goal.
-        boolean clearPathClose = dist <= 1.6 && gkObstruction >= 0.85;
-        double goalProb;
-        if (clearPathClose) {
-            goalProb = 0.90 + skill / 20.0 * 0.10; // never below 0.90
-        } else {
-            goalProb = skillFactor * angleFactor * distanceFactor * gkObstruction * pressureFactor;
-            goalProb = SimUtils.clamp(goalProb, 0.03, 0.9);
+        // ---- Goalkeeper beaten / open-goal guarantee ----
+        // If the keeper is NOT in the shot lane and no opponent blocks the path,
+        // nobody is between the shooter and goal — the shot MUST stay on frame
+        // (close-range open-goal look). gkInLaneFactor ~ 0 means open goal.
+        double gkInLane = gkInLaneFactor(shotOrigin, goalPosition, goalkeeper);
+        if (gkInLane <= 0.2 && dist <= 2.0) {
+            onTargetProb = Math.max(onTargetProb, 0.90);
         }
 
-        boolean goal = random.nextDouble() < goalProb;
+        boolean onTarget = random.nextDouble() < onTargetProb;
 
-        // Build the actual target — its geometry drives the goal/miss verdict.
         Position actualTarget;
-        if (goal) {
+        if (onTarget) {
+            // Ball reaches the goal mouth — whether it is a goal or a save is
+            // decided downstream (handleShotArrival) from keeper position/skill.
             actualTarget = goalPosition;
         } else {
-            // Miss deviation is scaled by distance and aggravated by a tight angle
-            // (an acute-angle finish that misses goes wide more easily).
+            // Scattered miss (wide / over the bar) — a genuine bad finish.
             double missMax = (0.35 + (20 - skill) * 0.05)
                     * (1.0 + (1.0 - angleFactor))
                     * (0.5 + Math.min(2.0, dist) / 2.0);
@@ -174,56 +175,46 @@ public class ExecutionQuality {
         // Power: higher skill → higher power (0.0–1.0), affects save difficulty
         double power = SimUtils.clamp(skill / 20.0 + (random.nextDouble() - 0.5) * 0.3, 0.1, 1.0);
 
-        return new ShotResult(skill, actualTarget, goal, power);
+        return new ShotResult(skill, actualTarget, onTarget, power, gkInLane, angleFactor);
     }
 
     /**
-     * Goalkeeper obstruction multiplier on a shot.
-     * Returns a value in [0.25, 1.0]: 1.0 = keeper not in the way (open look),
-     * lower = keeper is in the shot lane / close to the ball and hard to beat.
+     * How much the goalkeeper sits in the shot lane (between shooter and goal).
+     * Returns [0,1]: 1.0 = keeper fully covering the shot (on/near the goal line
+     * and centred on the shot); ~0.05 = keeper clearly out of the lane (nobody on
+     * the path to goal), i.e. effectively an open goal / near-zero save chance.
      */
-    private double computeGkObstruction(Position shotOrigin, Position goalPosition,
-                                        Player goalkeeper, double dist) {
-        if (goalkeeper == null) return 1.0;
-        if (shotOrigin == null) return 1.0; // no origin recorded (penalty-style): keeper not an obstacle
+    private double gkInLaneFactor(Position shotOrigin, Position goalPosition, Player goalkeeper) {
+        if (goalkeeper == null || shotOrigin == null) return 0.05;
         Position gkPos = goalkeeper.getPosition();
-        double gkDistToShot = SimUtils.distance(gkPos, shotOrigin);
 
-        // Is the keeper positioned between shooter and goal (in front of the shot)?
-        boolean home = goalPosition.getRow() > shotOrigin.getRow();
-        boolean gkInFront = home
-                ? (gkPos.getRow() > shotOrigin.getRow() && gkPos.getRow() < goalPosition.getRow())
-                : (gkPos.getRow() < shotOrigin.getRow() && gkPos.getRow() > goalPosition.getRow());
-
-        if (!gkInFront) {
-            // Keeper is idle, off to a side, or wandering — barely an obstacle unless
-            // they happen to be right on top of the ball.
-            double closePenalty = SimUtils.clamp(1.0 - gkDistToShot / 2.0, 0, 1) * 0.30;
-            return SimUtils.clamp(1.0 - closePenalty, 0.25, 1.0);
-        }
-
-        // Perpendicular distance from the keeper to the shot line (shooter -> goal).
+        // Project the keeper onto the shooter -> goal line.
         double dx = goalPosition.getColumn() - shotOrigin.getColumn();
         double dy = goalPosition.getRow() - shotOrigin.getRow();
         double len = Math.hypot(dx, dy);
+        double t;
         double perpDist;
         if (len < 1e-6) {
+            t = 1.0;
             perpDist = Math.abs(gkPos.getColumn() - shotOrigin.getColumn());
         } else {
-            double t = ((gkPos.getColumn() - shotOrigin.getColumn()) * dx
+            t = ((gkPos.getColumn() - shotOrigin.getColumn()) * dx
                     + (gkPos.getRow() - shotOrigin.getRow()) * dy) / (len * len);
-            t = SimUtils.clamp(t, 0, 1);
             double projCol = shotOrigin.getColumn() + t * dx;
             double projRow = shotOrigin.getRow() + t * dy;
             perpDist = SimUtils.distance(gkPos, new Position(projRow, projCol));
         }
 
-        // onLine: 1 if keeper on the shot line, 0 if ≥1.5 cells off it.
-        double onLine = SimUtils.clamp(1.0 - perpDist / 1.5, 0, 1);
-        // nearBall: 1 if keeper close to the shooter, decays with distance.
-        double nearBall = SimUtils.clamp(1.0 - gkDistToShot / 3.0, 0, 1);
-        double block = 0.35 * onLine + 0.30 * nearBall;
-        return SimUtils.clamp(1.0 - block, 0.25, 1.0);
+        // onLine: 1 if keeper on the shot line, 0 if >= ~1.6 cells off it.
+        double onLine = SimUtils.clamp(1.0 - perpDist / 1.6, 0, 1);
+        // coverage: keeper must sit between the shooter (t ~ 0.2) and the goal
+        // (t ~ 1.0), i.e. in front of the shot, to actually cover it. Behind the
+        // shooter (t < 0.2) or clearly past the goal (t > 1.0) means little cover.
+        double coverage = SimUtils.clamp(t, 0.2, 1.0);
+        // near enough to react — a keeper glued to the ball covers best.
+        double gkDistToShot = SimUtils.distance(gkPos, shotOrigin);
+        double close = SimUtils.clamp(1.0 - gkDistToShot / 4.0, 0, 1);
+        return SimUtils.clamp(onLine * coverage * (0.7 + 0.3 * close), 0.05, 1.0);
     }
 
     public record PassResult(
@@ -238,9 +229,10 @@ public class ExecutionQuality {
         }
     }
 
-    public record ShotResult(int skill, Position actualTarget, boolean goal, double power) {
+    public record ShotResult(int skill, Position actualTarget, boolean goal, double power,
+                             double gkInLane, double angleFactor) {
         public ShotResult(int skill, Position actualTarget, boolean goal) {
-            this(skill, actualTarget, goal, 0.5);
+            this(skill, actualTarget, goal, 0.5, 1.0, 1.0);
         }
     }
 }
