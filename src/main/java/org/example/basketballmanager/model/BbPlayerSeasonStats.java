@@ -30,19 +30,32 @@ public class BbPlayerSeasonStats {
 
     private String teamName;
 
+    @Builder.Default
     private int gamesPlayed = 0;
+    @Builder.Default
     private int pointsScored = 0;
+    @Builder.Default
     private int reboundsTotal = 0;
+    @Builder.Default
     private int assistsTotal = 0;
+    @Builder.Default
     private int stealsTotal = 0;
+    @Builder.Default
     private int blocksTotal = 0;
+    @Builder.Default
     private int turnoversTotal = 0;
 
+    @Builder.Default
     private int twoPtMade = 0;
+    @Builder.Default
     private int twoPtAttempted = 0;
+    @Builder.Default
     private int threePtMade = 0;
+    @Builder.Default
     private int threePtAttempted = 0;
+    @Builder.Default
     private int ftMade = 0;
+    @Builder.Default
     private int ftAttempted = 0;
 
     public double getPpg() { return gamesPlayed > 0 ? (double) pointsScored / gamesPlayed : 0; }

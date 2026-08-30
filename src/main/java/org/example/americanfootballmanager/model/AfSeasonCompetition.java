@@ -33,5 +33,6 @@ public class AfSeasonCompetition {
     @Builder.Default
     private List<AfCompetitionEntry> entries = new ArrayList<>();
 
+    @Builder.Default
     private Boolean finished = false;
 }

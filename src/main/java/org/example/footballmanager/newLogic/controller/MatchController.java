@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +46,7 @@ public class MatchController {
     }
 
     @GetMapping("/{matchId}/lineups")
+    @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> getMatchLineups(@PathVariable Long matchId) {
         return matchRepository.findById(matchId)
                 .map(match -> {
@@ -58,7 +60,8 @@ public class MatchController {
                     if (match.getLineupJson() != null && !match.getLineupJson().isBlank()) {
                         try {
                             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                            Map<String, Object> lineupData = mapper.readValue(match.getLineupJson(), Map.class);
+                            Map<String, Object> lineupData = mapper.readValue(match.getLineupJson(),
+                                    new TypeReference<Map<String, Object>>() {});
                             Object home = lineupData.get("homeLineup");
                             if (home instanceof List) homeLineup = (List<Map<String, Object>>) home;
                             Object away = lineupData.get("awayLineup");
@@ -207,7 +210,7 @@ public class MatchController {
         }
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.List<Map<String, Object>> events = mapper.readValue(match.getEventJson(), java.util.List.class);
+            java.util.List<Map<String, Object>> events = mapper.readValue(match.getEventJson(), new TypeReference<java.util.List<Map<String, Object>>>() {});
             for (Map<String, Object> event : events) {
                 String type = String.valueOf(event.get("type"));
                 if (type != null && (type.contains("GOAL") || type.contains("CARD") || type.contains("INJURY") || type.contains("SUB"))) {
@@ -287,7 +290,7 @@ public class MatchController {
 
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.List<Map<String, Object>> events = mapper.readValue(match.getEventJson(), java.util.List.class);
+            java.util.List<Map<String, Object>> events = mapper.readValue(match.getEventJson(), new TypeReference<java.util.List<Map<String, Object>>>() {});
 
             for (Map<String, Object> event : events) {
                 String type = String.valueOf(event.get("type"));

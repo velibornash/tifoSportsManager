@@ -36,6 +36,7 @@ public class AfMatch {
     @Column(name = "match_date", nullable = false)
     private LocalDateTime matchDate;
 
+    @Builder.Default
     private Boolean played = false;
 
     @Column(name = "home_score")

@@ -39,6 +39,7 @@ public class AfTeam {
     private String color;
 
     @Column(name = "human_controlled")
+    @Builder.Default
     private Boolean humanControlled = false;
 
     @ManyToOne(fetch = FetchType.LAZY)

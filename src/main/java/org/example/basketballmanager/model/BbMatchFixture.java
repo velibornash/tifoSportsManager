@@ -39,6 +39,7 @@ public class BbMatchFixture {
     @Column(name = "match_date")
     private LocalDateTime matchDate;
 
+    @Builder.Default
     private Boolean played = false;
 
     @OneToOne(fetch = FetchType.LAZY)

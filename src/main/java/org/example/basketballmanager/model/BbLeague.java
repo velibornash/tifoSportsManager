@@ -24,15 +24,19 @@ public class BbLeague {
     @Column(length = 2)
     private String country;
 
+    @Builder.Default
     private Integer tier = 1;
 
     @Column(name = "points_win")
+    @Builder.Default
     private Integer pointsWin = 3;
 
     @Column(name = "points_draw")
+    @Builder.Default
     private Integer pointsDraw = 1;
 
     @Column(name = "points_loss")
+    @Builder.Default
     private Integer pointsLoss = 0;
 
 }

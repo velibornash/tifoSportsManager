@@ -33,5 +33,6 @@ public class BbSeasonCompetition {
     @Builder.Default
     private List<BbCompetitionEntry> entries = new ArrayList<>();
 
+    @Builder.Default
     private Boolean finished = false;
 }

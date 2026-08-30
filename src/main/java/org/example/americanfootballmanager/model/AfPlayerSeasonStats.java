@@ -30,19 +30,34 @@ public class AfPlayerSeasonStats {
 
     private String teamName;
 
+    @Builder.Default
     private int gamesPlayed = 0;
+    @Builder.Default
     private int touchdowns = 0;
+    @Builder.Default
     private int fieldGoalsMade = 0;
+    @Builder.Default
     private int fieldGoalsAttempted = 0;
+    @Builder.Default
     private int tackles = 0;
+    @Builder.Default
     private int interceptions = 0;
+    @Builder.Default
     private int sacks = 0;
+    @Builder.Default
     private int passingYards = 0;
+    @Builder.Default
     private int rushingYards = 0;
+    @Builder.Default
     private int receivingYards = 0;
+    @Builder.Default
     private int passingTouchdowns = 0;
+    @Builder.Default
     private int rushingTouchdowns = 0;
+    @Builder.Default
     private int receivingTouchdowns = 0;
+    @Builder.Default
     private int twoPointConversions = 0;
+    @Builder.Default
     private int fumbles = 0;
 }

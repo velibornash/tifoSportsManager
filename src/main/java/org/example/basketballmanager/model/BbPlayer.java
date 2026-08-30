@@ -32,12 +32,15 @@ public class BbPlayer {
     private Integer jerseyNumber;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean injured = false;
 
     @Column(name = "injury_days_remaining")
+    @Builder.Default
     private Integer injuryDaysRemaining = 0;
 
     @Column(nullable = false)
+    @Builder.Default
     private Integer fatigue = 0;
 
     @Column(name = "skill_pace", nullable = false)
