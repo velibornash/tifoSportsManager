@@ -1175,6 +1175,11 @@ class MatchViewer {
     if (!seek._dragging) seek.value = this.currentTick;
   }
 
+  // Maximum events shown in the timeline DOM. Beyond this, we prune the
+  // oldest entries to prevent the DOM from growing unbounded (which causes
+  // Firefox to freeze after a few minutes of playback with 4000+ events).
+  _MAX_TIMELINE_EVENTS = 200;
+
   _addTimelineEvent(ev) {
     const ul = document.getElementById('timeline');
     const li = document.createElement('li');
@@ -1192,8 +1197,18 @@ class MatchViewer {
     li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
     ul.appendChild(li);
 
-    // Always auto-scroll to bottom
-    ul.scrollTop = ul.scrollHeight;
+    // Prune oldest entries beyond the cap so the DOM stays small enough for
+    // Firefox to render smoothly during full-match playback.
+    while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
+      ul.removeChild(ul.firstChild);
+    }
+
+    // Auto-scroll to bottom (only if user is already near the bottom — don't
+    // yank them away from an event they were inspecting).
+    const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 80;
+    if (nearBottom) {
+      ul.scrollTop = ul.scrollHeight;
+    }
   }
 
   _buildTimeline() {

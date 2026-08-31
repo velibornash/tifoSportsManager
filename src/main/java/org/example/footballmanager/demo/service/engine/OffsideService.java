@@ -46,35 +46,60 @@ public class OffsideService {
         this.recorder = recorder;
     }
 
-    /**
-     * Track offside POSITION for every outfield teammate at a forward-pass
-     * moment, regardless of whether the pass is actually aimed at them.
+/**
+     * Universal offside tracking — called on EVERY tick (not just forward-pass
+     * moments). Checks ALL outfield players on BOTH teams: any attacker standing
+     * in an offside position accumulates a consecutive-offside count, regardless
+     * of who has the ball or what action was just chosen. After 3 consecutive
+     * ticks in an offside position, the threat override in TacticalIntentEngine
+     * drops them back toward their own goal until they are onside, then resets.
      *
-     * Purpose (threat-override offside retreat): a player who keeps hovering in
-     * an offside position (even when the ball never goes to them) accumulates a
-     * consecutive count. After 3 consecutive forward-pass moments in an offside
-     * position, the threat override drops them back toward their own goal until
-     * they are onside, then the counter resets. This prevents a single attacker
-     * from permanently loitering offside.
-     *
-     * Being onside during a forward-pass moment resets a player's streak.
-     *
-     * @param carrierTeam team about to play a forward pass
-     * @param passOrigin  position of the ball / carrier when the pass is played
+     * Being onside on any tick resets the player's streak to zero.
      */
-    public void trackOffsidePositions(MatchState state, String carrierTeam, Position passOrigin) {
+    public void trackOffsidePositions(MatchState state) {
+        if (state.getCarrier() == null) return;
+        Position origin = state.getCarrier().getPosition();
         for (Player p : state.getPlayers()) {
-            if (!carrierTeam.equals(p.getTeam())) continue;
             if ("GK".equals(p.getRole())) continue;
             if (p == state.getCarrier()) continue;
             if (p.isSentOff() || p.isInjured()) continue;
-            boolean inOffsidePosition = isPlayerInOffsidePosition(state, p, passOrigin);
-            if (inOffsidePosition) {
+            // The defending team is the opponent of this player.
+            boolean home = "HOME".equals(p.getTeam());
+            String defendingTeam = home ? "AWAY" : "HOME";
+            // Only track players who are FORWARD of the carrier — they're the
+            // ones potentially offside (not behind play).
+            boolean forward = home
+                    ? p.getPosition().getRow() > origin.getRow()
+                    : p.getPosition().getRow() < origin.getRow();
+            if (!forward) {
+                p.resetConsecutiveOffside();
+                continue;
+            }
+            // FIFA offside: offside if fewer than 2 opponents (incl. GK) are
+            // goal-side of this player.
+            int opponentsGoalSide = 0;
+            for (Player opp : state.getPlayers()) {
+                if (!defendingTeam.equals(opp.getTeam())) continue;
+                if (opp.isLocked() || opp.isSentOff() || opp.isInjured()) continue;
+                boolean goalSide = home
+                        ? opp.getPosition().getRow() > p.getPosition().getRow()
+                        : opp.getPosition().getRow() < p.getPosition().getRow();
+                if (goalSide) opponentsGoalSide++;
+            }
+            if (opponentsGoalSide < 2) {
                 p.incrementConsecutiveOffside();
             } else {
                 p.resetConsecutiveOffside();
             }
         }
+    }
+
+    /**
+     * Legacy overload — kept for backward compatibility. Delegates to the
+     * universal tracker which checks ALL players on both teams.
+     */
+    public void trackOffsidePositions(MatchState state, String carrierTeam, Position passOrigin) {
+        trackOffsidePositions(state);
     }
 
     /**

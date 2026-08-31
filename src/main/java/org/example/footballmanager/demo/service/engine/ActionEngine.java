@@ -917,6 +917,8 @@ public class ActionEngine {
 
     private boolean isOwnGoalkeeperOrDefensiveRow(Player player, String team) {
         if ("GK".equals(player.getRole())) return true;
+        // HOME defends goal at row 1.0 → defensive row ≤ 1.0.
+        // AWAY defends goal at row 8.0 → defensive row ≥ 7.0 (last row cell center 7.5).
         return "HOME".equals(team) ? player.getPosition().getRow() <= 1.0
                 : player.getPosition().getRow() >= 7.0;
     }

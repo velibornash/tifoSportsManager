@@ -155,6 +155,13 @@ public class MatchSimulator {
                 tickCarryStuck = 0, restartWalkTicks = 0;
 
         while (totalTicks < maxTicks && !state.isMatchFinished()) {
+            // Universal offside tracking — check ALL outfield players on BOTH
+            // teams for offside position every tick (not just at forward-pass
+            // moments). Any player standing in an offside position accumulates
+            // a consecutive-offside count; after 3 consecutive ticks offside,
+            // the threat override drops them back toward their own goal.
+            offsideService.trackOffsidePositions(state);
+
             // Tick-level verbose logging: emit every tick's sim-tick id, match clock
             // and the action currently in progress so stalls / gaps are fully
             // traceable in the app log (enabled via setVerbose(true), gated by

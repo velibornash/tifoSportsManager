@@ -402,12 +402,12 @@ public class TacticalIntentEngine {
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             double row = p.getPosition().getRow();
             if (homeAttacking) {
-                // HOME attacks row 7. Most advanced AWAY defender = HIGHEST row.
+                // HOME attacks row 8 (AWAY goal). Most advanced AWAY defender = HIGHEST row.
                 if (row > deepest) {
                     deepest = row;
                 }
             } else {
-                // AWAY attacks row 1. Most advanced HOME defender = LOWEST row.
+                // AWAY attacks row 1 (HOME goal). Most advanced HOME defender = LOWEST row.
                 if (row < deepest) {
                     deepest = row;
                 }
