@@ -71,6 +71,16 @@ public class MovementEngine {
             }
 
             double moveSpeed = activeChase ? PLAYER_SPEED * 3 * fatigueSpeedMultiplier(p) : PLAYER_SPEED * fatigueSpeedMultiplier(p);
+            // Threat-overridden defenders get a speed boost so they can close the
+            // gap on the ball carrier. Without this, carrier and defender move at
+            // the same speed (0.25 cells/tick) and the gap never closes — the
+            // defender chases from behind forever. With 1.6x boost the defender
+            // gains ~0.15 cells/tick when the carrier runs directly away, closing
+            // a 1.0 cell gap in ~20 ticks (~10 seconds) — fast enough to reach
+            // duel range (0.15 cells) before the carrier can carry far.
+            if (p.isThreatOverrideActive() && !isCarrier) {
+                moveSpeed *= 1.6;
+            }
             // Carrier always uses the raw proposed position — collision avoidance
             // does NOT apply to the ball carrier. The carrier has ball priority;
             // other players yield to it. The carrier is the only player that moves

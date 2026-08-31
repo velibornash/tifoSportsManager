@@ -31,6 +31,38 @@ public class ActionEngine {
         return "HOME".equals(team) ? GOAL_EXIT_POSITION : new Position(-0.5, 3.5);
     }
 
+    /**
+     * True when `receiver` is clearly offside (more than 0.2 cells beyond the
+     * second-to-last defender) at the moment `passer` would play the ball.
+     * Matches the PASS decision filter so a cross/center never targets an
+     * attacker who is obviously offside. Marginal offside (≤ 0.2) stays — the
+     * referee / VAR decides that close call at execution (checkOffside).
+     */
+    private boolean isClearlyOffside(Player passer, Player receiver) {
+        boolean home = "HOME".equals(passer.getTeam());
+        double passerRow = passer.getPosition().getRow();
+        double receiverRow = receiver.getPosition().getRow();
+        boolean forward = home ? receiverRow > passerRow : receiverRow < passerRow;
+        boolean opponentHalf = home ? receiverRow >= 4.0 : receiverRow <= 4.0;
+        if (!forward || !opponentHalf) return false;
+
+        String defendingTeam = home ? "AWAY" : "HOME";
+        List<Double> opponentRows = new java.util.ArrayList<>();
+        for (Player opponent : state.getPlayers()) {
+            if (defendingTeam.equals(opponent.getTeam())
+                    && !opponent.isSentOff() && !opponent.isInjured()) {
+                opponentRows.add(opponent.getPosition().getRow());
+            }
+        }
+        if (opponentRows.size() < 2) return true;
+        opponentRows.sort(home ? java.util.Comparator.reverseOrder()
+                : java.util.Comparator.naturalOrder());
+        double secondLastOpponent = opponentRows.get(1);
+        double margin = home ? receiverRow - secondLastOpponent
+                : secondLastOpponent - receiverRow;
+        return margin > 0.2;
+    }
+
     private final MatchState state;
     private final PlayerSelectionEngine selection;
     private final ExecutionQuality executionQuality;
@@ -406,11 +438,50 @@ public class ActionEngine {
             double pr = p.getPosition().getRow();
             boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
             if (!inBox) continue;
+            // Never cross/center to a receiver who is clearly offside (same 0.2
+            // margin as the PASS decision filter). A winger does not aim a cross
+            // at an attacker obviously beyond the offside line — the offside
+            // whistle at execution (checkOffside) is only a backstop for the
+            // marginal ≤0.2 cases that the referee deems a close call.
+            if (isClearlyOffside(carrier, p)) continue;
             double score = p.heightSkill() * 0.40 + p.getSkills().technique() * 0.30
                     + p.getSkills().striker() * 0.20;
             if (score > bestAerialScore) {
                 bestAerialScore = score;
                 aerialTarget = p;
+            }
+        }
+        // --- User rule: in the final 2 rows, prefer the top-2 box attackers
+        // closest to the opponent goal (the "two most dangerous in the box").
+        // A real winger delivering from the byline aims at the man nearest the
+        // goal, not just the best aerial winner anywhere on the pitch. We pick
+        // from the top-2 closest and choose the best aerial among them so a
+        // tall striker close to goal beats a small winger further away. ---
+        double carrierRow = carrier.getPosition().getRow();
+        boolean inFinalRows = home ? (carrierRow >= 6) : (carrierRow <= 2);
+        if (inFinalRows && aerialTarget != null) {
+            Position goalPos = goalPositionFor(carrier.getTeam());
+            List<Player> top2 = new java.util.ArrayList<>();
+            for (Player p : boxAttackers) {
+                if (p == carrier) continue;
+                double pr = p.getPosition().getRow();
+                boolean inBox = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+                if (!inBox) continue;
+                top2.add(p);
+            }
+            top2.sort((a, b) -> {
+                double ad = SimUtils.distance(a.getPosition(), goalPos);
+                double bd = SimUtils.distance(b.getPosition(), goalPos);
+                return Double.compare(ad, bd);
+            });
+            if (top2.size() >= 2) {
+                Player a = top2.get(0);
+                Player b = top2.get(1);
+                double aScore = a.heightSkill() * 0.40 + a.getSkills().technique() * 0.30
+                        + a.getSkills().striker() * 0.20;
+                double bScore = b.heightSkill() * 0.40 + b.getSkills().technique() * 0.30
+                        + b.getSkills().striker() * 0.20;
+                return aScore >= bScore ? a : b;
             }
         }
         return aerialTarget;
@@ -440,7 +511,24 @@ public class ActionEngine {
         // prevent oscillation that would cause carry freezes. This applies to
         // BOTH teams (HOME direction=+1, AWAY direction=-1).
         do { dr = weightedForwardDr(); } while (dr < 0);
-        int dc = state.getRandom().nextInt(3) - 1;
+        // --- User rule: drive toward goal center when path is open ---
+        // When the carrier is in the attacking half and the lane to goal
+        // centre is OPEN (no defender within 1 cell of the carrier AND no
+        // defender on the path to the goal centre), bias the carry column
+        // toward goal centre (3.5) instead of random lateral movement. This
+        // prevents wingers running into the corner when the goal is in clear
+        // sight — they cut inside toward goal and the SHOT override can then
+        // fire when they reach ~16m. The straight-line flank carry is handled
+        // separately by executeStraightCarry and is unaffected.
+        int dc;
+        boolean inAttackingHalf = home ? r >= 4.0 : r <= 4.0;
+        Position goalCenter = new Position(home ? 8.0 : 1.0, 3.5);
+        boolean laneOpen = inAttackingHalf && isCarryLaneOpen(carrier, goalCenter);
+        if (laneOpen && Math.abs(c - 3.5) >= 0.4) {
+            dc = (c < 3.5) ? 1 : -1;
+        } else {
+            dc = state.getRandom().nextInt(3) - 1;
+        }
         if (dr == 0 && dc == 0) dr = 1;
         double direction = home ? 1 : -1;
         // Carry 3-4 cells ahead so the carrier moves CONTINUOUSLY for several
@@ -455,6 +543,25 @@ public class ActionEngine {
         start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
         state.getAction().setTargetPosition(carryTarget);
         state.incrementActionCount();
+    }
+
+    /**
+     * Open-lane check for carry direction biasing. True when no non-GK opponent
+     * is within 1 cell of the carrier AND no non-GK opponent is on the line
+     * segment from carrier to the goal centre (perpendicular distance < 0.3
+     * cells ≈ 4 m). Used by executeCarry() to decide whether the carrier should
+     * cut inside toward goal centre instead of drifting along the touchline.
+     */
+    private boolean isCarryLaneOpen(Player carrier, Position goal) {
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(carrier.getTeam())) continue;
+            if ("GK".equals(p.getRole())) continue;
+            if (SimUtils.distance(p.getPosition(), carrier.getPosition()) < 1.0) return false;
+            if (SimUtils.pointSegmentDistance(p.getPosition(), carrier.getPosition(), goal) < 0.3) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -830,12 +937,12 @@ public class ActionEngine {
         if (missPosition == null) missPosition = state.getBall().getPosition();
 
         // When a shot misses, push ball PAST the end line so it's clearly out of play.
-        // HOME shoots toward row 7 (AWAY goal) → ball goes to row 8.5 (past the line)
+        // HOME shoots toward row 8 (AWAY goal) → ball goes to row 8.5 (past the line)
         // AWAY shoots toward row 1 (HOME goal) → ball goes to row -0.5 (past the line)
         // Wide misses: column also goes past the sideline (col -0.5 or 8.5)
         Position logicalGoal = action.getLogicalGoalPosition();
         if (logicalGoal != null) {
-            if (logicalGoal.getRow() == 7.0) {
+            if (logicalGoal.getRow() == 8.0) {
                 missPosition = new Position(8.5, SimUtils.clamp(missPosition.getColumn(), -0.5, 8.5));
             } else if (logicalGoal.getRow() == 1.0) {
                 missPosition = new Position(-0.5, SimUtils.clamp(missPosition.getColumn(), -0.5, 8.5));

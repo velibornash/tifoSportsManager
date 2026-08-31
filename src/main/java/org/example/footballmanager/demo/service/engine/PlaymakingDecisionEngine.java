@@ -276,12 +276,30 @@ public class PlaymakingDecisionEngine {
             // Only GK ahead and close: 0 defenders between + within shooting range
             boolean onlyGKAhead = defendersBetween == 0 && distToGoal <= 3.0;
 
-            if (emptyGoal || onlyGKAhead) {
+            // --- User rule: shoot at 16m when the lane to goal is open ---
+            // When (a) no outfield defender blocks the lane (defendersBetween == 0),
+            // (b) no non-GK opponent is within 1 cell of the carrier, AND
+            // (c) no non-GK opponent is on the line to goal centre, the carrier
+            // must drive toward goal centre and SHOOT when they reach ~16m
+            // (1.2 cells) — not carry into the corner. The lane-open condition
+            // mirrors the carry-direction bias so the carry and shot decisions
+            // agree on when the lane is genuinely clear.
+            boolean laneOpen = defendersBetween == 0
+                    && countNonGkOpponentsWithinRange(carrier, ctx.opponents(), 1.0) == 0
+                    && isPathToGoalClear(carrier, goal, ctx.opponents());
+            boolean closeWithOpenLane = laneOpen && distToGoal <= 1.2;
+
+            if (emptyGoal || onlyGKAhead || closeWithOpenLane) {
                 for (DecisionOption opt : visible) {
                     if (opt.getType() == DecisionType.SHOT) {
                         result = opt;
-                        lastSelectionReason = "empty-goal override: GK dist="
-                                + String.format("%.1f", gkDistToGoal)
+                        String trigger;
+                        if (closeWithOpenLane) trigger = "open-lane close shot";
+                        else if (emptyGoal) trigger = "empty goal";
+                        else trigger = "only GK ahead";
+                        lastSelectionReason = trigger + " override: dist="
+                                + String.format("%.2f", distToGoal)
+                                + " gkDist=" + String.format("%.1f", gkDistToGoal)
                                 + " defenders=" + defendersBetween;
                         break;
                     }
@@ -543,6 +561,26 @@ public class PlaymakingDecisionEngine {
         boolean inFinalRows = home ? (carrierRow >= 6) : (carrierRow <= 2);
         boolean isKickoff = carrierRow == 4 && carrierCol == 3.5;
 
+        // --- User rule: top-2 box attackers in final 2 rows ---
+        // In the final two rows the carrier must FIRST look for a dangerous
+        // attacker in the box (the two teammates closest to the opponent goal)
+        // instead of a 20m pass back. We precompute the top-2 closest-to-goal
+        // box attackers and apply a big scoring bonus when a receiver matches —
+        // this dominates the standard lane+goal-proximity scoring so the
+        // selector prefers a real scoring threat over a backward safe pass.
+        java.util.Set<String> topBoxAttackerIds = inFinalRows
+                ? topBoxAttackerIds(carrier, ctx.teammates(), 2)
+                : java.util.Collections.emptySet();
+
+        // --- User rule: 1.5-cell rule (21 m from goal) ---
+        // When the carrier is within 1.5 cells (≈ 21 m) of the opponent goal,
+        // NO BACKWARD PASS is offered. The carrier must shoot, dribble, or
+        // pass forward / into the box. A backward or lateral pass at this
+        // distance wastes a genuine scoring opportunity.
+        Position goalPos = ActionEngine.goalPositionFor(carrier.getTeam());
+        double distToGoal = SimUtils.distance(carrier.getPosition(), goalPos);
+        boolean closeToGoal = distToGoal <= 1.5;
+
         List<DecisionOption> candidates = new ArrayList<>();
         for (Player receiver : nearest) {
             if (receiver == carrier) continue;
@@ -551,15 +589,24 @@ public class PlaymakingDecisionEngine {
             // (User rule: not even a bad playmaker aims a pass at a player more
             // than half a cell offside. Offside 0.01-0.5 is the referee/VAR path.)
             if (isClearlyOffsideAtPass(carrier, receiver)) continue;
+            double candidateRow = receiver.getPosition().getRow();
             if (inFinalRows) {
-                double candidateRow = receiver.getPosition().getRow();
                 boolean validRow = home ? (candidateRow >= carrierRow) : (candidateRow <= carrierRow);
                 if (!validRow) continue;
             }
             if (isKickoff) {
-                double candidateRow = receiver.getPosition().getRow();
                 boolean validRow = home ? (candidateRow < 4) : (candidateRow > 4);
                 if (!validRow) continue;
+            }
+            // --- 1.5-cell rule: receiver must be forward of carrier OR already
+            //     inside the box area. A backward/lateral pass at 21 m from goal
+            //     wastes the chance — shooter or dribble is the right call. ---
+            if (closeToGoal) {
+                boolean inBoxArea = home ? (candidateRow >= 5) : (candidateRow <= 3);
+                boolean forwardOfCarrier = home
+                        ? (candidateRow >= carrierRow)
+                        : (candidateRow <= carrierRow);
+                if (!inBoxArea && !forwardOfCarrier) continue;
             }
 
             // --- Quality scoring (user rule, lane-dominant) ---
@@ -589,7 +636,18 @@ public class PlaymakingDecisionEngine {
             double openness = receiverOpenness(receiver, ctx.opponents());
             double openScore = openness;
 
-            double score = laneScore + goalProximityScore + shootingZoneBoost + openScore;
+            // 5) Box-attacker priority (user rule): in the final two rows the
+            //    carrier must prefer the two attackers closest to the opponent
+            //    goal over a backward pass. A big bonus here outweighs lane /
+            //    proximity scoring so a top-2 box attacker beats a clean-laned
+            //    backward pass even when the lane is slightly better.
+            double boxAttackerBoost = 0.0;
+            if (inFinalRows && topBoxAttackerIds.contains(receiver.getId())) {
+                boxAttackerBoost = 80.0;
+            }
+
+            double score = laneScore + goalProximityScore + shootingZoneBoost
+                    + openScore + boxAttackerBoost;
 
             // Pass exchange limit: prevent ping-pong between the same pair.
             if (isPassExchangeLimitReached(carrier.getId(), receiver.getId())) {
@@ -642,12 +700,11 @@ public class PlaymakingDecisionEngine {
         double secondLastOpponent = opponentRows.get(1);
         double margin = home ? receiverRow - secondLastOpponent
                 : secondLastOpponent - receiverRow;
-        // Suppress the pass when the receiver is clearly offside. Per the user
-        // rule: a receiver more than 0.5 cells ahead of the second-to-last
-        // defender is never a legitimate target — not even a bad playmaker
-        // attempts it (a hard filter, never an option). Marginal offside
-        // (<= 0.5) remains so the referee/VAR path can decide it.
-        return margin > 0.5;
+        // Hard-filter the pass when the receiver is more than 0.2 cells (~2.8 m)
+        // offside — not even a bad playmaker aims a pass at a player that far
+        // past the second-to-last defender (was 0.5 cells). Marginal offside
+        // (<= 0.2) still remains so the referee / VAR path can decide it.
+        return margin > 0.2;
     }
 
     /**
@@ -721,11 +778,33 @@ public class PlaymakingDecisionEngine {
         double row = carrier.getPosition().getRow();
         double col = carrier.getPosition().getColumn();
 
+        // HARD RULE: no carry in own defensive last 2-3 rows.
+        // HOME defends rows 1-3, AWAY defends rows 6-8. Carrying in the
+        // defensive zone is suicidal — the carrier must pass or clear.
+        // Massive penalty ensures CARRY can never win the decision tree here.
+        boolean inDefensiveZone = home ? (row <= 3.0) : (row >= 6.0);
+        if (inDefensiveZone) {
+            return new DecisionOption(DecisionType.CARRY, -300.0,
+                    "carry blocked in defensive zone");
+        }
+
         // BIGGEST DRIVER — pressure directly on the carrier. An opponent within
-        // 0.5 cells makes dribbling dangerous/blocked (heavy penalty); no
-        // opponent near = a natural, safe carry forward. 0.5 cells ≈ 7m.
-        double opponentsClosing = countDefendersWithinRange(carrier, ctx.opponents(), 0.5);
-        double pressureFactor = opponentsClosing == 0.0 ? 60.0 : -40.0 * opponentsClosing;
+        // 1.0 cell (~14 m) makes carrying dangerous — the carrier re-evaluates
+        // and should pass/shot before the defender closes to duel range (0.15
+        // cells ≈ 2 m). No opponent near = a natural, safe carry forward.
+        // Pressure scales with proximity: a defender at 0.2 cells is far more
+        // threatening than one at 0.9 cells. The weighted sum replaces the old
+        // flat count so the carrier releases the ball EARLIER when a defender
+        // is closing in, instead of holding until 0.5 cells.
+        double weightedPressure = 0.0;
+        for (Player opp : ctx.opponents()) {
+            double dist = SimUtils.distance(carrier.getPosition(), opp.getPosition());
+            if (dist < 1.0) {
+                // Linear ramp: 0 cells → weight 1.0, 1.0 cells → weight 0.0
+                weightedPressure += (1.0 - dist);
+            }
+        }
+        double pressureFactor = weightedPressure < 0.01 ? 60.0 : -50.0 * weightedPressure;
 
         // Forward space encourages carrying into the open.
         double availableSpace = availableForwardSpace(carrier);
@@ -1267,6 +1346,65 @@ private DecisionOption scoreShot(DecisionContext ctx) {
             if (SimUtils.distance(carrier.getPosition(), p.getPosition()) < range) count++;
         }
         return count;
+    }
+
+    /**
+     * Count NON-GK opponents within a given range of the carrier. Used by the
+     * 16m open-lane shot override — the GK is excluded because they are handled
+     * separately by the empty-goal / only-GK-ahead logic.
+     */
+    private int countNonGkOpponentsWithinRange(Player carrier, List<Player> opponents, double range) {
+        int count = 0;
+        for (Player p : opponents) {
+            if ("GK".equals(p.getRole())) continue;
+            if (SimUtils.distance(carrier.getPosition(), p.getPosition()) < range) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Return the IDs of the top-N teammates closest to the opponent goal who
+     * are standing inside the box area (HOME: rows 5-7, AWAY: rows 1-3). Used
+     * by scorePassOptions() to give a strong scoring bonus to the "two closest
+     * attackers in the box" when the carrier is in the final two rows — the
+     * carrier must prefer them over a 20 m backward pass.
+     */
+    private java.util.Set<String> topBoxAttackerIds(Player carrier, List<Player> teammates, int limit) {
+        boolean home = "HOME".equals(carrier.getTeam());
+        Position goal = ActionEngine.goalPositionFor(carrier.getTeam());
+        java.util.List<Player> inBox = new java.util.ArrayList<>();
+        for (Player p : teammates) {
+            if (p == carrier || "GK".equals(p.getRole())) continue;
+            if (p.isLocked() || p.isSentOff() || p.isInjured() || state.isBlockedAfterDuel(p)) continue;
+            double pr = p.getPosition().getRow();
+            boolean inBoxArea = home ? (pr >= 5 && pr <= 7) : (pr >= 1 && pr <= 3);
+            if (!inBoxArea) continue;
+            inBox.add(p);
+        }
+        inBox.sort((a, b) -> {
+            double ad = SimUtils.distance(a.getPosition(), goal);
+            double bd = SimUtils.distance(b.getPosition(), goal);
+            return Double.compare(ad, bd);
+        });
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (int i = 0; i < Math.min(limit, inBox.size()); i++) ids.add(inBox.get(i).getId());
+        return ids;
+    }
+
+    /**
+     * True when no non-GK opponent stands on the line segment from the carrier
+     * to the goal centre (perpendicular distance &lt; 0.3 cells ≈ 4 m). Used by
+     * the 16m open-lane shot override to confirm the shooting lane is genuinely
+     * unobstructed, not just "no defender nearby".
+     */
+    private boolean isPathToGoalClear(Player carrier, Position goal, List<Player> opponents) {
+        for (Player opp : opponents) {
+            if ("GK".equals(opp.getRole())) continue;
+            if (pointToLineDistance(opp.getPosition(), carrier.getPosition(), goal) < 0.3) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

@@ -185,6 +185,9 @@ public class RestartManager {
                 double cornerCol = rightCorner ? 6.5 : 0.5;
                 Position cornerPos = new Position(cornerRow, cornerCol);
                 state.getBall().setPosition(cornerPos);
+                // USER RULE: push back opponents inside 1 cell of the ball
+                // (toward their own goal) so the corner taker isn't crowded.
+                pushOpponentsAwayFromBall(cornerPos, defendingTeam);
                 Player cornerTaker = selection.nearestNonGoalkeeperTo(cornerPos, defendingTeam);
                 // Taker must be AT the exact corner spot, become carrier, then pass/center.
                 giveBallToRestartTaker(cornerTaker, cornerPos);
@@ -273,6 +276,9 @@ public class RestartManager {
                 double col = ballPos.getColumn() < 1 ? 1.0 : 6.0;
                 Position throwInPos = new Position(row, col);
                 state.getBall().setPosition(throwInPos);
+                // USER RULE: push back opponents inside 1 cell of the ball so the
+                // throw-in taker has space.
+                pushOpponentsAwayFromBall(throwInPos, defendingTeam);
                 Player throwInTaker = selection.nearestNonGoalkeeperTo(throwInPos, defendingTeam);
                 giveBallToRestartTaker(throwInTaker, throwInPos);
                 logger.logThrowIn(state, defendingTeam, "THROW_IN");
@@ -319,5 +325,32 @@ public class RestartManager {
         taker.setLocked(false);
         taker.setTarget(pos);
         state.setFreeKickTaker(taker);
+    }
+
+    /**
+     * Push every opponent of `restartTeam` that is within 1 cell of `ballPos`
+     * back toward their own goal so the restart is never contested from
+     * close range. Used by all restart types (CORNER, GOAL_KICK, THROW_IN) —
+     * GOAL_KICK already had inline pushback; this helper unifies the
+     * behaviour across restart types so corners and throw-ins are not
+     * crowded either.
+     */
+    private void pushOpponentsAwayFromBall(Position ballPos, String restartTeam) {
+        String opponentTeam = "HOME".equals(restartTeam) ? "AWAY" : "HOME";
+        for (Player p : state.getPlayers()) {
+            if (!opponentTeam.equals(p.getTeam())) continue;
+            if (p.isSentOff() || p.isInjured()) continue;
+            double dist = SimUtils.distance(p.getPosition(), ballPos);
+            if (dist >= 1.0) continue;
+            boolean pHome = "HOME".equals(p.getTeam());
+            // Push the opponent AWAY from the ball toward their own goal.
+            double ownRow = pHome ? 1.0 : 7.0;
+            double dir = Math.signum(ownRow - ballPos.getRow());
+            double push = 1.0 - dist + 0.1;
+            double pushedRow = ballPos.getRow() + push * dir;
+            pushedRow = SimUtils.clamp(pushedRow, 1.0, 7.9);
+            p.setPosition(new Position(pushedRow, p.getPosition().getColumn()));
+            p.setTarget(null);
+        }
     }
 }

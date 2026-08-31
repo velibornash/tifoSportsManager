@@ -323,8 +323,8 @@ free, the threat override pulls the defender toward that opponent. Two
 overrides fire in priority order, with a **resolver** so only ONE defender
 claims each threat (no 3-player swarm):
 
-* **TYPE A — carrier in our proximity**: the ball carrier is within **0.2
-  cells** (~2.8 m) of this defender AND this defender can press them.
+* **TYPE A — carrier in our proximity**: the ball carrier is within **1.0
+  cell** (~14 m) of this defender AND this defender can press them.
   Approach the carrier wherever they are on the pitch (not just in our
   half). Priority 1.
 * **TYPE B — isolated opponent in our defensive third**: an opponent is in
@@ -332,7 +332,7 @@ claims each threat (no 3-player swarm):
   Press them to close the space. Priority 2.
 
 ```
-TYPE A   = (carrier is opponent) AND distance(defender, carrier) ≤ 0.2
+TYPE A   = (carrier is opponent) AND distance(defender, carrier) ≤ 1.0
 TYPE B   = isDefensiveThird(opponent, us) AND
            no other defender within 0.5 cells AND
            distance(defender, opponent) ≤ 1.5
@@ -346,6 +346,13 @@ claim    = isClosestEligibleDefender(threat, candidate) — only the
 Only **defenders** contest threats — non-defender outfield players keep their
 tactical position. Otherwise three players (a CB, a DM, and a winger all
 nearby) would all rush to the ball carrier at once.
+
+**Pressing speed:** a defender whose target moved due to the threat override
+(field `Player.threatOverrideActive`) moves at **1.6x** normal speed toward
+the carrier. Carrier and defender otherwise share the same 0.25-cells/tick
+speed, so a defender would chase from behind forever. The boost lets the
+defender close a 1.0-cell gap in ~20 ticks (~10 s) and reach DRIBBLE duel
+range (0.15 cells) before the carrier can carry far.
 
 ---
 
@@ -2283,7 +2290,12 @@ locked into the original carry for its full duration.
 
 ### When NOT carry
 
-* opponent close
+* **HARD RULE — never carry in own defensive last 2-3 rows** (HOME row ≤ 3.0,
+  AWAY row ≥ 6.0): CARRY is blocked outright (score -300) — the carrier must
+  pass or clear. Dribbling is an attacking-half option only, per user rule
+  "ne sme da dribla u nasa zadnja 2-3 reda".
+* opponent close — pressure scales with proximity (Σ(1.0-d)/cell within 1.0),
+  so a closing defender forces a PASS/SHOT release long before duel range
 * no space
 * player is weak at dribbling
 * much better PASS exists
@@ -2680,7 +2692,10 @@ This is why `Tackle/Duel` should be kept separate from `Interception`.
 Because a cell is 14 m × 10 m, a duel only fires when a defender is **physically
 on top of the ball**:
 
-* **DRIBBLE / RECEIVE_PASS / CHASE_BALL**: 0.2 cells (~2.8 m)
+* **DRIBBLE**: 0.15 cells (~2 m) — tighter tackle trigger; a defender who has
+  closed the gap via the TYPE A press override (1.0 cell awareness radius)
+  engages a carrier as soon as they reach tackling distance.
+* **RECEIVE_PASS / CHASE_BALL**: 0.2 cells (~2.8 m)
 * **SHOT block**: 0.3 cells (~4.2 m)
 
 A defender standing 1 cell away from a carrier cannot tackle — they have to

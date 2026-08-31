@@ -22,12 +22,25 @@ public class MatchSimulator {
     private static final int TICKS_PER_MINUTE = 40;
     private static final int CARRY_STUCK_MAX_TICKS = 20;
 
-    // A restart taker walks to the ball via the movement engine (no teleport).
+// A restart taker walks to the ball via the movement engine (no teleport).
     // RESTART_WALK_MAX_TICKS is a long last-resort guard: if after all those ticks
     // the taker is STILL genuinely collision-blocked at the spot, teleport him onto
     // the ball as an absolute deadlock safeguard — set pieces must never freeze.
-    private static final int RESTART_WALK_MAX_TICKS = 60;
-    private static final double RESTART_WALK_SPEED = 0.4;
+    private static final int RESTART_WALK_MAX_TICKS = 15;
+    // Walk speed raised 0.4 → 0.7 so a taker who is 4–5 cells from the ball
+    // reaches it in 6–8 ticks instead of 10–12 — visible "taker not arriving"
+    // freeze on the viewer. Combined with RESTART_TELEPORT_DISTANCE below, any
+    // taker > 4 cells away is teleported directly so the walk never looks stuck.
+    private static final double RESTART_WALK_SPEED = 0.7;
+    // Distance beyond which the taker is teleported directly to the ball instead
+    // of walked. Prevents the visible "taker not arriving" freeze when the
+    // nearest non-GK is far from the restart spot (e.g., a goal kick where the
+    // nearest defender started 8 cells upfield because of an opponent counter).
+    private static final double RESTART_TELEPORT_DISTANCE = 4.0;
+    // No-progress guard: if the taker has moved less than this many cells over
+    // NO_PROGRESS_WINDOW_TICKS, the taker is teleported — the walk is stuck.
+    private static final double RESTART_NO_PROGRESS_MIN_MOVE = 0.25;
+    private static final int RESTART_NO_PROGRESS_WINDOW = 4;
 
     private final long seed;
     private final SimulationRandom random;
@@ -153,6 +166,7 @@ public class MatchSimulator {
                 tickCornerHold = 0, tickPassFlight = 0, tickShotFlight = 0,
                 tickChase = 0, tickDecision = 0, tickFlightNoAction = 0, tickLoose = 0,
                 tickCarryStuck = 0, restartWalkTicks = 0;
+        Position restartWalkLastPos = null;
 
         while (totalTicks < maxTicks && !state.isMatchFinished()) {
             // Universal offside tracking — check ALL outfield players on BOTH
@@ -363,6 +377,34 @@ public class MatchSimulator {
                     Position ballPos = state.getBall().getPosition();
                     taker.setTarget(ballPos);
                     state.beginRound();
+
+                    // FAST-PATH: if the taker is far from the ball (> 4 cells), the
+                    // nearest non-GK happens to be a long way off (e.g. goal kick
+                    // after a 60-yard opposition move). Walking 4+ cells at
+                    // RESTART_WALK_SPEED (0.7) takes 6+ ticks and reads on the
+                    // viewer as "taker not arriving". Teleport the taker directly
+                    // to a legal spot 1 cell from the ball so the walk is short
+                    // and visually obvious. This is the ONLY teleport in the walk
+                    // flow — once within 4 cells we walk normally.
+                    double initialDist = SimUtils.distance(taker.getPosition(), ballPos);
+                    if (initialDist > RESTART_TELEPORT_DISTANCE) {
+                        // Snap the taker to a position 0.6 cells behind the ball
+                        // (toward his own goal) so he doesn't collide with the ball
+                        // itself, then walk the last short distance.
+                        boolean takerHome = "HOME".equals(taker.getTeam());
+                        double dirRow = takerHome ? -1 : 1;
+                        Position teleportSpot = new Position(
+                                SimUtils.clamp(ballPos.getRow() + dirRow * 0.6, 1.0, 7.0),
+                                ballPos.getColumn());
+                        taker.setPosition(teleportSpot);
+                        taker.setTarget(ballPos);
+                        logger.logInfo(state, "RESTART WALK FAST-PATH — " + taker.getLabel()
+                                + " teleported to " + teleportSpot
+                                + " (initial dist=" + String.format("%.2f", initialDist)
+                                + " > " + String.format("%.1f", RESTART_TELEPORT_DISTANCE) + ")",
+                                "RESTART", taker);
+                    }
+
                     // Push opponents back from the ball, move all other players toward
                     // their tactical targets, and walk the taker to the ball with the
                     // movement engine (corePrinciples §11 — no teleport). Teammates are
@@ -400,13 +442,31 @@ public class MatchSimulator {
                     }
                     boolean arrived = SimUtils.distance(taker.getPosition(), ballPos)
                             <= BallMovementEngine.PICKUP_DISTANCE;
-                    if (arrived || restartWalkTicks >= RESTART_WALK_MAX_TICKS) {
+                    // NO-PROGRESS GUARD: if the taker has moved less than
+                    // RESTART_NO_PROGRESS_MIN_MOVE cells over the last
+                    // RESTART_NO_PROGRESS_WINDOW ticks, force the taker onto the
+                    // ball — the walk is stuck (collision-deadlock or other
+                    // obstruction) and we must NOT let the restart freeze.
+                    boolean noProgress = false;
+                    if (!arrived && restartWalkLastPos != null
+                            && restartWalkTicks > 0
+                            && restartWalkTicks % RESTART_NO_PROGRESS_WINDOW == 0) {
+                        double movedSinceWindow = SimUtils.distance(
+                                taker.getPosition(), restartWalkLastPos);
+                        if (movedSinceWindow < RESTART_NO_PROGRESS_MIN_MOVE) {
+                            noProgress = true;
+                        }
+                        // Reset window anchor after each window evaluation
+                        restartWalkLastPos = taker.getPosition();
+                    }
+                    if (arrived || restartWalkTicks >= RESTART_WALK_MAX_TICKS || noProgress) {
                         // Give the ball. The engine walks the taker to the ball via
                         // the movement engine (no teleport). If after the long
                         // RESTART_WALK_MAX_TICKS guard the taker is STILL genuinely
                         // collision-blocked at the spot, teleport him onto the ball
                         // as an absolute deadlock safeguard — set pieces must never
-                        // freeze the match.
+                        // freeze the match. Also teleports on no-progress so a
+                        // collision-deadlock during the walk never freezes the match.
                         taker.setPosition(state.getBall().getPosition());
                         taker.setTarget(null);
                         state.getBall().setCarrier(taker);
@@ -420,13 +480,20 @@ public class MatchSimulator {
                         // the next decision (see decision block below).
                         state.setRestartFirstTouch(true);
                         restartWalkTicks = 0;
+                        restartWalkLastPos = null;
+                        String reason;
+                        if (arrived) reason = "";
+                        else if (noProgress) reason = " (forced — no progress in window)";
+                        else reason = " (forced after walk timeout)";
                         logger.logInfo(state, "RESTART TAKEN by " + taker.getLabel()
-                                + " at " + state.getBall().getPosition()
-                                + (arrived ? "" : " (forced after walk timeout)"),
+                                + " at " + state.getBall().getPosition() + reason,
                                 "RESTART", taker);
                         recorder.captureSnapshot(state);
                     } else {
                         restartWalkTicks++;
+                        if (restartWalkLastPos == null) {
+                            restartWalkLastPos = taker.getPosition();
+                        }
                         // Log periodically so the gap detector never sees a long
                         // silent stretch during the walk.
                         if (restartWalkTicks == 1 || (restartWalkTicks % 3 == 0)) {
@@ -1454,7 +1521,7 @@ public class MatchSimulator {
                         "VAR", shooter);
                 actionEngine.shotMissed();
                 Position oobEndpoint;
-                if (goal.getRow() == 7.0) {
+                if (goal.getRow() == 8.0) {
                     oobEndpoint = new Position(8.5, SimUtils.clamp(ball.getPosition().getColumn(), -0.5, 8.5));
                 } else {
                     oobEndpoint = new Position(-0.5, SimUtils.clamp(ball.getPosition().getColumn(), -0.5, 8.5));
@@ -1499,7 +1566,7 @@ public class MatchSimulator {
             // handleBallOutOfBounds awards the restart to the other team.
             // Determine OOB endpoint based on shot direction
             Position oobEndpoint;
-            if (goal.getRow() == 7.0) {
+            if (goal.getRow() == 8.0) {
                 oobEndpoint = new Position(8.5, SimUtils.clamp(shotTarget.getColumn(), -0.5, 8.5));
             } else {
                 oobEndpoint = new Position(-0.5, SimUtils.clamp(shotTarget.getColumn(), -0.5, 8.5));

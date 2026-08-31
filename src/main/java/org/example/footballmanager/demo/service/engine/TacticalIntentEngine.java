@@ -43,6 +43,7 @@ public class TacticalIntentEngine {
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
+            p.setThreatOverrideActive(false); // clear every round — re-set below if applicable
             Position desired;
             if ("GK".equals(p.getRole())) {
                 // Goalkeeper movement is a dedicated reactive override (user rule).
@@ -58,7 +59,15 @@ public class TacticalIntentEngine {
                 // don't leave acres of space behind the line.
                 tacticalDesired = applyDefensivePositionConstraint(p, tacticalDesired);
                 desired = applyOffsideRetreat(p, tacticalDesired);
+                Position beforeThreat = desired;
                 desired = applyThreatOverride(p, desired);
+                // Mark player as under threat override when the target changed
+                // (defender is actively pressing the ball carrier — MovementEngine
+                // uses this to apply a speed boost so the defender can close the gap).
+                if (desired.getRow() != beforeThreat.getRow()
+                        || desired.getColumn() != beforeThreat.getColumn()) {
+                    p.setThreatOverrideActive(true);
+                }
             }
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(desired); // Smooth movement to exact desired position
@@ -194,9 +203,13 @@ public class TacticalIntentEngine {
      * when an opponent presents a local threat.
      *
      * Priority order:
-     * 1. TYPE A — isolated ball carrier anywhere on the pitch (≤ 0.2 cells).
-     *    Approach them wherever they are — even in our attacking third if they
-     *    have broken through and no teammate is near.
+     * 1. TYPE A — ball carrier anywhere on the pitch (≤ 1.0 cell). Approach them
+     *    even if they're in the attacking third — a defender who sees the
+     *    carrier at 1.0 cell (~14 m) closes the gap so a duel can fire as soon
+     *    as the defender gets within DRIBBLE_DUEL_RADIUS (0.15 cells ≈ 2 m).
+     *    Was 0.2 cells — too tight, defenders couldn't engage a carrier who was
+     *    already carrying (the carrier slipped past before the defender could
+     *    close the gap).
      * 2. TYPE B — opponent in our defensive third, isolated from OUR OTHER
      *    defenders (no defender within 0.5 cells). Press them.
      *
@@ -231,10 +244,12 @@ public class TacticalIntentEngine {
 
             double distance = SimUtils.distance(player.getPosition(), opponent.getPosition());
 
-            // TYPE A: isolated ball carrier anywhere on the pitch — press them
-            // wherever they are, as long as they're within 0.2 cells of us.
+            // TYPE A: ball carrier anywhere on the pitch — press them
+            // whenever they are within 1.0 cell (~14 m). The defender moves
+            // toward the carrier so a DRIBBLE duel can fire as soon as the
+            // gap closes below DRIBBLE_DUEL_RADIUS (0.15 cells).
             boolean typeA = state.getBall().getCarrier() == opponent
-                    && distance <= 0.2;
+                    && distance <= 1.0;
 
             // TYPE B: opponent in our defensive third, no defender within 0.5
             // cells of them — press to close down the space.

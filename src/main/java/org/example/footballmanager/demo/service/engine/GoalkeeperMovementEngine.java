@@ -36,7 +36,9 @@ public class GoalkeeperMovementEngine {
     // Reaction: how close the ball must be to our goal for the keeper to move.
     private static final double REACT_DIST = 4.0;
     // Max distance off the goal line the keeper advances toward a shooter.
-    private static final double MAX_ADVANCE = 0.7;
+    // 1.0 cell = 14 m — absolute max the keeper may leave the line per user
+    // rule. Typical non-threat positioning stays well within 0.5 cells (7 m).
+    private static final double MAX_ADVANCE = 1.0;
     // GK cannot save twice within this many ticks (~2 seconds at 1 tick = 1.5s).
     public static final int SAVE_COOLDOWN_TICKS = 4;
 
@@ -86,12 +88,18 @@ public class GoalkeeperMovementEngine {
                     && ballDistGoal <= REACT_DIST;
 
             // Pull the keeper onto the ball->goal segment toward the ball.
-            //  - general play: small pull (angle-cut), keeper mostly on the line;
-            //  - immediate shooter threat: bigger pull (comes out to narrow angle).
-            double pull = shooterThreat
-                    ? 0.30 + 0.50 * closeness
-                    : 0.12 + 0.30 * closeness;
-            pull = Math.min(pull, MAX_ADVANCE);   // never run past the box
+            //  - general play: tiny pull (0.05..0.30 cells ≈ 0.7-4.2 m) — keeper
+            //    stays within the typical 0.5-cell (7 m) band from the goal line;
+            //  - immediate shooter threat: bigger pull (0.25..1.00 cells ≈ 3.5-
+            //    14 m) — comes out to narrow the angle only when a shot is
+            //    genuinely imminent.
+            double pull;
+            if (shooterThreat) {
+                pull = 0.25 + 0.75 * closeness;
+            } else {
+                pull = 0.05 + 0.25 * closeness;
+            }
+            pull = Math.min(pull, MAX_ADVANCE);   // never run past the box (14 m)
 
             double dr = ball.getRow() - goalLineRow;
             double dc = ball.getColumn() - GOAL_CENTRE_COL;

@@ -13,13 +13,21 @@ import java.util.List;
 public class DuelEngine {
 
     // Duel radii — 1 cell ≈ 14m × 10m (full field = 98m × 60m).
-// A real tackle/shoulder-charge only happens within ~2-3m, so duels trigger
-// only when a defender is extremely close to the ball/player.
+// DRIBBLE_DUEL_RADIUS 0.5 cells (~7 m) — a defender alongside the carrier
+// triggers the DRIBBLE duel. The user overrode the previous 0.15 (~2 m):
+// at 0.15 the defender had to be virtually on top of the carrier, so the
+// carrier and defender just ran overlapped in the same cell with no tackle,
+// and the carrier visually "stopped"/crowded. With 0.5 the defender who has
+// closed the gap via the TYPE A press override engages the carrier as soon as
+// they come alongside, and snapPlayersForDuel pulls both to the contest point.
     public static final double DEFAULT_DUEL_RADIUS = 0.2;
-    public static final double DRIBBLE_DUEL_RADIUS = 0.2;
+    public static final double DRIBBLE_DUEL_RADIUS = 0.5;
     public static final double RECEIVE_PASS_RADIUS = 0.2;
     private static final int DUEL_COOLDOWN_TICKS = 10;
-    private static final int DRIBBLE_DUEL_COOLDOWN_TICKS = 8;
+    // DRIBBLE cooldown 8 → 7 ticks so a defender can re-press within ~2 seconds
+    // after losing a tackle (matches the user rule "6-8 ticks cooldown" for the
+    // losing duelist — engaged within ~1.5 s of losing the ball).
+    private static final int DRIBBLE_DUEL_COOLDOWN_TICKS = 7;
 
     private final MatchState state;
     private final DuelResolver resolver;

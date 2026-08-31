@@ -76,42 +76,50 @@ const EV_ICON = {
 const IMPORTANT_EVENTS = new Set([
   'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
   'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
-  'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN',
+  'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN', 'KICKOFF',
+  'OFFSIDE',
   'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
   'VAR_GOAL_CONFIRMED', 'VAR_GOAL_OVERTURNED',
   'VAR_RED_CONFIRMED', 'VAR_RED_OVERTURNED',
   'VAR_PENALTY_CONFIRMED', 'VAR_PENALTY_OVERTURNED',
   'YELLOW_CARD', 'RED_CARD',
-  'DUEL_WON', 'POSSESSION_CHANGE',
+  'DUEL_START', 'DUEL_RESOLVED', 'DUEL_WON', 'CHASE_POSSESSION', 'POSSESSION_CHANGE',
   'FOUL', 'CARD',
 ]);
 
 const MINOR_EVENTS = new Set([
   'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
   'CARRY', 'CARRY_COMPLETED',
-  'DUEL_START', 'DUEL_RESOLVED',
-  'CHASE', 'CHASE_POSSESSION',
+  // Per-tick chase progress logs ("CHASE: Home 7 dist=0.234") are intentionally
+  // excluded — too noisy. CHASE_POSSESSION (the resolution event) IS shown.
+  'CHASE',
   'DECISION', 'ACTION_EXECUTION', 'ACTION_OUTCOME',
   'INFO', 'RESTART', 'POSSESSION', 'VAR_IN_PROGRESS',
 ]);
 
 // Compact timeline events — what the user actually wants to see at a glance
 // in the side panel. Verbose engine logs (DECISION, ACTION_EXECUTION,
-// ACTION_OUTCOME, DUEL_*, CHASE, INFO, RESTART, POSSESSION, VAR_IN_PROGRESS)
-// are still in the match.json and in the Java app log but are NOT shown
-// in the timeline — keeps the timeline short and readable.
+// ACTION_OUTCOME, INFO, RESTART, POSSESSION, VAR_IN_PROGRESS) are still in
+// the match.json and in the Java app log but are NOT shown in the timeline —
+// keeps the timeline short and readable. DUEL_START / DUEL_RESOLVED /
+// DUEL_WON, CHASE_POSSESSION, OFFSIDE, KICKOFF, and shot epilogue events ARE
+// shown so the user can see who contested whom, who won each challenge /
+// loose-ball chase, and the full shot outcome chain (SHOT → MISSED/SAVED/POST).
 const TIMELINE_EVENTS = new Set([
   'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
   'CARRY', 'CARRY_COMPLETED',
-  'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
+  'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED', 'SHOT_BLOCKED', 'SHOT_POST',
   'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
-  'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN',
+  'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN', 'KICKOFF',
+  'OFFSIDE',
   'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
   'VAR_GOAL_CONFIRMED', 'VAR_GOAL_OVERTURNED',
   'VAR_RED_CONFIRMED', 'VAR_RED_OVERTURNED',
   'VAR_PENALTY_CONFIRMED', 'VAR_PENALTY_OVERTURNED',
   'YELLOW_CARD', 'RED_CARD',
-  'DUEL_WON', 'POSSESSION_CHANGE',
+  'DUEL_START', 'DUEL_RESOLVED', 'DUEL_WON',
+  'CHASE_POSSESSION',
+  'POSSESSION_CHANGE',
   'FOUL', 'CARD',
 ]);
 
@@ -697,8 +705,8 @@ class MatchViewer {
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
 
-    // Grid overlay toggle (default off)
-    this.showGrid = false;
+    // Grid overlay toggle (default ON so users can verify row/column alignment)
+    this.showGrid = true;
 
     // Snapshot lookup: O(1) access
     this._snapIndex = null;  // Map<tick, snapshot>
@@ -981,10 +989,12 @@ class MatchViewer {
       if (ev.tick > toTick) break;
       if (ev.tick >= fromTick) {
         // Only show compact timeline events. Verbose engine logs (DECISION,
-        // ACTION_EXECUTION, ACTION_OUTCOME, DUEL_*, CHASE, INFO, RESTART,
-        // POSSESSION, VAR_IN_PROGRESS) are still in the app log / JSON but
-        // are NOT shown in the timeline — keeps the timeline short and
-        // readable.
+        // ACTION_EXECUTION, ACTION_OUTCOME, INFO, RESTART, POSSESSION,
+        // VAR_IN_PROGRESS) and per-tick chase progress logs are still in the
+        // app log / JSON but are NOT shown in the timeline — keeps the timeline
+        // short and readable. DUEL_START / DUEL_RESOLVED / DUEL_WON and
+        // CHASE_POSSESSION ARE shown so the user sees who contested whom
+        // and who won each challenge / loose-ball chase.
         if (TIMELINE_EVENTS.has(ev.type)) {
           this._addTimelineEvent(ev);
         }
@@ -1297,6 +1307,7 @@ class MatchViewer {
       const gridCheck = document.createElement('input');
       gridCheck.type = 'checkbox';
       gridCheck.id = 'gridToggle';
+      gridCheck.checked = true;  // Default ON so user can verify row/col alignment
       gridCheck.style.width = '14px';
       gridCheck.style.height = '14px';
       gridLabel.appendChild(gridCheck);

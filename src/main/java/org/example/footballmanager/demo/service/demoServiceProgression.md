@@ -570,3 +570,181 @@ can verify which source was loaded.
   Score now reasonable for skill-14 teams.
 - Player row/col ranges within [1.0, 8.0] × [1.0, 6.9] during normal play
   (set piece corner flags at row 0.5 / col 0.5 / 6.5 are intentional).
+
+### Bug Fixes & Tuning (Session 2026-08-31) — demo/service engine — pass 2
+
+#### Carry drives toward goal centre (no more corner runs)
+
+`ActionEngine.executeCarry()` was picking a random lateral direction
+(`dc ∈ {-1, 0, +1}`) regardless of whether the lane to goal was open — so
+wingers carrying down the flank could end up hugging the touchline into the
+corner. Fixed: when the carrier is in the attacking half AND the lane to
+goal centre is OPEN (no opponent within 1 cell of the carrier AND no opponent
+on the path to goal centre), the carry column is biased toward 3.5 (the goal
+mouth centre). New helper `isCarryLaneOpen(carrier, goal)` uses
+`SimUtils.pointSegmentDistance`.
+
+#### 16 m open-lane SHOT override
+
+Added a new shot trigger in `PlaymakingDecisionEngine.decide()`:
+**`closeWithOpenLane`** = `defendersBetween == 0` AND no non-GK opponent within
+1 cell of carrier AND path-to-goal clear AND `distToGoal ≤ 1.2 cells` (≈ 17 m).
+When true, the engine forces SHOT regardless of what the selector picked.
+Prevents wingers from carrying into the corner when the goal is in clear sight.
+
+#### Goalkeeper stays close to goal line
+
+`GoalkeeperMovementEngine` tightened:
+- `MAX_ADVANCE` 0.7 → **1.0** (14 m hard cap)
+- **Non-threat pull**: `0.12 + 0.30 × closeness` → **`0.05 + 0.25 × closeness`**
+  (0.05–0.30 cells ≈ 0.7–4.2 m off the line — typical GK position stays
+  well within the user-requested 0.5-cell / 7 m band)
+- **Shooter-threat pull**: `0.30 + 0.50 × closeness` → **`0.25 + 0.75 × closeness`**
+  capped at MAX_ADVANCE (0.25–1.0 cells ≈ 3.5–14 m off line — only steps
+  out when a shot is genuinely imminent)
+
+#### Top-2 box attacker priority in final 2 rows
+
+`PlaymakingDecisionEngine.scorePassOptions()` now precomputes the top-2
+teammates closest to the opponent goal who are standing inside the box area
+(HOME rows 5–7, AWAY rows 1–3). When the carrier is in the final two rows
+(row ≥ 6 HOME / row ≤ 2 AWAY) and a candidate receiver matches one of those
+top-2, the candidate gets **+80.0** score boost — dominates the standard
+lane+goal-proximity scoring so the carrier prefers the "two most dangerous
+in the box" over a 20 m pass back.
+
+#### 1.5-cell rule (21 m from goal — no backward passes)
+
+In the same `scorePassOptions()`, when the carrier is within 1.5 cells
+(≈ 21 m) of the opponent goal, every PASS option to a receiver that is
+NOT in the box area AND NOT forward of the carrier is **filtered out entirely**.
+The carrier's only options are SHOT, CARRY forward, or pass forward / into
+the box. No more wasteful backward/lateral passes from the shooting zone.
+
+#### CENTER target picks top-2 closest-to-goal box attacker in final 2 rows
+
+`ActionEngine.selectCenterTarget()` previously picked the best aerial winner
+across ALL box attackers. Now, when the carrier is in the final two rows,
+the target is restricted to the top-2 box attackers closest to the opponent
+goal, and the best aerial among them is chosen — a tall striker close to
+goal beats a small winger further away.
+
+#### Match Viewer side panel — duel + chase
+
+`static/demo/service/ui/js/viewer.js` `TIMELINE_EVENTS` extended to include
+`DUEL_START`, `DUEL_RESOLVED`, `CHASE_POSSESSION`. The per-tick `CHASE`
+progress logs (`CHASE: Home 7 dist=0.234`) remain excluded — too noisy.
+Sample side-panel output:
+- `DUEL_START`: `DRIBBLE Home 7 vs Away 4`
+- `DUEL_RESOLVED`: `DRIBBLE Home 7 vs Away 4 | winner=Home 7 (att=X def=Y)`
+- `CHASE_POSSESSION`: `CHASE RESOLUTION: Home 7 | within possession radius`
+
+### Verification (2026-08-31 pass 2)
+- `mvn compile -DskipTests` — BUILD SUCCESS (595 source files)
+
+### Bug Fixes & Tuning (Session 2026-08-31) — demo/service engine — pass 3
+
+#### Side panel timeline — OFFSIDE + shot epilogue events
+
+`static/demo/service/ui/js/viewer.js` `TIMELINE_EVENTS` extended with:
+- `OFFSIDE` — emitted by `OffsideService` with description `INDIRECT FREE KICK for <team> — offside <player> (margin=X.XX)` so the viewer regex can extract player + margin for the yellow-flag overlay.
+- `SHOT_BLOCKED`, `SHOT_POST` — full shot outcome chain (SHOT → MISSED / SAVED / BLOCKED / POST) so the side panel always shows the epilogue between a shot and the next restart.
+
+#### Tighter offside filter on passes
+
+`PlaymakingDecisionEngine.isClearlyOffsideAtPass()` margin **0.5 → 0.2 cells**
+(≈ 2.8 m). A receiver more than 0.2 cells ahead of the second-to-last
+defender is hard-filtered out — no longer offered as a PASS option. Marginal
+offside (≤ 0.2 cells) still goes through so the referee / VAR path can decide.
+Prevents the engine from picking a marginal-offside receiver that the
+referee flags the moment the pass is released.
+
+#### Restart walk — fast-path + faster walk speed
+
+`MatchSimulator` restart-walk block was reading as "taker never arrives" on the
+viewer when the nearest non-GK was > 4 cells from the restart spot. Fixed two
+ways:
+- `RESTART_WALK_SPEED` 0.4 → **0.7** cells/tick so a normal 4-cell walk
+  takes ~6 ticks instead of ~10.
+- **Fast-path teleport**: if `initialDist > 4.0` cells the taker is snapped
+  to a spot 0.6 cells behind the ball (toward his own goal), then walks the
+  last short distance normally. Emits `RESTART WALK FAST-PATH` log so the
+  gap detector sees the move.
+- Bumped `RESTART_TELEPORT_DISTANCE = 4.0` cells as the new constant —
+  any taker beyond that is teleported.
+
+#### Unified pushback for all restarts (CORNER, GOAL_KICK, THROW_IN)
+
+`RestartManager.handleBallOutOfBounds` previously only pushed opponents away
+from the ball inside the GOAL_KICK branch (with inline code). Corners and
+throw-ins could be contested from inside 1 cell. Extracted the pushback to a
+shared `pushOpponentsAwayFromBall(ballPos, restartTeam)` helper and now called
+from all three restart types (CORNER, GOAL_KICK, THROW_IN). GOAL_KICK still
+keeps its inline box-clear behaviour (pushes AWAY opponents inside the AWAY
+penalty box to row 3+), but the new helper handles the universal "within 1
+cell of ball → push toward own goal" rule uniformly.
+
+### Verification (2026-08-31 pass 3)
+- `mvn compile -DskipTests` — BUILD SUCCESS (595 source files)
+
+### Bug Fixes & Tuning (Session 2026-08-31) — demo/service engine — pass 4
+
+#### KICKOFF in Match Viewer side panel
+- `viewer.js` `IMPORTANT_EVENTS` and `TIMELINE_EVENTS` extended with `'KICKOFF'` so the kickoff appears in the side panel timeline.
+
+#### Wider press awareness — TYPE A radius 0.2 → 1.0 cell (~14 m)
+- `TacticalIntentEngine.applyThreatOverride()` TYPE A radius **0.2 → 1.0 cell**. A defender now presses the ball carrier from 1.0 cell (~14 m) away and closes the gap, so a DRIBBLE duel fires as soon as the defender reaches tackling distance. Previously 0.2 cells was too tight — the carrier slipped past before the defender could engage.
+
+#### Tighter dribble tackle trigger + faster re-press
+- `DuelEngine.DRIBBLE_DUEL_RADIUS` **0.2 → 0.15 cells** (~2 m) — a tighter tackle window once the defender is on top of the carrier.
+- `DuelEngine.DRIBBLE_DUEL_COOLDOWN_TICKS` **8 → 7** — a defender who loses a tackle can re-engage within ~2 seconds (matches the "6-8 ticks" loser-block rule; `MatchState.DUEL_LOSS_TICKS = 6`).
+
+#### HARD RULE — no carry in own defensive last 2-3 rows
+- `PlaymakingDecisionEngine.scoreCarry()` returns **-300** when the carrier is in its own defensive zone (HOME row ≤ 3.0, AWAY row ≥ 6.0). Carrying in the defensive third is never legal — the carrier must pass or clear. Dribbling is only permitted in the opponent's half / middle third.
+
+#### Distance-weighted carry pressure (release the ball earlier)
+- `scoreCarry()` pressure changed from a **flat count** of opponents within 0.5 cells to a **proximity-weighted sum**: `Σ(1.0 - distance)` over opponents within 1.0 cell, scaled by **-50**. A defender at 0.2 cells contributes far more pressure than one at 0.9, so the carrier releases the ball (pass/shot) as soon as a defender closes, instead of holding until 0.5 cells. Open-space carry bonus stays at +60 when nobody is within 1.0 cell.
+
+#### Defender press speed boost — catch the carrier
+- `TacticalIntentEngine.assignTargets()` now marks a defender with `Player.threatOverrideActive = true` whenever the threat override changes its target.
+- `MovementEngine.moveAllTowardTargets()` applies a **1.6x** speed multiplier to threat-overridden non-carriers. Carrier and defender previously moved at the same 0.25 cells/tick, so the gap never closed and the defender chased from behind forever. With 1.6x the defender gains ~0.15 cells/tick and closes a 1.0-cell gap in ~20 ticks (~10 s) — reaching duel range before the carrier can carry far, per the user rule "defender who sees carrier within 1 cell moves toward him; duel fires at ~0.10-0.15 cells when circles touch".
+
+#### Column 6 reachability audit (no bug found)
+- Verified from `match.json`: the right midfielder (Home FC 9, role MR) **does** reach columns 6.0–6.6 during normal play (max HOME col 6.57). The tactical rules (`tactics_fallback.json`) assign MR to `CELL_6_5` (= col 6.5) in the final right third, and `MovementEngine` clamps to `[1.0, 6.9]` which permits it. The viewer `toCanvas()` maps col 6.6 to inside the touchline (col 7.0). No rendering or movement bug found for column 6.
+
+#### Verification (2026-08-31 pass 4)
+
+### Bug Fixes & Tuning (2026-08-31 — user reported) — pass 5
+
+#### CRITICAL — shot miss direction bug (shot fired toward own goal)
+After the coordinate-system pass moved `GOAL_POSITION` to row **8.0**, three stale end-line
+checks still read `== 7.0`. A HOME shot miss therefore pushed the ball to row **-0.5**
+(behind HOME's own goal) instead of row 8.5 — so a "SHOT by Home" became a CORNER for the
+opposition at the wrong end. The user saw exactly this: Home FC 10 shot near the AWAY goal
+and the ball physically travelled BACKWARD to his own goal line for a corner.
+Fixed `logicalGoal.getRow() == 7.0 → 8.0` (`ActionEngine.shotMissed()`) and
+`goal.getRow() == 7.0 → 8.0` (two sites in `MatchSimulator` — VAR-overturned goal OOB and
+plain shot-miss OOB).
+
+#### DRIBBLE duel radius 0.15 → 0.5 cells (~7 m) — user override
+- `DuelEngine.DRIBBLE_DUEL_RADIUS` **0.15 → 0.5**. At 0.15 the defender had to be almost
+  on top of the carrier, so a pressing defender and carrier just ran overlapped in the same
+  cell with no tackle, and the carrier looked stopped/crowded on the UI.
+- With 0.5 the defender who has closed the gap via the TYPE A press override (1.0 cell)
+  engages the carrier as soon as they come alongside. `snapPlayersForDuel` then pulls both
+  contestants 60% toward the contest point so they visibly collide; the winner takes the
+  ball, the loser is blocked for `State.DUEL_LOSS_TICKS` (6).
+
+#### CENTER/cross never targets a clearly-offside attacker
+- `ActionEngine.selectCenterTarget()` now skips any box attacker who is clearly offside
+  (`isClearlyOffside(passer, receiver)`, margin > 0.2 cells beyond the second-to-last
+  defender — same threshold as the PASS decision filter). Prevents a winger delivering a
+  cross into an obviously-offside striker who then plays on.
+- The execution-time whistle (`OffsideService.checkOffside`) remains the backstop for
+  marginal ≤ 0.2 cases (referee/VAR decision).
+
+#### Verification (2026-08-31 pass 5)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- Replay audit of `match.json`: no CARRY action shows a stationary carrier (carrier always
+  moves ~0.25 cells/tick within a carry). The perceived "carry stop" was the defender
+  running overlapped in the same cell without a duel — addressed by the 0.5 dribble radius.
