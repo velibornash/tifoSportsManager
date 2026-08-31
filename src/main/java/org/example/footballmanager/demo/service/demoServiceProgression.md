@@ -748,3 +748,47 @@ plain shot-miss OOB).
 - Replay audit of `match.json`: no CARRY action shows a stationary carrier (carrier always
   moves ~0.25 cells/tick within a carry). The perceived "carry stop" was the defender
   running overlapped in the same cell without a duel — addressed by the 0.5 dribble radius.
+
+### Bug Fixes & Tuning (2026-09-01 — user reported) — pass 6
+
+#### Pass scoring rebalanced — lane no longer dominant
+`PlaymakingDecisionEngine.scorePassOptions()` lane weight **±150 → ±80**. Previously a
+clean-laned backward pass scored ~150 and beat every other factor; the carrier recycled to
+a "safe" defender even when a free forward attacker was available. Re-balanced so forward
+bias + receiver openness + goal proximity can tip the decision.
+
+#### Forward bias added
+- Forward pass (receiver row beyond carrier row in attack direction): **+50**
+- Lateral pass: **-10**
+- Backward pass: **-80**
+
+This is the deciding factor when multiple receivers have a clean lane — the ball must move
+toward the opponent goal, not back. A backward pass to an isolated fullback (~35×25 m of
+space, openness ≥ 2 cells) is still viable — `openScore` adds ~20 so the total stays
+positive (around +20 to +30). Per user clarification: "nije problem da izabere pass
+unazad ako je bas bas sam igrac... samo nikako ne stoperu koji je pod pritiskom".
+
+#### Receiver-pressure penalty
+A receiver with an opponent within 0.5 cells gets a flat **-40** score. Previously only the
+openness component was reduced (capped at 40), so a pass to a heavily-marked receiver
+could still score 110+. Now a pressured receiver (typical case: center-back with attacker
+on his back) cannot beat a free forward attacker.
+
+#### Goal-proximity weight 1.5 → 3.5 for forward passes only
+A pass to row 7 (HOME attacking) now scores +21 vs row 3.5's +8.75 — real bite. Backward
+and lateral passes don't collect proximity points (kept at 0) — only forward progression
+rewards the carrier for advancing the ball.
+
+#### GK-on-wrong-post shot boost +45
+`scoreShot()` now detects when the GK is close to the goal line but clearly off-centre
+(col ≤ 3.1 or ≥ 3.9, hugging a post). The far post is wide open. Combined with
+`ActionEngine.executeShot()`'s existing far-post aim, even an average finisher puts the
+ball in the empty corner. The carrier now takes the shot instead of recycling a backward
+pass with the GK glued to the wrong post.
+
+#### Verification (2026-09-01 pass 6)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- Replay audit of the H-7-at-(3.93, 2.93) decision: with the new weights, H-10
+  (forward, free, just received ball) scores **+147.8** and wins decisively over H-4
+  (backward, AWAY 10 pressing at 0.5 cells) at **+3.4**. Free backward (H-5 isolated
+  at row 3.0) still scores **+13.4** as the user's clarified fallback case.

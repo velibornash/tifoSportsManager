@@ -609,34 +609,68 @@ public class PlaymakingDecisionEngine {
                 if (!inBoxArea && !forwardOfCarrier) continue;
             }
 
-            // --- Quality scoring (user rule, lane-dominant) ---
+            // --- Quality scoring ---
             double receiverRow = receiver.getPosition().getRow();
 
-            // 1) THE LANE — dominant factor. The pass line is the imaginary line
-            //    carrier→receiver; a defender ON that line (within 0.3 cells)
-            //    breaks the pass. A clean lane is heavily rewarded, a blocked one
-            //    heavily penalised because lane quality is the deciding reason a
-            //    pass is attempted.
+            // 1) THE LANE — important factor but no longer dominant. The pass line
+            //    is the imaginary line carrier→receiver; a defender ON that line
+            //    (within 0.3 cells) breaks the pass. We previously used ±150, which
+            //    crushed every other factor and let a clean-laned backward pass
+            //    beat a forward pass to a free attacker. Re-balanced to ±80 so
+            //    forward bias + receiver openness can tip the decision.
             boolean clearLane = isPassingLaneClear(carrier, receiver, ctx.opponents());
-            double laneScore = clearLane ? 150.0 : -150.0;
+            double laneScore = clearLane ? 80.0 : -80.0;
 
-            // 2) Goal proximity — closer to the opponent goal is better, ONLY
-            //    when the lane is clean (a blocked progressive pass is pointless).
+            // 2) Forward bias (user rule). A real playmaker progresses the ball.
+            //    Forward pass +50, lateral -10, backward -80. This is the deciding
+            //    factor when multiple receivers have a clean lane: the ball must
+            //    move toward the opponent goal, not back to a "safe" defender.
+            double rowDelta = home
+                    ? (receiverRow - carrierRow)
+                    : (carrierRow - receiverRow);
+            double forwardBias;
+            if (rowDelta > 0.5) {
+                forwardBias = 50.0;
+            } else if (rowDelta > -0.5) {
+                forwardBias = -10.0; // lateral pass slightly discouraged
+            } else {
+                forwardBias = -80.0; // backward pass heavily penalised
+            }
+
+            // 3) Goal proximity — only counts when the pass is forward. Previously
+            //    scaled as 1.5 × (receiverRow - 1.0), which meant even a forward pass
+            //    to row 3.5 got +3.75 vs +9 for row 7 — a marginal difference. Now
+            //    scaled at 3.5 so the goal-proximity term has real bite (a pass to
+            //    row 7 gets +21 vs row 3.5 +8.75). Still gated by a clean lane.
             double goalProximity = home ? (receiverRow - 1.0) : (7.0 - receiverRow);
-            double goalProximityScore = (clearLane ? Math.max(0, goalProximity) * 1.5 : 0.0);
+            double goalProximityScore = clearLane && rowDelta > 0.0
+                    ? Math.max(0, goalProximity) * 3.5
+                    : 0.0;
 
-            // 3) Small boost when the receiver is already inside the shooting zone
+            // 4) Small boost when the receiver is already inside the shooting zone
             //    and the lane to him is clean (a direct scoring opportunity opens).
             boolean receiverInShootingZone = home
                     ? receiverRow >= ActionEngine.SHOOT_MIN_ROW
                     : receiverRow <= 8 - ActionEngine.SHOOT_MIN_ROW;
-            double shootingZoneBoost = (clearLane && receiverInShootingZone) ? 20.0 : 0.0;
+            double shootingZoneBoost = (clearLane && receiverInShootingZone) ? 25.0 : 0.0;
 
-            // 4) Receiver openness at 0.3 cells.
+            // 5) Receiver openness at 0.3 cells.
             double openness = receiverOpenness(receiver, ctx.opponents());
             double openScore = openness;
 
-            // 5) Box-attacker priority (user rule): in the final two rows the
+            // 6) Receiver-pressure penalty (user rule). An opponent within 0.5 cells
+            //    is "right on" the receiver — a pass there is contested and likely
+            //    loses the ball. Previously this only reduced openness (0-40 cap),
+            //    so a pass to a heavily-marked receiver could still score 110+. Now
+            //    apply a flat -40 so a pressured receiver can never beat a free one.
+            double nearestOppDist = Double.MAX_VALUE;
+            for (Player opp : ctx.opponents()) {
+                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
+                if (d < nearestOppDist) nearestOppDist = d;
+            }
+            double receiverPressurePenalty = nearestOppDist < 0.5 ? -40.0 : 0.0;
+
+            // 7) Box-attacker priority (user rule): in the final two rows the
             //    carrier must prefer the two attackers closest to the opponent
             //    goal over a backward pass. A big bonus here outweighs lane /
             //    proximity scoring so a top-2 box attacker beats a clean-laned
@@ -646,8 +680,9 @@ public class PlaymakingDecisionEngine {
                 boxAttackerBoost = 80.0;
             }
 
-            double score = laneScore + goalProximityScore + shootingZoneBoost
-                    + openScore + boxAttackerBoost;
+            double score = laneScore + forwardBias + goalProximityScore
+                    + shootingZoneBoost + openScore + receiverPressurePenalty
+                    + boxAttackerBoost;
 
             // Pass exchange limit: prevent ping-pong between the same pair.
             if (isPassExchangeLimitReached(carrier.getId(), receiver.getId())) {
@@ -926,6 +961,23 @@ private DecisionOption scoreShot(DecisionContext ctx) {
             if (!gkInLane) gkOutOfLane = Math.min(20.0, (gkDistToGoal - 1.2) * 15.0);
         }
 
+        // 4b) GK on the wrong post (off-centre near the goal line) — the far post
+        //    is wide open. A shot aimed there is a near-certain goal even with an
+        //    average finisher. Boost the shot score so the carrier takes the
+        //    opportunity instead of recycling a backward pass. Detection: GK is
+        //    close to the goal line AND clearly off-centre (col ≤ 3.1 or ≥ 3.9,
+        //    i.e. hugging a post).
+        double gkWrongPostBoost = 0.0;
+        if (oppGK != null) {
+            double gkCol = oppGK.getPosition().getColumn();
+            double colOffset = Math.abs(gkCol - 3.5);
+            if (gkDistToGoal < 1.5 && colOffset > 0.4) {
+                // Far-post aim is implemented in ActionEngine.executeShot(), so
+                // even a mid-power strike lands in the open corner. Big boost.
+                gkWrongPostBoost = 45.0;
+            }
+        }
+
         // 5) Striker — a small boost for better finishers; the empty-lane forced
         //    shot overrides this so even a weak striker shoots on frame.
         double strikerBoost = carrier.getSkills().striker() * 0.6;
@@ -935,7 +987,7 @@ private DecisionOption scoreShot(DecisionContext ctx) {
         double pressurePenalty = ctx.pressure() * 0.05;
 
         double score = goalProximity + angleScore + strikerBoost - defenderPenalty
-                - pressurePenalty + gkOutOfLane;
+                - pressurePenalty + gkOutOfLane + gkWrongPostBoost;
 
         // --- EMPTY-GOAL FORCED SHOT (user rule) ---
         // If the lane to goal has NOBODY — no goalkeeper and no outfield
