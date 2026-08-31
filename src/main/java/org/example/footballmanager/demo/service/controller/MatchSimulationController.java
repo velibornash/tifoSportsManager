@@ -161,30 +161,33 @@ public class MatchSimulationController {
     }
 
     private static PlayerSkills randomSkills(String roleLine, Random rng) {
+        // Default skill baseline for MatchViewer: all players start at 14 with
+        // ±2 random variation per attribute, plus role-specific bonuses so the
+        // match feels balanced (GKs better at keeper, ATT better at striker, etc.).
         return switch (roleLine) {
             case "GK" -> new PlayerSkills(
-                    10 + rng.nextInt(8), 12 + rng.nextInt(6),
-                    14 + rng.nextInt(6), 8 + rng.nextInt(8),
-                    8 + rng.nextInt(8), 6 + rng.nextInt(8),
-                    2 + rng.nextInt(6), 10 + rng.nextInt(8)
+                    14 + rng.nextInt(5) - 2, 14 + rng.nextInt(5) - 2,
+                    16 + rng.nextInt(5) - 2, 12 + rng.nextInt(5) - 2,
+                    12 + rng.nextInt(5) - 2, 10 + rng.nextInt(5) - 2,
+                    4 + rng.nextInt(4), 14 + rng.nextInt(5) - 2
             );
             case "DEF" -> new PlayerSkills(
-                    10 + rng.nextInt(8), 12 + rng.nextInt(6),
-                    4 + rng.nextInt(6), 8 + rng.nextInt(8),
-                    8 + rng.nextInt(8), 8 + rng.nextInt(8),
-                    4 + rng.nextInt(6), 12 + rng.nextInt(8)
+                    14 + rng.nextInt(5) - 2, 14 + rng.nextInt(5) - 2,
+                    6 + rng.nextInt(4), 12 + rng.nextInt(5) - 2,
+                    12 + rng.nextInt(5) - 2, 12 + rng.nextInt(5) - 2,
+                    6 + rng.nextInt(4), 16 + rng.nextInt(5) - 2
             );
             case "MID" -> new PlayerSkills(
-                    10 + rng.nextInt(8), 12 + rng.nextInt(6),
-                    4 + rng.nextInt(6), 10 + rng.nextInt(8),
-                    12 + rng.nextInt(8), 10 + rng.nextInt(8),
-                    8 + rng.nextInt(8), 8 + rng.nextInt(8)
+                    14 + rng.nextInt(5) - 2, 14 + rng.nextInt(5) - 2,
+                    6 + rng.nextInt(4), 14 + rng.nextInt(5) - 2,
+                    16 + rng.nextInt(5) - 2, 14 + rng.nextInt(5) - 2,
+                    10 + rng.nextInt(5) - 2, 10 + rng.nextInt(5) - 2
             );
             default /* ATT */ -> new PlayerSkills(
-                    12 + rng.nextInt(8), 10 + rng.nextInt(8),
-                    2 + rng.nextInt(4), 10 + rng.nextInt(8),
-                    10 + rng.nextInt(8), 8 + rng.nextInt(8),
-                    12 + rng.nextInt(8), 6 + rng.nextInt(6)
+                    14 + rng.nextInt(5) - 2, 14 + rng.nextInt(5) - 2,
+                    4 + rng.nextInt(4), 14 + rng.nextInt(5) - 2,
+                    14 + rng.nextInt(5) - 2, 12 + rng.nextInt(5) - 2,
+                    16 + rng.nextInt(5) - 2, 8 + rng.nextInt(4)
             );
         };
     }

@@ -144,12 +144,27 @@ public class ExecutionQuality {
 
         boolean onTarget = random.nextDouble() < onTargetProb;
 
-        Position actualTarget;
+        Position actualTarget = goalPosition;
         if (onTarget) {
-            // Ball reaches the goal mouth — whether it is a goal or a save is
-            // decided downstream (handleShotArrival) from keeper position/skill.
-            actualTarget = goalPosition;
-        } else {
+            // Ball reaches the goal mouth — aim at the FAR post relative to the
+            // GK position (or the centre if no GK). A well-positioned GK on
+            // the near post means the far post is open — the player naturally
+            // aims there. Without this, every on-target shot goes to the
+            // centre and any GK on the near post can save it.
+            // Goal width is 1 cell (col 3.0 to col 4.0, centre col 3.5) — the
+            // far-post aim stays within the actual goal mouth.
+            double targetCol = goalPosition.getColumn();
+            if (goalkeeper != null && shotOrigin != null) {
+                double gkCol = goalkeeper.getPosition().getColumn();
+                double gkColOffset = gkCol - goalPosition.getColumn();
+                if (Math.abs(gkColOffset) > 0.5) {
+                    // Far post: opposite column from GK, clamped to goal mouth
+                    // (col 3.0 to col 4.0 — goal width is 1 cell, ~10m).
+                    double farCol = goalPosition.getColumn() - gkColOffset;
+                    targetCol = SimUtils.clamp(farCol, 3.0, 4.0);
+                }
+            }
+            actualTarget = new Position(goalPosition.getRow(), targetCol);
             // Scattered miss (wide / over the bar) — a genuine bad finish.
             double missMax = (0.35 + (20 - skill) * 0.05)
                     * (1.0 + (1.0 - angleFactor))

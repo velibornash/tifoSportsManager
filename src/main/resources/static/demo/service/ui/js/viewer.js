@@ -95,6 +95,26 @@ const MINOR_EVENTS = new Set([
   'INFO', 'RESTART', 'POSSESSION', 'VAR_IN_PROGRESS',
 ]);
 
+// Compact timeline events — what the user actually wants to see at a glance
+// in the side panel. Verbose engine logs (DECISION, ACTION_EXECUTION,
+// ACTION_OUTCOME, DUEL_*, CHASE, INFO, RESTART, POSSESSION, VAR_IN_PROGRESS)
+// are still in the match.json and in the Java app log but are NOT shown
+// in the timeline — keeps the timeline short and readable.
+const TIMELINE_EVENTS = new Set([
+  'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
+  'CARRY', 'CARRY_COMPLETED',
+  'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
+  'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
+  'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN',
+  'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
+  'VAR_GOAL_CONFIRMED', 'VAR_GOAL_OVERTURNED',
+  'VAR_RED_CONFIRMED', 'VAR_RED_OVERTURNED',
+  'VAR_PENALTY_CONFIRMED', 'VAR_PENALTY_OVERTURNED',
+  'YELLOW_CARD', 'RED_CARD',
+  'DUEL_WON', 'POSSESSION_CHANGE',
+  'FOUL', 'CARD',
+]);
+
 function classifyEvent(ev) {
   const t = ev.type;
   if (t === 'GOAL' || t === 'GoalEvent') return 'goal';
@@ -960,7 +980,14 @@ class MatchViewer {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
       if (ev.tick >= fromTick) {
-        this._addTimelineEvent(ev);
+        // Only show compact timeline events. Verbose engine logs (DECISION,
+        // ACTION_EXECUTION, ACTION_OUTCOME, DUEL_*, CHASE, INFO, RESTART,
+        // POSSESSION, VAR_IN_PROGRESS) are still in the app log / JSON but
+        // are NOT shown in the timeline — keeps the timeline short and
+        // readable.
+        if (TIMELINE_EVENTS.has(ev.type)) {
+          this._addTimelineEvent(ev);
+        }
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
           this._flashStart = performance.now();

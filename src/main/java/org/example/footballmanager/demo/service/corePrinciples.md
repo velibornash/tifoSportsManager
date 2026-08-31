@@ -108,20 +108,27 @@ This is a fundamental principle, not an exception.
 The playable pitch is a **continuous** grid (manufactured coordinates are used
 directly, never cell-centre snapping):
 
-* **rows 1–7** (horizontal axis, left-to-right in the viewer) are the playing
-  field; the row axis is the primary forward/backward axis;
-* **columns 1–6** (vertical axis, top-to-bottom in the viewer) are the playing
-  width.
+* **rows 1–7** are the playing field. Each row covers a `[n.00, n+1.00)` range
+  with cell **centre** at `n + 0.5` (e.g. row 7 spans `[7.00, 7.99]`, centre
+  `7.5`). The row axis is the primary forward/backward axis;
+* **columns 1–6** are the playing width. Each column covers a `[m.00, m+1.00)`
+  range with cell centre at `m + 0.5` (e.g. col 6 spans `[6.00, 6.99]`, centre
+  `6.5`).
 
 **Out-of-bounds zones (explicit):**
 
-* **row `0`** is the OOB row **behind the HOME goal**;
-* **row `8`** is the OOB row **behind the AWAY goal**;
-* **column `0`** is OOB beside the **left touchline** (from HOME's perspective);
-* **column `7`** is OOB beside the **right touchline** (from HOME's perspective).
+* **row ≤ 0.99** is the OOB zone **behind the HOME goal** (corner flags etc.);
+* **row ≥ 8.01** is the OOB zone **behind the AWAY goal**;
+* **column ≤ 0.99** is OOB beside the **left touchline** (from HOME's perspective);
+* **column ≥ 7.01** is OOB beside the **right touchline**.
 
-**Goal position:** both goals sit on their goal line at the **column 3.5**
-(centre of the 1–6 width): HOME's goal at **(1, 3.5)**, AWAY's goal at **(7, 3.5)**.
+**Goal lines and goal mouth:**
+
+* HOME goal line at **row 1.0**, AWAY goal line at **row 8.0**.
+* The goal mouth itself is the 1-cell column span centred on **column 3.5**
+  (i.e. valid goal-column range is col 3.0–4.0 — the goal is 1 cell ≈ 10 m wide).
+* The goal is centred at `column 3.5` for both teams; the home goal mouth
+  covers col 3.0–4.0 at row 1.0, the away goal mouth covers col 3.0–4.0 at row 8.0.
 
 **Real-world scale:** the playable grid is **7 rows × 6 columns** and maps to a
 pitch of **98 metres × 60 metres**, so **each cell is a 14 m × 10 m rectangle**
@@ -136,11 +143,13 @@ current precise `Position` of the entities involved — never the containing cel
 
 Team orientation is fixed for the whole match:
 
-* **HOME team** starts on the left, defends the goal at **row 1**, and attacks toward **row 7**;
-* **AWAY team** starts on the right, defends the goal at **row 7**, and attacks toward **row 1**;
-* the centre spot is at **(4, 3.5)**.
+* **HOME team** starts on the left, defends the goal at **row 1.0**, and attacks
+  toward **row 8.0**;
+* **AWAY team** starts on the right, defends the goal at **row 8.0**, and attacks
+  toward **row 1.0**;
+* the centre spot is at **(4.0, 3.5)** — the middle of the field.
 
-This convention is authoritative for all tactical, movement, offside, and restart calculations.  Functions named `goalPositionFor(team)` return the goal that team is **attacking** (row 7 for HOME, row 1 for AWAY), not the goal it defends. A goalkeeper defends the goal that its own team defends: HOME's goalkeeper defends **(1, 3.5)**, AWAY's goalkeeper defends **(7, 3.5)**.
+This convention is authoritative for all tactical, movement, offside, and restart calculations.  Functions named `goalPositionFor(team)` return the goal that team is **attacking** (row 8.0 for HOME, row 1.0 for AWAY), not the goal it defends. A goalkeeper defends the goal that its own team defends: HOME's goalkeeper defends **(1.0, 3.5)**, AWAY's goalkeeper defends **(8.0, 3.5)**.
 
 ---
 
@@ -306,6 +315,37 @@ Threat may depend on:
 Threat is contextual and dynamic.
 
 A threat can override normal tactical positioning when its urgency exceeds the player's current tactical responsibility.
+
+### Threat Override — `applyThreatOverride` in `TacticalIntentEngine`
+
+When a defender's normal tactical position would leave a dangerous opponent
+free, the threat override pulls the defender toward that opponent. Two
+overrides fire in priority order, with a **resolver** so only ONE defender
+claims each threat (no 3-player swarm):
+
+* **TYPE A — carrier in our proximity**: the ball carrier is within **0.2
+  cells** (~2.8 m) of this defender AND this defender can press them.
+  Approach the carrier wherever they are on the pitch (not just in our
+  half). Priority 1.
+* **TYPE B — isolated opponent in our defensive third**: an opponent is in
+  our defensive third AND no other defender is within **0.5 cells** of them.
+  Press them to close the space. Priority 2.
+
+```
+TYPE A   = (carrier is opponent) AND distance(defender, carrier) ≤ 0.2
+TYPE B   = isDefensiveThird(opponent, us) AND
+           no other defender within 0.5 cells AND
+           distance(defender, opponent) ≤ 1.5
+priority = A=1, B=2, neither=∞
+target   = threat with best priority, ties broken by distance
+claim    = isClosestEligibleDefender(threat, candidate) — only the
+           closest eligible defender (CB/DEF/LB/RB/DM, not locked/sent-off/
+           injured/not carrier/not active-chaser) becomes the new target
+```
+
+Only **defenders** contest threats — non-defender outfield players keep their
+tactical position. Otherwise three players (a CB, a DM, and a winger all
+nearby) would all rush to the ball carrier at once.
 
 ---
 
@@ -1974,34 +2014,37 @@ The specification draws on the current IFAB framework 2026/27, particularly Laws
 ## 47.0 Pitch Orientation
 
 ```text
-AWAY GOAL
-row 7
-────────────────────────
+  OOB row 0
+─────────────
+AWAY GOAL    row 8 (goal line)
+─────────────
+row 7        (centre 7.5 — last playable row, AWAY GK zone)
 row 6
 row 5
-row 4       CENTER
+row 4
 row 3
 row 2
-row 1
-────────────────────────
-HOME GOAL
-
-       col 1 ... col 6
+row 1        (centre 1.5 — last playable row, HOME GK zone)
+─────────────
+HOME GOAL    row 1 (goal line)
+─────────────
+  OOB row 9
+        col 1 ... col 6  (each col centre at n + 0.5)
 ```
 
 ### HOME
 
-* Attacks from **row 1 → row 7**
-* Own goal = row 1
-* Opponent's goal = row 7
+* Attacks from **row 1 → row 8** (HOME goal line at row 1.0, AWAY goal line at row 8.0)
+* Own goal = row 1.0
+* Opponent's goal = row 8.0
 * col 1 = left from HOME perspective
 * col 6 = right from HOME perspective
 
 ### AWAY
 
-* Attacks from **row 7 → row 1**
-* Own goal = row 7
-* Opponent's goal = row 1
+* Attacks from **row 8 → row 1**
+* Own goal = row 8.0
+* Opponent's goal = row 1.0
 * Left/right from AWAY attacking perspective.
 
 Row is the primary forward/backward axis. Column is width.
@@ -2025,6 +2068,13 @@ Ball travels along the ground. Typical:
 
 Example: `CB → CM`, `CM → FB`
 
+**Mid-path deflection / interception:** ground passes navigate through
+traffic and are subject to `SimUtils.pointSegmentDistance(defender, prevBallPos,
+currentBallPos)` checks. A defender whose body is within `0.2 cells (~2.8 m)` of
+the pass lane can deflect the ball (fast pass → bounces loose) or intercept
+(slow pass → defender becomes carrier). Mid-path collision is the chief cause
+of "stolen" passes.
+
 ### Air pass
 
 Ball travels through the air. Used when:
@@ -2035,7 +2085,35 @@ Ball travels through the air. Used when:
 * need a longer delivery
 * no safe ground option exists
 
-Higher risk of control/receive failure, but can bypass opponents.
+Higher risk of control/receive failure, but can bypass opponents. Air
+passes are **easier to execute** (less deviation — `heightMultiplier = 0.7` in
+`ExecutionQuality`) because they fly OVER obstacles. They are also more visible
+in the viewer because the ball travels a longer arc.
+
+**Mid-path collision:** air passes are EXEMPT from mid-path collision — they
+are only contested at arrival via `findPassInterceptor`.
+
+### Pass speed
+
+Pass speed is **derived from the passer's passing skill** (range 1.0–3.0
+cells/tick, where 1.0 = weak, 3.0 = elite):
+
+```java
+speedFromSkill = 1.0 + (passing / 20.0) * 2.0;
+if (passLength == LONG) speedFromSkill += 0.2;
+action.passSpeed = min(3.0, speedFromSkill);
+```
+
+`BallMovementEngine.moveBallTowardCurrentTarget()` reads `action.passSpeed` and
+moves the ball at that speed — faster passes are harder to intercept, easier to
+deflect, and visible for fewer ticks (so the viewer shows them as quick
+flashes). The `passSpeed` field is consumed downstream by:
+
+* Mid-path collision `contactProb *= 0.85 + 0.15 * passSpeed / 3.0`
+* Deflection vs interception: `deflectProb = 0.15 + (passSpeed - 1.0) / 2.0 * 0.45`
+  (slow ball → interceptor wins, fast ball → deflects)
+* `findPassInterceptor` speed modifier: `max(0.2, 1.0 - (passSpeed - 1.0) / 2.5)`
+  (slow ball = more reaction time = easier interception)
 
 ### Safe PASS
 
@@ -2176,6 +2254,33 @@ Candidate when:
 * can draw an opponent
 * can attack a defender 1v1
 
+### Carry target — 3-4 cells ahead
+
+`executeCarry()` sets the carrier's target **3-4 cells ahead** (in the forward
+direction, with ±1 column variation). Short targets (1 cell) caused the
+carrier to "jump-pause-jump" — completing a 1-cell carry, re-deciding,
+starting a new carry, repeating. The 3-4 cell target makes the carrier move
+**continuously** for several seconds before the next decision, which reads as
+natural dribbling on the viewer.
+
+### Per-tick re-decision during CARRY
+
+While a CARRY is in progress the carrier re-evaluates EVERY tick:
+
+```text
+CARRY in progress
+ ↓
+every tick: assignTargets() + decide()
+ ↓
+new decision != CARRY?
+    YES → complete current carry, execute new action
+    NO  → carry continues to its normal target-reached completion
+```
+
+This lets a dribbler react to a shooting lane opening up, a defender closing
+in, or a passing option appearing. Without re-decision, the carrier is
+locked into the original carry for its full duration.
+
 ### When NOT carry
 
 * opponent close
@@ -2202,15 +2307,20 @@ Candidate when:
 On our grid:
 
 ```text
-row 7
-   GOAL
+row 8         AWAY GOAL
    ↑
-row 6
-   ↑ attacking shooting zone
+row 7         (last playable row, AWAY GK zone)
+row 6         attacking shooting zone
 row 5
+row 4
+row 3
+row 2
+row 1         (last playable row, HOME GK zone)
+row 1         HOME GOAL
+   ↓
 ```
 
-For HOME, the closer to row 7, the higher the shooting opportunity. For AWAY, the reverse.
+For HOME, the closer to row 8, the higher the shooting opportunity. For AWAY, the reverse.
 
 ### Shot outcome
 
@@ -2229,6 +2339,23 @@ GK?
  ↓
 goal / save / deflection / miss
 ```
+
+### Shot aim — far post when GK is off-centre
+
+When a shot is on-target, the ball is **aimed at the far post relative to the
+GK position**, not always at the centre:
+
+* GK on the left post (col ≈ 3) → shot goes to the right post (col ≈ 4)
+* GK on the right post (col ≈ 4) → shot goes to the left post (col ≈ 3)
+* GK centred (col ≈ 3.5) → shot goes to the centre (col 3.5)
+* GK within 2.0 cells of goal centre but **off the shot lane**
+  (perpendicular distance > 1.2 cells) → goal is treated as empty even
+  though the GK is "near" the goal line
+
+Goal width is 1 cell (col 3.0 to col 4.0, centre col 3.5) — the far-post aim
+stays within the actual goal mouth. The save decision re-evaluates the
+`gkInLane` factor against the actual shot target so a GK on the near post
+correctly fails to save a far-post shot.
 
 This matters because of: DEFLECTION, SAVE, REBOUND, CORNER, GOAL, VAR.
 
@@ -2318,12 +2445,18 @@ Our rule:
 ```text
 player remains offside
 +
-3 consecutive actions while remaining offside
+3 consecutive TICKS in an offside position
         ↓
 FORCE RETREAT
 ```
 
 The player receives at minimum: `RETREAT, RETREAT, ...` until entering a safe row.
+
+The tracking is **universal**: `OffsideService.trackOffsidePositions(state)` is
+called on EVERY tick (not just at forward-pass moments). It checks ALL
+outfield players on BOTH teams — any attacker standing in an offside position
+accumulates a consecutive-offside count; after 3 consecutive ticks offside the
+threat override drops them back toward their own goal until onside.
 
 ### What is safe
 
@@ -2406,6 +2539,18 @@ Was evidence sufficient?
 CONFIRM / OVERTURN
 ```
 
+### VAR overlay timing (viewer)
+
+* **VAR_IN_PROGRESS** — BLOCKING overlay, 3500 ms. Viewer playback pauses while
+  the review is on screen.
+* **VAR confirmed/overturned** — BLOCKING overlay, 2200 ms. Shown after the
+  IN PROGRESS overlay is dismissed.
+
+The viewer emits the IN PROGRESS event first, then the confirmed/overturned
+verdict on the same tick; the `break` in `_processEventsForTick` ensures the
+verdict waits until the IN PROGRESS overlay is dismissed, giving the proper
+"review then verdict" sequence.
+
 ### VAR: GOAL
 
 Review: `possible offside? possible foul? possible handball? possible illegal action?`
@@ -2440,6 +2585,11 @@ Distinguish:
 * **Yellow** — normal disciplinary action
 * **Straight red** — potential VAR review: `foul → possible red → VAR → RED CONFIRMED / OVERTURNED`
 * **Second yellow**: `yellow + yellow = red + player sent off` — not the same as straight red. IFAB 2026/27 specifically provides VAR review for **factual errors involving a second yellow card**.
+
+**Yellow-card VAR requires a resolved duel first.** Per user rule:
+`DisciplineService.evaluateFoul(hadDuel)` — if no duel was active at the
+foul moment, no card is issued (free kick only). This prevents VAR from
+being called for phantom tackles that never happened.
 
 ### VAR — PENALTY
 
@@ -2487,6 +2637,23 @@ PASS → ball trajectory → defender enters passing lane → INTERCEPTION → d
 
 No physical duel with the carrier is necessarily involved.
 
+### Lane geometry — strict
+
+The defender must be **on the LINE SEGMENT between the ball and the receiver**
+(perpendicular distance ≤ 0.5 cells for ground passes, ≤ 0.4 for air passes),
+not just "nearby". Interception is **not** triggered by proximity alone — a
+defender standing 1 cell off the lane but close to the ball is NOT intercepting.
+
+Triangle check: the defender must be roughly between the ball and the receiver
+(distance from defender to ball < 1.3 × ball-to-receiver distance AND
+defender-to-receiver < 1.3 × ball-to-receiver distance). This excludes players
+behind the passer or behind the receiver from being eligible.
+
+Skill gates: requires the defender to have `playmaking ≥ 12` AND `defending ≥ 12`
+to deliberately read the pass. The interception chance then scales with
+`(playmaking + defending) / 40 × speedModifier` where `speedModifier` decreases
+for faster passes (slow ball = more reaction time).
+
 ---
 
 ## 47.14 TACKLE
@@ -2507,6 +2674,23 @@ serious foul → yellow / red / VAR candidate
 ```
 
 This is why `Tackle/Duel` should be kept separate from `Interception`.
+
+### Duel radius — tight, realistic
+
+Because a cell is 14 m × 10 m, a duel only fires when a defender is **physically
+on top of the ball**:
+
+* **DRIBBLE / RECEIVE_PASS / CHASE_BALL**: 0.2 cells (~2.8 m)
+* **SHOT block**: 0.3 cells (~4.2 m)
+
+A defender standing 1 cell away from a carrier cannot tackle — they have to
+close the gap. The radius is intentionally tight so duels feel like genuine
+shoulder-charges, not magical proximity grabs. Cooldowns:
+
+* Default 10 ticks between duels for the same pair
+* DRIBBLE: 8-tick cooldown so a carrier entering a crowd of defenders triggers
+  multiple tackle attempts during a single CARRY action instead of being
+  locked out for 20 ticks (~30s of silent play)
 
 ---
 
@@ -2582,6 +2766,31 @@ SAVE → CONTROLLED?
 ```
 
 If it goes behind the goal line: `SAVE/DEFLECTION → CORNER`
+
+### Save decision vs shot target
+
+The GK beats the shot only when the GK **is on the lane of the actual shot
+target** (perpendicular distance ≤ 1.2 cells to the shooter → actual-target
+line, with the projection also between shooter and goal — coverage factor
+`t ∈ [0.2, 1.0]`). The `handleShotArrival` recomputes `gkInLane` against the
+real shot target — a GK on the near post does NOT cover a far-post shot,
+even though the GK is "in the goal area".
+
+Save chance formula:
+
+```text
+positionFactor  = 0.22 + 0.85 * gkInLane            (in-lane dominates)
+keeperFactor    = 0.74 + keeper / 20.0 * 0.40    (skill matters)
+strikeFactor    = 1.0 - striker / 20.0 * 0.24    (good finishers beat easier)
+reach           = max(0.62, 1.0 - max(0, dist - 1.2) * 0.32)
+saveChance      = clamp(positionFactor × keeperFactor × strikeFactor × reach,
+                          0.03, 0.90)
+saveCooldown    = 4 ticks — a GK who just saved can't immediately save again
+```
+
+If a shot is **clearly off-lane** (`gkInLane ≤ 0.2` after recomputation), the
+goal is effectively open — the save chance is set to the minimum (~3%) and
+the shot becomes a goal. Random alone cannot turn a clear open-goal into a save.
 
 ---
 

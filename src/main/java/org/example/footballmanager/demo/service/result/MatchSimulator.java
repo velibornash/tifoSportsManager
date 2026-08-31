@@ -1332,6 +1332,41 @@ public class MatchSimulator {
                 // ~37% save chance). Random only tips a near-50/50 look one way; it can
                 // never turn a clear open-goal effort into a save.
                 double gkInLane = Math.max(0.05, action.getGkInLane());
+                // Far-post shot: when the shot target is clearly off-centre
+                // (e.g. aimed at the far post after the GK is on the near post),
+                // recompute the lane factor against the actual target. A GK on
+                // the near post is NOT in the lane of a far-post shot.
+                Position actualShotTarget = shotTarget;
+                if (actualShotTarget != null && goal != null
+                        && Math.abs(actualShotTarget.getColumn() - goal.getColumn()) > 0.3) {
+                    // Recompute gkInLane inline using the same formula as
+                    // ExecutionQuality.gkInLaneFactor — projects GK onto the
+                    // shooter -> actual-target line.
+                    Position gkPos = keeper.getPosition();
+                    Position ballNow = ball.getPosition();
+                    double dx = actualShotTarget.getColumn() - ballNow.getColumn();
+                    double dy = actualShotTarget.getRow() - ballNow.getRow();
+                    double len = Math.hypot(dx, dy);
+                    double perpDist;
+                    double t;
+                    if (len < 1e-6) {
+                        t = 1.0;
+                        perpDist = Math.abs(gkPos.getColumn() - ballNow.getColumn());
+                    } else {
+                        t = ((gkPos.getColumn() - ballNow.getColumn()) * dx
+                                + (gkPos.getRow() - ballNow.getRow()) * dy) / (len * len);
+                        double projCol = ballNow.getColumn() + t * dx;
+                        double projRow = ballNow.getRow() + t * dy;
+                        perpDist = SimUtils.distance(gkPos, new Position(projRow, projCol));
+                    }
+                    double onLine = SimUtils.clamp(1.0 - perpDist / 1.6, 0, 1);
+                    double coverage = SimUtils.clamp(t, 0.2, 1.0);
+                    double gkDistToShot = SimUtils.distance(gkPos, ballNow);
+                    double close = SimUtils.clamp(1.0 - gkDistToShot / 4.0, 0, 1);
+                    double laneFactor = SimUtils.clamp(
+                            onLine * coverage * (0.7 + 0.3 * close), 0.05, 1.0);
+                    gkInLane = laneFactor;
+                }
                 double strikerSkill = action.getSkill();
                 double keeperDist = SimUtils.distance(keeper.getPosition(), ball.getPosition());
 
@@ -1821,8 +1856,16 @@ public class MatchSimulator {
         // Brza lopta (3.0) → modifier 0.2, Spora lopta (1.0) → modifier 1.0
         double speedModifier = Math.max(0.2, 1.0 - (passSpeed - 1.0) / 2.5);
 
-        // AIR passes: interceptor must be closer — ball is in the air
-        double interceptRadius = passHeight == PassHeight.AIR ? 0.6 : 0.8;
+        // Get the receiver's TARGET position — the ball is heading there.
+        // Interception requires the defender to be on the line segment between
+        // the ball and the receiver (user rule: "deflection/interception can only
+        // happen ON the line between ball and receiver"). The defender must be
+        // a real threat to the pass trajectory, not just nearby.
+        Position receiverPos = action.getIntendedTarget();
+        if (receiverPos == null) return null;
+        // Air passes: interceptor must be closer to the LINE — ball is in the air
+        // and harder to intercept from the side.
+        double interceptRadius = passHeight == PassHeight.AIR ? 0.4 : 0.5;
 
         Player best = null;
         double bestDist = Double.MAX_VALUE;
@@ -1831,8 +1874,21 @@ public class MatchSimulator {
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
 
-            double dist = SimUtils.distance(p.getPosition(), ballPos);
-            if (dist >= interceptRadius) continue;
+            // Distance from the defender to the LINE SEGMENT between ball and
+            // receiver. This is the key check: the defender must be physically
+            // on the pass lane, not just nearby.
+            double distToLane = SimUtils.pointSegmentDistance(
+                    p.getPosition(), ballPos, receiverPos);
+            if (distToLane >= interceptRadius) continue;
+
+            // Also require the defender to be ahead of the ball but behind the
+            // receiver (i.e. on the pass trajectory), not behind the ball.
+            double ballToReceiverDist = SimUtils.distance(ballPos, receiverPos);
+            double ballToDefDist = SimUtils.distance(ballPos, p.getPosition());
+            double receiverToDefDist = SimUtils.distance(receiverPos, p.getPosition());
+            // Triangle check: defender must be roughly between ball and receiver.
+            if (ballToDefDist > ballToReceiverDist * 1.3) continue;
+            if (receiverToDefDist > ballToReceiverDist * 1.3) continue;
 
             // KLJUČNO: interception zahteva VISOK plej + VISOK def
             // Igrač mora da VIDI pas (playmaking ≥ 12) i da IMA VEŠTINU da ga preseče (defending ≥ 12)
@@ -1852,9 +1908,9 @@ public class MatchSimulator {
                 interceptChance *= (p.getSkills().technique() / 20.0);
             }
 
-            if (state.getRandom().nextDouble() < interceptChance && dist < bestDist) {
+            if (state.getRandom().nextDouble() < interceptChance && distToLane < bestDist) {
                 best = p;
-                bestDist = dist;
+                bestDist = distToLane;
             }
         }
         return best;

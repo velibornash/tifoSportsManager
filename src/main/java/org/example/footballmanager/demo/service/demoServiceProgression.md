@@ -2,7 +2,7 @@
 
 **Package:** `org.example.footballmanager.demo.service`
 **Source of Truth:** `corePrinciples.md` (§47: Football Domain Specification)
-**Last Updated:** 2026-08-27
+**Last Updated:** 2026-08-31
 
 ---
 
@@ -426,10 +426,147 @@ MatchSimulator reduced from 1,651 → 1,292 lines via three phase extractions:
 | §8 Action evaluation | ✅ Context-aware scoring per action type |
 | §9 Controlled randomness | ✅ Seeded Random, skill-based probability |
 | §11 Movement model | ✅ Blend system, collision avoidance |
-| §12 Ball model | ✅ POSSESSION/IN_TRANSITION/LOOSE states |
-| §15 Football rules | ✅ Offside, fouls, cards, restarts |
-| §16 Offside | ✅ Second-to-last defender |
+| §12 Ball model | ✅ POSSESSION / IN_TRANSITION / LOOSE + passSpeed |
+| §15 Football rules | ✅ Offside, fouls, cards, restarts, far-post aim |
+| §16 Offside | ✅ Second-to-last defender, universal per-tick tracking |
 | §19 Simulation tick | ✅ Decision → movement → interaction → rules |
 | §20 Match phases | ⚠️ KICKOFF/SET_PIECE partially implemented |
-| §29 Observability | ✅ ActionLogService |
+| §29 Observability | ✅ ActionLogService + compact viewer timeline |
 | §34 Deterministic replay | ⚠️ Seed exists but no formal replay test |
+
+---
+
+## Bug Fixes & Tuning (Session 2026-08-31)
+
+### Coordinate system alignment
+
+The engine's coordinate convention and the `corePrinciples.md` documentation
+were inconsistent — the spec said goals are at row 1 and row 7, but the
+engine stored AWAY's goal at row 8 (with row 7 being the last playable cell,
+centre at 7.5). Updated everywhere to match the authoritative user spec:
+
+- **HOME goal line** at row **1.0** (rows 0 ≤ 0.99 OOB behind HOME)
+- **AWAY goal line** at row **8.0** (rows ≥ 8.01 OOB behind AWAY)
+- **Goal width** = 1 cell, centred at col 3.5 (col 3.0–4.0, ≈ 10 m)
+- `TacticalPerspectiveTransformer.toPhysical()` uses **9-row mirror** (HOME row
+  n → AWAY row 9 − n), so AWAY GK at row 1.5 mirrors to row 7.5 (just in
+  front of AWAY goal at row 8.0)
+- All `clampToField` and `parseCell` use row range **[1.0, 8.0]** and col
+  range **[1.0, 6.9]** so player centres stay inside the touchlines
+- `OFFSIDE_RETREAT_THRESHOLD` raised from 2 to **3** (user rule: "3 uzastopne
+  akcije u offside poziciji")
+
+### Offside tracking — universal per-tick
+
+`OffsideService.trackOffsidePositions()` rewritten to fire on **EVERY tick** (not
+just at forward-pass moments) and check **BOTH teams' attackers**. Any
+attacker standing in an offside position accumulates the streak; the streak
+resets to 0 the moment the player becomes onside. Called from the main
+`while` loop in `MatchSimulator.simulate()`.
+
+### GK positioning
+
+`GoalkeeperMovementEngine.goalkeeperTarget()` was using the old "AWAY goal at
+row 7" convention:
+
+- `goalLineRow` HOME 1.0 / **AWAY 8.0** (was 7.0)
+- `AWAY_ROW_MIN` **6.86** (16 m from AWAY goal, edge of penalty area)
+- `AWAY_ROW_MAX` **7.9** (just inside AWAY 6-yard box)
+- `ballOnOurSide` AWAY threshold **2.5** (symmetric to HOME's 5.5, 1.5 cells
+  past halfway)
+
+`RestartManager.executeRestart()` for goal kicks:
+
+- `gkRow` = HOME 1.5 / **AWAY 7.5** (just in front of goal line, not midfield)
+- AWAY opponents cleared from rows > 6.86 (16 m box), clamped to [1.0, 7.9]
+
+### Duel / interception radii — tight & lane-strict
+
+1 cell ≈ 14 m × 10 m. Old radii (1.0/1.2/0.7) were ~10–17 m — too generous,
+causing "magical proximity grabs". New values:
+
+- `DEFAULT_DUEL_RADIUS` 1.0 → **0.2** (~2.8 m)
+- `DRIBBLE_DUEL_RADIUS` 1.2 → **0.2**
+- `RECEIVE_PASS_RADIUS` 0.7 → **0.2**
+- SHOT block 1.5 → **0.3** (~4.2 m)
+
+`findPassInterceptor()` rewritten to require the defender to be **on the line
+SEGMENT** between ball and receiver (perpendicular distance ≤ 0.5 cells for
+ground passes, 0.4 for air), with a triangle check (defender roughly between
+ball and receiver). Players 1 cell off the lane but close to the ball no
+longer "intercept" — they have to be on the lane.
+
+### Threat override — resolver prevents swarming
+
+`TacticalIntentEngine.applyThreatOverride()` rewritten:
+
+- **TYPE A** — isolated ball carrier anywhere on the pitch, ≤ 0.2 cells →
+  press them wherever they are
+- **TYPE B** — opponent in defensive third, no defender within 0.5 cells of
+  them → press to close the space
+- Resolver `isClosestEligibleDefender()` ensures only ONE defender claims the
+  threat — the closest defender always wins, non-defenders don't claim
+- Only defenders (CB/DEF/LB/RB/DM) contest threats — non-defender outfield
+  players keep their tactical position (prevents 3-player swarm)
+
+### Carry / pass speed / far-post aim
+
+- `executeCarry()` target extended to **3-4 cells** ahead (was 1 cell) so the
+  carrier moves continuously for several seconds instead of jumping 1 cell at
+  a time. Per-tick `re-decide()` continues to fire — if a better option appears
+  (shooting lane, open pass), the carry is completed early and the new
+  action runs.
+- `executePassTo()` now sets `action.passSpeed` based on the passer's passing
+  skill (1.0 = weak, 3.0 = elite, +0.2 for long passes). `BallMovementEngine`
+  reads this so faster balls move faster, are harder to intercept, and deflect
+  instead of being intercepted.
+- `evaluateShot()` aims at the **far post** when the GK is off-centre:
+  GK on left post (col ≈ 3) → shot goes to right post (col ≈ 4), clamped to
+  the goal mouth [3.0, 4.0]. `handleShotArrival` re-evaluates `gkInLane`
+  against the actual shot target so a GK on the near post correctly fails to
+  save a far-post shot.
+- `executeShot()` empty-goal check: goal is "empty" if GK is > 2 cells from
+  goal centre OR if GK is within 2 cells but **off the shot lane**
+  (perpendicular > 1.2 cells). A GK on the wrong post no longer covers the
+  shot.
+
+### Discipline & viewer polish
+
+- `DisciplineService.evaluateFoul()` adds a **`hadDuel` parameter**. If no
+  duel was active at the foul moment, no card is issued (free kick only).
+  VAR yellow/red logic is preserved but only fires after a genuine duel
+  resolution — per user rule "MORA se desiti duel pre zutog kartona".
+- Viewer (`viewer.js`) timeline DOM capped at **200 entries** (was
+  unbounded) — prevents Firefox from freezing after 4000+ events. Compact
+  timeline events only (PASS/CARRY/GOAL/SHOT/CARD/VAR/etc.); verbose engine
+  logs (DECISION, ACTION_EXECUTION, ACTION_OUTCOME, DUEL_*, CHASE, INFO)
+  remain in the Java app log but are no longer rendered in the side panel.
+- `MatchSimulationController.randomSkills()` default baseline **14** with
+  ±2 random variation plus role-specific bonuses (GK better at keeper, ATT
+  better at striker). All players in MatchViewer now have realistic skill 14.
+- `TacticalIntentEngine.applyDefensivePositionConstraint` restored to its
+  pre-override behaviour — the tactical rules in `tactics_fallback.json` /
+  DB are the source of truth for defensive depth; the engine does NOT
+  override them with code clamps. (Earlier over-aggressive 3-rows-from-own-
+  goal clamp was reverted per user instruction.)
+- `ActionEngine.isOwnGoalkeeperOrDefensiveRow()` updated for the new AWAY
+  goal at row 8.0 (AWAY defensive row ≥ 7.0, not > 7.0).
+
+### Debug helper
+
+`TacticsRules.dumpLoadedRules(path)` writes the resolved tactical targets
+(row/col) for every (role, ballStateKey) pair loaded from DB / bundled JSON /
+catalog anchors. `MatchSimulator.simulate()` now emits a `TACTICS_SOURCE:
+bundled tactics_fallback.json | ruleCount=N` log line on startup so the user
+can verify which source was loaded.
+
+### Verification
+
+- `mvn compile` — clean
+- `MatchChainTrace` (seed=42) — exit 0, ~3300 snapshots, both teams show
+  OFFSIDE RETREAT logs (HOME FC 11, Away United 10/11) confirming the
+  universal per-tick tracking works for both teams.
+- `MatchSnapshotExporter` (seed=42) — exit 0, ~3650 events / ~17500 logs.
+  Score now reasonable for skill-14 teams.
+- Player row/col ranges within [1.0, 8.0] × [1.0, 6.9] during normal play
+  (set piece corner flags at row 0.5 / col 0.5 / 6.5 are intentional).

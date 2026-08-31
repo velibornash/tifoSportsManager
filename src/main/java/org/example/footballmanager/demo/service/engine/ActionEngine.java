@@ -443,8 +443,13 @@ public class ActionEngine {
         int dc = state.getRandom().nextInt(3) - 1;
         if (dr == 0 && dc == 0) dr = 1;
         double direction = home ? 1 : -1;
-        double nr = SimUtils.clamp(r + direction * dr, 1, 7);
-        double nc = SimUtils.clamp(c + dc, 1, 6);
+        // Carry 3-4 cells ahead so the carrier moves CONTINUOUSLY for several
+        // seconds before the next decision. Shorter targets cause a visible
+        // "jump-pause-jump" effect on the viewer (carrier completes one cell,
+        // engine re-decides, starts new carry).
+        int carryDistance = 3 + state.getRandom().nextInt(2); // 3 or 4 cells
+        double nr = SimUtils.clamp(r + direction * dr * carryDistance, 1, 8);
+        double nc = SimUtils.clamp(c + dc * carryDistance, 1, 6);
         Position carryTarget = new Position(nr, nc);
         carrier.setTarget(carryTarget);
         start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
@@ -573,8 +578,37 @@ public class ActionEngine {
         pressure = Math.min(pressure, 1.0) * 50.0; // scale 0..1 → 0..50
 
         Player goalkeeper = selection.anyGoalkeeper("HOME".equals(shootingTeam) ? "AWAY" : "HOME");
-        boolean emptyGoal = goalkeeper == null
-                || SimUtils.distance(goalkeeper.getPosition(), goalPosition) > 2.0;
+        boolean emptyGoal = goalkeeper == null;
+        if (!emptyGoal && goalkeeper != null) {
+            // Goal is "empty" when the GK is either far from the goal centre OR
+            // clearly OFF the shot lane (perpendicular distance > ~1.6 cells
+            // from the shooter -> goal line). A GK within 2 cells but on the
+            // wrong post is NOT covering the shot — the far-post aim improvement
+            // would beat them anyway, but we treat it as an open goal here so
+            // the finisher picks the shot without hesitation.
+            double gkDistToGoal = SimUtils.distance(goalkeeper.getPosition(), goalPosition);
+            if (gkDistToGoal > 2.0) {
+                emptyGoal = true;
+            } else {
+                // GK is within 2 cells of goal — check if they're on the shot lane.
+                double dx = goalPosition.getColumn() - shotOrigin.getColumn();
+                double dy = goalPosition.getRow() - shotOrigin.getRow();
+                double len = Math.hypot(dx, dy);
+                if (len > 1e-6) {
+                    double t = ((goalkeeper.getPosition().getColumn() - shotOrigin.getColumn()) * dx
+                            + (goalkeeper.getPosition().getRow() - shotOrigin.getRow()) * dy) / (len * len);
+                    double projCol = shotOrigin.getColumn() + t * dx;
+                    double projRow = shotOrigin.getRow() + t * dy;
+                    double perpDist = SimUtils.distance(goalkeeper.getPosition(),
+                            new Position(projRow, projCol));
+                    // GK "off lane" if perpendicular distance > 1.2 cells (they're
+                    // glued to the post, not the centre of the shot lane).
+                    if (perpDist > 1.2) {
+                        emptyGoal = true;
+                    }
+                }
+            }
+        }
         if (emptyGoalDecided) {
             // The playmaker already ruled the goal totally open (no GK, no
             // defenders on frame); force the shot onto target regardless.
