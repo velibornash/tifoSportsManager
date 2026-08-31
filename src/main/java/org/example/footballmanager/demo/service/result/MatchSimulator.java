@@ -281,72 +281,19 @@ public class MatchSimulator {
                 continue;
             }
 
-            // Handle OOB: quickly move the ball to the boundary, hold it there for
-            // the visible 4-second stoppage, then execute the restart.
+            // Handle OOB — safety net only. Per corePrinciples §48 the actual restart
+            // placement happens immediately at the OOB detection site (the call
+            // sites call restartManager.handleBallOutOfBounds directly). This
+            // block remains only as a defensive fallback for any code path that
+            // sets OOB_PENDING but didn't call the manager.
             if (state.isBallOOBPending()) {
-                Position ballTarget = state.getBall().getTarget();
-
-                // Phase 1: Ball still has a target — animate it to OOB zone
-                if (ballTarget != null) {
-                    BallMovementEngine.moveBallToward(state.getBall(), ballTarget,
-                            BallMovementEngine.BALL_SPEED * 10);
-                    if (SimUtils.distance(state.getBall().getPosition(), ballTarget) <= BallMovementEngine.PICKUP_DISTANCE) {
-                        state.getBall().setPosition(ballTarget);
-                        state.getBall().setTarget(null);
-                        // Ball reached OOB — start 4-second hold
-                        state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
-                    }
-                    // Log the ball out-of-bounds transit so the gap detector
-                    // sees continuous activity during the ball's flight to the
-                    // boundary line.
-                    logger.logInfo(state, "BALL OUT: in transit to "
-                            + state.getOobRestartType() + " at "
-                            + String.format("(%.2f,%.2f)", ballTarget.getRow(), ballTarget.getColumn()),
-                            "BALL_OUT", null);
-                    recorder.captureSnapshot(state);
-                    if (observer != null) observer.onTick(state.getSimulationTick(), state);
-                    totalTicks++;
-                    state.advanceMatchClock();
-                    state.advanceSimulationTick();
-                    continue;
-                }
-
-                // Phase 2: Ball at OOB position, delay in progress — players reposition
-                if (state.getActionDelayTicks() > 0) {
-                    int ticksRemaining = state.getActionDelayTicks();
-                    state.consumeActionDelayTick();
-                    // Log the hold so the gap detector sees a legitimate stoppage
-                    // rather than a silent freeze. Log on first tick + every 3 ticks.
-                    if (ticksRemaining == MatchState.OOB_HOLD_TICKS || ticksRemaining % 3 == 0) {
-                        FootballRulesService.RestartType rt = state.getOobRestartType();
-                        logger.logInfo(state, "BALL OUT hold — " + rt
-                                + " " + ticksRemaining + " ticks remaining — players reorganizing", "BALL_OUT", null);
-                    }
-                    // A stoppage is not a frozen scene. Start a fresh movement
-                    // budget so players can reorganize throughout the hold.
-                    state.beginRound();
-                    tacticalEngine.assignTargets();
-                    movementEngine.moveAllTowardTargets();
-                    recorder.captureSnapshot(state);
-                    if (observer != null) observer.onTick(state.getSimulationTick(), state);
-                    totalTicks++;
-                    state.advanceMatchClock();
-                    state.advanceSimulationTick();
-                    continue;
-                }
-
-                // Phase 3: Hold complete — fire restart
                 FootballRulesService.RestartType oobRestart = state.getOobRestartType();
-                String oobTeam = state.getOobLastTouchTeam();
-                Position oobPos = state.getOobRestartPosition();
-                // A GOAL is never a valid OOB restart. Goals are awarded only in
-                // handleShotArrival after the shot reaches the goal mouth.
                 if (oobRestart == FootballRulesService.RestartType.GOAL) {
                     oobRestart = FootballRulesService.RestartType.GOAL_KICK;
                 }
+                Position oobPos = state.getOobRestartPosition();
+                String oobTeam = state.getOobLastTouchTeam();
                 state.clearBallOOBPending();
-                logger.logInfo(state, "BALL OUT: " + oobRestart + " at " + oobPos
-                        + " — restart sequence begins", "BALL_OUT");
                 actionEngine.complete("BALL OUT: " + oobRestart);
                 restartManager.handleBallOutOfBounds(stats, oobRestart, oobPos, oobTeam);
                 if (observer != null) observer.onTick(state.getSimulationTick(), state);
@@ -644,9 +591,9 @@ public class MatchSimulator {
                             rulesService.determineRestart(ball.getPosition(), looseLastTouch, false);
                     if (looseRestart != FootballRulesService.RestartType.NONE) {
                         if (!state.isBallOOBPending()) {
-                            state.setBallOOBPending(looseRestart, looseLastTouch, ball.getPosition());
-                            state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
-                            actionEngine.complete("BALL OUT: " + looseRestart + " (holding)");
+                            actionEngine.complete("BALL OUT: " + looseRestart);
+                            restartManager.handleBallOutOfBounds(stats, looseRestart,
+                                    ball.getPosition(), looseLastTouch);
                         }
                         if (observer != null) observer.onTick(state.getSimulationTick(), state);
                         totalTicks++;
@@ -1161,9 +1108,10 @@ public class MatchSimulator {
                         Position cornerPos = new Position("HOME".equals(team) ? 7.5 : 0.5,
                                 SimUtils.clamp(shotPos.getColumn(), 1, 6));
                         state.getBall().setCarrier(null);
-                        state.getBall().setTarget(cornerPos);
-                        state.setBallOOBPending(FootballRulesService.RestartType.CORNER, defendingTeam, cornerPos);
-                        actionEngine.complete("BLOCKED SHOT -> CORNER (holding)");
+                        state.getBall().setTarget(null);
+                        actionEngine.complete("BLOCKED SHOT -> CORNER");
+                        restartManager.handleBallOutOfBounds(stats,
+                                FootballRulesService.RestartType.CORNER, cornerPos, defendingTeam);
                         return;
                     }
                 }
@@ -1322,13 +1270,15 @@ public class MatchSimulator {
                 if (action.getTargetPlayer() != null) action.getTargetPlayer().setLocked(false);
                 if (restart == FootballRulesService.RestartType.CORNER) stats.onCornerFromPass();
                 stats.onPassOutOfBounds();
-                // Set OOB hold — ball stays at OOB position for 4 sec before restart
                 Position oobPos = ball.getPosition();
-                state.setBallOOBPending(restart, lastTouchTeam, oobPos);
-                state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
+                // Per corePrinciples §48 — instant restart: no OOB_HOLD, no ball
+                // animation. The RestartManager teleports the ball to its final
+                // spot and sets the taker target. The taker walks smoothly on
+                // subsequent ticks via the movement engine.
                 logger.logActionOutcome(state, action, "BALL_OUT: " + restart
                         + " at " + oobPos, action.getActingPlayer(), action.getTargetPlayer(), "OUTCOME");
-                actionEngine.complete("BALL OUT: " + restart + " (holding)");
+                actionEngine.complete("BALL OUT: " + restart);
+                restartManager.handleBallOutOfBounds(stats, restart, oobPos, lastTouchTeam);
                 return;
             }
 
@@ -1480,9 +1430,10 @@ public class MatchSimulator {
                         stats.onCorner(defendingTeam);
                         Position cornerPos = new Position("HOME".equals(shooterTeam) ? 7.5 : 0.5,
                                 SimUtils.clamp(ball.getPosition().getColumn(), 1, 6));
-                        state.getBall().setTarget(cornerPos);
-                        state.setBallOOBPending(FootballRulesService.RestartType.CORNER, defendingTeam, cornerPos);
-                        state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
+                        state.getBall().setTarget(null);
+                        actionEngine.complete("SHOT SAVED -> CORNER");
+                        restartManager.handleBallOutOfBounds(stats,
+                                FootballRulesService.RestartType.CORNER, cornerPos, defendingTeam);
                     } else {
                         // Field rebound - ball becomes loose, trigger chase immediately
                         stats.onLooseBall();
@@ -1522,24 +1473,22 @@ public class MatchSimulator {
             }
 
             if (!goalConfirmed) {
-                // VAR overturned the goal — ball goes OOB, hold, then goal kick
+                // VAR overturned the goal — instant goal kick to the defending team.
                 logger.logInfo(state, "VAR OVERTURNED GOAL: " + shooter.getLabel()
                         + " — goal disallowed (" + varService.getLastVARDecision() + ")",
                         "VAR", shooter);
                 actionEngine.shotMissed();
-                Position oobEndpoint;
-                if (goal.getRow() == 8.0) {
-                    oobEndpoint = new Position(8.5, SimUtils.clamp(ball.getPosition().getColumn(), -0.5, 8.5));
-                } else {
-                    oobEndpoint = new Position(-0.5, SimUtils.clamp(ball.getPosition().getColumn(), -0.5, 8.5));
-                }
-                state.getBall().setCarrier(null);
-                state.getBall().setTarget(oobEndpoint);
                 // The shooter touched the ball last — the goal kick goes to the
                 // defending team. Pass shooterTeam as lastTouchTeam so
                 // handleBallOutOfBounds awards the restart to the OTHER team.
-                state.setBallOOBPending(FootballRulesService.RestartType.GOAL_KICK, shooterTeam, oobEndpoint);
-                state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
+                // Note: ballPos here is the (already-shot-missed) position the
+                // ball went to; handleBallOutOfBounds ignores it for goal kick
+                // (uses the standard 5m-from-goal spot instead).
+                Position ballPosForKick = state.getBall().getPosition();
+                state.getBall().setCarrier(null);
+                state.getBall().setTarget(null);
+                restartManager.handleBallOutOfBounds(stats,
+                        FootballRulesService.RestartType.GOAL_KICK, ballPosForKick, shooterTeam);
                 return;
             }
 
@@ -1567,26 +1516,20 @@ public class MatchSimulator {
                     "MISS (distToGoal=" + String.format("%.2f", distToGoal) + ")",
                     shooter, null, "OUTCOME");
 
-            // Shot miss — ball needs to travel to OOB position, then hold 4 sec, then goal kick
-            // The shooter touched the ball last: the goal kick must go to the
-            // DEFENDING team. Pass shooterTeam as lastTouchTeam so
-            // handleBallOutOfBounds awards the restart to the other team.
-            // Determine OOB endpoint based on shot direction
-            Position oobEndpoint;
-            if (goal.getRow() == 8.0) {
-                oobEndpoint = new Position(8.5, SimUtils.clamp(shotTarget.getColumn(), -0.5, 8.5));
-            } else {
-                oobEndpoint = new Position(-0.5, SimUtils.clamp(shotTarget.getColumn(), -0.5, 8.5));
-            }
+            // Shot miss — instant goal kick (or corner if the miss ricocheted wide).
+            // The shooter touched the ball last so the restart goes to the OTHER
+            // (defending) team. handleBallOutOfBounds teleports the ball to its
+            // final restart spot and selects the taker.
+            FootballRulesService.RestartType missRestart;
+            // For a goal-kick candidate, ball.pos doesn't matter (the manager uses
+            // the standard 5m spot). For a corner the column matters — pass the
+            // ball's current column so the side flag is correct.
+            missRestart = FootballRulesService.RestartType.GOAL_KICK;
+            // Use ball column at miss time as a hint for the corner side flag.
+            Position ballPosForRestart = state.getBall().getPosition();
             state.getBall().setCarrier(null);
-            state.getBall().setTarget(oobEndpoint);
-            FootballRulesService.RestartType missRestart =
-                    rulesService.determineRestart(oobEndpoint, shooterTeam, false);
-            if (missRestart == FootballRulesService.RestartType.NONE) {
-                missRestart = FootballRulesService.RestartType.GOAL_KICK;
-            }
-            state.setBallOOBPending(missRestart, shooterTeam, oobEndpoint);
-            state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
+            state.getBall().setTarget(null);
+            restartManager.handleBallOutOfBounds(stats, missRestart, ballPosForRestart, shooterTeam);
         }
     }
 
@@ -1700,9 +1643,10 @@ public class MatchSimulator {
                 Position cornerPos = new Position("HOME".equals(defender.getTeam()) ? 7.5 : 0.5,
                         SimUtils.clamp(shotPos.getColumn(), 1, 6));
                 state.getBall().setCarrier(null);
-                state.getBall().setTarget(cornerPos);
-                state.setBallOOBPending(FootballRulesService.RestartType.CORNER, defender.getTeam(), cornerPos);
-                actionEngine.complete("BLOCKED SHOT -> CORNER (holding)");
+                state.getBall().setTarget(null);
+                actionEngine.complete("BLOCKED SHOT -> CORNER");
+                restartManager.handleBallOutOfBounds(stats,
+                        FootballRulesService.RestartType.CORNER, cornerPos, defender.getTeam());
                 return;
             }
         }
@@ -1828,13 +1772,12 @@ public class MatchSimulator {
             if (action.getTargetPlayer() != null) action.getTargetPlayer().setLocked(false);
             if (deflRestart == FootballRulesService.RestartType.CORNER) stats.onCornerFromPass();
             stats.onPassOutOfBounds();
-            // Set OOB hold — ball stays at deflected position for 4 sec
-            state.setBallOOBPending(deflRestart, deflector.getTeam(), deflectedPos);
-            state.setActionDelayTicks(MatchState.OOB_HOLD_TICKS);
             logger.logActionOutcome(state, action,
                     "BALL_OUT after deflection: " + deflRestart,
                     action.getActingPlayer(), deflector, "OUTCOME");
-            actionEngine.complete("DEFLECTION -> BALL OUT: " + deflRestart + " (holding)");
+            actionEngine.complete("DEFLECTION -> BALL OUT: " + deflRestart);
+            restartManager.handleBallOutOfBounds(stats, deflRestart, deflectedPos,
+                    deflector.getTeam());
         }
     }
 

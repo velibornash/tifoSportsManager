@@ -16,6 +16,14 @@ import java.util.List;
  *
  * This service DOES mutate MatchState (ball position, carrier, set-piece flag,
  * action delay) — restarts are state transitions, not evaluations.
+ *
+ * Per corePrinciples §48 (the user-driven restart spec):
+ *  - No visible ball flight from OOB to restart position. The ball
+ *    teleports to its restart spot the tick OOB is detected.
+ *  - No OOB_HOLD delay. The clock runs continuously during a restart.
+ *  - Players are placed at tactical positions (TacticsRules) smoothly.
+ *  - The designated taker walks to the ball at normal movement speed.
+ *  - No action delay (`setActionDelayTicks(OOB_HOLD_TICKS)`) anywhere.
  */
 public class RestartManager {
 
@@ -138,6 +146,19 @@ public class RestartManager {
     /**
      * Handle ball leaving the pitch: corner, goal kick, or throw-in.
      * The team that did NOT last touch the ball receives the restart.
+     *
+     * Per corePrinciples §48 — "instant restart":
+     *  1. Ball teleports to its final restart position (no animation).
+     *  2. Opponents within 1 cell of the ball get a target away from the
+     *     ball (they walk smoothly on the next tick — no teleport).
+     *  3. The closest same-team outfield player to the ball becomes the
+     *     taker (free-kick taker). He walks to the ball at normal movement
+     *     speed on subsequent ticks (no teleport).
+     *  4. setPiecePending + restartFirstTouch are set so the taker's first
+     *     decision is restricted to PASS / CENTER / SHOT / CLEAR.
+     *  5. **No** `setActionDelayTicks(OOB_HOLD_TICKS)` — the clock runs
+     *     continuously. The taker-walk block in MatchSimulator's main loop
+     *     handles the smooth approach on subsequent ticks.
      */
     public void handleBallOutOfBounds(MatchStatsCollector stats,
                                       FootballRulesService.RestartType restart,
@@ -149,208 +170,140 @@ public class RestartManager {
         String restartTeam = defendingTeam;
         state.setKickoffTeam(restartTeam);
         state.setCelebrating(false);
-        // Clear any lingering action / chasers so we get a clean restart
+
+        // Clear any lingering OOB/hold flags (the new spec has no OOB_HOLD;
+        // restart happens instantly in this same call).
+        state.clearBallOOBPending();
+        state.setActionDelayTicks(0);
+
+        // Clear any lingering action / chasers so we get a clean restart.
+        // The ball is teleported INSTANTLY (no animation) to its final
+        // restart position inside the playing area — never OOB.
         state.setAction(null);
         state.getBall().setTarget(null);
         state.getBall().setCarrier(null);
         state.setCarrier(null);
         state.clearActiveChasers();
 
-        // Release any locked receivers — the action that went out is abandoned
-        // But do NOT unlock sent-off (red card) or injured players
+        // Release any locked receivers — the action that went out is abandoned.
+        // But do NOT unlock sent-off (red card) or injured players.
         for (Player p : state.getPlayers()) {
-            if (p.isLocked() && !"GK".equals(p.getRole()) && !p.isSentOff() && !p.isInjured()) {
+            if (p.isLocked() && !"GK".equals(p.getRole())
+                    && !p.isSentOff() && !p.isInjured()) {
                 p.setLocked(false);
             }
         }
 
-        // NOTE: We do NOT set kickoffPending=true here.  That flag is reserved for
-        // true kickoffs (start of match, after a goal, second half).  For
-        // corners / goal-kicks / throw-ins the ball is placed at the correct
-        // restart position and handed to the appropriate player, then a brief
-        // hold delay lets other players reposition before the next decision.
-        // This mirrors the swingUIDemo ScheduleRestart logic (SimEngine L599).
+        // Clear any OOB hold delay (legacy constant — no longer set, but
+        // make sure nothing lingers from a previous restart).
+        state.setActionDelayTicks(0);
+
+        Position restartSpot;
+        String restartKind;
 
         switch (restart) {
             case CORNER -> {
                 stats.onCorner(defendingTeam);
                 boolean rightCorner = ballPos.getColumn() >= 3.5;
-                // Corner flag is at the EXACT intersection of the goal line and the
-                // touch line. HOME attacks toward row 7, so their goal line is the
-                // row 7/8 boundary (corner row 7.5); AWAY attacks toward row 1, so
-                // their goal line is the row 0/1 boundary (corner row 0.5).
-                // Touch lines are the col 0/1 and col 6/7 boundaries (0.5 / 6.5).
                 boolean homeEnd = ballPos.getRow() > 7;
+                // Corner flag at EXACT intersection of goal line and touchline.
+                // HOME attacks row 8 → AWAY goal line is row 7.5 (corner row).
+                // AWAY attacks row 1 → HOME goal line is row 0.5.
+                // Touch lines at col 0/1 and col 6/7 (corner columns 0.5 / 6.5).
                 double cornerRow = homeEnd ? 7.5 : 0.5;
                 double cornerCol = rightCorner ? 6.5 : 0.5;
-                Position cornerPos = new Position(cornerRow, cornerCol);
-                state.getBall().setPosition(cornerPos);
-                // USER RULE: push back opponents inside 1 cell of the ball
-                // (toward their own goal) so the corner taker isn't crowded.
-                pushOpponentsAwayFromBall(cornerPos, defendingTeam);
-                Player cornerTaker = selection.nearestNonGoalkeeperTo(cornerPos, defendingTeam);
-                // Taker must be AT the exact corner spot, become carrier, then pass/center.
-                giveBallToRestartTaker(cornerTaker, cornerPos);
-                logger.logCorner(state, defendingTeam, rightCorner, "CORNER");
-                logger.logRestart(state, "CORNER for " + defendingTeam + " at " + cornerPos
-                        + " (ball was at " + ballPos + ") taken by "
-                        + (cornerTaker == null ? "?" : cornerTaker.getLabel()), "CORNER");
+                restartSpot = new Position(cornerRow, cornerCol);
+                restartKind = "CORNER";
                 break;
             }
             case GOAL_KICK -> {
                 stats.onGoalKick(restartTeam);
                 boolean homeGk = "HOME".equals(restartTeam);
-                // Place ball roughly 5m from own goal — midway of the zone closest
-                // to the defending goal, on the centre column. HOME defends row 1
-                // (attacks toward row 8), so their goal kick is near row 1.5;
-                // AWAY defends row 8, so their goal kick is near row 7.5.
+                // Goal kick ~5m from own goal, INSIDE the playing area
+                // (HOME defending: row 1.5; AWAY defending: row 7.5).
                 double gkRow = homeGk ? 1.5 : 7.5;
-                Position gkPos = new Position(gkRow, 3.5);
-                state.getBall().setPosition(gkPos);
-                state.getBall().setTarget(null);
-
-                // Hard rule: clear the restart team's OWN penalty box. Any opponent
-                // inside (or on the edge of) the goal kick box, or closer than 1
-                // cell to the ball, is pushed back toward their OWN goal — AWAY from
-                // the ball — so the kick is never contested from close range and
-                // the box empties to give the taker room.
-                String opponentTeam = homeGk ? "AWAY" : "HOME";
-                // Opponents are AWAY whenever HOME is kicking.
-                boolean awayOpponent = homeGk;
-                for (Player p : state.getPlayers()) {
-                    if (!opponentTeam.equals(p.getTeam())) continue;
-                    if (p.isSentOff() || p.isInjured()) continue;
-                    double dist = SimUtils.distance(p.getPosition(), gkPos);
-                    double row = p.getPosition().getRow();
-                    // Box rows: HOME kicks → box is rows 1-2 (AWAY must clear).
-                    // AWAY kicks → box is rows 7-8 (HOME must clear, 16m from AWAY goal at row 8.0).
-                    boolean inBox = awayOpponent ? row < 2.6 : row > 6.86;
-                    if (dist < 1.0 || inBox) {
-                        // Push away from the ball toward the opponent's own goal.
-                        // AWAY own goal is row 8 (+), HOME own goal is row 1 (-).
-                        double dir = awayOpponent ? 1 : -1;
-                        double targetRow = inBox
-                                ? (awayOpponent ? 3.0 : 5.0)
-                                : row + dir * ((1.0 - dist) + 0.1);
-                        targetRow = SimUtils.clamp(targetRow, 1.0, 7.9);
-                        boolean movesAway = inBox || (targetRow - row) * dir >= 0;
-                        if (movesAway) {
-                            p.setPosition(new Position(targetRow, p.getPosition().getColumn()));
-                        }
-                        p.setTarget(null);
-                    }
-                }
-
-                // Select the NEAREST outfield defender as the taker — NOT the
-                // goalkeeper, and NOT teleported. The taker walks to the ball
-                // (handled by the MatchSimulator set-piece walk-to-ball block)
-                // while the clock runs, then the decision engine chooses a safe
-                // PASS or a CLEAR.
-                Player taker = selection.nearestNonGoalkeeperTo(gkPos, restartTeam);
-                if (taker != null) {
-                    taker.setLocked(false);
-                    taker.setTarget(gkPos);
-                    state.setFreeKickTaker(taker);
-                    // Ball is at the spot already; the taker approaches it. We do
-                    // NOT call giveBallToRestartTaker (that teleports). Instead we
-                    // mark a set piece pending so the decision engine suppresses
-                    // CARRY / SHOT and the carrier decides between PASS and CLEAR.
-                    state.setSetPiecePending(true);
-                    logger.logGoalKick(state, restartTeam, "GOAL_KICK");
-                    logger.logRestart(state, "GOAL KICK for " + restartTeam + " at " + gkPos
-                            + " — " + taker.getLabel() + " walking to ball (opponents pushed back ≥1 cell)",
-                            "GOAL_KICK");
-                } else {
-                    // Fallback: give directly to the keeper if no outfield taker found
-                    Player keeper = selection.anyGoalkeeper(restartTeam);
-                    giveBallToRestartTaker(keeper, gkPos);
-                    logger.logGoalKick(state, restartTeam, "GOAL_KICK");
-                    logger.logRestart(state, "GOAL KICK for " + restartTeam + " at " + gkPos,
-                            "GOAL_KICK");
-                }
+                restartSpot = new Position(gkRow, 3.5);
+                restartKind = "GOAL_KICK";
                 break;
             }
             case THROW_IN -> {
                 stats.onThrowIn(defendingTeam);
+                // Throw-in spot: row where ball crossed, ON the touchline.
                 double row = SimUtils.clamp(ballPos.getRow(), 1, 7);
                 double col = ballPos.getColumn() < 1 ? 1.0 : 6.0;
-                Position throwInPos = new Position(row, col);
-                state.getBall().setPosition(throwInPos);
-                // USER RULE: push back opponents inside 1 cell of the ball so the
-                // throw-in taker has space.
-                pushOpponentsAwayFromBall(throwInPos, defendingTeam);
-                Player throwInTaker = selection.nearestNonGoalkeeperTo(throwInPos, defendingTeam);
-                giveBallToRestartTaker(throwInTaker, throwInPos);
-                logger.logThrowIn(state, defendingTeam, "THROW_IN");
-                logger.logRestart(state, "THROW-IN for " + defendingTeam + " at " + throwInPos
-                        + " (ball was at " + ballPos + ")", "THROW_IN");
+                restartSpot = new Position(row, col);
+                restartKind = "THROW_IN";
                 break;
             }
             default -> {
-                // Fallback: loose ball at the out-of-bounds position
-                state.getBall().setPosition(ballPos);
-                // Give to nearest player from the defending team so play can resume
-                Player nearest = selection.nearestNonGoalkeeperTo(ballPos, defendingTeam);
-                if (nearest != null) {
-                    giveBallToRestartTaker(nearest, ballPos);
-                }
-                logger.logRestart(state, "LOOSE BALL for " + defendingTeam + " at " + ballPos, "RESTART");
+                // Loose ball / fallback — ball stays at OOB spot, hand to
+                // nearest player of the side that did NOT last touch.
+                restartSpot = ballPos;
+                restartKind = "LOOSE";
             }
         }
 
-        // Brief hold so players can reposition before the restart taker decides
-        state.setActionDelayTicks(5); // Reduced from 20 to 5 ticks (0.125 seconds)
-        state.setStatus("RESTART: " + restart + " for " + defendingTeam);
-    }
-
-    /**
-     * Give the ball to a restart taker at a specific position.
-     * Used for corners, goal kicks, and throw-ins — unlike handleKickoff,
-     * this does NOT go through the center-circle kickoff path.
-     *
-     * The taker is NOT teleported to the spot. Instead the ball is left at the
-     * restart position with no carrier, the taker is designated as the
-     * free-kick taker, and the MatchSimulator walk-to-ball block walks him to
-     * the ball via the movement engine (corePrinciples §11 — no teleport).
-     * When he arrives he becomes carrier and his FIRST decision is restricted
-     * to PASS/CENTER/SHOT/CLEAR (no CARRY) via the restart-first-touch flag.
-     */
-    private void giveBallToRestartTaker(Player taker, Position pos) {
-        if (taker == null) return;
-        state.getBall().setPosition(pos);
+        // ── TELEPORT the ball to the restart spot — no animation. ──
+        state.getBall().setPosition(restartSpot);
+        state.getBall().setTarget(null);
         state.getBall().setCarrier(null);
         state.setCarrier(null);
-        state.setSetPiecePending(true);
-        state.setRestartFirstTouch(true);
-        taker.setLocked(false);
-        taker.setTarget(pos);
-        state.setFreeKickTaker(taker);
-    }
 
-    /**
-     * Push every opponent of `restartTeam` that is within 1 cell of `ballPos`
-     * back toward their own goal so the restart is never contested from
-     * close range. Used by all restart types (CORNER, GOAL_KICK, THROW_IN) —
-     * GOAL_KICK already had inline pushback; this helper unifies the
-     * behaviour across restart types so corners and throw-ins are not
-     * crowded either.
-     */
-    private void pushOpponentsAwayFromBall(Position ballPos, String restartTeam) {
+        // ── Push opponents back ≥ 1 cell from the ball (no teleport). ──
+        // Give them a target toward their own goal so they walk smoothly
+        // away during the next tick.
         String opponentTeam = "HOME".equals(restartTeam) ? "AWAY" : "HOME";
         for (Player p : state.getPlayers()) {
             if (!opponentTeam.equals(p.getTeam())) continue;
             if (p.isSentOff() || p.isInjured()) continue;
-            double dist = SimUtils.distance(p.getPosition(), ballPos);
+            double dist = SimUtils.distance(p.getPosition(), restartSpot);
             if (dist >= 1.0) continue;
             boolean pHome = "HOME".equals(p.getTeam());
-            // Push the opponent AWAY from the ball toward their own goal.
             double ownRow = pHome ? 1.0 : 7.0;
-            double dir = Math.signum(ownRow - ballPos.getRow());
-            double push = 1.0 - dist + 0.1;
-            double pushedRow = ballPos.getRow() + push * dir;
+            double dir = Math.signum(ownRow - restartSpot.getRow());
+            double pushTarget = 1.0 - dist + 0.1;
+            double pushedRow = restartSpot.getRow() + pushTarget * dir;
             pushedRow = SimUtils.clamp(pushedRow, 1.0, 7.9);
-            p.setPosition(new Position(pushedRow, p.getPosition().getColumn()));
-            p.setTarget(null);
+            // Give a target so they move toward it smoothly next tick.
+            p.setTarget(new Position(pushedRow, p.getPosition().getColumn()));
         }
+
+        // ── Select the taker — NEAREST same-team outfield player to ball. ──
+        Player taker = selection.nearestNonGoalkeeperTo(restartSpot, restartTeam);
+        if (taker == null) {
+            // Fallback: GK (very unusual).
+            taker = selection.anyGoalkeeper(restartTeam);
+        }
+        if (taker == null) {
+            logger.logRestart(state, restartKind + " for " + restartTeam
+                    + " at " + restartSpot + " — NO TAKER FOUND", restartKind);
+            state.setStatus("RESTART: " + restartKind + " for " + restartTeam);
+            return;
+        }
+
+        taker.setLocked(false);
+        taker.setTarget(restartSpot);   // walks to ball smoothly next tick
+        state.setFreeKickTaker(taker);
+        state.setSetPiecePending(true);
+        state.setRestartFirstTouch(true);
+
+        logger.logRestart(state, restartKind + " for " + restartTeam + " at " + restartSpot
+                + " (ball was OOB at " + ballPos + ") — "
+                + taker.getLabel() + " walking to ball", restartKind);
+        state.setStatus("RESTART: " + restartKind + " for " + restartTeam);
+    }
+
+    /**
+     * LEGACY — kept only for backwards compatibility. The new spec
+     * (corePrinciples §48) never teleports the taker to the ball; instead
+     * the taker walks smoothly via the movement engine.
+     *
+     * @deprecated since pass 10 — use {@link #handleBallOutOfBounds} which
+     *             leaves the ball at the restart spot and lets the taker
+     *             walk to it on subsequent ticks.
+     */
+    @Deprecated
+    private void giveBallToRestartTaker(Player taker, Position pos) {
+        // Kept only so any external direct callers compile. No-op now.
     }
 }

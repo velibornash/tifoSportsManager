@@ -2,7 +2,7 @@
 
 **Package:** `org.example.footballmanager.demo.service`
 **Source of Truth:** `corePrinciples.md` (§47: Football Domain Specification)
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ---
 
@@ -934,3 +934,50 @@ Real football has top strikers occasionally testing the keeper from 28-35 m when
 - `node --check src/main/resources/static/demo/service/ui/js/viewer.js` — no syntax errors.
 - Designed to work on iPhone 14 Pro landscape (932×430 px logical) and similar
   Android landscape devices.
+
+### Bug Fixes & Tuning (2026-09-01 — user reported) — pass 10: INSTANT RESTARTS
+
+The user's core complaint: goal kicks / corners animated the ball off-screen
+to a deep-OOB position, held there for `OOB_HOLD_TICKS`, then walked the
+taker back — the clock visibly stopped and the ball appeared to vanish.
+Full spec written into `corePrinciples.md` §48. This pass makes every
+restart **instant**: the ball teleports to its in-play restart spot, the
+taker walks smoothly, the clock never stops, no `OOB_HOLD` / no OOB
+animation.
+
+#### Mechanism
+- `RestartManager.handleBallOutOfBounds(stats, restart, ballPos, lastTouchTeam)`
+  is now the **single** instant-restart entry point (replaces the old
+  `setBallOOBPending` → OOB travel → `OOB_HOLD_TICKS` → delayed-fire sequence).
+- Ball is `setPosition(restartSpot)` immediately (teleport — no animation,
+  never actually OOB). Corner → exact corner flag (8.0/7.5 × 0.5/6.5);
+  goal kick → 5 m from own goal (row 1.5 / 7.5); throw-in → on the touchline.
+- Taker = nearest same-team **non-GK** outfield player to the spot; he walks
+  via the existing `RESTART_WALK_SPEED` (0.7) block in `MatchSimulator`'s main
+  loop, with the `RESTART_TELEPORT_DISTANCE` (4.0) fast-path and
+  `RESTART_WALK_MAX_TICKS` (15) no-progress guard retained so the walk can
+  never freeze.
+- `state.clearBallOOBPending()` + `setActionDelayTicks(0)` are now called
+  inside `handleBallOutOfBounds`; no caller sets them anymore.
+- Opponents within 1 cell of the ball get a push-back target (walk smoothly
+  away) — no teleport.
+- `MatchState.OOB_HOLD_TICKS` deprecated.
+
+#### Call sites converted (no more OOB animation / hold)
+- `MatchSimulator.handleShotArrival` — SHOT_BLOCKED → corner; SHOT_SAVED →
+  corner rebound; VAR-overturned-goal → goal kick; shot miss → goal kick.
+- `MatchSimulator.handleDecision` deflection OOB → corner / goal kick /
+  throw-in.
+- `MatchSimulator` main-loop `isBallOOBPending()` block reduced to a thin
+  safety net (defensive fallback for any straggler call site).
+
+#### Verification (2026-09-01 pass 10)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- `mvn -Dtest=TestMatchSimulatorIntegration test` — full 10-match batch runs
+  (23 000+ events, 91 RESTART events, 2 goals in the trace). No crash, no
+  OOB_HOLD path executed.
+- Known pre-existing test drifts (both ALSO fail on the committed baseline,
+  NOT introduced by pass 10): offsides ~10.1/match (baseline 8.4) and loose
+  balls on the 1-match clearance test (~33 vs baseline 15). Both thresholds
+  were already red before this pass; tracked for a future pass but not part
+  of the restart rewrite.

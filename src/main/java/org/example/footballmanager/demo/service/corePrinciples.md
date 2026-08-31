@@ -3090,3 +3090,204 @@ The new state creates the next situation.
 And the cycle continues until the match ends.
 
 That is the fundamental architecture of the Football Simulation Engine.
+
+---
+
+## §48 — RESTART SPECIFICATION (KICKOFF / GOAL KICK / CORNER / THROW-IN / FREE KICK / PENALTY)
+
+This section is the **authoritative restarts reference** for the engine. The
+previous OOB-hold / slow-walk implementation made goal kicks travel visibly
+across the pitch while the carrier ran alongside the ball — players went OFF
+SCREEN and the carrier selection was wrong (an AWAY player who happened to be
+near the ball received it instead of the proper taker). The user explicitly
+required a spec-driven rewrite. This section IS the spec.
+
+### 48.1 Universal rules (apply to ALL restarts)
+
+1. **The clock always runs.** No `OOB_HOLD_TICKS` freeze, no slow-walk
+   animation across the pitch. Restarts happen instantly: the ball is
+   teleported to its position, the players fan out via tactical positions,
+   and the taker walks to the ball at normal carrier movement speed.
+2. **No player teleporting.** Players are placed at their **tactical-desired
+   positions** (per `TacticsRules`) computed for the restart spot. A
+   player who needs to move more than 1 cell to reach the tactical spot is
+   moved there smoothly (over multiple ticks), not snapped.
+3. **The taker walks, not teleports.** The designated taker moves at
+   `MovementEngine.PLAYER_SPEED` (0.25 cells/tick) toward the ball. The ball
+   sits stationary until the taker reaches it.
+4. **No carry-out from a restart.** A kickoff taker MUST pass backward (the
+   existing `isKickoff` filter in `scorePassOptions` enforces this).
+5. **OOB hold is GONE.** The `MatchState.OOB_HOLD_TICKS = 4s` animation is
+   removed; the ball teleports and the next action starts on the next
+   decision tick.
+
+### 48.2 KICKOFF (also: start of second half; after a goal)
+
+- Ball is at the centre spot `(4.0, 3.5)`.
+- The taker (next attacker of the side that did **NOT** just concede) is the
+  carrier. By football rules:
+  - **Match kickoff**: HOME takes it (unless the rules state otherwise).
+  - **Start of second half**: AWAY takes it (sides swap).
+  - **After a goal**: the side that **conceded** takes the kickoff. The
+    engine already sets `state.setKickoffTeam` to the conceding team; the
+    kickoff handler picks that team.
+- The kicker is an **attacker** adjacent to the ball (ML/MR/STL/STR nearest
+  the centre spot). Taker walks to `(4.0, 3.5)` smoothly if needed.
+- Other players are placed at tactical kickoff positions (existing
+  `getKickoffPositions` flow).
+- The kicker is locked to PASS backward (existing `isKickoff = true` row
+  filter in `scorePassOptions`).
+
+### 48.3 GOAL KICK
+
+Triggered when the **attacking** side puts the ball past the **defending**
+goal line without scoring (own defender's clearance, a missed shot that
+goes out, a deflection off a defender). The defending side is awarded the
+restart.
+
+Steps:
+1. **Ball teleport**: ball moves to the defender's goal-area corner:
+   `(0.5, 3.5)` for HOME's goal (AWAY's goal kick), or `(7.5, 3.5)` for
+   AWAY's goal (HOME's goal kick). The ball is INSIDE the playing area
+   (row ≥ 1 for HOME, ≤ 7 for AWAY); it is not in OOB.
+2. **Player tactical positions**: all 22 players are placed at their
+   tactical desired positions for the restart spot (via `TacticsRules`).
+3. **Opponent pushback**: if any opponent is closer than 1 cell to the
+   ball, that opponent is **smooth-moved** back toward their own goal until
+   the distance is ≥ 1 cell. No teleport.
+4. **Taker selection**: the nearest SAME-team player (excluding GK) to the
+   ball walks smoothly to the ball. When the taker reaches the ball, they
+   become the carrier.
+5. **Taker decision**: the taker may PASS, CLEAR, or (if in shooting
+   range) shoot. **NO carry straight from a goal kick** unless the lane is
+   clear and the taker is a high-skilled defender.
+6. Clock keeps running.
+
+### 48.4 CORNER
+
+Triggered when the **defending** side deflects the ball over their own goal
+line (block, save rebound out, own defender's clearance). The **attacking**
+side takes the corner.
+
+Steps:
+1. **Ball teleport**: to the corner flag of the side where the ball exited.
+   When the ball exited on the attacking side's left (col ≤ 2 for HOME),
+   place at `(8.0, 1.0)` (top-left from HOME's POV = AWAY's goal-left =
+   HOME's attacking "left" corner).
+   - HOME attacking, ball exited behind AWAY goal on the left:
+     `Position(8.0, 1.0)`.
+   - HOME attacking, ball exited behind AWAY goal on the right:
+     `Position(8.0, 7.0)`.
+   - AWAY attacking (mirror): `(1.0, 1.0)` and `(1.0, 7.0)`.
+   - If the ball exited in the corner-flag spot itself (within ±0.5 of a
+     corner), use that exact corner.
+2. **Player positions**: all 22 players placed at tactical positions for
+   the corner spot. Defenders mark box attackers; attackers time their run.
+3. **Taker**: the same-side WINGER (ML/MR) on the side where the corner is
+   is the carrier (existing `selectCornerTaker` heuristic). Walks to the
+   corner flag if not already there (smooth).
+4. **Taker action**: the corner is played as a **CENTER** into the box,
+   not a free pass. The `selectCenterTarget()` helper picks the best aerial
+   target among box attackers.
+5. **Offside rule for corners**: **DISABLED**. Corner passes are deemed
+   "from the goal line"; the `isKickoff` / `closeToGoal` row filters still
+   permit non-flag passes, but the realistic football convention is that
+   a corner is played into the box, not as a flat long ball. The engine's
+   `selectCenterTarget()` keeps the receiver in the box, so offside is
+   naturally avoided.
+
+### 48.5 THROW-IN (aut)
+
+Triggered when the ball crosses the **sideline** (column ≤ 0.99 or ≥ 7.01)
+after last being touched by the side opposing the ball-exit side. The
+**non-last-touch** side takes the throw.
+
+Steps:
+1. **Ball teleport**: to the exact `(row, 1.0)` (left sideline) or
+   `(row, 7.0)` (right sideline) at the same row where the ball crossed.
+2. **Player tactical positions**: 22 players fanned out for the side
+   throw spot.
+3. **Taker**: nearest same-side outfield player walks to the ball (smooth).
+4. **Throw action**: short pass to a teammate within ~2 cells. **NO carry
+   straight from a throw-in** (carrier must pass).
+5. **No offside on throw-ins** (rule of football).
+
+### 48.6 FREE KICK (also: indirect free kick after offside)
+
+Triggered when a foul is committed (or an offside is whistled). The
+**fouling/offending side** is penalised; the **non-offending side** takes
+the kick.
+
+Steps:
+1. **Ball teleport**: to the spot of the foul (offence location).
+2. **Taker**: nearest same-side player to the ball walks to it (smooth).
+   If the spot is inside the shooting zone, the engine may also select the
+   **best striker** as taker (per existing `DisciplineService.evaluateFoul`
+   logic) so a20 m direct free kick can be shot.
+3. **Player tactical positions**: all 22 players placed per
+   `TacticsRules` for that spot.
+4. **Taker action**: any legal action — PASS, CROSS, CENTER, CLEAR, SHOT,
+   or even CARRY if the lane is open. **No offside exception** (a free kick
+   after offside is no exception; passes from a free kick obey normal
+   offside rules).
+5. **Free kick awarded at the spot of the foul** — the `kickOffSpot` is
+   the `state.getCarrier().getPosition()` when the foul was committed.
+
+### 48.7 PENALTY KICK
+
+Triggered when a foul is committed inside the offending team's penalty box.
+The **fouled** side takes the kick against the **goalkeeper** of the
+defending side.
+
+Steps:
+1. **Ball teleport**: to the penalty spot. For HOME's goal-defending
+   side (AWAY attacking): `Position(7.5, 3.5)`. For AWAY's goal-defending
+   side (HOME attacking): `Position(0.5, 3.5)`.
+2. **Taker**: **best striker** of the fouled side walks to the spot
+   (smooth).
+3. **Other players**: all other players (except the GK and taker) move
+   OUTSIDE the penalty box and arc behind the ball (per football rules:
+   outside the 16m box, behind the penalty spot). The GK is on the goal
+   line inside the goal area.
+4. **GK behaviour**: 1-2 ticks before the strike, the GK may make a
+   lateral move (left or right) along the goal line. Random
+   50/50 direction + random step length (per existing
+   `PenaltyKickEngine`/`executePenaltyKick` — refine to add the pre-strike
+   shimmy).
+5. **Taker action**: SHOT. The engine's existing `evaluateShot` /
+   `executePenaltyKick` handles the timing.
+
+### 48.8 Implementation order
+
+1. Create `RestartManager.handleOOB(state, restartType, restartSpot, ...)`
+   that does the new teleport + tactical placement + smooth taker walk.
+2. Delete / weaken the `setActionDelayTicks(OOB_HOLD_TICKS)` calls in
+   MatchSimulator — restarts happen instantly.
+3. The existing `RESTART_WALK_MAX_TICKS`, `RESTART_WALK_SPEED`,
+   `OOB_HOLD_TICKS` constants become obsolete; mark them `@Deprecated`.
+4. Add ball-in-OOB `Position` clamp **only** for the duration of the
+   restart placement step (so the ball starts ON the goal-line corner /
+   on the field), not during `ballMovementEngine.followCarrier`.
+
+### 48.9 Test plan
+
+After implementation:
+1. Generate a match. Find a goal kick, corner, throw-in, free kick, and
+   penalty. Open the replay at each one and verify:
+   - Ball is **not** visibly traversing the field.
+   - The taker walks to the ball smoothly.
+   - The match keeps ticking (no OOB freeze).
+2. Run `MatchChainTrace` and `MatchBatchRunner`; assert no exceptions
+   during 5+ matches.
+3. Run unit tests: `RestartManagerTest`, `MatchSimulatorTest`.
+
+### 48.10 What this section explicitly forbids
+
+- ❌ Visible ball flight from OOB to the taker.
+- ❌ `setActionDelayTicks(OOB_HOLD_TICKS)` after a restart.
+- ❌ `RESTART_WALK_SPEED=0.7` slow-ball animation.
+- ❌ Carrier walking the ball when the taker is actually a different player.
+- ❌ Offside on corners.
+- ❌ Offside on throw-ins.
+- ❌ `RESTART_TELEPORT_DISTANCE=4.0` snap-overrides that don't make
+  football sense.

@@ -731,7 +731,6 @@ class MatchViewer {
     this._flashEvent = null;
     this._flashStart = 0;
     this._displayedEventIdx = 0;
-    this._timelineShownIdx = 0;
     this._prevGoalCount = [0, 0];
     this._prevHalfTime = false;
     this._prevMatchFinished = false;
@@ -875,21 +874,15 @@ class MatchViewer {
     this._varOverlayTick = -1;
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set(), cooldowns: new Map() };
-    this._timelineShownIdx = 0;
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
     this._updateScoreboard();
-    this._buildTimeline();
-    // Pre-populate the timeline with ALL events from the start so the user
-    // can scroll up to see minute 0 immediately, instead of only seeing
-    // events from the current playback position. The playhead still drives
-    // overlay flashing and ticker updates, but the timeline list itself is
-    // static for the entire match.
-    for (const ev of this.events) {
-      if (TIMELINE_EVENTS.has(ev.type)) this._addTimelineEvent(ev);
-    }
-    this._timelineShownIdx = this.events.length;
+    // Timeline stays dynamic — events appear as the playhead reaches them
+    // and auto-scroll to the latest event keeps the newest entry visible.
+    // The user scrolls UP within the timeline to inspect earlier events;
+    // pre-populating with ALL events would force auto-scroll-to-bottom on
+    // every new event and clutter the view.
     this._updateSeekRange();
     this._showEmpty(false);
     this.pitch._resize();
@@ -987,18 +980,7 @@ class MatchViewer {
            this.events[this._displayedEventIdx].tick <= this.currentTick) {
       this._displayedEventIdx++;
     }
-    // Rebuild the timeline from scratch up to the new current tick. Without
-    // this, jumping to minute 60 leaves the timeline starting at minute 60
-    // (events from minutes 0-59 are never displayed and the user can't see
-    // them). Now seeking always shows the FULL event history up to the
-    // current playhead position.
     this._buildTimeline();
-    this._timelineShownIdx = 0;
-    for (const ev of this.events) {
-      if (ev.tick > this.currentTick) break;
-      if (TIMELINE_EVENTS.has(ev.type)) this._addTimelineEvent(ev);
-    }
-    this._timelineShownIdx = this._displayedEventIdx;
     this._renderFrame();
   }
 
@@ -1044,11 +1026,7 @@ class MatchViewer {
     while (this._displayedEventIdx < this.events.length) {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
-      // Skip events already in the timeline DOM (the timeline was
-      // pre-populated at load time so the user can scroll up to minute 0
-      // without waiting for playback to reach that point).
-      const alreadyShown = this._displayedEventIdx < this._timelineShownIdx;
-      if (ev.tick >= fromTick && !alreadyShown) {
+      if (ev.tick >= fromTick) {
         // Only show compact timeline events. Verbose engine logs (DECISION,
         // ACTION_EXECUTION, ACTION_OUTCOME, INFO, RESTART, POSSESSION,
         // VAR_IN_PROGRESS) and per-tick chase progress logs are still in the
@@ -1059,11 +1037,6 @@ class MatchViewer {
         if (TIMELINE_EVENTS.has(ev.type)) {
           this._addTimelineEvent(ev);
         }
-      }
-      // Overlay flashing (GOAL banner), VAR triggers etc. still fire even
-      // for already-shown events so replays show the celebration / overlay
-      // when the playhead crosses the original moment.
-      if (ev.tick >= fromTick) {
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
           this._flashStart = performance.now();

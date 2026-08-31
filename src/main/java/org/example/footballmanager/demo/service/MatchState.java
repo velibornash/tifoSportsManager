@@ -20,6 +20,12 @@ public class MatchState {
     public static final int DUEL_LOSS_TICKS = 6;
     public static final int SET_PIECE_HOLD_TICKS = 60;
     public static final int CORNER_TAKER_HOLD_TICKS = 40;
+    /**
+     * @deprecated since pass 10 — the new instant-restart spec (corePrinciples
+     *             §48) doesn't use any OOB hold. Restarts happen on the same
+     *             tick OOB is detected.
+     */
+    @Deprecated
     public static final int OOB_HOLD_TICKS = 8;
 
     public static final String TEAM_HOME = "HOME";
