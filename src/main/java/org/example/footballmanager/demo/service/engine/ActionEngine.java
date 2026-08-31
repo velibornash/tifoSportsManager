@@ -234,8 +234,15 @@ public class ActionEngine {
         action.setGoodExecution(received);
         action.setPassLength(passLength);
         action.setPassHeight(passHeight);
-        // Ball speed is always the constant BALL_SPEED (2.0) — never varies by skill.
-        // The default passSpeed in Action is already 2.0 = BallMovementEngine.BALL_SPEED.
+        // Pass speed = base + passing-skill bonus. Range 1.0 (weak) to 3.0 (elite).
+        // Better passers hit harder, faster balls — harder for defenders to react
+        // (more deflection, less interception), faster flight for the viewer to see.
+        double passerPassing = carrier.getSkills().passing();
+        double speedFromSkill = 1.0 + (passerPassing / 20.0) * 2.0; // 1.0..3.0
+        // Long passes get a small extra kick — they're harder to control so the
+        // passer launches them with more pace.
+        if (passLength == PassLength.LONG) speedFromSkill += 0.2;
+        action.setPassSpeed(Math.min(3.0, speedFromSkill));
 
         state.getBall().setCarrier(null);
         state.getBall().setTarget(flightTarget);

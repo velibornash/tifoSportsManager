@@ -92,6 +92,53 @@ public class TacticsRules {
     }
 
     public String getSource() { return source; }
+    /**
+     * Dump the loaded tactical rules to a JSON file for debugging/verification.
+     * Writes the resolved target positions (after parseCell) for every (role,
+     * ballStateKey) pair currently held in desiredByRoleByState.
+     */
+    public void dumpLoadedRules(String path) {
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(path)) {
+            pw.println("{");
+            pw.println("  \"source\": \"" + source + "\",");
+            pw.println("  \"ruleCount\": " + ruleCount + ",");
+            pw.println("  \"rules\": {");
+            boolean firstRole = true;
+            for (var roleEntry : desiredByRoleByState.entrySet()) {
+                if (!firstRole) pw.println(",");
+                firstRole = false;
+                pw.println("    \"" + roleEntry.getKey() + "\": {");
+                boolean firstState = true;
+                for (var stateEntry : roleEntry.getValue().entrySet()) {
+                    if (!firstState) pw.println(",");
+                    firstState = false;
+                    Position pos = stateEntry.getValue();
+                    pw.println("      \"" + stateEntry.getKey() + "\": {"
+                            + "\"row\": " + String.format(java.util.Locale.US, "%.4f", pos.getRow())
+                            + ", \"column\": " + String.format(java.util.Locale.US, "%.4f", pos.getColumn())
+                            + " }");
+                }
+                pw.println("    }");
+            }
+            pw.println("  },");
+            pw.println("  \"anchors\": {");
+            boolean firstAnchor = true;
+            for (var anchorEntry : anchorByRole.entrySet()) {
+                if (!firstAnchor) pw.println(",");
+                firstAnchor = false;
+                Position pos = anchorEntry.getValue();
+                pw.println("    \"" + anchorEntry.getKey() + "\": {"
+                        + "\"row\": " + String.format(java.util.Locale.US, "%.4f", pos.getRow())
+                        + ", \"column\": " + String.format(java.util.Locale.US, "%.4f", pos.getColumn())
+                        + " }");
+            }
+            pw.println("  }");
+            pw.println("}");
+        } catch (Exception e) {
+            System.err.println("Failed to dump rules: " + e.getMessage());
+        }
+    }
+
     public int getRuleCount() { return ruleCount; }
 
     /**

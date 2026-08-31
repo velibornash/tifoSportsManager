@@ -98,6 +98,9 @@ public class MatchSimulator {
         Position kickoffPos = new Position(4, 3.5);
         Ball ball = new Ball(kickoffPos, kickoffPos);
         TacticsRules tactics = new TacticsRules();
+        System.out.println("TACTICS_SOURCE: " + tactics.getSource() + " | ruleCount=" + tactics.getRuleCount());
+        // DEBUG: dump loaded rules to a JSON file the user can inspect
+        tactics.dumpLoadedRules("/tmp/loaded_tactics.json");
         MatchRecorder recorder = new MatchRecorder();
         MatchState state = new MatchState(allPlayers, ball, tactics, random.getRandom(), recorder);
 

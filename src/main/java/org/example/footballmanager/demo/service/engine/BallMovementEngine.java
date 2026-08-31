@@ -22,8 +22,14 @@ public class BallMovementEngine {
 
     public void moveBallTowardCurrentTarget() {
         Ball ball = state.getBall();
-        // Ball speed is always the constant BALL_SPEED — never slows down from default.
-        moveBallToward(ball, ball.getTarget(), BALL_SPEED);
+        // Read the current action's pass speed — better passers hit faster balls
+        // (range 1.0..3.0 cells/tick), weaker passers lob slower ones. Fall back to
+        // the constant BALL_SPEED when no action (e.g., loose ball recovery).
+        double speed = BALL_SPEED;
+        if (state.getAction() != null && state.getAction().getPassSpeed() > 0) {
+            speed = state.getAction().getPassSpeed();
+        }
+        moveBallToward(ball, ball.getTarget(), speed);
     }
 
     public void followCarrier() {
