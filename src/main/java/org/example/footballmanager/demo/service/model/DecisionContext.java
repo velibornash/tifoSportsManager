@@ -22,6 +22,7 @@ public record DecisionContext(
         boolean onWing,
         boolean inOpponentHalf,
         boolean canShoot,
+        boolean canLongShot,
         boolean isKickoff,
         int matchTick,
         List<DecisionOption> options

@@ -142,29 +142,49 @@ public class ExecutionQuality {
             onTargetProb = Math.max(onTargetProb, 0.90);
         }
 
-        boolean onTarget = random.nextDouble() < onTargetProb;
-
-        Position actualTarget = goalPosition;
-        if (onTarget) {
-            // Ball reaches the goal mouth — aim at the FAR post relative to the
-            // GK position (or the centre if no GK). A well-positioned GK on
-            // the near post means the far post is open — the player naturally
-            // aims there. Without this, every on-target shot goes to the
-            // centre and any GK on the near post can save it.
-            // Goal width is 1 cell (col 3.0 to col 4.0, centre col 3.5) — the
-            // far-post aim stays within the actual goal mouth.
-            double targetCol = goalPosition.getColumn();
-            if (goalkeeper != null && shotOrigin != null) {
-                double gkCol = goalkeeper.getPosition().getColumn();
-                double gkColOffset = gkCol - goalPosition.getColumn();
-                if (Math.abs(gkColOffset) > 0.5) {
-                    // Far post: opposite column from GK, clamped to goal mouth
-                    // (col 3.0 to col 4.0 — goal width is 1 cell, ~10m).
-                    double farCol = goalPosition.getColumn() - gkColOffset;
-                    targetCol = SimUtils.clamp(farCol, 3.0, 4.0);
-                }
+        // ---- GK on the wrong post: far post is wide open, raise on-target. ----
+        // A keeper hugging the near post (gkColOffset >= 0.5) leaves the far post
+        // completely open. Combined with the far-post aim above, even an average
+        // finisher puts the ball in the empty corner. Without this boost, a 16m
+        // shot with GK on the wrong post was missing 60% of the time because the
+        // base onTargetProb tops out around 0.4 for medium range.
+        if (goalkeeper != null) {
+            double gkCol = goalkeeper.getPosition().getColumn();
+            double gkColOffset = gkCol - goalPosition.getColumn();
+            if (Math.abs(gkColOffset) >= 0.5
+                    && gkInLaneFactor(shotOrigin, goalPosition, goalkeeper) < 0.6
+                    && dist <= 2.5) {
+                onTargetProb = Math.max(onTargetProb, 0.85);
             }
+        }
+
+        // Far-post aim: detected early so the miss-scatter branch can use it.
+        // If the keeper is on the near post, the carrier aims at the FAR post —
+        // the goal mouth is 1 cell wide (col 3.0–4.0), so the far-post target
+        // sits inside the actual goal, not off frame.
+        double targetCol = goalPosition.getColumn();
+        if (goalkeeper != null && shotOrigin != null) {
+            double gkCol = goalkeeper.getPosition().getColumn();
+            double gkColOffset = gkCol - goalPosition.getColumn();
+            if (Math.abs(gkColOffset) >= 0.5) {
+                // Far post: opposite column from GK, clamped to goal mouth
+                // (col 3.0 to col 4.0 — goal width is 1 cell, ~10m).
+                double farCol = goalPosition.getColumn() - gkColOffset;
+                targetCol = SimUtils.clamp(farCol, 3.0, 4.0);
+            }
+        }
+
+        // ---- Decide on-frame (was the shot heading toward the goal mouth?). ----
+        // The miss scatter runs ONLY when the shot is OFF frame — when the ball
+        // flies wide/over the bar. When the shot is on frame the actualTarget
+        // is the far-post aim inside the goal mouth (a goal, unless the GK saves).
+        // (Previously the scatter was inside the onTarget branch — a logic bug
+        // that made on-frame shots scatter off-frame at random.)
+        boolean onTarget = random.nextDouble() < onTargetProb;
+        Position actualTarget;
+        if (onTarget) {
             actualTarget = new Position(goalPosition.getRow(), targetCol);
+        } else {
             // Scattered miss (wide / over the bar) — a genuine bad finish.
             double missMax = (0.35 + (20 - skill) * 0.05)
                     * (1.0 + (1.0 - angleFactor))
@@ -177,7 +197,9 @@ public class ExecutionQuality {
             actualTarget = new Position(
                     SimUtils.clamp(actualRow, -0.5, 8.5),
                     SimUtils.clamp(actualCol, -0.5, 8.5));
-            // Safety: guarantee it is geometrically a miss.
+            // Safety: guarantee it is geometrically a miss (at least SHOT_GOAL_THRESHOLD
+            // away from goal). Without this the random scatter could accidentally land
+            // inside the goal mouth and produce a phantom miss-then-goal.
             if (SimUtils.distance(actualTarget, goalPosition) < SHOT_GOAL_THRESHOLD) {
                 double rowDir = actualRow >= goalPosition.getRow() ? 0.5 : -0.5;
                 double colDir = actualCol >= goalPosition.getColumn() ? 0.5 : -0.5;

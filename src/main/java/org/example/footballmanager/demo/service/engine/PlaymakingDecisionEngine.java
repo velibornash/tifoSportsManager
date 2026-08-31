@@ -330,6 +330,37 @@ public class PlaymakingDecisionEngine {
                 || (row == 4 && pos.getColumn() == 3.5
                 && (state.getRound() == 1 || state.isCelebrating()));
 
+        // --- Extended shooting zone (user rule) ---
+        // Striker-style players with good shooting skill AND a clearly mispositioned
+        // goalkeeper can try a long shot from the half-row back of the regular
+        // shooting zone (row ≥ 5.5 HOME / row ≤ 2.5 AWAY, ~28-35 m from goal).
+        // Real football: top strikers occasionally test the keeper from this range
+        // when the keeper is off their line. The shot is offered but scoreShot
+        // keeps the on-target probability realistic — long shots don't convert often.
+        boolean canLongShot = false;
+        if (!isGoalkeeper && !canShoot) {
+            boolean inExtendedZone = home ? (row >= 5.5) : (row <= 2.5);
+            if (inExtendedZone) {
+                Player oppGK = findOpponentGoalkeeper(carrier.getTeam());
+                if (oppGK != null) {
+                    // GK must be off their line by a meaningful margin (>1.5 cells)
+                    // and clearly off-centre (|colOffset| > 0.3). Without both, the
+                    // shot is too speculative to be worth offering.
+                    double gkCol = oppGK.getPosition().getColumn();
+                    double colOffset = Math.abs(gkCol - 3.5);
+                    double gkRowOff = home ? (oppGK.getPosition().getRow() - 7.5)
+                                           : (oppGK.getPosition().getRow() - 0.5);
+                    double gkDistFromLine = Math.abs(gkRowOff);
+                    boolean gkOffLine = gkDistFromLine > 0.7;       // > ~10 m off line
+                    boolean gkOffCentre = colOffset > 0.3;
+                    // Striker must have solid shooting skill — only finishers attempt these.
+                    double strikerSkill = carrier.getSkills().striker();
+                    boolean goodFinisher = strikerSkill >= 12.0;
+                    canLongShot = gkOffLine && gkOffCentre && goodFinisher;
+                }
+            }
+        }
+
         // Use ThreatAssessmentService for danger (corePrinciples §6, §4.4).
         // Pressure is computed directly from nearby opponents — ThreatAssessmentService
         // returns 0 for the carrier's team which would make pressure meaningless.
@@ -358,7 +389,8 @@ public class PlaymakingDecisionEngine {
                 carrier, state.getBall().getBallState(), state.getBall().getPosition(),
                 teammates, opponents, pressure, danger, fieldPosition,
                 carrier.getSkills().playmaking(),
-                home, isGoalkeeper, inFinalThird, onWing, inOpponentHalf, canShoot, isKickoff,
+                home, isGoalkeeper, inFinalThird, onWing, inOpponentHalf,
+                canShoot, canLongShot, isKickoff,
                 state.getMatchTicks(), new ArrayList<>());
     }
 
@@ -432,12 +464,30 @@ public class PlaymakingDecisionEngine {
         }
 
         // SHOT: always a candidate inside the shooting zone (the last two rows,
-        // canShoot() — roughly the 28m shooting band). The empty-goal forced
+        // canShoot() — roughly the 14-28 m shooting band). The empty-goal forced
         // shot (score 100) inside scoreShot guarantees the chance is taken.
         if (ctx.canShoot()) {
             DecisionOption shot = scoreShot(ctx);
             shot.setScore(shot.getScore() - pmShotPenalty);
             options.add(shot);
+        }
+
+        // LONG SHOT: half-row back of the regular zone (~28-35 m from goal). Only
+        // offered when canLongShot() is true (good finisher + GK clearly off line
+        // and off-centre). The option is gated by a small random frequency so
+        // strikers don't fire these every tick — they should be occasional tests
+        // of an off-position keeper, not a regular action.
+        if (ctx.canLongShot()) {
+            DecisionOption longShot = scoreShot(ctx);
+            longShot.setScore(longShot.getScore() - pmShotPenalty);
+            // Penalise heavily so the carrier only attempts it when truly free
+            // and the GK is begging to be tested. Real football: top strikers
+            // pull the trigger from 30 m maybe once every few matches.
+            longShot.setScore(longShot.getScore() - 35.0);
+            // ~15% frequency — not every eligible moment produces a strike.
+            if (random.nextDouble() < 0.15) {
+                options.add(longShot);
+            }
         }
 
         // CROSS: from wing in final third only — generates 10-15 crosses/match
@@ -993,9 +1043,12 @@ private DecisionOption scoreShot(DecisionContext ctx) {
         // If the lane to goal has NOBODY — no goalkeeper and no outfield
         // defender on it — the shot is OBLIGATORY (score 100) and carries the
         // "empty goal" flag so execution aims even a weak striker on frame.
+        // Only applies inside the regular shooting zone (≤ 28 m / dist ≤ 2.0).
+        // Long-range shots from the extended zone (28-35 m) must still clear
+        // the bar — distance counts.
         boolean laneTotallyClear = defendersInLane == 0
                 && (oppGK == null || gkDistToGoal > 2.0);
-        if (laneTotallyClear) {
+        if (laneTotallyClear && distanceToGoal <= 2.0) {
             score = 100.0;
         }
 

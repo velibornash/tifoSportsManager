@@ -251,11 +251,15 @@ public class TacticalIntentEngine {
             boolean typeA = state.getBall().getCarrier() == opponent
                     && distance <= 1.0;
 
-            // TYPE B: opponent in our defensive third, no defender within 0.5
-            // cells of them — press to close down the space.
-            boolean typeB = isDefensiveThird(opponent.getPosition().getRow(), home)
-                    && isIsolated(opponent, player.getTeam(), 0.5, player)
-                    && distance <= 1.5;
+            // TYPE B: opponent isolated in our FINAL 2.5 ROWS (the dangerous attacking
+        // third closest to our goal). User rule: when an attacker has broken
+        // past the midfield into our final 2.5 rows with 0.5 cells of clear
+        // space around them, a defender MUST press them all the way (close
+        // to duel range) so the next pass / shot can be contested. Without
+        // this, lone attackers roam free behind the midfield line.
+        boolean typeB = isInFinalQuarter(opponent.getPosition().getRow(), home)
+                && isIsolated(opponent, player.getTeam(), 0.5, player)
+                && distance <= 2.0;
 
             int priority = typeA ? 1 : (typeB ? 2 : Integer.MAX_VALUE);
             if (priority == Integer.MAX_VALUE) continue;
@@ -285,6 +289,24 @@ public class TacticalIntentEngine {
         } else {
             // AWAY attacks row 1, defensive third = rows 5-7
             return row >= 5.0;
+        }
+    }
+
+    /**
+     * Check if opponent is in the final 2.5 rows of our goal (the dangerous
+     * attacking third closest to our goal mouth). For HOME defending this is
+     * rows 1-2.5 (where AWAY's final attacking third lives); for AWAY defending
+     * this is rows 5.5-7 (where HOME's final attacking third lives). Used by
+     * the threat override TYPE B to make defenders press isolated attackers
+     * who have broken into the danger zone.
+     */
+    private boolean isInFinalQuarter(double row, boolean homeAttacking) {
+        if (homeAttacking) {
+            // HOME defends rows 1-2.5 — AWAY attacker is in the final 2.5 rows
+            return row <= 2.5;
+        } else {
+            // AWAY defends rows 5.5-7 — HOME attacker is in the final 2.5 rows
+            return row >= 5.5;
         }
     }
 

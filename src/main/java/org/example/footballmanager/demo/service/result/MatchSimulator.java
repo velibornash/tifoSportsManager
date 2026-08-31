@@ -546,7 +546,7 @@ public class MatchSimulator {
 
                     executeDecision(decision, chosen, state, actionEngine, selection,
                             decisionEngine, stats,
-                            logger, rulesService);
+                            logger, rulesService, recorder);
 
                     // Track consecutive carries: reset on non-CARRY decisions.
                     // Increment is handled in ActionEngine.start() to avoid double-counting.
@@ -590,7 +590,7 @@ public class MatchSimulator {
                             DuelResolver.DuelResult duelResult =
                                     duelEngine.resolveActiveDuel(state.getAction());
                             duelEngine.closeAfterResolution();
-                            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection,
+                            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
                                     duelResult, duelAttacker, duelDefender, duelType,
                                     state.getAction());
                         }
@@ -629,7 +629,7 @@ public class MatchSimulator {
                             DuelResolver.DuelResult duelResult =
                                     duelEngine.resolveActiveDuel(state.getAction());
                             duelEngine.closeAfterResolution();
-                            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection,
+                            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
                                     duelResult, duelAttacker, duelDefender, duelType,
                                     state.getAction());
                         }
@@ -738,7 +738,7 @@ public class MatchSimulator {
             // Check action completion (CHASE routes through duel resolution first)
             if (state.hasActiveAction() && state.getAction().getType() == ActionType.CHASE) {
                 resolveChase(state, actionEngine, duelEngine, selection,
-                        rulesService, stats, logger);
+                        rulesService, stats, logger, recorder);
             } else {
                 Action actionBeforeCompletion = state.getAction();
                 actionEngine.checkActionCompletion();
@@ -824,7 +824,7 @@ public class MatchSimulator {
                                         + " [" + decisionEngine.getLastSelectionReason() + "]");
                         actionEngine.complete("CARRY: " + c.getLabel() + " re-decided to " + newDecision);
                         executeDecision(newDecision, reconsidered, state, actionEngine, selection,
-                                decisionEngine, stats, logger, rulesService);
+                                decisionEngine, stats, logger, rulesService, recorder);
                         if (state.hasActiveAction()) {
                             duelEngine.update(state.getAction());
                         }
@@ -1030,7 +1030,8 @@ public class MatchSimulator {
                                   ActionEngine actionEngine, PlayerSelectionEngine selection,
                                   PlaymakingDecisionEngine decisionEngine,
                                   MatchStatsCollector stats,
-                                  ActionLogService logger, FootballRulesService rulesService) {
+                                  ActionLogService logger, FootballRulesService rulesService,
+                                  MatchRecorder recorder) {
         Player carrier = state.getCarrier();
         String team = carrier.getTeam();
 
@@ -1140,6 +1141,12 @@ public class MatchSimulator {
                 if (shotTaken) {
                     stats.onShot(team, carrier.getId(), false);
                 } else {
+                    // Shot blocked by defender — record SHOT_BLOCKED event with full
+                    // structured fields (team/player/position/skill/outcome) so the
+                    // sidebar and JSON export show the full shot outcome chain.
+                    recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                            state.getAction().getActionId(), "SHOT_BLOCKED",
+                            "SHOT BLOCKED by defender near " + carrier.getLabel(), state);
                     // Shot blocked by defender — ball becomes loose, trigger chase
                     String defendingTeam = "HOME".equals(team) ? "AWAY" : "HOME";
                     stats.onBlock(defendingTeam);
@@ -1586,7 +1593,7 @@ public class MatchSimulator {
 
     private void resolveChase(MatchState state, ActionEngine actionEngine, DuelEngine duelEngine,
                               PlayerSelectionEngine selection, FootballRulesService rulesService,
-                              MatchStatsCollector stats, ActionLogService logger) {
+                              MatchStatsCollector stats, ActionLogService logger, MatchRecorder recorder) {
         Position ballPos = state.getBall().getPosition();
         duelEngine.update(state.getAction());
         Player attacker = duelEngine.getActiveDuelAttacker();
@@ -1598,7 +1605,7 @@ public class MatchSimulator {
                     + String.format("%.2f", ballPos.getColumn()) + ")", "CHASE");
             DuelResolver.DuelResult result = duelEngine.resolveActiveDuel(state.getAction());
             duelEngine.closeAfterResolution();
-            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection,
+            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
                     result, attacker, defender, type, state.getAction());
             if (result != null && result.winner() != null) {
                 logger.logChaseWinner(state, result.winner(), "CHASE");
@@ -1640,6 +1647,7 @@ public class MatchSimulator {
                                   MatchStatsCollector stats,
                                   ActionLogService logger,
                                   PlayerSelectionEngine selection,
+                                  MatchRecorder recorder,
                                   DuelResolver.DuelResult result,
                                   Player attacker, Player defender,
                                   DuelType duelType, Action action) {
@@ -1665,6 +1673,18 @@ public class MatchSimulator {
             stats.onTackle(defender.getId());
         }
         // Track shot blocks by outfield defenders (not GK saves — those are tracked separately)
+        if (duelType == DuelType.SHOT && result.outcome() == DuelOutcome.DEFENDER_WINS) {
+            // Always emit SHOT_BLOCKED for the sidebar so the shot outcome chain
+            // (SHOT → BLOCKED / SAVED / MISSED / POST) is visible. Without this
+            // the sidebar jumps from "SHOT by X" straight to "Away United 2 wins
+            // | intercepted pass" — the user can't tell the shot was blocked.
+            String blockKind = "GK".equals(defender.getRole()) ? "SHOT_SAVED" : "SHOT_BLOCKED";
+            recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                    action.getActionId(), blockKind,
+                    blockKind.replace('_', ' ').toLowerCase()
+                            + " by " + defender.getLabel() + " (from " + attacker.getLabel() + ")",
+                    state);
+        }
         if (duelType == DuelType.SHOT && result.outcome() == DuelOutcome.DEFENDER_WINS
                 && !"GK".equals(defender.getRole())) {
             stats.onBlock(defender.getTeam());

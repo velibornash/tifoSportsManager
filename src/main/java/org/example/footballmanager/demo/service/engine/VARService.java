@@ -256,7 +256,8 @@ public class VARService {
         if ("NONE".equals(lastVARDecision) || "NO_REVIEW".equals(lastVARDecision)) return;
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 null, "VAR_" + lastVARDecision,
-                "VAR " + lastVARDecision + " — " + incidentType + ": " + detail);
+                "VAR " + lastVARDecision + " — " + incidentType + ": " + detail,
+                state);
     }
 
     /**
@@ -268,7 +269,7 @@ public class VARService {
         this.lastVARDecision = eventType;
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 null, eventType,
-                "VAR " + eventType + " — " + detail);
+                "VAR " + eventType + " — " + detail, state);
     }
 
     /**
@@ -279,7 +280,7 @@ public class VARService {
         this.lastVARDecision = eventType;
         recorder.appendEvent(tick, state.getRound(),
                 null, eventType,
-                "VAR " + eventType + " — " + detail);
+                "VAR " + eventType + " — " + detail, state);
     }
 
     /**
@@ -288,6 +289,6 @@ public class VARService {
     public void logVARReviewStarted(String team, String reviewType) {
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 null, "VAR_IN_PROGRESS",
-                "VAR IN PROGRESS — " + team + " — " + reviewType);
+                "VAR IN PROGRESS — " + team + " — " + reviewType, state);
     }
 }

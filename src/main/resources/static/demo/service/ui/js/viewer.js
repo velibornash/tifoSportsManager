@@ -158,6 +158,23 @@ class OverlayManager {
     this._type = null;
     this._goalAnim = null;   // { tick, team, startRealTime }
     this._blocking = false;  // true = pause playback while visible (kickoff/goal/HT/FT/offside)
+
+    // Click-to-dismiss: lets the user skip a long review (especially during
+    // a VAR freeze) without waiting for the auto-dismiss timer. ESC and Space
+    // do the same. The overlay only catches the click when no control button
+    // is hit, thanks to event.stopPropagation in the overlay click handler.
+    this._el.addEventListener('click', () => {
+      if (this._active && this._type !== 'fulltime') {
+        // Don't let the user dismiss Fulltime — match is over.
+        this.dismiss();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (this._active && (e.key === 'Escape' || e.key === ' ')) {
+        if (this._type !== 'fulltime') this.dismiss();
+        e.preventDefault();
+      }
+    });
   }
 
   get isActive() { return this._active; }
@@ -552,6 +569,11 @@ class PitchRenderer {
       const isCarrier = carrierId && p.id === carrierId;
       const r = isGK ? 18 : 14;
       const inDuel = duelLabels.has(p.label);
+      // Cooldown highlight: faint pulsing red ring on the player who lost
+      // the most recent duel. Lasts for ~6 ticks after the duel resolved.
+      const cooldowns = this._duelState?.cooldowns;
+      const inCooldown = cooldowns && cooldowns.has(p.label)
+          && cooldowns.get(p.label) > Math.floor(this.currentTick);
 
       // Duel highlight circle behind the player
       if (inDuel) {
@@ -562,6 +584,18 @@ class PitchRenderer {
         ctx.lineWidth = 2.5;
         ctx.stroke();
         ctx.fill();
+      }
+
+      // Cooldown (loser) highlight — faint pulsing red ring for ~6 ticks after
+      // the duel resolved. Visual cue: this player just lost a 50/50 and is
+      // momentarily "off balance" (engine applies the blockAfterDuel cooldown).
+      if (inCooldown) {
+        const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 200);
+        ctx.beginPath();
+        ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(248,81,73,${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
 
       if (isCarrier) {
@@ -697,6 +731,7 @@ class MatchViewer {
     this._flashEvent = null;
     this._flashStart = 0;
     this._displayedEventIdx = 0;
+    this._timelineShownIdx = 0;
     this._prevGoalCount = [0, 0];
     this._prevHalfTime = false;
     this._prevMatchFinished = false;
@@ -839,12 +874,22 @@ class MatchViewer {
     this._varOverlayShown = false;
     this._varOverlayTick = -1;
     this._varReviewQueued = false;
-    this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
+    this._duelState = { pairs: [], currentTick: -1, resolved: new Set(), cooldowns: new Map() };
+    this._timelineShownIdx = 0;
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
     this._updateScoreboard();
     this._buildTimeline();
+    // Pre-populate the timeline with ALL events from the start so the user
+    // can scroll up to see minute 0 immediately, instead of only seeing
+    // events from the current playback position. The playhead still drives
+    // overlay flashing and ticker updates, but the timeline list itself is
+    // static for the entire match.
+    for (const ev of this.events) {
+      if (TIMELINE_EVENTS.has(ev.type)) this._addTimelineEvent(ev);
+    }
+    this._timelineShownIdx = this.events.length;
     this._updateSeekRange();
     this._showEmpty(false);
     this.pitch._resize();
@@ -942,6 +987,18 @@ class MatchViewer {
            this.events[this._displayedEventIdx].tick <= this.currentTick) {
       this._displayedEventIdx++;
     }
+    // Rebuild the timeline from scratch up to the new current tick. Without
+    // this, jumping to minute 60 leaves the timeline starting at minute 60
+    // (events from minutes 0-59 are never displayed and the user can't see
+    // them). Now seeking always shows the FULL event history up to the
+    // current playhead position.
+    this._buildTimeline();
+    this._timelineShownIdx = 0;
+    for (const ev of this.events) {
+      if (ev.tick > this.currentTick) break;
+      if (TIMELINE_EVENTS.has(ev.type)) this._addTimelineEvent(ev);
+    }
+    this._timelineShownIdx = this._displayedEventIdx;
     this._renderFrame();
   }
 
@@ -987,7 +1044,11 @@ class MatchViewer {
     while (this._displayedEventIdx < this.events.length) {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
-      if (ev.tick >= fromTick) {
+      // Skip events already in the timeline DOM (the timeline was
+      // pre-populated at load time so the user can scroll up to minute 0
+      // without waiting for playback to reach that point).
+      const alreadyShown = this._displayedEventIdx < this._timelineShownIdx;
+      if (ev.tick >= fromTick && !alreadyShown) {
         // Only show compact timeline events. Verbose engine logs (DECISION,
         // ACTION_EXECUTION, ACTION_OUTCOME, INFO, RESTART, POSSESSION,
         // VAR_IN_PROGRESS) and per-tick chase progress logs are still in the
@@ -998,6 +1059,11 @@ class MatchViewer {
         if (TIMELINE_EVENTS.has(ev.type)) {
           this._addTimelineEvent(ev);
         }
+      }
+      // Overlay flashing (GOAL banner), VAR triggers etc. still fire even
+      // for already-shown events so replays show the celebration / overlay
+      // when the playhead crosses the original moment.
+      if (ev.tick >= fromTick) {
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
           this._flashStart = performance.now();
@@ -1111,17 +1177,29 @@ class MatchViewer {
           this._duelState.resolved.delete(pairKey);
           this._duelState.pairs.push({ tick: ev.tick, a: attackerPart, b: defenderPart });
         }
-      } else if (ev.type === 'DUEL_RESOLVED') {
-        // Immediately mark this duel pair as resolved so circles disappear
-        // without the 1-2 tick delay from time-window expiry.
-        // Description format: "TYPE labelA vs labelB | winner=..."
+} else if (ev.type === 'DUEL_RESOLVED') {
+        // Track which player lost the duel (loser is in cooldown for ~6 ticks
+        // so they can't tackle/be tackled again immediately). Used by the
+        // renderer to draw a faint pulsing ring on the loser for a few ticks
+        // after the duel, so the user can see "this defender is recovering".
         const desc = ev.description || '';
         const parts = desc.split(' vs ');
         if (parts.length === 2) {
           const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
           // Strip any trailing detail (e.g. "| winner=...") from the defender label
           const defenderPart = parts[1].split('|')[0].trim();
+          // Mark this pair as resolved so the duel highlight circles disappear
+          // immediately (no 1-2 tick delay from time-window expiry).
           this._duelState.resolved.add(attackerPart + '|' + defenderPart);
+          // Determine the loser from "winner=LABEL" and mark them as cooldown
+          // for 6 ticks.
+          const winnerMatch = desc.match(/winner=([^()\s]+)/);
+          if (winnerMatch) {
+            const winnerLabel = winnerMatch[1].trim();
+            const loserLabel = winnerLabel === attackerPart ? defenderPart : attackerPart;
+            this._duelState.cooldowns = this._duelState.cooldowns || new Map();
+            this._duelState.cooldowns.set(loserLabel, ev.tick + 6);
+          }
         }
       }
     }
@@ -1246,6 +1324,29 @@ class MatchViewer {
     if (nearBottom) {
       ul.scrollTop = ul.scrollHeight;
     }
+
+    // Update the landscape-mode live ticker with this event. Only show
+    // notable events (goals, shots, cards, offside, VAR) — minor events
+    // are skipped so the ticker doesn't churn.
+    const ticker = document.getElementById('liveTicker');
+    if (ticker && !isMinor) {
+      this._updateLiveTicker(ev, minute, icon, desc);
+    }
+  }
+
+  _updateLiveTicker(ev, minute, icon, desc) {
+    const tickerIcon = document.getElementById('tickerIcon');
+    const tickerMin = document.getElementById('tickerMin');
+    const tickerDesc = document.getElementById('tickerDesc');
+    if (tickerIcon) tickerIcon.textContent = icon;
+    if (tickerMin) tickerMin.textContent = minute + "'";
+    if (tickerDesc) tickerDesc.textContent = desc;
+    // Brief flash to highlight new event
+    const ticker = document.getElementById('liveTicker');
+    if (ticker) {
+      ticker.style.background = 'rgba(88,166,255,0.18)';
+      setTimeout(() => { ticker.style.background = ''; }, 350);
+    }
   }
 
   _buildTimeline() {
@@ -1256,6 +1357,27 @@ class MatchViewer {
     document.getElementById('emptyState').style.display = show ? 'flex' : 'none';
     document.querySelector('.pitch-wrap').style.display = show ? 'none' : 'flex';
     document.querySelector('.sidebar').style.display = show ? 'none' : 'flex';
+    // Show the landscape ticker only when:
+    //  - we have a match loaded (not empty)
+    //  - the viewport is in landscape mode AND short (< 500px tall)
+    const ticker = document.getElementById('liveTicker');
+    if (ticker) {
+      const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+      const isShort = window.innerHeight < 500;
+      ticker.style.display = (!show && isLandscape && isShort) ? 'flex' : 'none';
+    }
+  }
+
+  /** Update ticker visibility when orientation/size changes. Called from
+   *  resize and orientationchange listeners in initControls. */
+  _updateTickerVisibility() {
+    const ticker = document.getElementById('liveTicker');
+    const pitchWrap = document.querySelector('.pitch-wrap');
+    if (!ticker || !pitchWrap) return;
+    const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+    const isShort = window.innerHeight < 500;
+    const isMatchLoaded = pitchWrap.style.display !== 'none';
+    ticker.style.display = (isMatchLoaded && isLandscape && isShort) ? 'flex' : 'none';
   }
 
   _showLoading(show, text) {
@@ -1327,6 +1449,26 @@ class MatchViewer {
       if (e.code === 'ArrowLeft') this.seek(this.currentTick - TICKS_PER_MINUTE);
       if (e.code === 'ArrowRight') this.seek(this.currentTick + TICKS_PER_MINUTE);
     });
+
+    // Live ticker toggle (landscape mode): tapping the "LOG" button on the
+    // ticker slides the full sidebar up over the pitch so the user can see
+    // the full event log without leaving landscape. Tap again to slide back.
+    const tickerToggle = document.getElementById('tickerToggle');
+    if (tickerToggle) {
+      tickerToggle.addEventListener('click', () => {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+          const isOpen = sidebar.classList.toggle('expanded');
+          tickerToggle.textContent = isOpen ? 'LOG \u25B2' : 'LOG \u25BC';
+        }
+      });
+    }
+
+    // Re-evaluate ticker visibility on orientation change / resize so the
+    // user can flip their phone to landscape mid-match and the layout adapts.
+    const onOrient = () => this._updateTickerVisibility();
+    window.addEventListener('orientationchange', onOrient);
+    window.addEventListener('resize', onOrient);
   }
 }
 

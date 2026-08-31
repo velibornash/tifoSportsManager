@@ -792,3 +792,145 @@ pass with the GK glued to the wrong post.
   (forward, free, just received ball) scores **+147.8** and wins decisively over H-4
   (backward, AWAY 10 pressing at 0.5 cells) at **+3.4**. Free backward (H-5 isolated
   at row 3.0) still scores **+13.4** as the user's clarified fallback case.
+
+### Bug Fixes & Tuning (2026-09-01 — user reported) — pass 7
+
+#### Shot outcome chain always shown in sidebar + JSON
+- `ActionEngine.start()` and `shotMissed()` / `shotSaved()` now use the enriched
+  `MatchRecorder.appendEvent(..., MatchState)` overload which populates
+  **team, playerId, playerName, targetPlayerId, positionRow, positionColumn, skill,
+  outcome** in the JSON event. Previously all of these were null because the basic
+  5-arg overload didn't pull from the live state.
+- `recordDuelStats()`, `resolveChase()`, `executeDecision()` signatures updated to
+  take `MatchRecorder` so they can emit enriched events from helper methods that
+  previously only logged via `ActionLogService`.
+
+#### SHOT_BLOCKED / SHOT_SAVED event always emitted from duel resolution
+When a SHOT duel is resolved with `DEFENDER_WINS`, `MatchSimulator.recordDuelStats()`
+now emits a `SHOT_BLOCKED` (outfield defender) or `SHOT_SAVED` (GK) event so the
+sidebar shows the full shot outcome chain: `SHOT → BLOCKED / SAVED / MISSED / GOAL`.
+Previously the sidebar jumped from `SHOT by X` straight to `Away United 2 wins |
+intercepted pass` with no shot outcome.
+
+#### Far-post threshold `> 0.5 → ≥ 0.5`
+`ExecutionQuality.evaluateShot()` far-post aim now triggers when the GK is at col 3.0
+(exactly on the post) instead of requiring |offset| > 0.5 (which excluded col 3.0
+itself).
+
+#### Execution logic — miss scatter was inside the onTarget branch (bug)
+The miss scatter code was running only when `onTarget = true`, making on-frame shots
+scatter off frame at random. Rewritten:
+- When `onTarget = true`: `actualTarget = far-post aim` (inside goal mouth)
+- When `onTarget = false`: `actualTarget = miss scatter` (off frame)
+- Geometric-miss safety check still runs to guarantee the scatter doesn't accidentally
+  land in the net.
+
+#### GK on wrong post → onTargetProb ≥ 0.85
+When the GK is clearly off-centre (`|colOffset| ≥ 0.5`) AND not in the shot lane
+(`gkInLaneFactor < 0.6`) within 2.5 cells, the on-target probability is raised to at
+least 0.85. A 16m shot with the GK hugging the wrong post used to miss 60% of the
+time (base onTargetProb ~0.40 for medium range); it now scores ~85% of the time —
+well above the realistic ~70-75% for a clear shot at the empty corner. Combined with
+the existing far-post aim, the carrier now reliably beats the keeper who guessed the
+wrong side.
+
+#### Verification (2026-09-01 pass 7)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- Logic trace of the user's scenario (shot from (6.90, 4.40), AWAY GK at col 3.0):
+  - Far-post aim triggers (|gkColOffset| = 0.5 ≥ 0.5): targetCol = 4.0 (clamped)
+  - GK on wrong post + not in lane (gkInLaneFactor = 0.50 < 0.6): onTargetProb = max(0.40, 0.85) = 0.85
+  - 85% chance the ball reaches col 4.0 inside the goal mouth → goal
+
+### Bug Fixes & Tuning (2026-09-01 — user reported) — pass 8
+
+#### Extended shooting zone — strikers can try from row 5.5–6 with mispositioned GK
+Real football has top strikers occasionally testing the keeper from 28-35 m when the GK is clearly off their line. Per user: "ne bi trebalo cesto da probaju ni da precesto uspeju ali nekad nekad moze i sa tih 28-35m - kao i u pravom fudbalu".
+
+- New `canLongShot` field on `DecisionContext`. True when ALL of:
+  - Carrier is in row ≥ 5.5 (HOME) / ≤ 2.5 (AWAY) — half-row back of the regular zone
+  - GK is > ~10 m off their line (off their goal by > 0.7 cells)
+  - GK is > 0.3 cells off-centre (|colOffset| > 0.3)
+  - Carrier's striker skill ≥ 12 (only good finishers attempt these)
+- The shot option is gated by a **15% random frequency** inside `decide()` so strikers don't fire these every tick. Per-match occurrence: rare.
+- Scored with a flat **-35 penalty** + the regular `pmShotPenalty`, so the long shot only wins the decision when the situation is genuinely begging for a strike (free carrier, GK begging to be tested).
+- The execution at `ExecutionQuality.evaluateShot` keeps the natural low on-target probability from distance (distOnFrame clamps to 0 at >1.3 cells; with dist 2.5+ the on-target base is ~5-15%) — so even when the long shot fires, it converts only occasionally. Realistic.
+- New long-range empty-goal guard: `scoreShot()` no longer forces `score = 100` (empty-goal guarantee) when `distanceToGoal > 2.0`. The empty-goal rule still applies inside the regular zone (≤ 28 m), but a 30m attempt must still clear the bar.
+
+#### Verification (2026-09-01 pass 8)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- Trace of the user's scenario: striker at row 5.8 (HOME), striker skill 14, GK at col 3.0 row 7.5 → 0.3 from line:
+  - `gkDistFromLine` ≈ 0.0 (GK right on the line) → `gkOffLine = false` → `canLongShot = false`
+  - User clarification: GK must be off their LINE (>0.7 cells, > ~10 m) — a tiny stragger doesn't count
+- Trace with GK at row 6.5 (sweeping off the line), col 3.0: gkOffLine=true, gkOffCentre=true, canLongShot=true; 15% per tick the carrier tries the strike.
+
+### Bug Fixes & Tuning (2026-09-01 — user reported) — pass 9
+
+#### VAR overlay no longer freezes Firefox
+- `.overlay.visible` `pointer-events` set so the dim backdrop (`::before`) is
+  `pointer-events:none` and only the inner content catches clicks. The full-time
+  overlay stays non-dismissible (match is over) but every other overlay can be
+  dismissed early.
+- Click-the-overlay or ESC/Space dismisses the overlay immediately. Without
+  this the user couldn't click pause/play during a VAR review and Firefox
+  appeared to freeze (the controls were visually obscured by the modal layer).
+- Both `_processEventsForTick` and `_checkSnapshotOverlays` set the same
+  `_varOverlayTick` guard so the VAR review never fires twice for the same
+  incident.
+
+#### All event types now emit structured JSON fields
+- DUEL_START, DUEL_RESOLVED, VAR_IN_PROGRESS, VAR_*_CONFIRMED, VAR_*_OVERTURNED,
+  POSSESSION_CHANGE, PASS_*, SHOT_*, DUEL_WON, CARRY, etc. — every event now
+  uses the 6-arg `MatchRecorder.appendEvent(..., MatchState)` overload which
+  populates team / playerId / playerName / targetPlayerId / positionRow /
+  positionColumn / skill / outcome. The 5-arg overload still exists for
+  backward compatibility but every internal call site has been migrated.
+
+#### HARD RULE — carry ≤ 1 cell along same row
+- `ActionEngine.executeCarry()` caps `carryDistance = 1` when the carry
+  direction is purely lateral (`dr == 0`). Forward / diagonal carries keep
+  the 3-4 cell range. Per user: "zabrani hard rule vise od 1.5 duzine cella
+  carry PO ISTOM REDU, dva tri puta sam video da rade carry s jedne strane
+  na drugu".
+
+#### Threat override — defend isolated attacker in final 2.5 rows
+- `TacticalIntentEngine.applyThreatOverride()` TYPE B now uses a new
+  `isInFinalQuarter()` helper that checks whether the opponent is in the
+  last 2.5 rows of the defending team's goal (rows 1-2.5 for HOME defending,
+  rows 5.5-7 for AWAY defending). The distance threshold is raised to2.0 cells.
+- TYPE A (ball carrier anywhere within 1.0 cell) stays unchanged — already
+  covers "pressing the ball carrier".
+
+#### Duel visualisation — loser shows cooldown ring
+- `viewer.js` parses the `winner=LABEL` field from each DUEL_RESOLVED event
+  and tracks the loser in `_duelState.cooldowns` for6 ticks.
+- The renderer draws a faint pulsing red ring on the loser for those6 ticks.
+  Both duelists highlight in yellow while the duel is active; only the
+  winner keeps the carrier ring (orange); the loser fades back to normal.
+
+#### Mobile / iPhone-14-Pro landscape layout
+- New CSS breakpoint `@media (max-height: 500px) and (orientation: landscape)`
+  shrinks the LED scoreboard, makes the pitch fill the entire screen, hides
+  the sidebar by default, and shows a slim 28px live ticker above the pitch
+  with the most recent event (icon + minute + description).
+- The ticker has a "LOG" button that slides the full sidebar up over the
+  pitch on tap. Portrait phones keep the original stacked layout (sidebar
+  below the pitch).
+- iOS viewport uses `100dvh` to handle the Safari URL bar.
+- `orientationchange` and `resize` listeners re-evaluate the ticker visibility
+  so the user can flip their phone mid-match.
+
+#### Timeline pre-populated on load
+- The side-panel timeline now shows ALL events from minute 0 onward on match
+  load, not just events from the current playback position. Per user: "app
+  log je veliki i ne vidim prvih 15 min" — solved: scroll up in the timeline
+  to see minute 0 immediately.
+- `_timelineShownIdx` tracks which events are already in the DOM so the
+  playback loop doesn't double-render them during normal advancement.
+- Seeking to a specific tick rebuilds the timeline up to that tick (instead
+  of starting from that tick).
+
+#### Verification (2026-09-01 pass 9)
+- `mvn compile -DskipTests` — BUILD SUCCESS.
+- `node --check src/main/resources/static/demo/service/ui/js/viewer.js` — no syntax errors.
+- Designed to work on iPhone 14 Pro landscape (932×430 px logical) and similar
+  Android landscape devices.

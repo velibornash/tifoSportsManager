@@ -139,7 +139,24 @@ canvas#pitch{
   transition:opacity .4s ease;
 }
 .overlay.visible{
-  pointer-events:auto;opacity:1;
+  /* Overlay stays clickable for early dismissal, but controls underneath
+     remain usable because the overlay is only `pointer-events:auto` on the
+     inner content (text + skip button). The dim backdrop uses
+     `pointer-events:none` so clicks fall through to buttons. This fixes
+     the "Firefox freezes and I can't click pause" bug — the pause button
+     stays live throughout the review. */
+  opacity:1;
+  cursor:pointer;
+}
+.overlay.visible::before{pointer-events:none}
+.overlay.visible .overlay-inner{pointer-events:auto;cursor:pointer}
+/* Dismiss hint — small click/ESC hint below the message so the user
+   knows they can skip long VAR reviews. */
+.overlay .skip-hint{
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  font-size:12px;color:var(--dim);letter-spacing:.4px;
+  text-transform:uppercase;opacity:.6;
+  pointer-events:none;
 }
 .overlay::before{
   content:'';position:absolute;inset:0;
@@ -273,4 +290,108 @@ canvas#pitch{
   0%{transform:scale(0.3);opacity:0}
   50%{transform:scale(1.15)}
   100%{transform:scale(1);opacity:1}
+}
+
+/* ───────────────────────────────────────────────────────────────
+   MOBILE / iPHONE-14-PRO LANDSCAPE — pitch fills screen, log
+   collapses into a single horizontal ticker above the pitch.
+
+   Targets portrait ≤ 900 px wide and landscape ≤ 1100 px tall
+   (iPhone 14 Pro landscape is 932×430 px logical). We don't try to
+   make the layout responsive per device — only landscape phones are
+   the "real" mobile mode. Portrait phones keep the original
+   stacked layout (sidebar below the pitch) so logs are readable.
+   ─────────────────────────────────────────────────────────────── */
+
+/* Portrait phones — log collapses BELOW the pitch (default stacked) */
+@media (max-width: 700px) and (orientation: portrait) {
+  .app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+  .main{display:flex;flex:1;flex-direction:column;overflow:hidden}
+  .pitch-wrap{flex:1;min-height:0;padding:6px}
+  canvas#pitch{width:100%;height:100%;max-width:100%;max-height:100%}
+  .sidebar{
+    width:100%;max-width:none;min-width:0;
+    border-left:none;border-top:1px solid var(--border);
+    max-height:34vh;overflow:hidden;
+  }
+  .led{padding:6px 10px;min-height:48px;gap:6px}
+  .led .team{min-width:auto}
+  .led .team .name{font-size:11px}
+  .led .team .score{font-size:22px}
+  .led .clock{font-size:14px;padding:0 8px;min-width:56px}
+  .controls-row{flex-wrap:wrap}
+  .controls button{font-size:11px;padding:4px 8px}
+}
+
+/* Landscape phones — pitch fills the entire screen, log becomes a
+   single horizontal ticker at the top edge. Controls collapse into
+   an overlay strip that fades in on tap. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+  .main{display:flex;flex:1;flex-direction:column;overflow:hidden}
+
+  /* LED scoreboard — slim, single line */
+  .led{padding:4px 12px;min-height:36px;gap:8px}
+  .led .team{min-width:auto}
+  .led .team .name{font-size:11px}
+  .led .team .score{font-size:20px;min-width:24px}
+  .led .clock{font-size:14px;padding:0 8px;min-width:48px}
+
+  /* Live event ticker — slim horizontal line just under the scoreboard.
+     Shows the last event with icon + minute + description; updates as
+     new events fire. The full timeline lives behind a tap-to-expand
+     toggle on the right. */
+  .live-ticker{
+    display:flex;align-items:center;gap:10px;
+    background:var(--surface);border-bottom:1px solid var(--border);
+    padding:4px 12px;font-size:12px;color:var(--text);
+    overflow:hidden;height:28px;flex-shrink:0;
+  }
+  .live-ticker .ticker-icon{font-size:13px;flex-shrink:0}
+  .live-ticker .ticker-min{
+    color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;
+    flex-shrink:0;min-width:38px;
+  }
+  .live-ticker .ticker-desc{
+    flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .live-ticker .ticker-toggle{
+    background:none;border:none;color:var(--accent);
+    font-size:11px;cursor:pointer;flex-shrink:0;padding:0 4px;
+  }
+
+  /* Pitch — fills the rest of the screen */
+  .pitch-wrap{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    padding:4px;min-width:0;min-height:0;
+  }
+  canvas#pitch{
+    width:100%;height:100%;max-width:100%;max-height:100%;
+  }
+
+  /* Sidebar — hidden by default in landscape; revealed by tapping the
+     "LOG" toggle. Slides up from the bottom over the pitch. */
+  .sidebar{
+    position:fixed;left:0;right:0;bottom:0;
+    width:100%;max-width:none;min-width:0;height:60vh;
+    border-left:none;border-top:1px solid var(--border);
+    transform:translateY(calc(100% - 36px));
+    transition:transform .25s ease;
+    z-index:50;
+  }
+  .sidebar.expanded{transform:translateY(0)}
+
+  /* When the sidebar is collapsed (default), the visible "LOG" tab shows
+     events but the full timeline scrolls inside the 36px header. */
+  .sidebar:not(.expanded) .timeline{
+    overflow:hidden;flex:none;
+  }
+  .sidebar:not(.expanded) h3{
+    padding:6px 14px;font-size:11px;
+  }
+
+  /* Controls compact */
+  .controls{padding:6px 10px;gap:4px}
+  .controls-row{gap:4px}
+  .controls button{padding:4px 8px;font-size:11px}
 }

@@ -93,7 +93,7 @@ public class ActionEngine {
         state.setAction(action);
         state.setStatus(description);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
-                action.getActionId(), type.name(), description);
+                action.getActionId(), type.name(), description, state);
         // Track consecutive carries for the carry penalty
         if (type == ActionType.CARRY && actor != null) {
             actor.incrementConsecutiveCarries();
@@ -536,6 +536,17 @@ public class ActionEngine {
         // "jump-pause-jump" effect on the viewer (carrier completes one cell,
         // engine re-decides, starts new carry).
         int carryDistance = 3 + state.getRandom().nextInt(2); // 3 or 4 cells
+
+        // --- HARD RULE: no carry more than 1.5 cells ALONG THE SAME ROW ---
+        // Side-to-side dribbles look ridiculous on the UI (a winger shuffling
+        // from one sideline to the other) and rarely produce a goal. Per user
+        // rule: when the carry direction is purely lateral (dr == 0), cap the
+        // carry distance at 1.5 cells. Forward (+/-dr) and diagonal carries
+        // (|dr| > 0 AND |dc| > 0) keep the 3-4 cell range.
+        if (dr == 0) {
+            carryDistance = 1; // 1 cell * dc direction = at most 1.0 cells along row
+        }
+
         double nr = SimUtils.clamp(r + direction * dr * carryDistance, 1, 8);
         double nc = SimUtils.clamp(c + dc * carryDistance, 1, 6);
         Position carryTarget = new Position(nr, nc);
@@ -912,7 +923,7 @@ public class ActionEngine {
 
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 action.getActionId(), "SHOT_SAVED",
-                "SHOT saved by " + goalkeeper.getLabel());
+                "SHOT saved by " + goalkeeper.getLabel(), state);
         state.setCarrier(null);
         complete("SHOT | SAVE: " + goalkeeper.getLabel());
     }
@@ -955,7 +966,7 @@ public class ActionEngine {
         state.setCarrier(null);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 action.getActionId(), "SHOT_MISSED",
-                "SHOT | MISS — ball out of play");
+                "SHOT | MISS — ball out of play", state);
         complete("SHOT | MISS");
     }
 
@@ -997,7 +1008,7 @@ public class ActionEngine {
         state.setCarrier(null);
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 state.getAction().getActionId(), "BALL_OUT",
-                "PASS -> OUT OF BOUNDS");
+                "PASS -> OUT OF BOUNDS", state);
         complete("PASS -> OUT OF BOUNDS");
     }
 

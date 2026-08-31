@@ -50,7 +50,7 @@ public class TransitionService {
         // Record transition event
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 null, "POSSESSION_CHANGE",
-                "Possession changed: " + oldTeam + " → " + newTeam);
+                "Possession changed: " + oldTeam + " → " + newTeam, state);
 
         // Determine match phase based on where ball is
         Position ballPos = state.getBall().getPosition();

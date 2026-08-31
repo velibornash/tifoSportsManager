@@ -42,6 +42,16 @@
       </p>
     </div>
 
+    <!-- Live ticker — landscape phones only. Shows the most recent event
+         in a single horizontal line above the pitch. The full log is
+         accessed via the LOG toggle on the right. -->
+    <div class="live-ticker" id="liveTicker" style="display:none">
+      <span class="ticker-icon" id="tickerIcon">\u26BD</span>
+      <span class="ticker-min" id="tickerMin">00:00</span>
+      <span class="ticker-desc" id="tickerDesc">Match not loaded</span>
+      <button class="ticker-toggle" id="tickerToggle">LOG \u25BC</button>
+    </div>
+
     <!-- Pitch -->
     <div class="pitch-wrap" style="display:none">
       <canvas id="pitch" width="1200" height="520"></canvas>

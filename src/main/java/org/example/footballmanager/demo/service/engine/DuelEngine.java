@@ -125,7 +125,8 @@ public class DuelEngine {
         snapPlayersForDuel(attacker, defender, contestPosition);
 
         recorder.appendEvent(state.getSimulationTick(), state.getRound(), action.getActionId(),
-                "DUEL_START", type + " " + attacker.getLabel() + " vs " + defender.getLabel());
+                "DUEL_START", type + " " + attacker.getLabel() + " vs " + defender.getLabel(),
+                state);
     }
 
     /** Resolve the active duel using skill-weighted probability. */
@@ -139,7 +140,8 @@ public class DuelEngine {
                 "DUEL_RESOLVED",
                 activeDuelType + " " + activeDuelAttacker.getLabel() + " vs "
                         + activeDuelDefender.getLabel() + " | winner=" + result.winner().getLabel()
-                        + " (att=" + result.attackerPower() + " def=" + result.defenderPower() + ")");
+                        + " (att=" + result.attackerPower() + " def=" + result.defenderPower() + ")",
+                state);
         return result;
     }
 

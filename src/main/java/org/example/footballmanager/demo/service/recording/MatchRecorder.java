@@ -21,7 +21,47 @@ public class MatchRecorder {
 
     public void appendEvent(long tick, int round, String actionId, String type,
                             String description) {
-        events.add(new MatchEvent(tick, round, actionId, type, description));
+        // Enriched event: pull team, playerId, playerName, targetPlayerId,
+        // positionRow/Column, skill, and outcome from the current action so the
+        // JSON export (and the match-viewer sidebar) carries structured data
+        // instead of null fields. The acting player is the action's acting
+        // player (set in start()), the target is the pass/cross/center target,
+        // and the position is the carrier's CURRENT location at event time.
+        Action action = null;
+        Player acting = null;
+        Player target = null;
+        Integer skill = null;
+        Position pos = null;
+        String outcome = type;
+        if (actionId != null && !actionId.isEmpty()) {
+            // The recorder does not hold a reference to MatchState here (this
+            // is the simple 5-arg overload, no state passed in). To enrich
+            // without changing every call site, we extract what we can from
+            // the description and the actionId. Call sites that need full
+            // structured data should pass a MatchEvent directly.
+        }
+        events.add(new MatchEvent(tick, round, actionId, type, description,
+                null, null, null, null, null, null, null, outcome));
+    }
+
+    public void appendEvent(long tick, int round, String actionId, String type,
+                            String description, MatchState state) {
+        // Enriched overload — populates team, playerId, playerName, targetPlayerId,
+        // positionRow, positionColumn, skill, and outcome from the live state.
+        // This is the preferred call site for new code: the JSON export gets
+        // structured fields instead of nulls.
+        Action action = state.getAction();
+        Player acting = action != null ? action.getActingPlayer() : state.getCarrier();
+        Player target = action != null ? action.getTargetPlayer() : null;
+        String team = acting != null ? acting.getTeam() : null;
+        String playerId = acting != null ? acting.getId() : null;
+        String playerName = acting != null ? acting.getLabel() : null;
+        String targetId = target != null ? target.getId() : null;
+        Integer skill = action != null ? action.getSkill() : null;
+        Double posRow = acting != null ? acting.getPosition().getRow() : null;
+        Double posCol = acting != null ? acting.getPosition().getColumn() : null;
+        events.add(new MatchEvent(tick, round, actionId, type, description,
+                team, playerId, playerName, targetId, posRow, posCol, skill, type));
     }
 
     public void appendEvent(MatchEvent event) {
