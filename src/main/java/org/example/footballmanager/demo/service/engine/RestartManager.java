@@ -199,9 +199,9 @@ public class RestartManager {
                 boolean homeGk = "HOME".equals(restartTeam);
                 // Place ball roughly 5m from own goal — midway of the zone closest
                 // to the defending goal, on the centre column. HOME defends row 1
-                // (attacks toward row 7), so their goal kick is near row 1.5;
-                // AWAY defends row 7, so their goal kick is near row 6.5.
-                double gkRow = homeGk ? 1.5 : 6.5;
+                // (attacks toward row 8), so their goal kick is near row 1.5;
+                // AWAY defends row 8, so their goal kick is near row 7.5.
+                double gkRow = homeGk ? 1.5 : 7.5;
                 Position gkPos = new Position(gkRow, 3.5);
                 state.getBall().setPosition(gkPos);
                 state.getBall().setTarget(null);
@@ -220,16 +220,16 @@ public class RestartManager {
                     double dist = SimUtils.distance(p.getPosition(), gkPos);
                     double row = p.getPosition().getRow();
                     // Box rows: HOME kicks → box is rows 1-2 (AWAY must clear).
-                    // AWAY kicks → box is rows 6-7 (HOME must clear).
-                    boolean inBox = awayOpponent ? row < 2.6 : row > 5.4;
+                    // AWAY kicks → box is rows 7-8 (HOME must clear, 16m from AWAY goal at row 8.0).
+                    boolean inBox = awayOpponent ? row < 2.6 : row > 6.86;
                     if (dist < 1.0 || inBox) {
                         // Push away from the ball toward the opponent's own goal.
-                        // AWAY own goal is row 7 (+), HOME own goal is row 1 (-).
+                        // AWAY own goal is row 8 (+), HOME own goal is row 1 (-).
                         double dir = awayOpponent ? 1 : -1;
                         double targetRow = inBox
                                 ? (awayOpponent ? 3.0 : 5.0)
                                 : row + dir * ((1.0 - dist) + 0.1);
-                        targetRow = SimUtils.clamp(targetRow, 1.0, 7.0);
+                        targetRow = SimUtils.clamp(targetRow, 1.0, 7.9);
                         boolean movesAway = inBox || (targetRow - row) * dir >= 0;
                         if (movesAway) {
                             p.setPosition(new Position(targetRow, p.getPosition().getColumn()));

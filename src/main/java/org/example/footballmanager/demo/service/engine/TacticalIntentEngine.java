@@ -18,7 +18,7 @@ import org.example.footballmanager.demo.service.tactics.TacticsRules;
  */
 public class TacticalIntentEngine {
 
-    private static final int OFFSIDE_RETREAT_THRESHOLD = 2;
+    private static final int OFFSIDE_RETREAT_THRESHOLD = 3;
     private static final double RETREAT_BUFFER = 2.0;
     private static final double PRESS_RADIUS = 0.7;
 
@@ -194,13 +194,15 @@ public class TacticalIntentEngine {
      * when an opponent presents a local threat.
      *
      * Priority order:
-     * 1. OFFSIDE SAFETY — already handled by applyOffsideRetreat
-     * 2. TYPE A — defensive-third isolated opponent (≤ 1.5 cells)
-     * 3. TYPE B — isolated ball carrier (≤ 1.0 cell)
-     * 4. TYPE C — local opponent proximity (≤ 1.0 cell)
+     * 1. TYPE A — isolated ball carrier anywhere on the pitch (≤ 0.2 cells).
+     *    Approach them wherever they are — even in our attacking third if they
+     *    have broken through and no teammate is near.
+     * 2. TYPE B — opponent in our defensive third, isolated from OUR OTHER
+     *    defenders (no defender within 0.5 cells). Press them.
      *
      * "One defender per threat" — closest eligible defender claims the threat
-     * (§4 in threat_override_spec.md).
+     * (§4 in threat_override_spec.md). Resolver prevents swarming: even when
+     * 3 defenders are near, only the closest presses.
      */
     private Position applyThreatOverride(Player player, Position desired) {
         // Threat override is defensive movement only. Never override the carrier,
@@ -214,6 +216,10 @@ public class TacticalIntentEngine {
             return desired;
         }
 
+        // Only defenders contest threats — non-defender outfield players keep
+        // their tactical position (prevents 3 players from swarming the threat).
+        if (!isDefender(player.getRole())) return desired;
+
         boolean home = "HOME".equals(player.getTeam());
         Player bestThreat = null;
         int bestPriority = Integer.MAX_VALUE;
@@ -225,21 +231,18 @@ public class TacticalIntentEngine {
 
             double distance = SimUtils.distance(player.getPosition(), opponent.getPosition());
 
-            // TYPE A: opponent in our defensive third, isolated from OUR OTHER
-            // players within 1 cell, and close enough for the defender to press.
-            boolean typeA = isDefensiveThird(opponent.getPosition().getRow(), home)
-                    && isIsolated(opponent, player.getTeam(), 1.0, player)
+            // TYPE A: isolated ball carrier anywhere on the pitch — press them
+            // wherever they are, as long as they're within 0.2 cells of us.
+            boolean typeA = state.getBall().getCarrier() == opponent
+                    && distance <= 0.2;
+
+            // TYPE B: opponent in our defensive third, no defender within 0.5
+            // cells of them — press to close down the space.
+            boolean typeB = isDefensiveThird(opponent.getPosition().getRow(), home)
+                    && isIsolated(opponent, player.getTeam(), 0.5, player)
                     && distance <= 1.5;
 
-            // TYPE B: isolated opponent ball carrier anywhere, within 1 cell.
-            boolean typeB = state.getBall().getCarrier() == opponent
-                    && isIsolated(opponent, player.getTeam(), 1.0, player)
-                    && distance <= 1.0;
-
-            // TYPE C: local correction — an opponent is already within 1 cell.
-            boolean typeC = distance <= 1.0;
-
-            int priority = typeA ? 1 : (typeB ? 2 : (typeC ? 3 : Integer.MAX_VALUE));
+            int priority = typeA ? 1 : (typeB ? 2 : Integer.MAX_VALUE);
             if (priority == Integer.MAX_VALUE) continue;
 
             if (priority < bestPriority
@@ -253,7 +256,7 @@ public class TacticalIntentEngine {
         if (bestThreat == null) return desired;
 
         // One opponent threat is handled by one defender only: the closest
-        // eligible defender wins the assignment.
+        // eligible defender wins the assignment (resolver prevents swarming).
         if (!isClosestEligibleDefender(bestThreat, player)) return desired;
 
         return bestThreat.getPosition();
@@ -335,13 +338,13 @@ public class TacticalIntentEngine {
         // Retreat position: pull back RETREAT_BUFFER cells behind the offside line
         double retreatRow;
         if (home) {
-            // HOME attacks toward row 7. Retreat = go LOWER (toward own goal)
+            // HOME attacks toward row 8. Retreat = go LOWER (toward own goal at row 1).
             retreatRow = offsideLineRow - RETREAT_BUFFER;
             retreatRow = Math.max(1.0, retreatRow);
         } else {
-            // AWAY attacks toward row 1. Retreat = go HIGHER (toward own goal)
+            // AWAY attacks toward row 1. Retreat = go HIGHER (toward own goal at row 8).
             retreatRow = offsideLineRow + RETREAT_BUFFER;
-            retreatRow = Math.min(7.0, retreatRow);
+            retreatRow = Math.min(7.9, retreatRow);
         }
 
         // Check if player is already clearly onside (at least one non-GK defender goal-side)

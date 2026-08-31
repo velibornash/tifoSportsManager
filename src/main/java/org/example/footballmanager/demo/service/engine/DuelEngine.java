@@ -12,9 +12,12 @@ import java.util.List;
  */
 public class DuelEngine {
 
-    public static final double DEFAULT_DUEL_RADIUS = 1.0;
-    public static final double DRIBBLE_DUEL_RADIUS = 1.2;
-    public static final double RECEIVE_PASS_RADIUS = 0.7;
+    // Duel radii — 1 cell ≈ 14m × 10m (full field = 98m × 60m).
+// A real tackle/shoulder-charge only happens within ~2-3m, so duels trigger
+// only when a defender is extremely close to the ball/player.
+    public static final double DEFAULT_DUEL_RADIUS = 0.2;
+    public static final double DRIBBLE_DUEL_RADIUS = 0.2;
+    public static final double RECEIVE_PASS_RADIUS = 0.2;
     private static final int DUEL_COOLDOWN_TICKS = 10;
     private static final int DRIBBLE_DUEL_COOLDOWN_TICKS = 8;
 
@@ -76,7 +79,7 @@ public class DuelEngine {
         double radiusForType = switch (type) {
             case RECEIVE_PASS -> RECEIVE_PASS_RADIUS;
             case DRIBBLE -> DRIBBLE_DUEL_RADIUS;
-            case SHOT -> 1.5;  // match the outfield filter radius for shot blocks
+            case SHOT -> 0.3;  // tight block — defender must be right next to shooter
             default -> duelRadius;
         };
         if (defender == null || SimUtils.distance(contestPosition, defender.getPosition()) > radiusForType) {
@@ -229,14 +232,14 @@ public class DuelEngine {
                 if ("HOME".equals(team) && row > 2.0) continue;
                 if ("AWAY".equals(team) && row < 6.0) continue;
             }
-            // SHOT: allow GK always; allow DEF/MID within 1.5 cells (shot block/tackle)
-            // Match the pressure detection radius in ActionEngine.executeShot()
+            // SHOT: allow GK always; allow DEF/MID within 0.3 cells (tight block)
+            // Match the duel radius for shot blocks above
             if (action.getType() == ActionType.SHOT) {
                 if ("GK".equals(candidate.getRole())) {
                     // GK always eligible
                 } else {
                     double distToAttacker = SimUtils.distance(candidate.getPosition(), attacker.getPosition());
-                    if (distToAttacker > 1.5) continue; // outfield too far to challenge
+                    if (distToAttacker > 0.3) continue; // outfield too far to challenge
                 }
             }
             if (action.getType() == ActionType.AERIAL && "GK".equals(candidate.getRole())) continue;

@@ -21,14 +21,15 @@ const PITCH_OOB = '#2d6a35';      // out-of-bounds area (darker)
 const PITCH_STRIPE = 'rgba(255,255,255,.04)';
 const PITCH_LINE = 'rgba(255,255,255,.55)';
 // Grid: 9 rows (0-8) x 8 cols (0-7). Playing field = rows 1-7, cols 1-6.
-const GRID_ROWS = 9;
-const GRID_COLS = 8;
-const FIELD_ROW_MIN = 1;
-const FIELD_ROW_MAX = 7;
-const FIELD_COL_MIN = 1;
-const FIELD_COL_MAX = 6;
-const CELL_W = 164;  // 126 * 1.3 — extended 30%
-const CELL_H = 112;  // 80 * 1.4
+// KONSTANTE
+const GRID_ROWS = 10;          // 0..8
+const GRID_COLS = 9;          // 0..7
+const FIELD_ROW_MIN = 1.0;    // home goal line
+const FIELD_ROW_MAX = 8.0;    // away goal line
+const FIELD_COL_MIN = 1.0;    // gornja touchline
+const FIELD_COL_MAX = 7.0;    // donja touchline
+const CELL_W = 196;  // 126 * 1.3 — extended 30%
+const CELL_H = 120;  // 80 * 1.4
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
@@ -286,7 +287,7 @@ class PitchRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.margin = { top: 30, left: 40, right: 40, bottom: 30 };
-    this.showGrid = false;  // grid overlay toggle (default off)
+    this.showGrid = true;  // grid overlay toggle (default off)
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -331,8 +332,8 @@ class PitchRenderer {
     ctx.fillRect(ox, oy, pw, ph);
 
     // Playing field (rows 1-7, cols 1-6) — brighter green
-    const [fx1, fy1] = this.toCanvas(FIELD_ROW_MIN, FIELD_COL_MIN);
-    const [fx2, fy2] = this.toCanvas(FIELD_ROW_MAX, FIELD_COL_MAX);
+    const [fx1, fy1] = this.toCanvas(FIELD_ROW_MIN, FIELD_COL_MIN); // 1.0, 1.0
+    const [fx2, fy2] = this.toCanvas(FIELD_ROW_MAX, FIELD_COL_MAX); // 8.0, 7.0
     ctx.fillStyle = PITCH_GREEN;
     ctx.fillRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
 
@@ -366,14 +367,15 @@ class PitchRenderer {
     }
 
     // Center line
-    const [cx] = this.toCanvas(4, 0);
+    const [cx] = this.toCanvas(4.5, 0);
     ctx.beginPath();
     ctx.moveTo(cx, fy1);
     ctx.lineTo(cx, fy2);
     ctx.stroke();
 
     // Center circle (radius ~9.15m ≈ 0.55 rows)
-    const [ccx, ccy] = this.toCanvas(4, 3.5);
+    const [ccx, ccy] = this.toCanvas(4.5, 4.0);
+
     const circleR = 0.55 * CELL_W;
     ctx.beginPath();
     ctx.ellipse(ccx, ccy, circleR, circleR * (CELL_H / CELL_W), 0, 0, Math.PI * 2);
@@ -383,28 +385,27 @@ class PitchRenderer {
     ctx.arc(ccx, ccy, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Penalty areas (16.5m ≈ 1.0 row deep, 40.3m ≈ 3.6 cols wide)
-    // HOME penalty: rows 1-2, cols ~1.2-5.8
-    this._box(ctx, 1, 1.2, 2, 5.8);
-    // AWAY penalty: rows 6-7, cols ~1.2-5.8
-    this._box(ctx, 6, 1.2, 7, 5.8);
+// HOME: od goal line (1.0) ka centru
+    this._box(ctx, 1.0, 1.7, 2.2, 6.3);
+
+// AWAY: od goal line (8.0) ka centru
+    this._box(ctx, 6.8, 1.7, 8.0, 6.3);
 
     // Goal areas (5.5m ≈ 0.33 rows deep, 18.3m ≈ 1.6 cols wide)
     // HOME goal area: rows 1-1.5, cols ~1.95-5.05
-    this._box(ctx, 1, 1.95, 1.5, 5.05);
+    this._box(ctx, 1.0, 2.7, 1.4, 5.3);
     // AWAY goal area: rows 6.5-7, cols ~1.95-5.05
-    this._box(ctx, 6.5, 1.95, 7, 5.05);
-
+    this._box(ctx, 7.6, 2.7, 8.0, 5.3);
     // Penalty spots (11m ≈ 0.66 rows from goal line)
-    const [p1x, p1y] = this.toCanvas(1.66, 3.5);
-    const [p2x, p2y] = this.toCanvas(6.34, 3.5);
+    const [p1x, p1y] = this.toCanvas(1.0 + 0.8, 4.0);  // 1.8
+    const [p2x, p2y] = this.toCanvas(8.0 - 0.8, 4.0);  // 7.2
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath(); ctx.arc(p1x, p1y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(p2x, p2y, 3, 0, Math.PI * 2); ctx.fill();
 
-    // Goals (nets behind the goal lines)
-    this._goal(ctx, 1, 3.5, 'left');
-    this._goal(ctx, 8, 3.5, 'right');
+// Goals — centar na 4.0, raspon 3.5–4.5
+    this._goal(ctx, 1, 4.0, 'left');
+    this._goal(ctx, 8, 4.0, 'right');
 
     // Team labels
     ctx.font = 'bold 11px system-ui';
@@ -440,8 +441,8 @@ class PitchRenderer {
 
   _goal(ctx, row, col, side) {
     const [gx, gy] = this.toCanvas(row, col);
-    const goalH = 2.2 * CELL_H;
-    const depth = 50;
+    const goalH =  1.4 * CELL_H;
+    const depth = 80;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 4;
     ctx.beginPath();

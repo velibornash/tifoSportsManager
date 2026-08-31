@@ -28,11 +28,11 @@ public class GoalkeeperMovementEngine {
     private static final double COL_MAX = 5.2;
     // Row band around the goal line per team.
     // 16m penalty area = 16/14 ≈ 1.14 cells from goal line.
-    // Tightened bounds to keep GK inside 16m mark (HOME goal = row 1, AWAY = row 7).
+    // Tightened bounds to keep GK inside 16m mark (HOME goal = row 1, AWAY = row 8).
     private static final double HOME_ROW_MIN = 0.9;
     private static final double HOME_ROW_MAX = 2.0;   // 14m from goal, inside 16m arc
-    private static final double AWAY_ROW_MIN = 6.0;    // 14m from goal
-    private static final double AWAY_ROW_MAX = 6.9;   // just inside own 6-yard box
+    private static final double AWAY_ROW_MIN = 6.86;   // 16m from AWAY goal at row 8.0 (edge of penalty area)
+    private static final double AWAY_ROW_MAX = 7.9;    // just inside own 6-yard box
     // Reaction: how close the ball must be to our goal for the keeper to move.
     private static final double REACT_DIST = 4.0;
     // Max distance off the goal line the keeper advances toward a shooter.
@@ -62,13 +62,13 @@ public class GoalkeeperMovementEngine {
      */
     public Position goalkeeperTarget(Player gk) {
         boolean home = "HOME".equals(gk.getTeam());
-        double goalLineRow = home ? 1.0 : 7.0;
+        double goalLineRow = home ? 1.0 : 8.0;
         Position goalCentre = new Position(goalLineRow, GOAL_CENTRE_COL);
         Position ball = state.getBall().getPosition();
         int tick = state.getMatchTicks();
 
         // The ball is a threat only when it is on our side of the pitch.
-        boolean ballOnOurSide = home ? ball.getRow() <= 5.5 : ball.getRow() >= 1.5;
+        boolean ballOnOurSide = home ? ball.getRow() <= 5.5 : ball.getRow() >= 2.5;
 
         double row = goalLineRow;
         double col = GOAL_CENTRE_COL;

@@ -187,15 +187,24 @@ public class PlaymakingDecisionEngine {
             visible = filteredByExchange;
         }
 
-        // HARD RULE: max 10 consecutive passes in own half — force forward action.
+        // HARD RULE: max 12 consecutive passes in own half — force forward action.
         // Prevents endless sideways/backward passing without progression.
+        // Progressive actions: SHOT, THRU, AIR pass, CROSS, CENTER,
+        // CARRY forward (only if there is open space ahead — no defender in the lane).
         if (consecutiveOwnHalfPasses >= MAX_OWN_HALF_PASSES) {
+            Player carrierP = ctx.player();
             List<DecisionOption> forwardOptions = visible.stream()
                     .filter(o -> o.getType() == DecisionType.SHOT
                             || o.getType() == DecisionType.THRU
                             || o.getType() == DecisionType.CROSS
                             || o.getType() == DecisionType.CENTER
-                            || (o.getType() == DecisionType.CARRY))
+                            || (o.getType() == DecisionType.CARRY
+                                    && hasOpenForwardLane(carrierP, ctx.opponents()))
+                            // Air pass: a ground PASS scored as "airPass" (PassHeight.AIR)
+                            // is also a valid progressive option to break the sideways cycle.
+                            || (o.getType() == DecisionType.PASS
+                                    && o.getReason() != null
+                                    && o.getReason().toLowerCase().contains("air")))
                     .collect(Collectors.toList());
             if (!forwardOptions.isEmpty()) {
                 visible = forwardOptions;
@@ -760,10 +769,27 @@ public class PlaymakingDecisionEngine {
         boolean isDefender = role.equals("DEF") || role.equals("CB")
                 || role.equals("LB") || role.equals("RB") || role.equals("DM");
         if (isDefender) {
-            // HOME defends row 1, AWAY defends row 7. Penalty grows as the
+            // HOME defends row 1, AWAY defends row 8. Penalty grows as the
             // defender moves toward the opponent half (away from home).
-            double ownHalfDist = home ? (row - 1.0) : (7.0 - row);
+            double ownHalfDist = home ? (row - 1.0) : (8.0 - row);
             defenderCarryPenalty = -Math.min(90.0, ownHalfDist * 22.0);
+
+            // HARD RULE: defender on own half carrying into 2+ opponents = suicide.
+            // They should pass/clear instead. Heavy penalty ensures the decision
+            // engine picks PASS/CLEAR over CARRY when the defender is hemmed in.
+            boolean inOwnHalf = home ? (row <= 4.0) : (row >= 4.0);
+            if (inOwnHalf) {
+                double opponentsNear = countDefendersWithinRange(carrier, ctx.opponents(), 0.5);
+                if (opponentsNear >= 2.0) {
+                    // Two or more opponents right next to the carrier — dribbling
+                    // through them is near-certain turnover. Apply massive penalty
+                    // so PASS/CLEAR wins the decision tree.
+                    defenderCarryPenalty -= 120.0;
+                } else if (opponentsNear >= 1.0) {
+                    // One opponent close — still risky for a defender on own half.
+                    defenderCarryPenalty -= 40.0;
+                }
+            }
         }
 
         double score = pressureFactor + spaceScore + finalThirdBoost
@@ -1010,6 +1036,32 @@ private DecisionOption scoreShot(DecisionContext ctx) {
         if (rowDelta > 0.5) return 0; // forward pass — no penalty
         if (rowDelta > -0.5) return 1.5; // lateral — mild penalty (common in build-up play)
         return 4.0; // backward — modest penalty, still allows safe backward passes
+    }
+
+    /**
+     * True if the carrier has an open forward lane — no opponent blocks the cone
+     * 1.5 cells ahead of the carrier within ±30 degrees. Used by the
+     * progressive-play rule (12 own-half passes → must break forward) to allow
+     * CARRY only when there's actually space to run into.
+     */
+    private boolean hasOpenForwardLane(Player carrier, List<Player> opponents) {
+        boolean home = "HOME".equals(carrier.getTeam());
+        double carrierRow = carrier.getPosition().getRow();
+        double carrierCol = carrier.getPosition().getColumn();
+        double probeDistance = 1.5; // look 1.5 cells ahead
+        for (Player opp : opponents) {
+            if ("GK".equals(opp.getRole())) continue;
+            double dr = opp.getPosition().getRow() - carrierRow;
+            double dc = opp.getPosition().getColumn() - carrierCol;
+            // Only opponents in front (HOME: positive dr, AWAY: negative dr)
+            if ((home && dr <= 0) || (!home && dr >= 0)) continue;
+            if (dr > probeDistance) continue; // too far ahead to block
+            // Within a 60-degree forward cone (abs(dc) <= abs(dr) * 0.577)
+            if (Math.abs(dc) <= Math.abs(dr) * 0.577) {
+                return false; // opponent blocks the forward lane
+            }
+        }
+        return true; // no opponent in the forward cone
     }
 
     private double forwardProgression(Player carrier, Position goal) {
