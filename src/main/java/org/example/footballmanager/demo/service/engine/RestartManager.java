@@ -214,6 +214,12 @@ public class RestartManager {
                 double cornerCol = rightCorner ? 6.5 : 0.5;
                 restartSpot = new Position(cornerRow, cornerCol);
                 restartKind = "CORNER";
+                // Activate the corner set-piece arrangement: attackers organized
+                // in the box, defenders marking 1v1, everyone jostling until the
+                // corner is taken (cleared on delivery resolution).
+                state.setCornerActive(true);
+                state.setCornerTeam(restartTeam);
+                state.setCornerShuffleTick(state.getSimulationTick());
                 break;
             }
             case GOAL_KICK -> {

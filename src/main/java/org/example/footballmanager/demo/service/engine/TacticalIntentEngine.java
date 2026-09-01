@@ -25,11 +25,24 @@ public class TacticalIntentEngine {
     private final MatchState state;
     private final ActionLogService logger;
     private final GoalkeeperMovementEngine goalkeeperMovement;
+    private final CornerArrangementEngine cornerArrangement = new CornerArrangementEngine();
 
     public TacticalIntentEngine(MatchState state, ActionLogService logger) {
         this.state = state;
         this.logger = logger;
         this.goalkeeperMovement = new GoalkeeperMovementEngine(state);
+    }
+
+    /** Corner arrangement — replaces tactical targets while a corner is being taken. */
+    public boolean applyCornerArrangement(MatchState state) {
+        return cornerArrangement.applyCornerTargets(state);
+    }
+
+    /** Marks the moment the corner is delivered so the arrangement survives the flight. */
+    public void markCornerDelivered(MatchState state) {
+        if (cornerArrangement.isCornerArrangementActive(state)) {
+            cornerArrangement.markCornerDelivered(state);
+        }
     }
 
     /** Returns the movement target for a goalkeeper, overriding the tactical editor. */
@@ -40,6 +53,12 @@ public class TacticalIntentEngine {
     public void assignTargets() {
         state.setTacticalBallPosition(state.getBall().getPosition());
         state.setLastTacticalBallStateKey(TacticsRules.ballStateKey(state.getBall().getPosition()));
+        // Corner set-piece arrangement overrides normal tactical targets for
+        // every player while a corner is being walked/taken.
+        if (cornerArrangement.isCornerArrangementActive(state)) {
+            cornerArrangement.applyCornerTargets(state);
+            return;
+        }
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
@@ -172,6 +191,10 @@ public class TacticalIntentEngine {
         // is in flight (no carrier active) — ball drifts mid-cell while players
         // freeze. Refreshing every tick keeps everyone moving toward the shape for
         // the ball's exact current spot.
+        if (cornerArrangement.isCornerArrangementActive(state)) {
+            cornerArrangement.applyCornerTargets(state);
+            return;
+        }
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;

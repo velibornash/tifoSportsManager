@@ -845,7 +845,13 @@ public class ActionEngine {
             return false;
         }
         receiver.setLocked(false);
-        receiver.setPosition(state.getBall().getPosition());
+        Position snapPos = state.getBall().getPosition();
+        if ("GK".equals(receiver.getRole())) {
+            snapPos = new Position(
+                    GoalkeeperMovementEngine.clampGkToZone(receiver, snapPos.getRow()),
+                    snapPos.getColumn());
+        }
+        receiver.setPosition(snapPos);
         receiver.setTarget(null);
         state.getBall().setCarrier(receiver);
         state.setCarrier(receiver);
@@ -1051,7 +1057,13 @@ public class ActionEngine {
         recorder.appendEvent(state.getSimulationTick(), state.getRound(),
                 state.getAction().getActionId(), "CHASE_POSSESSION",
                 "CHASE RESOLUTION: " + winner.getLabel() + " | " + reason);
-        winner.setPosition(state.getBall().getPosition());
+        Position chasePos = state.getBall().getPosition();
+        if ("GK".equals(winner.getRole())) {
+            chasePos = new Position(
+                    GoalkeeperMovementEngine.clampGkToZone(winner, chasePos.getRow()),
+                    chasePos.getColumn());
+        }
+        winner.setPosition(chasePos);
         complete("CHASE: " + winner.getLabel() + " | " + reason);
     }
 

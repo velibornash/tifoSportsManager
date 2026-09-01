@@ -23,6 +23,11 @@ public class DuelEngine {
     public static final double DEFAULT_DUEL_RADIUS = 0.2;
     public static final double DRIBBLE_DUEL_RADIUS = 0.5;
     public static final double RECEIVE_PASS_RADIUS = 0.2;
+    // Aerial (cross/center/header) challenges use a wider radius — a defender
+    // that is marking the landing attacker (0.45 cells goal-side) must contest
+    // the incoming ball. Per user: corner set-piece players get a 1v1 marking
+    // override so cross deliveries generate aerial duels (not uncontested catches).
+    public static final double AERIAL_DUEL_RADIUS = 0.5;
     private static final int DUEL_COOLDOWN_TICKS = 10;
     // DRIBBLE cooldown 8 → 7 ticks so a defender can re-press within ~2 seconds
     // after losing a tackle (matches the user rule "6-8 ticks cooldown" for the
@@ -88,6 +93,7 @@ public class DuelEngine {
             case RECEIVE_PASS -> RECEIVE_PASS_RADIUS;
             case DRIBBLE -> DRIBBLE_DUEL_RADIUS;
             case SHOT -> 0.3;  // tight block — defender must be right next to shooter
+            case AERIAL -> AERIAL_DUEL_RADIUS;
             default -> duelRadius;
         };
         if (defender == null || SimUtils.distance(contestPosition, defender.getPosition()) > radiusForType) {
@@ -182,6 +188,13 @@ public class DuelEngine {
             Position newPos = new Position(
                     SimUtils.clamp(p.getPosition().getRow() + dy / dist * moveDist, 0.5, 7.5),
                     SimUtils.clamp(p.getPosition().getColumn() + dx / dist * moveDist, 0.5, 6.5));
+            // A goalkeeper must never be dragged upfield by a duel snap — keep
+            // them right in front of their own goal (user rule).
+            if ("GK".equals(p.getRole())) {
+                double row = GoalkeeperMovementEngine.clampGkToZone(
+                        p, newPos.getRow());
+                newPos = new Position(row, newPos.getColumn());
+            }
             p.setPosition(newPos);
         }
     }
@@ -242,11 +255,16 @@ public class DuelEngine {
                 if ("HOME".equals(team) && row > 2.0) continue;
                 if ("AWAY".equals(team) && row < 6.0) continue;
             }
-            // SHOT: allow GK always; allow DEF/MID within 0.3 cells (tight block)
-            // Match the duel radius for shot blocks above
+            // SHOT: allow DEF/MID within 0.3 cells (tight block). The GK is only
+            // allowed to contest a SHOT when it is genuinely near its own goal
+            // (within ~1.5 cells of the goal line) — a keeper must NOT be dragged
+            // upfield to "block" a 30m+ shot, it stays right in front of goal.
             if (action.getType() == ActionType.SHOT) {
                 if ("GK".equals(candidate.getRole())) {
-                    // GK always eligible
+                    double upfieldDist = "HOME".equals(candidate.getTeam())
+                            ? candidate.getPosition().getRow() - 1.0
+                            : 8.0 - candidate.getPosition().getRow();
+                    if (upfieldDist > 1.5) continue; // too far from own goal to contest
                 } else {
                     double distToAttacker = SimUtils.distance(candidate.getPosition(), attacker.getPosition());
                     if (distToAttacker > 0.3) continue; // outfield too far to challenge

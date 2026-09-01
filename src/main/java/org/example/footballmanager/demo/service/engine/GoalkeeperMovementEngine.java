@@ -27,18 +27,35 @@ public class GoalkeeperMovementEngine {
     private static final double COL_MIN = 1.8;
     private static final double COL_MAX = 5.2;
     // Row band around the goal line per team.
-    // 16m penalty area = 16/14 ≈ 1.14 cells from goal line.
-    // Tightened bounds to keep GK inside 16m mark (HOME goal = row 1, AWAY = row 8).
+    // The keeper must stay right in front of his own goal (user rule: even
+    // ~20 m is too much). HOME goal = row 1.0, AWAY goal = row 8.0.
+    // The keeper may only step up to a MAX_ADVANCE of 0.5 cells (~7 m) off the
+    // line — typical non-threat positioning stays well within 0.3 cells (~4 m).
     private static final double HOME_ROW_MIN = 0.9;
-    private static final double HOME_ROW_MAX = 2.0;   // 14m from goal, inside 16m arc
-    private static final double AWAY_ROW_MIN = 6.86;   // 16m from AWAY goal at row 8.0 (edge of penalty area)
-    private static final double AWAY_ROW_MAX = 7.9;    // just inside own 6-yard box
+    private static final double HOME_ROW_MAX = 1.45;   // within ~6 m of the goal line
+    private static final double AWAY_ROW_MIN = 7.55;    // ~6 m from the AWAY goal at row 8.0
+    private static final double AWAY_ROW_MAX = 7.9;     // just inside own six-yard box
     // Reaction: how close the ball must be to our goal for the keeper to move.
     private static final double REACT_DIST = 4.0;
     // Max distance off the goal line the keeper advances toward a shooter.
-    // 1.0 cell = 14 m — absolute max the keeper may leave the line per user
-    // rule. Typical non-threat positioning stays well within 0.5 cells (7 m).
-    private static final double MAX_ADVANCE = 1.0;
+    // 0.5 cell = ~7 m — the keeper steps off the line only to narrow the angle
+    // and is otherwise right in front of the goal.
+    private static final double MAX_ADVANCE = 0.5;
+
+    // Public defensive-zone bounds so OTHER engines (DuelEngine, MovementEngine,
+    // RestartManager) can clamp a goalkeeper back to its own goal area. A keeper
+    // is NEVER allowed to wander upfield — not by duel snaps, not by chases, not
+    // by any restart repositioning.
+    public static final double GK_HOME_ROW_MAX = HOME_ROW_MAX;
+    public static final double GK_AWAY_ROW_MIN = AWAY_ROW_MIN;
+
+    /** Clamp a player's row into the defensive zone of their own goal (GK only). */
+    public static double clampGkToZone(Player gk, double row) {
+        if (!"GK".equals(gk.getRole())) return row;
+        if ("HOME".equals(gk.getTeam())) return Math.min(row, GK_HOME_ROW_MAX);
+        if ("AWAY".equals(gk.getTeam())) return Math.max(row, GK_AWAY_ROW_MIN);
+        return row;
+    }
     // GK cannot save twice within this many ticks (~2 seconds at 1 tick = 1.5s).
     public static final int SAVE_COOLDOWN_TICKS = 4;
 

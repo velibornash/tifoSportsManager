@@ -169,6 +169,18 @@ public class MatchSimulator {
         Position restartWalkLastPos = null;
 
         while (totalTicks < maxTicks && !state.isMatchFinished()) {
+            // GK HARD INVARIANT — every tick, before ANY phase branch, a keeper
+            // is always snapped back into its own goal zone. Guards against any
+            // path (duel snap, loose-ball claim, pass pickup, restart) drifting
+            // the keeper upfield even between the per-tick movement clamp.
+            for (Player p : state.getPlayers()) {
+                if ("GK".equals(p.getRole()) && !p.isSentOff() && !p.isInjured()) {
+                    Position gp = p.getPosition();
+                    p.setPosition(new Position(
+                            GoalkeeperMovementEngine.clampGkToZone(p, gp.getRow()),
+                            gp.getColumn()));
+                }
+            }
             // Universal offside tracking — check ALL outfield players on BOTH
             // teams for offside position every tick (not just at forward-pass
             // moments). Any player standing in an offside position accumulates
@@ -522,6 +534,20 @@ public class MatchSimulator {
                     // decision after a restart. Once that decision is made, clear it
                     // so normal play resumes immediately after.
                     state.setRestartFirstTouch(false);
+
+                    // If this was a corner delivery, keep the box marking arrangement
+                    // alive for the flight so the cross lands into an aerial duel.
+                    tacticalEngine.markCornerDelivered(state);
+                    if (state.isCornerActive() && state.getCornerTeam() != null
+                            && (decision == DecisionType.CENTER || decision == DecisionType.CROSS)
+                            && state.getCarrier() != null) {
+                        System.err.println("[CORNER-CENT] " + state.getCornerTeam()
+                                + " carrier=" + state.getCarrier().getLabel()
+                                + " row=" + String.format("%.2f", state.getCarrier().getPosition().getRow())
+                                + " col=" + String.format("%.2f", state.getCarrier().getPosition().getColumn())
+                                + " ballRow=" + String.format("%.2f", state.getBall().getPosition().getRow())
+                                + " ballCol=" + String.format("%.2f", state.getBall().getPosition().getColumn()));
+                    }
 
                     // Check for duel (skip for THRU passes — interception handled
                     // at arrival via findPassInterceptor + THRU wait mechanism)

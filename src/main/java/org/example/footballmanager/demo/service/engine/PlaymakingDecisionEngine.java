@@ -124,6 +124,14 @@ public class PlaymakingDecisionEngine {
         lastCarrierTeam = currentTeam;
 
         DecisionContext ctx = buildContext(carrier);
+        if (state.isCornerActive() && carrier.getTeam().equals(state.getCornerTeam())) {
+            System.err.println("[CORNER-DECIDE] carrier=" + carrier.getLabel()
+                    + " row=" + String.format("%.2f", carrier.getPosition().getRow())
+                    + " col=" + String.format("%.2f", carrier.getPosition().getColumn())
+                    + " firstTouch=" + state.isRestartFirstTouch()
+                    + " setPiece=" + state.isSetPiecePending()
+                    + " cornerActive=" + state.isCornerActive());
+        }
         List<DecisionOption> options = generateOptions(ctx);
         visionFilter.applyVisionFilter(ctx, options);
 
@@ -225,6 +233,25 @@ public class PlaymakingDecisionEngine {
                 if (!nonBackward.isEmpty()) {
                     visible = nonBackward;
                 }
+            }
+        }
+
+        // CORNER DELIVERY: on a corner restart's first touch the taker MUST whip
+        // the ball into the box — never shoot from the flag or waste the set piece.
+        // (Guards the forced-shot overrides below so a corner is delivered as a
+        // CENTER, not a speculative shot / carry.)
+        if (state.isCornerActive() && state.isRestartFirstTouch()
+                && ctx.player().getTeam().equals(state.getCornerTeam())) {
+            Position ballPos = state.getBall().getPosition();
+            boolean atCornerFlag = ballPos.getColumn() <= 1.0 || ballPos.getColumn() >= 6.0;
+            System.err.println("[CORNER-FORCE] team=" + ctx.player().getTeam()
+                    + " firstTouch=" + state.isRestartFirstTouch()
+                    + " ball=" + String.format("%.2f", ballPos.getRow()) + "," + String.format("%.2f", ballPos.getColumn())
+                    + " atFlag=" + atCornerFlag
+                    + " carrier=" + ctx.player().getLabel());
+            if (atCornerFlag) {
+                lastSelectionReason = "corner delivery into the box";
+                return new DecisionOption(DecisionType.CENTER, 100.0, "corner into the box");
             }
         }
 

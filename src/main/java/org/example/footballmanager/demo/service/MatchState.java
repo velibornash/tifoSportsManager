@@ -84,6 +84,8 @@ public class MatchState {
     private boolean kickoffPending = true;
     private boolean kickoffActionPending = false;
     private int cornerHoldTicks;
+    private boolean cornerActive;          // corner set-piece arrangement active
+    private long cornerShuffleTick = -1;    // tick basis for the real-corner jostle
     private long thruBallArrivalTick = -1;  // tick when THRU ball arrived; -1 = not waiting
     private final Set<Player> activeChasers = new HashSet<>();
 
@@ -357,6 +359,11 @@ public class MatchState {
     public long getThruBallArrivalTick() { return thruBallArrivalTick; }
     public void setThruBallArrivalTick(long tick) { thruBallArrivalTick = tick; }
     public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
+
+    public boolean isCornerActive() { return cornerActive; }
+    public void setCornerActive(boolean value) { cornerActive = value; }
+    public long getCornerShuffleTick() { return cornerShuffleTick; }
+    public void setCornerShuffleTick(long tick) { cornerShuffleTick = tick; }
 
     // --- Restart ---
 
@@ -642,6 +649,8 @@ public class MatchState {
         cornerTaker = null;
         cornerTeam = null;
         cornerHoldTicks = 0;
+        cornerActive = false;
+        cornerShuffleTick = -1;
         thruBallArrivalTick = -1;
         freeKickTaker = null;
         roundComplete = true;

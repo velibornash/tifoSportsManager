@@ -26,6 +26,18 @@ public class MovementEngine {
     }
 
     public void moveAllTowardTargets() {
+        // GK HARD INVARIANT: a goalkeeper is always snapped back into its own
+        // goal zone at the start of every movement pass. No matter which path
+        // drifted the keeper upfield (duel snap, loose-ball claim, pass pickup,
+        // restart), it is pulled right back in front of its own goal each tick.
+        // This is a belt-and-braces guard on top of the clamp in the move loop.
+        for (Player p : state.getPlayers()) {
+            if ("GK".equals(p.getRole()) && !p.isSentOff() && !p.isInjured()) {
+                p.setPosition(new Position(
+                        GoalkeeperMovementEngine.clampGkToZone(p, p.getPosition().getRow()),
+                        p.getPosition().getColumn()));
+            }
+        }
         // HARD RULE: during any restart (set piece pending), opponents within
         // 1 cell of the ball are pushed back toward their own goal.
         if (state.isSetPiecePending()) {
@@ -115,6 +127,13 @@ public class MovementEngine {
             // including the ball carrier, stays within the field. Nothing may
             // appear past the goal lines or touchlines in the viewer.
             safe = clampToField(safe);
+            // A goalkeeper must never leave its own goal area, regardless of the
+            // target (chase, duel, restart, tactical) — right in front of goal.
+            if ("GK".equals(p.getRole())) {
+                safe = new Position(
+                        GoalkeeperMovementEngine.clampGkToZone(p, safe.getRow()),
+                        safe.getColumn());
+            }
             p.setPosition(safe);
             if (SimUtils.distance(safe, target) < 1e-6) {
                 if (activeChase && chaseDetours.remove(p) != null) {
