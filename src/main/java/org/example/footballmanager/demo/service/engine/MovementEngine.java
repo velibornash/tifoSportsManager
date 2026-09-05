@@ -26,6 +26,26 @@ public class MovementEngine {
     }
 
     public void moveAllTowardTargets() {
+        // SET-PIECE FREEZE: during a restart the clock keeps running but the
+        // pitch is frozen — only the designated taker walks to the ball. Every
+        // other player holds its current position until the taker claims the
+        // ball and the restart is executed. The GK-zone clamp and the
+        // restart-pushback still run (so an opponent who wandered too close is
+        // nudged to the legal 1-cell distance), but no one else moves.
+        if (state.isSetPiecePending() && state.getFreeKickTaker() != null
+                && state.getCarrier() == null) {
+            for (Player p : state.getPlayers()) {
+                if (p == state.getFreeKickTaker()) continue;
+                if ("GK".equals(p.getRole()) && !p.isSentOff() && !p.isInjured()) {
+                    p.setPosition(new Position(
+                            GoalkeeperMovementEngine.clampGkToZone(p, p.getPosition().getRow()),
+                            p.getPosition().getColumn()));
+                }
+                p.setTarget(null);
+            }
+            enforceRestartPushback();
+            return;
+        }
         // GK HARD INVARIANT: a goalkeeper is always snapped back into its own
         // goal zone at the start of every movement pass. No matter which path
         // drifted the keeper upfield (duel snap, loose-ball claim, pass pickup,
@@ -208,14 +228,14 @@ public class MovementEngine {
                 boolean pHome = "HOME".equals(p.getTeam());
                 // Push the opponent AWAY from the ball toward their OWN goal.
                 // ownRow is the row of the player's own goal line (HOME defends
-                // row 1, AWAY defends row 7). Moving along sign(ownRow - ballRow)
-                // increases the row-distance from the ball in the direction of
-                // the player's own half.
-                double ownRow = pHome ? 1.0 : 7.0;
+                // row 1.0, AWAY defends row 8.0). Moving along
+                // sign(ownRow - ballRow) increases the row-distance from the ball
+                // in the direction of the player's own half.
+                double ownRow = pHome ? 1.0 : 8.0;
                 double dir = Math.signum(ownRow - ballRow);
                 double push = MIN_RESTART_DISTANCE - dist + 0.1;
                 double pushedRow = ballRow + push * dir;
-                pushedRow = SimUtils.clamp(pushedRow, 1.0, 7.0);
+                pushedRow = SimUtils.clamp(pushedRow, 1.0, 8.0);
                 p.setPosition(new Position(pushedRow, p.getPosition().getColumn()));
                 p.setTarget(null);
             }

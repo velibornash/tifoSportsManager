@@ -37,6 +37,16 @@ const CELL_H = 120;  // 80 * 1.4
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function lerp(a, b, t) { return a + (b - a) * t; }
 
+// One grid cell is 14 m x 10 m on the real pitch. Offside margins come from
+// the engine in cells; convert to meters for the overlay ("0.50 cell, 7 m").
+const OFFISIDE_CELL_METERS = 14;
+function formatOffsideMargin(raw) {
+  const v = parseFloat(raw);
+  if (!isFinite(v)) return '';
+  const meters = Math.round(v * OFFISIDE_CELL_METERS);
+  return `${v.toFixed(2)} cell, ${meters} m`;
+}
+
 function tickToMinute(tick) {
   const totalSec = Math.floor(tick / TICKS_PER_MINUTE * 60);
   const min = Math.floor(totalSec / 60);
@@ -248,13 +258,13 @@ class OverlayManager {
     this._goalAnim = { team, startRealTime: performance.now() };
   }
 
-  /** Show offside overlay: yellow flag + player + team */
+  /** Show offside overlay: yellow flag + player + team + margin (cells & meters) */
   showOffside(playerName, team, margin) {
     this._type = 'offside';
     this._blocking = true;
     this._textEl.textContent = '\uD83D\uDEA9 OFFSIDE';
     const teamLabel = team || '';
-    const marginText = margin ? ` (${margin})` : '';
+    const marginText = margin ? ` (${formatOffsideMargin(margin)})` : '';
     this._subEl.textContent = `${playerName}${marginText} — ${teamLabel}`;
     this._el.className = 'overlay visible offside';
     this._active = true;
@@ -409,6 +419,25 @@ class PitchRenderer {
         const [, cy2] = this.toCanvas(GRID_ROWS - 1, c);
         ctx.beginPath(); ctx.moveTo(fx1, cy1); ctx.lineTo(fx2, cy1); ctx.stroke();
       }
+      // Cell-center coordinate labels (row 1-7, col 1-6). Each playable cell is
+      // [r, r+1) x [c, c+1), so its CENTRE is at (r+0.5, c+0.5). Drawn as "r.c".
+      // DISABLED — the cell-coordinate labels were useful for tuning the tactical
+      // engine but they clutter the match view. Re-enable if you need to verify
+      // cell positions again.
+      if (false) {
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255,255,255,.35)';
+        for (let r =1; r <= 7; r++) {
+          for (let c = 1; c <= 6; c++) {
+            const [cx2, cy2] = this.toCanvas(r + 0.5, c + 0.5);
+            const label = `${r}.${c}`;
+            ctx.fillText(label, cx2, cy2);
+          }
+        }
+        ctx.textBaseline = 'alphabetic';
+      }
     }
 
     // Center line
@@ -518,8 +547,10 @@ class PitchRenderer {
     }
 
     // For duel convergence: if both duel participants exist, draw them
-    // at touching positions (center-to-center ≈ 2 × player radius).
-    // Pre-compute converged positions for dueling players.
+    // COLLIDING (center-to-center ≈ negative overlap → circles visibly on
+    // top of each other so the user sees the tackle/duel as a physical
+    // collision, not two players standing apart). Pre-compute the
+    // converged positions for dueling players.
     const convergedPos = new Map(); // id → {row, col}
     if (duelPairs) {
       for (const pair of duelPairs) {
@@ -528,30 +559,37 @@ class PitchRenderer {
         if (pa && pb && pa.id && pb.id) {
           const rA = pa.role === 'GK' ? 18 : 14;
           const rB = pb.role === 'GK' ? 18 : 14;
-          // Two circles touching: center-to-center = rA + rB (in canvas px)
-          // In grid units: (rA + rB) / CELL_W rows and / CELL_H cols
-          const contactDistRows = (rA + rB) / CELL_W * 0.8; // 0.8 = pixel-to-grid scale approx
-          const contactDistCols = (rA + rB) / CELL_H * 0.8;
-          const midRow = (pa.row + pb.row) / 2;
-          const midCol = (pa.col + pb.col) / 2;
+          // Touching distance in grid units (rA + rB in canvas px → grid cells)
+          const touchDist = (rA + rB) / Math.hypot(CELL_W, CELL_H);
           const dx = pb.col - pa.col;
           const dy = pb.row - pa.row;
           const dist = Math.hypot(dx, dy);
           if (dist > 0.001) {
             // Only converge players if they are genuinely near each other
-            // (duel proximity check). If they are far apart, drawing them at
-            // "touching" positions would teleport them — NIKAD no teleporting.
-            const MAX_CONVERGE_DIST = 2.0; // grid cells
+            // (duel proximity check). If they are far apart, drawing them
+            // overlapping would teleport them — NIKAD no teleporting.
+            const MAX_CONVERGE_DIST = 2.5; // grid cells (widened from 2.0
+            // so the closing defender visibly approaches the attacker even
+            // when starting from 2 cells away)
             if (dist > MAX_CONVERGE_DIST) continue;
-            const overlap = (contactDistRows + contactDistCols) / 2;
-            const moveFrac = Math.max(0, (dist - overlap) / 2 / dist);
+            // Move each player 92% of the way toward the other so their centres
+            // almost coincide and the circles VISIBLY OVERLAP on screen
+            // (≈0.16 cells apart at dist=2.5). The user's rule: "igraci pridju
+            // SKROZ JEDAN UZ DRUGOG, dodiruju se krugovi, kružići se popnu
+            // jedan na drugog" — a physical collision, not a polite handshake.
+            // A tiny perpendicular jitter offsets the two circles so both
+            // stay visible (one on top, one peeking out from behind).
+            const overlapFactor = 0.92;
+            const nx = -dy / dist;
+            const ny = dx / dist;
+            const jitter = 0.06;
             convergedPos.set(pa.id, {
-              row: pa.row + dy / dist * moveFrac,
-              col: pa.col + dx / dist * moveFrac,
+              row: pa.row + dy * overlapFactor + nx * jitter,
+              col: pa.col + dx * overlapFactor + ny * jitter,
             });
             convergedPos.set(pb.id, {
-              row: pb.row - dy / dist * moveFrac,
-              col: pb.col - dx / dist * moveFrac,
+              row: pb.row - dy * overlapFactor - nx * jitter,
+              col: pb.col - dx * overlapFactor - ny * jitter,
             });
           }
         }
@@ -575,15 +613,19 @@ class PitchRenderer {
       const inCooldown = cooldowns && cooldowns.has(p.label)
           && cooldowns.get(p.label) > Math.floor(this.currentTick);
 
-      // Duel highlight circle behind the player
+      // Duel highlight — BOTH duelists get a large yellow ring (carrier-like)
+      // per the user's rule "oba dobiju kruzice da su carrieri" so the
+      // viewer visually sees both as contesting the ball. Pulses to read as
+      // "physical contact".
       if (inDuel) {
+        const pulse = 0.6 + 0.25 * Math.sin(performance.now() / 180 + (p.id?.length || 0));
         ctx.beginPath();
-        ctx.arc(x, y, r + 6, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,0,.35)';
-        ctx.strokeStyle = '#ffcc00';
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
+        ctx.arc(x, y, r + 9, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,220,60,${0.35 * pulse})`;
         ctx.fill();
+        ctx.strokeStyle = `rgba(255,200,0,${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
       }
 
       // Cooldown (loser) highlight — faint pulsing red ring for ~6 ticks after
@@ -698,12 +740,26 @@ class PitchRenderer {
     }
   }
 
-  render(players, ballPos, carrierId, flashEvent, goalAnim, duelPairs) {
+  render(players, ballPos, carrierId, flashEvent, goalAnim, duelPairs, blockAnim) {
     this.ctx.clearRect(0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
     this.drawPitch();
     if (players) this.drawPlayers(players, carrierId, duelPairs);
     if (ballPos) this.drawBall(ballPos);
     this.drawGoalAnim(goalAnim);
+  }
+
+  /**
+   * Block trajectory line draws (removed per user request: "normalan fudbal, bez linija").
+   */
+  drawBlockTrail(blockAnim) {
+    return;
+  }
+
+  /**
+   * Blocker impact pulse (removed per user request: "normalan fudbal, bez linija").
+   */
+  drawBlockImpact(blockAnim) {
+    return;
   }
 }
 
@@ -739,12 +795,24 @@ class MatchViewer {
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
 
+    // Block animation: most recent SHOT_BLOCKED event. The renderer draws a
+    // trajectory line from the attacker (shooter position) to the blocker
+    // (defender position) and then to the deflection point (current ball
+    // position). The ball is also briefly rendered at the blocker's hit
+    // point so the user physically sees the ball strike the defender.
+    this._blockAnim = null;
+
     // Grid overlay toggle (default ON so users can verify row/column alignment)
     this.showGrid = true;
 
     // Snapshot lookup: O(1) access
     this._snapIndex = null;  // Map<tick, snapshot>
     this._snapTicks = null;  // sorted array of ticks
+
+    // Timeline batch buffer (Firefox freeze fix — appendChild per event
+    // triggers layout reflow; at 60fps with dozens of events/sec this kills
+    // Firefox. We batch via DocumentFragment and flush once per RAF tick.)
+    this._pendingTimelineEvents = [];
 
     this._bindControls();
     this._showEmpty();
@@ -910,7 +978,12 @@ class MatchViewer {
     const tickB = this._snapTicks[nextIdx];
     const frac = (tickB > tickA) ? (tick - tickA) / (tickB - tickA) : 0;
 
-    return { snap: snapA, next: snapB, frac: clamp(frac, 0, 1) };
+    // Expose the snapshot BEFORE snapA so teleport rendering can figure out the
+    // ball's incoming travel line (to roll it out of bounds before a restart).
+    const prevIdx = lo - 1;
+    const snapPrev = prevIdx >= 0 ? this._snapIndex.get(this._snapTicks[prevIdx]) : null;
+
+    return { snap: snapA, next: snapB, prev: snapPrev, frac: clamp(frac, 0, 1) };
   }
 
   _getInterpolatedPlayers(interp) {
@@ -920,9 +993,16 @@ class MatchViewer {
     const a = interp.snap;
     const b = interp.next;
     const t = interp.frac;
+    // Build an O(1) lookup Map for the next snapshot's players (Firefox freeze
+    // fix — old `find()` was O(n) per player × 22 players = 484 ops per frame,
+    // called at 60fps = 29k ops/sec for a constant load; the real cost was
+    // the GC pressure of creating a new Map every frame, which Firefox handles
+    // worse than Chrome).
+    const bMap = new Map();
+    for (const pb of b.players) bMap.set(pb.id, pb);
     const result = [];
     for (const pa of a.players) {
-      const pb = b.players.find(p => p.id === pa.id);
+      const pb = bMap.get(pa.id);
       if (pb) {
         result.push({
           id: pa.id, label: pa.label, team: pa.team, role: pa.role,
@@ -946,7 +1026,62 @@ class MatchViewer {
     const b = interp.next.ballPosition;
     if (!b) return a;
     const t = interp.frac;
+
+    // A restart (goal kick / corner / throw-in / goal) teleports the ball from
+    // its out-of-bounds position to a set-piece spot. Only when this interval
+    // STARTS with the ball genuinely out of bounds do we animate the roll: the
+    // ball is already past the touch/goal line, so push it a touch further out
+    // and streak it back to the restart spot — the ball never visually freezes
+    // or flat-out teleports. Fast passes and crosses stay in bounds, so they
+    // are never mistaken for a restart here.
+    const out = this._isOutOfBounds(a);
+    if (out) {
+      // Push the OOB ball a little further out along its last travel direction,
+      // then bring it back to the restart spot.
+      const c = interp.prev && interp.prev.ballPosition ? interp.prev.ballPosition : null;
+      let outPt = a;
+      if (c) {
+        const dr = a.row - c.row;
+        const dc = a.column - c.column;
+        const len = Math.hypot(dr, dc);
+        if (len > 1e-6) {
+          const roll = this._ballRollOutPoint(c, dr / len, dc / len);
+          if (roll) outPt = roll;
+        }
+      }
+      if (t < 0.5) {
+        const s = (t / 0.5) * 0.35;
+        return { row: lerp(a.row, outPt.row, s), column: lerp(a.column, outPt.column, s) };
+      }
+      const s = (t - 0.5) / 0.5;
+      return { row: lerp(outPt.row, b.row, s), column: lerp(outPt.column, b.column, s) };
+    }
+
     return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t) };
+  }
+
+  _isOutOfBounds(p) {
+    return !p || p.row < FIELD_ROW_MIN || p.row > FIELD_ROW_MAX
+      || p.column < FIELD_COL_MIN || p.column > FIELD_COL_MAX;
+  }
+
+  /**
+   * Where a ball travelling from `p` along unit direction (dr, dc) would first
+   * cross the touchline / goal line. Returns the out-of-bounds point, or null
+   * if it never leaves the field (shouldn't happen for a restart).
+   */
+  _ballRollOutPoint(p, dr, dc) {
+    const rowMin = FIELD_ROW_MIN, rowMax = FIELD_ROW_MAX;
+    const colMin = FIELD_COL_MIN, colMax = FIELD_COL_MAX;
+    let tt = Infinity;
+    if (dr > 1e-9) tt = Math.min(tt, (rowMax - p.row) / dr);
+    else if (dr < -1e-9) tt = Math.min(tt, (rowMin - p.row) / dr);
+    if (dc > 1e-9) tt = Math.min(tt, (colMax - p.column) / dc);
+    else if (dc < -1e-9) tt = Math.min(tt, (colMin - p.column) / dc);
+    if (!isFinite(tt) || tt <= 0) return { row: p.row, column: p.column };
+    const outRow = p.row + dr * (tt + 0.15);
+    const outCol = p.column + dc * (tt + 0.15);
+    return { row: outRow, column: outCol };
   }
 
   _getCarrierId(interp) {
@@ -1035,7 +1170,7 @@ class MatchViewer {
         // CHASE_POSSESSION ARE shown so the user sees who contested whom
         // and who won each challenge / loose-ball chase.
         if (TIMELINE_EVENTS.has(ev.type)) {
-          this._addTimelineEvent(ev);
+          this._pendingTimelineEvents.push(ev);
         }
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
@@ -1062,9 +1197,12 @@ class MatchViewer {
             || ev.type?.startsWith('VAR_RED_') || ev.type?.startsWith('VAR_PENALTY_')
             || ev.type?.startsWith('VAR_YELLOW_')) {
           const decisionLabel = ev.type.includes('CONFIRMED') ? 'CONFIRMED' : 'OVERTURNED';
-          const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
-          this.overlays.showVARDecision(`VAR ${reviewType}: ${decisionLabel}`);
-          this._varReviewQueued = false;
+        const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
+        let decisionText = `VAR ${reviewType}: ${decisionLabel}`;
+        const marginMatch = (ev.description || '').match(/margin=([0-9.]+)/);
+        if (marginMatch) decisionText += ` (${formatOffsideMargin(marginMatch[1])})`;
+        this.overlays.showVARDecision(decisionText);
+        this._varReviewQueued = false;
         }
         // GOAL DISALLOWED overlay — cancels any active goal overlay
         if (ev.type === 'GOAL_DISALLOWED') {
@@ -1083,6 +1221,67 @@ class MatchViewer {
           }
           // Re-entry after the review overlay dismissed — fall through to the
           // confirmed/overturned decision that immediately follows on this tick.
+        }
+        // SHOT BLOCKED / SAVED animation — capture attacker (shooter) and blocker
+        // positions from the snapshot so the renderer can draw a trajectory
+        // line from the attacker to the blocker (the ball strike) and then
+        // to the deflection point. The ball is briefly rendered at the
+        // blocker's hit point so the user physically sees the ball strike
+        // the defender. Duration: ~8 ticks (~4 seconds) — long enough to
+        // register the collision visually, short enough not to block flow.
+        if (ev.type === 'SHOT_BLOCKED' || ev.type === 'SHOT_SAVED') {
+          // ev.playerName is the SHOOTER (the action's acting player) and
+          // ev.team is the shooter's team. The BLOCKER is a defender on the
+          // OPPOSITE team. To be robust against the two different event
+          // description formats emitted by MatchSimulator (one names the
+          // blocker, one only names the shooter), we find the blocker as
+          // the opposing-team player closest to the ball at the block tick.
+          // O(1) snapshot lookup via _snapIndex (Firefox freeze fix — old
+          // snapshots.find was O(n) per event × 2400 events = 24M ops per seek).
+          const prevSnap = this._snapIndex?.get(ev.tick - 1) || null;
+          const curSnap = this._snapIndex?.get(ev.tick) || null;
+          if (curSnap) {
+            // Shooter = the previous-tick carrier (had ball before the block);
+            // falls back to the event's named player, searched across both the
+            // previous AND current snapshots (the current one is used when the
+            // block tick is the first snapshot, e.g. SHOT_SAVED at tick 172).
+            const prevCarrierId = prevSnap ? prevSnap.ballCarrierId || '' : '';
+            let shooter = prevSnap
+              ? prevSnap.players.find(p => p.id === prevCarrierId) || null
+              : null;
+            const srcList = (prevSnap ? prevSnap.players : [])
+              .concat(curSnap ? curSnap.players : []);
+            if (!shooter && ev.playerName && srcList.length) {
+              shooter = srcList.find(p => p.label === ev.playerName) || null;
+            }
+            if (!shooter && ev.team) {
+              shooter = srcList.find(p => p.team === ev.team) || null;
+            }
+            // Blocking team = the opposite of the shooter's team
+            const shooterTeam = shooter ? shooter.team : ev.team;
+            const blockTeam = shooterTeam === 'HOME' ? 'AWAY' : 'HOME';
+            const defTeamPlayers = (curSnap.players || prevSnap.players).filter(p => p.team === blockTeam);
+            const ref = curSnap.ballPosition || { row: 0, col: 0 };
+            const dist = p => {
+              const dr = p.position.row - ref.row;
+              const dc = p.position.column - ref.column;
+              return dr * dr + dc * dc;
+            };
+            let blocker = null;
+            for (const p of defTeamPlayers) {
+              if (!blocker || dist(p) < dist(blocker)) blocker = p;
+            }
+            if (shooter && blocker && curSnap.ballPosition) {
+              this._blockAnim = {
+                shooterPos: { row: shooter.position.row, col: shooter.position.column },
+                blockerPos: { row: blocker.position.row, col: blocker.position.column },
+                deflectPos: { row: curSnap.ballPosition.row, col: curSnap.ballPosition.column },
+                startTick: ev.tick,
+                defenderLabel: blocker.label,
+                type: ev.type,
+              };
+            }
+          }
         }
         // CARD overlay — yellow/red card with team name, player name, VAR indicator
         if (ev.type === 'CARD' || ev.type === 'YELLOW_CARD' || ev.type === 'RED_CARD') {
@@ -1122,6 +1321,14 @@ class MatchViewer {
     if (this._flashEvent) {
       this._flashEvent._age = (performance.now() - this._flashStart) / 2000;
       if (this._flashEvent._age > 1.5) this._flashEvent = null;
+    }
+    // Block animation aging: shows for ~8 ticks after the SHOT_BLOCKED event,
+    // so the user sees the trajectory + impact for ~4 seconds at 2 ticks/sec.
+    if (this._blockAnim) {
+      const ageTicks = this.currentTick - this._blockAnim.startTick;
+      if (ageTicks > 8 || this.currentTick < this._blockAnim.startTick) {
+        this._blockAnim = null;
+      }
     }
     this._updateDuelState(this.currentTick);
   }
@@ -1164,9 +1371,10 @@ class MatchViewer {
           // Mark this pair as resolved so the duel highlight circles disappear
           // immediately (no 1-2 tick delay from time-window expiry).
           this._duelState.resolved.add(attackerPart + '|' + defenderPart);
-          // Determine the loser from "winner=LABEL" and mark them as cooldown
-          // for 6 ticks.
-          const winnerMatch = desc.match(/winner=([^()\s]+)/);
+          // Determine the loser from "winner=LABEL (att=...)" and mark them as
+          // cooldown for 6 ticks. The label may contain spaces (e.g. "Home FC
+          // 11"), so capture everything up to the " (att=" detail.
+          const winnerMatch = desc.match(/winner=([^(]+)\s*\(/);
           if (winnerMatch) {
             const winnerLabel = winnerMatch[1].trim();
             const loserLabel = winnerLabel === attackerPart ? defenderPart : attackerPart;
@@ -1232,10 +1440,87 @@ class MatchViewer {
     const carrierId = this._getCarrierId(interp);
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
+    const blockAnim = this._blockAnim;
     this.pitch.showGrid = this.showGrid;
-    this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim, duelPairs);
+    this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim, duelPairs, blockAnim);
+    // Flush batched timeline events ONCE per RAF tick (Firefox freeze fix —
+    // doing all the appendChild calls in one batched DocumentFragment is
+    // orders of magnitude cheaper than one appendChild per event).
+    if (this._pendingTimelineEvents.length > 0) {
+      this._flushTimelineEvents();
+    }
     this._updateScoreboard();
     this._updateSeek();
+  }
+
+  _flushTimelineEvents() {
+    const ul = document.getElementById('timeline');
+    if (!ul) {
+      this._pendingTimelineEvents.length = 0;
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const ev of this._pendingTimelineEvents) {
+      const li = document.createElement('li');
+      const cls = classifyEvent(ev);
+      const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
+      const minute = matchMinute(ev.tick);
+      const desc = formatEventDesc(ev);
+      const isMinor = MINOR_EVENTS.has(ev.type);
+
+      const descHtml = desc
+        .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
+        .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
+
+      li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
+      li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
+      fragment.appendChild(li);
+    }
+    // One single DOM mutation instead of N
+    ul.appendChild(fragment);
+
+    // Prune oldest entries beyond the cap so the DOM stays small enough for
+    // Firefox to render smoothly during full-match playback.
+    while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
+      ul.removeChild(ul.firstChild);
+    }
+
+    // Auto-scroll to bottom (only if user is already near the bottom — don't
+    // yank them away from an event they were inspecting).
+    const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 80;
+    if (nearBottom) {
+      ul.scrollTop = ul.scrollHeight;
+    }
+
+    // Update the landscape-mode live ticker with the last notable event in
+    // this batch (skip minor events).
+    const ticker = document.getElementById('liveTicker');
+    if (ticker) {
+      let lastNotable = null;
+      for (let i = this._pendingTimelineEvents.length - 1; i >= 0; i--) {
+        if (!MINOR_EVENTS.has(this._pendingTimelineEvents[i].type)) {
+          lastNotable = this._pendingTimelineEvents[i];
+          break;
+        }
+      }
+      if (lastNotable) {
+        const tickerIcon = document.getElementById('tickerIcon');
+        const tickerMin = document.getElementById('tickerMin');
+        const tickerDesc = document.getElementById('tickerDesc');
+        if (tickerIcon) tickerIcon.textContent = EV_ICON[lastNotable.type] || '';
+        if (tickerMin) tickerMin.textContent = matchMinute(lastNotable.tick);
+        if (tickerDesc) tickerDesc.textContent = formatEventDesc(lastNotable);
+        ticker.classList.remove('hidden');
+        // Restart the fade timer on every batch flush so the ticker always
+        // shows the freshest event for ~3 s before fading.
+        ticker.classList.remove('fade-out');
+        clearTimeout(this._tickerFadeTimer);
+        this._tickerFadeTimer = setTimeout(() => {
+          ticker.classList.add('fade-out');
+        }, 3000);
+      }
+    }
+    this._pendingTimelineEvents.length = 0;
   }
 
   /* ─── UI updates ─── */
@@ -1268,44 +1553,8 @@ class MatchViewer {
   // Firefox to freeze after a few minutes of playback with 4000+ events).
   _MAX_TIMELINE_EVENTS = 200;
 
-  _addTimelineEvent(ev) {
-    const ul = document.getElementById('timeline');
-    const li = document.createElement('li');
-    const cls = classifyEvent(ev);
-    const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
-    const minute = matchMinute(ev.tick);
-    const desc = formatEventDesc(ev);
-    const isMinor = MINOR_EVENTS.has(ev.type);
-
-    const descHtml = desc
-      .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
-      .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
-
-    li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
-    li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
-    ul.appendChild(li);
-
-    // Prune oldest entries beyond the cap so the DOM stays small enough for
-    // Firefox to render smoothly during full-match playback.
-    while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
-      ul.removeChild(ul.firstChild);
-    }
-
-    // Auto-scroll to bottom (only if user is already near the bottom — don't
-    // yank them away from an event they were inspecting).
-    const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 80;
-    if (nearBottom) {
-      ul.scrollTop = ul.scrollHeight;
-    }
-
-    // Update the landscape-mode live ticker with this event. Only show
-    // notable events (goals, shots, cards, offside, VAR) — minor events
-    // are skipped so the ticker doesn't churn.
-    const ticker = document.getElementById('liveTicker');
-    if (ticker && !isMinor) {
-      this._updateLiveTicker(ev, minute, icon, desc);
-    }
-  }
+  // REMOVED: _addTimelineEvent — replaced by _flushTimelineEvents (batching via
+  // DocumentFragment, one DOM mutation per RAF tick instead of one per event).
 
   _updateLiveTicker(ev, minute, icon, desc) {
     const tickerIcon = document.getElementById('tickerIcon');

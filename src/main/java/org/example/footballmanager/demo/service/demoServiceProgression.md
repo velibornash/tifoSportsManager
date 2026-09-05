@@ -2,7 +2,7 @@
 
 **Package:** `org.example.footballmanager.demo.service`
 **Source of Truth:** `corePrinciples.md` (§47: Football Domain Specification)
-**Last Updated:** 2026-09-01
+**Last Updated:** 2026-09-04
 
 ---
 
@@ -981,3 +981,65 @@ animation.
   balls on the 1-match clearance test (~33 vs baseline 15). Both thresholds
   were already red before this pass; tracked for a future pass but not part
   of the restart rewrite.
+
+---
+
+## Changes Applied (2026-09-04)
+
+### 1. Offside Restart Walk Fixes
+
+**Root causes identified and fixed:**
+
+#### (a) Row-clamp starvation at goal-line spots
+When the ball was at row 7.80 (near AWAY goal at 8.0), the walk-clamp
+`clamp(movedRow, 0.5, 7.5)` stopped the taker at row 7.5 — 0.3 cells
+short of the ball. The distance (0.3) was within PICKUP_DISTANCE (0.6) but
+the taker could not claim because the action-phase claim uses raw
+`SimUtils.distance(...) > PICKUP_DISTANCE` — it does NOT use clamped positions.
+Fix: removed the row clamp during the taker walk in `MatchSimulator` lines
+500-506. Column clamp retained.
+
+#### (b) Wrong-side taker (nearest player ahead of the ball)
+`nearestNonGoalkeeperTo(spot)` returns the closest player to the offside spot,
+which can be ahead of the ball (toward the opponent goal). Example: spot at
+row 6.64, nearest HOME player at row 6.88 — ahead of the ball, not behind it.
+The "within-4-cells → walk normally" shortcut assumed the taker starts behind
+the ball, which is false. Fix: always teleport the taker to behind the ball
+(`ball.row + dirRow * 0.6`, row clamped to [1.0, 7.0]) before walking, regardless
+of initial distance. Only skips teleport if the player is already within 0.05
+cells of the intended teleport spot.
+
+#### (c) Teleport-to-goal-line starvation
+The original teleport (`clamp(ball.row + dirRow * 0.6, 1.0, 7.0)`) clamped the
+teleport to [1.0, 7.0]. For ball at row 7.80 (near AWAY goal), this clamps to
+7.0, not the intended 7.20. Fix: the teleport row clamp is no longer applied to
+the taker during the offside/freekick walk (see (a) above).
+
+### 2. Offside Team Assignment (2026-09-04 — confirmed correct)
+`defendingTeam` is computed as the OPPOSITE of `carrierTeam` — this is the
+correct standard-football rule. The carrier/passer is the ATTACKING team; the
+offside-positioned receiver is on the same attacking team; the free kick goes
+to the DEFENDING team. Example: HOME carrier → HOME receiver offside → AWAY
+takes the FK. The `OffsideService` code at `confirmOffside` was already
+correct — earlier confusion stemmed from misreading the diagnostic output
+("Omladinac" = HOME, "Partizan" = AWAY; taker of a HOME offside was
+Partizan = AWAY, which is the right answer).
+
+### 3. Diagnostic: OffsideRestartDiagnostic
+Written and continuously improved:
+- Confirms all offsides via `outcome.contains("YELLOW_FLAG")` + `targetPlayerId != null`
+  (only confirmed free kicks, not dropped marginal offsides)
+- 3-step verification: (1) ball at spot, (2) defending taker arrives within 600 ticks,
+  (3) ball played within 30 ticks of arrival
+- **2026-09-04 fix**: removed the `setPiece=true` filter from the arrival check.
+  `setPiecePending` becomes `false` at the very tick the taker receives the ball,
+  so filtering on it excluded the actual arrival tick.
+- `checked=X badSpot=0 noArrive=0 noKick=0` → PASS on seed 42 (8/8 confirmed
+  offsides pass all 3 checks)
+
+### Files Changed
+- `MatchSimulator.java` — taker walk: removed row clamp, removed teleport-to-behind-ball
+  fast-path (per user "taker walks from current position to ball"); `RESTART_WALK_MAX_TICKS=15`
+  remains as a last-resort deadlock safeguard
+- `OffsideService.java` — `setActionDelayTicks(15)` (defendingTeam was always correct)
+- `OffsideRestartDiagnostic.java` — full offside restart QA diagnostic, arrival filter fix

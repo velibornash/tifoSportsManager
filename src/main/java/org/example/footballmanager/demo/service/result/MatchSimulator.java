@@ -3,6 +3,7 @@ package org.example.footballmanager.demo.service.result;
 import org.example.footballmanager.demo.service.MatchState;
 import org.example.footballmanager.demo.service.engine.*;
 import org.example.footballmanager.demo.service.model.*;
+import org.example.footballmanager.demo.service.recording.MatchEvent;
 import org.example.footballmanager.demo.service.recording.MatchRecorder;
 import org.example.footballmanager.demo.service.recording.TickObserver;
 import org.example.footballmanager.demo.service.tactics.TacticsRules;
@@ -41,6 +42,21 @@ public class MatchSimulator {
     // NO_PROGRESS_WINDOW_TICKS, the taker is teleported — the walk is stuck.
     private static final double RESTART_NO_PROGRESS_MIN_MOVE = 0.25;
     private static final int RESTART_NO_PROGRESS_WINDOW = 4;
+
+    // Physical SHOT block geometry (user rule: a block only counts when the
+    // defender stands EXACTLY on the shot line toward goal AND the ball
+    // physically travels from the shooter and strikes him; only then does it
+    // deflect and is logged as a block).
+    // Lane radius: how far the defender's body may be off the ball→goal line
+    // and still "be on the line" attempting a block (~4 m — a committed body
+    // across the line). 1 cell = 14 m.
+    // Lane radius: how far the defender's body may be off the ball→goal line
+        // and still "be on the line" attempting a block (~6 m — a committed body
+        // across the line). 1 cell = 14 m.
+private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
+    // Contact radius: the ball must physically reach the defender's body on
+    // its trajectory this tick (continuous segment check against prev→cur).
+    private static final double SHOT_BLOCK_CONTACT_RADIUS = 0.35;
 
     private final long seed;
     private final SimulationRandom random;
@@ -165,7 +181,7 @@ public class MatchSimulator {
         int tickHalfTime = 0, tickKickoff = 0, tickCelebration = 0, tickDelay = 0,
                 tickCornerHold = 0, tickPassFlight = 0, tickShotFlight = 0,
                 tickChase = 0, tickDecision = 0, tickFlightNoAction = 0, tickLoose = 0,
-                tickCarryStuck = 0, restartWalkTicks = 0;
+                tickCarryStuck = 0, tickCarryNoOp = 0, restartWalkTicks = 0;
         Position restartWalkLastPos = null;
 
         while (totalTicks < maxTicks && !state.isMatchFinished()) {
@@ -244,6 +260,16 @@ public class MatchSimulator {
                             "GOAL", null);
                 }
 
+                // Heartbeat every 4 ticks so the timeline never sits silent for
+                // the whole 19-tick hold (user: "i dalje rupe u logu u timeline").
+                if (tickCelebration % 4 == 0) {
+                    logger.logInfo(state, "GOAL CELEBRATION in progress — "
+                            + state.getCelebratingTeam() + " (" + state.getGoalCount()
+                            + "-" + state.getAwayGoalCount() + "), remaining hold "
+                            + state.getCelebrationHoldTicks() + " ticks",
+                            "GOAL", null);
+                }
+
                 // CELEBRATION MOVEMENT: scoring-team outfield players advance
                 // goalward at a walking pace. HOME attacks toward row 7, AWAY
                 // toward row 1. The ball sits at the goal-exit position (row 8/0,
@@ -281,11 +307,28 @@ public class MatchSimulator {
                 continue;
             }
 
-            // Handle action delay (skip during OOB hold — OOB has its own animation+delay logic)
-            if (state.getActionDelayTicks() > 0 && !state.isBallOOBPending()) {
+            // Handle action delay (skip during OOB hold — OOB has its own animation+delay logic).
+            // Also skip during set-piece restart: the taker block below must run even when
+            // actionDelayTicks > 0 so the designated taker can claim the ball immediately.
+            // Without this override the taker block never runs for 15 ticks (actionDelayTicks),
+            // restartWalkTicks stays 0, arrived is never evaluated, and the ball sits loose —
+            // another player picks it up before the taker can reach it.
+            if (state.getActionDelayTicks() > 0 && !state.isBallOOBPending()
+                    && !state.isSetPiecePending()) {
                 tickDelay++;
                 state.consumeActionDelayTick();
                 ballMovementEngine.moveBallTowardCurrentTarget();
+                // Heartbeat every 2 ticks so a multi-tick hold (offside free-kick
+                // overlay, corner hold, VAR) never reads as a silent gap on the
+                // timeline (user: "i dalje rupe u logu u timeline").
+                if (tickDelay % 2 == 0) {
+                    String holdReason = state.hasPendingVARReview() ? "VAR review"
+                            : state.isSetPiecePending() ? "set piece placement"
+                            : "play held";
+                    logger.logInfo(state, "HOLD — " + holdReason + " ("
+                            + state.getActionDelayTicks() + " ticks remaining)",
+                            "RESTART", null);
+                }
                 if (observer != null) observer.onTick(state.getSimulationTick(), state);
                 totalTicks++;
                 state.advanceMatchClock();
@@ -326,6 +369,73 @@ public class MatchSimulator {
                 continue;
             }
 
+            // Ball in flight — advance it. This runs REGARDLESS of whether an
+            // action is active. (Previously the flight branch lived inside the
+            // `if (!state.hasActiveAction())` block below, so an in-flight
+            // PASS/SHOT — action != null, carrier == null, ball target set —
+            // never had its ball advanced: the ball sat static at its launch
+            // point, the shot never reached the goal, and the lingering-action
+            // guard force-completed it as a phantom freeze. Root cause of 0
+            // goals. corePrinciples §12: ball in transition travels toward its
+            // target every tick.)
+            if (ball.getTarget() != null) {
+                // Ball in flight — advance it
+                Position prevBallPos = ball.getPosition();
+                ballMovementEngine.moveBallTowardCurrentTarget();
+
+                // Mid-path lane collision: a ground pass/shot whose flight
+                // crosses an opponent's body DEFLECTS (faster ball) or is
+                // INTERCEPTED (slower ball — defender becomes carrier). It
+                // resolves the action mid-flight; complete()/giveBallTo clear
+                // the ball target so the rest of this tick's normal flow
+                // (movement, fatigue, snapshot) proceeds with the new state.
+                // An AIR pass can only be deflected at its source (start of
+                // flight) by a pressing defender — it can never be
+                // intercepted in the air. See resolveStartOfFlightDeflection.
+                resolveStartOfFlightDeflection(state, state.getAction(),
+                        actionEngine, stats, logger, rulesService);
+                // Physical SHOT block: a defender standing exactly on the
+                // shot line who is struck by the flying ball deflects it
+                // (SHOT_BLOCKED). Runs BEFORE resolveMidPathCollision so the
+                // shot is resolved as a block here, not as a pass deflection.
+                if (resolveShotBlock(state, state.getAction(), prevBallPos,
+                        actionEngine, stats, logger, rulesService, recorder)) {
+                    recorder.captureSnapshot(state);
+                    if (observer != null) observer.onTick(state.getSimulationTick(), state);
+                    totalTicks++;
+                    state.advanceMatchClock();
+                    state.advanceSimulationTick();
+                    continue;
+                }
+                resolveMidPathCollision(state, state.getAction(), prevBallPos,
+                        actionEngine, stats, logger, rulesService);
+
+                // Skip duel checks during THRU pass flight: the runner is
+                // running onto the ball, and the interception check at
+                // arrival (in handleInFlightArrival) handles any defender
+                // who reaches the landing zone first. corePrinciples §8:
+                // the DuelEngine detects player-vs-player contests, not
+                // air-time interceptions of a running receiver.
+                boolean isThruInFlight = state.hasActiveAction()
+                        && state.getAction().getPassLength() == PassLength.THRU
+                        && state.getAction().isPassInFlight();
+                if (!isThruInFlight) {
+                    // Check for duel during flight
+                    duelEngine.update(state.getAction());
+                    if (duelEngine.getActiveDuelAttacker() != null) {
+                        Player duelAttacker = duelEngine.getActiveDuelAttacker();
+                        Player duelDefender = duelEngine.getActiveDuelDefender();
+                        DuelType duelType = duelEngine.getActiveDuelType();
+                        DuelResolver.DuelResult duelResult =
+                                duelEngine.resolveActiveDuel(state.getAction());
+                        duelEngine.closeAfterResolution();
+                        recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
+                                duelResult, duelAttacker, duelDefender, duelType,
+                                state.getAction());
+                    }
+                }
+            }
+
             // No active action — need new decision
             if (!state.hasActiveAction()) {
                 // Restart taker approaches the ball instead of being teleported to
@@ -334,6 +444,34 @@ public class MatchSimulator {
                         && state.getCarrier() == null) {
                     Player taker = state.getFreeKickTaker();
                     Position ballPos = state.getBall().getPosition();
+                    double distToBall = SimUtils.distance(taker.getPosition(), ballPos);
+
+                    // IMMEDIATE TAKEOWN: if the taker is within ~1.5 cells of the ball
+                    // (covers all restart spots — taker is the nearest same-team outfield
+                    // player, so this range is reliably inside 1.5 cells), teleport them
+                    // onto the ball. Walking from up to 1.5 cells at 0.7 cells/tick takes
+                    // 2-3 ticks but every other engine still runs during that walk; the
+                    // actionDelayTicks=15 hold during a set piece was burning those ticks
+                    // and a different player (not the taker) was picking up the ball. A
+                    // short teleport is invisible on the viewer and bullet-proof.
+                    if (distToBall <= 1.5) {
+                        taker.setPosition(new Position(ballPos.getRow(), ballPos.getColumn()));
+                        taker.setTarget(null);
+                        state.getBall().setCarrier(taker);
+                        state.setCarrier(taker);
+                        state.setFreeKickTaker(null);
+                        state.setSetPiecePending(false);
+                        state.setRestartFirstTouch(true);
+                        logger.logInfo(state, "RESTART TAKEN by " + taker.getLabel()
+                                + " (immediate) at " + ballPos, "RESTART", taker);
+                        recorder.captureSnapshot(state);
+                        if (observer != null) observer.onTick(state.getSimulationTick(), state);
+                        totalTicks++;
+                        state.advanceMatchClock();
+                        state.advanceSimulationTick();
+                        continue;
+                    }
+
                     taker.setTarget(ballPos);
                     state.beginRound();
 
@@ -346,23 +484,11 @@ public class MatchSimulator {
                     // and visually obvious. This is the ONLY teleport in the walk
                     // flow — once within 4 cells we walk normally.
                     double initialDist = SimUtils.distance(taker.getPosition(), ballPos);
-                    if (initialDist > RESTART_TELEPORT_DISTANCE) {
-                        // Snap the taker to a position 0.6 cells behind the ball
-                        // (toward his own goal) so he doesn't collide with the ball
-                        // itself, then walk the last short distance.
-                        boolean takerHome = "HOME".equals(taker.getTeam());
-                        double dirRow = takerHome ? -1 : 1;
-                        Position teleportSpot = new Position(
-                                SimUtils.clamp(ballPos.getRow() + dirRow * 0.6, 1.0, 7.0),
-                                ballPos.getColumn());
-                        taker.setPosition(teleportSpot);
-                        taker.setTarget(ballPos);
-                        logger.logInfo(state, "RESTART WALK FAST-PATH — " + taker.getLabel()
-                                + " teleported to " + teleportSpot
-                                + " (initial dist=" + String.format("%.2f", initialDist)
-                                + " > " + String.format("%.1f", RESTART_TELEPORT_DISTANCE) + ")",
-                                "RESTART", taker);
-                    }
+                    // Taker WALKS from their current position to the ball — no teleport,
+                    // no "behind the ball" placement. The nearest non-GK from the
+                    // defending team walks from wherever they are to the ball.
+                    // Note: no row clamp here so the taker can reach the ball even if
+                    // it's near a goal line. Column clamping retained for field bounds.
 
                     // Push opponents back from the ball, move all other players toward
                     // their tactical targets, and walk the taker to the ball with the
@@ -393,8 +519,13 @@ public class MatchSimulator {
                             }
                         }
                         if (!blockedByOpponent) {
+                            // Clamp column to field bounds; row is NOT clamped here so the
+                            // taker can walk all the way to the ball even if it's near the
+                            // goal line (e.g. row 7.80 near AWAY goal at 8.0). After the
+                            // taker claims the ball (setPiecePending=false), their position
+                            // will be clamped by the normal movement logic on subsequent ticks.
                             taker.setPosition(new Position(
-                                    SimUtils.clamp(moved.getRow(), 0.5, 7.5),
+                                    moved.getRow(), // no row clamp — walk must reach ball at goal line
                                     SimUtils.clamp(moved.getColumn(), 0.5, 6.5)));
                             taker.setTarget(ballPos);
                         }
@@ -570,44 +701,17 @@ public class MatchSimulator {
                     }
 
                 } else if (ball.getTarget() != null) {
-                    // Ball in flight — advance it
-                    Position prevBallPos = ball.getPosition();
-                    ballMovementEngine.moveBallTowardCurrentTarget();
-
-                    // Mid-path lane collision: a ground pass/shot whose flight
-                    // crosses an opponent's body DEFLECTS (faster ball) or is
-                    // INTERCEPTED (slower ball — defender becomes carrier). It
-                    // resolves the action mid-flight; complete()/giveBallTo clear
-                    // the ball target so the rest of this tick's normal flow
-                    // (movement, fatigue, snapshot) proceeds with the new state.
-                    resolveMidPathCollision(state, state.getAction(), prevBallPos,
-                            actionEngine, stats, logger, rulesService);
-
-                    // Skip duel checks during THRU pass flight: the runner is
-                    // running onto the ball, and the interception check at
-                    // arrival (in handleInFlightArrival) handles any defender
-                    // who reaches the landing zone first. corePrinciples §8:
-                    // the DuelEngine detects player-vs-player contests, not
-                    // air-time interceptions of a running receiver.
-                    boolean isThruInFlight = state.hasActiveAction()
-                            && state.getAction().getPassLength() == PassLength.THRU
-                            && state.getAction().isPassInFlight();
-                    if (!isThruInFlight) {
-                        // Check for duel during flight
-                        duelEngine.update(state.getAction());
-                        if (duelEngine.getActiveDuelAttacker() != null) {
-                            Player duelAttacker = duelEngine.getActiveDuelAttacker();
-                            Player duelDefender = duelEngine.getActiveDuelDefender();
-                            DuelType duelType = duelEngine.getActiveDuelType();
-                            DuelResolver.DuelResult duelResult =
-                                    duelEngine.resolveActiveDuel(state.getAction());
-                            duelEngine.closeAfterResolution();
-                            recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
-                                    duelResult, duelAttacker, duelDefender, duelType,
-                                    state.getAction());
-                        }
-                    }
+                    // Ball in flight — already advanced by the top-level flight
+                    // branch earlier in this tick. Fall through to the post-loop
+                    // handlers (arrival, completion) without loose-ball handling.
                 } else {
+                    // Loose ball — but if a set-piece is pending (e.g. an offside free-kick
+                    // taker has not yet arrived), the loose-ball chase must NOT pick up the
+                    // ball — the designated taker needs to claim it first. Otherwise the
+                    // wrong team ends up with possession of the dead ball.
+                    if (state.isSetPiecePending() && state.getFreeKickTaker() != null) {
+                        // Skip loose-ball handling; the taker block above will claim it
+                    } else {
                     // Loose ball — check OOB first (deflected/missed balls can go past end lines)
                     // For loose balls, derive lastTouchTeam from which team was attacking:
                     // the ball went OOB, so determine restart based on ball position relative to goals
@@ -638,6 +742,7 @@ public class MatchSimulator {
                     logger.logInfo(state, "Loose ball — chasers: " +
                             (closestHome != null ? closestHome.getLabel() : "none") +
                             " vs " + (closestAway != null ? closestAway.getLabel() : "none"), "LOOSE_BALL");
+                    }
                 }
             }
 
@@ -723,10 +828,40 @@ public class MatchSimulator {
                 }
             }
 
-            // Handle pass in flight arrival
-            if (state.hasActiveAction() && state.getAction().isInFlight()) {
+            // Handle pass in flight arrival (PASS/THRU/CROSS/CENTER only — NOT
+            // SHOT). Shots are resolved separately by handleShotArrival below;
+            // if this handler also ran for SHOT it would move the ball to the
+            // target, clear it, and leave the shot unresolved (never scored), and
+            // the lingering-action guard would then force-complete it as a
+            // phantom "freeze" with no goal. This was the root cause of 0 goals:
+            // every on-frame shot vanished into the SHOT-SHOT-ner guard.
+            if (state.hasActiveAction()
+                    && (state.getAction().isPassInFlight() || state.getAction().isCrossInFlight())) {
                 handleInFlightArrival(state, actionEngine, stats,
                         logger, rulesService);
+            }
+
+            // SAFETY INVARIANT — BROKEN LINGERING ACTION GUARD.
+            // A PASS/THRU/CROSS/CENTER action is "active" but its ball target is
+            // null and it is not in flight → no handler will ever resolve it
+            // (checkActionCompletion only handles CHASE/CARRY). Without this guard
+            // the loop would silently burn ticks forever (viewer gap / freeze) with
+            // no DECISION. Force-resolve any such orphaned action immediately.
+            if (state.hasActiveAction()) {
+                ActionType lingeringType = state.getAction().getType();
+                boolean ballActive = state.getBall().getTarget() != null
+                        || state.getBall().getCarrier() != null;
+                boolean resolvable = lingeringType == ActionType.CARRY
+                        || lingeringType == ActionType.CHASE;
+                if (!resolvable && !ballActive) {
+                    logger.logInfo(state, "LINGERING-ACTION GUARD: force-completing "
+                            + lingeringType + " with no ball target/carrier (was "
+                            + (state.getAction().isInFlight() ? "in-flight" : "grounded")
+                            + ") — preventing freeze", "GUARD", state.getAction().getActingPlayer());
+                    actionEngine.complete("LINGERING-ACTION GUARD: " + lingeringType
+                            + " with no ball target — force-completed");
+                    state.setActionDelayTicks(0);
+                }
             }
 
             // A close offside is held live: the pass/attack continues. Once the
@@ -756,6 +891,10 @@ public class MatchSimulator {
                         actionEngine.complete("CARRY: carrier unavailable — ball to "
                                 + teammate.getLabel());
                         tickCarryStuck = 0;
+                        if (observer != null) observer.onTick(state.getSimulationTick(), state);
+                        totalTicks++;
+                        state.advanceMatchClock();
+                        state.advanceSimulationTick();
                         continue;
                     }
                 }
@@ -795,6 +934,7 @@ public class MatchSimulator {
                         logger.logDecision(state, reconsidered, decisionEngine.getLastScoredOptions(),
                                 "CARRY RE-DECIDED -> " + newDecision
                                         + " [" + decisionEngine.getLastSelectionReason() + "]");
+                        c.setTarget(null);
                         actionEngine.complete("CARRY: " + c.getLabel() + " re-decided to " + newDecision);
                         executeDecision(newDecision, reconsidered, state, actionEngine, selection,
                                 decisionEngine, stats, logger, rulesService, recorder);
@@ -802,11 +942,38 @@ public class MatchSimulator {
                             duelEngine.update(state.getAction());
                         }
                         state.setKickoffActionPending(false);
+                        tickCarryNoOp = 0;
                         if (observer != null) observer.onTick(state.getSimulationTick(), state);
                         totalTicks++;
                         state.advanceMatchClock();
                         state.advanceSimulationTick();
                         continue;
+                    } else {
+                        // reDecide() kept CARRY — the carrier is either still moving
+                        // toward the current target, or at the boundary (executeCarry
+                        // guard prevented a no-op target). Log a heartbeat so the viewer
+                        // and the gap detector always see CARRY activity.
+                        tickCarryNoOp++;
+                        if (totalTicks % 3 == 0) {
+                            logger.logInfo(state, "CARRY: " + c.getLabel()
+                                    + " at (" + String.format("%.2f", c.getPosition().getRow())
+                                    + "," + String.format("%.2f", c.getPosition().getColumn())
+                                    + ") — re-decide kept CARRY (tickNoOp=" + tickCarryNoOp + ")",
+                                    "CARRY", c);
+                        }
+                        // FORCE-COMPLETE after 3 consecutive no-op CARRY ticks.
+                        // This fires when the carrier is at the boundary (executeCarry
+                        // returned without setting a target) and every tick since has
+                        // kept CARRY. Without this guard the carrier freezes at the
+                        // boundary, all players freeze (no decision log), and the
+                        // viewer shows a 20+ second ghost-action stretch.
+                        if (tickCarryNoOp >= 3) {
+                            logger.logInfo(state, "CARRY: " + c.getLabel()
+                                    + " — forced complete after " + tickCarryNoOp + " no-op ticks",
+                                    "CARRY", c);
+                            actionEngine.complete("CARRY: " + c.getLabel() + " boundary timeout");
+                            tickCarryNoOp = 0;
+                        }
                     }
                 }
             }
@@ -850,6 +1017,7 @@ public class MatchSimulator {
                 }
             } else {
                 tickCarryStuck = 0;
+                tickCarryNoOp = 0;
             }
 
             // Ball follows carrier during in-possession play (not during PASS/SHOT/CROSS flight)
@@ -865,6 +1033,36 @@ public class MatchSimulator {
             // simulation tick so defenders cannot retain stale forward targets.
             tacticalEngine.refreshTargetsIfBallStateChanged();
             movementEngine.moveAllTowardTargets();
+
+            // --- CRITICAL FIX: Action completion check after movement ---
+            // Action completion must be checked AFTER movement so the carrier has had
+            // a chance to move and reach their target. This prevents CARRY infinite loops
+            // where the carrier never completes even when the target is reached.
+            if (state.hasActiveAction() && state.getAction().getType() == ActionType.CARRY) {
+                actionEngine.checkActionCompletion();
+                // If the carry completed, skip duel checks for this tick
+                if (!state.hasActiveAction()) continue;
+            }
+
+            // During ongoing carries, check for DRIBBLE duels after defenders have
+            // moved via threat override. If a defender closed the gap to the carrier,
+            // trigger the tackle duel now.
+            if (state.hasActiveAction()
+                    && state.getAction().getType() == ActionType.CARRY
+                    && duelEngine.getActiveDuelAttacker() == null) {
+                duelEngine.update(state.getAction());
+                if (duelEngine.getActiveDuelAttacker() != null) {
+                    Player duelAttacker = duelEngine.getActiveDuelAttacker();
+                    Player duelDefender = duelEngine.getActiveDuelDefender();
+                    DuelType duelType = duelEngine.getActiveDuelType();
+                    DuelResolver.DuelResult duelResult =
+                            duelEngine.resolveActiveDuel(state.getAction());
+                    duelEngine.closeAfterResolution();
+                    recordDuelStats(state, actionEngine, rulesService, stats, logger, selection, recorder,
+                            duelResult, duelAttacker, duelDefender, duelType,
+                            state.getAction());
+                }
+            }
 
             // Periodic CARRY progress log — every 3 ticks while carrying, so the
             // gap detector never sees a 6+ second gap with zero log entries.
@@ -1113,33 +1311,6 @@ public class MatchSimulator {
                 boolean shotTaken = actionEngine.executeShot(chosen.isEmptyGoal());
                 if (shotTaken) {
                     stats.onShot(team, carrier.getId(), false);
-                } else {
-                    // Shot blocked by defender — record SHOT_BLOCKED event with full
-                    // structured fields (team/player/position/skill/outcome) so the
-                    // sidebar and JSON export show the full shot outcome chain.
-                    recorder.appendEvent(state.getSimulationTick(), state.getRound(),
-                            state.getAction().getActionId(), "SHOT_BLOCKED",
-                            "SHOT BLOCKED by defender near " + carrier.getLabel(), state);
-                    // Shot blocked by defender — ball becomes loose, trigger chase
-                    String defendingTeam = "HOME".equals(team) ? "AWAY" : "HOME";
-                    stats.onBlock(defendingTeam);
-                    logger.logInfo(state, "SHOT BLOCKED by defender near " + carrier.getLabel(), "BLOCK", carrier);
-
-                    // Blocked shot near the end line often deflects over the goal line → corner
-                    Position shotPos = carrier.getPosition();
-                    double distToEndLine = "HOME".equals(team)
-                            ? 7.5 - shotPos.getRow() : shotPos.getRow() - 0.5;
-                    if (distToEndLine <= 1.5 && state.getRandom().nextDouble() < 0.60) {
-                        stats.onCornerFromPass();
-                        Position cornerPos = new Position("HOME".equals(team) ? 7.5 : 0.5,
-                                SimUtils.clamp(shotPos.getColumn(), 1, 6));
-                        state.getBall().setCarrier(null);
-                        state.getBall().setTarget(null);
-                        actionEngine.complete("BLOCKED SHOT -> CORNER");
-                        restartManager.handleBallOutOfBounds(stats,
-                                FootballRulesService.RestartType.CORNER, cornerPos, defendingTeam);
-                        return;
-                    }
                 }
             }
             case CROSS -> {
@@ -1362,15 +1533,33 @@ public class MatchSimulator {
         Position goal = ActionEngine.goalPositionFor(shooterTeam);
         double distToGoal = SimUtils.distance(shotTarget, goal);
 
-        boolean onTarget = distToGoal < 0.5;
+        // A goal is scored when the ball crosses the line inside the 1-cell-wide
+        // goal mouth (row = goal line, col 3.0..4.0). We must measure the shot
+        // against the goal MOUTH, NOT against the goal CENTRE (col 3.5).
+        //
+        // Root cause of the 0-goal bug: the far-post aim deliberately puts the
+        // on-frame shot at col 4.0 (or 3.0) — exactly 0.5 cells from the centre
+        // 3.5. The old check `distToGoal < 0.5` was strict, so 0.5 >= 0.5 made
+        // EVERY far-post shot "off target", and `distToGoal < 0.40` (the goal
+        // threshold) also failed. Result: 0 on-target shots / 0 goals per match
+        // despite dozens of on-frame attempts. A ball that crosses the line at
+        // col 4.0 IS inside the goal (mouth spans 3.0..4.0) — a goal, not a miss.
+        double goalRow = goal.getRow();
+        boolean inGoalMouth = shotTarget.getColumn() >= 3.0 && shotTarget.getColumn() <= 4.0
+                && Math.abs(shotTarget.getRow() - goalRow) < 0.5;
+
+        boolean onTarget = inGoalMouth;
         if (onTarget) {
             stats.markShotOnTarget(shooterTeam, shooter.getId());
         }
         logger.logActionExecution(state, action,
-                "SHOT_ARRIVAL distToGoal=" + String.format("%.2f", distToGoal) + " onTarget=" + onTarget,
+                "SHOT_ARRIVAL target=(" + String.format("%.2f", shotTarget.getRow())
+                        + "," + String.format("%.2f", shotTarget.getColumn())
+                        + ") goalRow=" + String.format("%.2f", goalRow)
+                        + " inGoalMouth=" + onTarget + " distToGoal=" + String.format("%.2f", distToGoal),
                 shooter, null, "SHOT");
 
-        if (distToGoal < ExecutionQuality.SHOT_GOAL_THRESHOLD) {
+        if (inGoalMouth) {
             // Check for goalkeeper save
             String keeperTeam = "HOME".equals(shooterTeam) ? "AWAY" : "HOME";
             Player keeper = selection.anyGoalkeeper(keeperTeam);
@@ -1737,10 +1926,156 @@ public class MatchSimulator {
      * Ako defanzivac NEMA visok plej, to NIJE interception — to je DEFLECTION.
      */
     /**
-     * Apply a pass/shot deflection. The ball is placed at the collision point,
-     * re-routed perpendicular to the lane, and becomes LOOSE (never a carrier).
-     * Shared by the arrival-time check and the mid-path lane collision.
+     * Physical SHOT block (user rule): for a defender to block a shot,
+     * (1) the shooter must have fired toward the goal (ball in flight),
+     * (2) the defender must stand EXACTLY on the shot line (ball → goal),
+     * (3) the ball must physically travel from the shooter and STRIKE the
+     * defender on its way, (4) only then does the ball deflect and the event
+     * SHOT_BLOCKED is logged. No near-shooter "duel block" — the DuelEngine
+     * no longer forms SHOT duels (see DuelEngine.update).
+     *
+     * Runs every flight tick with prevPos → cur as the ball's movement this
+     * tick. The continuous segment check defeats tunneling of a fast shot.
      */
+    private boolean resolveShotBlock(MatchState state, Action action,
+                                     Position prevPos,
+                                     ActionEngine actionEngine,
+                                     MatchStatsCollector stats,
+                                     ActionLogService logger,
+                                     FootballRulesService rulesService,
+                                     MatchRecorder recorder) {
+        if (action == null || !action.isShotInFlight()) return false;
+        Player shooter = action.getActingPlayer();
+        if (shooter == null) return false;
+        String shooterTeam = shooter.getTeam();
+        Ball ball = state.getBall();
+        Position cur = ball.getPosition();
+        Position shootTarget = action.getActualTarget() != null
+                ? action.getActualTarget()
+                : ActionEngine.goalPositionFor(shooterTeam);
+
+        Player blocker = null;
+        double bestContact = Double.MAX_VALUE;
+        // The aim line is anchored at the shot ORIGIN (where the shooter struck
+        // the ball) so it stays identical for the whole flight. Anchoring it to
+        // `cur` collapses the segment to a point as the ball nears the target
+        // and defenders on a miss line would no longer register as "on the
+        // line" even though the ball just passed over them.
+        Position aimLineStart = action.getExecutionOrigin() != null
+                ? action.getExecutionOrigin() : cur;
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(shooterTeam)) continue;
+            if ("GK".equals(p.getRole())) continue; // GK saves handled at arrival
+            if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+            if (state.isBlockedAfterDuel(p)) continue;
+
+            // Must be ON the shot's aim line (origin → target).
+            double lane = SimUtils.pointSegmentDistance(p.getPosition(), aimLineStart, shootTarget);
+            if (lane > SHOT_BLOCK_LANE_RADIUS) continue;
+
+            // Must be between the ball's launch point and the target (ahead of
+            // the ball), so the ball is actually travelling toward them — not
+            // behind the ball.
+            double dx = shootTarget.getColumn() - aimLineStart.getColumn();
+            double dy = shootTarget.getRow() - aimLineStart.getRow();
+            double len2 = dx * dx + dy * dy;
+            double projectT = len2 < 1e-6 ? 1.0
+                    : ((p.getPosition().getColumn() - aimLineStart.getColumn()) * dx
+                    + (p.getPosition().getRow() - aimLineStart.getRow()) * dy) / len2;
+            if (projectT < 0.01 || projectT > 0.99) continue;
+
+            // PHYSICAL contact: the ball's movement THIS TICK must actually
+            // sweep across the defender's body (prev→cur is the arc the ball
+            // truly travelled — that is the physical requirement the user set:
+            // "lopta stvarno putuje i udari"). The ball does not teleport past
+            // the defender on a tick.
+            double contact = SimUtils.pointSegmentDistance(p.getPosition(), prevPos, cur);
+            if (contact > SHOT_BLOCK_CONTACT_RADIUS) continue;
+
+            if (contact < bestContact) {
+                bestContact = contact;
+                blocker = p;
+            }
+        }
+        if (blocker == null) return false;
+
+        Position hitPoint = SimUtils.closestPointOnSegment(
+                blocker.getPosition(), prevPos, cur);
+        applyShotBlock(state, action, blocker, hitPoint,
+                actionEngine, stats, logger, rulesService, recorder);
+        return true;
+    }
+
+    /**
+     * The ball has physically struck the blocker on its way to goal — deflect
+     * it loose, emit SHOT_BLOCKED, and let the restart rules decide corner /
+     * goal kick / throw-in from where the deflected ball lands.
+     */
+    private void applyShotBlock(MatchState state, Action action, Player blocker,
+                                Position hitPoint,
+                                ActionEngine actionEngine, MatchStatsCollector stats,
+                                ActionLogService logger, FootballRulesService rulesService,
+                                MatchRecorder recorder) {
+        Ball ball = state.getBall();
+        Player shooter = action.getActingPlayer();
+        ball.setPosition(hitPoint);
+
+        // Deflect perpendicular to the shot direction — the ball bounces off
+        // the blocker's body and becomes loose.
+        Position cur = hitPoint;
+        double dx = cur.getColumn() - shooter.getPosition().getColumn();
+        double dy = cur.getRow() - shooter.getPosition().getRow();
+        double dirLen = Math.hypot(dx, dy);
+        if (dirLen < 1e-6) { dx = 1; dy = 0; dirLen = 1; }
+        double perpRow, perpCol;
+        if (state.getRandom().nextBoolean()) {
+            perpRow = -dx / dirLen;
+            perpCol = dy / dirLen;
+        } else {
+            perpRow = dx / dirLen;
+            perpCol = -dy / dirLen;
+        }
+        double bounce = 0.8 + state.getRandom().nextDouble() * 0.6;
+        Position deflectedPos = new Position(
+                SimUtils.clamp(cur.getRow() + perpRow * bounce, 0.2, 7.8),
+                SimUtils.clamp(cur.getColumn() + perpCol * bounce, 0.2, 7.8));
+
+        ball.setPosition(deflectedPos);
+        ball.setCarrier(null);
+        ball.setTarget(null);
+        state.setCarrier(null);
+        state.setLastTouchTeam(blocker.getTeam());
+        // Emit SHOT_BLOCKED BEFORE completing so the enriched event still
+        // resolves the acting player from the live SHOT action — and do it as
+        // an explicit MatchEvent so the blocker (not the shooter) is attributed.
+        recorder.appendEvent(new MatchEvent(
+                state.getSimulationTick(), state.getRound(),
+                action.getActionId(), "SHOT_BLOCKED",
+                "shot blocked by " + blocker.getLabel() + " (from " + shooter.getLabel() + ")",
+                blocker.getTeam(), blocker.getId(), blocker.getLabel(),
+                shooter.getId(),
+                Double.valueOf(hitPoint.getRow()), Double.valueOf(hitPoint.getColumn()),
+                (Integer) null, "BLOCK"));
+        actionEngine.complete("SHOT BLOCKED by " + blocker.getLabel());
+        stats.onBlock(blocker.getTeam());
+        logger.logActionOutcome(state, action,
+                "SHOT BLOCKED by " + blocker.getLabel() + " — ball deflected loose",
+                shooter, blocker, "OUTCOME");
+
+        // If the deflected ball went out of play (most commonly over the end
+        // line near the goal → corner), award the restart instantly.
+        FootballRulesService.RestartType blockRestart =
+                rulesService.determineRestart(deflectedPos, blocker.getTeam(), false);
+        if (blockRestart != FootballRulesService.RestartType.NONE) {
+            if (blockRestart == FootballRulesService.RestartType.CORNER) stats.onCornerFromPass();
+            logger.logActionOutcome(state, action,
+                    "SHOT BLOCKED -> " + blockRestart,
+                    shooter, blocker, "OUTCOME");
+            restartManager.handleBallOutOfBounds(stats, blockRestart,
+                    deflectedPos, blocker.getTeam());
+        }
+    }
+
     private void applyDeflection(MatchState state, Action action, Player deflector,
                                  Position collisionPoint,
                                  ActionEngine actionEngine, MatchStatsCollector stats,
@@ -1825,6 +2160,58 @@ public class MatchSimulator {
     }
 
     /**
+     * AIR pass "start of action" deflection. A sky ball cannot be intercepted
+     * mid-path, but if a defender is standing almost on top of the passer at
+     * the moment of execution they can close the delivery and deflect it at
+     * the source. Per the user rule: "deflection moze da se desi samo na
+     * pocetku izvodjenja akcije ako je defender jako blizu". Runs only on the
+     * very first instant of flight (ball still within ~0.7 cells of the
+     * execution origin); after that the air ball is beyond reach and never
+     * deflected mid-air.
+     */
+    private void resolveStartOfFlightDeflection(MatchState state, Action action,
+                                                ActionEngine actionEngine, MatchStatsCollector stats,
+                                                ActionLogService logger, FootballRulesService rulesService) {
+        if (action == null) return;
+        if (!(action.isPassInFlight() || action.isCrossInFlight())) return;
+        PassHeight height = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
+        if (height != PassHeight.AIR) return;
+
+        Player passer = action.getActingPlayer();
+        if (passer == null) return;
+        Position origin = action.getExecutionOrigin();
+        if (origin == null) return;
+        // Only the very first instant of flight — the ball hasn't left the
+        // passer's feet yet. Once it's more than ~0.7 cells away it's in the
+        // air over the pressing defender and can no longer be closed down.
+        if (SimUtils.distance(state.getBall().getPosition(), origin) > 0.7) return;
+
+        String passingTeam = passer.getTeam();
+        Player closest = null;
+        double closestDist = Double.MAX_VALUE;
+        // "Jako blizu" = within ~0.4 cells (~5.6m) of the passer at the kick.
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(passingTeam)) continue;
+            if (p == action.getTargetPlayer()) continue;
+            if ("GK".equals(p.getRole())) continue;
+            if (p.isSentOff() || p.isInjured()) continue;
+            double d = SimUtils.distance(p.getPosition(), passer.getPosition());
+            if (d < 0.4 && d < closestDist) {
+                closest = p;
+                closestDist = d;
+            }
+        }
+        if (closest == null) return;
+
+        // A pressing defender this close to the passer deflects the sky ball
+        // at its source — the ball comes off the passer's foot, hits the
+        // pressing body, and drops loose. The passer cannot stop it.
+        applyDeflection(state, action, closest, SimUtils.closestPointOnSegment(
+                closest.getPosition(), passer.getPosition(), state.getBall().getPosition()),
+                actionEngine, stats, logger, rulesService);
+    }
+
+    /**
      * Mid-path lane collision. Runs DURING flight — if the ball's current
      * segment (prevPos → currentPos) passes within a defender's body radius,
      * the ball physically hits him and must either DEFLECT (faster ball → the
@@ -1839,7 +2226,9 @@ public class MatchSimulator {
                                             ActionEngine actionEngine, MatchStatsCollector stats,
                                             ActionLogService logger, FootballRulesService rulesService) {
         if (action == null) return false;
-        if (!(action.isPassInFlight() || action.isCrossInFlight() || action.isShotInFlight())) return false;
+        // SHOT collisions are resolved experimentally by resolveShotBlock
+        // (physical block on the shot line). Passes/crosses use this method.
+        if (!(action.isPassInFlight() || action.isCrossInFlight())) return false;
 
         PassHeight height = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
         if (height == PassHeight.AIR) return false;
@@ -1854,11 +2243,14 @@ public class MatchSimulator {
         Position cur = ball.getPosition();
         double passSpeed = action.getPassSpeed();
 
-        // Contact + reaction zone around the flight segment: any opponent whose
-        // body is within this radius of the pass lane can be struck ("udario u
-        // igrača"). Wider than a literal body so that reactions/blocked lanes
-        // register, but the probability ramps down toward the edge.
-        double collisionRadius = 1.2;
+        // STRICT lane radius: a defender's body must actually be ON the flight
+        // segment to be struck — NOT "near" it. Cell = 14m, so 0.18 cells (~2.5m)
+        // is roughly a player's body half-width. Under the old collisionRadius
+        // of 1.2 a defender standing ~17m off the pass line was struck — that is
+        // what made balls deflect off "thin air". Per the user rule: deflection
+        // MUST happen if a player is ON the pass line; nobody is struck from the
+        // side.
+        double laneRadius = 0.18;
 
         Player hit = null;
         double hitDist = Double.MAX_VALUE;
@@ -1869,7 +2261,7 @@ public class MatchSimulator {
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             double d = SimUtils.pointSegmentDistance(p.getPosition(), prevPos, cur);
-            if (d <= collisionRadius && d < hitDist) {
+            if (d <= laneRadius && d < hitDist) {
                 hit = p;
                 hitDist = d;
                 hitPoint = SimUtils.closestPointOnSegment(p.getPosition(), prevPos, cur);
@@ -1877,27 +2269,24 @@ public class MatchSimulator {
         }
         if (hit == null) return false;
 
-        // Contact probability ramps with closeness to the lane (closer = harder
-        // to avoid) and rises slightly with ball speed (fast balls are harder
-        // to dodge). A defender exactly on the lane is struck almost every time.
-        double proximity = Math.max(0.0, 1.0 - (hitDist / collisionRadius)); // 0 (edge) .. 1 (on lane)
-        double contactProb = 0.30 + 0.70 * proximity;                        // 0.30 .. 1.00
-        contactProb *= (0.85 + 0.15 * passSpeed / 3.0);
-        if (state.getRandom().nextDouble() >= contactProb) return false;
+        // The defender's body is physically on the flight line — the ball
+        // CANNOT pass through them. Deflection is GUARANTEED (no probability).
+        // A genuine interception is the RARE exception: only a high-
+        // playmaking + high-defending defender who anticipates a SLOW ball
+        // reads it in time and takes possession. Fast balls (≈3.0) are never
+        // intercepted — they come off the foot too hot to read.
+        double speedFactor = Math.max(0.0, 1.0 - (passSpeed - 1.0) / 2.5); // 1.0 slow .. 0 fast
+        int pm = (int) Math.round(hit.getSkills().playmaking());
+        int def = (int) Math.round(hit.getSkills().defender());
+        // Interception only for elite readers (pm+def ≥ ~24) on a slow ball.
+        double interceptProb = (pm + def > 24)
+                ? Math.min(0.55, (0.30 + (pm + def - 24) / 20.0) * speedFactor)
+                : 0.0;
 
-        // Deflection vs interception driven by ball speed (user rule):
-        //   fast ball -> DEFLECTION (hard to read AND hard to control — bounces off)
-        //   slow ball -> INTERCEPTION (defender reads it and takes possession)
-        // passSpeed 1.0 → ~15% deflect / ~85% intercept
-        // passSpeed 2.0 → ~38% deflect / ~62% intercept
-        // passSpeed 3.0 → ~60% deflect / ~40% intercept
-        double deflectProb = 0.15 + (passSpeed - 1.0) / 2.0 * 0.45; // 0.15 .. 0.60
-        boolean deflect = state.getRandom().nextDouble() < deflectProb;
-
-        if (deflect) {
-            applyDeflection(state, action, hit, hitPoint, actionEngine, stats, logger, rulesService);
-        } else {
+        if (state.getRandom().nextDouble() < interceptProb) {
             applyInterception(state, action, hit, actionEngine, stats, logger);
+        } else {
+            applyDeflection(state, action, hit, hitPoint, actionEngine, stats, logger, rulesService);
         }
         return true;
     }

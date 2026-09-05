@@ -355,6 +355,12 @@ public class OffsideService {
         stats.onOffside(carrierTeam);
         receiver.incrementConsecutiveOffside();
 
+        // The carrier/passer is from the ATTACKING team (they tried to play the
+        // ball forward to an offside-positioned receiver). The INDIRECT FREE
+        // KICK goes to the DEFENDING team — i.e. the team that DID NOT have
+        // the ball (the team that caught the offside). This is standard football:
+        // when an attacker is caught offside, the defending team gets the free kick.
+        // Example: HOME carrier → HOME receiver offside → AWAY (defending) gets the FK.
         String defendingTeam = "HOME".equals(carrierTeam) ? "AWAY" : "HOME";
         Position offsidePos = receiver.getPosition();
 
@@ -418,9 +424,11 @@ public class OffsideService {
         // Description format: "offside <player> (margin=X.XX)" so the viewer's
         // regex (/^.*offside\s+/ then strip parens) extracts the player name.
         double marginForDisplay = calculateOffsideMargin(receiver, carrierTeam, state);
+        String marginText = String.format(java.util.Locale.US, "%.2f", marginForDisplay)
+                + " cell, " + Math.round(marginForDisplay * 14) + " m";
         String desc = "INDIRECT FREE KICK for " + defendingTeam
                 + " — offside " + receiver.getLabel()
-                + " (margin=" + String.format(java.util.Locale.US, "%.2f", marginForDisplay) + ")";
+                + " (margin=" + marginText + ")";
         recorder.appendEvent(new MatchEvent(
                 state.getSimulationTick(), state.getRound(),
                 (String) null, "OFFSIDE",
@@ -438,7 +446,7 @@ public class OffsideService {
                 "OFFSIDE", receiver);
 
         state.setSetPiecePending(true);
-        state.setActionDelayTicks(5); // hold so the overlay is visible + taker walks in
+        state.setActionDelayTicks(15); // increased from 5 to 15 — gives taker enough time to walk to the spot
         return new OffsideResult(true, true);
     }
 }

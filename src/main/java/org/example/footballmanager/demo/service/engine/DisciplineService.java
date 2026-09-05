@@ -99,11 +99,16 @@ public class DisciplineService {
         Position foulPos = homeAttacking
                 ? (defenderPos.getRow() >= attackerPos.getRow() ? defenderPos : attackerPos)
                 : (defenderPos.getRow() <= attackerPos.getRow() ? defenderPos : attackerPos);
-        // Penalty box foul → only ~15% actually result in penalty (real football: 3-5%)
+        // Penalty box foul → ~35% actually result in penalty (the user wants
+        // "ponekad penal" — occasionally, NOT 2-3 per match — so we aim for
+        // roughly 1 penalty every 3-4 matches: with ~6-9 fouls per match and
+        // ~1-2 in the box, a 35% gate yields ~0.3 penalties per match on
+        // average. Real football is 3-5% of fouls but with 20+ fouls per
+        // match, equivalent here).
         boolean inPenaltyBoxRaw = homeAttacking
                 ? (foulPos.getRow() >= 7 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5)
                 : (foulPos.getRow() <= 1 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5);
-        boolean inPenaltyBox = inPenaltyBoxRaw && state.getRandom().nextDouble() < 0.15;
+        boolean inPenaltyBox = inPenaltyBoxRaw && state.getRandom().nextDouble() < 0.35;
 
         if (card == FootballRulesService.CardType.RED) {
             return handleRedCard(state, actionEngine, defender, attacker, defendingTeam,

@@ -35,6 +35,12 @@ public class PlaymakingDecisionEngine {
     private int consecutiveOwnHalfPasses = 0;
     private static final int MAX_OWN_HALF_PASSES = 12;
     private String lastCarrierTeam = null;
+    // Same-row (lateral) pass tracking: hard cap on consecutive passes that do
+    // NOT progress toward the opponent goal (same row). Once exceeded, only
+    // forward passes / SHOT / CARRY are allowed — breaks endless sideways
+    // ping-pong inside the box or along a row.
+    private int consecutiveSameRowPasses = 0;
+    private static final int MAX_SAME_ROW_PASSES = 3;
     private final java.util.Random random;
 
     public PlaymakingDecisionEngine(MatchState state, PlayerSelectionEngine selection,
@@ -88,6 +94,21 @@ public class PlaymakingDecisionEngine {
                 // Forward pass resets the own-half counter
                 consecutiveOwnHalfPasses = 0;
             }
+
+            // Same-row pass tracking: a pass between two players on the SAME row
+            // does not progress the attack. Track it; reset when the pass is a
+            // genuine forward pass (different row) so only consecutive same-row
+            // passes accumulate toward the hard cap.
+            Player receiver = null;
+            for (Player p : state.getPlayers()) {
+                if (p.getId().equals(receiverId)) { receiver = p; break; }
+            }
+            if (receiver != null && Math.abs(passer.getPosition().getRow()
+                    - receiver.getPosition().getRow()) < 0.25) {
+                consecutiveSameRowPasses++;
+            } else {
+                consecutiveSameRowPasses = 0;
+            }
         }
     }
 
@@ -97,6 +118,7 @@ public class PlaymakingDecisionEngine {
     public void resetPassExchanges() {
         passExchangeCount.clear();
         consecutiveOwnHalfPasses = 0;
+        consecutiveSameRowPasses = 0;
     }
 
     /**
@@ -124,14 +146,6 @@ public class PlaymakingDecisionEngine {
         lastCarrierTeam = currentTeam;
 
         DecisionContext ctx = buildContext(carrier);
-        if (state.isCornerActive() && carrier.getTeam().equals(state.getCornerTeam())) {
-            System.err.println("[CORNER-DECIDE] carrier=" + carrier.getLabel()
-                    + " row=" + String.format("%.2f", carrier.getPosition().getRow())
-                    + " col=" + String.format("%.2f", carrier.getPosition().getColumn())
-                    + " firstTouch=" + state.isRestartFirstTouch()
-                    + " setPiece=" + state.isSetPiecePending()
-                    + " cornerActive=" + state.isCornerActive());
-        }
         List<DecisionOption> options = generateOptions(ctx);
         visionFilter.applyVisionFilter(ctx, options);
 
@@ -195,6 +209,29 @@ public class PlaymakingDecisionEngine {
             visible = filteredByExchange;
         }
 
+        // HARD RULE: max 3 SAME-ROW (lateral) passes — remove every non-forward
+        // PASS option once the attack has recycled sideways 3 times. This breaks
+        // the endless box-edge / along-the-row ping-pong where two players on the
+        // same row pass to each other instead of shooting or advancing. A forward
+        // pass (different row), SHOT, CARRY or a set-piece delivery is still allowed.
+        if (consecutiveSameRowPasses >= MAX_SAME_ROW_PASSES) {
+            Player carrierP = ctx.player();
+            boolean home = ctx.isHome();
+            double cRow = carrierP.getPosition().getRow();
+            List<DecisionOption> forwardOnly = new ArrayList<>();
+            for (DecisionOption opt : visible) {
+                if (opt.getType() == DecisionType.PASS && opt.getTarget() != null) {
+                    double tRow = opt.getTarget().getPosition().getRow();
+                    boolean isForward = home ? (tRow > cRow + 0.25) : (tRow < cRow - 0.25);
+                    if (!isForward) continue; // lateral / backward pass removed
+                }
+                forwardOnly.add(opt);
+            }
+            if (!forwardOnly.isEmpty()) {
+                visible = forwardOnly;
+            }
+        }
+
         // HARD RULE: max 12 consecutive passes in own half — force forward action.
         // Prevents endless sideways/backward passing without progression.
         // Progressive actions: SHOT, THRU, AIR pass, CROSS, CENTER,
@@ -244,11 +281,6 @@ public class PlaymakingDecisionEngine {
                 && ctx.player().getTeam().equals(state.getCornerTeam())) {
             Position ballPos = state.getBall().getPosition();
             boolean atCornerFlag = ballPos.getColumn() <= 1.0 || ballPos.getColumn() >= 6.0;
-            System.err.println("[CORNER-FORCE] team=" + ctx.player().getTeam()
-                    + " firstTouch=" + state.isRestartFirstTouch()
-                    + " ball=" + String.format("%.2f", ballPos.getRow()) + "," + String.format("%.2f", ballPos.getColumn())
-                    + " atFlag=" + atCornerFlag
-                    + " carrier=" + ctx.player().getLabel());
             if (atCornerFlag) {
                 lastSelectionReason = "corner delivery into the box";
                 return new DecisionOption(DecisionType.CENTER, 100.0, "corner into the box");
@@ -300,8 +332,12 @@ public class PlaymakingDecisionEngine {
 
             // Empty goal: GK is out of position (more than 2.0 cells from goal)
             boolean emptyGoal = gkDistToGoal > 2.0 && distToGoal <= 4.0;
-            // Only GK ahead and close: 0 defenders between + within shooting range
-            boolean onlyGKAhead = defendersBetween == 0 && distToGoal <= 3.0;
+            // Only GK + at most 1 outfield defender ahead and close: the user
+            // explicitly requires an attacker to shoot or dribble in a 1-on-1
+            // chance — previously this only fired with ZERO defenders between
+            // (onlyGKAhead), which let "1 defender + GK" situations fall back
+            // to a "suspicious" pass even though the shot was the obvious call.
+            boolean onlyGKAhead = defendersBetween <= 1 && distToGoal <= 3.0;
 
             // --- User rule: shoot at 16m when the lane to goal is open ---
             // When (a) no outfield defender blocks the lane (defendersBetween == 0),
@@ -334,11 +370,36 @@ public class PlaymakingDecisionEngine {
             }
         }
 
+        // --- HARD RULE: carrier in final 2 rows can carry toward goal but not toward corner ---
+        // In rows 6-7 (HOME) or rows 1-2 (AWAY), a CARRY toward the corner (cols 1 or 6)
+        // is always wrong. CARRY toward the goal centre is fine — it improves the angle.
+        // The carrier's current column tells us the direction: near-corner columns (≤1.5 or ≥5.5)
+        // + CARRY selected = wrong. Shoot instead.
+        boolean inFinalRows = ctx.isHome()
+                ? carrier.getPosition().getRow() >= 6.0
+                : carrier.getPosition().getRow() <= 2.0;
+        if (inFinalRows && result.getType() == DecisionType.CARRY) {
+            double col = carrier.getPosition().getColumn();
+            if (col <= 1.5 || col >= 5.5) {
+                result = new DecisionOption(DecisionType.SHOT, 200.0,
+                        "final-rows corner-carry blocked: shoot");
+                lastSelectionReason = "final-rows: carry toward corner blocked, shoot instead";
+            }
+        }
+
         // Store best PASS option as fallback for THRU/CROSS/CENTER failures
         bestPassFallback = visible.stream()
                 .filter(o -> o.getType() == DecisionType.PASS && o.getScore() > 0)
                 .max(java.util.Comparator.comparingDouble(DecisionOption::getScore))
                 .orElse(null);
+
+        // Record the SELECTED pass directly here (not only in MatchSimulator) so
+        // the same-pair exchange limit and same-row limit are enforced even when
+        // the downstream action is interrupted before MatchSimulator records it.
+        if (result.getType() == DecisionType.PASS && result.getTarget() != null
+                && result.getTarget() != carrier && !state.isSetPiecePending()) {
+            recordPassExchange(carrier.getId(), result.getTarget().getId());
+        }
 
         return result;
     }
@@ -686,6 +747,29 @@ public class PlaymakingDecisionEngine {
                 if (!inBoxArea && !forwardOfCarrier) continue;
             }
 
+            // --- HARD RULE: backward pass in the OPPONENT half is FORBIDDEN
+            //     beyond 1.0 cell (~14 m); outside the opponent half it is
+            //     forbidden beyond 2.0 cells (~28 m). ---
+            // The user explicitly requires that once the ball is in the opponent
+            // half the carrier must not recycle it far back (a >1-cell backward
+            // pass there stalls the attack / risks a quick counter). We allow a
+            // short 1-cell reset under pressure in the opponent half, but never
+            // a long backward pass to the keeper / deep defender. Banning only
+            // the egregious ones avoids trapping AWAY in its own half (the
+            // previous -250 penalty did trap it) while still preventing the
+            // wasteful long-backward passes the user flagged.
+            boolean carrierInOpponentHalf = home ? (carrierRow >= 4.0) : (carrierRow <= 4.0);
+            double maxBackwardDelta = carrierInOpponentHalf ? 1.0 : 2.0;
+            double rowDeltaAbsForFilter = Math.abs(home
+                    ? (candidateRow - carrierRow)
+                    : (carrierRow - candidateRow));
+            if (rowDeltaAbsForFilter > maxBackwardDelta) {
+                boolean isBackward = home
+                        ? (candidateRow < carrierRow)
+                        : (candidateRow > carrierRow);
+                if (isBackward) continue;
+            }
+
             // --- Quality scoring ---
             double receiverRow = receiver.getPosition().getRow();
 
@@ -747,19 +831,51 @@ public class PlaymakingDecisionEngine {
             }
             double receiverPressurePenalty = nearestOppDist < 0.5 ? -40.0 : 0.0;
 
+            // 7a) BIG backward-fall penalty (user rule): a backward pass that
+            //     travels more than 1 cell (~15 m) back toward own goal is heavily
+            //     discouraged — recycling to a deep defender/GK stalls the attack.
+            //     Far stronger than the base -80 backward bias, so a long backward
+            //     pass only survives when no forward option exists at all.
+            // NOTE: the former longBackwardPenalty (-250 on backward passes >1.5m)
+            // was REMOVED — it unbalanced the match (HOME crushed AWAY ~18:4 with
+            // equal skills) because it trapped AWAY in its own third: AWAY's
+            // build-up first pass out of defence is often a short backward reset,
+            // and with no valid option AWAY forced bad forward balls and lost them
+            // instantly. The base -80 backward bias already discourages recycling.
+            double longBackwardPenalty = 0.0;
+
             // 7) Box-attacker priority (user rule): in the final two rows the
             //    carrier must prefer the two attackers closest to the opponent
             //    goal over a backward pass. A big bonus here outweighs lane /
             //    proximity scoring so a top-2 box attacker beats a clean-laned
             //    backward pass even when the lane is slightly better.
+            //    IMPORTANT: the boost only applies to a pass that actually
+            //    ADVANCES the attack — the receiver must be closer to the goal
+            //    than the carrier (rowDelta > 0, a cut-in / goal-side run). A
+            //    lateral pass between two attackers already at the SAME box
+            //    position must not get the boost, otherwise the pair ping-pong
+            //    sideways at the box edge forever instead of shooting.
             double boxAttackerBoost = 0.0;
-            if (inFinalRows && topBoxAttackerIds.contains(receiver.getId())) {
+            if (inFinalRows && topBoxAttackerIds.contains(receiver.getId())
+                    && rowDelta > 0.0) {
                 boxAttackerBoost = 80.0;
+            }
+
+            // 8) Box lock (user rule): the carrier is already inside the scoring
+            //    range (closeToGoal ≤ 1.5 cells from goal). A lateral pass to an
+            //    equally-placed boxed attacker wastes a genuine chance — the
+            //    carrier must SHOOT or dribble instead. Heavily penalise any
+            //    non-forward pass at this range so SHOT wins the decision. (Backward
+            //    passes are already filtered out by the final-rows validRow check,
+            //    so this catches the same-row sideways ping-pong.)
+            double boxLockPenalty = 0.0;
+            if (closeToGoal && rowDelta <= 0.0) {
+                boxLockPenalty = 200.0;
             }
 
             double score = laneScore + forwardBias + goalProximityScore
                     + shootingZoneBoost + openScore + receiverPressurePenalty
-                    + boxAttackerBoost;
+                    + boxAttackerBoost + longBackwardPenalty - boxLockPenalty;
 
             // Pass exchange limit: prevent ping-pong between the same pair.
             if (isPassExchangeLimitReached(carrier.getId(), receiver.getId())) {
@@ -940,6 +1056,22 @@ public class PlaymakingDecisionEngine {
             }
         }
 
+        // --- BEAT THE LONE DEFENDER (user rule) ---
+        // When the carrier is in the final third with EXACTLY ONE defender
+        // between them and the goal, the obvious read is to dribble past the
+        // defender (or shoot over them). Without this boost the carrier often
+        // recycled a backward pass because a clean forward pass scored higher
+        // by sheer lane-quality points. Add +60 to CARRY so the attacker
+        // engages instead of recycling on a 1-on-1 chance.
+        double beatLoneDefenderBoost = 0.0;
+        if (inFinalThird) {
+            Position goalCenter2 = new Position(home ? 7.0 : 1.0, 3.5);
+            int defendersInLane = countDefendersInLane(carrier, goalCenter2, ctx.opponents());
+            if (defendersInLane == 1) {
+                beatLoneDefenderBoost = 60.0;
+            }
+        }
+
         // Hugging the bye-line in the attacking half = CROSS territory. Dampen
         // CARRY there so the (open-flank) CROSS decision wins instead.
         boolean attackingHalf = home ? row >= 4.0 : row <= 4.0;
@@ -984,7 +1116,8 @@ public class PlaymakingDecisionEngine {
         }
 
         double score = pressureFactor + spaceScore + finalThirdBoost
-                + backwardPenalty + bylinePenalty + consecutivePenalty + defenderCarryPenalty;
+                + backwardPenalty + bylinePenalty + consecutivePenalty
+                + defenderCarryPenalty + beatLoneDefenderBoost;
         return new DecisionOption(DecisionType.CARRY, score, "carry scored");
     }
 
@@ -1026,32 +1159,32 @@ private DecisionOption scoreShot(DecisionContext ctx) {
         double defenderPenalty = defendersInLane * 8.0;
 
         // 4) Goalkeeper position vs the shooting lane. GK well off the goal line
-        //    (committed/out of position) makes the shot far more tempting.
+        //    (committed/out of position) makes the shot far more tempting. Capped
+        //    at +18 (was +20) so a non-EMPTY shot doesn't inflate from GK position
+        //    alone — the empty-goal forced shot (score=100) still kicks in when
+        //    there are no defenders and the GK is committed.
         Player oppGK = findOpponentGoalkeeper(carrier.getTeam());
         double gkDistToGoal = oppGK != null
                 ? SimUtils.distance(oppGK.getPosition(), goal) : 99;
         double gkOutOfLane = 0.0;
         boolean gkInLane = false;
         if (oppGK != null) {
-            // GK "in lane" if close to the goal line; far from it = committed.
             gkInLane = gkDistToGoal < 1.2;
-            if (!gkInLane) gkOutOfLane = Math.min(20.0, (gkDistToGoal - 1.2) * 15.0);
+            if (!gkInLane) gkOutOfLane = Math.min(18.0, (gkDistToGoal - 1.2) * 10.0);
         }
 
         // 4b) GK on the wrong post (off-centre near the goal line) — the far post
-        //    is wide open. A shot aimed there is a near-certain goal even with an
-        //    average finisher. Boost the shot score so the carrier takes the
-        //    opportunity instead of recycling a backward pass. Detection: GK is
-        //    close to the goal line AND clearly off-centre (col ≤ 3.1 or ≥ 3.9,
-        //    i.e. hugging a post).
+        //    is wide open. Reduced from +45 to +30 so a wrong-post GK doesn't push
+        //    a marginal shot into the EMPTY bucket (calibration 2026-09-04).
         double gkWrongPostBoost = 0.0;
         if (oppGK != null) {
             double gkCol = oppGK.getPosition().getColumn();
             double colOffset = Math.abs(gkCol - 3.5);
             if (gkDistToGoal < 1.5 && colOffset > 0.4) {
-                // Far-post aim is implemented in ActionEngine.executeShot(), so
-                // even a mid-power strike lands in the open corner. Big boost.
-                gkWrongPostBoost = 45.0;
+                // Far-post aim is implemented in ActionEngine.executeShot() — even
+                // a mid-power strike lands in the open corner. The score boost
+                // just signals to the carrier "this is a good idea, take it".
+                gkWrongPostBoost = 30.0;
             }
         }
 
@@ -1063,8 +1196,31 @@ private DecisionOption scoreShot(DecisionContext ctx) {
 
         double pressurePenalty = ctx.pressure() * 0.05;
 
+        // --- THREAT-AWARE SHOT BOOST (user rule) ---
+        // The user wants attackers to attempt a shot when the situation is
+        // obviously threatening — i.e. 0 or 1 outfield defenders between the carrier
+        // and the goal in the final ~30 m. The boost scales DOWN with distance so
+        // a distant "clear lane" shot doesn't inflate into the EMPTY bucket purely
+        // from being uncontested (xG still drops with distance). Calibration from
+        // ShotQualityDiagnostic (2026-09-04): old flat +90/+50 produced an
+        // INVERTED correlation — EMPTY-bucket shots scored 0% goals while LOW-bucket
+        // shots scored 12.8%. The new distance-scaled values make the score a
+        // genuine quality indicator.
+        // - 0 defenders between: up to +50 near goal (dist≤1.0), +25 at mid-range (≤2.0)
+        // - 1 defender between: up to +25 near goal (dist≤1.0), +12 at mid-range (≤2.0)
+        int defendersInLaneForBoost = countDefendersInLane(carrier, goal, ctx.opponents());
+        double threatShotBoost = 0.0;
+        if (distanceToGoal <= 2.15) {
+            double distFactor = Math.max(0, 1.0 - distanceToGoal / 2.15);
+            if (defendersInLaneForBoost == 0) {
+                threatShotBoost = 50.0 * distFactor;
+            } else if (defendersInLaneForBoost == 1) {
+                threatShotBoost = 25.0 * distFactor;
+            }
+        }
+
         double score = goalProximity + angleScore + strikerBoost - defenderPenalty
-                - pressurePenalty + gkOutOfLane + gkWrongPostBoost;
+                - pressurePenalty + gkOutOfLane + gkWrongPostBoost + threatShotBoost;
 
         // --- EMPTY-GOAL FORCED SHOT (user rule) ---
         // If the lane to goal has NOBODY — no goalkeeper and no outfield

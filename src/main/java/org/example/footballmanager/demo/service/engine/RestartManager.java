@@ -207,11 +207,12 @@ public class RestartManager {
                 boolean rightCorner = ballPos.getColumn() >= 3.5;
                 boolean homeEnd = ballPos.getRow() > 7;
                 // Corner flag at EXACT intersection of goal line and touchline.
-                // HOME attacks row 8 → AWAY goal line is row 7.5 (corner row).
-                // AWAY attacks row 1 → HOME goal line is row 0.5.
-                // Touch lines at col 0/1 and col 6/7 (corner columns 0.5 / 6.5).
-                double cornerRow = homeEnd ? 7.5 : 0.5;
-                double cornerCol = rightCorner ? 6.5 : 0.5;
+                // HOME attacks row 8 → AWAY goal line is row 8.0 (corner row).
+                // AWAY attacks row 1 → HOME goal line is row 1.0.
+                // Touch lines at col 1.0 (left) and col 7.0 (right) → corner cols 1.0 / 7.0.
+                // Per user coordinate spec: cols 1.00-6.99 are playable, col 7.0 is right touchline.
+                double cornerRow = homeEnd ? 8.0 : 1.0;
+                double cornerCol = rightCorner ? 7.0 : 1.0;
                 restartSpot = new Position(cornerRow, cornerCol);
                 restartKind = "CORNER";
                 // Activate the corner set-piece arrangement: attackers organized
@@ -265,11 +266,11 @@ public class RestartManager {
             double dist = SimUtils.distance(p.getPosition(), restartSpot);
             if (dist >= 1.0) continue;
             boolean pHome = "HOME".equals(p.getTeam());
-            double ownRow = pHome ? 1.0 : 7.0;
+            double ownRow = pHome ? 1.0 : 8.0;
             double dir = Math.signum(ownRow - restartSpot.getRow());
             double pushTarget = 1.0 - dist + 0.1;
             double pushedRow = restartSpot.getRow() + pushTarget * dir;
-            pushedRow = SimUtils.clamp(pushedRow, 1.0, 7.9);
+            pushedRow = SimUtils.clamp(pushedRow, 1.0, 8.0);
             // Give a target so they move toward it smoothly next tick.
             p.setTarget(new Position(pushedRow, p.getPosition().getColumn()));
         }

@@ -120,6 +120,7 @@ public class MatchState {
     private String lastTacticalBallStateKey;
     private boolean roundComplete = true;
     private String lastTouchTeam = "HOME";  // tracks which team last touched the ball (for OOB restarts)
+    private Player lastBlocker;  // tracks the defender who blocked the latest shot in ActionEngine
 
     // --- Ball OOB pending state ---
     private boolean ballOOBPending;
@@ -389,6 +390,8 @@ public class MatchState {
     public void setRestartFirstTouch(boolean value) { restartFirstTouch = value; }
     public Player getFreeKickTaker() { return freeKickTaker; }
     public void setFreeKickTaker(Player player) { freeKickTaker = player; }
+    public Player getLastBlocker() { return lastBlocker; }
+    public void setLastBlocker(Player lastBlocker) { this.lastBlocker = lastBlocker; }
 
     // --- Pending VAR review ---
     public boolean hasPendingVARReview() { return pendingVARReviewType != null; }

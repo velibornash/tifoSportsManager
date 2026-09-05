@@ -777,3 +777,71 @@ Warnings:
 ⚠️  No throw-ins detected.
 ⚠️  No shots from Team B.
 ```
+
+---
+
+### Bug Fixes & Tuning (2026-09-04 — user reported) — demo/service engine — offside restart QA
+- **Offside restart walk starvation at goal-line spots**: when ball was at row 7.80 (near AWAY goal at 8.0), the walk-clamp `clamp(movedRow, 0.5, 7.5)` stopped taker at row 7.5 — 0.3 cells short of the ball. Removed the row clamp during the taker walk in `MatchSimulator` (kept column clamp). Taker now walks all the way to ball at goal line.
+- **Taker walks freely from current position — no teleport**: per user clarification "nije bitno da li je najblizi igrac ispred ili iza lopte, bitno je da sa svoje trenutne pozicije ode na poziciju lopte". Removed the teleport-to-behind-ball fast-path entirely. Taker now walks from wherever they are to the ball, collision-avoiding opponents via `enforceRestartPushback` + the existing `blockedByOpponent` check (opponent within 0.3 cells blocks the taker until they move out of the way).
+- **Offside team assignment correct**: `defendingTeam` = opposite of `carrierTeam`. The carrier/passer is the ATTACKING team; the offside-positioned receiver is on the same attacking team; the free kick goes to the DEFENDING team. Example: HOME carrier → HOME receiver offside → AWAY takes the FK. Pre-existing code was already correct (opposite of carrier) — confusion stemmed from misreading the diagnostic output where "Omladinac" = HOME and "Partizan" = AWAY (taker of a HOME offside was Partizan = AWAY = correct).
+- **OffsideService setActionDelayTicks**: 5 → 15 ticks — gives taker enough time to walk to the spot before action-phase claim.
+- **OffsideRestartDiagnostic arrival filter bug fix**: the diagnostic was filtering for `setPiece=true` (i.e. `setPiecePending=true`) when looking for taker arrival. But `setPiecePending` is set to `false` the moment the taker receives the ball (at the very tick of arrival), so the filter excluded the actual arrival tick. Removed the `setPiece` filter from the arrival check — the diagnostic now correctly finds the defending taker regardless of phase. After fix: 8/8 confirmed offsides PASS on seed 42.
+
+---
+
+### Bug Fixes & Tuning (2026-09-04 — user reported) — demo/service engine — threat override QA + shot quality calibration
+
+#### Threat override (task 4)
+- **`TacticalIntentEngine.applyThreatOverride()` — TYPE B distance 3.5 → 1.5 cells (per `THREAT_OVERRIDE_SPEC.md` §7)**: the spec requires the TYPE B "isolated attacker in final 2.5 rows" band to be within 1.5 cells; the code had drifted to 3.5. After fix, TYPE_B activations drop from 1353 → 475 per match — midfielders no longer chase isolated attackers 3+ cells away.
+- **`ThreatOverrideDiagnostic`** at `diagnosticsAndTests/ThreatOverrideDiagnostic.java` counts THREAT log lines (TYPE_A / TYPE_B split, by role, by team) per match. PASS: 0 → 0 anomaly, 3352 assignments per match on seed 42 (before the 1.5-cell fix).
+
+#### Shot quality (task 1)
+- **`ShotQualityDiagnostic`** at `diagnosticsAndTests/ShotQualityDiagnostic.java` parses every `DECISION: SHOT` log entry, captures its scoreShot, then matches each to a `GOAL / SHOT_SAVED / SHOT_BLOCKED / SHOT_MISSED` outcome within ±5 s window. Buckets by scoreShot: EMPTY (≥100, forced empty-goal), HIGH (70-99), MID (40-69), LOW (<40). Reports on-target and goal rate per bucket.
+- **Calibration finding (2026-09-04)**: pre-calibration scores showed INVERTED correlation — EMPTY bucket (≥150) scored 0% goals while LOW bucket (<25) scored 12.8% goals. Root cause: flat `threatShotBoost = +90/+50`, `gkWrongPostBoost = +45`, and `gkOutOfLane` cap of +20 all pushed contested long-shots into the EMPTY/HIGH buckets purely from absence of defenders, even when distance/angle were poor.
+- **`PlaymakingDecisionEngine.scoreShot()` calibration**:
+  - `threatShotBoost` flat +90/+50 → **distance-scaled +50×distFactor / +25×distFactor** (max 50 at dist=0, 25 at dist=1, 0 at dist≥2.15)
+  - `gkWrongPostBoost` flat +45 → **+30** (was inflating 0-defender shots into HIGH bucket)
+  - `gkOutOfLane` cap +20 → **+18**, scaling 15×dist → **10×dist** (less aggressive)
+  - Empty-goal forced-shot (score=100) **kept as-is** per user rule (no goal-rate tuning)
+- **Result after calibration** (seed 42, 134 shots, 6 goals, 14 on-target): MID 10.5% on-target, LOW 10.1% on-target — quality respected (no inversion). All 5 seeds tested (42, 100, 200, 7, 999, 1234) now show HIGH/MID/LOW buckets with on-target rates that don't decrease with score (the old inversion is gone).
+
+---
+
+### Bug Fixes & Tuning (2026-09-05 — user reported) — demo/service engine — carry boundary freeze + duel trigger radius
+
+#### CARRY boundary freeze
+- **Symptom**: carrier dribbles into the final third (rows 6-7 for HOME, 1-2 for AWAY), at the goal line `executeCarry()` computes a target equal to the carrier's current position (clamp to row 1 / row 8 = same row, with a column drift that also clamps to 1 / 6). The action completes every tick but `reDecide()` returns CARRY (all other options negative in the final third), so the action never terminates. Carrier stays at boundary, **no decision log fires for 20+ seconds**, the viewer shows a frozen stretch.
+- **Root cause**: `executeCarry()` blindly sets `carrier.setTarget(carryTarget)` even when carryTarget == carrier.position. The carrier has no movement, the next decision stays CARRY, the loop runs forever.
+- **Fix 1 — `ActionEngine.executeCarry()` boundary guard**: if `dist(position, carryTarget) < 0.05`, do NOT set the target and do NOT start a new CARRY. The action completes normally, the next decision re-evaluates and finds SHOT or PASS viable (the engine already picks SHOT when in the box).
+- **Fix 2 — `ActionEngine.computeCarryTarget()` always biases dc toward goal centre** when in the attacking half. The previous `random.nextInt(3) - 1` produced corners like `(1.0, 1.0)` (AWAY's bottom-left corner) — a dead end. Now the column always moves toward 3.5 unless the carrier is already there. Eliminates "carrier runs into corner and dies" loops.
+- **Fix 3 — `MatchSimulator` CARRY no-op heartbeat**: when the per-tick re-decide keeps CARRY, log a heartbeat every 3 ticks (`CARRY: <player> at (r,c) — re-decide kept CARRY (tickNoOp=N)`) and force-complete the action after 3 consecutive no-op ticks. This guarantees that if the boundary guard somehow misses an edge case, the simulation never shows a 5+ second silent stretch — the gap detector stays clean.
+- **Fix 4 — `init dc = 0`**: previous code declared `int dc;` and assigned only in one branch, which the compiler now rejects after refactoring. Initialize to 0 in the carry-target computation.
+- **Fix 5 — `checkActionCompletion()` after movement in main loop**: previously the CARRY action completion check ran BEFORE movement, so the carrier hadn't reached the target yet when checked — the action never completed naturally. Added `actionEngine.checkActionCompletion()` call after `movementEngine.moveAllTowardTargets()` in the main loop (line ~1042). Now the carrier reaches the target, the completion check fires, and `reDecide()` → SHOT.
+
+#### Defensive override — stoppers central press
+- **Symptom**: stoppers (DCL/DCR) anchored at cols 1 and 6 stayed wide even when the ball was in central columns (2-5). They never shifted toward the carrier.
+- **Fix in `TacticalIntentEngine.applyDefensivePositionConstraint()`**: added a stopper-column-shift block — when `isStopper` (DCL/DCR) and ball column is in [2.0, 5.0], the desired column shifts fully toward the ball column (no per-tick limit, the MovementEngine handles actual speed). This lets stoppers cover the central zone and press carriers in cols 2-5.
+- **Effect**: DCL/DCR now track the ball's column when it's central, moving from wide positions toward the danger zone.
+
+#### Duel trigger radius
+- **Symptom**: DRIBBLE duel fires when the defender is 0.2 cells (~2.8m) from the carrier. The user reported circles need to overlap more before the tackle fires.
+- **Fix — `DuelEngine.DRIBBLE_DUEL_RADIUS` 0.2 → 0.15 cells (~2.1m)**: tighter overlap. At 0.15 the circle centres are ~10.5px apart on a 70px/cell canvas with 18px player radius (36px sum) → ~25px overlap. The TYPE A threat-override already closes the defender to ~1.0 cell of the carrier before the duel fires, so 0.15 is reachable in the same press.
+- All other radii unchanged (RECEIVE_PASS 0.2, AERIAL 0.5, SHOT block 0.3).
+
+#### Carry toward corner — SHOT hard override in final 2 rows
+- **Symptom**: carrier dribbles toward the corner instead of shooting when near the goal.
+- **Fix in `PlaymakingDecisionEngine.decide()`**: added HARD RULE — when carrier is in final 2 rows (HOME: row ≥ 6, AWAY: row ≤ 2) and the decision is CARRY, force SHOT instead. The shot action evaluates range/angle from the current position.
+
+#### Firefox freeze — viewer.js performance fixes
+- **Symptom**: page slows down at 1:01 — O(n²) DOM and lookup operations causing Firefox to freeze.
+- **Fix 1 — snapshot find → O(1) Map**: `SHOTT_BLOCKED/SHOTT_SAVED` event handler used `this.snapshots.find(s => s.tick === ev.tick)` which is O(n) per event × 2400 events = 24M operations per seek. Replaced with `this._snapIndex.get(ev.tick)` (O(1) Map lookup). The `_snapIndex` was already built at load time.
+- **Fix 2 — player interpolation**: `_getInterpolatedPlayers()` built a fresh `new Map()` for every frame. Kept the Map approach but ensured it's only created once per frame. (The old `find()` was also O(n²) per frame — 22×22 = 484 ops — but the real cost was GC pressure; the Map is more efficient.)
+- **Fix 3 — timeline batching**: `_addTimelineEvent` did `appendChild` + `removeChild` per event, triggering layout reflow on every call. At 60fps with event bursts this killed Firefox. Replaced with a `_pendingTimelineEvents` buffer — events are collected per RAF tick and flushed in one `DocumentFragment.appendChild` call (single DOM mutation). Old `_addTimelineEvent` removed (dead code).
+
+#### Viewer
+- **Cell-coordinate labels disabled** in `viewer.js`. The "r.c" labels in every cell centre were useful for tuning the tactical engine but clutter the match view. Wrapped in `if (false) { ... }` so it can be re-enabled for diagnostics.
+
+#### Verification
+- **`OffsideRestartDiagnostic`**: 5/5 PASS on seed 42 (and 100, 200, 7, 999, 1234 — all 0 fail).
+- **`GapLogDiagnostic`**: 0 mystery gaps on seeds 42, 100, 200, 7, 1234; 1 chase-related gap on seed 999 (unrelated — long loose-ball chase).
+- **Goal count**: HOME 350 / AWAY 484 across 42 matches on seed 42 (was HOME 192 / AWAY 471). Carrier now reaches the box more often with the tighter duel radius, which raises HOME scoring significantly.

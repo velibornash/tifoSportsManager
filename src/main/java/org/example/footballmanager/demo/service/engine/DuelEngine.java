@@ -13,15 +13,17 @@ import java.util.List;
 public class DuelEngine {
 
     // Duel radii — 1 cell ≈ 14m × 10m (full field = 98m × 60m).
-// DRIBBLE_DUEL_RADIUS 0.5 cells (~7 m) — a defender alongside the carrier
-// triggers the DRIBBLE duel. The user overrode the previous 0.15 (~2 m):
-// at 0.15 the defender had to be virtually on top of the carrier, so the
-// carrier and defender just ran overlapped in the same cell with no tackle,
-// and the carrier visually "stopped"/crowded. With 0.5 the defender who has
-// closed the gap via the TYPE A press override engages the carrier as soon as
-// they come alongside, and snapPlayersForDuel pulls both to the contest point.
+    //
+    // DRIBBLE_DUEL_RADIUS 0.15 cells (~2.1 m): the defender's circle must
+    // visually TOUCH the carrier's circle for the duel to fire. At 0.15 cells
+    // the circle centres are 10.5px apart on a 70px/cell canvas (18px player
+    // radius each = 36px sum), giving ~25px overlap — circles visibly overlap
+    // and it makes sense that the ball was won. The old 0.5 (~7 m) had the
+    // defender 7m away when the duel fired, which looked wrong on the viewer.
+    // The TYPE A threat-override already closes the defender to ~1.0 cell of the
+    // carrier before the duel fires, so 0.15 is reachable within the press.
     public static final double DEFAULT_DUEL_RADIUS = 0.2;
-    public static final double DRIBBLE_DUEL_RADIUS = 0.5;
+    public static final double DRIBBLE_DUEL_RADIUS = 0.15;
     public static final double RECEIVE_PASS_RADIUS = 0.2;
     // Aerial (cross/center/header) challenges use a wider radius — a defender
     // that is marking the landing attacker (0.45 cells goal-side) must contest
@@ -63,6 +65,16 @@ public class DuelEngine {
             return;
         }
         if (action.getType() == ActionType.CHASE && state.isAwayRestartPending()) {
+            closeActiveDuel();
+            return;
+        }
+
+        // SHOT blocks are handled PHYSICALLY by MatchSimulator.resolveShotBlock —
+        // the ball must actually travel toward the goal and physically strike a
+        // defender who stands on the shot line. A showdown duel near the shooter
+        // would produce a "block" while the ball is already somewhere else on the
+        // canvas, which the user rejected. No DuelEngine duel for SHOT actions.
+        if (action.getType() == ActionType.SHOT) {
             closeActiveDuel();
             return;
         }
@@ -168,35 +180,36 @@ public class DuelEngine {
     }
 
     /**
-     * Snap both duel participants toward the contest position so they appear
+     * Snap the defender toward the contest position so they appear
      * physically engaged in a tackle/challenge on the viewer canvas.
-     * Each player moves 60% of the way from their current position to the
-     * contest point. Per corePrinciples §13, the tugged position IS their new
-     * current position — the simulation must never reset/clamp them back toward
-     * the position they came from (that reads as a teleport back).
+     * The defender moves 25% of the way from their current position to the
+     * contest point (which is a realistic lunging slide). Per corePrinciples
+     * §13, the tugged position IS their new current position — the simulation
+     * must never reset/clamp them back toward the position they came from (that
+     * reads as a teleport back). We only snap the defender; the attacker
+     * stays in position naturally to avoid a double-teleport visual jump.
      */
     private void snapPlayersForDuel(Player attacker, Player defender, Position contestPos) {
-        double snapFactor = 0.60;
-        for (Player p : new Player[]{attacker, defender}) {
-            if (p == null || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
-            if (p == state.getCarrier()) continue;
-            double dx = contestPos.getColumn() - p.getPosition().getColumn();
-            double dy = contestPos.getRow() - p.getPosition().getRow();
-            double dist = Math.hypot(dx, dy);
-            if (dist < 0.05) continue;
-            double moveDist = Math.min(dist, dist * snapFactor);
-            Position newPos = new Position(
-                    SimUtils.clamp(p.getPosition().getRow() + dy / dist * moveDist, 0.5, 7.5),
-                    SimUtils.clamp(p.getPosition().getColumn() + dx / dist * moveDist, 0.5, 6.5));
-            // A goalkeeper must never be dragged upfield by a duel snap — keep
-            // them right in front of their own goal (user rule).
-            if ("GK".equals(p.getRole())) {
-                double row = GoalkeeperMovementEngine.clampGkToZone(
-                        p, newPos.getRow());
-                newPos = new Position(row, newPos.getColumn());
-            }
-            p.setPosition(newPos);
+        if (defender == null || defender.isLocked() || defender.isSentOff() || defender.isInjured()) return;
+        if (defender == state.getCarrier()) return;
+
+        double snapFactor = 0.25;
+        double dx = contestPos.getColumn() - defender.getPosition().getColumn();
+        double dy = contestPos.getRow() - defender.getPosition().getRow();
+        double dist = Math.hypot(dx, dy);
+        if (dist < 0.05) return;
+        double moveDist = Math.min(dist, dist * snapFactor);
+        Position newPos = new Position(
+                SimUtils.clamp(defender.getPosition().getRow() + dy / dist * moveDist, 0.5, 7.5),
+                SimUtils.clamp(defender.getPosition().getColumn() + dx / dist * moveDist, 0.5, 6.5));
+        // A goalkeeper must never be dragged upfield by a duel snap — keep
+        // them right in front of their own goal (user rule).
+        if ("GK".equals(defender.getRole())) {
+            double row = GoalkeeperMovementEngine.clampGkToZone(
+                    defender, newPos.getRow());
+            newPos = new Position(row, newPos.getColumn());
         }
+        defender.setPosition(newPos);
     }
 
     private Player contestTarget(Action action, Player attacker) {

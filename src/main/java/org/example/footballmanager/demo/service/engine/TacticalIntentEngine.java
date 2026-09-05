@@ -6,6 +6,10 @@ import org.example.footballmanager.demo.service.model.Position;
 import org.example.footballmanager.demo.service.result.ActionLogService;
 import org.example.footballmanager.demo.service.tactics.TacticsRules;
 
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
 /**
  * Tactical intent — assigns movement targets from TacticsRules.
  *
@@ -26,6 +30,12 @@ public class TacticalIntentEngine {
     private final ActionLogService logger;
     private final GoalkeeperMovementEngine goalkeeperMovement;
     private final CornerArrangementEngine cornerArrangement = new CornerArrangementEngine();
+    // Threat-log throttle: keyed by defender id → signature of the currently
+    // logged assignment ("TYPE_A:H-12:0.83"). A new line is emitted only when
+    // the defender claims a DIFFERENT threat, different type, or the gap to it
+    // changed by > 0.25 cells — keeps the app log readable instead of spamming
+    // one line per defender per tick.
+    private final Map<String, String> lastThreatLog = new HashMap<>();
 
     public TacticalIntentEngine(MatchState state, ActionLogService logger) {
         this.state = state;
@@ -68,29 +78,34 @@ public class TacticalIntentEngine {
                 // Goalkeeper movement is a dedicated reactive override (user rule).
                 desired = goalkeeperTarget(p);
             } else {
-                Position tacticalDesired = state.getTacticsRules().desiredCell(
-                        p.getRole(), state.getBall().getPosition(), p.getTeam());
-                // User rule: defenders must NOT push deep into the opponent's
-                // half when there is no tactical reason. When the ball is in our
-                // own half, DEF/CB/LB/RB/DM must stay out of the opponent's half
-                // (never cross the halfway line). When the ball is in the attack,
-                // a defender tracks up but no further than a sensible cap so we
-                // don't leave acres of space behind the line.
-                tacticalDesired = applyDefensivePositionConstraint(p, tacticalDesired);
-                desired = applyOffsideRetreat(p, tacticalDesired);
-                Position beforeThreat = desired;
-                desired = applyThreatOverride(p, desired);
-                // Mark player as under threat override when the target changed
-                // (defender is actively pressing the ball carrier — MovementEngine
-                // uses this to apply a speed boost so the defender can close the gap).
-                if (desired.getRow() != beforeThreat.getRow()
-                        || desired.getColumn() != beforeThreat.getColumn()) {
-                    p.setThreatOverrideActive(true);
-                }
+                desired = applyOutfieldTargeting(p);
             }
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(desired); // Smooth movement to exact desired position
         }
+    }
+
+    /**
+     * Full outfield targeting: defensive-position constraint → offside retreat →
+     * threat override, and marks {@code threatOverrideActive} when the threat
+     * layer actually changed the target (MovementEngine uses the flag to apply
+     * the 1.6x press-speed boost). Shared by {@link #assignTargets()} and
+     * {@link #refreshTargetsIfBallStateChanged()} so the flag is consistent on
+     * BOTH per-tick paths (tactical-refresh runs every tick; assignTargets only
+     * runs at the start of a decision cycle).
+     */
+    private Position applyOutfieldTargeting(Player p) {
+        Position desired = state.getTacticsRules().desiredCell(
+                p.getRole(), state.getBall().getPosition(), p.getTeam());
+        desired = applyDefensivePositionConstraint(p, desired);
+        Position retreat = applyOffsideRetreat(p, desired);
+        Position beforeThreat = retreat;
+        desired = applyThreatOverride(p, retreat);
+        if (desired.getRow() != beforeThreat.getRow()
+                || desired.getColumn() != beforeThreat.getColumn()) {
+            p.setThreatOverrideActive(true);
+        }
+        return desired;
     }
 
     /**
@@ -101,19 +116,39 @@ public class TacticalIntentEngine {
      * the defensive line holds; full-backs may overlap only when the ball is in
      * the final third. CB/DM never cross the halfway line unless the ball is
      * already in the attacking half.
+     *
+     * User rule: stoppers (DCL/DCR) must stay CENTRAL and approach the ball
+     * carrier when the ball is in central columns (2-5). Their anchor cells are
+     * wide (col 1 and col 6), but they must shift toward the ball's column so
+     * they can press the carrier. The shift is limited to 1.5 cells per tick
+     * (the same as normal movement) so they don't teleport.
      */
     private Position applyDefensivePositionConstraint(Player p, Position desired) {
         String role = p.getRole();
         boolean home = "HOME".equals(p.getTeam());
-        boolean isDefender = role.equals("DEF") || role.equals("CB")
-                || role.equals("LB") || role.equals("RB") || role.equals("DM");
-        if (!isDefender) return desired;
+        if (!isDefender(role)) return desired;
 
         double ballRow = state.getBall().getPosition().getRow();
+        double ballCol = state.getBall().getPosition().getColumn();
         boolean ballInOwnHalf = home ? ballRow <= 4.0 : ballRow >= 4.0;
         double desiredRow = desired.getRow();
-        boolean isCenterBack = role.equals("DEF") || role.equals("CB");
+        double desiredCol = desired.getColumn();
+        // Center backs: DEF/CB/DCL/DCR. Fullbacks: LB/RB/DL/DR. DM is its own class.
+        boolean isCenterBack = role.equals("DEF") || role.equals("CB")
+                || role.equals("DCL") || role.equals("DCR");
         boolean isDM = role.equals("DM");
+        boolean isStopper = role.equals("DCL") || role.equals("DCR");
+
+        // --- Stopper column shift toward ball when ball is in central columns ---
+        // DCL/DCR anchors are at col 1 and col 6 (wide). When the ball is in
+        // central columns (2-5), stoppers must shift toward the ball's column
+        // so they can press the carrier in the middle of the pitch.
+        if (isStopper && ballCol >= 2.0 && ballCol <= 5.0) {
+            double colShift = ballCol - desiredCol;
+            desiredCol = desiredCol + colShift;
+            // Keep within field bounds
+            desiredCol = Math.max(1.0, Math.min(6.9, desiredCol));
+        }
 
         if (ballInOwnHalf) {
             // Ball in own half: strict defense. No crossing halfway line.
@@ -198,16 +233,13 @@ public class TacticalIntentEngine {
         for (Player p : state.getPlayers()) {
             if (p == state.getCarrier() || p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             if (p == state.getReturningPlayer() || isActiveChase(p)) continue;
+            p.setThreatOverrideActive(false); // clear every tick — re-set by the threat layer if pressing
             Position desired;
             if ("GK".equals(p.getRole())) {
                 // Goalkeeper movement is a dedicated reactive override (user rule).
                 desired = goalkeeperTarget(p);
             } else {
-                desired = state.getTacticsRules().desiredCell(
-                        p.getRole(), state.getBall().getPosition(), p.getTeam());
-                desired = applyDefensivePositionConstraint(p, desired);
-                desired = applyOffsideRetreat(p, desired);
-                desired = applyThreatOverride(p, desired);
+                desired = applyOutfieldTargeting(p);
             }
             state.setTacticalDesiredPosition(p, desired);
             p.setTarget(desired); // Smooth movement to exact desired position
@@ -233,8 +265,10 @@ public class TacticalIntentEngine {
      *    Was 0.2 cells — too tight, defenders couldn't engage a carrier who was
      *    already carrying (the carrier slipped past before the defender could
      *    close the gap).
-     * 2. TYPE B — opponent in our defensive third, isolated from OUR OTHER
-     *    defenders (no defender within 0.5 cells). Press them.
+     * 2. TYPE B — opponent isolated in our FINAL 2.5 ROWS (no teammate within
+     *    0.5 cells of the attacker). Press them within 1.5 cells (spec) — close
+     *    enough to contest the next pass/shot, but not so far that midfielders
+     *    abandon their shape to chase a runner across the field.
      *
      * "One defender per threat" — closest eligible defender claims the threat
      * (§4 in threat_override_spec.md). Resolver prevents swarming: even when
@@ -252,9 +286,11 @@ public class TacticalIntentEngine {
             return desired;
         }
 
-        // Only defenders contest threats — non-defender outfield players keep
-        // their tactical position (prevents 3 players from swarming the threat).
-        if (!isDefender(player.getRole())) return desired;
+        // Only defenders AND midfielders contest threats — non-pressable
+        // outfield players keep their tactical position (prevents 5 players
+        // from swarming the threat). User rule: midfielders must also close
+        // down an opponent who is isolated/alone in the danger zone.
+        if (!isPressingEligible(player.getRole())) return desired;
 
         boolean home = "HOME".equals(player.getTeam());
         Player bestThreat = null;
@@ -280,9 +316,11 @@ public class TacticalIntentEngine {
         // space around them, a defender MUST press them all the way (close
         // to duel range) so the next pass / shot can be contested. Without
         // this, lone attackers roam free behind the midfield line.
+        // Distance threshold 1.5 (spec) — within defender's reach, prevents
+        // midfielders from abandoning shape across the whole field.
         boolean typeB = isInFinalQuarter(opponent.getPosition().getRow(), home)
                 && isIsolated(opponent, player.getTeam(), 0.5, player)
-                && distance <= 2.0;
+                && distance <= 1.5;
 
             int priority = typeA ? 1 : (typeB ? 2 : Integer.MAX_VALUE);
             if (priority == Integer.MAX_VALUE) continue;
@@ -297,9 +335,32 @@ public class TacticalIntentEngine {
 
         if (bestThreat == null) return desired;
 
-        // One opponent threat is handled by one defender only: the closest
-        // eligible defender wins the assignment (resolver prevents swarming).
-        if (!isClosestEligibleDefender(bestThreat, player)) return desired;
+        // One opponent threat is handled by one presser only: the closest
+        // eligible presser (defender OR midfielder) wins the assignment
+        // (resolver prevents swarming).
+        if (!isClosestEligiblePresser(bestThreat, player)) return desired;
+
+        // --- THREAT OVERRIDE LOG (app log, channel THREAT) ---
+        // Emitted once per assignment change so a QA trace can count how often
+        // each type fires and which defender claimed which threat. Throttled by
+        // the signature below (same defender + same threat + same type + same
+        // gap → no repeat line).
+        if (logger != null) {
+            String threatType = bestPriority == 1 ? "TYPE_A" : "TYPE_B";
+            String signature = threatType + ":" + bestThreat.getId() + ":"
+                    + String.format(Locale.US, "%.2f", bestDistance);
+            String prev = lastThreatLog.get(player.getId());
+            if (!signature.equals(prev)) {
+                lastThreatLog.put(player.getId(), signature);
+                logger.logInfo(state, "THREAT " + threatType + ": " + player.getLabel()
+                        + " presses " + bestThreat.getLabel()
+                        + " | gap=" + String.format(Locale.US, "%.2f", bestDistance) + " cells"
+                        + (bestPriority == 1 && state.getBall().getCarrier() != null
+                            ? " (carrier " + state.getBall().getCarrier().getLabel() + ")"
+                            : ""),
+                        "THREAT", player);
+            }
+        }
 
         return bestThreat.getPosition();
     }
@@ -344,8 +405,8 @@ public class TacticalIntentEngine {
         return true;
     }
 
-    /** Return true only for the closest eligible defender for this threat. */
-    private boolean isClosestEligibleDefender(Player threat, Player candidate) {
+    /** Return true only for the closest eligible presser for this threat. */
+    private boolean isClosestEligiblePresser(Player threat, Player candidate) {
         double candidateDistance = SimUtils.distance(candidate.getPosition(), threat.getPosition());
         for (Player teammate : state.getPlayers()) {
             if (teammate == candidate) continue;
@@ -354,10 +415,11 @@ public class TacticalIntentEngine {
             if (teammate.isSentOff() || teammate.isInjured() || teammate.isLocked()) continue;
             if (teammate == state.getCarrier()) continue;
             if (state.isActiveChaser(teammate)) continue;
-            // Only OTHER defenders contest this assignment — a forward/midfielder
-            // being geometrically closer must not stop the nearest defender from
-            // pressing the dangerous attacker (user rule).
-            if (!isDefender(teammate.getRole())) continue;
+            // Only OTHER press-eligible players (defenders AND midfielders)
+            // contest this assignment — a defender and a midfielder both see
+            // the threat, but only the closest one claims it (one presser per
+            // threat, no swarming). Forwards keep their tactical position.
+            if (!isPressingEligible(teammate.getRole())) continue;
 
             double otherDistance = SimUtils.distance(teammate.getPosition(), threat.getPosition());
             if (otherDistance + 1e-9 < candidateDistance) return false;
@@ -367,7 +429,23 @@ public class TacticalIntentEngine {
 
     private boolean isDefender(String role) {
         return role.equals("DEF") || role.equals("CB")
-                || role.equals("LB") || role.equals("RB") || role.equals("DM");
+                || role.equals("LB") || role.equals("RB") || role.equals("DM")
+                || role.equals("DL") || role.equals("DCL")
+                || role.equals("DCR") || role.equals("DR");
+    }
+
+    /**
+     * Which roles are allowed to claim the threat-override press. Defenders
+     * (DEF/CB/LB/RB/DM/DL/DCL/DCR/DR) plus the formation's midfielders
+     * (ML/CML/CMR/MR and generic MID/CM/AM/WNG). User rule: midfielders must
+     * also close down an opponent who is isolated/alone in the danger zone.
+     */
+    private boolean isPressingEligible(String role) {
+        return isDefender(role)
+                || role.equals("ML") || role.equals("CML")
+                || role.equals("CMR") || role.equals("MR")
+                || role.equals("MID") || role.equals("CM")
+                || role.equals("AM") || role.equals("WNG");
     }
 
     private String oppositeTeam(boolean homeAttacking) {

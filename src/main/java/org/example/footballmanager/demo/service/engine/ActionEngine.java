@@ -19,8 +19,8 @@ public class ActionEngine {
     public static final Position PENALTY_SPOT_HOME = new Position(7.0, 3.5);
     public static final Position PENALTY_SPOT_AWAY = new Position(2.0, 3.5);
     public static final double POSSESSION_RADIUS = BallMovementEngine.PICKUP_DISTANCE;
-    public static final int CHASE_MAX_TICKS = 60;
-    public static final int CHASE_NO_PROGRESS_TICKS = 15;
+    public static final int CHASE_MAX_TICKS = 30;
+    public static final int CHASE_NO_PROGRESS_TICKS = 8;
     public static final double CHASE_PROGRESS_EPSILON = MovementEngine.PLAYER_SPEED * 0.25;
 
     public static Position goalPositionFor(String team) {
@@ -503,6 +503,32 @@ public class ActionEngine {
     public void executeCarry() {
         Player carrier = state.getCarrier();
         if ("GK".equals(carrier.getRole())) { executeClearance(); return; }
+        Position carryTarget = computeCarryTarget(carrier);
+        // BOUNDARY GUARD: if the computed target equals the carrier's current
+        // position (carrier pressed against end line / touchline), do NOT set
+        // the target — that creates an infinite loop where checkActionCompletion
+        // fires every tick but reDecide() returns false (all options negative),
+        // the carrier freezes at the boundary and the viewer shows a 20+ second
+        // silent stretch with no log entries. Let the action complete and
+        // let the decision engine pick the next option (SHOT / PASS / CARRY
+        // with a different column) instead.
+        if (SimUtils.distance(carrier.getPosition(), carryTarget) < 0.05) {
+            return;
+        }
+        carrier.setTarget(carryTarget);
+        start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
+        state.getAction().setTargetPosition(carryTarget);
+        state.incrementActionCount();
+    }
+
+    /**
+     * Compute a forward/lateral carry target 3-4 cells ahead of the carrier.
+     * Shared by executeCarry (start of a new carry) and the continuous-run
+     * re-target in checkActionCompletion, so consecutive CARRY actions never
+     * leave the carrier target-less for a tick (which produced a visible
+     * ~1-second stop at the end of every carry on the viewer).
+     */
+    private Position computeCarryTarget(Player carrier) {
         double r = carrier.getPosition().getRow();
         double c = carrier.getPosition().getColumn();
         boolean home = "HOME".equals(carrier.getTeam());
@@ -520,14 +546,34 @@ public class ActionEngine {
         // sight — they cut inside toward goal and the SHOT override can then
         // fire when they reach ~16m. The straight-line flank carry is handled
         // separately by executeStraightCarry and is unaffected.
-        int dc;
+        int dc = 0;
         boolean inAttackingHalf = home ? r >= 4.0 : r <= 4.0;
         Position goalCenter = new Position(home ? 8.0 : 1.0, 3.5);
+        // The lane-open bias toward goal-centre was previously gated on
+        // `isCarryLaneOpen` returning true, which requires NO opponent within
+        // 1 cell of the carrier. With a defender close (e.g. col 2 winger with
+        // marker 0.8 cells away), the bias was off and the winger shuffled
+        // sideways at random instead of cutting inside toward goal. Per user
+        // rule: any non-touchline carrier (cols 2..5) in the attacking half
+        // should bias toward goal-centre so the next decision can fire SHOT
+        // from a central position. The strict 1-cell lane-open check remains
+        // for the very narrow channel case (< 0.4 cells from centre already).
+        boolean inInteriorCols = c >= 2.0 && c <= 5.0;
         boolean laneOpen = inAttackingHalf && isCarryLaneOpen(carrier, goalCenter);
-        if (laneOpen && Math.abs(c - 3.5) >= 0.4) {
-            dc = (c < 3.5) ? 1 : -1;
+        // Drive toward goal center: always bias dc toward 3.5 when in the
+        // attacking half. Random lateral was producing corners like (1.0, 1.0) —
+        // far from the goal at (1.0, 3.5) and useless for attacking.
+        // This rule applies to both HOME and AWAY; the goal centre for AWAY
+        // is (1.0, 3.5) and for HOME is (8.0, 3.5).
+        if (inAttackingHalf) {
+            if (inInteriorCols && Math.abs(c - 3.5) >= 0.4) {
+                dc = (c < 3.5) ? 1 : -1; // cut inside — already toward centre
+            } else if (Math.abs(c - 3.5) >= 0.4) {
+                dc = (c < 3.5) ? 1 : -1; // winger on flank: step toward centre
+            }
+            // else: carrier is already at col 3.5 ±0.4 — lateral drift is fine
         } else {
-            dc = state.getRandom().nextInt(3) - 1;
+            dc = state.getRandom().nextInt(3) - 1; // neutral / own half: random
         }
         if (dr == 0 && dc == 0) dr = 1;
         double direction = home ? 1 : -1;
@@ -537,11 +583,11 @@ public class ActionEngine {
         // engine re-decides, starts new carry).
         int carryDistance = 3 + state.getRandom().nextInt(2); // 3 or 4 cells
 
-        // --- HARD RULE: no carry more than 1.5 cells ALONG THE SAME ROW ---
+        // --- HARD RULE: no carry more than 1 cell ALONG THE SAME ROW ---
         // Side-to-side dribbles look ridiculous on the UI (a winger shuffling
         // from one sideline to the other) and rarely produce a goal. Per user
         // rule: when the carry direction is purely lateral (dr == 0), cap the
-        // carry distance at 1.5 cells. Forward (+/-dr) and diagonal carries
+        // carry distance at 1 cell. Forward (+/-dr) and diagonal carries
         // (|dr| > 0 AND |dc| > 0) keep the 3-4 cell range.
         if (dr == 0) {
             carryDistance = 1; // 1 cell * dc direction = at most 1.0 cells along row
@@ -549,11 +595,7 @@ public class ActionEngine {
 
         double nr = SimUtils.clamp(r + direction * dr * carryDistance, 1, 8);
         double nc = SimUtils.clamp(c + dc * carryDistance, 1, 6);
-        Position carryTarget = new Position(nr, nc);
-        carrier.setTarget(carryTarget);
-        start(ActionType.CARRY, "CARRY: " + carrier.getLabel());
-        state.getAction().setTargetPosition(carryTarget);
-        state.incrementActionCount();
+        return new Position(nr, nc);
     }
 
     /**
@@ -680,17 +722,13 @@ public class ActionEngine {
         int strikerSkill = (int) Math.round(carrier.getSkills().striker());
         // Calculate pressure: count non-GK opponents within 1.5 cells
         double pressure = 0;
-        Player closestBlocker = null;
-        double closestBlockerDist = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
             if (p.getTeam().equals(carrier.getTeam()) || "GK".equals(p.getRole())) continue;
+            // Cooldown check: a defender recovering from a lost duel cannot press or block the shot
+            if (state.isBlockedAfterDuel(p)) continue;
             double dist = SimUtils.distance(carrier.getPosition(), p.getPosition());
             if (dist < 1.5) {
                 pressure += (1.5 - dist) / 1.5;
-                if (dist < closestBlockerDist) {
-                    closestBlockerDist = dist;
-                    closestBlocker = p;
-                }
             }
         }
         pressure = Math.min(pressure, 1.0) * 50.0; // scale 0..1 → 0..50
@@ -750,37 +788,11 @@ public class ActionEngine {
             }
         }
 
-        // Pre-shot block check: defender within 1.5 cells can block the shot
-        // Probability: closer = more likely. At 0.5 cells: ~40%, at 1.5 cells: ~5%
-        if (closestBlocker != null) {
-            double blockChance = Math.max(0.03, 0.30 * (1.5 - closestBlockerDist) / 1.0);
-            if (state.getRandom().nextDouble() < blockChance) {
-                // Shot blocked! Defender throws body in front.
-                // Place the ball at the midpoint between shooter and blocker so the
-                // DEFENDING team has a head start (realistic: blocked shots favor
-                // the defense), but keep the CHASE mechanism so the recovery is
-                // contested and properly logged (no silent gaps).
-                state.getBall().setCarrier(null);
-                state.getBall().setTarget(null);
-                state.setCarrier(null);
-                Position shotBlockPos = new Position(
-                        (shotOrigin.getRow() + closestBlocker.getPosition().getRow()) / 2.0,
-                        (shotOrigin.getColumn() + closestBlocker.getPosition().getColumn()) / 2.0);
-                state.getBall().setPosition(shotBlockPos);
-                // Set up active chasers so resolveChase / CHASE progress log works.
-                // Without this, the CHASE starts with no active chasers → actor is null,
-                // progress log never fires, and resolveChase can't find duels or
-                // resolve possession → 15-tick silent gap until no-progress timeout.
-                Player closestHome = selection.closestOutfieldHomeTo(shotBlockPos);
-                Player closestAway = selection.closestOutfieldTeamTo(shotBlockPos, "AWAY");
-                state.setActiveChasers(closestHome, closestAway);
-                if (closestHome != null) closestHome.setTarget(shotBlockPos);
-                if (closestAway != null) closestAway.setTarget(shotBlockPos);
-                start(ActionType.CHASE, "BLOCK: " + closestBlocker.getLabel() + " blocked shot from " + carrier.getLabel());
-                state.setActionDelayTicks(0);
-                return false;  // signal: shot was blocked, don't continue with shot execution
-            }
-        }
+        // NOTE: no pre-shot probabilistic "block" here any more. A shot is
+        // blocked ONLY when the ball physically travels and strikes a defender
+        // standing on the shot line (see MatchSimulator.resolveShotBlock).
+        // This keeps every SHOT_BLOCKED verifiable: shooter fires -> ball
+        // moves -> blocker on the line intercepts it.
 
         ExecutionQuality.ShotResult result = executionQuality.evaluateShot(
                 goalPosition, strikerSkill, pressure, shotOrigin, goalkeeper);
@@ -805,6 +817,13 @@ public class ActionEngine {
         action.setGoodExecution(result.goal());
         action.setGkInLane(result.gkInLane());
         action.setAngleFactor(result.angleFactor());
+        // Realistic struck-ball speed (~0.7 cells/tick ≈ 20 m/s at 2 ticks/s).
+        // This makes a box shot (1-2 cells) fly over several ticks, so a
+        // defender standing exactly on the shot line has the geometry to
+        // physically intercept it (MatchSimulator.resolveShotBlock). At the
+        // old default 2.0 cells/tick the ball jumped origin→goal in ONE tick
+        // and a physical block was mathematically impossible.
+        action.setPassSpeed(0.7);
 
         state.getBall().setCarrier(null);
         state.getBall().setTarget(shotTarget);
@@ -1031,6 +1050,36 @@ public class ActionEngine {
             }
             case CARRY -> {
                 Player carrier = state.getCarrier();
+                // Continuous-run re-target: the moment the carrier arrives
+                // within PLAYER_SPEED*2 of the current target, point the SAME
+                // action at a fresh forward target so the run never stalls for
+                // a tick (eliminates the visible ~1s stop between consecutive
+                // carries). The per-tick re-decide in MatchSimulator still runs
+                // and can override with SHOT/PASS the instant a better option
+                // appears. Boundary cases (new target < PLAYER_SPEED*2 away,
+                // e.g. carrier pressed against the end line) fall through to a
+                // normal completion so the next decision resolves the situation.
+                if (carrier != null && state.getBall().getCarrier() == carrier) {
+                    Position target = carrier.getTarget();
+                    boolean nearTarget = target == null
+                            || SimUtils.distance(carrier.getPosition(), target)
+                               < MovementEngine.PLAYER_SPEED * 2;
+                    if (nearTarget && !"GK".equals(carrier.getRole())) {
+                        Position next = computeCarryTarget(carrier);
+                        if (SimUtils.distance(carrier.getPosition(), next)
+                                >= MovementEngine.PLAYER_SPEED * 2) {
+                            carrier.setTarget(next);
+                            state.getAction().setTargetPosition(next);
+                            recorder.appendEvent(state.getSimulationTick(), state.getRound(),
+                                    state.getAction().getActionId(), "CARRY_CONTINUED",
+                                    "CARRY: " + carrier.getLabel() + " continues to ("
+                                            + String.format(java.util.Locale.US, "%.2f", next.getRow())
+                                            + "," + String.format(java.util.Locale.US, "%.2f", next.getColumn()) + ")",
+                                    state);
+                            return;
+                        }
+                    }
+                }
                 boolean targetReached = carrier.getTarget() == null
                         || (carrier.getTarget() != null
                             && SimUtils.distance(carrier.getPosition(), carrier.getTarget())
