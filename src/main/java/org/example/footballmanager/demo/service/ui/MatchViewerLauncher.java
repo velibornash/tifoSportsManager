@@ -115,7 +115,8 @@ public class MatchViewerLauncher {
         String url = "http://localhost:" + PORT + "/";
         System.out.println("⚽ Match Viewer running at " + url);
         System.out.println("   1. Click 'Generate Match' to simulate");
-        System.out.println("   2. Click 'Play Match' to watch");
+        System.out.println("   2. Click 'Play Match' to watch (circle viewers)");
+        System.out.println("   3. Click 'Play Match 2D' to watch in the new figure-based viewer");
         System.out.println("   Press Ctrl+C to stop.\n");
 
         if (Desktop.isDesktopSupported()) {

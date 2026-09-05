@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TIFO — Match Viewer</title>
+  <title>TIFO — Match Viewer 2D</title>
   <link rel="stylesheet" href="css/pitch.css">
 </head>
 <body>
@@ -31,27 +31,23 @@
 
     <!-- Empty state -->
     <div class="empty-state" id="emptyState">
-      <h2>Match Viewer</h2>
+      <h2>Match Viewer 2D</h2>
       <p>Generate a new match, then play the replay.</p>
       <div style="display:flex;gap:12px;margin-top:16px;">
         <button id="simBtn" style="background:#2ea043;">&#9917; Generate Match</button>
         <button id="playMatchBtn" style="background:#58a6ff;">&#9654; Play Match</button>
-        <button id="playMatch2dBtn" style="background:#8957e5;">&#127939; Play Match 2D</button>
       </div>
       <p style="margin-top:16px;font-size:12px;color:#8b949e;">
         Generate simulates a match and saves it. Play loads the last generated match.
-        Play Match 2D opens the new figure-based viewer in a new tab.
       </p>
     </div>
 
-    <!-- Live ticker — landscape phones only. Shows the most recent event
-         in a single horizontal line above the pitch. The full log is
-         accessed via the LOG toggle on the right. -->
+    <!-- Live ticker — landscape phones only. -->
     <div class="live-ticker" id="liveTicker" style="display:none">
-      <span class="ticker-icon" id="tickerIcon">\u26BD</span>
+      <span class="ticker-icon" id="tickerIcon">&#9917;</span>
       <span class="ticker-min" id="tickerMin">00:00</span>
       <span class="ticker-desc" id="tickerDesc">Match not loaded</span>
-      <button class="ticker-toggle" id="tickerToggle">LOG \u25BC</button>
+      <button class="ticker-toggle" id="tickerToggle">LOG &#9660;</button>
     </div>
 
     <!-- Pitch -->
@@ -99,7 +95,7 @@
   <span id="loadingText">Simulating match...</span>
 </div>
 
-<script src="js/viewer.js"></script>
+<script src="js/viewer2d.js"></script>
 
 </body>
 </html>

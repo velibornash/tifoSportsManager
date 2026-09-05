@@ -1,9 +1,16 @@
 /**
- * TIFO Demo Service — Match Viewer
+ * TIFO Demo Service — Match Viewer 2D (human figures)
  *
- * Horizontal pitch: HOME left (row 1), attacks left→right (rows 1→7).
- * AWAY right (row 7), attacks right→left (rows 7→1).
- * Playing field: rows 1-7, cols 1-6. Rows 0,8 + cols 0,7 = out-of-bounds.
+ * Parallel viewer: identical playback/data logic to viewer.js, but players are
+ * drawn as animated human figures (jersey, running, kicking, sliding) instead
+ * of circles. Home = black jersey, Away = white jersey, GK = gold.
+ *
+ * This file is fully self-contained — it does NOT depend on viewer.js. The two
+ * viewers can coexist: index.html loads viewer.js, index2d.html loads this.
+ *
+ * Horizontal pitch: HOME left (row 1), attacks left→right (rows 1→8).
+ * AWAY right (row 8), attacks right→left (rows 8→1).
+ * Playing field: rows 1-8, cols 1-7. Rows 0 + 8+, cols 0 + 7+ = out-of-bounds.
  * Smooth interpolated player positions.
  */
 
@@ -20,22 +27,147 @@ const PITCH_GREEN = '#3a7d44';
 const PITCH_OOB = '#2d6a35';      // out-of-bounds area (darker)
 const PITCH_STRIPE = 'rgba(255,255,255,.04)';
 const PITCH_LINE = 'rgba(255,255,255,.55)';
-// Grid: 9 rows (0-8) x 8 cols (0-7). Playing field = rows 1-7, cols 1-6.
-// KONSTANTE
-const GRID_ROWS = 10;          // 0..8
-const GRID_COLS = 9;          // 0..7
-const FIELD_ROW_MIN = 1.0;    // home goal line
-const FIELD_ROW_MAX = 8.0;    // away goal line
-const FIELD_COL_MIN = 1.0;    // gornja touchline
-const FIELD_COL_MAX = 7.0;    // donja touchline
+// Grid: 10 rows (0–9) x 9 cols (0–8). Playing field = rows 1–8, cols 1–7.
+const GRID_ROWS = 10;          // 0..9 (matches FIELD_ROW_MAX 8.0)
+const GRID_COLS = 9;           // 0..8 (matches FIELD_COL_MAX 7.0)
+const FIELD_ROW_MIN = 1.0;     // home goal line
+const FIELD_ROW_MAX = 8.0;     // away goal line
+const FIELD_COL_MIN = 1.0;     // gornja touchline
+const FIELD_COL_MAX = 7.0;     // donja touchline
 const CELL_W = 196;  // 126 * 1.3 — extended 30%
 const CELL_H = 120;  // 80 * 1.4
+
+/* ═══════════════════════════════════════════════════════════════
+   HUMAN FIGURE CONSTANTS
+   ═══════════════════════════════════════════════════════════════ */
+
+// Canonical skeleton proportions (before scaling). Root = feet centre at (0,0),
+// facing +X. The figure is translated to the player position and rotated to
+// face the movement direction.
+const FIG_BODY = {
+  hipY: -24,
+  torsoLen: 11,      // hip → shoulder
+  headOffset: 7.5,   // shoulder → head centre
+  headR: 5.2,
+  wTop: 5.2,         // shoulder half-width (torso)
+  wBot: 2.6,         // hip half-width (torso)
+  thigh: 12,
+  shin: 13,
+  armUp: 9,
+  armLo: 8,
+};
+
+// Figure rendering height in screen px (target ~35 px).
+const FIGURE_H = 36;
+const FIGURE_SCALE = FIGURE_H / (Math.abs(FIG_BODY.hipY) + FIG_BODY.torsoLen + FIG_BODY.headOffset + FIG_BODY.headR);
+
+const SKIN = '#e8b98a';
+const SKIN_DARK = '#c99a6c';
+const SHOE = '#1e1e22';
+const HAIR = '#3a2a20';
+
+// Team jerseys — HOME black, AWAY white, GK gold.
+const JERSEYS = {
+  HOME: {
+    shirt: '#262b33',
+    shirtTrim: 'rgba(255,255,255,.30)',
+    shorts: '#14181e',
+    number: '#ffffff',
+  },
+  AWAY: {
+    shirt: '#ededed',
+    shirtTrim: 'rgba(20,24,30,.45)',
+    shorts: '#2c3036',
+    number: '#101317',
+  },
+  GK: {
+    shirt: '#f0b429',
+    shirtTrim: 'rgba(0,0,0,.35)',
+    shorts: '#353940',
+    number: '#1b1c20',
+  },
+};
+
+// Limb angle convention: 0 = pointing DOWN (toward feet), positive = forward
+// (+X = facing). Torso lean: 0 = upright, positive = leaning forward.
+const POSES = {
+  idle: {
+    torso: 0,
+    legL: { thigh: 0, shin: 0 },
+    legR: { thigh: 0, shin: 0 },
+    armL: { sh: 0, elb: -6 },
+    armR: { sh: 0, elb: 6 },
+  },
+  keeperIdle: {
+    torso: 10,
+    legL: { thigh: 14, shin: 26 },
+    legR: { thigh: -14, shin: 26 },
+    armL: { sh: -35, elb: -40 },
+    armR: { sh: 35, elb: -40 },
+  },
+  walkA: {
+    torso: 6,
+    legL: { thigh: 24, shin: 12 },
+    legR: { thigh: -18, shin: -8 },
+    armL: { sh: -22, elb: -28 },
+    armR: { sh: 24, elb: -28 },
+  },
+  walkB: {
+    torso: 6,
+    legL: { thigh: -18, shin: -8 },
+    legR: { thigh: 24, shin: 12 },
+    armL: { sh: 24, elb: -28 },
+    armR: { sh: -22, elb: -28 },
+  },
+  runA: {
+    torso: 16,
+    legL: { thigh: 48, shin: 22 },
+    legR: { thigh: -38, shin: -18 },
+    armL: { sh: -48, elb: -70 },
+    armR: { sh: 52, elb: -70 },
+  },
+  runB: {
+    torso: 16,
+    legL: { thigh: -38, shin: -18 },
+    legR: { thigh: 48, shin: 22 },
+    armL: { sh: 52, elb: -70 },
+    armR: { sh: -48, elb: -70 },
+  },
+  kick: {
+    torso: -8,
+    legL: { thigh: 0, shin: 0 },      // planted leg
+    legR: { thigh: 74, shin: 46 },    // striking leg
+    armL: { sh: 55, elb: -35 },       // balance arm forward
+    armR: { sh: -30, elb: -60 },      // balance arm back
+  },
+  slide: {
+    torso: 72,                        // near-horizontal body
+    legL: { thigh: 80, shin: 74 },
+    legR: { thigh: 86, shin: 80 },
+    armL: { sh: -72, elb: -45 },
+    armR: { sh: -72, elb: -45 },
+  },
+  celebrate: {
+    torso: -6,
+    legL: { thigh: 0, shin: 2 },
+    legR: { thigh: 0, shin: 2 },
+    armL: { sh: 168, elb: -20 },      // arms overhead
+    armR: { sh: -168, elb: -20 },
+  },
+};
+
+// Motion thresholds (cells per match-tick).
+const MOVE_IDLE_TH = 0.006;   // below → standing still
+const MOVE_WALK_RUN_TH = 0.05; // above → running, else walking
+// Full A→B→A stride cycle covered over this many match-cells of ground covered.
+const STRIDE_DISTANCE = 0.4;
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════ */
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function lerp(a, b, t) { return a + (b - a) * t; }
+function rad(d) { return d * Math.PI / 180; }
 
 // One grid cell is 14 m x 10 m on the real pitch. Offside margins come from
 // the engine in cells; convert to meters for the overlay ("0.50 cell, 7 m").
@@ -62,7 +194,240 @@ function matchMinute(tick) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   EVENT ICONS & CLASSIFICATION
+   FIGURE GEOMETRY HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+
+// Lima extremity from origin. Angle convention: 0 = down, positive = forward.
+function limbEnd(origin, angle, len) {
+  return { x: origin.x + Math.sin(angle) * len, y: origin.y + Math.cos(angle) * len };
+}
+
+// Two-segment limb → ordered points [origin, joint, extremity].
+function limbPoints(origin, a1, l1, a2, l2) {
+  const k = limbEnd(origin, a1, l1);
+  const e = limbEnd(k, a2, l2);
+  return [[origin.x, origin.y], [k.x, k.y], [e.x, e.y]];
+}
+
+// Torso shoulder-centre from hip. lean 0 = straight up, positive = forward.
+function torsoTop(hip, lean, len) {
+  return { x: hip.x + Math.sin(lean) * len, y: hip.y - Math.cos(lean) * len };
+}
+
+// Draw one multi-segment limb. `segs` = [[p0,p1,width,color], ...].
+function drawSegs(ctx, segs, alpha, widthFactor) {
+  for (const s of segs) {
+    ctx.beginPath();
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width * (widthFactor || 1);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = alpha;
+    ctx.moveTo(s.p0.x, s.p0.y);
+    ctx.lineTo(s.p1.x, s.p1.y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Interpolate two pose objects field-by-field (for A↔B run/walk frame blending).
+function lerpPose(pa, pb, t) {
+  const out = { torso: lerp(pa.torso, pb.torso, t) };
+  for (const side of ['legL', 'legR', 'armL', 'armR']) {
+    out[side] = {
+      thigh: lerp(pa[side].thigh, pb[side].thigh, t),
+      shin: lerp(pa[side].shin, pb[side].shin, t),
+    };
+  }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PLAYER MOTION — per-player animation tracker
+   ═══════════════════════════════════════════════════════════════ */
+class PlayerMotion {
+  constructor(id) {
+    this.id = id;
+    this.speed = 0;         // cells/match-tick (from snapshot delta)
+    this.facing = 0;        // radians, canvas angle (+X = right)
+    this.phase = 0;         // 0..1 stride cycle position
+    this.lastTick = NaN;
+    this.kickUntil = -1;
+    this.slideUntil = -1;
+    this.celebrateUntil = -1;
+  }
+
+  // Called once per rendered frame with the player's interpolated snapshot
+  // velocity (vrow/vcol per match-tick) and target position.
+  update(tick, vrow, vcol, targetRow, targetCol) {
+    const dTick = isFinite(this.lastTick) ? Math.max(0, tick - this.lastTick) : 0;
+    this.lastTick = tick;
+
+    const v = Math.hypot(vrow || 0, vcol || 0);
+    this.speed = v;
+
+    if (v > MOVE_IDLE_TH) {
+      const ang = Math.atan2(vcol || 0, vrow || 0);
+      this.facing = ang;
+      // Advance the stride cycle by the match-distance covered this frame.
+      this.phase = (this.phase + (v * dTick) / STRIDE_DISTANCE) % 1;
+    } else if (targetRow != null && targetCol != null) {
+      const tx = targetRow - 0;
+      const ty = targetCol - 0;
+      if (Math.hypot(tx, ty) > 0.01) {
+        this.facing = Math.atan2(ty, tx);
+      }
+    }
+  }
+
+  // Resolved pose at the current tick (event poses take priority).
+  resolvePose(tick, isGK) {
+    if (this.kickUntil >= tick) return POSES.kick;
+    if (this.slideUntil >= tick) return POSES.slide;
+    if (this.celebrateUntil >= tick) return POSES.celebrate;
+
+    if (this.speed <= MOVE_IDLE_TH) {
+      return isGK ? POSES.keeperIdle : POSES.idle;
+    }
+    if (this.speed < MOVE_WALK_RUN_TH) {
+      const t = this.phase < 0.5 ? this.phase * 2 : (1 - this.phase) * 2;
+      return lerpPose(POSES.walkA, POSES.walkB, clamp(t, 0, 1));
+    }
+    const t = this.phase < 0.5 ? this.phase * 2 : (1 - this.phase) * 2;
+    return lerpPose(POSES.runA, POSES.runB, clamp(t, 0, 1));
+  }
+
+  setKick(tick, durTicks) { this.kickUntil = tick + durTicks; }
+  setSlide(tick, durTicks) { this.slideUntil = tick + durTicks; }
+  setCelebrate(tick, durTicks) { this.celebrateUntil = tick + durTicks; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FIGURE RENDERER — draws one human player figure at a canvas position
+   ═══════════════════════════════════════════════════════════════ */
+
+// Draw a single player figure at canvas (x, y) = feet center.
+// opts = { facing, pose, jersey, number, scale }
+function drawFigure(ctx, x, y, opts) {
+  const f = opts.facing || 0;
+  const pose = opts.pose || POSES.idle;
+  const jer = opts.jersey || JERSEYS.AWAY;
+  const scale = opts.scale || FIGURE_SCALE;
+  const hip = { x: 0, y: FIG_BODY.hipY };
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(f);
+  ctx.scale(scale, scale);
+
+  // Ground shadow — keeps the figure "standing" on the pitch.
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 1.5, 11, 3.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const lean = rad(pose.torso);
+  const sh = torsoTop(hip, lean, FIG_BODY.torsoLen);
+
+  // Limb geometry (angles in radians).
+  const legL = limbPoints(
+    { x: -2.2, y: hip.y }, rad(pose.legL.thigh), FIG_BODY.thigh, rad(pose.legL.shin), FIG_BODY.shin);
+  const legR = limbPoints(
+    { x: 2.2, y: hip.y }, rad(pose.legR.thigh), FIG_BODY.thigh, rad(pose.legR.shin), FIG_BODY.shin);
+  const armL = limbPoints(
+    { x: sh.x - 4.4, y: sh.y }, rad(pose.armL.sh), FIG_BODY.armUp, rad(pose.armL.elb), FIG_BODY.armLo);
+  const armR = limbPoints(
+    { x: sh.x + 4.4, y: sh.y }, rad(pose.armR.sh), FIG_BODY.armUp, rad(pose.armR.elb), FIG_BODY.armLo);
+
+  const mkSegs = (pts, w1, c1, w2, c2) => [
+    { p0: pts[0], p1: pts[1], width: w1, color: c1 },
+    { p0: pts[1], p1: pts[2], width: w2, color: c2 },
+  ];
+
+  // (center→) Far arm and far leg first, slightly darker/slimmer for depth.
+  drawSegs(ctx, mkSegs(armR, 4.2, jer.shirt, 3.6, SKIN), 0.66, 0.78);
+  drawSegs(ctx, mkSegs(legR, 5.5, jer.shorts, 4.2, SKIN), 0.66, 0.82);
+
+  // Torso (jersey).
+  const shL = { x: sh.x - FIG_BODY.wTop, y: sh.y };
+  const shR = { x: sh.x + FIG_BODY.wTop, y: sh.y };
+  const hipL = { x: -FIG_BODY.wBot, y: hip.y };
+  const hipR = { x: FIG_BODY.wBot, y: hip.y };
+  ctx.beginPath();
+  ctx.moveTo(shL.x, shL.y);
+  ctx.lineTo(shR.x, shR.y);
+  ctx.lineTo(hipR.x, hipR.y);
+  ctx.lineTo(hipL.x, hipL.y);
+  ctx.closePath();
+  ctx.fillStyle = jer.shirt;
+  ctx.fill();
+  ctx.strokeStyle = jer.shirtTrim;
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
+  // Collar notch — tiny darker V at the top centre of the jersey.
+  ctx.beginPath();
+  ctx.moveTo(shL.x + 2, sh.y - 1.5);
+  ctx.lineTo(sh.x, sh.y + 1.5);
+  ctx.lineTo(shR.x - 2, sh.y - 1.5);
+  ctx.strokeStyle = jer.shirtTrim;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // Head.
+  const headC = torsoTop(sh, lean, FIG_BODY.headOffset);
+  ctx.beginPath();
+  ctx.arc(headC.x, headC.y, FIG_BODY.headR, 0, Math.PI * 2);
+  ctx.fillStyle = SKIN;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.25)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // Hair — back half + crown.
+  ctx.beginPath();
+  ctx.arc(headC.x, headC.y, FIG_BODY.headR, rad(90), rad(270), false);
+  ctx.arc(headC.x, headC.y, FIG_BODY.headR * 0.55, rad(270), rad(90), true);
+  ctx.closePath();
+  ctx.fillStyle = HAIR;
+  ctx.fill();
+
+  // (center→) Near leg and near arm in front.
+  drawSegs(ctx, mkSegs(legL, 5.5, jer.shorts, 4.2, SKIN), 1, 1);
+  drawSegs(ctx, mkSegs(armL, 4.2, jer.shirt, 3.6, SKIN), 1, 1);
+
+  // Shoes — small dark ellipses at both feet.
+  for (const seg of [legL, legR]) {
+    const fx = seg[2][0], fy = seg[2][1];
+    ctx.beginPath();
+    ctx.ellipse(fx, fy, 3, 1.9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = SHOE;
+    ctx.fill();
+  }
+
+  // Jersey number — counter-rotated so it stays upright on screen regardless
+  // of facing (an AWAY player facing left must not show a mirrored number).
+  if (opts.number) {
+    const numCx = (sh.x + hip.x) / 2;
+    const numCy = (sh.y + hip.y) / 2 + 1;
+    ctx.save();
+    ctx.translate(numCx, numCy);
+    ctx.rotate(-f);
+    ctx.font = 'bold 7px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = jer.number;
+    ctx.shadowColor = jer.shirt === '#ededed' ? 'rgba(0,0,0,.4)' : 'rgba(0,0,0,.5)';
+    ctx.shadowBlur = 1.5;
+    ctx.fillText(opts.number, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EVENT ICONS & CLASSIFICATION (identical to viewer.js)
    ═══════════════════════════════════════════════════════════════ */
 const EV_ICON = {
   GOAL: '\u26BD', SHOT: '\u26BD', SHOT_SAVED: '\uD83E\uDD25', SHOT_MISSED: '\u274C',
@@ -108,13 +473,7 @@ const MINOR_EVENTS = new Set([
 ]);
 
 // Compact timeline events — what the user actually wants to see at a glance
-// in the side panel. Verbose engine logs (DECISION, ACTION_EXECUTION,
-// ACTION_OUTCOME, INFO, RESTART, POSSESSION, VAR_IN_PROGRESS) are still in
-// the match.json and in the Java app log but are NOT shown in the timeline —
-// keeps the timeline short and readable. DUEL_START / DUEL_RESOLVED /
-// DUEL_WON, CHASE_POSSESSION, OFFSIDE, KICKOFF, and shot epilogue events ARE
-// shown so the user can see who contested whom, who won each challenge /
-// loose-ball chase, and the full shot outcome chain (SHOT → MISSED/SAVED/POST).
+// in the side panel. Verbose engine logs are kept in the app log but NOT shown.
 const TIMELINE_EVENTS = new Set([
   'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
   'CARRY', 'CARRY_COMPLETED',
@@ -156,7 +515,7 @@ function formatEventDesc(ev) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   OVERLAY SYSTEM — Halftime, Fulltime, VAR, Goal
+   OVERLAY SYSTEM — Halftime, Fulltime, VAR, Goal (identical to viewer.js)
    ═══════════════════════════════════════════════════════════════ */
 class OverlayManager {
   constructor() {
@@ -167,15 +526,10 @@ class OverlayManager {
     this._resumeTime = 0;
     this._type = null;
     this._goalAnim = null;   // { tick, team, startRealTime }
-    this._blocking = false;  // true = pause playback while visible (kickoff/goal/HT/FT/offside)
+    this._blocking = false;  // true = pause playback while visible
 
-    // Click-to-dismiss: lets the user skip a long review (especially during
-    // a VAR freeze) without waiting for the auto-dismiss timer. ESC and Space
-    // do the same. The overlay only catches the click when no control button
-    // is hit, thanks to event.stopPropagation in the overlay click handler.
     this._el.addEventListener('click', () => {
       if (this._active && this._type !== 'fulltime') {
-        // Don't let the user dismiss Fulltime — match is over.
         this.dismiss();
       }
     });
@@ -191,7 +545,6 @@ class OverlayManager {
   get isBlocking() { return this._blocking; }
   get resumeTime() { return this._resumeTime; }
 
-  /** Show halftime overlay for 12 real seconds */
   showHalftime(homeName, awayName, homeScore, awayScore) {
     this._type = 'halftime';
     this._blocking = true;
@@ -199,10 +552,9 @@ class OverlayManager {
     this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
     this._el.className = 'overlay visible halftime';
     this._active = true;
-    this._resumeTime = performance.now() + 12000; // 12 seconds
+    this._resumeTime = performance.now() + 12000;
   }
 
-  /** Show full-time overlay (stays visible, no auto-dismiss) */
   showFulltime(homeName, awayName, homeScore, awayScore) {
     this._type = 'fulltime';
     this._blocking = true;
@@ -210,13 +562,12 @@ class OverlayManager {
     this._subEl.textContent = `${homeName} ${homeScore} - ${awayScore} ${awayName}`;
     this._el.className = 'overlay visible fulltime';
     this._active = true;
-    this._resumeTime = Infinity; // never auto-dismiss
+    this._resumeTime = Infinity;
   }
 
-  /** Show VAR review overlay for a duration in real ms — BLOCKING (game stops during review) */
   showVAR(reviewText, durationMs) {
     this._type = 'var';
-    this._blocking = true; // game stands while the review is shown
+    this._blocking = true;
     this._textEl.textContent = '\uD83D\uDCFA VAR IN PROGRESS';
     this._subEl.textContent = reviewText;
     this._el.className = 'overlay visible var-review';
@@ -224,18 +575,16 @@ class OverlayManager {
     this._resumeTime = performance.now() + durationMs;
   }
 
-  /** Show VAR decision result overlay (confirmed/overturned) — BLOCKING */
   showVARDecision(decisionText) {
     this._type = 'var-decision';
-    this._blocking = true; // hold during the brief verdict display
+    this._blocking = true;
     this._textEl.textContent = '\uD83D\uDCFA ' + decisionText;
     this._subEl.textContent = '';
     this._el.className = 'overlay visible var-decision';
     this._active = true;
-    this._resumeTime = performance.now() + 2200; // 2.2 seconds
+    this._resumeTime = performance.now() + 2200;
   }
 
-  /** Show kickoff overlay (0:0, ball at center, waiting to start) */
   showKickoff(homeName, awayName) {
     this._type = 'kickoff';
     this._blocking = true;
@@ -243,10 +592,9 @@ class OverlayManager {
     this._subEl.textContent = `${homeName} 0 - 0 ${awayName}`;
     this._el.className = 'overlay visible kickoff';
     this._active = true;
-    this._resumeTime = performance.now() + 3000; // 3 seconds, then auto-start
+    this._resumeTime = performance.now() + 3000;
   }
 
-  /** Show goal overlay with ball animation */
   showGoal(team, homeName, awayName, homeScore, awayScore) {
     this._type = 'goal';
     this._blocking = true;
@@ -254,11 +602,10 @@ class OverlayManager {
     this._subEl.textContent = `${team === 'HOME' ? homeName : awayName} ${homeScore} - ${awayScore} ${team === 'HOME' ? awayName : homeName}`;
     this._el.className = 'overlay visible goal';
     this._active = true;
-    this._resumeTime = performance.now() + 6000; // 6 seconds
+    this._resumeTime = performance.now() + 6000;
     this._goalAnim = { team, startRealTime: performance.now() };
   }
 
-  /** Show offside overlay: yellow flag + player + team + margin (cells & meters) */
   showOffside(playerName, team, margin) {
     this._type = 'offside';
     this._blocking = true;
@@ -268,10 +615,9 @@ class OverlayManager {
     this._subEl.textContent = `${playerName}${marginText} — ${teamLabel}`;
     this._el.className = 'overlay visible offside';
     this._active = true;
-    this._resumeTime = performance.now() + 3500; // 3.5 seconds
+    this._resumeTime = performance.now() + 3500;
   }
 
-  /** Show GOAL DISALLOWED overlay — cancels any active goal overlay */
   showGoalDisallowed(reason) {
     this._type = 'goal-disallowed';
     this._blocking = false;
@@ -279,12 +625,10 @@ class OverlayManager {
     this._subEl.textContent = reason || '';
     this._el.className = 'overlay visible goal-disallowed';
     this._active = true;
-    this._resumeTime = performance.now() + 4000; // 4 seconds
-    // Clear goal animation if active
+    this._resumeTime = performance.now() + 4000;
     this._goalAnim = null;
   }
 
-  /** Show card overlay (yellow/red) with team name, player name, VAR indicator */
   showCard(cardType, playerName, team, isVar) {
     this._type = cardType === 'RED' ? 'red-card' : 'yellow-card';
     this._blocking = true;
@@ -295,7 +639,7 @@ class OverlayManager {
     this._subEl.textContent = `${playerName} — ${team}`;
     this._el.className = `overlay visible ${cardType === 'RED' ? 'red-card' : 'yellow-card'}`;
     this._active = true;
-    this._resumeTime = performance.now() + 3000; // 3 seconds
+    this._resumeTime = performance.now() + 3000;
   }
 
   getGoalAnimProgress() {
@@ -305,7 +649,6 @@ class OverlayManager {
     return { team: this._goalAnim.team, t: clamp(elapsed, 0, 1) };
   }
 
-  /** Dismiss overlay early */
   dismiss() {
     this._el.className = 'overlay';
     this._active = false;
@@ -314,35 +657,28 @@ class OverlayManager {
     this._goalAnim = null;
   }
 
-  /** Check if auto-dismiss timer has elapsed */
   checkAutoDismiss() {
     if (!this._active) return false;
     if (this._resumeTime === Infinity) return false;
     if (performance.now() >= this._resumeTime) {
       this.dismiss();
-      return true; // dismissed
+      return true;
     }
     return false;
   }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PITCH RENDERER
-
-   Grid: 9 rows × 8 cols (0-indexed).
-   row → X axis (horizontal), col → Y axis (vertical).
-   Playing field: rows 1-7, cols 1-6.
-   Rows 0, 8 and cols 0, 7 = out-of-bounds (corners, goals, etc).
-
-   HOME left (row 1), attacks → right (row 7).
-   AWAY right (row 7), attacks → left (row 1).
+   PITCH RENDERER 2D — same surface as PitchRenderer, players as figures
    ═══════════════════════════════════════════════════════════════ */
-class PitchRenderer {
+class PitchRenderer2D {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.margin = { top: 30, left: 40, right: 40, bottom: 30 };
-    this.showGrid = true;  // grid overlay toggle (default off)
+    this.showGrid = true;
+    this.currentTick = 0;
+    this.motions = new Map();   // playerId → PlayerMotion
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -378,7 +714,6 @@ class PitchRenderer {
     const canvasW = this.canvas.width / this.scale;
     const canvasH = this.canvas.height / this.scale;
 
-    // Background
     ctx.fillStyle = '#0e1117';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
@@ -386,9 +721,9 @@ class PitchRenderer {
     ctx.fillStyle = PITCH_OOB;
     ctx.fillRect(ox, oy, pw, ph);
 
-    // Playing field (rows 1-7, cols 1-6) — brighter green
-    const [fx1, fy1] = this.toCanvas(FIELD_ROW_MIN, FIELD_COL_MIN); // 1.0, 1.0
-    const [fx2, fy2] = this.toCanvas(FIELD_ROW_MAX, FIELD_COL_MAX); // 8.0, 7.0
+    // Playing field (rows 1-8, cols 1-7) — brighter green
+    const [fx1, fy1] = this.toCanvas(FIELD_ROW_MIN, FIELD_COL_MIN);
+    const [fx2, fy2] = this.toCanvas(FIELD_ROW_MAX, FIELD_COL_MAX);
     ctx.fillStyle = PITCH_GREEN;
     ctx.fillRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
 
@@ -419,21 +754,16 @@ class PitchRenderer {
         const [, cy2] = this.toCanvas(GRID_ROWS - 1, c);
         ctx.beginPath(); ctx.moveTo(fx1, cy1); ctx.lineTo(fx2, cy1); ctx.stroke();
       }
-      // Cell-center coordinate labels (row 1-7, col 1-6). Each playable cell is
-      // [r, r+1) x [c, c+1), so its CENTRE is at (r+0.5, c+0.5). Drawn as "r.c".
-      // DISABLED — the cell-coordinate labels were useful for tuning the tactical
-      // engine but they clutter the match view. Re-enable if you need to verify
-      // cell positions again.
+      // Cell-center coordinate labels — disabled (clutter). Re-enable if needed.
       if (false) {
         ctx.font = '10px system-ui';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = 'rgba(255,255,255,.35)';
-        for (let r =1; r <= 7; r++) {
-          for (let c = 1; c <= 6; c++) {
+        for (let r = 1; r <= 8; r++) {
+          for (let c = 1; c <= 7; c++) {
             const [cx2, cy2] = this.toCanvas(r + 0.5, c + 0.5);
-            const label = `${r}.${c}`;
-            ctx.fillText(label, cx2, cy2);
+            ctx.fillText(`${r}.${c}`, cx2, cy2);
           }
         }
         ctx.textBaseline = 'alphabetic';
@@ -449,7 +779,6 @@ class PitchRenderer {
 
     // Center circle (radius ~9.15m ≈ 0.55 rows)
     const [ccx, ccy] = this.toCanvas(4.5, 4.0);
-
     const circleR = 0.55 * CELL_W;
     ctx.beginPath();
     ctx.ellipse(ccx, ccy, circleR, circleR * (CELL_H / CELL_W), 0, 0, Math.PI * 2);
@@ -459,25 +788,20 @@ class PitchRenderer {
     ctx.arc(ccx, ccy, 3, 0, Math.PI * 2);
     ctx.fill();
 
-// HOME: od goal line (1.0) ka centru
+    // Penalty boxes / goal areas
     this._box(ctx, 1.0, 1.7, 2.2, 6.3);
-
-// AWAY: od goal line (8.0) ka centru
     this._box(ctx, 6.8, 1.7, 8.0, 6.3);
-
-    // Goal areas (5.5m ≈ 0.33 rows deep, 18.3m ≈ 1.6 cols wide)
-    // HOME goal area: rows 1-1.5, cols ~1.95-5.05
     this._box(ctx, 1.0, 2.7, 1.4, 5.3);
-    // AWAY goal area: rows 6.5-7, cols ~1.95-5.05
     this._box(ctx, 7.6, 2.7, 8.0, 5.3);
-    // Penalty spots (11m ≈ 0.66 rows from goal line)
-    const [p1x, p1y] = this.toCanvas(1.0 + 0.8, 4.0);  // 1.8
-    const [p2x, p2y] = this.toCanvas(8.0 - 0.8, 4.0);  // 7.2
+
+    // Penalty spots
+    const [p1x, p1y] = this.toCanvas(1.0 + 0.8, 4.0);
+    const [p2x, p2y] = this.toCanvas(8.0 - 0.8, 4.0);
     ctx.fillStyle = PITCH_LINE;
     ctx.beginPath(); ctx.arc(p1x, p1y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(p2x, p2y, 3, 0, Math.PI * 2); ctx.fill();
 
-// Goals — centar na 4.0, raspon 3.5–4.5
+    // Goals
     this._goal(ctx, 1, 4.0, 'left');
     this._goal(ctx, 8, 4.0, 'right');
 
@@ -515,7 +839,7 @@ class PitchRenderer {
 
   _goal(ctx, row, col, side) {
     const [gx, gy] = this.toCanvas(row, col);
-    const goalH =  1.4 * CELL_H;
+    const goalH = 1.4 * CELL_H;
     const depth = 80;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 4;
@@ -534,10 +858,19 @@ class PitchRenderer {
     ctx.stroke();
   }
 
+  _motionFor(p) {
+    let m = this.motions.get(p.id);
+    if (!m) {
+      m = new PlayerMotion(p.id);
+      this.motions.set(p.id, m);
+    }
+    return m;
+  }
+
   drawPlayers(players, carrierId, duelPairs) {
     const ctx = this.ctx;
 
-    // Build a set of labels involved in an active duel for quick lookup
+    // Duel participants as a quick-label lookup set.
     const duelLabels = new Set();
     if (duelPairs) {
       for (const pair of duelPairs) {
@@ -546,39 +879,22 @@ class PitchRenderer {
       }
     }
 
-    // For duel convergence: if both duel participants exist, draw them
-    // COLLIDING (center-to-center ≈ negative overlap → circles visibly on
-    // top of each other so the user sees the tackle/duel as a physical
-    // collision, not two players standing apart). Pre-compute the
-    // converged positions for dueling players.
-    const convergedPos = new Map(); // id → {row, col}
+    // Duel convergence: pull both duelists close together so their figures
+    // collide at the contest point (same "igraci se popnu jedan na drugog"
+    // rule as the circle viewer — two figures overlapping = physical contact).
+    const convergedPos = new Map();
     if (duelPairs) {
       for (const pair of duelPairs) {
         const pa = players.find(p => p.label === pair[0]?.label);
         const pb = players.find(p => p.label === pair[1]?.label);
         if (pa && pb && pa.id && pb.id) {
-          const rA = pa.role === 'GK' ? 18 : 14;
-          const rB = pb.role === 'GK' ? 18 : 14;
-          // Touching distance in grid units (rA + rB in canvas px → grid cells)
-          const touchDist = (rA + rB) / Math.hypot(CELL_W, CELL_H);
+          const rA = 17, rB = 17;
           const dx = pb.col - pa.col;
           const dy = pb.row - pa.row;
           const dist = Math.hypot(dx, dy);
           if (dist > 0.001) {
-            // Only converge players if they are genuinely near each other
-            // (duel proximity check). If they are far apart, drawing them
-            // overlapping would teleport them — NIKAD no teleporting.
-            const MAX_CONVERGE_DIST = 2.5; // grid cells (widened from 2.0
-            // so the closing defender visibly approaches the attacker even
-            // when starting from 2 cells away)
+            const MAX_CONVERGE_DIST = 2.5;
             if (dist > MAX_CONVERGE_DIST) continue;
-            // Move each player 92% of the way toward the other so their centres
-            // almost coincide and the circles VISIBLY OVERLAP on screen
-            // (≈0.16 cells apart at dist=2.5). The user's rule: "igraci pridju
-            // SKROZ JEDAN UZ DRUGOG, dodiruju se krugovi, kružići se popnu
-            // jedan na drugog" — a physical collision, not a polite handshake.
-            // A tiny perpendicular jitter offsets the two circles so both
-            // stay visible (one on top, one peeking out from behind).
             const overlapFactor = 0.92;
             const nx = -dy / dist;
             const ny = dx / dist;
@@ -596,6 +912,8 @@ class PitchRenderer {
       }
     }
 
+    const cooldowns = this._duelState?.cooldowns;
+
     for (const p of players) {
       let pos = { row: p.row, col: p.col };
       if (convergedPos.has(p.id)) {
@@ -605,65 +923,58 @@ class PitchRenderer {
       const isHome = p.team === 'HOME';
       const isGK = p.role === 'GK';
       const isCarrier = carrierId && p.id === carrierId;
-      const r = isGK ? 18 : 14;
       const inDuel = duelLabels.has(p.label);
-      // Cooldown highlight: faint pulsing red ring on the player who lost
-      // the most recent duel. Lasts for ~6 ticks after the duel resolved.
-      const cooldowns = this._duelState?.cooldowns;
       const inCooldown = cooldowns && cooldowns.has(p.label)
           && cooldowns.get(p.label) > Math.floor(this.currentTick);
 
-      // Duel highlight — BOTH duelists get a large yellow ring (carrier-like)
-      // per the user's rule "oba dobiju kruzice da su carrieri" so the
-      // viewer visually sees both as contesting the ball. Pulses to read as
-      // "physical contact".
+      // Ground indicator rings (feet-level, so they read as "beneath" the figure).
+      const groundY = y + 6;
       if (inDuel) {
         const pulse = 0.6 + 0.25 * Math.sin(performance.now() / 180 + (p.id?.length || 0));
         ctx.beginPath();
-        ctx.arc(x, y, r + 9, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,220,60,${0.35 * pulse})`;
+        ctx.arc(x, groundY, 16, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,220,60,${0.30 * pulse})`;
         ctx.fill();
         ctx.strokeStyle = `rgba(255,200,0,${pulse})`;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.5;
         ctx.stroke();
       }
-
-      // Cooldown (loser) highlight — faint pulsing red ring for ~6 ticks after
-      // the duel resolved. Visual cue: this player just lost a 50/50 and is
-      // momentarily "off balance" (engine applies the blockAfterDuel cooldown).
       if (inCooldown) {
         const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 200);
         ctx.beginPath();
-        ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+        ctx.arc(x, groundY, 14, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(248,81,73,${pulse})`;
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-
       if (isCarrier) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 10, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,140,0,.25)';
+        ctx.arc(x, groundY, 15, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,140,0,.28)';
         ctx.fill();
         ctx.strokeStyle = '#ff8c00';
         ctx.lineWidth = 2;
         ctx.stroke();
       }
 
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = isGK ? GK_COLOR : (isHome ? HOME_COLOR : AWAY_COLOR);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.4)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+      // Animation state: facing + stride driven by the snapshot velocity.
+      const m = this._motionFor(p);
+      m.update(
+        this.currentTick,
+        p.vrow || 0, p.vcol || 0,
+        p.targetRow, p.targetCol
+      );
 
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${isGK ? 14 : 12}px system-ui`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const num = p.label.replace(/.*\s/, '');
-      ctx.fillText(num, x, y + 0.5);
+      const pose = m.resolvePose(this.currentTick, isGK);
+      const number = String(p.label || '').replace(/.*\s/, '');
+
+      drawFigure(ctx, x, y, {
+        facing: m.facing,
+        pose,
+        jersey: isGK ? JERSEYS.GK : (isHome ? JERSEYS.HOME : JERSEYS.AWAY),
+        number: number || '',
+        scale: FIGURE_SCALE * (isGK ? 1.1 : 1.0),
+      });
     }
   }
 
@@ -690,25 +1001,18 @@ class PitchRenderer {
     const t = goalAnim.t;
     const isHome = goalAnim.team === 'HOME';
 
-    // Ball travels from center (row 4) toward the goal line and STOPS there
-    // (row 7 for HOME, row 1 for AWAY). It does NOT continue into the
-    // out-of-bounds area — the ball is "frozen" at the goal line so it is
-    // visually distinct from a miss (which goes to row 8/0).
     const goalRow = isHome ? 7 : 1;
     const [gx, gy] = this.toCanvas(goalRow, 3.5);
 
-    // Animate ball: 0.0 → center, 0.7 → reaches goal line, 0.7-1.0 → celebration
     const animThreshold = 0.7;
     let targetRow;
     if (t <= animThreshold) {
       targetRow = lerp(4, goalRow, t / animThreshold);
     } else {
-      // Hold at the goal line
       targetRow = goalRow;
     }
     const [ballX, ballY] = this.toCanvas(targetRow, 3.5);
 
-    // Draw the animated ball (white, glowing)
     const ballScale = t <= animThreshold ? 5 + Math.sin((t / animThreshold) * Math.PI) * 3 : 8;
     ctx.beginPath();
     ctx.arc(ballX, ballY, ballScale + 8, 0, Math.PI * 2);
@@ -719,9 +1023,8 @@ class PitchRenderer {
     ctx.fillStyle = '#fff';
     ctx.fill();
 
-    // After ball reaches goal line, show celebration rings + player spray
     if (t >= animThreshold) {
-      const celebrationT = (t - animThreshold) / (1 - animThreshold); // 0→1
+      const celebrationT = (t - animThreshold) / (1 - animThreshold);
       const glowT = Math.sin(celebrationT * Math.PI) * 0.4 + 0.3;
       ctx.beginPath();
       ctx.arc(ballX, ballY, 30 + celebrationT * 60, 0, Math.PI * 2);
@@ -748,34 +1051,24 @@ class PitchRenderer {
     this.drawGoalAnim(goalAnim);
   }
 
-  /**
-   * Block trajectory line draws (removed per user request: "normalan fudbal, bez linija").
-   */
-  drawBlockTrail(blockAnim) {
-    return;
-  }
-
-  /**
-   * Blocker impact pulse (removed per user request: "normalan fudbal, bez linija").
-   */
-  drawBlockImpact(blockAnim) {
-    return;
-  }
+  drawBlockTrail(blockAnim) { return; }
+  drawBlockImpact(blockAnim) { return; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MATCH VIEWER
+   MATCH VIEWER 2D — playback identical to viewer.js, renders via
+   PitchRenderer2D + event-driven figure poses (kick / slide / celebrate)
    ═══════════════════════════════════════════════════════════════ */
-class MatchViewer {
+class MatchViewer2D {
   constructor() {
-    this.pitch = new PitchRenderer(document.getElementById('pitch'));
+    this.pitch = new PitchRenderer2D(document.getElementById('pitch'));
     this.overlays = new OverlayManager();
     this.snapshots = [];
     this.events = [];
     this.goals = [];
     this.data = null;
 
-    this.currentTick = 0;  // float for smooth interpolation
+    this.currentTick = 0;
     this.startTick = 0;
     this.endTick = 0;
     this.playing = false;
@@ -795,24 +1088,12 @@ class MatchViewer {
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set() };
 
-    // Block animation: most recent SHOT_BLOCKED event. The renderer draws a
-    // trajectory line from the attacker (shooter position) to the blocker
-    // (defender position) and then to the deflection point (current ball
-    // position). The ball is also briefly rendered at the blocker's hit
-    // point so the user physically sees the ball strike the defender.
     this._blockAnim = null;
-
-    // Grid overlay toggle (default ON so users can verify row/column alignment)
     this.showGrid = true;
-
-    // Snapshot lookup: O(1) access
-    this._snapIndex = null;  // Map<tick, snapshot>
-    this._snapTicks = null;  // sorted array of ticks
-
-    // Timeline batch buffer (Firefox freeze fix — appendChild per event
-    // triggers layout reflow; at 60fps with dozens of events/sec this kills
-    // Firefox. We batch via DocumentFragment and flush once per RAF tick.)
+    this._snapIndex = null;
+    this._snapTicks = null;
     this._pendingTimelineEvents = [];
+    this._labelToId = new Map();
 
     this._bindControls();
     this._showEmpty();
@@ -827,8 +1108,6 @@ class MatchViewer {
       const mres = await fetch('/match.json?' + Date.now());
       if (!mres.ok) throw new Error('match.json not found');
       this.data = await mres.json();
-     // this._initFromData();
-      // Do NOT auto-play — user clicks Play Match
     } catch (e) {
       alert('Failed: ' + e.message);
     } finally {
@@ -843,11 +1122,10 @@ class MatchViewer {
       if (!res.ok) throw new Error('No match.json — generate first');
       this.data = await res.json();
       this._initFromData();
-      // Show kickoff overlay, then auto-start after 3s
       const homeName = this.data.homeTeamName || 'HOME';
       const awayName = this.data.awayTeamName || 'AWAY';
       this.overlays.showKickoff(homeName, awayName);
-      this.play(); // will pause on overlay, then resume when dismissed
+      this.play();
     } catch (e) {
       alert(e.message);
     } finally {
@@ -869,12 +1147,17 @@ class MatchViewer {
   _initFromData() {
     this.snapshots = this.data.snapshots || [];
 
-    // Build O(1) lookup index for snapshots
     this._snapIndex = new Map();
     this._snapTicks = [];
+    this._labelToId = new Map();
     for (const s of this.snapshots) {
       this._snapIndex.set(s.tick, s);
       this._snapTicks.push(s.tick);
+      for (const p of s.players || []) {
+        if (p.label && p.id && !this._labelToId.has(p.label)) {
+          this._labelToId.set(p.label, p.id);
+        }
+      }
     }
 
     // ALL events from recorder
@@ -946,11 +1229,6 @@ class MatchViewer {
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
     this._updateScoreboard();
-    // Timeline stays dynamic — events appear as the playhead reaches them
-    // and auto-scroll to the latest event keeps the newest entry visible.
-    // The user scrolls UP within the timeline to inspect earlier events;
-    // pre-populating with ALL events would force auto-scroll-to-bottom on
-    // every new event and clutter the view.
     this._updateSeekRange();
     this._showEmpty(false);
     this.pitch._resize();
@@ -978,26 +1256,27 @@ class MatchViewer {
     const tickB = this._snapTicks[nextIdx];
     const frac = (tickB > tickA) ? (tick - tickA) / (tickB - tickA) : 0;
 
-    // Expose the snapshot BEFORE snapA so teleport rendering can figure out the
-    // ball's incoming travel line (to roll it out of bounds before a restart).
     const prevIdx = lo - 1;
     const snapPrev = prevIdx >= 0 ? this._snapIndex.get(this._snapTicks[prevIdx]) : null;
 
-    return { snap: snapA, next: snapB, prev: snapPrev, frac: clamp(frac, 0, 1) };
+    return { snap: snapA, next: snapB, prev: snapPrev, frac: clamp(frac, 0, 1), tickA, tickB };
   }
 
+  // Interpolated player + per-tick velocity (for figure facing/stride) and
+  // target position (for facing even when standing still).
   _getInterpolatedPlayers(interp) {
     if (!interp || !interp.next) {
-      return interp?.snap?.players || [];
+      return (interp?.snap?.players || []).map(p => ({
+        id: p.id, label: p.label, team: p.team, role: p.role,
+        row: p.position.row, col: p.position.column,
+        vrow: p.velocityX || 0, vcol: p.velocityY || 0,
+        targetRow: p.target?.row, targetCol: p.target?.column,
+      }));
     }
     const a = interp.snap;
     const b = interp.next;
     const t = interp.frac;
-    // Build an O(1) lookup Map for the next snapshot's players (Firefox freeze
-    // fix — old `find()` was O(n) per player × 22 players = 484 ops per frame,
-    // called at 60fps = 29k ops/sec for a constant load; the real cost was
-    // the GC pressure of creating a new Map every frame, which Firefox handles
-    // worse than Chrome).
+    const dt = Math.max(1, interp.tickB - interp.tickA);
     const bMap = new Map();
     for (const pb of b.players) bMap.set(pb.id, pb);
     const result = [];
@@ -1008,11 +1287,17 @@ class MatchViewer {
           id: pa.id, label: pa.label, team: pa.team, role: pa.role,
           row: lerp(pa.position.row, pb.position.row, t),
           col: lerp(pa.position.column, pb.position.column, t),
+          vrow: (pb.position.row - pa.position.row) / dt,
+          vcol: (pb.position.column - pa.position.column) / dt,
+          targetRow: pa.target?.row ?? pb.target?.row,
+          targetCol: pa.target?.column ?? pb.target?.column,
         });
       } else {
         result.push({
           id: pa.id, label: pa.label, team: pa.team, role: pa.role,
           row: pa.position.row, col: pa.position.column,
+          vrow: pa.velocityX || 0, vcol: pa.velocityY || 0,
+          targetRow: pa.target?.row, targetCol: pa.target?.column,
         });
       }
     }
@@ -1027,17 +1312,8 @@ class MatchViewer {
     if (!b) return a;
     const t = interp.frac;
 
-    // A restart (goal kick / corner / throw-in / goal) teleports the ball from
-    // its out-of-bounds position to a set-piece spot. Only when this interval
-    // STARTS with the ball genuinely out of bounds do we animate the roll: the
-    // ball is already past the touch/goal line, so push it a touch further out
-    // and streak it back to the restart spot — the ball never visually freezes
-    // or flat-out teleports. Fast passes and crosses stay in bounds, so they
-    // are never mistaken for a restart here.
     const out = this._isOutOfBounds(a);
     if (out) {
-      // Push the OOB ball a little further out along its last travel direction,
-      // then bring it back to the restart spot.
       const c = interp.prev && interp.prev.ballPosition ? interp.prev.ballPosition : null;
       let outPt = a;
       if (c) {
@@ -1065,11 +1341,6 @@ class MatchViewer {
       || p.column < FIELD_COL_MIN || p.column > FIELD_COL_MAX;
   }
 
-  /**
-   * Where a ball travelling from `p` along unit direction (dr, dc) would first
-   * cross the touchline / goal line. Returns the out-of-bounds point, or null
-   * if it never leaves the field (shouldn't happen for a restart).
-   */
   _ballRollOutPoint(p, dr, dc) {
     const rowMin = FIELD_ROW_MIN, rowMax = FIELD_ROW_MAX;
     const colMin = FIELD_COL_MIN, colMax = FIELD_COL_MAX;
@@ -1088,6 +1359,34 @@ class MatchViewer {
     if (!interp) return null;
     if (interp.frac > 0.5 && interp.next) return interp.next.ballCarrierId;
     return interp.snap.ballCarrierId;
+  }
+
+  /* ─── Figure action triggers (kick / slide / celebrate) ─── */
+
+  _bid(label) { return label ? (this._labelToId.get(label) || null) : null; }
+
+  _triggerFigureActions() {
+    // Re-scan a short window of events around the playhead and apply visual
+    // pose triggers. Kept cheap: only inspects events within the current frame.
+    const intTick = Math.floor(this.currentTick);
+    for (const ev of this.events) {
+      if (ev.tick > intTick + 1) break;
+      if (ev.tick < intTick - 8) continue;
+      const dur = ev.type === 'GOAL' ? 8 : 2;
+      if (ev.type === 'SHOT' || ev.type === 'PENALTY_KICK' || ev.type === 'PASS' || ev.type === 'CROSS') {
+        const id = this._bid(ev.playerName) || (ev.playerId || null);
+        if (id) this.pitch.motions.get(id)?.setKick(ev.tick, dur);
+      } else if (ev.type === 'TACKLE' || ev.type === 'DUEL_RESOLVED') {
+        const desc = ev.description || '';
+        if (desc.includes('DEFENDER_WINS') || ev.type === 'TACKLE') {
+          const id = this._bid(ev.playerName) || (ev.playerId || null);
+          if (id) this.pitch.motions.get(id)?.setSlide(ev.tick, 3);
+        }
+      } else if (ev.type === 'GOAL') {
+        const scorer = this._bid(ev.playerName) || (ev.playerId || null);
+        if (scorer) this.pitch.motions.get(scorer)?.setCelebrate(ev.tick, 8);
+      }
+    }
   }
 
   /* ─── Playback ─── */
@@ -1125,20 +1424,16 @@ class MatchViewer {
     const dt = (now - this._lastFrame) / 1000;
     this._lastFrame = now;
 
-    // If a BLOCKING overlay is active, pause playback (kickoff/goal/HT/FT/offside).
-    // Non-blocking overlays (VAR) keep the match flowing.
     if (this.overlays.isBlocking) {
       this.overlays.checkAutoDismiss();
       if (this.overlays.isBlocking) {
-        // Still active — keep rendering but don't advance ticks
         this._renderFrame();
         this._rafId = requestAnimationFrame(() => this._loop());
         return;
       }
-      // Overlay just dismissed — resume
     }
 
-    // 1.875 ticks/sec at 1x (half of old 0.25x rate for realistic pacing)
+    // 1.875 ticks/sec at 1x
     const ticksPerSec = 1.875 * this.speed;
     this._tickAccum += dt * ticksPerSec;
 
@@ -1153,6 +1448,7 @@ class MatchViewer {
 
     this._processEventsForTick(fromTick, this.currentTick);
     this._checkSnapshotOverlays();
+    this._triggerFigureActions();
     this._renderFrame();
     this._rafId = requestAnimationFrame(() => this._loop());
   }
@@ -1162,13 +1458,6 @@ class MatchViewer {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
       if (ev.tick >= fromTick) {
-        // Only show compact timeline events. Verbose engine logs (DECISION,
-        // ACTION_EXECUTION, ACTION_OUTCOME, INFO, RESTART, POSSESSION,
-        // VAR_IN_PROGRESS) and per-tick chase progress logs are still in the
-        // app log / JSON but are NOT shown in the timeline — keeps the timeline
-        // short and readable. DUEL_START / DUEL_RESOLVED / DUEL_WON and
-        // CHASE_POSSESSION ARE shown so the user sees who contested whom
-        // and who won each challenge / loose-ball chase.
         if (TIMELINE_EVENTS.has(ev.type)) {
           this._pendingTimelineEvents.push(ev);
         }
@@ -1183,7 +1472,6 @@ class MatchViewer {
           const goalTeam = ev.team === 'HOME' || ev.team === 'AWAY' ? ev.team : 'HOME';
           this.overlays.showGoal(goalTeam, homeName, awayName, hg, ag);
         }
-        // OFFSIDE overlay
         if (ev.type === 'OFFSIDE') {
           const desc = ev.description || '';
           const playerName = desc.replace(/^.*offside\s+/i, '').replace(/\s*\(.*/, '').trim() || 'Player';
@@ -1192,26 +1480,20 @@ class MatchViewer {
           const margin = marginMatch ? marginMatch[1] : '';
           this.overlays.showOffside(playerName, team, margin);
         }
-        // VAR decision overlays (confirmed/overturned)
         if (ev.type?.startsWith('VAR_OFFSIDE_') || ev.type?.startsWith('VAR_GOAL_')
             || ev.type?.startsWith('VAR_RED_') || ev.type?.startsWith('VAR_PENALTY_')
             || ev.type?.startsWith('VAR_YELLOW_')) {
           const decisionLabel = ev.type.includes('CONFIRMED') ? 'CONFIRMED' : 'OVERTURNED';
-        const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
-        let decisionText = `VAR ${reviewType}: ${decisionLabel}`;
-        const marginMatch = (ev.description || '').match(/margin=([0-9.]+)/);
-        if (marginMatch) decisionText += ` (${formatOffsideMargin(marginMatch[1])})`;
-        this.overlays.showVARDecision(decisionText);
-        this._varReviewQueued = false;
+          const reviewType = ev.type.replace('VAR_', '').replace('_CONFIRMED', '').replace('_OVERTURNED', '').replace('_', ' ');
+          let decisionText = `VAR ${reviewType}: ${decisionLabel}`;
+          const marginMatch = (ev.description || '').match(/margin=([0-9.]+)/);
+          if (marginMatch) decisionText += ` (${formatOffsideMargin(marginMatch[1])})`;
+          this.overlays.showVARDecision(decisionText);
+          this._varReviewQueued = false;
         }
-        // GOAL DISALLOWED overlay — cancels any active goal overlay
         if (ev.type === 'GOAL_DISALLOWED') {
           this.overlays.showGoalDisallowed(ev.description || 'GOAL DISALLOWED');
         }
-        // VAR IN PROGRESS overlay — BLOCKING, shows team + incident. Breaks the
-        // event batch so the CONFIRMED/OVERTURNED verdict (emitted on the same
-        // tick) is shown only AFTER this review overlay is dismissed — creating
-        // the IN PROGRESS -> decision sequence instead of them overwriting.
         if (ev.type === 'VAR_IN_PROGRESS') {
           if (!this._varReviewQueued) {
             this._varReviewQueued = true;
@@ -1219,32 +1501,11 @@ class MatchViewer {
             this.overlays.showVAR(ev.description || 'Reviewing incident...', 3500);
             break;
           }
-          // Re-entry after the review overlay dismissed — fall through to the
-          // confirmed/overturned decision that immediately follows on this tick.
         }
-        // SHOT BLOCKED / SAVED animation — capture attacker (shooter) and blocker
-        // positions from the snapshot so the renderer can draw a trajectory
-        // line from the attacker to the blocker (the ball strike) and then
-        // to the deflection point. The ball is briefly rendered at the
-        // blocker's hit point so the user physically sees the ball strike
-        // the defender. Duration: ~8 ticks (~4 seconds) — long enough to
-        // register the collision visually, short enough not to block flow.
         if (ev.type === 'SHOT_BLOCKED' || ev.type === 'SHOT_SAVED') {
-          // ev.playerName is the SHOOTER (the action's acting player) and
-          // ev.team is the shooter's team. The BLOCKER is a defender on the
-          // OPPOSITE team. To be robust against the two different event
-          // description formats emitted by MatchSimulator (one names the
-          // blocker, one only names the shooter), we find the blocker as
-          // the opposing-team player closest to the ball at the block tick.
-          // O(1) snapshot lookup via _snapIndex (Firefox freeze fix — old
-          // snapshots.find was O(n) per event × 2400 events = 24M ops per seek).
           const prevSnap = this._snapIndex?.get(ev.tick - 1) || null;
           const curSnap = this._snapIndex?.get(ev.tick) || null;
           if (curSnap) {
-            // Shooter = the previous-tick carrier (had ball before the block);
-            // falls back to the event's named player, searched across both the
-            // previous AND current snapshots (the current one is used when the
-            // block tick is the first snapshot, e.g. SHOT_SAVED at tick 172).
             const prevCarrierId = prevSnap ? prevSnap.ballCarrierId || '' : '';
             let shooter = prevSnap
               ? prevSnap.players.find(p => p.id === prevCarrierId) || null
@@ -1257,7 +1518,6 @@ class MatchViewer {
             if (!shooter && ev.team) {
               shooter = srcList.find(p => p.team === ev.team) || null;
             }
-            // Blocking team = the opposite of the shooter's team
             const shooterTeam = shooter ? shooter.team : ev.team;
             const blockTeam = shooterTeam === 'HOME' ? 'AWAY' : 'HOME';
             const defTeamPlayers = (curSnap.players || prevSnap.players).filter(p => p.team === blockTeam);
@@ -1283,13 +1543,10 @@ class MatchViewer {
             }
           }
         }
-        // CARD overlay — yellow/red card with team name, player name, VAR indicator
         if (ev.type === 'CARD' || ev.type === 'YELLOW_CARD' || ev.type === 'RED_CARD') {
           const isRed = ev.type === 'RED_CARD' || ev.description?.includes('RED');
           const cardType = isRed ? 'RED' : 'YELLOW';
           const desc = ev.description || '';
-          // Parse player name and team from description like:
-          // "CARD: YELLOW ... (previous yellows=1)" or "AWAY Player 11: FOUL → card YELLOW"
           const teamFromEv = ev.team || (desc.includes('HOME') ? 'HOME' : 'AWAY');
           const nameMatch = desc.match(/(?:HOME|AWAY)\s+(\w+\s+\d+)/);
           const playerName = ev.playerName || (nameMatch ? nameMatch[1] : 'Player');
@@ -1299,7 +1556,6 @@ class MatchViewer {
           const isVar = desc.includes('VAR') || ev.channel?.includes('VAR');
           this.overlays.showCard(cardType, playerName, teamLabel, !!isVar);
         }
-        // FOUL overlay — brief foul notification
         if (ev.type === 'FOUL') {
           const desc = ev.description || '';
           const teamMatch = desc.match(/(HOME|AWAY)/);
@@ -1311,7 +1567,6 @@ class MatchViewer {
           const playerName = ev.playerName || (playerMatch ? playerMatch[1] : 'Player');
           const foulTypeMatch = desc.match(/foul type[:\s]+(\w+)/i) || desc.match(/\(([^)]+)\)/);
           const foulType = foulTypeMatch ? foulTypeMatch[1] : 'Tackle foul';
-          // Show as a brief non-blocking flash in the timeline (not a blocking overlay)
           this._flashEvent = { type: 'FOUL', team, playerName, description: `${playerName} (${foulType})`, _age: 0 };
           this._flashStart = performance.now();
         }
@@ -1322,8 +1577,6 @@ class MatchViewer {
       this._flashEvent._age = (performance.now() - this._flashStart) / 2000;
       if (this._flashEvent._age > 1.5) this._flashEvent = null;
     }
-    // Block animation aging: shows for ~8 ticks after the SHOT_BLOCKED event,
-    // so the user sees the trajectory + impact for ~4 seconds at 2 ticks/sec.
     if (this._blockAnim) {
       const ageTicks = this.currentTick - this._blockAnim.startTick;
       if (ageTicks > 8 || this.currentTick < this._blockAnim.startTick) {
@@ -1333,47 +1586,31 @@ class MatchViewer {
     this._updateDuelState(this.currentTick);
   }
 
-  /** Parse DUEL_START / DUEL_RESOLVED events and track active duel pairs per tick */
   _updateDuelState(currentTick) {
     if (!this.data) return;
-    if (currentTick <= this._duelState.currentTick) return; // already processed
+    if (currentTick <= this._duelState.currentTick) return;
 
-    // Process duel events in chronological order
     for (const ev of this.events) {
       if (ev.tick > currentTick) break;
-      if (ev.tick <= this._duelState.currentTick) continue; // already processed
+      if (ev.tick <= this._duelState.currentTick) continue;
 
       if (ev.type === 'DUEL_START') {
-        // Parse "TYPE AttackerLabel vs DefenderLabel" from description
-        // Example: "RECEIVE_PASS Home FC 11 vs Away United 7"
-        // Player labels are like "Home FC 11" or "Away United 7" (team name + number)
         const desc = ev.description || '';
         const parts = desc.split(' vs ');
         if (parts.length === 2) {
-          // Strip the action type prefix from the first part (e.g. "RECEIVE_PASS ")
           const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
           const defenderPart = parts[1].trim();
           const pairKey = attackerPart + '|' + defenderPart;
           this._duelState.resolved.delete(pairKey);
           this._duelState.pairs.push({ tick: ev.tick, a: attackerPart, b: defenderPart });
         }
-} else if (ev.type === 'DUEL_RESOLVED') {
-        // Track which player lost the duel (loser is in cooldown for ~6 ticks
-        // so they can't tackle/be tackled again immediately). Used by the
-        // renderer to draw a faint pulsing ring on the loser for a few ticks
-        // after the duel, so the user can see "this defender is recovering".
+      } else if (ev.type === 'DUEL_RESOLVED') {
         const desc = ev.description || '';
         const parts = desc.split(' vs ');
         if (parts.length === 2) {
           const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
-          // Strip any trailing detail (e.g. "| winner=...") from the defender label
           const defenderPart = parts[1].split('|')[0].trim();
-          // Mark this pair as resolved so the duel highlight circles disappear
-          // immediately (no 1-2 tick delay from time-window expiry).
           this._duelState.resolved.add(attackerPart + '|' + defenderPart);
-          // Determine the loser from "winner=LABEL (att=...)" and mark them as
-          // cooldown for 6 ticks. The label may contain spaces (e.g. "Home FC
-          // 11"), so capture everything up to the " (att=" detail.
           const winnerMatch = desc.match(/winner=([^(]+)\s*\(/);
           if (winnerMatch) {
             const winnerLabel = winnerMatch[1].trim();
@@ -1387,17 +1624,15 @@ class MatchViewer {
     this._duelState.currentTick = currentTick;
   }
 
-  /** Return list of active duel player-label pairs at the current tick */
   _getActiveDuelPairs(tick) {
     const intTick = Math.floor(tick);
-    const DUEL_DURATION = 2; // ticks — duels typically resolve within 1-2 ticks
+    const DUEL_DURATION = 2;
     return this._duelState.pairs
       .filter(dp => dp.tick <= intTick && dp.tick + DUEL_DURATION >= intTick)
       .filter(dp => !this._duelState.resolved.has(dp.a + '|' + dp.b))
       .map(dp => [{ label: dp.a }, { label: dp.b }]);
   }
 
-  /** Check snapshot flags for halftime, fulltime, and VAR events */
   _checkSnapshotOverlays() {
     if (!this.data) return;
     const intTick = Math.floor(this.currentTick);
@@ -1409,19 +1644,16 @@ class MatchViewer {
     const homeName = this.data.homeTeamName || 'HOME';
     const awayName = this.data.awayTeamName || 'AWAY';
 
-    // Halftime
     if (snap.halfTime && !this._prevHalfTime) {
       this._prevHalfTime = true;
       this.overlays.showHalftime(homeName, awayName, hg, ag);
     }
 
-    // Fulltime
     if (snap.matchFinished && !this._prevMatchFinished) {
       this._prevMatchFinished = true;
       this.overlays.showFulltime(homeName, awayName, hg, ag);
     }
 
-    // VAR events — show overlay when VAR events appear in the event stream
     while (this._displayedEventIdx < this.events.length) {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > intTick) break;
@@ -1442,10 +1674,10 @@ class MatchViewer {
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;
     this.pitch.showGrid = this.showGrid;
+    this.pitch.currentTick = this.currentTick;
+    // Feed duel cooldowns to the renderer (used for the loser red ring).
+    this.pitch._duelState = this._duelState;
     this.pitch.render(players, ball, carrierId, this._flashEvent, goalAnim, duelPairs, blockAnim);
-    // Flush batched timeline events ONCE per RAF tick (Firefox freeze fix —
-    // doing all the appendChild calls in one batched DocumentFragment is
-    // orders of magnitude cheaper than one appendChild per event).
     if (this._pendingTimelineEvents.length > 0) {
       this._flushTimelineEvents();
     }
@@ -1476,24 +1708,17 @@ class MatchViewer {
       li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
       fragment.appendChild(li);
     }
-    // One single DOM mutation instead of N
     ul.appendChild(fragment);
 
-    // Prune oldest entries beyond the cap so the DOM stays small enough for
-    // Firefox to render smoothly during full-match playback.
     while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
       ul.removeChild(ul.firstChild);
     }
 
-    // Auto-scroll to bottom (only if user is already near the bottom — don't
-    // yank them away from an event they were inspecting).
     const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 80;
     if (nearBottom) {
       ul.scrollTop = ul.scrollHeight;
     }
 
-    // Update the landscape-mode live ticker with the last notable event in
-    // this batch (skip minor events).
     const ticker = document.getElementById('liveTicker');
     if (ticker) {
       let lastNotable = null;
@@ -1511,8 +1736,6 @@ class MatchViewer {
         if (tickerMin) tickerMin.textContent = matchMinute(lastNotable.tick);
         if (tickerDesc) tickerDesc.textContent = formatEventDesc(lastNotable);
         ticker.classList.remove('hidden');
-        // Restart the fade timer on every batch flush so the ticker always
-        // shows the freshest event for ~3 s before fading.
         ticker.classList.remove('fade-out');
         clearTimeout(this._tickerFadeTimer);
         this._tickerFadeTimer = setTimeout(() => {
@@ -1548,28 +1771,7 @@ class MatchViewer {
     if (!seek._dragging) seek.value = this.currentTick;
   }
 
-  // Maximum events shown in the timeline DOM. Beyond this, we prune the
-  // oldest entries to prevent the DOM from growing unbounded (which causes
-  // Firefox to freeze after a few minutes of playback with 4000+ events).
   _MAX_TIMELINE_EVENTS = 200;
-
-  // REMOVED: _addTimelineEvent — replaced by _flushTimelineEvents (batching via
-  // DocumentFragment, one DOM mutation per RAF tick instead of one per event).
-
-  _updateLiveTicker(ev, minute, icon, desc) {
-    const tickerIcon = document.getElementById('tickerIcon');
-    const tickerMin = document.getElementById('tickerMin');
-    const tickerDesc = document.getElementById('tickerDesc');
-    if (tickerIcon) tickerIcon.textContent = icon;
-    if (tickerMin) tickerMin.textContent = minute + "'";
-    if (tickerDesc) tickerDesc.textContent = desc;
-    // Brief flash to highlight new event
-    const ticker = document.getElementById('liveTicker');
-    if (ticker) {
-      ticker.style.background = 'rgba(88,166,255,0.18)';
-      setTimeout(() => { ticker.style.background = ''; }, 350);
-    }
-  }
 
   _buildTimeline() {
     document.getElementById('timeline').innerHTML = '';
@@ -1579,9 +1781,6 @@ class MatchViewer {
     document.getElementById('emptyState').style.display = show ? 'flex' : 'none';
     document.querySelector('.pitch-wrap').style.display = show ? 'none' : 'flex';
     document.querySelector('.sidebar').style.display = show ? 'none' : 'flex';
-    // Show the landscape ticker only when:
-    //  - we have a match loaded (not empty)
-    //  - the viewport is in landscape mode AND short (< 500px tall)
     const ticker = document.getElementById('liveTicker');
     if (ticker) {
       const isLandscape = window.matchMedia('(orientation: landscape)').matches;
@@ -1590,8 +1789,6 @@ class MatchViewer {
     }
   }
 
-  /** Update ticker visibility when orientation/size changes. Called from
-   *  resize and orientationchange listeners in initControls. */
   _updateTickerVisibility() {
     const ticker = document.getElementById('liveTicker');
     const pitchWrap = document.querySelector('.pitch-wrap');
@@ -1617,7 +1814,6 @@ class MatchViewer {
     const simBtn = document.getElementById('simBtn');
     const simBtn2 = document.getElementById('simBtn2');
     const playMatchBtn = document.getElementById('playMatchBtn');
-    const playMatch2dBtn = document.getElementById('playMatch2dBtn');
     const speedSlider = document.getElementById('speedSlider');
 
     playBtn.addEventListener('click', () => this.play());
@@ -1629,12 +1825,11 @@ class MatchViewer {
     if (simBtn) simBtn.addEventListener('click', () => this.generateMatch());
     if (simBtn2) simBtn2.addEventListener('click', () => this.generateMatch());
     if (playMatchBtn) playMatchBtn.addEventListener('click', () => this.loadMatch());
-    if (playMatch2dBtn) playMatch2dBtn.addEventListener('click', () => window.open('index2d.html', '_blank'));
 
     if (speedSlider) {
       const speeds = [0.25, 0.5, 1, 2, 4];
       speedSlider.max = speeds.length - 1;
-      speedSlider.value = 1;  // default = 0.5x
+      speedSlider.value = 1;
       const update = () => {
         this.speed = speeds[Number(speedSlider.value)];
         document.getElementById('speedLabel').textContent = this.speed + 'x';
@@ -1643,8 +1838,6 @@ class MatchViewer {
       update();
     }
 
-    // Grid overlay toggle (default off) — created dynamically since we
-    // don't control the HTML from viewer.js alone.
     const gridControlsRow = document.querySelector('.controls-row:last-child');
     if (gridControlsRow) {
       const gridLabel = document.createElement('label');
@@ -1653,7 +1846,7 @@ class MatchViewer {
       const gridCheck = document.createElement('input');
       gridCheck.type = 'checkbox';
       gridCheck.id = 'gridToggle';
-      gridCheck.checked = true;  // Default ON so user can verify row/col alignment
+      gridCheck.checked = true;
       gridCheck.style.width = '14px';
       gridCheck.style.height = '14px';
       gridLabel.appendChild(gridCheck);
@@ -1674,9 +1867,6 @@ class MatchViewer {
       if (e.code === 'ArrowRight') this.seek(this.currentTick + TICKS_PER_MINUTE);
     });
 
-    // Live ticker toggle (landscape mode): tapping the "LOG" button on the
-    // ticker slides the full sidebar up over the pitch so the user can see
-    // the full event log without leaving landscape. Tap again to slide back.
     const tickerToggle = document.getElementById('tickerToggle');
     if (tickerToggle) {
       tickerToggle.addEventListener('click', () => {
@@ -1688,8 +1878,6 @@ class MatchViewer {
       });
     }
 
-    // Re-evaluate ticker visibility on orientation change / resize so the
-    // user can flip their phone to landscape mid-match and the layout adapts.
     const onOrient = () => this._updateTickerVisibility();
     window.addEventListener('orientationchange', onOrient);
     window.addEventListener('resize', onOrient);
@@ -1700,6 +1888,6 @@ class MatchViewer {
    BOOT
    ═══════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  const v = new MatchViewer();
+  const v = new MatchViewer2D();
   window.viewer = v;
 });
