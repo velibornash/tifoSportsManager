@@ -69,6 +69,9 @@ public class MatchState {
     private boolean restartPassToHomeGoalkeeper;
     private int actionDelayTicks;
     private int restartHoldTicks;
+    private FootballRulesService.RestartType pendingRestartType;
+    private String pendingRestartTeam;
+    private double pendingRestartBallColumn;
     private boolean setPiecePending; // free kick, goal kick, throw-in, corner — CARRY not allowed
     private boolean restartFirstTouch; // true until the restart taker's FIRST decision — CARRY forbidden
     private Player freeKickTaker;
@@ -384,6 +387,12 @@ public class MatchState {
     public int getRestartHoldTicks() { return restartHoldTicks; }
     public void setRestartHoldTicks(int ticks) { restartHoldTicks = Math.max(0, ticks); }
     public void consumeRestartHoldTick() { if (restartHoldTicks > 0) restartHoldTicks--; }
+    public FootballRulesService.RestartType getPendingRestartType() { return pendingRestartType; }
+    public void setPendingRestartType(FootballRulesService.RestartType type) { this.pendingRestartType = type; }
+    public String getPendingRestartTeam() { return pendingRestartTeam; }
+    public void setPendingRestartTeam(String team) { this.pendingRestartTeam = team; }
+    public double getPendingRestartBallColumn() { return pendingRestartBallColumn; }
+    public void setPendingRestartBallColumn(double col) { this.pendingRestartBallColumn = col; }
     public boolean isSetPiecePending() { return setPiecePending; }
     public void setSetPiecePending(boolean value) { setPiecePending = value; }
     public boolean isRestartFirstTouch() { return restartFirstTouch; }
@@ -646,6 +655,9 @@ public class MatchState {
         restartPassToHomeGoalkeeper = false;
         actionDelayTicks = 0;
         restartHoldTicks = 0;
+        pendingRestartType = null;
+        pendingRestartTeam = null;
+        pendingRestartBallColumn = 0;
         duelCooldownTicks.clear();
         pendingCorner = false;
         pendingCornerRight = false;

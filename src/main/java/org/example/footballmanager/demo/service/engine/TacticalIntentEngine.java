@@ -122,6 +122,14 @@ public class TacticalIntentEngine {
      * wide (col 1 and col 6), but they must shift toward the ball's column so
      * they can press the carrier. The shift is limited to 1.5 cells per tick
      * (the same as normal movement) so they don't teleport.
+     *
+     * REACTIVE DEFENSE (user rule): when the ball is in our own half and a
+     * CARRY is in progress, every defender in the team reacts to the ball's
+     * current position by shifting their column toward the ball — not toward
+     * their static cell centre. The shift is capped at 0.5 cells per tick so
+     * the line doesn't break in one frame. This way, an attacker dribbling
+     * through the middle finds defenders actually moving to intercept instead
+     * of standing at their anchor cells.
      */
     private Position applyDefensivePositionConstraint(Player p, Position desired) {
         String role = p.getRole();
@@ -136,6 +144,8 @@ public class TacticalIntentEngine {
         // Center backs: DEF/CB/DCL/DCR. Fullbacks: LB/RB/DL/DR. DM is its own class.
         boolean isCenterBack = role.equals("DEF") || role.equals("CB")
                 || role.equals("DCL") || role.equals("DCR");
+        boolean isFullback = role.equals("LB") || role.equals("RB")
+                || role.equals("DL") || role.equals("DR");
         boolean isDM = role.equals("DM");
         boolean isStopper = role.equals("DCL") || role.equals("DCR");
 
@@ -147,6 +157,37 @@ public class TacticalIntentEngine {
             double colShift = ballCol - desiredCol;
             desiredCol = desiredCol + colShift;
             // Keep within field bounds
+            desiredCol = Math.max(1.0, Math.min(6.9, desiredCol));
+        }
+
+        // --- Fullback column shift toward ball when ball is in central columns ---
+        // LB/RB (cols 1 and 6) should be able to cut inside when the ball is
+        // in central columns (2-5). They shift toward the ball's column so they
+        // can cover the middle of the pitch instead of staying wide.
+        if (isFullback && ballCol >= 2.0 && ballCol <= 5.0) {
+            double colShift = (ballCol - desiredCol) * 0.8;
+            if (Math.abs(colShift) > 1.0) {
+                colShift = Math.signum(colShift) * 1.0;
+            }
+            desiredCol = desiredCol + colShift;
+            desiredCol = Math.max(1.0, Math.min(6.9, desiredCol));
+        }
+
+        // --- REACTIVE DEFENSE — own half + CARRY → shift toward ball column ---
+        // When the ball is in our half and an opponent is carrying it, every
+        // defender shifts their column toward the ball's current column. The
+        // shift is capped at 0.5 cells per tick (less than the 1-cell speed cap)
+        // so the line doesn't collapse instantly — the defenders close down
+        // the carrier gradually, just like real CBs slide across to cover.
+        if (ballInOwnHalf && state.hasActiveAction()
+                && state.getAction().getType() == org.example.footballmanager.demo.service.model.ActionType.CARRY
+                && state.getBall().getCarrier() != null
+                && !state.getBall().getCarrier().getTeam().equals(p.getTeam())) {
+            double colShift = (ballCol - desiredCol) * 0.5;
+            if (Math.abs(colShift) > 0.5) {
+                colShift = Math.signum(colShift) * 0.5;
+            }
+            desiredCol = desiredCol + colShift;
             desiredCol = Math.max(1.0, Math.min(6.9, desiredCol));
         }
 

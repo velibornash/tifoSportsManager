@@ -336,6 +336,49 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 continue;
             }
 
+            // Handle pending restart (visual hold after shot miss/save/block).
+            // After a shot, the ball stays at the miss/save position for 3 ticks
+            // so the viewer shows the result before teleporting to the restart spot.
+            // Uses restartHoldTicks so it works independently of actionDelayTicks
+            // (actionDelayTicks handles the action-delay skip; restartHoldTicks tracks
+            // the visual delay for the viewer).
+            if (state.getPendingRestartType() != null) {
+                state.consumeRestartHoldTick();
+                if (state.getRestartHoldTicks() > 0) {
+                    // Still holding — log heartbeat every 2 ticks so the viewer
+                    // never shows a silent gap.
+                    if (state.getRestartHoldTicks() % 2 == 0) {
+                        logger.logInfo(state, "RESTART HOLD — "
+                                + state.getPendingRestartType() + " for "
+                                + state.getPendingRestartTeam() + " in "
+                                + state.getRestartHoldTicks() + " tick(s)",
+                                "RESTART", null);
+                    }
+                    if (observer != null) observer.onTick(state.getSimulationTick(), state);
+                    totalTicks++;
+                    state.advanceMatchClock();
+                    state.advanceSimulationTick();
+                    continue;
+                } else {
+                    // Hold expired — execute the restart now
+                    FootballRulesService.RestartType rt = state.getPendingRestartType();
+                    String rtTeam = state.getPendingRestartTeam();
+                    double ballCol = state.getPendingRestartBallColumn();
+                    Position fakeBallPos = new Position(
+                            "HOME".equals(rtTeam) ? 8.5 : -0.5, ballCol);
+                    state.setPendingRestartType(null);
+                    state.setPendingRestartTeam(null);
+                    state.setPendingRestartBallColumn(0);
+                    actionEngine.complete("RESTART: " + rt);
+                    restartManager.handleBallOutOfBounds(stats, rt, fakeBallPos, rtTeam);
+                    if (observer != null) observer.onTick(state.getSimulationTick(), state);
+                    totalTicks++;
+                    state.advanceMatchClock();
+                    state.advanceSimulationTick();
+                    continue;
+                }
+            }
+
             // Handle OOB — safety net only. Per corePrinciples §48 the actual restart
             // placement happens immediately at the OOB detection site (the call
             // sites call restartManager.handleBallOutOfBounds directly). This
@@ -1639,16 +1682,18 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                                     + " (keeper skill=" + String.format("%.0f", keeper.getSkills().keeper()) + ")",
                             keeper, shooter, "OUTCOME");
 
-                    // Handle save rebound immediately (corner or loose ball)
+                    // Handle save rebound — hold for 3 ticks so the viewer shows
+                    // the save before teleporting to the corner.
                     if (action.getSaveType() == Action.SaveType.CORNER_REBOUND) {
                         String defendingTeam = "HOME".equals(shooterTeam) ? "AWAY" : "HOME";
-                        stats.onCorner(defendingTeam);
-                        Position cornerPos = new Position("HOME".equals(shooterTeam) ? 7.5 : 0.5,
-                                SimUtils.clamp(ball.getPosition().getColumn(), 1, 6));
+                        double cornerCol = SimUtils.clamp(ball.getPosition().getColumn(), 1, 6);
                         state.getBall().setTarget(null);
                         actionEngine.complete("SHOT SAVED -> CORNER");
-                        restartManager.handleBallOutOfBounds(stats,
-                                FootballRulesService.RestartType.CORNER, cornerPos, defendingTeam);
+                        // Set pending restart — main loop will execute the corner after 3 ticks
+                        state.setRestartHoldTicks(3);
+                        state.setPendingRestartType(FootballRulesService.RestartType.CORNER);
+                        state.setPendingRestartTeam(shooterTeam);
+                        state.setPendingRestartBallColumn(cornerCol);
                     } else {
                         // Field rebound - ball becomes loose, trigger chase immediately
                         stats.onLooseBall();
@@ -1694,16 +1739,15 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                         "VAR", shooter);
                 actionEngine.shotMissed();
                 // The shooter touched the ball last — the goal kick goes to the
-                // defending team. Pass shooterTeam as lastTouchTeam so
-                // handleBallOutOfBounds awards the restart to the OTHER team.
-                // Note: ballPos here is the (already-shot-missed) position the
-                // ball went to; handleBallOutOfBounds ignores it for goal kick
-                // (uses the standard 5m-from-goal spot instead).
-                Position ballPosForKick = state.getBall().getPosition();
+                // defending team. Hold for 3 ticks so the viewer shows the miss
+                // before the goal kick teleport.
+                double ballCol = state.getBall().getPosition().getColumn();
                 state.getBall().setCarrier(null);
                 state.getBall().setTarget(null);
-                restartManager.handleBallOutOfBounds(stats,
-                        FootballRulesService.RestartType.GOAL_KICK, ballPosForKick, shooterTeam);
+                state.setRestartHoldTicks(3);
+                state.setPendingRestartType(FootballRulesService.RestartType.GOAL_KICK);
+                state.setPendingRestartTeam(shooterTeam);
+                state.setPendingRestartBallColumn(ballCol);
                 return;
             }
 
@@ -1731,20 +1775,25 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     "MISS (distToGoal=" + String.format("%.2f", distToGoal) + ")",
                     shooter, null, "OUTCOME");
 
-            // Shot miss — instant goal kick (or corner if the miss ricocheted wide).
-            // The shooter touched the ball last so the restart goes to the OTHER
-            // (defending) team. handleBallOutOfBounds teleports the ball to its
-            // final restart spot and selects the taker.
-            FootballRulesService.RestartType missRestart;
-            // For a goal-kick candidate, ball.pos doesn't matter (the manager uses
-            // the standard 5m spot). For a corner the column matters — pass the
-            // ball's current column so the side flag is correct.
-            missRestart = FootballRulesService.RestartType.GOAL_KICK;
+            // Shot miss — hold for 3 ticks so the viewer shows the ball at the
+            // miss position before teleporting to the restart spot. Without this
+            // the ball instantly jumps to the corner/goal-kick position, making
+            // the miss animation invisible to the user.
+            FootballRulesService.RestartType missRestart = FootballRulesService.RestartType.GOAL_KICK;
+            // Save ball column for corner detection (CORNER needs the side flag from
+            // the ball's position before shotMissed teleports it past the end line).
+            double ballCol = state.getBall().getPosition().getColumn();
             // Use ball column at miss time as a hint for the corner side flag.
             Position ballPosForRestart = state.getBall().getPosition();
             state.getBall().setCarrier(null);
             state.getBall().setTarget(null);
-            restartManager.handleBallOutOfBounds(stats, missRestart, ballPosForRestart, shooterTeam);
+            // Store the pending restart so the main loop can execute it after the hold.
+            state.setRestartHoldTicks(3);
+            state.setPendingRestartType(missRestart);
+            state.setPendingRestartTeam(shooterTeam);
+            state.setPendingRestartBallColumn(ballCol);
+            // Don't call handleBallOutOfBounds yet — main loop will after the hold
+            return;
         }
     }
 
@@ -2063,7 +2112,8 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 shooter, blocker, "OUTCOME");
 
         // If the deflected ball went out of play (most commonly over the end
-        // line near the goal → corner), award the restart instantly.
+        // line near the goal → corner), award the restart with a 3-tick visual
+        // hold so the viewer shows the block before the corner teleport.
         FootballRulesService.RestartType blockRestart =
                 rulesService.determineRestart(deflectedPos, blocker.getTeam(), false);
         if (blockRestart != FootballRulesService.RestartType.NONE) {
@@ -2071,8 +2121,10 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             logger.logActionOutcome(state, action,
                     "SHOT BLOCKED -> " + blockRestart,
                     shooter, blocker, "OUTCOME");
-            restartManager.handleBallOutOfBounds(stats, blockRestart,
-                    deflectedPos, blocker.getTeam());
+            state.setRestartHoldTicks(3);
+            state.setPendingRestartType(blockRestart);
+            state.setPendingRestartTeam(blocker.getTeam());
+            state.setPendingRestartBallColumn(deflectedPos.getColumn());
         }
     }
 
