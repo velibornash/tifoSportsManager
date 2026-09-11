@@ -1043,3 +1043,255 @@ Written and continuously improved:
   remains as a last-resort deadlock safeguard
 - `OffsideService.java` — `setActionDelayTicks(15)` (defendingTeam was always correct)
 - `OffsideRestartDiagnostic.java` — full offside restart QA diagnostic, arrival filter fix
+
+---
+
+## Changes Applied (2026-09-10) — Speed Specification
+
+### 1. Speed as a per-action parameter (authoritative: `corePrinciples.md` §49)
+
+Foundation work for a realistic, physics-driven ball/player model. Full spec
+in `corePrinciples.md` §49.
+
+| Thing | Value |
+|-------|-------|
+| Player pace 20 | `0.75` cells/tick @ 40 TPM = 7 m/s = 0.5 cells/s match time |
+| Player pace N | `(pace/20) * 0.75` cells/tick @ 40 TPM |
+| Carrier with ball | `playerSpeed * 0.90` |
+| Ball max (pass/shot/clear) | `1.5` cells/tick @ 40 TPM = 14 m/s = 1 cell/s |
+| Ball skill 14 | `7.0 + (14/20)*7.0 = 11.9` m/s = 1.275 cells/tick |
+| Ball skill 1 | 7.35 m/s = 0.7875 cells/tick |
+| Free ball min | 7 m/s = 0.75 cells/tick, decays ×0.8 to stop |
+| Ball with carrier | moves at carrier speed |
+
+### 2. Speed errors
+
+`maxSpeedForSkill = 7.0 + (skill/20)*7.0` m/s. If `desiredSpeed > maxSpeedForSkill`
+(e.g. pressured player tries to kick hard), deviation increases by
+`(desiredSpeed - maxSpeedForSkill) * 2.0` (in cells). A low-skill player physically cannot
+play hard; trying (under pressure) degrades execution quality.
+
+**Engine-chosen power per action** (in `ActionEngine`): SHORT pass → 1.05,
+LONG → 1.30, THRU → 1.35, CLEAR → 1.40, SHOT → 1.40 cells/tick (capped at
+`MAX_BALL_SPEED` 1.5). The chosen power is passed into `ExecutionQuality.evaluatePass`
+/ `evaluateShot`; the overspeed penalty is applied there against the player's
+`ballSpeedForSkill(skill)`. So a skill-14 passer hitting a THRU at 1.35 gets a
+small (0.15 cell) error bonus, while a skill-20 playmaker handles it clean.
+
+### 3. Ball movement becomes action-independent
+
+- Ball speed set ONCE at action start, then `BallMovementEngine` moves it
+  A→B along the straight line each tick.
+- `Ball` gains `speed`, `airborne` and `rollDirection` fields.
+- Player collision along trajectory (radius 0.35 cells) → received /
+  intercept / deflection.
+- Overshoot braking: loose balls decay `speed *= 0.8` per tick to a stop,
+  rolling along their stored `rollDirection` (§49.5).
+- Picking the ball up (`Ball.setCarrier(non-null)`) resets speed + roll direction.
+- Both mid-flight collision second-move and arrival handlers now use the
+  ball's own `speed` instead of the removed `BALL_SPEED` constant.
+- Interception/deflection speed-normalization formulas re-based to the new
+  0.75–1.5 range (`MIN_ROLLING_SPEED`..`MAX_BALL_SPEED`).
+
+### 4. MovementEngine pace-scaled speeds
+
+- `PLAYER_SPEED` raised 0.25 → **0.75** (pace-20 top speed @ 40 TPM).
+- Added static `playerSpeedFor(double pace)`, `CARRIER_FACTOR = 0.90`,
+  `COLLISION_STEP = 0.15`.
+- Removed the `*3` active-chase and `*1.6` threat-override speed boosts —
+  every player now moves at `(pace/20)*PLAYER_SPEED × fatigue`, carrier ×0.90.
+
+## Changes Applied (2026-09-10) — pass 2: strict interception/deflection physics radii
+
+The §49 pass left deflections/interceptions exploding (deflections reached
+200+/match shipped over multiple sessions). Root cause: collision radii were in
+"proximity" terms (0.14–0.5 cells ≈ 2–7 m) — a ball passing 2.5 m from a
+defender was "struck". Per the user ground rule ("NOT same cell, NOT same area —
+PATH only"), the ball can only be affected by a defender genuinely ON its path:
+
+| Radius | Value | Physical meaning |
+|--------|-------|------------------|
+| Deflection (accidental contact) | `0.035` cells (0.5 m) | a body the ball actually strikes |
+| Interception (read) | `0.07` cells (1.0 m) | a reader stepping into the line |
+| Mid-path lane | two tiers: deflect ≤ 0.035, intercept ≤ 0.07 | distance from the flight SEGMENT (`pointSegmentDistance`) |
+
+Changes in `MatchSimulator.java`:
+- `findPassDeflector`: `deflectionRadius = 0.035` (was 0.22–0.30 ≈ 3–4 m). Only
+  the single closest eligible defender at the arrival point, **deterministic**
+  (physical contact, no probability). Removed unused `passHeight`/`passSpeed`.
+- `resolveMidPathCollision`: two-tier lane. A defender within 0.035 of the
+  segment is physically struck (guaranteed deflection unless an elite read
+  converts it). Between 0.035–0.07 the ball is out of physical reach — the ONLY
+  outcome is a genuine interception (elite reader `pm+def > 26` on a slow ball);
+  otherwise the ball sails past untouched.
+- `findPassInterceptor`: `interceptRadius = 0.07` (was 0.4 AIR / 0.5 GROUND ≈ 6–7 m).
+
+Additional tuning:
+- `MovementEngine.CHASE_SPRINT_MULTIPLIER = 1.30` — active chasers sprint so
+  a §49.5 decelerating loose ball doesn't outrun them.
+- `BallMovementEngine.PICKUP_DISTANCE` 0.5 → **0.6**; regular-pass receiver
+  pickup grace `Math.max(0.6, 0.9)` (THRU uses its own success threshold).
+- CARRY decision in `PlaymakingDecisionEngine.scoreCarry`: `freeTeammatePenalty
+  = -28.0` when a free forward teammate exists (no opponent < 0.7 cells, clean
+  lane); no-pressure bonus 20 → 6.
+
+Verification (`ComprehensiveBatchRunner 5 14` — 10 matches, per REAL match):
+
+| Metric | Before §49 | After §49 | After pass 2 |
+|--------|-----------|-----------|--------------|
+| Deflections | ~168 | ~46 | **16.7** |
+| Interceptions | — | ~32 | **21.2** |
+| Chases | ~1533 | ~620 | **546** |
+| Carries | ~911 | ~422 | **435** |
+| Clearances | — | ~162 | **149** |
+| Goals | 9.3 | 3.6** | 3.6 |
+| Shots | 15.5 | — | **18** |
+| Throw-ins | 8.4 | 22.6 | **21.3** |
+
+`**` = per the `per-pair` note: the printed "per match" is per PAIR (2 real
+matches) — divide by 2 for per-true-match figures.
+
+Remaining pathology (same root cause: midfield congestion — per-tick tactical
+refresh clusters all 10 outfielders around the ball, leaving no open receiver,
+forcing CARRY + constant loose-ball chases): carries ~435, chases ~546,
+clearances ~149. The strict radii brought pass disruption to realistic levels;
+the congestion lever (tactical spread / defensive-line height / wing anchors /
+refresh frequency) is the next tuning frontier.
+
+## Changes Applied (2026-09-10) — pass 3: deterministic batch + free-space passing
+
+### 0. BatchRunner is now DETERMINISTIC (critical fix)
+The batch was non-reproducible even with fixed seeds (two runs of the SAME
+build, seeds `1000 + i*7`, gave different totals ±10–15% and different score
+distributions — chases 6078 vs 5408, carries 4728 vs 4214, goals 39 vs 38).
+Root cause: `MatchState.activeChasers` was a plain `HashSet<Player>`; identity
+`hashCode` iteration order varies by object address run-to-run, and
+`getActiveChasers()` is iterated in **4 places** (`MatchSimulator`, `ActionEngine`,
+`DuelEngine`, `PlayerSelectionEngine`) to pick chase/duel outcomes — the first
+divergence cascades through the whole seeded RNG stream.
+
+Fix (`MatchState.java`): `HashSet` → `LinkedHashSet` (insertion order is fully
+driven by the seeded sim), and `getActiveChasers()` returns a `new
+LinkedHashSet<>(activeChasers)` copy instead of `Set.copyOf` (which does NOT
+guarantee order). Verified: same build, two full batch runs → **identical**
+totals (Chases 5151 both times). All tuning comparisons are reliable again.
+
+### 1. User rule — 2 m (0.14 cell) "free player" yardstick
+A receiver is FREE with only ~2 m of space, NOT ~20 m (0.3–1.5 cells were too
+wide: interception needs a defender within 1 m (0.07 cell) of the passing path,
+so 2 m of own space is a clean reception). `PlaymakingDecisionEngine`:
+- `receiverOpenness` radius 0.3 → **0.14** cells
+- receiver-pressure flip -40 threshold 0.5 → **0.14** cells
+- `scoreCarry.freeTeammatePenalty` marking radius 0.7 → **0.14** cells
+
+Per-tick tactical refresh is UNCHANGED — it stays the source of truth (user
+rejected the "refresh only on cell-crossing" idea).
+
+### 2. Receiver runs into space; passer aims at the space
+`ActionEngine.executePassTo`: new `openingTarget(receiver)` — receiver position
+nudged away from its nearest opponent by up to **0.5 cells**, clamped on-pitch;
+`intendedTarget = opening` (passer plays the ball into the gap, not at a marked
+body); receiver is UNLOCKED (`setLocked(false)`) and given `setTarget(opening)`
+so it runs onto the pass during flight. `TacticalIntentEngine`: pass-flight
+guard at the top of `applyOutfieldTargeting` — while a pass is in flight the
+intended receiver keeps its opening target (the per-tick refresh must NOT
+overwrite it with a shape target, or the aimed-into-space ball becomes a loose
+ball).
+
+### 3. Wide players hold their own cell
+`TacticalIntentEngine.applyWideAnchorConstraint` (runs LAST in
+`applyOutfieldTargeting`, after threat override): ML/MR/DL/DR + DDL/DDR/WBL/WBR/
+AML/AMR clamp their column to their own flank cell — anchor col 1.5 (left) /
+5.5 (right), band ±0.5 — with only a gentle ball-follow drift INSIDE the cell
+(`clamp((ballCol - anchorCol) * 0.25, -0.35, 0.35)`). Team width is preserved: a
+central ball no longer drags the whole line into a midfield ruck.
+
+### 4. Pass deviation is OVERSHOOT-ONLY
+`ExecutionQuality.evaluatePassWithSkill` no longer scatters every pass with
+skill/length/height error. New formula: `maxDeviation = 0.02 + overspeed * 2.0`
+where `overspeed = max(0, desiredSpeed - ballSpeedForSkill(skill))`. A pass
+played at a speed the passer can control is placed accurately; the only misses
+are balls hit harder than the player's physical max (the §49 error bonus). The
+speed-aware pass (added in §49) had re-introduced random imprecision that
+inflated loose-ball chases — removed. `PASS_DEVIATION_PER_SKILL_POINT` +
+length/height multipliers and their constants are gone.
+
+### Verification (`ComprehensiveBatchRunner 5 14` — 10 matches, per REAL match)
+
+Deterministic now — the Before runs below use the SAME build with the 4 changes
+above reverted, so the delta is exactly these 4 changes:
+
+| Metric | After pass 2 (≈) | Before pass 3 (deterministic) | After pass 3 |
+|--------|-----------------|------------------------------|--------------|
+| Goals | 3.6 | **3.9** | **2.5** |
+| Shots | 18 | 18.1 | 17.3 |
+| Passes / match | — | 1430 | **1578** |
+| Pass accuracy | — | 90 / 92 % | **95 / 94 %** |
+| Chases | 546 | 587 | **515** |
+| Carries | 435 | 424 | **412** |
+| Deflections | 16.7 | 16.8 | 18.6 |
+| Interceptions | 21.2 | 16.0 | 16.2 |
+| Loose passes | — | 109 | **86** |
+| Corners | — | 2.1 | 1.1 |
+| Throw-ins | 21.3 | 17.3 | 14.8 |
+| Goal kicks | — | 8.5 | 8.4 |
+
+Reading: the four changes DID kill the passing pathology — pass volume +10%
+(1578 vs 1430/match), loose passes −21% (86 vs 109/real), chases −12% (515 vs
+587/real), pass accuracy up to 95%. Goals fell to a realistic **2.5/real**
+(average modern football ≈ 2.6), shot conversion 14.5% from only 17.3 shots.
+Carries barely moved (412 vs 424) — the 0.14 free-yardstick makes the
+`freeTeammatePenalty` in `scoreCarry` fire almost never (2 m in a midfield clog
+is rare), so CARRY suppression didn't materialize via that lever. Deflections
+edged UP (+1.8) — receivers now move during flight, so the aimed-into-space ball
+passes nearer to shifting bodies; and corners halved (1.1/real), end-to-end
+attacking volume dropped. If carries/corners need nudging back, the levers are:
+receiver-opening step size/interception-lane interplay, corner-attraction of
+deflections, and a CARRY velocity vs forwards-with-space incentive.
+
+Remaining open question for the user: carries ~412, chases ~515/real still look
+mechanically high for a 2.5-goal match — but they are now bounded and
+deterministic, so every further tweak is measurable in one 4-minute batch run.
+
+## Changes Applied (2026-09-11) — kickoff center, shooting rows, OOB visual, interception
+
+### 1. Kickoff center & formation
+- **Symptom**: kickoff showed both teams on the wrong half / attackers over the center line; kicker and ball not on center (4.5, 4.0).
+- Field center is **row 4.5, col 4.0** (cols 1-6); goal-mouth center col **3.5** unchanged.
+- `MatchSimulator.kickoffPos`, `MatchState.resetPositionsForKickoff` (ball + roundStart/roundEnd/tactical snapshots), `RestartManager.handleKickoff`/`handleKickoffPreMatch` centerSpot (+ status strings), `ActionEngine` penalty-miss reset, `MatchDetailedAnalyzer` (2 sites) all → `(4.5, 4.0)`.
+- **Own-half clamp in `resetPositionsForKickoff`**: HOME row ≤ 4.0, AWAY row ≥ 5.0 regardless of generated formation; kicker placed at exact (4.5, 4.0). `generateTeam` attacker rows intentionally untouched.
+- Kickoff detection now matches `row == 4.5 && col == 4.0` (`PlaymakingDecisionEngine` + `ActionEngine.executePass`); kickoff-candidate forward rows `< 4.5` / `> 4.5`; backward-pass rows 4 → 4.5.
+
+### 2. Half-boundary checks 4.0 → 4.5
+- `PlaymakingDecisionEngine` (12 sites), `ActionEngine.isClearlyOffside` (41), `OffsideService` (122-123), `FootballRulesService` (41-42), `TransitionService` (127-128). All opponent-half / attacking-half / offside-eligibility pivots now use 4.5.
+
+### 3. CLEAR in attack → force SHOT in final rows
+- `MatchSimulator.executeDecision` PASS fallback (`receiver == null`): if carrier in shooting rows (HOME row ≥ 6, AWAY row ≤ 2) → `executeShot(false)` + `stats.onShot`; else clearance + `stats.onClearance`. A forward in the box never clears.
+
+### 4. Miss scatter visibly crosses the end line
+- `ExecutionQuality.evaluateShot`: off-target target forced PAST the end line (row > 8.0 HOME / < 1.0 AWAY) or past a sideline, so the flight segment crosses the OOB band during animation. Margins enlarged, col clamp 0.5-7.5, `SHOT_GOAL_THRESHOLD` safety push 0.5 → 0.6.
+
+### 5. Pass interceptions actually fire
+- **Symptom**: 30 m pass through two defenders never intercepted; recorded matches had ZERO INTERCEPT/DEFLECT.
+- Interception lane 0.07 → **0.14 cells (2 m)** in `resolveMidPathCollision`/`findPassInterceptor`; deflection lane stays 0.035. Skill floor `pm >= 8` (was `pm < 12 || def < 12` skip); `interceptChance = (pm+def)/50 * speedModifier` (was /40); mid-path probability threshold `pm+def > 18` with `(0.25 + (pm+def−18)/30) * speedFactor`, cap 0.45 (was > 26).
+
+### 6. Offside called at CROSS execution
+- New `ActionEngine.selectCrossTarget()` offside-filters the receiver via `isClearlyOffside` (margin > 0.2 cells), corner-exempt (`state.isCornerActive()`). `MatchSimulator` CROSS branch runs `trackOffsidePositions` + `checkOffside` before `executeCross` (unless corner).
+
+### Verification (MatchBatchRunner 200)
+Per real match: **goals 2.38** (HOME 1.14 / AWAY 1.24), shots 53.8 (11% on target), passes 98% (154108/156736), fouls 1.17, Y 0.28, R 0.005, corners 2.67, offsides 0.87, **interceptions 10.95** (down from 22.3 — removed double-count), goal kicks 17.38, throw-ins 4.94. Possession HOME 63% (down from 75%). `mvn compile -q` clean.
+
+## Changes Applied (2026-09-11 — pass 2) — AWAY-goal-line mirror fix (PRIMARY asymmetry fix)
+
+Root cause: dozens of row-comparison literals used OLD geometry (AWAY goal at row 7.0, mirror axis 4.0) while authoritative: AWAY goal row 8.0, mirror axis 4.5 (HOME n → AWAY 9−n). Key changes:
+
+- **PlaymakingDecisionEngine**: `7.0` → `8.0` in PASS goal-proximity, CARRY scoring, forward-space, box-width, shooting-zone band (`8-K` → `9-K`), inFinalThird, defensiveThird, finalTwoRows, nearGoal, isDeepAttacker, countBoxAttackers, byline, corner-line checks
+- **TacticalIntentEngine**: carrier-in-final-third `<=2.0` → `<=3.0`; isInFinalQuarter `>=5.5` → `>=6.5`; isDefensiveThird `>=5.0` → `>=6.0`
+- **ThreatAssessmentService**: HOME/AWAY threat formulas swapped (were inverted), center `4.0`→`4.5`, span `4.0`→`3.5`, DANGER_ZONE constants + comparison operators corrected, defensive-third row checks swapped
+- **MatchSimulator**: blocked-shot corner distance `7.5/0.5` → `8.0/1.0`; finalThirdRow AWAY `3.0`→`4.0`; shooting range `8-K` → `9-K`
+- **ActionEngine**: pass reception OOB `row>7.0`→`>8.0`, `col>6.0`→`>7.0`
+- **OffsideService**: own-goal-row `7.0:1.0` → `1.0:8.0`, clamp `7.0`→`8.0`
+- **CornerArrangementEngine**: AWAY_BOX rows from `8-K`→`9-K`; marker-band mMax `5.5`→`6.5`; unmarked hold-row `0.4`→`1.4`
+- **RestartManager**: throw-in row clamp `1..7`→`0..8`, right-touchline col `6.0`→`7.0`
+
+Possession improved: 75% → 63%. Goal ratio improved: 0.59 → 0.92.

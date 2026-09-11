@@ -1629,7 +1629,7 @@ class MatchViewer {
     if (simBtn) simBtn.addEventListener('click', () => this.generateMatch());
     if (simBtn2) simBtn2.addEventListener('click', () => this.generateMatch());
     if (playMatchBtn) playMatchBtn.addEventListener('click', () => this.loadMatch());
-    if (playMatch2dBtn) playMatch2dBtn.addEventListener('click', () => window.open('index2d.html', '_blank'));
+    if (playMatch2dBtn) playMatch2dBtn.addEventListener('click', () => location.href = 'viewer3d.html');
 
     if (speedSlider) {
       const speeds = [0.25, 0.5, 1, 2, 4];

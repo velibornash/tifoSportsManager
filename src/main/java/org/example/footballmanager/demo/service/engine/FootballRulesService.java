@@ -38,8 +38,8 @@ public class FootballRulesService {
         if (!forwardPass) return false;
 
         boolean inOpponentHalf = home
-                ? receiver.getPosition().getRow() >= 4
-                : receiver.getPosition().getRow() <= 4;
+                ? receiver.getPosition().getRow() >= 4.5
+                : receiver.getPosition().getRow() <= 4.5;
         if (!inOpponentHalf) return false;
 
         String defendingTeam = home ? "AWAY" : "HOME";

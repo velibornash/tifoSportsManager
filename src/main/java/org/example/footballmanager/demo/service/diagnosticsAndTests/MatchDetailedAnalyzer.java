@@ -38,7 +38,7 @@ public class MatchDetailedAnalyzer {
         allPlayers.addAll(homePlayers);
         allPlayers.addAll(awayPlayers);
 
-        Position kickoffPos = new Position(4, 3.5);
+        Position kickoffPos = new Position(4.5, 4.0);
         Ball ball = new Ball(kickoffPos, kickoffPos);
         TacticsRules tactics = new TacticsRules();
         MatchRecorder recorder = new MatchRecorder();
@@ -359,7 +359,7 @@ public class MatchDetailedAnalyzer {
         state.setKickoffActionPending(true);
         state.setPhase(MatchPhase.OPEN_PLAY);
         state.incrementRound();
-        Position kickoffPos = new Position(4, 3.5);
+        Position kickoffPos = new Position(4.5, 4.0);
         kicker.setPosition(kickoffPos);
         state.getBall().setPosition(kickoffPos);
         for (Player p : state.getPlayers()) {
@@ -457,7 +457,8 @@ public class MatchDetailedAnalyzer {
         Ball ball = state.getBall();
         Position target = ball.getTarget();
         if (target == null) return;
-        BallMovementEngine.moveBallToward(ball, target, BallMovementEngine.BALL_SPEED);
+        BallMovementEngine.moveBallToward(ball, target,
+                ball.getSpeed() > 0 ? ball.getSpeed() : BallMovementEngine.MAX_BALL_SPEED);
         if (SimUtils.distance(ball.getPosition(), target) <= BallMovementEngine.PICKUP_DISTANCE) {
             ball.setPosition(target);
             if (action.getPassLength() == PassLength.THRU && action.isGoodExecution()
@@ -504,7 +505,8 @@ public class MatchDetailedAnalyzer {
         Ball ball = state.getBall();
         Position shotTarget = action.getActualTarget();
         if (shotTarget == null) return;
-        BallMovementEngine.moveBallToward(ball, shotTarget, BallMovementEngine.BALL_SPEED);
+        BallMovementEngine.moveBallToward(ball, shotTarget,
+                ball.getSpeed() > 0 ? ball.getSpeed() : BallMovementEngine.MAX_BALL_SPEED);
         if (SimUtils.distance(ball.getPosition(), shotTarget) <= BallMovementEngine.PICKUP_DISTANCE) {
             ball.setPosition(shotTarget);
             ball.setTarget(null);

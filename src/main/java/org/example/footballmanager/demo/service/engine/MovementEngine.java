@@ -13,10 +13,36 @@ import java.util.Map;
  */
 public class MovementEngine {
 
-    public static final double PLAYER_SPEED = 0.25;
+    /**
+     * Pace-20 top speed in cells/tick.
+     * corePrinciples §49: pace 20 = 7 m/s = 0.5 cells/s match time. The engine
+     * ticks at MATCH_TICKS_PER_MINUTE = 40 (1.5 s/tick), so 0.5 cells/s × 1.5
+     * s/tick = 0.75 cells/tick. Every player moves at a pace-scaled fraction of
+     * this base — a pace-14 player at (14/20)*0.75 = 0.525 cells/tick.
+     */
+    public static final double PLAYER_SPEED = 0.75;
+    /** Carrier with ball moves slightly slower (user rule: ×0.90). */
+    public static final double CARRIER_FACTOR = 0.90;
+    /** Sprint multiplier for ACTIVE chasers (loose-ball recovery). A chaser who
+     *  has committed to a loose ball runs at a real sprint (×1.30), matching
+     *  the celebration-sprint rule. Without it a §49.5 rolling ball (floor
+     *  MIN_ROLLING_SPEED 0.75 cells/tick) outruns a pace-14 chaser (0.53) and
+     *  every loose-ball chase times out at CHASE_MAX_TICKS — the match drowns
+     *  in 30-tick chase loops. ×1.30 lifts pace-14 to 0.68, which catches a
+     *  braking rolling ball within a few ticks. */
+    public static final double CHASE_SPRINT_MULTIPLIER = 1.30;
+    /** Lateral manoeuvre / collision-avoidance candidate step (small, for checks only). */
+    private static final double COLLISION_STEP = 0.15;
     private static final double MIN_PLAYER_DISTANCE = 0.35;
     private static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed reduction from fatigue
     private static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball when no tactical target
+
+    /**
+     * Pace-scaled player speed in cells/tick (§49): pace N → (N/20)*PLAYER_SPEED.
+     */
+    public static double playerSpeedFor(double pace) {
+        return (pace / 20.0) * PLAYER_SPEED;
+    }
 
     private final MatchState state;
     private final Map<Player, Position> chaseDetours = new HashMap<>();
@@ -102,16 +128,14 @@ public class MovementEngine {
                 target = p.getTarget();
             }
 
-            double moveSpeed = activeChase ? PLAYER_SPEED * 3 * fatigueSpeedMultiplier(p) : PLAYER_SPEED * fatigueSpeedMultiplier(p);
-            // Threat-overridden defenders get a speed boost so they can close the
-            // gap on the ball carrier. Without this, carrier and defender move at
-            // the same speed (0.25 cells/tick) and the gap never closes — the
-            // defender chases from behind forever. With 1.6x boost the defender
-            // gains ~0.15 cells/tick when the carrier runs directly away, closing
-            // a 1.0 cell gap in ~20 ticks (~10 seconds) — fast enough to reach
-            // duel range (0.15 cells) before the carrier can carry far.
-            if (p.isThreatOverrideActive() && !isCarrier) {
-                moveSpeed *= 1.6;
+            double moveSpeed = playerSpeedFor(state.getRoundPaceSkill(p))
+                    * fatigueSpeedMultiplier(p);
+            if (activeChase) {
+                moveSpeed *= CHASE_SPRINT_MULTIPLIER;
+            }
+            // Carrier with ball moves slightly slower (corePrinciples §49.1).
+            if (isCarrier) {
+                moveSpeed *= CARRIER_FACTOR;
             }
             // Carrier always uses the raw proposed position — collision avoidance
             // does NOT apply to the ball carrier. The carrier has ball priority;

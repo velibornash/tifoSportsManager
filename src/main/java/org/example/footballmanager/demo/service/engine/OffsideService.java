@@ -119,8 +119,8 @@ public class OffsideService {
 
         // Must be in the opponent half
         boolean inOpponentHalf = home
-                ? player.getPosition().getRow() >= 4
-                : player.getPosition().getRow() <= 4;
+                ? player.getPosition().getRow() >= 4.5
+                : player.getPosition().getRow() <= 4.5;
         if (!inOpponentHalf) return false;
 
         // FIFA Rule 11: offside if fewer than 2 opponents (incl. GK) goal-side
@@ -305,6 +305,14 @@ public class OffsideService {
         // cells of the offside line when the pass was played — VAR reviews and
         // CONFIRMS the goal stands.
         if ("ONSIDE_CHECK".equals(state.getPendingVARReviewType())) {
+            // Frequency gate: only ~30% of tight-onside goals trigger a VAR review
+            // (real football reviews every close offside, but the engine flags
+            // ONSIDE_CHECK too aggressively — narrow the band so we get ~1-2/match).
+            if (state.getRandom().nextDouble() > 0.30) {
+                state.setOffsideDeferred(false);
+                state.clearPendingVARReview();
+                return true; // goal stands without review
+            }
             state.setOffsideDeferred(false);
             varService.logVARReviewStarted(shootingTeam,
                     "ONSIDE — " + receiver.getLabel()
@@ -391,7 +399,7 @@ public class OffsideService {
         // ball. Only as a last resort (RESTART_WALK_MAX_TICKS timeout) is
         // teleport used.
         String attackingTeam = carrierTeam;
-        double ownGoalRow = "HOME".equals(attackingTeam) ? 7.0 : 1.0;
+        double ownGoalRow = "HOME".equals(attackingTeam) ? 1.0 : 8.0;
         double dir = Math.signum(ownGoalRow - offsidePos.getRow());
         if (Math.abs(dir) < 1e-6) dir = 1.0; // fallback if ball already at goal line
         for (Player p : state.getPlayers()) {
@@ -402,7 +410,7 @@ public class OffsideService {
             if (dist < MovementEngine.MIN_RESTART_DISTANCE) {
                 double push = MovementEngine.MIN_RESTART_DISTANCE - dist + 0.1;
                 double pushedRow = offsidePos.getRow() + push * dir;
-                pushedRow = SimUtils.clamp(pushedRow, 1.0, 7.0);
+                pushedRow = SimUtils.clamp(pushedRow, 0.0, 8.0);
                 p.setPosition(new Position(pushedRow, p.getPosition().getColumn()));
                 p.setTarget(null);
             }

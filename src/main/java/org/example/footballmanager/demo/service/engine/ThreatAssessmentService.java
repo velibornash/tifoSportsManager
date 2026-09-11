@@ -23,8 +23,8 @@ import java.util.List;
 public class ThreatAssessmentService {
 
     private static final double PRESSING_RANGE = 1.5;
-    private static final double DANGER_ZONE_ROW_HOME = 6.0; // close to away goal
-    private static final double DANGER_ZONE_ROW_AWAY = 2.0; // close to home goal
+    private static final double DANGER_ZONE_ROW_HOME = 2.0; // close to home goal (row 1.0)
+    private static final double DANGER_ZONE_ROW_AWAY = 6.0; // close to away goal (row 8.0)
     private static final double DEFENSIVE_SUPPORT_RANGE = 3.0;
 
     private final MatchState state;
@@ -108,9 +108,9 @@ public class ThreatAssessmentService {
 
         // Ball near our goal = high threat
         if ("HOME".equals(team)) {
-            return SimUtils.clamp((ballRow - 1.0) / 6.0, 0, 1);
+            return SimUtils.clamp((8.0 - ballRow) / 7.0, 0, 1);
         } else {
-            return SimUtils.clamp((7.0 - ballRow) / 6.0, 0, 1);
+            return SimUtils.clamp((ballRow - 1.0) / 7.0, 0, 1);
         }
     }
 
@@ -126,8 +126,8 @@ public class ThreatAssessmentService {
         for (Player p : state.getPlayers()) {
             if (!team.equals(p.getTeam())) {
                 boolean nearGoal = "HOME".equals(team)
-                        ? p.getPosition().getRow() >= DANGER_ZONE_ROW_HOME
-                        : p.getPosition().getRow() <= DANGER_ZONE_ROW_AWAY;
+                        ? p.getPosition().getRow() <= DANGER_ZONE_ROW_HOME
+                        : p.getPosition().getRow() >= DANGER_ZONE_ROW_AWAY;
                 if (nearGoal) dangerousOpponents++;
             }
         }
@@ -140,9 +140,9 @@ public class ThreatAssessmentService {
 
         double dangerScore;
         if ("HOME".equals(team)) {
-            dangerScore = SimUtils.clamp((ballPos.getRow() - 4.0) / 4.0, 0, 1);
+            dangerScore = SimUtils.clamp((4.5 - ballPos.getRow()) / 3.5, 0, 1);
         } else {
-            dangerScore = SimUtils.clamp((4.0 - ballPos.getRow()) / 4.0, 0, 1);
+            dangerScore = SimUtils.clamp((ballPos.getRow() - 4.5) / 3.5, 0, 1);
         }
         return dangerScore;
     }
@@ -159,8 +159,8 @@ public class ThreatAssessmentService {
         int attackers = 0;
         for (Player p : state.getPlayers()) {
             boolean inOurThird = "HOME".equals(team)
-                    ? p.getPosition().getRow() >= 5
-                    : p.getPosition().getRow() <= 3;
+                    ? p.getPosition().getRow() <= 3
+                    : p.getPosition().getRow() >= 6;
             if (inOurThird) {
                 if (team.equals(p.getTeam())) defenders++;
                 else attackers++;

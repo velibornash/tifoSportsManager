@@ -51,7 +51,7 @@ public class RestartManager {
      * Execute the kickoff ceremony: select kicker, place at center, signal
      * kickoff-action-pending to the decision engine.
      *
-     * The kicker MUST be placed at exactly (4, 3.5) because
+     * The kicker MUST be placed at exactly (4.5, 4.0) because
      * PlaymakingDecisionEngine.buildContext() detects kickoff by
      * position equality — this is a fragile contract with the decision engine.
      */
@@ -75,7 +75,7 @@ public class RestartManager {
                         .orElse(teamPlayers.get(0)));
 
         // Place the ball AND the kicker exactly at the center spot.
-        Position centerSpot = new Position(4, 3.5);
+        Position centerSpot = new Position(4.5, 4.0);
         kicker.setPosition(centerSpot);
         state.getBall().setPosition(centerSpot);
         state.getBall().setTarget(null);
@@ -94,14 +94,21 @@ public class RestartManager {
         //   - Offside check is skipped for the kickoff pass
         state.setKickoffActionPending(true);
 
+        // Reset the goal source for the new possession (clears any CROSS/CENTER
+        // tag left over from a previous attack sequence that didn't score).
+        state.resetGoalSource();
+        state.clearLastSetPieceType();
+        state.setAerialTargetId(null);
+        state.setActionCountAtAerial(0);
+
         // Increment the round counter so that the round-based kickoff fallback
         // in buildContext() also works (matches swingUIDemo: incrementRound at L122).
         state.incrementRound();
 
         state.setPhase(MatchPhase.OPEN_PLAY);
-        state.setStatus("KICK OFF: " + kicker.getLabel() + " at center (4, 3.5)");
+        state.setStatus("KICK OFF: " + kicker.getLabel() + " at center (4.5, 4.0)");
         logger.logRestart(state, "KICK OFF by " + kicker.getLabel()
-                + " (" + kickoffTeam + ") at center (4, 3.5)", "KICKOFF");
+                + " (" + kickoffTeam + ") at center (4.5, 4.0)", "KICKOFF");
     }
 
     /**
@@ -124,7 +131,7 @@ public class RestartManager {
                         .findFirst()
                         .orElse(teamPlayers.get(0)));
 
-        Position centerSpot = new Position(4, 3.5);
+        Position centerSpot = new Position(4.5, 4.0);
         kicker.setPosition(centerSpot);
         state.getBall().setPosition(centerSpot);
         state.getBall().setTarget(null);
@@ -138,9 +145,9 @@ public class RestartManager {
         state.setKickoffActionPending(true);
         state.incrementRound();
         state.setPhase(MatchPhase.OPEN_PLAY);
-        state.setStatus("KICK OFF: " + kicker.getLabel() + " at center (4, 3.5)");
+        state.setStatus("KICK OFF: " + kicker.getLabel() + " at center (4.5, 4.0)");
         logger.logRestart(state, "KICK OFF by " + kicker.getLabel()
-                + " (" + kickoffTeam + ") at center (4, 3.5)", "KICKOFF");
+                + " (" + kickoffTeam + ") at center (4.5, 4.0)", "KICKOFF");
     }
 
     /**
@@ -204,6 +211,9 @@ public class RestartManager {
         switch (restart) {
             case CORNER -> {
                 stats.onCorner(defendingTeam);
+                // Tag this set piece so any goal from the resulting shot is
+                // categorised as a "goal from corner" in MatchStatsCollector.
+                state.setLastSetPieceType(FootballRulesService.RestartType.CORNER);
                 boolean rightCorner = ballPos.getColumn() >= 3.5;
                 boolean homeEnd = ballPos.getRow() > 7;
                 // Corner flag at EXACT intersection of goal line and touchline.
@@ -236,8 +246,8 @@ public class RestartManager {
             case THROW_IN -> {
                 stats.onThrowIn(defendingTeam);
                 // Throw-in spot: row where ball crossed, ON the touchline.
-                double row = SimUtils.clamp(ballPos.getRow(), 1, 7);
-                double col = ballPos.getColumn() < 1 ? 1.0 : 6.0;
+                double row = SimUtils.clamp(ballPos.getRow(), 0, 8);
+                double col = ballPos.getColumn() < 1 ? 1.0 : 7.0;
                 restartSpot = new Position(row, col);
                 restartKind = "THROW_IN";
                 break;

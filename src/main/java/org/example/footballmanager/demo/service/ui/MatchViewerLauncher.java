@@ -101,12 +101,21 @@ public class MatchViewerLauncher {
             }
 
             String ct = "text/plain";
+            String lower = path.toLowerCase();
             if (path.endsWith(".html")) ct = "text/html";
             else if (path.endsWith(".css")) ct = "text/css";
             else if (path.endsWith(".js")) ct = "application/javascript";
             else if (path.endsWith(".json")) ct = "application/json";
+            else if (lower.endsWith(".glb")) ct = "model/gltf-binary";
+            else if (path.endsWith(".png")) ct = "image/png";
+            else if (path.endsWith(".svg")) ct = "image/svg+xml";
 
-            send(exchange, 200, ct, Files.readString(file.toPath()));
+            byte[] bytes = Files.readAllBytes(file.toPath());
+            exchange.getResponseHeaders().set("Content-Type", ct);
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
         });
 
         server.setExecutor(Executors.newFixedThreadPool(4));

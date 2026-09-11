@@ -31,6 +31,20 @@ public class MatchStatsCollector {
     private int deflectionsHome = 0, deflectionsAway = 0;
     private int clearancesHome = 0, clearancesAway = 0;
 
+    // Goal source tracking (for "goals from open play vs set piece" stats)
+    private int goalsFromOpenPlayHome = 0, goalsFromOpenPlayAway = 0;
+    private int goalsFromCrossHome = 0, goalsFromCrossAway = 0;
+    private int goalsFromCenterHome = 0, goalsFromCenterAway = 0;
+    private int goalsFromCornerHome = 0, goalsFromCornerAway = 0;
+    private int goalsFromFreeKickHome = 0, goalsFromFreeKickAway = 0;
+    private int goalsFromPenaltyHome = 0, goalsFromPenaltyAway = 0;
+    private int goalsFromThruHome = 0, goalsFromThruAway = 0;
+
+    // Penalty specific tracking
+    private int penaltiesScoredHome = 0, penaltiesScoredAway = 0;
+    private int penaltiesMissedHome = 0, penaltiesMissedAway = 0;
+    private int penaltiesSavedHome = 0, penaltiesSavedAway = 0;
+
     public MatchStatsCollector(String homeTeam, String awayTeam) {
         teamStats.put("HOME", new TeamStatsAccumulator(homeTeam));
         teamStats.put("AWAY", new TeamStatsAccumulator(awayTeam));
@@ -90,6 +104,14 @@ public class MatchStatsCollector {
     public void onGoal(String team, String scorerId, String scorerName,
                         String assistantId, String assistantName,
                         int minute, int homeScore, int awayScore) {
+        onGoal(team, scorerId, scorerName, assistantId, assistantName,
+                minute, homeScore, awayScore, GoalSource.OPEN_PLAY);
+    }
+
+    /** Record a goal with a source (set piece vs open play, penalty, etc.). */
+    public void onGoal(String team, String scorerId, String scorerName,
+                        String assistantId, String assistantName,
+                        int minute, int homeScore, int awayScore, GoalSource source) {
         teamStats.get(team).goals++;
 
         PlayerStatsAccumulator scorer = playerStats.get(scorerId);
@@ -100,9 +122,23 @@ public class MatchStatsCollector {
             if (assist != null) assist.assists++;
         }
 
+        // Track goal source per team
+        boolean isHome = "HOME".equals(team);
+        if (source == null) source = GoalSource.OPEN_PLAY;
+        switch (source) {
+            case OPEN_PLAY -> { if (isHome) goalsFromOpenPlayHome++; else goalsFromOpenPlayAway++; }
+            case CROSS -> { if (isHome) goalsFromCrossHome++; else goalsFromCrossAway++; }
+            case CENTER -> { if (isHome) goalsFromCenterHome++; else goalsFromCenterAway++; }
+            case CORNER -> { if (isHome) goalsFromCornerHome++; else goalsFromCornerAway++; }
+            case FREE_KICK -> { if (isHome) goalsFromFreeKickHome++; else goalsFromFreeKickAway++; }
+            case PENALTY -> { if (isHome) goalsFromPenaltyHome++; else goalsFromPenaltyAway++; }
+            case THRU_BALL -> { if (isHome) goalsFromThruHome++; else goalsFromThruAway++; }
+        }
+
         goals.add(new GoalDetail(minute, scorerId, scorerName, team,
                 assistantId, assistantName, homeScore, awayScore,
-                scorerName + " scores for " + team + " (" + homeScore + "-" + awayScore + ")"));
+                scorerName + " scores for " + team + " (" + homeScore + "-" + awayScore + ")",
+                source));
 
         lastPasserId = null;
         lastPasserTeam = null;
@@ -266,7 +302,7 @@ public class MatchStatsCollector {
     /** Build final team stats. */
     public TeamMatchStats buildTeamStats(String team, int totalTicks, int matchMinutes) {
         TeamStatsAccumulator ts = teamStats.get(team);
-        if (ts == null) return new TeamMatchStats(team, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        if (ts == null) return new TeamMatchStats(team, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         boolean isHome = ts == teamStats.get("HOME");
 
         double possession = 0;
@@ -289,7 +325,13 @@ public class MatchStatsCollector {
                 isHome ? savesHome : savesAway,
                 isHome ? blocksHome : blocksAway,
                 isHome ? deflectionsHome : deflectionsAway,
-                isHome ? clearancesHome : clearancesAway
+                isHome ? clearancesHome : clearancesAway,
+                isHome ? goalsFromOpenPlayHome : goalsFromOpenPlayAway,
+                isHome ? goalsFromCrossHome : goalsFromCrossAway,
+                isHome ? goalsFromCenterHome : goalsFromCenterAway,
+                isHome ? goalsFromCornerHome : goalsFromCornerAway,
+                isHome ? goalsFromFreeKickHome : goalsFromFreeKickAway,
+                isHome ? goalsFromPenaltyHome : goalsFromPenaltyAway
         );
     }
 

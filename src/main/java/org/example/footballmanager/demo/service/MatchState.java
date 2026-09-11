@@ -87,10 +87,44 @@ public class MatchState {
     private boolean kickoffPending = true;
     private boolean kickoffActionPending = false;
     private int cornerHoldTicks;
+
+    // ── Goal source tracking ──
+    // Set by the engine when a goal-scoring shot is taken. Read by the
+    // MatchStatsCollector.onGoal(...) overload to categorise goals as
+    // open-play vs set-piece. OPEN_PLAY is the default; CROSS/CENTER are
+    // set by the action executor when a CROSS/CENTER action produces a
+    // shot; CORNER/FREE_KICK/PENALTY are inferred from the most recent
+    // pending restart type (set just before the shot).
+    private org.example.footballmanager.demo.service.result.GoalSource goalSource =
+            org.example.footballmanager.demo.service.result.GoalSource.OPEN_PLAY;
+    // Tracks the ID of the previous carrier (the one who completed a cross/center
+    // and whose team-mate is now shooting). If the current scorer is the
+    // same player as the previous carrier, the chain is unbroken (e.g. 1v1 finish
+    // after a center). If a different player on the same team receives the
+    // delivery and shoots, that counts as a CROSS/CENTER goal. If a 3rd player
+    // (different from both) eventually shoots, the chain has been broken by
+    // additional passes and the goal defaults to OPEN_PLAY.
+    private String previousCarrierId = null;
+    // Tracks the aerial target (receiver of a cross/center) so we know whether
+    // the scorer of a goal is the immediate target vs a recycled attacker.
+    // If the scorer != aerialTarget, the chain has been broken → OPEN_PLAY.
+    // Additionally, the actionCountAtAerial tracks when the aerial was taken;
+    // if the goal comes more than 1-2 actions later, the chain is broken.
+    private String aerialTargetId = null;
+    private int actionCountAtAerial = 0;
+    // The set piece context that preceded the most recent possession.
+    // Set by MatchSimulator / RestartManager when a corner / free kick / penalty
+    // is awarded. Read by handleShotArrival to mark the resulting goal
+    // (if any) as the appropriate GoalSource. Cleared once consumed.
+    private FootballRulesService.RestartType lastSetPieceType;
     private boolean cornerActive;          // corner set-piece arrangement active
     private long cornerShuffleTick = -1;    // tick basis for the real-corner jostle
     private long thruBallArrivalTick = -1;  // tick when THRU ball arrived; -1 = not waiting
-    private final Set<Player> activeChasers = new HashSet<>();
+    // LinkedHashSet: keep deterministic INSERTION order. A plain HashSet<Player>
+    // iterates in identity-hash order, which varies run-to-run (object addresses)
+    // and made even seeded batches non-reproducible (getActiveChasers() iterates
+    // it in 4 places). Insertion order is fully driven by the seeded sim.
+    private final Set<Player> activeChasers = new LinkedHashSet<>();
 
     // Pending VAR review (offside/onside check that reviews after next action)
     private String pendingVARReviewType;    // "OFFSIDE", "ONSIDE_CHECK", or null
@@ -303,7 +337,7 @@ public class MatchState {
         }
     }
     public boolean isActiveChaser(Player player) { return activeChasers.contains(player); }
-    public Set<Player> getActiveChasers() { return Set.copyOf(activeChasers); }
+    public Set<Player> getActiveChasers() { return new LinkedHashSet<>(activeChasers); }
 
     /** Add a single player as an active chaser without clearing existing chasers. */
     public void addActiveChaser(Player player) {
@@ -363,6 +397,25 @@ public class MatchState {
     public long getThruBallArrivalTick() { return thruBallArrivalTick; }
     public void setThruBallArrivalTick(long tick) { thruBallArrivalTick = tick; }
     public void consumeCornerHoldTick() { if (cornerHoldTicks > 0) cornerHoldTicks--; }
+
+    // ── Goal source accessors ──
+    public org.example.footballmanager.demo.service.result.GoalSource getGoalSource() { return goalSource; }
+    public void setGoalSource(org.example.footballmanager.demo.service.result.GoalSource source) {
+        this.goalSource = source == null
+                ? org.example.footballmanager.demo.service.result.GoalSource.OPEN_PLAY
+                : source;
+    }
+    public void resetGoalSource() { this.goalSource = org.example.footballmanager.demo.service.result.GoalSource.OPEN_PLAY; }
+
+    public String getAerialTargetId() { return aerialTargetId; }
+    public void setAerialTargetId(String id) { this.aerialTargetId = id; }
+
+    public int getActionCountAtAerial() { return actionCountAtAerial; }
+    public void setActionCountAtAerial(int count) { this.actionCountAtAerial = count; }
+
+    public FootballRulesService.RestartType getLastSetPieceType() { return lastSetPieceType; }
+    public void setLastSetPieceType(FootballRulesService.RestartType t) { this.lastSetPieceType = t; }
+    public void clearLastSetPieceType() { this.lastSetPieceType = null; }
 
     public boolean isCornerActive() { return cornerActive; }
     public void setCornerActive(boolean value) { cornerActive = value; }
@@ -579,7 +632,18 @@ public class MatchState {
     public void resetPositionsForKickoff() {
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
-            p.setPosition(initialPositions.get(i));
+            Position init = initialPositions.get(i);
+            // At kickoff, ALL players must be on their OWN half.
+            // HOME own half: rows 1.0–4.5 (center at 4.5).
+            // AWAY own half: rows 4.5–8.0.
+            // Clamp attackers / midfielders who were initialised on the
+            // opponent's half back to their own side.
+            double row = init.getRow();
+            double col = init.getColumn();
+            boolean home = "HOME".equals(p.getTeam());
+            if (home && row >= 4.5) row = 4.0;
+            if (!home && row <= 4.5) row = 5.0;
+            p.setPosition(new Position(row, col));
             p.setTarget(null);
             if (!p.isSentOff() && !p.isInjured()) {
                 p.setLocked(false);
@@ -587,16 +651,16 @@ public class MatchState {
             p.setVelX(0);
             p.setVelY(0);
         }
-        ball.setPosition(new Position(4, 3.5));
+        ball.setPosition(new Position(4.5, 4.0));
         ball.setTarget(null);
         ball.setCarrier(null);
         carrier = null;
         action = null;
         roundComplete = true;
-        roundStartBallPosition = new Position(4, 3.5);
-        roundEndBallPosition = new Position(4, 3.5);
-        tacticalBallPosition = new Position(4, 3.5);
-        lastTacticalBallStateKey = TacticsRules.ballStateKey(new Position(4, 3.5));
+        roundStartBallPosition = new Position(4.5, 4.0);
+        roundEndBallPosition = new Position(4.5, 4.0);
+        tacticalBallPosition = new Position(4.5, 4.0);
+        lastTacticalBallStateKey = TacticsRules.ballStateKey(new Position(4.5, 4.0));
         for (int i = 0; i < players.size(); i++) {
             Player p = players.get(i);
             Position pos = p.getPosition();

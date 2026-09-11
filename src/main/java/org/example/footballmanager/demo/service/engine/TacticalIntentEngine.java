@@ -1,6 +1,7 @@
 package org.example.footballmanager.demo.service.engine;
 
 import org.example.footballmanager.demo.service.MatchState;
+import org.example.footballmanager.demo.service.model.Action;
 import org.example.footballmanager.demo.service.model.Player;
 import org.example.footballmanager.demo.service.model.Position;
 import org.example.footballmanager.demo.service.result.ActionLogService;
@@ -95,6 +96,18 @@ public class TacticalIntentEngine {
      * runs at the start of a decision cycle).
      */
     private Position applyOutfieldTargeting(Player p) {
+        // PASS-FLIGHT GUARD (user rule: receiver runs onto the pass): while a
+        // pass is in flight the intended receiver keeps the opening target set
+        // at pass-execution (ActionEngine.openingTarget — the space away from
+        // their nearest opponent). The every-tick tactical refresh must NOT
+        // overwrite it with a shape target, or the receiver stays planted and
+        // the aimed-into-space ball becomes a free ball. Any other context
+        // (no pass, already resolved) uses the normal tactical targeting below.
+        Action action = state.getAction();
+        if (action != null && action.isPassInFlight() && action.getTargetPlayer() == p) {
+            Position keep = p.getTarget();
+            return keep != null ? keep : p.getPosition();
+        }
         Position desired = state.getTacticsRules().desiredCell(
                 p.getRole(), state.getBall().getPosition(), p.getTeam());
         desired = applyDefensivePositionConstraint(p, desired);
@@ -105,7 +118,7 @@ public class TacticalIntentEngine {
                 || desired.getColumn() != beforeThreat.getColumn()) {
             p.setThreatOverrideActive(true);
         }
-        return desired;
+        return applyWideAnchorConstraint(p, desired);
     }
 
     /**
@@ -138,7 +151,7 @@ public class TacticalIntentEngine {
 
         double ballRow = state.getBall().getPosition().getRow();
         double ballCol = state.getBall().getPosition().getColumn();
-        boolean ballInOwnHalf = home ? ballRow <= 4.0 : ballRow >= 4.0;
+        boolean ballInOwnHalf = home ? ballRow <= 4.5 : ballRow >= 4.5;
         double desiredRow = desired.getRow();
         double desiredCol = desired.getColumn();
         // Center backs: DEF/CB/DCL/DCR. Fullbacks: LB/RB/DL/DR. DM is its own class.
@@ -196,11 +209,11 @@ public class TacticalIntentEngine {
             // CB/DM hold very deep.
             double maxForward;
             if (isCenterBack) {
-                maxForward = home ? 2.8 : 5.2;
+                maxForward = home ? 2.8 : 6.2;
             } else if (isDM) {
-                maxForward = home ? 3.3 : 4.7;
+                maxForward = home ? 3.3 : 5.7;
             } else { // LB/RB
-                maxForward = home ? 3.5 : 4.5;
+                maxForward = home ? 3.5 : 5.5;
             }
 
             double clampedRow;
@@ -209,21 +222,21 @@ public class TacticalIntentEngine {
                 clampedRow = Math.max(1.5, clampedRow); // Keep clear of GK
             } else {
                 clampedRow = Math.max(desiredRow, maxForward);
-                clampedRow = Math.min(6.5, clampedRow); // Keep clear of GK
+                clampedRow = Math.min(7.5, clampedRow); // Keep clear of GK
             }
             return new Position(clampedRow, desired.getColumn());
         } else {
             // Ball in opponent's half: support but do NOT push too high.
             double maxForward;
             if (isCenterBack) {
-                // CBs never go beyond halfway line + 0.3 cells (row 4.3 for HOME / 3.7 for AWAY)
-                maxForward = home ? 4.3 : 3.7;
+                // CBs never go beyond halfway line + 0.3 cells (row 4.3 for HOME / 4.7 for AWAY)
+                maxForward = home ? 4.3 : 4.7;
             } else if (isDM) {
-                // DM never goes beyond halfway line + 0.6 cells (row 4.6 for HOME / 3.4 for AWAY)
-                maxForward = home ? 4.6 : 3.4;
+                // DM never goes beyond halfway line + 0.6 cells (row 4.6 for HOME / 4.4 for AWAY)
+                maxForward = home ? 4.6 : 4.4;
             } else { // LB/RB fullbacks
-                // LB/RB can overlap, but cap them at row 5.2 (HOME) / 2.8 (AWAY)
-                maxForward = home ? 5.2 : 2.8;
+                // LB/RB can overlap, but cap them at row 5.2 (HOME) / 3.8 (AWAY)
+                maxForward = home ? 5.2 : 3.8;
             }
 
             // Also, defenders should always stay behind the ball!
@@ -242,15 +255,44 @@ public class TacticalIntentEngine {
                 // Must be <= maxForward AND <= ballBehindLimit
                 double limit = Math.min(maxForward, ballBehindLimit);
                 clampedRow = Math.min(desiredRow, limit);
-                clampedRow = Math.max(4.0, clampedRow); // At least up to halfway line
+                clampedRow = Math.max(4.5, clampedRow); // At least up to halfway line
             } else {
                 // Must be >= maxForward AND >= ballBehindLimit
                 double limit = Math.max(maxForward, ballBehindLimit);
                 clampedRow = Math.max(desiredRow, limit);
-                clampedRow = Math.min(4.0, clampedRow); // At least up to halfway line
+                clampedRow = Math.min(4.5, clampedRow); // At least up to halfway line
             }
             return new Position(clampedRow, desired.getColumn());
         }
+    }
+
+    /**
+     * WIDE-ANCHOR constraint (user rule): wide players (ML/MR/DL/DR and the
+     * DDL/DDR/AML/AMR variants) hold their OWN flank cell. They may only drift
+     * MILDLY toward the ball WITHIN that cell (±0.35 cells, self-limiting) —
+     * they never leave their lane. This keeps team width: a ball in the central
+     * columns must NOT drag the whole line into the centre (that collapses the
+     * shape into a ruck around the carrier and kills the out-ball). Runs LAST
+     * in applyOutfieldTargeting so neither the tactical rules nor the threat
+     * override can pull a wide player out of their cell.
+     */
+    private Position applyWideAnchorConstraint(Player p, Position desired) {
+        String role = p.getRole();
+        boolean left = role.equals("ML") || role.equals("DL") || role.equals("DDL")
+                || role.equals("WBL") || role.equals("AML");
+        boolean right = role.equals("MR") || role.equals("DR") || role.equals("DDR")
+                || role.equals("WBR") || role.equals("AMR");
+        if (!left && !right) return desired;
+        double anchorCol = left ? 1.5 : 5.5;
+        double bandMin = anchorCol - 0.5;
+        double bandMax = anchorCol + 0.5;
+        double ballCol = state.getBall().getPosition().getColumn();
+        // Gentle ball-follow bias inside the cell: max ±0.35 cells at full
+        // flank-to-centre offset (ball at col 3.5 → drift 0.35, band-clamped).
+        double drift = SimUtils.clamp((ballCol - anchorCol) * 0.25, -0.35, 0.35);
+        double desiredCol = SimUtils.clamp(desired.getColumn(), bandMin, bandMax);
+        desiredCol = SimUtils.clamp(desiredCol + drift, bandMin, bandMax);
+        return new Position(desired.getRow(), desiredCol);
     }
 
     public void refreshTargetsIfBallStateChanged() {
@@ -321,9 +363,12 @@ public class TacticalIntentEngine {
         if ("GK".equals(player.getRole())) return desired;
         if (player.isSentOff() || player.isInjured() || player.isLocked()) return desired;
 
-        // If our team has possession, this player is not a defender for this layer.
+        // Only defenders contest threats from the OPPOSING team.
+        // If the carrier is on our own team, there is no external threat to mark.
         if (state.getCarrier() != null
-                && player.getTeam().equals(state.getCarrier().getTeam())) {
+                && !player.getTeam().equals(state.getCarrier().getTeam())) {
+            // carrier is opponent — threat override applies (defender closes gap)
+        } else {
             return desired;
         }
 
@@ -344,12 +389,26 @@ public class TacticalIntentEngine {
 
             double distance = SimUtils.distance(player.getPosition(), opponent.getPosition());
 
-            // TYPE A: ball carrier anywhere on the pitch — press them
-            // whenever they are within 1.0 cell (~14 m). The defender moves
-            // toward the carrier so a DRIBBLE duel can fire as soon as the
-            // gap closes below DRIBBLE_DUEL_RADIUS (0.15 cells).
-            boolean typeA = state.getBall().getCarrier() == opponent
-                    && distance <= 1.0;
+            // TYPE A: ball carrier anywhere on the pitch — press them.
+            // Nearest eligible defender presses from up to 5.0 cells away (~70 m).
+            // In the final 2 rows (attacking third), defenders press from up to
+            // 2.0 cells. This ensures the nearest defender always closes the gap
+            // on the carrier instead of letting them dribble unchallenged.
+            boolean typeA = state.getBall().getCarrier() == opponent;
+            double typeARadius = 5.0; // base press radius for nearest defender
+            if (isDefender(player.getRole())) {
+                double carrierRow = opponent.getPosition().getRow();
+                boolean carrierInFinalThird = ("HOME".equals(player.getTeam())
+                        ? carrierRow >= 6.0 : carrierRow <= 3.0);
+                if (carrierInFinalThird) {
+                    typeARadius = 2.0; // tighter in final third
+                }
+            }
+            if (typeA && distance <= typeARadius) {
+                typeA = true;
+            } else {
+                typeA = false;
+            }
 
             // TYPE B: opponent isolated in our FINAL 2.5 ROWS (the dangerous attacking
         // third closest to our goal). User rule: when an attacker has broken
@@ -409,11 +468,11 @@ public class TacticalIntentEngine {
     /** Check if opponent is in our defensive third. */
     private boolean isDefensiveThird(double row, boolean homeAttacking) {
         if (homeAttacking) {
-            // HOME attacks row 7, defensive third = rows 1-3
+            // HOME defends goal at row 1, defensive third = rows 1-3
             return row <= 3.0;
         } else {
-            // AWAY attacks row 1, defensive third = rows 5-7
-            return row >= 5.0;
+            // AWAY defends goal at row 8, defensive third = rows 6-8
+            return row >= 6.0;
         }
     }
 
@@ -421,7 +480,7 @@ public class TacticalIntentEngine {
      * Check if opponent is in the final 2.5 rows of our goal (the dangerous
      * attacking third closest to our goal mouth). For HOME defending this is
      * rows 1-2.5 (where AWAY's final attacking third lives); for AWAY defending
-     * this is rows 5.5-7 (where HOME's final attacking third lives). Used by
+     * this is rows 6.5-8 (where HOME's final attacking third lives). Used by
      * the threat override TYPE B to make defenders press isolated attackers
      * who have broken into the danger zone.
      */
@@ -430,8 +489,8 @@ public class TacticalIntentEngine {
             // HOME defends rows 1-2.5 — AWAY attacker is in the final 2.5 rows
             return row <= 2.5;
         } else {
-            // AWAY defends rows 5.5-7 — HOME attacker is in the final 2.5 rows
-            return row >= 5.5;
+            // AWAY defends rows 6.5-8 — HOME attacker is in the final 2.5 rows
+            return row >= 6.5;
         }
     }
 

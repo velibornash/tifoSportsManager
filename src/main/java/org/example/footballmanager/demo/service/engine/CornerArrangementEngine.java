@@ -30,7 +30,7 @@ public class CornerArrangementEngine {
             {6.2, 4.6}, {6.2, 2.4}, {6.7, 3.5}, {5.6, 5.2}, {5.6, 1.8}
     };
     private static final double[][] AWAY_BOX = {
-            {1.8, 4.6}, {1.8, 2.4}, {1.3, 3.5}, {2.4, 5.2}, {2.4, 1.8}
+            {2.8, 4.6}, {2.8, 2.4}, {2.3, 3.5}, {3.4, 5.2}, {3.4, 1.8}
     };
 
     // Random jostle 2–4 m around the assigned spot while the corner is walked.
@@ -101,7 +101,7 @@ public class CornerArrangementEngine {
                 // the marker sits further toward row 8; for AWAY toward row 1.
                 double markerRow = homeAttacking ? at.getRow() + 0.45 : at.getRow() - 0.45;
                 double mMin = homeAttacking ? 2.5 : 1.1;
-                double mMax = homeAttacking ? 7.9 : 5.5;
+                double mMax = homeAttacking ? 7.9 : 6.5;
                 d.setTarget(new Position(clampRow(markerRow, mMin, mMax),
                         clampCol(at.getColumn())));
             } else {
@@ -110,7 +110,7 @@ public class CornerArrangementEngine {
         }
         // Remaining defenders hold a defensive line in front of goal.
         for (Player d : unmarked) {
-            double row = homeAttacking ? 7.6 : 0.4;
+            double row = homeAttacking ? 7.6 : 1.4;
             d.setTarget(new Position(clampRow(row, 1.1, 7.9),
                     clampCol(d.getPosition().getColumn())));
         }

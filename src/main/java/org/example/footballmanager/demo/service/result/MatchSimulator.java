@@ -28,16 +28,6 @@ public class MatchSimulator {
     // the taker is STILL genuinely collision-blocked at the spot, teleport him onto
     // the ball as an absolute deadlock safeguard — set pieces must never freeze.
     private static final int RESTART_WALK_MAX_TICKS = 15;
-    // Walk speed raised 0.4 → 0.7 so a taker who is 4–5 cells from the ball
-    // reaches it in 6–8 ticks instead of 10–12 — visible "taker not arriving"
-    // freeze on the viewer. Combined with RESTART_TELEPORT_DISTANCE below, any
-    // taker > 4 cells away is teleported directly so the walk never looks stuck.
-    private static final double RESTART_WALK_SPEED = 0.7;
-    // Distance beyond which the taker is teleported directly to the ball instead
-    // of walked. Prevents the visible "taker not arriving" freeze when the
-    // nearest non-GK is far from the restart spot (e.g., a goal kick where the
-    // nearest defender started 8 cells upfield because of an opponent counter).
-    private static final double RESTART_TELEPORT_DISTANCE = 4.0;
     // No-progress guard: if the taker has moved less than this many cells over
     // NO_PROGRESS_WINDOW_TICKS, the taker is teleported — the walk is stuck.
     private static final double RESTART_NO_PROGRESS_MIN_MOVE = 0.25;
@@ -53,7 +43,7 @@ public class MatchSimulator {
     // Lane radius: how far the defender's body may be off the ball→goal line
         // and still "be on the line" attempting a block (~6 m — a committed body
         // across the line). 1 cell = 14 m.
-private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
+    private static final double SHOT_BLOCK_LANE_RADIUS = 0.15; // ~2.1m — tight, realistic
     // Contact radius: the ball must physically reach the defender's body on
     // its trajectory this tick (continuous segment check against prev→cur).
     private static final double SHOT_BLOCK_CONTACT_RADIUS = 0.35;
@@ -124,7 +114,7 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         allPlayers.addAll(homePlayers);
         allPlayers.addAll(awayPlayers);
 
-        Position kickoffPos = new Position(4, 3.5);
+        Position kickoffPos = new Position(4.5, 4.0);
         Ball ball = new Ball(kickoffPos, kickoffPos);
         TacticsRules tactics = new TacticsRules();
         System.out.println("TACTICS_SOURCE: " + tactics.getSource() + " | ruleCount=" + tactics.getRuleCount());
@@ -271,13 +261,13 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 }
 
                 // CELEBRATION MOVEMENT: scoring-team outfield players advance
-                // goalward at a walking pace. HOME attacks toward row 7, AWAY
-                // toward row 1. The ball sits at the goal-exit position (row 8/0,
-                // behind the line) — players do NOT need to reach it.
+                // goalward at a sprint — celebrations are NOT play, so full
+                // (even boosted) pace is allowed (corePrinciples §19). The ball
+                // sits at the goal-exit position (row 8/0, behind the line) —
+                // players do NOT need to reach it.
                 String celebratingTeam = state.getCelebratingTeam();
                 boolean homeScoring = "HOME".equals(celebratingTeam);
                 double direction = homeScoring ? 1.0 : -1.0;
-                double celebrateSpeed = MovementEngine.PLAYER_SPEED * 0.6; // half-pace walk
                 for (Player cp : state.getPlayers()) {
                     if (!celebratingTeam.equals(cp.getTeam()) || "GK".equals(cp.getRole())
                             || cp.isLocked() || cp.isSentOff() || cp.isInjured()) continue;
@@ -285,6 +275,7 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     // mouth is at row 7 for HOME, row 1 for AWAY).
                     if (homeScoring && cp.getPosition().getRow() >= 6.8) continue;
                     if (!homeScoring && cp.getPosition().getRow() <= 1.2) continue;
+                    double celebrateSpeed = MovementEngine.playerSpeedFor(cp.getSkills().pace()) * 1.25;
                     double newRow = SimUtils.clamp(cp.getPosition().getRow()
                             + direction * celebrateSpeed, 0.5, 7.5);
                     cp.setPosition(new Position(newRow, cp.getPosition().getColumn()));
@@ -518,20 +509,10 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     taker.setTarget(ballPos);
                     state.beginRound();
 
-                    // FAST-PATH: if the taker is far from the ball (> 4 cells), the
-                    // nearest non-GK happens to be a long way off (e.g. goal kick
-                    // after a 60-yard opposition move). Walking 4+ cells at
-                    // RESTART_WALK_SPEED (0.7) takes 6+ ticks and reads on the
-                    // viewer as "taker not arriving". Teleport the taker directly
-                    // to a legal spot 1 cell from the ball so the walk is short
-                    // and visually obvious. This is the ONLY teleport in the walk
-                    // flow — once within 4 cells we walk normally.
-                    double initialDist = SimUtils.distance(taker.getPosition(), ballPos);
-                    // Taker WALKS from their current position to the ball — no teleport,
-                    // no "behind the ball" placement. The nearest non-GK from the
-                    // defending team walks from wherever they are to the ball.
-                    // Note: no row clamp here so the taker can reach the ball even if
-                    // it's near a goal line. Column clamping retained for field bounds.
+                    // Taker WALKS to the ball at their own pace-scaled speed
+                    // (no teleport, no "behind the ball" placement). The nearest
+                    // non-GK from the restarting team walks from wherever they
+                    // are to the ball.
 
                     // Push opponents back from the ball, move all other players toward
                     // their tactical targets, and walk the taker to the ball with the
@@ -547,7 +528,12 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     double ty = ballPos.getColumn() - takerPos.getColumn();
                     double tdist = Math.hypot(tx, ty);
                     if (tdist > 1e-6) {
-                        double step = Math.min(RESTART_WALK_SPEED, tdist);
+                        // The taker walks to the ball at THEIR OWN pace-scaled
+                        // speed (§49.1) — a quick fullback reaches the spot sooner
+                        // than a slow centre-forward. The RESTART_WALK_MAX_TICKS
+                        // guard remains as the deadlock backstop.
+                        double step = Math.min(
+                                MovementEngine.playerSpeedFor(taker.getSkills().pace()), tdist);
                         Position moved = new Position(takerPos.getRow() + tx / tdist * step,
                                 takerPos.getColumn() + ty / tdist * step);
                         // Only opponents (already pushbacked) present any obstacle; the
@@ -755,6 +741,11 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     if (state.isSetPiecePending() && state.getFreeKickTaker() != null) {
                         // Skip loose-ball handling; the taker block above will claim it
                     } else {
+                    // Loose-ball rolling (§49.5): a deflection/save rebound ball
+                    // keeps travelling in its last direction, braking ×0.8/tick
+                    // until it stops. Chasers refresh their targets toward the
+                    // rolling ball below.
+                    ballMovementEngine.moveLooseBall();
                     // Loose ball — check OOB first (deflected/missed balls can go past end lines)
                     // For loose balls, derive lastTouchTeam from which team was attacking:
                     // the ball went OOB, so determine restart based on ball position relative to goals
@@ -851,9 +842,18 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 }
             }
 
-            // Possession tracking — tick for current carrier's team
+            // Possession tracking — Opta-style: attribute a tick to the team in
+            // control. The carrier wins the tick when someone holds the ball;
+            // when the ball is IN TRANSIT (target set, carrier null) the last
+            // touching team is still in control. Loose-ball ticks (no carrier,
+            // no target) are contested and credited to NOBODY — a carrier-only
+            // metric used to drop ~50% of the match and give AWAY a false
+            // ~93% share because HOME plays dribble-hold while AWAY plays
+            // transition/clearance (true touch share is ~50/50).
             if (state.getCarrier() != null) {
                 stats.addPossessionTick(state.getCarrier().getTeam());
+            } else if (state.getBall().getTarget() != null && state.getLastTouchTeam() != null) {
+                stats.addPossessionTick(state.getLastTouchTeam());
             }
 
             // Check action completion (CHASE routes through duel resolution first)
@@ -1233,7 +1233,7 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             // Must advance meaningfully into the opponent half to count as an
             // attacking ball (HOME: row >= 5; AWAY: row <= 3), gaining >= 1 cell.
             double gain = Math.abs(targetRow - carrierRow);
-            double finalThirdRow = home ? 5.0 : 3.0;
+            double finalThirdRow = home ? 5.0 : 4.0;
             boolean intoFinalThird = home ? targetRow >= finalThirdRow : targetRow <= finalThirdRow;
             return gain >= 1.0 && intoFinalThird;
         }
@@ -1292,8 +1292,23 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                         decisionEngine.recordPassExchange(carrier.getId(), receiver.getId());
                     }
                 } else {
-                    actionEngine.executeClearance();
-                    stats.onClearance(team);
+                    // No receiver available. In real football a carrier deep in the
+                    // attacking third with no pass NEVER clears backward — they shoot
+                    // toward goal. Only when the carrier is NOT in shooting range
+                    // (or is defending their own goal) does a clearance make sense.
+                    boolean homeTeam = "HOME".equals(carrier.getTeam());
+                    double cRow = carrier.getPosition().getRow();
+                    boolean inShootingRange = homeTeam ? (cRow >= ActionEngine.SHOOT_MIN_ROW)
+                            : (cRow <= 9 - ActionEngine.SHOOT_MIN_ROW);
+                    if (inShootingRange) {
+                        boolean shotTaken = actionEngine.executeShot(false);
+                        if (shotTaken) {
+                            stats.onShot(team, carrier.getId(), false);
+                        }
+                    } else {
+                        actionEngine.executeClearance();
+                        stats.onClearance(team);
+                    }
                 }
             }
             case THRU -> {
@@ -1357,7 +1372,25 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 }
             }
             case CROSS -> {
+                offsideService.trackOffsidePositions(state, team, carrier.getPosition());
                 stats.onPassAttempt(team, carrier.getId());
+                // Offside check BEFORE the cross is delivered (same pattern as
+                // CENTER). A winger never crosses into an attacker clearly beyond
+                // the offside line. Corners are exempt (FIFA Rule 11).
+                if (!state.isCornerActive()) {
+                    Player receiver = actionEngine.selectCrossTarget();
+                    if (receiver != null) {
+                        OffsideService.OffsideResult offsideResult = offsideService.checkOffside(
+                                receiver, carrier.getPosition(), state.getBall().getPosition(),
+                                team, state, actionEngine);
+                        if (offsideResult.confirmed()) {
+                            logger.logInfo(state, "OFFSIDE: " + receiver.getLabel()
+                                    + " caught offside on CROSS from " + carrier.getLabel(),
+                                    "OFFSIDE", carrier);
+                            return;
+                        }
+                    }
+                }
                 actionEngine.executeCross();
             }
             case CENTER -> {
@@ -1407,7 +1440,8 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         // ball's path during the arrival-handler's movement passes through
         // undetected.
         Position secondMoveStart = ball.getPosition();
-        BallMovementEngine.moveBallToward(ball, target, BallMovementEngine.BALL_SPEED);
+        double flightSpeed = ball.getSpeed() > 0 ? ball.getSpeed() : BallMovementEngine.MAX_BALL_SPEED;
+        BallMovementEngine.moveBallToward(ball, target, flightSpeed);
 
         // Mid-path lane collision on the second half of this tick's ball movement.
         // Only checks if the ball is still in flight (not yet at the target).
@@ -1446,12 +1480,12 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                     if (state.getThruBallArrivalTick() < 0) {
                         state.setThruBallArrivalTick(state.getSimulationTick());
                         // Mark the receiver as an active chaser so MovementEngine moves
-                        // it at full chaser speed (PLAYER_SPEED * 3 = 0.75 cells/tick)
-                        // without the per-round pace cap. The ball arrives at the flight
-                        // target almost instantly (BALL_SPEED 2.0 vs runner 0.25); the
-                        // receiver must run onto the ball in stride — corePrinciples §8
-                        // (Movement): runner moves toward tactical target; the
-                        // orchestrator coordinates flight + arrival timing.
+                        // it at full pace-scaled speed without the per-round pace cap.
+                        // The ball arrives at the flight target quickly (ball speed
+                        // skill-driven; runner pace-scaled); the receiver must run onto
+                        // the ball in stride — corePrinciples §8 (Movement): runner
+                        // moves toward tactical target; the orchestrator coordinates
+                        // flight + arrival timing.
                         state.addActiveChaser(receiver);
                     }
                     long elapsed = state.getSimulationTick() - state.getThruBallArrivalTick();
@@ -1658,14 +1692,12 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 // save an on-frame shot (~70%); a keeper out of the lane can't save
                 // (open goal — the goal is really decided here, NOT by random).
                 double inLane = gkInLane;
-                // A keeper in the shot lane is a clear favourite to save an on-frame
-                // shot; only a beaten / out-of-lane keeper concedes it (open goal).
-                double positionFactor = 0.22 + 0.85 * inLane;
-                double keeperFactor = 0.74 + keeper.getSkills().keeper() / 20.0 * 0.40;
-                double strikeFactor = 1.0 - strikerSkill / 20.0 * 0.24;
+                double positionFactor = 0.25 + 0.75 * inLane;
+                double keeperFactor = 0.55 + keeper.getSkills().keeper() / 20.0 * 0.38;
+                double strikeFactor = 1.0 - strikerSkill / 20.0 * 0.30;
                 double reach = Math.max(0.62, 1.0 - Math.max(0.0, keeperDist - 1.2) * 0.32);
                 double saveChance = SimUtils.clamp(
-                        positionFactor * keeperFactor * strikeFactor * reach, 0.03, 0.92);
+                        positionFactor * keeperFactor * strikeFactor * reach, 0.03, 0.88);
                 // Save cooldown: a keeper who just saved (within a few ticks, ~2s) is
                 // off-balance and cannot make another save — the rebound is open.
                 int sinceSave = state.getMatchTicks() - keeper.getLastSaveTick();
@@ -1751,11 +1783,45 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 return;
             }
 
+            // Verify the goal source is still valid: if the scorer is NOT the
+            // Verify the goal source is still valid: if the scorer is NOT the
+            // aerial target (receiver of the cross/center), the chain has been
+            // broken by additional passes. Reset to OPEN_PLAY in that case.
+            // Also reset if the goal comes more than 1 action after the aerial
+            // pickup (the pickup moment is recorded in actionCountAtAerial by
+            // pickupPass). One-touch finish: pickup (N), shot (N+1) → stays.
+            // Carrier catches then dribbles: pickup (N), carry (N+1), shot
+            // (N+2) → 2 > 1 → reset.
+            if (state.getAerialTargetId() != null) {
+                boolean scorerIsAerialTarget = state.getAerialTargetId().equals(shooter.getId());
+                boolean tooLate = state.getActionCount() > state.getActionCountAtAerial() + 1;
+                if (!scorerIsAerialTarget || tooLate) {
+                    state.resetGoalSource();
+                }
+            }
+            // If the goal source is still the default OPEN_PLAY, check whether
+            // the most recent set piece (corner / free kick / penalty) was
+            // responsible for the shot — only set if not already set by
+            // executePenaltyKick / executeCross / executeCenter.
+            // NOTE: FREE_KICK fallback only applies for direct free kick shots
+            // (not for crosses/centers from a free kick — those are CROSS/CENTER goals).
+            if (state.getGoalSource() == org.example.footballmanager.demo.service.result.GoalSource.OPEN_PLAY) {
+                FootballRulesService.RestartType sp = state.getLastSetPieceType();
+                if (sp == FootballRulesService.RestartType.FREE_KICK) {
+                    state.setGoalSource(org.example.footballmanager.demo.service.result.GoalSource.FREE_KICK);
+                }
+                // CORNER is set in executeCross when cornerActive=true
+                // PENALTY is set explicitly in executePenaltyFromFoul.
+            }
             stats.onGoal(shooterTeam, shooter.getId(), shooter.getLabel(),
                     assistId, assistName,
                     state.matchMinute(),
                     "HOME".equals(shooterTeam) ? state.getGoalCount() + 1 : state.getGoalCount(),
-                    "HOME".equals(shooterTeam) ? state.getAwayGoalCount() : state.getAwayGoalCount() + 1);
+                    "HOME".equals(shooterTeam) ? state.getAwayGoalCount() : state.getAwayGoalCount() + 1,
+                    state.getGoalSource());
+            // Clear the set piece context now that we've consumed it.
+            state.clearLastSetPieceType();
+            state.resetGoalSource();
 
             // goalScored() increments score, sets celebrating + kickoffTeam
             actionEngine.goalScored();
@@ -1900,7 +1966,7 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             // Real football: ~60% of close-range blocks result in corners
             Position shotPos = attacker.getPosition();
             double distToEndLine = "HOME".equals(attacker.getTeam())
-                    ? 7.5 - shotPos.getRow() : shotPos.getRow() - 0.5;
+                    ? 8.0 - shotPos.getRow() : shotPos.getRow() - 1.0;
             if (distToEndLine <= 1.5 && state.getRandom().nextDouble() < 0.60) {
                 String defendingTeam = "HOME".equals(attacker.getTeam()) ? "AWAY" : "HOME";
                 stats.onCornerFromPass();
@@ -1916,6 +1982,27 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         }
 
         if (result.outcome() == DuelOutcome.DEFENDER_WINS) {
+            // AERIAL challenge near own goal line: the defender's header under
+            // pressure is often sliced behind for a corner. 20% gate + set-piece
+            // exclusion (no corner→corner chains). Narrow band ~1.2 cells.
+            boolean homeDefFront = "HOME".equals(attacker.getTeam());
+            Position defenderPos = defender.getPosition();
+            if (duelType == DuelType.AERIAL && defenderPos != null
+                    && state.getLastSetPieceType() != FootballRulesService.RestartType.CORNER
+                    && (homeDefFront ? (defenderPos.getRow() >= 1.0 && defenderPos.getRow() <= 2.5)
+                                     : (defenderPos.getRow() >= 5.5 && defenderPos.getRow() <= 8.0))
+                    && state.getRandom().nextDouble() < 0.45) {
+                state.getBall().setCarrier(null);
+                state.getBall().setTarget(null);
+                state.setCarrier(null);
+                actionEngine.complete("AERIAL DEFLECTION -> CORNER");
+                logger.logActionOutcome(state, action,
+                        "Header cleared behind by " + defender.getLabel() + " — CORNER",
+                        attacker, defender, "OUTCOME");
+                restartManager.handleBallOutOfBounds(stats,
+                        FootballRulesService.RestartType.CORNER, defenderPos, defender.getTeam());
+                return;
+            }
             // Delegate foul/card/VAR/penalty logic to DisciplineService
             // hadDuel=true: a duel was just actively resolved this tick (line 514),
             // so card/yVAR logic is eligible to fire.
@@ -2086,8 +2173,11 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         }
         double bounce = 0.8 + state.getRandom().nextDouble() * 0.6;
         Position deflectedPos = new Position(
-                SimUtils.clamp(cur.getRow() + perpRow * bounce, 0.2, 7.8),
-                SimUtils.clamp(cur.getColumn() + perpCol * bounce, 0.2, 7.8));
+                // No inner clamp: a block right on the goal line may bounce over
+                // it → OOB → corner (blocked-shot corners are a major real-world
+                // corner source). determineRestart handles the restart award.
+                cur.getRow() + perpRow * bounce,
+                cur.getColumn() + perpCol * bounce);
 
         ball.setPosition(deflectedPos);
         ball.setCarrier(null);
@@ -2163,8 +2253,11 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
                 currentPos.getRow() + perpRow * deflectionDist,
                 SimUtils.clamp(currentPos.getColumn() + perpCol * deflectionDist, 0.2, 7.8));
 
-        double newSpeed = action.getPassSpeed() * (0.5 + state.getRandom().nextDouble() * 0.2);
+        double newSpeed = action.getPassSpeed() * (0.25 + state.getRandom().nextDouble() * 0.15);
         action.setPassSpeed(newSpeed);
+        ball.setSpeed(newSpeed);
+        // §49.5: ball rolls on after deflection along its new direction.
+        ball.setRollDirection(new Position(perpRow, perpCol));
 
         ball.setPosition(deflectedPos);
         ball.setCarrier(null);
@@ -2295,14 +2388,17 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         Position cur = ball.getPosition();
         double passSpeed = action.getPassSpeed();
 
-        // STRICT lane radius: a defender's body must actually be ON the flight
-        // segment to be struck — NOT "near" it. Cell = 14m, so 0.18 cells (~2.5m)
-        // is roughly a player's body half-width. Under the old collisionRadius
-        // of 1.2 a defender standing ~17m off the pass line was struck — that is
-        // what made balls deflect off "thin air". Per the user rule: deflection
-        // MUST happen if a player is ON the pass line; nobody is struck from the
-        // side.
-        double laneRadius = 0.18;
+        // STRICT lane radius — the user's ground rule. 1 cell = 14 m, so the ball
+        // can only be affected by a defender who is genuinely ON ITS PATH:
+        //   • INTERCEPTION needs the defender within   2.0 m ≈ 0.14 cells of the
+        //     flight segment — a reader stepping into the lane.
+        //   • DEFLECTION is ACCIDENTAL contact — the body must be within
+        //     0.5 m ≈ 0.035 cells, i.e. the ball actually strikes them.
+        // No defender angled 3–5 m off the line can touch a ball that never
+        // reaches them. Was 0.07 (1 m) — too narrow, even a 30 m pass through
+        // two midfielders at 2 m distance produced zero interceptions.
+        double INTERCEPT_LANE = 0.14; // 2 m
+        double DEFLECT_LANE = 0.035;  // 0.5 m
 
         Player hit = null;
         double hitDist = Double.MAX_VALUE;
@@ -2313,7 +2409,7 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
             double d = SimUtils.pointSegmentDistance(p.getPosition(), prevPos, cur);
-            if (d <= laneRadius && d < hitDist) {
+            if (d <= INTERCEPT_LANE && d < hitDist) {
                 hit = p;
                 hitDist = d;
                 hitPoint = SimUtils.closestPointOnSegment(p.getPosition(), prevPos, cur);
@@ -2321,20 +2417,35 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         }
         if (hit == null) return false;
 
-        // The defender's body is physically on the flight line — the ball
-        // CANNOT pass through them. Deflection is GUARANTEED (no probability).
-        // A genuine interception is the RARE exception: only a high-
-        // playmaking + high-defending defender who anticipates a SLOW ball
-        // reads it in time and takes possession. Fast balls (≈3.0) are never
-        // intercepted — they come off the foot too hot to read.
-        double speedFactor = Math.max(0.0, 1.0 - (passSpeed - 1.0) / 2.5); // 1.0 slow .. 0 fast
+        // The defender must be close enough to physically affect the ball:
+        //   • within DEFLECT_LANE (0.5 m) → the ball strikes the body, deflection
+        //     is GUARANTEED (physical contact — user rule, no probability).
+        //   • between 0.5 m and 1 m → only a genuine READ can beat the ball: an
+        //     elite playmaker/defender who anticipates a SLOW ball steps in and
+        //     takes possession; otherwise the ball passes (too far to touch).
+        double speedFactor = Math.max(0.2, 1.0 - (passSpeed - BallMovementEngine.MIN_ROLLING_SPEED)
+                / BallMovementEngine.MAX_BALL_SPEED); // 0.75 slow .. 0.2 fast
         int pm = (int) Math.round(hit.getSkills().playmaking());
         int def = (int) Math.round(hit.getSkills().defender());
-        // Interception only for elite readers (pm+def ≥ ~24) on a slow ball.
-        double interceptProb = (pm + def > 24)
-                ? Math.min(0.55, (0.30 + (pm + def - 24) / 20.0) * speedFactor)
+        // Reading interception for readers who can see the ball (pm+def ≥ 18);
+        // 18 keeps players with decent reading ability eligible, not just elite.
+        double interceptProb = (pm + def > 18)
+                ? Math.min(0.45, (0.25 + (pm + def - 18) / 30.0) * speedFactor)
                 : 0.0;
 
+        if (hitDist > DEFLECT_LANE) {
+            // 0.5–1.0 m off the line: physically out of reach — interception is
+            // the ONLY way the ball changes course. No read = the pass sails by.
+            if (state.getRandom().nextDouble() < interceptProb) {
+                applyInterception(state, action, hit, actionEngine, stats, logger);
+                return true;
+            }
+            return false;
+        }
+
+        // Within 0.5 m: the ball physically strikes the defender. An elite
+        // reader on a slow ball can convert the contact into a clean
+        // interception; otherwise it is a guaranteed deflection.
         if (state.getRandom().nextDouble() < interceptProb) {
             applyInterception(state, action, hit, actionEngine, stats, logger);
         } else {
@@ -2347,11 +2458,12 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         if (action.getActingPlayer() == null) return null;
         String passingTeam = action.getActingPlayer().getTeam();
         PassHeight passHeight = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
-        double passSpeed = action.getPassSpeed(); // 1.0 to 3.0
+        double passSpeed = action.getPassSpeed(); // 0.75 to 1.5 (§49)
 
         // Speed modifier: sporija lopta = više vremena za reakciju = lakše presecanje
-        // Brza lopta (3.0) → modifier 0.2, Spora lopta (1.0) → modifier 1.0
-        double speedModifier = Math.max(0.2, 1.0 - (passSpeed - 1.0) / 2.5);
+        // Brza lopta (1.5) → modifier 0.2, Spora lopta (0.75) → modifier 1.0
+        double speedModifier = Math.max(0.2, 1.0 - (passSpeed - BallMovementEngine.MIN_ROLLING_SPEED)
+                / BallMovementEngine.MAX_BALL_SPEED);
 
         // Get the receiver's TARGET position — the ball is heading there.
         // Interception requires the defender to be on the line segment between
@@ -2361,8 +2473,11 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
         Position receiverPos = action.getIntendedTarget();
         if (receiverPos == null) return null;
         // Air passes: interceptor must be closer to the LINE — ball is in the air
-        // and harder to intercept from the side.
-        double interceptRadius = passHeight == PassHeight.AIR ? 0.4 : 0.5;
+        // and only an elite read beats it. User ground rule: interception is a
+        // READ, only possible within ~2.0 m (0.14 cells) of the pass path;
+        // was 0.07 (1 m) — nobody intercepts a ball passing 1 m away despite
+        // 22 players on the field.
+        double interceptRadius = passHeight == PassHeight.AIR ? 0.14 : 0.14;
 
         Player best = null;
         double bestDist = Double.MAX_VALUE;
@@ -2387,18 +2502,18 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             if (ballToDefDist > ballToReceiverDist * 1.3) continue;
             if (receiverToDefDist > ballToReceiverDist * 1.3) continue;
 
-            // KLJUČNO: interception zahteva VISOK plej + VISOK def
-            // Igrač mora da VIDI pas (playmaking ≥ 12) i da IMA VEŠTINU da ga preseče (defending ≥ 12)
+            // KLJUČNO: interception zahteva da igrač VIDI pas (playmaking ≥ 8)
+            // Defending skill ulazi u probability — ne treba oba ≥ 12.
             double playmaking = p.getSkills().playmaking();
             double defending = p.getSkills().defender();
 
-            // Samo igrači sa visokim plejom i defom mogu NAMERNO da presecaju
-            if (playmaking < 12 || defending < 12) continue;
+            // Igrač mora barem videti pas — playmaking ≥ 8
+            if (playmaking < 8) continue;
 
-            // Interception chance = (plej + def) / 40 * speedModifier
-            // Max: (20+20)/40 * 1.0 = 100% za idealne uslove (spora lopta, blizu)
-            // Realno: ~15-25% za dobre igrače
-            double interceptChance = (playmaking + defending) / 40.0 * speedModifier;
+            // Interception chance = (plej + def) / 50 * speedModifier
+            // Max: (20+20)/50 * 1.0 = 80% za idealne uslove
+            // Realno: ~10-20% za prosečne igrače, 30-40% za elite
+            double interceptChance = (playmaking + defending) / 50.0 * speedModifier;
 
             // AIR passes: need aerial skill too
             if (passHeight == PassHeight.AIR) {
@@ -2428,40 +2543,35 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
     private Player findPassDeflector(Action action, Position ballPos, MatchState state) {
         if (action.getActingPlayer() == null) return null;
         String passingTeam = action.getActingPlayer().getTeam();
-        PassHeight passHeight = action.getPassHeight() != null ? action.getPassHeight() : PassHeight.GROUND;
-        double passSpeed = action.getPassSpeed();
 
-        // Deflection radius: veći za sporije lopte (više vremena za telo)
-        // Brza lopta (3.0) → 0.3 ćelije, Spora lopta (1.0) → 0.6 ćelija
-        double deflectionRadius = 0.3 + (1.0 - (passSpeed - 1.0) / 2.0) * 0.3;
-        if (passHeight == PassHeight.AIR) deflectionRadius += 0.15; // AIR: veći radijus
+        // Deflection radius around the ARRIVAL point — the user's ground rule:
+        // 1 cell = 14 m, so 0.5 m ≈ 0.035 cells. Contact is ACCIDENTAL: the ball
+        // can only be deflected if it physically strikes the body, i.e. the
+        // defender is essentially ON the landing spot (half a metre). A defender
+        // 3 m away (0.2 cells) cannot deflect a ball that never touches them.
+        // Was 0.22–0.30 (≈3–4 m) — far too wide, every box defender was "in
+        // range" of every arrival.
+        double deflectionRadius = 0.035;
 
+        // Only the CLOSEST eligible defender gets a deflection — one body
+        // physically on the landing spot, not the whole defensive ring.
+        Player closest = null;
+        double closestDist = deflectionRadius;
         for (Player p : state.getPlayers()) {
             if (p.getTeam().equals(passingTeam)) continue;
             if ("GK".equals(p.getRole())) continue;
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
 
             double dist = SimUtils.distance(p.getPosition(), ballPos);
-            if (dist >= deflectionRadius) continue;
-
-            // Deflection chance: zavisi od brzine lopte i pozicije defanzivca
-            // Brza lopta = manja šansa (teže zakačiti), Spora = veća šansa
-            double baseChance;
-            if (passHeight == PassHeight.AIR) {
-                baseChance = 0.15; // AIR: lopta je viša, više kontakta sa telom
-            } else {
-                baseChance = 0.08; // GROUND: lopta je niza, teže zakačiti
-            }
-
-            // Speed modifier: brza lopta = manja šansa za deflection
-            double speedMod = Math.max(0.3, 1.0 - (passSpeed - 1.0) / 2.0);
-            double deflectionChance = baseChance * speedMod;
-
-            if (state.getRandom().nextDouble() < deflectionChance) {
-                return p;
+            if (dist < closestDist) {
+                closest = p;
+                closestDist = dist;
             }
         }
-        return null;
+        if (closest == null) return null;
+        // A defender physically at the landing point deflects — deterministic
+        // physical contact (same rule as the mid-path lane collision).
+        return closest;
     }
 
     private void executePenaltyFromFoul(MatchState state, ActionEngine actionEngine,
@@ -2476,9 +2586,27 @@ private static final double SHOT_BLOCK_LANE_RADIUS = 0.45;
             return;
         }
         stats.onPenalty(kickingTeam);
+        // Mark the goal source as PENALTY so any goal from this shot is
+        // categorised correctly (otherwise it would default to OPEN_PLAY).
+        state.setGoalSource(org.example.footballmanager.demo.service.result.GoalSource.PENALTY);
         logger.logInfo(state, "PENALTY KICK by " + attacker.getLabel()
                 + " against " + goalkeeper.getLabel(), "PENALTY", attacker);
-        actionEngine.executePenaltyKick(attacker, goalkeeper);
+        var penaltyOutcome = actionEngine.executePenaltyKick(attacker, goalkeeper);
+        // Record penalty shot stats
+        stats.onShot(kickingTeam, attacker.getId(), true);
+        if (penaltyOutcome == org.example.footballmanager.demo.service.model.PenaltyResult.SAVED) {
+            stats.onSave("HOME".equals(kickingTeam) ? "AWAY" : "HOME");
+        } else if (penaltyOutcome == org.example.footballmanager.demo.service.model.PenaltyResult.GOAL) {
+            // goalScored() was already called inside executePenaltyKick; record to stats
+            stats.onGoal(kickingTeam, attacker.getId(), attacker.getLabel(),
+                    null, null,
+                    state.matchMinute(),
+                    "HOME".equals(kickingTeam) ? state.getGoalCount() : state.getAwayGoalCount(),
+                    "HOME".equals(kickingTeam) ? state.getAwayGoalCount() : state.getGoalCount(),
+                    org.example.footballmanager.demo.service.result.GoalSource.PENALTY);
+        }
+        // Reset goal source after penalty
+        state.resetGoalSource();
     }
 
     private MatchReport buildReport(String homeTeam, String awayTeam,

@@ -3291,3 +3291,249 @@ After implementation:
 - ❌ Offside on throw-ins.
 - ❌ `RESTART_TELEPORT_DISTANCE=4.0` snap-overrides that don't make
   football sense.
+
+---
+
+## §49 — SPEED SPECIFICATION (BALL + PLAYER PHYSICS)
+
+This section defines the **authoritative speed model** for the engine.
+**1 cell = 14 meters.** Speeds are expressed in **m/s** and **cells per
+second of match time**; the engine converts to **cells/tick** using the
+real tick rate `MatchState.MATCH_TICKS_PER_MINUTE = 40` (1 tick = 1.5 s of
+match time → conversion factor **×1.5 cells/tick per cells/s**).
+
+### 49.1 Player speed
+
+**Physical rule (user spec):** a player with **pace 20** runs at **7 m/s** —
+half a cell length per second of match time. During one action (~2 s match
+time) he crosses 1 cell.
+
+| Pace | m/s | cells/s (match) | cells/tick @ 40TPM |
+|------|-----|-----------------|--------------------|
+| 20   | 7.0 | 0.5             | **0.75**           |
+| 15   | 5.25| 0.375           | 0.5625             |
+| 10   | 3.5 | 0.25            | 0.375              |
+| 1    | 0.35| 0.025           | 0.0375             |
+
+**Formula (cells/tick):** `speed = (pace / 20.0) * 0.5 * (60.0 / MATCH_TICKS_PER_MINUTE)`.
+
+- **Carrier with ball:** `speed * 0.90` (slightly slower due to ball control).
+- **All players** at the same pace move at the same speed — **no chase boost,
+  no threat boost, no role multiplier**. A defender can only catch a carrier
+  who is slower (lower pace) or who dribbles (×0.90).
+- **GK** same speed as outfield players (pace determines speed).
+- **Fatigue:** reduces speed by up to 30% via existing `fatigueSpeedMultiplier`.
+
+### 49.2 Ball speed
+
+| Source | Max m/s | Max cells/s | Max cells/tick @ 40TPM |
+|--------|---------|-------------|------------------------|
+| Pass   | 14.0    | 1.0         | **1.5**                |
+| Shot   | 14.0    | 1.0         | **1.5**                |
+| Clear  | 14.0    | 1.0         | **1.5**                |
+| Free rolling ball | 7.0…14.0 | 0.5…1.0 | **0.75…1.5** (decays ×0.8 to stop) |
+| Ball with carrier | carrier speed | carrier speed | follows carrier |
+
+**Pass speed formula (m/s):** `maxReliableSpeed = 7.0 + (passing / 20.0) * 7.0`
+- Skill 20 = 14 m/s = 1.0 cells/s = 1.5 cells/tick (can max it out safely)
+- Skill 14 = 11.9 m/s = 0.85 cells/s = 1.275 cells/tick
+- Skill 1 = 7.35 m/s = 0.525 cells/s = 0.7875 cells/tick
+
+**Shot / Clear max speed formula (m/s):** same shape, driven by `striker` /
+`defending` respectively.
+
+**Desired power is an action parameter, not a pure skill lookup.** The engine
+chooses how hard to hit the ball per action (see §49.6):
+- SHORT pass → 1.05 cells/tick, LONG → 1.30, THRU → 1.35, CLEAR → 1.40, SHOT → 1.40.
+- The chosen power is capped at `MAX_BALL_SPEED` (1.5 cells/tick = 14 m/s).
+- `ExecutionQuality` compares the chosen power against the player's
+  `maxReliableSpeed(skill)` (§49.6). Exceeding it adds an error bonus, so an
+  average passer who smashes a THRU ball at 1.35 loses control whereas a
+  skill-20 playmaker uses the same 1.35 precisely.
+
+### 49.3 Ball movement model
+
+The ball moves **independently of actions**. When a pass/shot/clear is
+executed:
+1. Ball gets `target = actualTarget` (after ExecutionQuality deviation).
+2. Ball gets `speed = desiredSpeed` (engine-chosen power, limited by `MAX_BALL_SPEED`,
+   and already checked against the player's max reliable skill-speed in §49.6).
+3. Ball gets `airborne = true` (for passes/shots) or `false` (ground).
+4. **Each tick**, `BallMovementEngine.moveBall()` moves ball along the straight
+   line A→B at `ball.speed` cells/tick — the action does NOT re-read its own
+   speed every tick, the ball carries it.
+5. When ball reaches target (distance <= speed), the arrival is processed.
+
+### 49.4 Ball-player collision (along trajectory)
+
+**Every tick** while ball is `IN_TRANSITION` (flying), check each player
+for collision with the ball's trajectory segment (previous position →
+current position):
+
+- **Collision radius:** 0.35 cells (~5 meters).
+- **First player hit** (closest along segment, not closest in plane):
+  - **Intended receiver / own team** → `received` (ball stops, player gets it)
+  - **Opponent with def+tech >= 24** → `intercept` (opponent gets ball)
+  - **Other opponent** → `deflection` (ball deflects, speed *= 0.6, direction
+    changes by 15-45°, continues as free ball)
+  - **Own teammate (not receiver)** → `deflection` (ball bounces off, speed *= 0.7)
+  - **Fast ball + low def+tech player** → bias toward deflection; **slow ball +
+    high def+tech** → bias toward intercept. The faster the ball the harder to
+    control it → deflection wins; a slow ball into a skilled defender is taken.
+- **No collision:** ball continues at current speed.
+
+### 49.5 Ball braking (overshoot)
+
+If ball reaches its target but no player picks it up (missed everyone):
+1. Ball becomes `LOOSE` (no carrier, no target).
+2. Ball continues in its current direction at `ball.speed`.
+3. Each tick: `speed *= 0.80` (rapid braking).
+4. When `speed < 0.01`: ball stops completely.
+5. If ball goes OOB during braking → normal OOB restart.
+
+### 49.6 Speed vs. skill and error
+
+**The ball speed is a parameter of the action.** A higher desired speed
+means:
+- Ball travels faster → defenders have less time to react.
+- **BUT:** higher speed → more deviation from intended target.
+- **Skill compensates:** high passing/striker/defending skill reduces the
+  deviation penalty.
+
+**Igrač niskog skila ne može da odigra jako:**
+- `maxReliableSpeedForSkill = 7.0 + (skill / 20.0) * 7.0` m/s (converted to cells/tick
+  via `BallMovementEngine.ballSpeedForSkill`)
+- If `desiredSpeed > maxReliableSpeedForSkill` (engine chose more power than the
+  player can control):
+  - Deviation increases: `errorBonus = (desiredSpeed - maxReliableSpeedForSkill) * 2.0`
+    cells added to the pass/shot deviation.
+  - This models: a player lacking skill who kicks hard → ball goes off-target or
+    weaker than intended.
+- **Example:** Skill 14 passer (max 1.275 cells/tick) engine hits a THRU ball at
+  1.35 → errorBonus = (1.35 - 1.275) * 2.0 = 0.15 cells extra deviation. The same
+  skill-20 passer (max 1.5) handles 1.35 with zero error bonus.
+
+### 49.7 Implementation rules
+
+1. **Ball speed is set ONCE** at action start, not every tick.
+2. **Ball movement is independent** — `BallMovementEngine.moveBall()` runs
+   every tick regardless of what action is active.
+3. **Carrier follow** — when ball has carrier, ball.position tracks
+   carrier.position at carrier speed (0.75 * 0.90 = 0.675 cells/tick for pace 20).
+4. **No speed boosts** — `MovementEngine.PLAYER_SPEED` is the only base
+   speed. The `*3` chase boost and `*1.6` threat boost are REMOVED.
+5. **Collision check** runs in `BallMovementEngine.moveBall()` every tick
+   for `IN_TRANSITION` balls.
+6. **Braking** runs in `BallMovementEngine.moveBall()` every tick for
+   `LOOSE` balls with `speed > 0`.
+
+---
+
+# 50. Statistical Baseline (200-match batch, seed-tracked)
+
+All metrics below are **per TRUE match** (one `MatchSimulator.simulate()` run),
+seeds `1000 + i*7`, i = 0..199, both teams `generateTeam(seed)` — identical
+skill for HOME and AWAY. Run via:
+
+```bash
+mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.diagnosticsAndTests.MatchBatchRunner -Dexec.args="200"
+```
+
+Baseline captured **2026-09-11** after the kickoff-center / shooting-rows /
+OOB-visual / interception / CROSS-offside / defensive-mirror / possession-
+metric fixes. THIS is the reference to compare every future tuning change
+against.
+
+> **Possession metric (2026-09-11 fix):** The legacy carrier-only counter
+> counted only ticks when a player held the ball, dropping all in-transit and
+> loose-ball time (~50% of the match). This inflated HOME possession to 93%
+> because HOME dribble-holds while AWAY plays transition. The fix credits
+> in-transit ticks to the last-touching team (Opta-style) and excludes loose
+> balls (contested). Post-mirror-fix reported possession is now **63% HOME**
+> (down from 75% before the AWAY-goal-line mirror fix).
+
+## 50.1 Scoreline & scoring
+
+| Metric | Total | Per match |
+|--------|------:|----------:|
+| Goals (H-A) | 227-248 | 1.14 - 1.24 |
+| Goals (both) | 475 | 2.38 |
+| Shots | 10,759 | 53.8 |
+| Shots on target | 1,158 | 5.8 (11% of shots) |
+| Shot conversion (goals/shots) | — | 4.4% |
+| On-target conversion (goals/on-target) | — | 41.0% |
+
+HOME possession is **63%** vs AWAY 37% — closer to 50/50 but still HOME-favoured.
+
+## 50.2 Distribution of goals by source
+
+| Source | Goal count | Share |
+|--------|-----------:|------:|
+| Open play | 342 | 72.0% |
+| Center (cross into box) | 67 | 14.1% |
+| Cross (from wing) | 41 | 8.6% |
+| Penalty | 23 | 4.8% |
+| Corner | 2 | 0.4% |
+| Free kick | 0 | 0.0% |
+
+(342+41+67+2+0+23 = 475 ✓ equals total goals.)
+
+## 50.3 Passing
+
+| Metric | Total | Per match |
+|--------|------:|----------:|
+| Passes attempted | 156,736 | 783.7 |
+| Passes completed | 154,108 | 770.5 |
+| Pass accuracy | 98.0% | — |
+| THRU attempts | 316 | 1.58 |
+| THRU completed | 258 | 1.29 (81.6%) |
+| Pass failures | 2,628 | 13.1 |
+| — intercepted | 2,189 | 10.95 |
+| — loose (not received) | 414 | 2.07 |
+| — out of bounds | 963 | 4.82 |
+
+> Note: interception/loose/OOB counters are **global** (copied to both teams'
+> stats in `buildTeamStats`); the batch runner reads them from homeStats only
+> to avoid double counting.
+
+## 50.4 Set pieces & discipline
+
+| Metric | Total | Per match |
+|--------|------:|----------:|
+| Corners | 533 | 2.67 |
+| Throw-ins | 988 | 4.94 |
+| Goal kicks | 3,476 | 17.38 |
+| Offsides | 173 | 0.87 |
+| Fouls | 234 | 1.17 |
+| Yellow cards | 56 | 0.28 (foul→YC rate 23.9%) |
+| Red cards | 1 | 0.005 |
+| Penalties awarded | 24 | 0.12 |
+
+## 50.5 Duels, defence & restarts
+
+| Metric | Total | Per match |
+|--------|------:|----------:|
+| Interceptions | 2,189 | 10.95 |
+| Saves | 534 | 2.67 |
+| Blocks (outfield) | 6,202 | 31.01 |
+| Deflections | 1,106 | 5.53 |
+| Clearances | 9,497 | 47.49 |
+| Possession (HOME, Opta-style) | — | 63% |
+
+## 50.6 Known asymmetries to watch
+
+1. **HOME possession 63%** — improved from 75% after AWAY-goal-line mirror fix
+   but still HOME-favoured. Correlated with the slightly tighter HOME/AWAY goal
+   split. Both teams have identical skills.
+2. **Away goals (1.24) ≈ home goals (1.14)** — much closer than the old
+   292:496 split (was 0.59 ratio, now 0.92). Slight AWAY advantage persists.
+3. **Clearances 47.5/match** — down from 65.6 but still above real football
+   ~15-25. Includes repeated low-pressure defensive boots.
+4. **Blocks 31.0/match** — down from 39.5. Most shots are met by an outfield
+   block before reaching the GK.
+5. **Goal kicks 17.4/match** — high restart count, indicates loose ball /
+   pass-failure distribution. Review if corners should increase at the expense
+   of goal kicks.
+
+This baseline table is the comparison anchor: any tuning change should report
+the diff against these numbers using `MatchBatchRunner 200`.

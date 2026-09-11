@@ -30,6 +30,7 @@ public class Player {
     private int consecutiveCarries; // track consecutive carries to prevent over-dribbling
     private int lastShotTick = -100; // cooldown: prevent rapid re-shots after miss/save
     private int lastSaveTick = -100; // cooldown: GK cannot save twice within a few ticks
+    private int carryStartTick = -100; // when current CARRY action started; force complete after MAX_CARRY_TICKS
     private boolean threatOverrideActive; // set by TacticalIntentEngine when defender presses carrier
     public Player(String id, String label, String team, String role,
                   Position position, Position alternativePosition, PlayerSkills skills) {
@@ -124,6 +125,8 @@ public class Player {
     public void setLastShotTick(int tick) { this.lastShotTick = tick; }
     public int getLastSaveTick() { return lastSaveTick; }
     public void setLastSaveTick(int tick) { this.lastSaveTick = tick; }
+    public int getCarryStartTick() { return carryStartTick; }
+    public void setCarryStartTick(int tick) { this.carryStartTick = tick; }
 
     public boolean isThreatOverrideActive() { return threatOverrideActive; }
     public void setThreatOverrideActive(boolean active) { this.threatOverrideActive = active; }

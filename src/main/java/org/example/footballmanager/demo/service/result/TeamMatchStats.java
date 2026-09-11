@@ -31,7 +31,13 @@ public record TeamMatchStats(
     int saves,
     int blocks,
     int deflections,
-    int clearances
+    int clearances,
+    int goalsFromOpenPlay,
+    int goalsFromCross,
+    int goalsFromCenter,
+    int goalsFromCorner,
+    int goalsFromFreeKick,
+    int goalsFromPenalty
 ) {
     public int passAccuracy() {
         if (passesAttempted == 0) return 0;
@@ -47,6 +53,13 @@ public record TeamMatchStats(
     public int getGoalKickCount() { return goalKickCount; }
     public int getCornerFromPassCount() { return cornerFromPassCount; }
     public int getPassOutOfBoundsCount() { return passOutOfBoundsCount; }
+
+    public int getGoalsFromOpenPlay() { return goalsFromOpenPlay; }
+    public int getGoalsFromCross() { return goalsFromCross; }
+    public int getGoalsFromCenter() { return goalsFromCenter; }
+    public int getGoalsFromCorner() { return goalsFromCorner; }
+    public int getGoalsFromFreeKick() { return goalsFromFreeKick; }
+    public int getGoalsFromPenalty() { return goalsFromPenalty; }
 
     public String summary() {
         return String.format(

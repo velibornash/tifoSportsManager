@@ -334,8 +334,8 @@ static/demo/service/ui/
 - Kickoff is special center positioning event, not from TacticalEditor (§20)
 - Threat override modifies movement targets, not the decision (§6) — TYPE A (carrier ≤ 1.0 cell, defender presses from ~14 m so DRIBBLE duel fires at 0.15 cells), TYPE B (opponent in defensive third, no defender within 0.5 cells); resolver `isClosestEligibleDefender` ensures only ONE defender claims the threat (no swarm)
 - Controlled randomness via seeded Random (§9-10)
-- Movement: ≤1 cell/tick non-carrier, collision avoidance (§11)
-- Ball: POSSESSION / IN_TRANSITION / LOOSE states (§12) — uses `action.passSpeed` (1.0–3.0 cells/tick from passer passing skill) for in-flight movement
+- Movement: every player moves at `(pace/20) * 0.75` cells/tick at 40 TPM (pace 20 = 7 m/s = 0.5 cells/s match time = 0.75 cells/tick) — NO speed boosts (pure pace-driven); carrier at `* 0.90`; collision avoidance (§11)
+- Ball: POSSESSION / IN_TRANSITION / LOOSE states (§12) — **speed Specification in §49**: max ball speed = 14 m/s = 1.5 cells/tick at 40 TPM; player `maxReliableSpeed = 7.0 + (skill/20)*7.0` m/s (skill 20 → 1.5 cells/tick); the engine-chosen desired power per action (SHORT 1.05 / LONG 1.30 / THRU 1.35 / CLEAR 1.40 / SHOT 1.40 cells/tick) is capped at MAX_BALL_SPEED and checked against the player's skill (§49.6 error bonus `(desired−max)*2.0`); free-ball min 0.5 cells/s (0.75 cells/tick) with ×0.8 braking to stop, ballistic A→B traversal per tick at the ball's own `speed` (no per-tick action read), trajectory collision → received/intercept/deflection, loose-ball rolling along stored rollDirection (§49.5). **Strict path-only collision radii** (user rule): deflection only within 0.5 m (0.035 cells), interception only within 1 m (0.07 cells) of the ball's flight segment — a defender 2+ m off the line never touches the ball. Active chasers sprint at ×1.30 (`CHASE_SPRINT_MULTIPLIER`); ball pickup distance 0.6; regular-pass receiver grace ~0.9. **Pass accuracy = overshoot-only**: `maxDeviation = 0.02 + overspeed*2.0` — a pass played at a speed the passer's skill can handle never scatters (length/height/skill multipliers removed). Passer aims at `openingTarget` (receiver nudged up to 0.5 cells away from its nearest opponent); the receiver runs onto the pass during flight (pass-flight guard in `TacticalIntentEngine` keeps that opening target). **Free player = 2 m (0.14 cell)** of space (receiver-openness / receiver-pressure / freeTeammatePenalty yardsticks; interception only needs 1 m). Wide players (ML/MR/DL/DR + DDL/DDR/WBL/WBR/AML/AMR) hold their own flank cell (anchor 1.5/5.5, band ±0.5, drift ≤ ±0.35 inside the cell). **Batch runner is fully DETERMINISTIC** — `MatchState.activeChasers` is a `LinkedHashSet` (a plain `HashSet` iterated in identity order made seeded runs diverge); two identical batch runs produce identical totals.
 - Offside: second-to-last defender, checked EVERY tick for ALL attackers on both teams (§16)
 - Duel cooldown: loser blocked for 60 ticks after duel loss
 - Duel radii: 0.2 cells (~2.8 m) for RECEIVE_PASS / CHASE; 0.15 cells (~2 m) for DRIBBLE — tight, realistic (cell is 14 m × 10 m); 0.3 for SHOT block
@@ -845,3 +845,79 @@ Warnings:
 - **`OffsideRestartDiagnostic`**: 5/5 PASS on seed 42 (and 100, 200, 7, 999, 1234 — all 0 fail).
 - **`GapLogDiagnostic`**: 0 mystery gaps on seeds 42, 100, 200, 7, 1234; 1 chase-related gap on seed 999 (unrelated — long loose-ball chase).
 - **Goal count**: HOME 350 / AWAY 484 across 42 matches on seed 42 (was HOME 192 / AWAY 471). Carrier now reaches the box more often with the tighter duel radius, which raises HOME scoring significantly.
+
+### Bug Fixes & Tuning (2026-09-11 — user reported) — demo/service engine — kickoff center, shooting rows, OOB visual, interception
+
+#### Kickoff center & formation
+- **Symptom**: kickoff show both teams on the wrong half / attackers over the center line; the kicker and ball were not on the authoritative center (4.5, 4.0).
+- **Center coordinate (authoritative)**: field center row **4.5**, col **4.0** (cols 1-6, touchlines 1.0-7.0). Goal-mouth center col **3.5** is unchanged. All prior code used the field center row 4.0 / ball center col 3.5 (that col is the goal centre).
+- **Kickoff position**: `MatchSimulator.kickoffPos` → `(4.5, 4.0)`; `MatchState.resetPositionsForKickoff` ball + roundStart/roundEnd/tactical snapshots → `(4.5, 4.0)`; `RestartManager.handleKickoff` + `handleKickoffPreMatch` centerSpot → `(4.5, 4.0)` (+ status strings updated); `ActionEngine` penalty-miss ball reset → `(4.5, 4.0)`; `MatchDetailedAnalyzer` kickoffPos → `(4.5, 4.0)` (2 sites).
+- **Own-half clamp in `MatchState.resetPositionsForKickoff`**: HOME players clamped to row ≤ 4.0, AWAY to row ≥ 5.0 (HOME half is 1.0-4.5, AWAY half is 4.5-8.0), so both teams start on their own half regardless of the generated formation (attackers originally at row 5.5/3.5). The kicker is then placed at exactly (4.5, 4.0). This is the chosen fix for the "away attackers on home half" report — `generateTeam` attacker rows were intentionally NOT changed.
+- **Kickoff detection compatibility**: `PlaymakingDecisionEngine` + `ActionEngine.executePass` detect kickoff by kicker position `row == 4.5 && col == 4.0`; kickoff-candidate forward-row checks now `< 4.5` (HOME) / `> 4.5` (AWAY); `generateKickoffPass` backward-row checks 4 → 4.5.
+
+#### Half-boundary checks 4.0 → 4.5
+- `PlaymakingDecisionEngine` (lines 90, 265, 416, 418, 628-629, 707, 743, 768, 922, 1113, 1139, 1783), `ActionEngine.isClearlyOffside` (41), `OffsideService` (122-123), `FootballRulesService` (41-42), `TransitionService` (127-128). All opponent-half / attacking-half / offside-eligibility checks pivot on 4.5 now, matching the corrected geometry.
+
+#### CLEAR in attack → force SHOT in final rows
+- **Symptom**: a carrier deep in the attacking third with no visible pass receiver CLEARED backward.
+- **Fix in `MatchSimulator.executeDecision` PASS fallback (`receiver == null`)**: when carrier is in shooting rows (HOME row ≥ `ActionEngine.SHOOT_MIN_ROW` = 6, AWAY row ≤ 8 − 6 = 2) → `executeShot(false)` (+ `stats.onShot`); otherwise CLEAR (`executeClearance` + `stats.onClearance`). A forward in the box with no pass never clears; clearance is still the fallback in midfield/defence.
+
+#### Miss scatter must visibly cross the end line (OOB visual)
+- **Symptom**: off-target shots didn't visually leave the pitch — ball stayed floating near the frame, so restarts looked wrong on screen.
+- **Fix in `ExecutionQuality.evaluateShot`**: off-target scatter target is now forced PAST the end line (row > 8.0 for HOME goal at 8.0 / < 1.0 for AWAY), or past a sideline — the ball flight segment crosses the OOB band during animation, matching the instant-restart spec (§48). Miss scatter margins enlarged (0.9 + rand vs 0.45+), column clamp 0.5-7.5, `SHOT_GOAL_THRESHOLD` geometric-miss safety push raised 0.5 → 0.6 so the safety net can't pull the ball back on frame.
+
+#### Pass interceptions actually fire
+- **Symptom**: a 30 m pass through two defenders at 0:04 was never intercepted; recorded matches showed ZERO INTERCEPT/DEFLECT events.
+- **`resolveMidPathCollision`/`findPassInterceptor` interception lane 0.07 → 0.14 cells (2 m)**: defenders now reach balls passing 2 m away (AGENTS.md prior text said 1 m — superseded). Layered with the existing 0.035 deflection lane and §49 lane-strict rules: a defender 2 m off the line can intercept, but only a defender ≤ 0.5 m can deflect.
+- **Skill floor `pm >= 12` → `pm >= 8`** (was `pm < 12 || def < 12` skip) and `interceptChance = (pm+def)/50 * speedModifier` (was `/40`); mid-path intercept probability threshold `pm+def > 18` with `(0.25 + (pm+def−18)/30) * speedFactor`, cap 0.45.
+- **Result**: 22.3 interceptions/match in the initial 200-match batch (was 0, pre-double-count-fix; post-fix figure: 10.95/match) — interceptions reclaim clearly-visible lanes without breaking passing.
+
+#### Offside called at CROSS execution
+- **Symptom**: crosses could be received by attackers standing in offside position (offside only checked at pass/THRU, not CROSS).
+- **`ActionEngine.executeCross` now calls `selectCrossTarget()`** — new public method that filters the receiver via `isClearlyOffside` (margin > 0.2 cells beyond second-to-last defender), corner-exempt (`state.isCornerActive()` skips the filter — FIFA Rule 11: no offside from corners).
+- **`MatchSimulator` CROSS branch**: `trackOffsidePositions` + `checkOffside` before `executeCross` (unless corner active). Execution-time whistle is the backstop for marginal ≤ 0.2 cases.
+
+#### Verification
+- `mvn compile -q` clean. 200-match batch (`MatchBatchRunner 200`) post-fix: **goals 2.38** (HOME 1.14 / AWAY 1.24), **shots 53.8** (11% on target), **passes 98%** accuracy (154108/156736), **fouls 1.17**, Y 0.28, R 0.005, **corners 2.67**, offsides 0.87, **interceptions 10.95**, goal kicks 17.38, throw-ins 4.94. **Possession HOME 63%** (was 75% before mirror fix). HOME/AWAY goal ratio 0.92 (was 0.59).
+- Carries remain ~631/match pair-output (zone 6-8/3-5 dominates, PASS alternatives avg −113) — carried over from the pre-fix analysis; rerun recommended after the SHOT-override changes settle.
+
+### Bug Fixes & Tuning (2026-09-11 — pass 2) — AWAY-goal-line mirror fix (PRIMARY asymmetry fix)
+
+Root cause of the 75/25 possession imbalance: dozens of row-comparison literals
+in `PlaymakingDecisionEngine.java`, `ActionEngine.java`, `MatchSimulator.java`,
+`TacticalIntentEngine.java`, `ThreatAssessmentService.java`,
+`CornerArrangementEngine.java`, `OffsideService.java`, and `RestartManager.java`
+used the OLD geometry (AWAY goal at row 7.0, mirror axis 4.0) while the
+authoritative coordinate system is AWAY goal at row 8.0, mirror axis 4.5
+(HOME row n → AWAY row 9−n).
+
+#### Decision layer (PlaymakingDecisionEngine.java) — PRIMARY driver
+- **PASS goal-proximity** (line 813): `(7.0 - receiverRow)` → `(8.0 - receiverRow)` — AWAY forward passes were scored ~1.5 points lower than HOME equivalents at the mirror position.
+- **CARRY scoring** (lines 1079/1088/1104/1575): all `(7.0 - row)` → `(8.0 - row)` — AWAY carry-to-goal scored lower; backward-carry penalty fired at wrong boundary.
+- **Shooting-zone band** (lines 413/821-822): `8 - SHOOT_MIN_ROW` → `9 - SHOOT_MIN_ROW` — AWAY shooting zone was 1 cell deep vs HOME's 2 cells.
+- **inFinalThird** (lines 414/1086): AWAY third boundary `row <= 3` → `row <= 4` (mirror of 5.0 = 4.0).
+- **15+ additional row mirrors** across box detection, long-shot zone, corner-line detection, inDefensiveThird, inFinalTwoRows, nearGoal, isDeepAttacker, countBoxAttackers — all corrected to `9-K`.
+
+#### Tactical layer (TacticalIntentEngine.java)
+- **Threat override TYPE A** (line 402): AWAY carrier-in-final-third `<= 2.0` → `<= 3.0` (mirror of 6.0).
+- **isInFinalQuarter** (line 493): AWAY `>= 5.5` → `>= 6.5` (mirror of 2.5).
+- **isDefensiveThird** (line 475): AWAY `>= 5.0` → `>= 6.0` (mirror of 3.0).
+
+#### Threat assessment (ThreatAssessmentService.java) — swapped + stale
+- **evaluateBallThreat**: HOME `(ballRow - 1.0)/6.0` → `(8.0 - ballRow)/7.0` (ball near own goal now = HIGH threat, not inverted). AWAY mirror-corrected.
+- **evaluateOpponentProximityThreat**: DANGER_ZONE constants swapped + comparison operators inverted; HOME near goal = `row <= 2.0`, AWAY = `row >= 6.0`.
+- **evaluateDangerZoneThreat**: center 4.0 → 4.5, span 4.0 → 3.5, mirrored.
+- **evaluateNumericalThreat**: defensive third checks corrected (HOME `row <= 3`, AWAY `row >= 6`).
+
+#### Geometry / set pieces
+- **ActionEngine:995** pass reception OOB check: `row > 7.0` → `> 8.0`, `col > 6.0` → `> 7.0`.
+- **MatchSimulator blocked-shot corner band**: distance-to-end-line `7.5`/`0.5` → `8.0`/`1.0`.
+- **MatchSimulator finalThirdRow**: AWAY 3.0 → 4.0 (mirror of 5.0).
+- **MatchSimulator shooting range**: AWAY `8 - SHOOT_MIN_ROW` → `9 - SHOOT_MIN_ROW`.
+- **OffsideService:402-413**: own-goal-row inverted (HOME↔AWAY swapped) + stale 7.0; clamp 7.0 → 8.0.
+- **CornerArrangementEngine**: AWAY_BOX rows corrected from `8-K` to `9-K`; marker-band mMax 5.5 → 6.5; unmarked hold-row 0.4 → 1.4.
+- **RestartManager throw-in**: row clamp 1..7 → 0..8; col 6.0 → 7.0.
+- **TacticalIntentEngine carrier final-third**: AWAY `<= 2.0` → `<= 3.0`.
+
+#### Verification
+- `mvn compile -q` clean. 200-match batch post-mirror-fix: **goals 2.38** (HOME 1.14 / AWAY 1.24), **shots 53.8** (11% on target), **passes 98%** accuracy, **fouls 1.17**, Y 0.28, R 0.005, **corners 2.67**, offsides 0.87, **interceptions 10.95**, goal kicks 17.38, throw-ins 4.94. **Possession HOME 63%** (was 75% before fix). HOME/AWAY goal ratio 0.92 (was 0.59 before fix). Significant convergence toward balance but still slight HOME possession bias.

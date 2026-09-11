@@ -10,7 +10,6 @@ import java.util.Random;
  */
 public class ExecutionQuality {
 
-    private static final double PASS_DEVIATION_PER_SKILL_POINT = 0.075;
     private static final double SHOT_DEVIATION_PER_SKILL_POINT = 0.18;
     private static final double PASS_SUCCESS_THRESHOLD = 2.0;
     public static final double THRU_SUCCESS_THRESHOLD = 2.0;
@@ -24,8 +23,21 @@ public class ExecutionQuality {
 
     public PassResult evaluatePass(Player passer, Position origin, Position intendedTarget,
                                    Player receiver, PassLength passLength, PassHeight passHeight) {
+        return evaluatePass(passer, origin, intendedTarget, receiver, passLength, passHeight,
+                BallMovementEngine.ballSpeedForSkill(passer.getSkills().passing()));
+    }
+
+    /**
+     * §49.2: pass quality couples the passer's skill with the ball speed the
+     * action chose. maxSpeedForSkill = 7.0 + (skill/20)*7.0 m/s. If the chosen
+     * (desired) speed exceeds the player's physical max, they lose control:
+     * deviation grows by (desiredSpeed - max) * 2.0 cells.
+     */
+    public PassResult evaluatePass(Player passer, Position origin, Position intendedTarget,
+                                   Player receiver, PassLength passLength, PassHeight passHeight,
+                                   double desiredSpeed) {
         int skill = Math.max(1, Math.min(20, (int) Math.round(passer.getSkills().passing())));
-        return evaluatePassWithSkill(skill, origin, intendedTarget, receiver, passLength, passHeight);
+        return evaluatePassWithSkill(skill, origin, intendedTarget, receiver, passLength, passHeight, desiredSpeed);
     }
 
     public PassResult evaluatePass(Player passer, Position origin, Position intendedTarget, Player receiver) {
@@ -34,26 +46,27 @@ public class ExecutionQuality {
 
     private PassResult evaluatePassWithSkill(int skill, Position origin, Position intendedTarget,
                                               Player receiver, PassLength passLength, PassHeight passHeight) {
+        return evaluatePassWithSkill(skill, origin, intendedTarget, receiver, passLength, passHeight,
+                BallMovementEngine.ballSpeedForSkill(skill));
+    }
+
+    private PassResult evaluatePassWithSkill(int skill, Position origin, Position intendedTarget,
+                                              Player receiver, PassLength passLength, PassHeight passHeight,
+                                              double desiredSpeed) {
         double dx = intendedTarget.getColumn() - origin.getColumn();
         double dy = intendedTarget.getRow() - origin.getRow();
         double length = Math.hypot(dx, dy);
 
-        double lengthMultiplier = switch (passLength) {
-            case SHORT -> 0.6;
-            case LONG -> 0.8;
-            case THRU -> 0.9;
-        };
-
-        // AIR passes are EASIER to execute (less deviation) — they fly over obstacles.
-        // GROUND passes are harder — they must navigate through traffic.
-        double heightMultiplier = passHeight == PassHeight.AIR ? 0.7 : 1.0;
-
-        double maxDeviation = Math.min(
-                (20 - skill) * PASS_DEVIATION_PER_SKILL_POINT * lengthMultiplier * heightMultiplier,
-                Math.max(0.15, length * 0.22));
-        // Minimum base deviation — even world-class passers misplace some passes
-        // Reduced floor to allow better pass accuracy at lower skills
-        maxDeviation = Math.max(maxDeviation, 0.03);
+        // User rule: a pass only misses when it is played FASTER than the
+        // passer's skill can control — deviation is an OVERSHOOT error (§49.2),
+        // not a random scattering on every pass. At a speed the passer can
+        // handle the ball is placed accurately (tiny 0.02 mechanical floor;
+        // the length/height/lateral-skill multipliers were removed — they
+        // spread error onto every pass and made the §49 faster balls randomly
+        // imprecise, inflating loose-ball chases).
+        double maxSpeedForSkill = BallMovementEngine.ballSpeedForSkill(skill);
+        double overspeed = Math.max(0.0, desiredSpeed - maxSpeedForSkill);
+        double maxDeviation = 0.02 + overspeed * 2.0;
 
         double dirRow = length < 1e-9 ? 0 : dy / length;
         double dirCol = length < 1e-9 ? 1 : dx / length;
@@ -102,8 +115,24 @@ public class ExecutionQuality {
 
     public ShotResult evaluateShot(Position goalPosition, int carrierStrikerSkill, double pressure,
                                    Position shotOrigin, Player goalkeeper) {
+        return evaluateShot(goalPosition, carrierStrikerSkill, pressure, shotOrigin, goalkeeper,
+                BallMovementEngine.ballSpeedForSkill(carrierStrikerSkill));
+    }
+
+    /**
+     * §49.2 shot overload: same as the 5-arg form but penalises a striker who
+     * wants more power than their skill allows. A 14 m/s (speed 1.5) strike is
+     * trivial for a skill-20 finisher but uncontrollable for a skill-8 striker.
+     */
+    public ShotResult evaluateShot(Position goalPosition, int carrierStrikerSkill, double pressure,
+                                   Position shotOrigin, Player goalkeeper, double desiredSpeed) {
         int skill = Math.max(1, Math.min(20, carrierStrikerSkill));
         double dist = shotOrigin == null ? 4.0 : SimUtils.distance(shotOrigin, goalPosition);
+
+        // §49.2: overspeed penalty — reduces on-frame accuracy.
+        double speedPenalty = Math.max(0, desiredSpeed
+                - BallMovementEngine.ballSpeedForSkill(skill)) * 2.0;
+        double speedOnFrame = SimUtils.clamp(1.0 - speedPenalty * 0.10, 0.45, 1.0);
 
         // ---- Angle factor: shooter column vs goal centre column (3.5). ----
         // Goes into save difficulty and the miss scatter (tight angle = easier for
@@ -121,17 +150,17 @@ public class ExecutionQuality {
         //
         // Base on-frame chance by finisher skill (1..20 → 0.50..0.73 for a clean,
         // close, central, unpressured look — few shots are genuinely this clean).
-        double onTargetFactor = 0.28 + skill / 20.0 * 0.45;        // 0.305..0.73 clean look
+        double onTargetFactor = 0.50 + skill / 20.0 * 0.45;        // 0.473..0.90 clean look
         // Distance: sharp falloff past ~1.3 cells (real football: most shot
         // attempts are wide / high from range). Around the box (~1.2 cells)
         // still on frame; from deeper they drop fast.
-        double distOnFrame = dist <= 1.3 ? 1.0 : Math.max(0.0, 1.0 - (dist - 1.3) / 1.6);
+        double distOnFrame = dist <= 2.0 ? 1.0 : Math.max(0.0, 1.0 - (dist - 2.0) / 2.2);
         // Tight angle makes the shot far easier to put off the frame.
-        double angleOnFrame = SimUtils.clamp(1.0 - colOffset * 0.30, 0.12, 1.0);
+        double angleOnFrame = SimUtils.clamp(1.0 - colOffset * 0.24, 0.10, 1.0);
         // Pressure (defenders hurrying the shot) drags it off frame.
-        double pressureFactor = 1.0 - SimUtils.clamp(pressure / 50.0, 0, 1) * 0.60;
+        double pressureFactor = 1.0 - SimUtils.clamp(pressure / 50.0, 0, 1) * 0.45;
         double onTargetProb = SimUtils.clamp(
-                onTargetFactor * distOnFrame * angleOnFrame * pressureFactor, 0.05, 0.90);
+                onTargetFactor * speedOnFrame * distOnFrame * angleOnFrame * pressureFactor, 0.05, 0.90);
 
         // ---- Goalkeeper beaten / open-goal guarantee ----
         // If the keeper is NOT in the shot lane and no opponent blocks the path,
@@ -186,26 +215,41 @@ public class ExecutionQuality {
             actualTarget = new Position(goalPosition.getRow(), targetCol);
         } else {
             // Scattered miss (wide / over the bar) — a genuine bad finish.
+            // The scatter MUST end PAST the end line (row <= 1.0 or >= 8.0) so
+            // the ball visibly crosses the line during flight and the viewer
+            // never sees it stop in-field then teleport off the pitch.
             double missMax = (0.35 + (20 - skill) * 0.05)
                     * (1.0 + (1.0 - angleFactor))
                     * (0.5 + Math.min(2.0, dist) / 2.0);
-            missMax = Math.max(missMax, 0.5);
-            double missDist = 0.45 + random.nextDouble() * missMax;
+            missMax = Math.max(missMax, 1.0);
+            double missDist = 0.9 + random.nextDouble() * missMax;
             double angle = random.nextDouble() * 2 * Math.PI;
             double actualRow = goalPosition.getRow() + Math.sin(angle) * missDist;
             double actualCol = goalPosition.getColumn() + Math.cos(angle) * missDist;
+            // Push beyond the end line by a few metres so the flight passes
+            // through the OOB band (row > 8.0 / row < 1.0). A pure "wide"
+            // miss (col past the sideline) may instead cross the touchline —
+            // also clearly out of play.
+            boolean goalToRight = goalPosition.getRow() >= 4.5;
+            boolean overEndLine = goalToRight ? actualRow > 8.0 : actualRow < 1.0;
+            boolean pastSideline = actualCol < 1.0 || actualCol > 7.0;
+            if (!overEndLine && !pastSideline) {
+                actualRow = goalToRight
+                        ? Math.max(8.05, goalPosition.getRow() + 0.3 + random.nextDouble() * 0.6)
+                        : Math.min(0.95, goalPosition.getRow() - 0.3 - random.nextDouble() * 0.6);
+            }
             actualTarget = new Position(
                     SimUtils.clamp(actualRow, -0.5, 8.5),
-                    SimUtils.clamp(actualCol, -0.5, 8.5));
+                    SimUtils.clamp(actualCol, 0.5, 7.5));
             // Safety: guarantee it is geometrically a miss (at least SHOT_GOAL_THRESHOLD
             // away from goal). Without this the random scatter could accidentally land
             // inside the goal mouth and produce a phantom miss-then-goal.
             if (SimUtils.distance(actualTarget, goalPosition) < SHOT_GOAL_THRESHOLD) {
-                double rowDir = actualRow >= goalPosition.getRow() ? 0.5 : -0.5;
-                double colDir = actualCol >= goalPosition.getColumn() ? 0.5 : -0.5;
+                double rowDir = actualRow >= goalPosition.getRow() ? 0.6 : -0.6;
+                double colDir = actualCol >= goalPosition.getColumn() ? 0.6 : -0.6;
                 actualTarget = new Position(
                         SimUtils.clamp(goalPosition.getRow() + rowDir, -0.5, 8.5),
-                        SimUtils.clamp(goalPosition.getColumn() + colDir, -0.5, 8.5));
+                        SimUtils.clamp(goalPosition.getColumn() + colDir, 0.5, 7.5));
             }
         }
 

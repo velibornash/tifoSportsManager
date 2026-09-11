@@ -4,6 +4,7 @@ import org.example.footballmanager.demo.service.controller.MatchSimulationContro
 import org.example.footballmanager.demo.service.model.Action;
 import org.example.footballmanager.demo.service.model.PassHeight;
 import org.example.footballmanager.demo.service.result.*;
+import org.example.footballmanager.demo.service.result.GoalSource;
 
 import java.util.*;
 
@@ -95,11 +96,49 @@ public class ComprehensiveBatchRunner {
 
         for (int i = 0; i < numMatches; i++) {
             long seed = 1000 + i * 7L;
-            MatchSimulator sim = new MatchSimulator(seed);
+            // Each "match" is actually TWO simulations: the original and a
+            // swapped copy (previous-away becomes new-home). This cancels out
+            // any home/away directional bias in the engine (kickoff order,
+            // pitch orientation, etc.). Stats accumulate from both halves.
             var homePlayers = MatchSimulationController.generateTeamWithSkill("HOME", "Home", skill);
             var awayPlayers = MatchSimulationController.generateTeamWithSkill("AWAY", "Away", skill);
-            MatchResult result = sim.simulate(homePlayers, awayPlayers, "Home", "Away");
 
+            // ── PRIMARY GOAL SOURCE COUNTERS (from GoalDetail) ──
+            // Use the new GoalDetail.source() field as the AUTHORITATIVE source
+            // for goal breakdown (was previously derived heuristically from
+            // logs which gave "0% set piece" — broken data).
+            // Reset per match to keep the per-team totals correct.
+            // (Variables defined inside the loop intentionally.)
+
+            // Match 1: original orientation
+            MatchResult result = new MatchSimulator(seed)
+                    .simulate(homePlayers, awayPlayers, "Home", "Away");
+            // ── Count goal sources from GoalDetail (authoritative) ──
+            int r1hOpen = 0, r1aOpen = 0, r1hPenalty = 0, r1aPenalty = 0,
+                r1hCross = 0, r1aCross = 0, r1hCenter = 0, r1aCenter = 0,
+                r1hCorner = 0, r1aCorner = 0, r1hFk = 0, r1aFk = 0,
+                r1hThru = 0, r1aThru = 0;
+            for (var gd : result.goals()) {
+                GoalSource src = gd.source() != null ? gd.source() : GoalSource.OPEN_PLAY;
+                boolean isHome = "HOME".equals(gd.scorerTeam());
+                switch (src) {
+                    case OPEN_PLAY -> { if (isHome) r1hOpen++; else r1aOpen++; }
+                    case PENALTY -> { if (isHome) r1hPenalty++; else r1aPenalty++; }
+                    case CROSS -> { if (isHome) r1hCross++; else r1aCross++; }
+                    case CENTER -> { if (isHome) r1hCenter++; else r1aCenter++; }
+                    case CORNER -> { if (isHome) r1hCorner++; else r1aCorner++; }
+                    case FREE_KICK -> { if (isHome) r1hFk++; else r1aFk++; }
+                    case THRU_BALL -> { if (isHome) r1hThru++; else r1aThru++; }
+                    default -> { if (isHome) r1hOpen++; else r1aOpen++; }
+                }
+            }
+            homeGoalsFromOpenPlay += r1hOpen; awayGoalsFromOpenPlay += r1aOpen;
+            homeGoalsFromPenalty += r1hPenalty; awayGoalsFromPenalty += r1aPenalty;
+            homeGoalsFromCross += r1hCross; awayGoalsFromCross += r1aCross;
+            homeGoalsFromCenter += r1hCenter; awayGoalsFromCenter += r1aCenter;
+            homeGoalsFromCorner += r1hCorner; awayGoalsFromCorner += r1aCorner;
+            homeGoalsFromFreeKick += r1hFk; awayGoalsFromFreeKick += r1aFk;
+            homeGoalsFromThru += r1hThru; awayGoalsFromThru += r1aThru;
             int hg = result.homeGoals(), ag = result.awayGoals();
             homeGoals += hg; awayGoals += ag;
             homeShots += result.homeStats().shots(); awayShots += result.awayStats().shots();
@@ -124,16 +163,75 @@ public class ComprehensiveBatchRunner {
             if (ag == 0) homeCleanSheets++;
             if (hg == 0) awayCleanSheets++;
 
+            // Match 2: SWAP home/away using same seed — counts go to the
+            // opposite bucket. After the swap, what was AWAY becomes HOME.
+            MatchResult result2 = new MatchSimulator(seed)
+                    .simulate(awayPlayers, homePlayers, "Away", "Home");
+            // ── Count goal sources from result2 (team labels already swapped) ──
+            int r2hOpen = 0, r2aOpen = 0, r2hPenalty = 0, r2aPenalty = 0,
+                r2hCross = 0, r2aCross = 0, r2hCenter = 0, r2aCenter = 0,
+                r2hCorner = 0, r2aCorner = 0, r2hFk = 0, r2aFk = 0,
+                r2hThru = 0, r2aThru = 0;
+            for (var gd : result2.goals()) {
+                GoalSource src = gd.source() != null ? gd.source() : GoalSource.OPEN_PLAY;
+                // In result2, what was original AWAY is now HOME.
+                // We accumulate as: original-away-goal → AWAY counter, original-home-goal → HOME counter.
+                // Since result2 labels the original-away team as "HOME", isHome=true means
+                // original-away (→ AWAY in our accounting), and vice versa.
+                boolean isOriginalAway = "HOME".equals(gd.scorerTeam());
+                switch (src) {
+                    case OPEN_PLAY -> { if (isOriginalAway) r2aOpen++; else r2hOpen++; }
+                    case PENALTY -> { if (isOriginalAway) r2aPenalty++; else r2hPenalty++; }
+                    case CROSS -> { if (isOriginalAway) r2aCross++; else r2hCross++; }
+                    case CENTER -> { if (isOriginalAway) r2aCenter++; else r2hCenter++; }
+                    case CORNER -> { if (isOriginalAway) r2aCorner++; else r2hCorner++; }
+                    case FREE_KICK -> { if (isOriginalAway) r2aFk++; else r2hFk++; }
+                    case THRU_BALL -> { if (isOriginalAway) r2aThru++; else r2hThru++; }
+                    default -> { if (isOriginalAway) r2aOpen++; else r2hOpen++; }
+                }
+            }
+            homeGoalsFromOpenPlay += r2hOpen; awayGoalsFromOpenPlay += r2aOpen;
+            homeGoalsFromPenalty += r2hPenalty; awayGoalsFromPenalty += r2aPenalty;
+            homeGoalsFromCross += r2hCross; awayGoalsFromCross += r2aCross;
+            homeGoalsFromCenter += r2hCenter; awayGoalsFromCenter += r2aCenter;
+            homeGoalsFromCorner += r2hCorner; awayGoalsFromCorner += r2aCorner;
+            homeGoalsFromFreeKick += r2hFk; awayGoalsFromFreeKick += r2aFk;
+            homeGoalsFromThru += r2hThru; awayGoalsFromThru += r2aThru;
+            int hg2 = result2.homeGoals(), ag2 = result2.awayGoals();
+            // In the swapped run, "result2.homeGoals()" was scored by the team
+            // that was originally away — so it counts as awayGoals in the
+            // accumulated totals.  Similarly result2.awayGoals → homeGoals.
+            homeGoals += ag2; awayGoals += hg2;
+            homeShots += result2.awayStats().shots(); awayShots += result2.homeStats().shots();
+            homeShotsOnTarget += result2.awayStats().shotsOnTarget(); awayShotsOnTarget += result2.homeStats().shotsOnTarget();
+            homePassesAttempted += result2.awayStats().passesAttempted(); awayPassesAttempted += result2.homeStats().passesAttempted();
+            homePassesCompleted += result2.awayStats().passesCompleted(); awayPassesCompleted += result2.homeStats().passesCompleted();
+            homeFouls += result2.awayStats().fouls(); awayFouls += result2.homeStats().fouls();
+            homeYellowCards += result2.awayStats().yellowCards(); awayYellowCards += result2.homeStats().yellowCards();
+            homeRedCards += result2.awayStats().redCards(); awayRedCards += result2.homeStats().redCards();
+            homeCorners += result2.awayStats().corners(); awayCorners += result2.homeStats().corners();
+            homeOffsides += result2.awayStats().offsides(); awayOffsides += result2.homeStats().offsides();
+            homeThrowIns += result2.awayStats().getThrowInCount(); awayThrowIns += result2.homeStats().getThrowInCount();
+            homeGoalKicks += result2.awayStats().getGoalKickCount(); awayGoalKicks += result2.homeStats().getGoalKickCount();
+            homeInterceptions += result2.awayStats().getInterceptionCount(); awayInterceptions += result2.homeStats().getInterceptionCount();
+            homePossessionChanges += result2.awayStats().getPassOutOfBoundsCount(); awayPossessionChanges += result2.homeStats().getPassOutOfBoundsCount();
+            homePassLoose += result2.awayStats().getLooseBallCount(); awayPassLoose += result2.homeStats().getLooseBallCount();
+            homeSaves += Math.max(0, result2.awayStats().shotsOnTarget() - result2.awayStats().goals());
+            awaySaves += Math.max(0, result2.homeStats().shotsOnTarget() - result2.homeStats().goals());
+            homeBlocks += result2.awayStats().blocks(); awayBlocks += result2.homeStats().blocks();
+            homeDeflections += result2.awayStats().deflections(); awayDeflections += result2.homeStats().deflections();
+            homeClearances += result2.awayStats().clearances(); awayClearances += result2.homeStats().clearances();
+            if (hg2 == 0) homeCleanSheets++;
+            if (ag2 == 0) awayCleanSheets++;
+
             // ── Parse MatchEvent records ──
-            String lastGoalSource = "open";
-            String lastRestartType = "open";
             for (var event : result.events()) {
                 String t = event.type();
                 String d = event.description() != null ? event.description() : "";
                 boolean evHome = "HOME".equals(event.team());
 
-                if (t != null && t.startsWith("VAR_")) {
-                    if (evHome) homeVarReviews++; else awayVarReviews++;
+                // Only count actual VAR DECISIONS, not VAR_IN_PROGRESS overlay events.
+                if (t != null && t.startsWith("VAR_") && !t.equals("VAR_IN_PROGRESS")) {
                     if (t.contains("OFFSIDE")) {
                         if (t.contains("OVERTURNED")) { varOffsideOverturned++; }
                         else { varOffsideConfirmed++; }
@@ -147,6 +245,8 @@ public class ComprehensiveBatchRunner {
                         if (!t.contains("OVERTURNED")) { varPenaltyConfirmed++; }
                         else { varPenaltyOverturned++; }
                     }
+                    // Count this as an actual VAR review
+                    if (evHome) homeVarReviews++; else awayVarReviews++;
                 }
                 if (t != null && t.equals("PENALTY_KICK")) {
                     if (evHome) homePenaltiesAwarded++; else awayPenaltiesAwarded++;
@@ -161,31 +261,10 @@ public class ComprehensiveBatchRunner {
                     if (evHome) homePenaltiesMissed++; else awayPenaltiesMissed++;
                 }
                 if (t != null && t.equals("SHOT_SAVED") && !evHome) { /* saves counted via sot - goals */ }
-                if (t != null && t.equals("GOAL")) {
-                    if (d.contains("PENALTY")) {
-                        if (evHome) homeGoalsFromPenalty++; else awayGoalsFromPenalty++;
-                    } else if (d.contains("FREE_KICK")) {
-                        if (evHome) homeGoalsFromFreeKick++; else awayGoalsFromFreeKick++;
-                        if (lastRestartType.equals("freekick")) {
-                            if (evHome) homeFreeKickGoals++; else awayFreeKickGoals++;
-                        }
-                    } else if (lastGoalSource.equals("cross")) {
-                        if (evHome) homeGoalsFromCross++; else awayGoalsFromCross++;
-                    } else if (lastGoalSource.equals("center")) {
-                        if (evHome) homeGoalsFromCenter++; else awayGoalsFromCenter++;
-                    } else if (lastGoalSource.equals("thru")) {
-                        if (evHome) homeGoalsFromThru++; else awayGoalsFromThru++;
-                    } else if (lastRestartType.equals("corner")) {
-                        if (evHome) homeGoalsFromCorner++; else awayGoalsFromCorner++;
-                    } else {
-                        if (evHome) homeGoalsFromOpenPlay++; else awayGoalsFromOpenPlay++;
-                    }
-                    lastGoalSource = "open";
-                    lastRestartType = "open";
-                }
             }
 
             // ── Parse LogEntry records ──
+            String lastRestartType = "open";
             for (LogEntry e : result.logs()) {
                 String desc = e.getDescription();
                 String ch = e.getChannel();
@@ -201,9 +280,8 @@ public class ComprehensiveBatchRunner {
                 }
                 boolean isHome = "HOME".equals(team);
 
-                if (ch.equals("KICKOFF")) { lastGoalSource = "open"; lastRestartType = "open"; }
-
-                // Track restart types
+                // Track restart types for free kick shot counting
+                if (ch.equals("KICKOFF")) { lastRestartType = "open"; }
                 if (ch.equals("CORNER") || desc.contains("CORNER")) { lastRestartType = "corner"; }
                 if (ch.equals("FREE_KICK") || desc.contains("FREE_KICK") || desc.contains("free kick")) { lastRestartType = "freekick"; }
 
@@ -279,16 +357,14 @@ public class ComprehensiveBatchRunner {
                     // Cross
                     if (desc.contains("ACTION: CROSS")) {
                         if (isHome) homeCrosses++; else awayCrosses++;
-                        lastGoalSource = "cross";
                     }
                     // Center
                     if (desc.contains("ACTION: CENTER")) {
                         if (isHome) homeCenters++; else awayCenters++;
-                        lastGoalSource = "center";
                     }
-                    // THRU
+                    // THRU — no-op (goal source now from GoalDetail, not logs)
                     if (desc.startsWith("THRU ") || desc.contains("THRU PASS:")) {
-                        lastGoalSource = "thru";
+                        // lastGoalSource = "thru"; // removed — use GoalDetail.source()
                     }
                     // Carry
                     if (desc.startsWith("ACTION: CARRY")) {
@@ -343,7 +419,163 @@ public class ComprehensiveBatchRunner {
                 }
             }
 
+            // ── SECOND MATCH (swapped home/away) — parse events & logs ──
+            // Same parsing but events are accumulated as if HOME/AWAY were
+            // swapped — i.e. what was HOME in the result is now AWAY.
+            String lastRestartType2 = "open";
+            for (var event : result2.events()) {
+                String t = event.type();
+                String d = event.description() != null ? event.description() : "";
+                // SWAP: HOME in the original becomes AWAY in our accounting
+                boolean evHome = "AWAY".equals(event.team());
+
+                // Only count actual VAR decisions (skip VAR_IN_PROGRESS overlays)
+                if (t != null && t.startsWith("VAR_") && !t.equals("VAR_IN_PROGRESS")) {
+                    if (t.contains("OFFSIDE")) {
+                        if (t.contains("OVERTURNED")) { varOffsideOverturned++; }
+                        else { varOffsideConfirmed++; }
+                    } else if (t.contains("GOAL")) {
+                        if (t.contains("OVERTURNED")) { varGoalOverturned++; }
+                        else { varGoalConfirmed++; }
+                    } else if (t.contains("RED")) {
+                        if (t.contains("OVERTURNED")) { varRedOverturned++; }
+                        else { varRedConfirmed++; }
+                    } else if (t.contains("PENALTY")) {
+                        if (!t.contains("OVERTURNED")) { varPenaltyConfirmed++; }
+                        else { varPenaltyOverturned++; }
+                    }
+                    if (evHome) homeVarReviews++; else awayVarReviews++;
+                }
+                if (t != null && t.equals("PENALTY_KICK")) {
+                    if (evHome) homePenaltiesAwarded++; else awayPenaltiesAwarded++;
+                }
+                if (t != null && t.equals("PENALTY_GOAL")) {
+                    if (evHome) homePenaltiesScored++; else awayPenaltiesScored++;
+                }
+                if (t != null && t.equals("PENALTY_SAVED")) {
+                    if (evHome) homePenaltiesSaved++; else awayPenaltiesSaved++;
+                }
+                if (t != null && t.equals("PENALTY_MISS")) {
+                    if (evHome) homePenaltiesMissed++; else awayPenaltiesMissed++;
+                }
+            }
+
+            for (LogEntry e : result2.logs()) {
+                String desc = e.getDescription();
+                String ch = e.getChannel();
+                String team = e.getTeam();
+                if (team == null) {
+                    if (desc.contains("HOME ")) team = "HOME";
+                    else if (desc.contains("AWAY ")) team = "AWAY";
+                    else if (desc.contains("Home ") || desc.startsWith("Home ")) team = "HOME";
+                    else if (desc.contains("Away ") || desc.startsWith("Away ")) team = "AWAY";
+                    else team = null;
+                }
+                // SWAP: original HOME becomes AWAY in our accounting
+                boolean isHome = "AWAY".equals(team);
+
+                if (ch.equals("KICKOFF")) { lastRestartType2 = "open"; }
+                if (ch.equals("CORNER") || desc.contains("CORNER")) { lastRestartType2 = "corner"; }
+                if (ch.equals("FREE_KICK") || desc.contains("FREE_KICK") || desc.contains("free kick")) { lastRestartType2 = "freekick"; }
+
+                if (lastRestartType2.equals("freekick") && desc.startsWith("ACTION: SHOT")) {
+                    if (isHome) homeFreeKickShotsOnGoal++; else awayFreeKickShotsOnGoal++;
+                }
+                if (ch.equals("DUEL") && desc.contains("DRIBBLE")) {
+                    if (isHome) homeDribbles++; else awayDribbles++;
+                }
+                if (ch.equals("FOUL")) {
+                    if (isHome) homeFreeKicks++; else awayFreeKicks++;
+                }
+                if (ch.equals("CARD") && desc.contains("YELLOW")) {
+                    if (isHome) homeYellowCards++; else awayYellowCards++;
+                }
+                if (desc.contains("OFFSIDE RETREAT")) {
+                    if (isHome) homeOffsideRetreats++; else awayOffsideRetreats++;
+                }
+                if (ch.equals("INFO")) {
+                    if (desc.contains("INJURY") || desc.contains("injury")) {
+                        if (isHome) homeInjuries++; else awayInjuries++;
+                    }
+                    if (desc.contains("SUB") || desc.contains("substitution")) {
+                        if (isHome) homeSubstitutions++; else awaySubstitutions++;
+                    }
+                }
+                if (ch.equals("CHASE")) {
+                    if (isHome) homeChases++; else awayChases++;
+                    if (desc.contains("CHASE WINNER")) {
+                        if (isHome) homeChaseWins++; else awayChaseWins++;
+                    }
+                }
+                if (ch.equals("DUEL")) {
+                    if (desc.contains("AERIAL")) {
+                        if (isHome) homeAerialDuels++; else awayAerialDuels++;
+                    }
+                    if (desc.contains("TACKLE") || desc.contains("SHOT")) {
+                        if (isHome) homeTackleDuels++; else awayTackleDuels++;
+                    }
+                    if (desc.contains("DRIBBLE")) {
+                        if (isHome) homeDribbleDuels++; else awayDribbleDuels++;
+                    }
+                }
+                if (desc.startsWith("ACTION:")) {
+                    if (desc.contains("ACTION: CROSS")) {
+                        if (isHome) homeCrosses++; else awayCrosses++;
+                    }
+                    if (desc.contains("ACTION: CENTER")) {
+                        if (isHome) homeCenters++; else awayCenters++;
+                    }
+                    if (desc.startsWith("THRU ") || desc.contains("THRU PASS:")) {
+                        // lastGoalSource2 = "thru"; // removed — use GoalDetail.source()
+                    }
+                    if (desc.startsWith("ACTION: CARRY")) {
+                        if (isHome) homeCarries++; else awayCarries++;
+                    }
+                    if (desc.contains("CLEAR:")) {
+                        if (isHome) homeClearances++; else awayClearances++;
+                    }
+                    if (desc.startsWith("ACTION: PASS")) {
+                        Object ctx = e.getContext();
+                        boolean isAir = (ctx instanceof Action a && a.getPassHeight() == PassHeight.AIR);
+                        if (isAir) {
+                            if (isHome) { homeAirPasses++; } else { awayAirPasses++; }
+                        } else {
+                            if (isHome) { homeGroundPasses++; } else { awayGroundPasses++; }
+                        }
+                    }
+                }
+                if (desc.startsWith("OUTCOME:")) {
+                    if (desc.contains("OUTCOME: CROSS") && (desc.contains("RECEIVED") || desc.contains("PASS_RECEIVED"))) {
+                        if (isHome) homeCrossesCompleted++; else awayCrossesCompleted++;
+                    }
+                    if (desc.contains("OUTCOME: CENTER") && (desc.contains("RECEIVED") || desc.contains("PASS_RECEIVED"))) {
+                        if (isHome) homeCentersCompleted++; else awayCentersCompleted++;
+                    }
+                    if (desc.contains("OUTCOME: PASS") && !desc.contains("THRU")) {
+                        Object ctx = e.getContext();
+                        boolean isAir = (ctx instanceof Action a && a.getPassHeight() == PassHeight.AIR);
+                        if (desc.contains("PASS_RECEIVED") || desc.contains("RECEIVED")) {
+                            if (isAir) {
+                                if (isHome) homeAirPassCompleted++; else awayAirPassCompleted++;
+                            } else {
+                                if (isHome) homeGroundPassCompleted++; else awayGroundPassCompleted++;
+                            }
+                        }
+                    }
+                    if (desc.contains("SHOT BLOCKED")) {
+                        if (isHome) homeBlocks++; else awayBlocks++;
+                    }
+                    if (desc.contains("deflected") || desc.contains("DEFLECTION")) {
+                        if (isHome) homeDeflections++; else awayDeflections++;
+                    }
+                }
+            }
+
+            // Each "match" generates two scorelines (one per orientation).
+            // The /N division in the report uses the actual scoreline count
+            // (2 per match) automatically.
             scorelines.add(hg + "-" + ag);
+            scorelines.add(ag2 + "-" + hg2);
             if ((i + 1) % 50 == 0) {
                 System.out.printf("  %d/%d done (%.1f goals/match avg)%n",
                         i + 1, numMatches, (homeGoals + awayGoals) / (double) (i + 1));

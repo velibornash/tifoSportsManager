@@ -124,8 +124,8 @@ public class TransitionService {
 
         Position ballPos = state.getBall().getPosition();
         boolean inAttackingHalf = "HOME".equals(carrierTeam)
-                ? ballPos.getRow() >= 4
-                : ballPos.getRow() <= 4;
+                ? ballPos.getRow() >= 4.5
+                : ballPos.getRow() <= 4.5;
 
         if (inAttackingHalf) {
             state.setPhase(MatchPhase.ATTACK);

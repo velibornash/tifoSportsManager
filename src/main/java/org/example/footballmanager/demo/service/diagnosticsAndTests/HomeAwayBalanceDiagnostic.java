@@ -27,6 +27,7 @@ public class HomeAwayBalanceDiagnostic {
         long totHomeAtt = 0, totAwayAtt = 0, totMid = 0;
         int totHomeGoals = 0, totAwayGoals = 0;
         long totHomeShots = 0, totAwayShots = 0;
+        long totHomeSOT = 0, totAwaySOT = 0;
 
         for (int m = 0; m < matches; m++) {
             long seed = 1000 + m;
@@ -69,10 +70,13 @@ public class HomeAwayBalanceDiagnostic {
             totHomePoss += hPoss[0]; totAwayPoss += aPoss[0];
             totHomeAtt += hAtt[0]; totAwayAtt += aAtt[0]; totMid += mid[0];
             totHomeShots += hShot[0]; totAwayShots += aShot[0];
+            totHomeSOT += result.homeStats().shotsOnTarget();
+            totAwaySOT += result.awayStats().shotsOnTarget();
 
-            System.out.printf("match %2d: %d-%d | possession HOME %d (%4.1f%%) AWAY %d | HOME-att-third %4.1f%% AWAY-att-third %4.1f%% | avg carrier row HOME %.2f AWAY %.2f%n",
+            System.out.printf("match %2d: %d-%d | possession HOME %d (%4.1f%%) AWAY %d | shots-on-tgt %d/%d | HOME-att-third %4.1f%% AWAY-att-third %4.1f%% | avg carrier row HOME %.2f AWAY %.2f%n",
                     m, hGoal[0], aGoal[0],
                     hPoss[0], 100.0 * hPoss[0] / (hPoss[0] + aPoss[0]), aPoss[0],
+                    result.homeStats().shotsOnTarget(), result.awayStats().shotsOnTarget(),
                     100.0 * hAtt[0] / (hAtt[0] + aAtt[0] + mid[0]),
                     100.0 * aAtt[0] / (hAtt[0] + aAtt[0] + mid[0]),
                     1.0 * hRowSum[0] / hCount[0], 1.0 * aRowSum[0] / aCount[0]);
@@ -87,5 +91,9 @@ public class HomeAwayBalanceDiagnostic {
         System.out.printf("Ball in att3:  HOME %5.1f%%  AWAY %5.1f%% (middle %5.1f%%)%n",
                 100.0 * totHomeAtt / tot, 100.0 * totAwayAtt / tot, 100.0 * totMid / tot);
         System.out.printf("Ball attempts: HOME %d  AWAY %d%n", totHomeShots, totAwayShots);
+        System.out.printf("Shots-on-tgt:  HOME %d  AWAY %d  (conv rate: HOME %.1f%%  AWAY %.1f%%)%n",
+                totHomeSOT, totAwaySOT,
+                100.0 * totHomeGoals / Math.max(1, totHomeSOT),
+                100.0 * totAwayGoals / Math.max(1, totAwaySOT));
     }
 }

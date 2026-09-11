@@ -47,8 +47,8 @@ public class VARService {
     public boolean checkOffside(Player receiver, Position passOrigin, Player[] defenders) {
         lastVARDecision = "NONE";
 
-        // VAR only reviews ~20% of offsides (close calls only)
-        if (random.nextDouble() > 0.20) {
+        // Gate: review only ~4% of offsides. Combined with goal/red/penalty VAR → target ~1-2 per match.
+        if (random.nextDouble() > 0.04) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -110,8 +110,9 @@ public class VARService {
     public boolean checkGoal(String scoringTeam, Position goalPosition) {
         lastVARDecision = "NONE";
 
-        // VAR only reviews ~15% of goals
-        if (random.nextDouble() > 0.15) {
+        // Gate: review ONLY ~4% of goals. ~7 goals/match * 4% = 0.28 per match
+        // goal VAR — combined with offside/red/penalty VAR → ~1-2 total per match.
+        if (random.nextDouble() > 0.04) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -122,7 +123,6 @@ public class VARService {
         logVARReviewStarted(scoringTeam,
                 "GOAL — reviewing build-up for " + scoringTeam
                         + " (defending: " + defendingTeam + ")");
-
         // ~8% chance of goal being overturned (foul in buildup, offside, handball)
         double overturnChance = 0.08;
         boolean overturned = random.nextDouble() < overturnChance;
@@ -142,8 +142,8 @@ public class VARService {
     public boolean checkRedCard(Player defender, boolean isSecondYellow) {
         lastVARDecision = "NONE";
 
-        // VAR only reviews ~40% of red cards
-        if (random.nextDouble() > 0.40) {
+        // Gate: review ~10% of red cards
+        if (random.nextDouble() > 0.10) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -180,8 +180,8 @@ public class VARService {
     public boolean checkPenalty(Position foulPosition, boolean homeAttacking, boolean wasCalledPenalty) {
         lastVARDecision = "NONE";
 
-        // VAR only reviews ~25% of penalties
-        if (random.nextDouble() > 0.25) {
+        // Gate: review ~5% of penalties
+        if (random.nextDouble() > 0.05) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
