@@ -109,7 +109,7 @@ public class MatchOrchestrator {
         if (canReDecide && state.getCarrier() != null && !ballInFlight) {
             Player carrier = state.getCarrier();
             // Ball must be at the carrier's feet before deciding/executing.
-            // Otherwise a dribble-lagged ball icon would let the player shoot
+            // Otherwise, a dribble-lagged ball icon would let the player shoot
             // "without being on the ball" (shot/pass scored from carrier's row
             // but flown from the trailing ball position).
             ball.setPosition(carrier.getPosition());
