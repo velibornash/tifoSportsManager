@@ -390,7 +390,39 @@ geometriju kao specifikacija u §4.
 
 ---
 
-## 8. POKRETANJE
+### 6.6 `2026-09-13 01:10` · `7ec3107` — kompletna refaktorisana fizika lopte
+
+- **Novi `Ball` model** — čista fizika: `Position`, `velX/velY`, `spin`, `airborne`; bez carrier/target/caller.
+- **`PitchEnvironment` + `GoalPhysical`** — merodavna geometrija terena (gol linije 1.0/8.0, usta 3.5–4.5, centar 4.0), OOB zone, stative sa radiusom 0.03 ćelije + visina 2.44m za UI.
+- **`BallPhysicsEngine`** (implementira `BallEngine`):
+  - `launch(aim, speed, airborne, spin)` — smer = aim-origin, brzina zadata, usporavanje do 0.
+  - Deceleracija: ground 0.35 c/t² (~2.2 m/s²), air 0.15 c/t² (~0.9 m/s²); STOP_SPEED 0.02; LANDING_SPEED 0.30.
+  - Spin lateralno ubrzanje (0.05/tik).
+  - Kolizije redosledu: 1) stative (reflect + 0.5 damp) → 2) gol ravan (presek linije u ustima = GOAL, atribucija `lastTouchTeam`) → 3) igrači (pendingReceiver = RECEIVE; protivnik brza lopta ≥ 1.0 = BLOCK/parry, spora = INTERCEPT/posed; timski = DEFLECT) → 4) OOB zona (vidljiv 4-tik hold, NIKADA instant teleport; ako se vrati na teren = cancel).
+  - Loose ball pickup: zaustavljena lopta bez nosioca → najbliži u 0.35 radijusu postaje carrier.
+  - Vraća `BallStepResult` (FLIGHT/STOPPED/RECEIVE/INTERCEPT/BLOCK/DEFLECT/POST_HIT/GOAL/OOB_ENTER/OOB_HOLD/OOB_RESTART/OOB_CANCEL/LOOSE_PICKUP).
+- **`ExecutionQuality`** — bez cilj-clamp-ova; `PassResult`/`ShotResult` vraćaju deviated aim + launch speed (0.75–1.5 c/t) + spin; `ballSpeedForSkill` mapira 1..20 → 7..14 m/s.
+- **`ActionExecutor`** — PASS/SHOT/CLEAR = `ballEngine.launch(...)`; CLEAR = air kick max speed; postavi `lastTouchTeam` + `lastTouchPlayer`.
+- **`ActionEngine`** — gol centar col **4.0** (usta 3.5–4.5).
+- **`MovementEngine`** — uklonjen player clamp (igrači smeju van linija).
+- **`MatchOrchestrator`** — novi redosled: 1) clock → 2) unlock → 3) VAR → 4) **ballEngine.stepBall** → 5) handle result (RECEIVE/INTERCEPT/BLOCK/GOAL/RESTART) → 6) decision+execution (samo ako carrier i ne-u-flight) → 7) tactical → 8) movement → 9) restart taker claim → 10) rules → 11) duels → 12) VAR timer.
+- **`RestartManager`** — uklonjeni stari Ball polja (setCarrier/target/rollDirection); koristi `state.setCarrier` + `ball.stop()`.
+- **`DuelEngine.applyDuelResult`** — snapuje loptu na pobednika, `lastTouchTeam` = winner.team.
+- **`Player`** — dodato `form` (0.5–1.2, default 1.0, dokumentovano).
+- **Verifikacija:** `mvn -q compile` čisto; 1440/3600 tika bez freeze-a; logovi prikazuju RECEIVE/INTERCEPT/DEFLECT/GOAL/OOB_HOLD/OOB_RESTART; 0-0 (decisions still not reaching shooting zones).
+
+---
+
+### 6.7 `2026-09-13 01:25` · `8019b19` — UI viewer + REST endpoint za proposal engine
+
+- **Kopiran `demo/service/ui` → `static/demo/service/ui/proposal/`** sa prilagođavanjem:
+  - `index.html` — LED scoreboard, canvas pitch, event timeline, kontrole (Play/Pause/Seek/Speed), file load.
+  - `js/viewer.js` — prerađen za proposal log format `[mm:ss|TAG] message`; parsira DEC/ORC/BAL/DUL/RST/TAC/LCH tagove; ekstraktuje player/ball pozicije iz log poruka; renderuje horizontani teren (HOME levo row 1→7, AWAY desno row 7→1); prikazuje event timeline sa ikonama.
+  - `css/pitch.css` — isti dark theme.
+- **`ProposalMatchController`** — `POST /api/proposal/generate` pokreće 90-min meč (3600 tika), vraća JSON sa `matchId`, `events`, `logs`; upisuje `static/demo/service/ui/proposal/match.json`.
+- **`ProposalMatchExporter`** — standalone `main(seed)` za headless generisanje match.json bez Spring-a.
+- **Component scan** — dodato `org.example.footballmanager.demo.service.proposal` u `@SpringBootApplication`.
+- **Verifikacija:** `curl -X POST /api/proposal/generate` vraća match JSON; viewer na `/demo/service/ui/proposal/index.html` učitava match.json, prikazuje pitch + timeline.
 
 ```bash
 # kompajliranje
