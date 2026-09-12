@@ -184,7 +184,7 @@ freeze-a (max gap 7 s); 2 gola/36 min.
 
 ---
 
-### 4.3 `2026-09-12 22:31` · `(doc)` — ovaj dokument (termin finalizovan posle commit-a)
+### 4.3 `2026-09-12 22:30` · `d5c2704` — ovaj dokument
 
 - Kreiran `PROPOSAL_PROGRESS.md`.
 - Upisana merodavna geometrija terena (§2) — uključujući OOB definiciju,
