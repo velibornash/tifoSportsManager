@@ -1,150 +1,148 @@
 package org.example.footballmanager.demo.service.proposal.engine;
 
 import org.example.footballmanager.demo.service.proposal.model.*;
-import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 import java.util.Random;
 
 /**
- * Execution quality - determines if a pass/shot succeeds based on skills.
- * 
- * CORE PRINCIPLE: Only calculates execution quality. Does NOT override decisions.
+ * Execution quality — only calculates execution quality. Does NOT override decisions.
+ * Returns launch parameters (aim point, speed, spin, onTarget for shots).
+ * NO target clamping — ball physics decides where it stops.
  */
 public class ExecutionQuality {
 
-    public static class PassResult {
-        private final Position actualTarget;
-        private final boolean received;
-        private final double speed;
-        private final int skill;
-        private final double deviation;
+    private static final Random RNG = new Random();
 
-        public PassResult(Position actualTarget, boolean received,
-                            double speed,
-                            int skill, double deviation) {
+    /** Result for a pass execution. */
+    public static class PassResult {
+        private final Position actualTarget;   // deviated aim point
+        private final double speed;            // cells/tick
+        private final double spin;             // 0..1
+        private final int skill;               // passer passing skill
+        private final double deviation;        // max deviation applied
+
+        public PassResult(Position actualTarget, double speed, double spin,
+                          int skill, double deviation) {
             this.actualTarget = actualTarget;
-            this.received = received;
             this.speed = speed;
+            this.spin = spin;
             this.skill = skill;
             this.deviation = deviation;
         }
 
         public Position getActualTarget() { return actualTarget; }
-        public boolean isReceived() { return received; }
         public double getSpeed() { return speed; }
+        public double getSpin() { return spin; }
         public int getSkill() { return skill; }
         public double getDeviation() { return deviation; }
     }
 
+    /** Result for a shot execution. */
     public static class ShotResult {
-        private final Position actualTarget;
-        private final boolean onTarget;
-        private final boolean saved;
-        private final boolean goal;
-        private final double speed;
+        private final Position actualTarget;   // deviated aim point
+        private final boolean onTarget;        // was the aim on target (for stats)
+        private final double speed;            // cells/tick
+        private final double spin;             // 0..1
 
         public ShotResult(Position actualTarget, boolean onTarget,
-                            boolean saved, boolean goal, double speed) {
+                          double speed, double spin) {
             this.actualTarget = actualTarget;
             this.onTarget = onTarget;
-            this.saved = saved;
-            this.goal = goal;
             this.speed = speed;
+            this.spin = spin;
         }
 
         public Position getActualTarget() { return actualTarget; }
         public boolean isOnTarget() { return onTarget; }
-        public boolean isSaved() { return saved; }
-        public boolean isGoal() { return goal; }
         public double getSpeed() { return speed; }
+        public double getSpin() { return spin; }
     }
 
     /**
      * Evaluate a pass based on passer skill and desired speed.
+     * Returns a deviated aim point + launch speed + spin.
+     * NO clamping of the target — ball physics handles OOB/stop.
      */
     public static PassResult evaluatePass(Player passer, Position origin,
-                                            Position intendedTarget,
-                                            Player receiver,
-                                            double desiredSpeed) {
+                                          Position intendedTarget,
+                                          Player receiver,
+                                          double desiredSpeed) {
         int skill = (int) passer.getSkills().passing();
-        double maxSpeedForSkill = ballSpeedForSkill(skill);
+        double maxSpeedForSkill = ballSpeedForSkill(skill); // 7-14 m/s -> 0.75-1.5 c/t
         double overspeed = Math.max(0.0, desiredSpeed - maxSpeedForSkill);
         double maxDeviation = 0.02 + overspeed * 2.0;
 
-        // Calculate actual target with deviation
+        // Direction from origin to intended target
         double dx = intendedTarget.getColumn() - origin.getColumn();
         double dy = intendedTarget.getRow() - origin.getRow();
-        double length = Math.sqrt(dx * dx + dy * dy);
+        double len = Math.sqrt(dx * dx + dy * dy);
 
-        double dirRow = length < 1e-9 ? 0 : dy / length;
-        double dirCol = length < 1e-9 ? 1 : dx / length;
-        double sideRow = -dirCol;
+        double dirRow = len < 1e-9 ? 0 : dy / len;
+        double dirCol = len < 1e-9 ? 1 : dx / len;
+        double sideRow = -dirCol;  // perpendicular left
         double sideCol = dirRow;
 
-        double longitudinal = (Math.random() * 2 - 1) * maxDeviation;
-        double lateral = (Math.random() * 2 - 1) * maxDeviation * 2.5;
+        double longitudinal = (RNG.nextDouble() * 2 - 1) * maxDeviation;
+        double lateral = (RNG.nextDouble() * 2 - 1) * maxDeviation * 2.5;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
 
-        Position actualTarget = new Position(
-            SimUtils.clamp(actualRow, 1.0, 7.0),
-            SimUtils.clamp(actualCol, 1.0, 6.9)
-        );
+        Position actualTarget = new Position(actualRow, actualCol);
+        // speed clamped to launch limits
+        double speed = Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, Math.min(BallPhysicsEngine.MAX_BALL_SPEED, desiredSpeed));
+        // small spin for ground passes (0..0.2)
+        double spin = RNG.nextDouble() * 0.2;
 
-        boolean received = SimUtils.distance(actualTarget, receiver.getPosition()) < 2.0;
-        double speed = Math.max(0.5, Math.min(1.5, desiredSpeed));
-        return new PassResult(actualTarget, received, speed, skill, maxDeviation);
+        return new PassResult(actualTarget, speed, spin, skill, maxDeviation);
     }
 
     /**
-     * Evaluate a shot based on striker skill and desired speed.
+     * Evaluate a shot based on striker skill and pressure.
+     * Returns a deviated aim point + launch speed + spin + onTarget flag.
      */
     public static ShotResult evaluateShot(Position goalPosition,
-                                            int carrierStrikerSkill,
-                                            double pressure,
-                                            Position shotOrigin) {
+                                          int carrierStrikerSkill,
+                                          double pressure,
+                                          Position shotOrigin) {
         int skill = carrierStrikerSkill;
-        double dist = shotOrigin == null ? 4.0 : SimUtils.distance(shotOrigin, goalPosition);
+        double dist = shotOrigin == null ? 4.0
+                : Math.hypot(shotOrigin.getRow() - goalPosition.getRow(),
+                             shotOrigin.getColumn() - goalPosition.getColumn());
 
         // On-target probability based on skill, distance, pressure
-        double onTargetProb = 0.18 + skill / 20.0 * 0.30;   // 0.30 (skill 8) .. 0.48 (skill 20)
-        onTargetProb *= Math.max(0.30, 1.0 - dist / 7.0);   // closer shots land on target more
+        double onTargetProb = 0.18 + skill / 20.0 * 0.30;   // 0.30..0.48
+        onTargetProb *= Math.max(0.30, 1.0 - dist / 7.0);
         onTargetProb *= (1.0 - pressure / 200.0);
 
-        // Short range always on target
-        if (dist <= 1.2) {
-            onTargetProb = 1.0;
-        }
+        if (dist <= 1.2) onTargetProb = 1.0;
 
-        // Determine actual target
-        double actualRow;
-        double actualCol;
-        if (onTargetProb > Math.random()) {
-            // On target - aim for goal
+        boolean onTarget = onTargetProb > RNG.nextDouble();
+
+        // Determine actual target (deviated)
+        double actualRow, actualCol;
+        if (onTarget) {
+            // Aim for goal mouth center with small spread
             actualRow = goalPosition.getRow();
-            actualCol = goalPosition.getColumn() + (Math.random() - 0.5) * 1.0;
+            actualCol = goalPosition.getColumn() + (RNG.nextDouble() - 0.5) * 0.6; // within mouth
         } else {
-            // Off target - scatter around goal
-            actualRow = goalPosition.getRow() + (Math.random() - 0.5) * 4.0;
-            actualCol = goalPosition.getColumn() + (Math.random() - 0.5) * 3.0;
+            // Off target — scatter around goal
+            actualRow = goalPosition.getRow() + (RNG.nextDouble() - 0.5) * 4.0;
+            actualCol = goalPosition.getColumn() + (RNG.nextDouble() - 0.5) * 3.0;
         }
 
-        Position actualTarget = new Position(
-            SimUtils.clamp(actualRow, -0.5, 8.5),
-            SimUtils.clamp(actualCol, -0.5, 7.5)
-        );
-
-        boolean onTarget = SimUtils.distance(actualTarget, goalPosition) < 1.0;
+        Position actualTarget = new Position(actualRow, actualCol);
         double speed = ballSpeedForSkill(skill);
+        double spin = RNG.nextDouble() * 0.3; // shots can have more spin
 
-        return new ShotResult(actualTarget, onTarget, false, onTarget, speed);
+        return new ShotResult(actualTarget, onTarget, speed, spin);
     }
 
     /**
-     * Calculate ball speed based on skill.
+     * Calculate ball launch speed (cells/tick @ 40 TPM) based on skill 1..20.
+     * Maps linearly from 7 m/s (skill 1) to 14 m/s (skill 20).
      */
     public static double ballSpeedForSkill(double skill) {
-        double ms = 7.0 + (skill / 20.0) * 7.0; // 7-14 m/s
-        return (ms / 14.0) * 1.5; // convert to cells/tick @ 40 TPM
+        double ms = 7.0 + (skill / 20.0) * 7.0;   // 7..14 m/s
+        return (ms / 14.0) * BallPhysicsEngine.MAX_BALL_SPEED;      // 0.75..1.5 cells/tick
     }
 }

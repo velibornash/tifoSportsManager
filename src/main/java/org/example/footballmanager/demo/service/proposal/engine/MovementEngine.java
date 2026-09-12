@@ -6,8 +6,9 @@ import org.example.footballmanager.demo.service.proposal.model.Position;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 /**
- * Movement engine - handles player movement toward targets with collision avoidance.
- * Moves players from A to B each tick, respects pace limits, and handles field boundaries.
+ * Movement engine — handles player movement toward targets with collision avoidance.
+ * Moves players from A to B each tick, respects pace limits.
+ * NO field boundary clamping — players may move off the pitch.
  */
 public class MovementEngine {
 
@@ -34,7 +35,7 @@ public class MovementEngine {
             double playerSpeed = playerSpeedFor(pace);
 
             // Carrier with ball moves slightly slower
-            boolean isCarrier = p == state.getBall().getCarrier();
+            boolean isCarrier = p == state.getCarrier();
             if (isCarrier) {
                 playerSpeed *= CARRIER_FACTOR;
             }
@@ -55,8 +56,8 @@ public class MovementEngine {
             double moveY = (dy / dist) * playerSpeed;
 
             Position newPosition = new Position(
-                SimUtils.clamp(current.getRow() + moveY, 1.0, 8.0),
-                SimUtils.clamp(current.getColumn() + moveX, 0.9, 7.0)
+                    current.getRow() + moveY,
+                    current.getColumn() + moveX
             );
 
             p.setPosition(newPosition);
@@ -70,19 +71,17 @@ public class MovementEngine {
 
     /**
      * Find safe position for a player considering collision with others.
+     * (Currently unused — collision handled by ball engine for ball contacts)
      */
     public Position findSafePosition(Player p, Position proposed, Position target,
                                       MatchState state) {
         Position current = p.getPosition();
 
-        // Check for nearby players
         for (Player other : state.getPlayers()) {
             if (other == p || other.isSentOff() || other.isInjured()) continue;
 
             double otherDist = SimUtils.distance(other.getPosition(), proposed);
             if (otherDist < MIN_PLAYER_DISTANCE) {
-                // Player would collide - try to find alternative
-                // Simple: keep current position if blocked
                 if (SimUtils.distance(current, target) <= SimUtils.distance(proposed, target)) {
                     return current;
                 }
@@ -92,9 +91,7 @@ public class MovementEngine {
         return proposed;
     }
 
-    /**
-     * Calculate player speed based on pace.
-     */
+    /** Calculate player speed based on pace (1..20). */
     public static double playerSpeedFor(double pace) {
         return (pace / 20.0) * PLAYER_SPEED_BASE;
     }

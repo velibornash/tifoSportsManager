@@ -1,6 +1,5 @@
 package org.example.footballmanager.demo.service.proposal.engine;
 
-import org.example.footballmanager.demo.service.proposal.model.Ball;
 import org.example.footballmanager.demo.service.proposal.model.MatchState;
 import org.example.footballmanager.demo.service.proposal.model.Player;
 import org.example.footballmanager.demo.service.proposal.model.Position;
@@ -37,15 +36,14 @@ public class TacticalIntentEngine {
      *  - unavailable/locked players.
      */
     public void refreshTargets(MatchState state) {
-        Ball ball = state.getBall();
-        Player carrier = ball.getCarrier();
+        Player carrier = state.getCarrier();
         Player taker = state.getRestartTaker();
         Player receiver = state.getPendingReceiver();
 
         for (Player p : state.getPlayers()) {
             if (p == carrier || p == taker || p == receiver) continue;
             if (p.isUnavailable() || p.isLocked()) continue;
-            Position desired = tactics.desiredCell(p.getRole(), ball.getPosition(), p.getTeam());
+            Position desired = tactics.desiredCell(p.getRole(), state.getBall().getPosition(), p.getTeam());
             p.setTarget(desired);
         }
     }

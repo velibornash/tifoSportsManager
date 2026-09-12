@@ -6,7 +6,7 @@ import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 /**
- * Restart Manager - handles ALL match restarts.
+ * Restart Manager — handles ALL match restarts.
  *
  * CORE PRINCIPLE (from corePrinciples.md §48):
  * - INSTANT restart: ball teleports to restart spot
@@ -67,11 +67,7 @@ public class RestartManager {
      */
     public void handleKickoff(MatchState state, String kickoffTeam) {
         state.getBall().setPosition(KICK_OFF_SPOT);
-        state.getBall().setTarget(null);
-        state.getBall().setCarrier(null);
-        state.getBall().setSpeed(0);
-        state.getBall().setAirborne(false);
-        state.getBall().setRollDirection(null);
+        state.getBall().stop();
         state.setCarrier(null);
         state.setRestartTaker(null);
         state.setPendingReceiver(null);
@@ -89,7 +85,7 @@ public class RestartManager {
             taker.setPosition(KICK_OFF_SPOT);
             taker.setTarget(null);
             state.setCarrier(taker);
-            state.getBall().setCarrier(taker);
+            state.getBall().setPosition(KICK_OFF_SPOT);
         }
 
         state.setPhase(MatchPhase.SET_PIECE);
@@ -113,11 +109,7 @@ public class RestartManager {
         // 1. INSTANT ball teleport to restart spot
         Position ballPos = getRestartPosition(type);
         state.getBall().setPosition(ballPos);
-        state.getBall().setTarget(null);
-        state.getBall().setCarrier(null);
-        state.getBall().setSpeed(0);
-        state.getBall().setAirborne(false);
-        state.getBall().setRollDirection(null);
+        state.getBall().stop();
 
         // 2. All 22 players reposition toward tactical positions for the
         //    restart spot (players move smoothly, only the ball teleports).
@@ -190,20 +182,20 @@ public class RestartManager {
     private Player findNearestPlayerOfTeam(MatchState state, String team, Position target,
                                            boolean attackersOnly, boolean defendersOnly) {
         return state.getPlayers().stream()
-            .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
-            .filter(p -> !attackersOnly || p.isAttacker())
-            .filter(p -> !defendersOnly || p.isDefender())
-            .min((a, b) -> Double.compare(
-                SimUtils.distance(a.getPosition(), target),
-                SimUtils.distance(b.getPosition(), target)))
-            .orElse(null);
+                .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
+                .filter(p -> !attackersOnly || p.isAttacker())
+                .filter(p -> !defendersOnly || p.isDefender())
+                .min((a, b) -> Double.compare(
+                        SimUtils.distance(a.getPosition(), target),
+                        SimUtils.distance(b.getPosition(), target)))
+                .orElse(null);
     }
 
     private Player findWinger(MatchState state, String team, boolean left) {
         return state.getPlayers().stream()
-            .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
-            .filter(p -> left ? (p.getRole().equals("ML") || p.getRole().equals("DL"))
+                .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
+                .filter(p -> left ? (p.getRole().equals("ML") || p.getRole().equals("DL"))
                                 : (p.getRole().equals("MR") || p.getRole().equals("DR")))
-            .findFirst().orElse(null);
+                .findFirst().orElse(null);
     }
 }

@@ -23,6 +23,7 @@ public class Player {
     private double velX;
     private double velY;
     private double fatigue;
+    private double form;   // 0.5..1.2 multiplier, default 1.0 (documented, not yet used)
     private int consecutiveOffsideCount;
     private int consecutiveCarries;
     private int lastShotTick = -100;
@@ -46,6 +47,7 @@ public class Player {
         this.alternativePosition = Objects.requireNonNull(alternativePosition);
         this.skills = Objects.requireNonNull(skills);
         this.heightCm = heightCm;
+        this.form = 1.0;
     }
 
     public String getId() { return id; }
@@ -106,6 +108,9 @@ public class Player {
 
     public double getFatigue() { return fatigue; }
     public void setFatigue(double fatigue) { this.fatigue = Math.max(0, Math.min(1.0, fatigue)); }
+
+    public double getForm() { return form; }
+    public void setForm(double form) { this.form = Math.max(0.5, Math.min(1.2, form)); }
 
     public int getConsecutiveOffsideCount() { return consecutiveOffsideCount; }
     public void setConsecutiveOffsideCount(int count) { this.consecutiveOffsideCount = Math.max(0, count); }

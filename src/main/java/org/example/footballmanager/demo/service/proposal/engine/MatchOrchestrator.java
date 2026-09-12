@@ -11,21 +11,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Match Orchestrator - coordinates all engine calls within a single tick.
- * Orchestration is NOT an engine - it just calls engines in order.
- * 
- * Tick flow:
+ * Match Orchestrator — coordinates all engine calls within a single tick.
+ * Orchestration is NOT an engine — it just calls engines in order.
+ *
+ * Tick flow (NEW):
  *   1. Advance match clock (MatchClockService)
  *   2. Unlock duel losers
- *   3. VAR check - can we re-decide?
- *   4. Decision engine - what to do
- *   5. Execution engine - how to do it
- *   6. Ball physics engine - ball movement
- *   7. Ball arrival handling (receiver / loose ball / goal)
- *   8. Movement engine - player movement
- *   9. Rules check - offside etc.
- *   10. Restart check - ball out of bounds?
- *   11. Duel detection - resolve duels
+ *   3. VAR check — can we re-decide?
+ *   4. Ball physics step (moves ball, handles collisions, goal, OOB hold)
+ *   5. Handle ball physics result (RECEIVE/INTERCEPT/BLOCK/GOAL/RESTART/etc.)
+ *   6. Decision engine — what to do (only if carrier and not in flight)
+ *   7. Execution engine — how to do it (launch ball, set targets)
+ *   8. Tactical intent engine — non-carrier players reposition
+ *   9. Movement engine — players move toward targets
+ *  10. Restart taker claims ball (if arrived at spot)
+ *  11. Rules check — offside etc.
+ *  12. Duel detection — resolve duels
+ *  13. Decrement VAR timer
  */
 public class MatchOrchestrator {
 
@@ -44,7 +46,6 @@ public class MatchOrchestrator {
 
     private ActionType lastLoggedType;
     private String lastLoggedCarrier;
-    private String lastShooterTeam;
     private boolean tacticsSourceLogged;
 
     public MatchOrchestrator(MatchState state) {
@@ -62,6 +63,9 @@ public class MatchOrchestrator {
         this.restartManager = new RestartManager(tactics);
         this.duelEngine = new DuelEngine();
         this.tacticalEngine = new TacticalIntentEngine(tactics);
+
+        // Wire engine reference into state for ActionExecutor
+        state.setBallEngine(ballEngine);
     }
 
     public List<String> getEventLog() { return eventLog; }
@@ -77,12 +81,9 @@ public class MatchOrchestrator {
         return pos == null ? "?" : "(%.1f,%.1f)".formatted(pos.getRow(), pos.getColumn());
     }
 
-    /**
-     * Execute one simulation tick. Called 40 times per minute.
-     */
+    /** Execute one simulation tick. Called 40 times per minute. */
     public void tick() {
         // === 1. ADVANCE CLOCK ===
-        // CRITICAL: Clock always advances. No OOB holds. No pause during flight.
         boolean running = clockService.tick(state);
         if (!running) return;
 
@@ -100,25 +101,27 @@ public class MatchOrchestrator {
         // Only blocked while a VAR review is ACTIVE (varDelayTicks > 0)
         boolean canReDecide = !state.isVARReviewActive();
 
-        // === 4. DECISION + EXECUTION ===
-        // The engine re-decides EVERY tick while a player is in possession.
-        // Execution happens each tick (e.g. dribble keeps moving forward);
-        // logging is deduplicated so repeated same-type dribbles don't spam.
-        Ball ball = state.getBall();
-        boolean ballInFlight = ball.getCarrier() == null && ball.getTarget() != null;
-        if (canReDecide && state.getCarrier() != null && !ballInFlight) {
+        // === 4. BALL PHYSICS ENGINE ===
+        // Move ball, handle collisions, goal, OOB — returns pure physics result
+        BallStepResult ballResult = ballEngine.stepBall(state);
+
+        // === 5. HANDLE BALL PHYSICS RESULT ===
+        handleBallPhysicsResult(ballResult);
+
+        // === 6. DECISION + EXECUTION ===
+        // Re-decide every tick while a player is in possession (carrier != null)
+        // and ball is not in flight (handled by physics result not being FLIGHT/IN_TRANSITION)
+        if (canReDecide && state.getCarrier() != null) {
             Player carrier = state.getCarrier();
+
             // Ball must be at the carrier's feet before deciding/executing.
-            // Otherwise, a dribble-lagged ball icon would let the player shoot
-            // "without being on the ball" (shot/pass scored from carrier's row
-            // but flown from the trailing ball position).
-            ball.setPosition(carrier.getPosition());
-            ball.setSpeed(0);
+            // Orchestrator ensures this: after RECEIVE/LOOSE_PICKUP ball pos = carrier pos.
+            // For safety, snap here too.
+            state.getBall().setPosition(carrier.getPosition());
+            state.getBall().stop();
+
             DecisionResult result = decisionEngine.decideWithOptions(state);
             DecisionOption decision = result.getChosen();
-            if (decision.getType() == ActionType.SHOT) {
-                lastShooterTeam = carrier.getTeam();
-            }
             actionExecutor.execute(state, decision);
 
             boolean changed = decision.getType() != lastLoggedType
@@ -130,19 +133,7 @@ public class MatchOrchestrator {
             }
         }
 
-        // === 5. BALL PHYSICS ENGINE ===
-        if (ball.getCarrier() != null) {
-            ballEngine.followCarrier(ball);
-        } else if (ball.getTarget() != null) {
-            boolean arrived = ballEngine.moveBallTowardTarget(ball);
-            if (arrived) {
-                handleBallArrival();
-            }
-        } else if (ball.getRollDirection() != null && ball.getSpeed() > 0) {
-            ballEngine.moveLooseBall(ball);
-        }
-
-        // === 6. TACTICAL INTENT ENGINE ===
+        // === 7. TACTICAL INTENT ENGINE ===
         // Non-carrier players reposition toward their tactical rules targets
         // (DB → bundled JSON → catalog anchors). Logged once at match start.
         if (!tacticsSourceLogged) {
@@ -153,132 +144,96 @@ public class MatchOrchestrator {
         }
         tacticalEngine.refreshTargets(state);
 
-        // === 7. MOVEMENT ENGINE ===
+        // === 8. MOVEMENT ENGINE ===
         // Players move toward their tactical targets every tick
         movementEngine.moveAllTowardTargets(state);
 
-        // === 7b. RESTART TAKER CLAIMS THE BALL ===
+        // === 9. RESTART TAKER CLAIMS THE BALL ===
+        // After movement, if taker reached the ball, they claim it
         if (state.getCarrier() == null && state.getRestartTaker() != null) {
             Player taker = state.getRestartTaker();
-            if (SimUtils.distance(taker.getPosition(), ball.getPosition()) <= BallPhysicsEngine.PICKUP_DISTANCE) {
+            if (SimUtils.distance(taker.getPosition(), state.getBall().getPosition()) <= BallPhysicsEngine.PICKUP_DISTANCE) {
                 state.setCarrier(taker);
-                ball.setCarrier(taker);
-                ball.setTarget(null);
-                ball.setSpeed(0);
+                state.getBall().setPosition(new Position(taker.getPosition().getRow(), taker.getPosition().getColumn()));
+                state.getBall().stop();
                 state.setRestartTaker(null);
-                taker.setTarget(null);
                 log("RST", "TAKER claims ball: " + taker.getLabel()
-                        + " ball" + p(ball.getPosition()) + " " + taker.getLabel() + p(taker.getPosition()));
+                        + " ball" + p(state.getBall().getPosition()) + " " + taker.getLabel() + p(taker.getPosition()));
             }
         }
 
-        // === 8. RULES CHECK ===
+        // === 10. RULES CHECK ===
         // Offside checked AFTER action execution, not before
         rules.checkOffsideAfterAction(state);
 
-        // === 9. RESTART CHECK (at END of tick) ===
-        // Ball ONLY goes OOB after a tick completes, never mid-tick
-        handlePossibleOutOfBounds();
-
-        // === 10. DUEL DETECTION ===
+        // === 11. DUEL DETECTION ===
         detectAndResolveDuels();
 
-        // === 11. DECREMENT VAR TIMER ===
+        // === 12. DECREMENT VAR TIMER ===
         state.decrementVAR();
     }
 
-    private void handleBallArrival() {
-        Ball ball = state.getBall();
-        Position arrival = ball.getPosition();
-
-        Player receiver = state.getPendingReceiver();
-        state.setPendingReceiver(null);
-
-        if (receiver != null) {
-            // Pass received
-            state.setCarrier(receiver);
-            ball.setCarrier(receiver);
-            ball.setTarget(null);
-            ball.setSpeed(0);
-            receiver.setPosition(arrival);
-            log("ORC", "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
-                    + " at " + p(arrival) + " | ball" + p(arrival));
-            return;
-        }
-
-        // Shot or loose ball arrival
-        if (lastShooterTeam != null) {
-            Position targetGoal = ActionEngine.goalPositionFor(lastShooterTeam);
-            if (SimUtils.distance(arrival, targetGoal) < 1.0) {
-                goalScored(lastShooterTeam);
-                lastShooterTeam = null;
-                return;
+    private void handleBallPhysicsResult(BallStepResult res) {
+        switch (res.getType()) {
+            case RECEIVE -> {
+                Player receiver = state.getCarrier(); // already set by ball engine
+                log("ORC", "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
+                        + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition()));
+                state.incrementPassesCompleted();
             }
-            log("ORC", "SHOT MISSED by " + lastShooterTeam
-                    + " -> loose ball | ball" + p(arrival));
-            lastShooterTeam = null;
-        }
-
-        // Loose ball - nearest player takes it
-        Player nearest = findNearestPlayer(arrival);
-        if (nearest != null) {
-            state.setCarrier(nearest);
-            ball.setCarrier(nearest);
-            ball.setTarget(null);
-            ball.setSpeed(0);
-            log("ORC", "LOOSE BALL recovered by " + nearest.getLabel()
-                    + " | ball" + p(arrival) + " " + nearest.getLabel() + p(nearest.getPosition()));
-        }
-    }
-
-    private Player findNearestPlayer(Position pos) {
-        Player best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (Player p : state.getPlayers()) {
-            if (p.isUnavailable()) continue;
-            double d = SimUtils.distance(p.getPosition(), pos);
-            if (d < bestDist) {
-                bestDist = d;
-                best = p;
+            case INTERCEPT -> {
+                Player interceptor = state.getCarrier();
+                log("ORC", "INTERCEPT " + interceptor.getLabel() + "(" + interceptor.getRole() + ")"
+                        + " at " + p(interceptor.getPosition()) + " | ball" + p(state.getBall().getPosition()));
+            }
+            case BLOCK -> {
+                log("ORC", "BLOCK " + res.getDetail() + " parried the shot | ball" + p(state.getBall().getPosition()));
+            }
+            case DEFLECT -> {
+                log("ORC", "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition()));
+            }
+            case POST_HIT -> {
+                log("ORC", "POST_HIT deflect | ball" + p(state.getBall().getPosition()));
+            }
+            case GOAL -> {
+                String scorerTeam = res.getScorerTeam();
+                if ("HOME".equals(scorerTeam)) state.addHomeGoal();
+                else state.addAwayGoal();
+                log("ORC", "*** GOAL " + scorerTeam
+                        + " - score " + state.getHomeGoals() + ":" + state.getAwayGoals() + " ***"
+                        + " ball" + p(state.getBall().getPosition()));
+                // Reset for kickoff (clock keeps running)
+                String kickoffTeam = "HOME".equals(scorerTeam) ? "AWAY" : "HOME";
+                restartManager.handleKickoff(state, kickoffTeam);
+                log("RST", "kickoff -> ball at center, taker " + state.getCarrier().getLabel());
+            }
+            case OOB_ENTER -> {
+                log("BAL", "OOB enter -> " + res.getRestartType() + " (hold " + BallPhysicsEngine.OOB_HOLD_TICKS + " ticks) | ball" + p(state.getBall().getPosition()));
+            }
+            case OOB_HOLD -> {
+                log("BAL", "OOB hold " + res.getDetail() + " | ball" + p(state.getBall().getPosition()));
+            }
+            case OOB_RESTART -> {
+                String restartType = res.getRestartType();
+                restartManager.handleRestart(state, restartType);
+                log("RST", "restart " + restartType + " ball" + p(state.getBall().getPosition())
+                        + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel()));
+            }
+            case OOB_CANCEL -> {
+                log("BAL", "OOB cancel — ball rolled back into play | ball" + p(state.getBall().getPosition()));
+            }
+            case LOOSE_PICKUP -> {
+                Player carrier = state.getCarrier();
+                log("ORC", "LOOSE BALL recovered by " + carrier.getLabel()
+                        + " | ball" + p(state.getBall().getPosition()) + " " + carrier.getLabel() + p(carrier.getPosition()));
+            }
+            case STOPPED -> {
+                // ball stopped on pitch, no event needed
+            }
+            case FLIGHT -> {
+                // ball in flight, no event needed
             }
         }
-        return best;
-    }
-
-    private void goalScored(String scorerTeam) {
-        if ("HOME".equals(scorerTeam)) state.addHomeGoal();
-        else state.addAwayGoal();
-        log("ORC", "*** GOAL " + scorerTeam
-                + " - score " + state.getHomeGoals() + ":" + state.getAwayGoals() + " ***"
-                + " ball" + p(state.getBall().getPosition()));
-        // Reset for kickoff (instant restart, clock keeps running)
-        restartManager.handleKickoff(state, "HOME".equals(scorerTeam) ? "AWAY" : "HOME");
-        log("RST", "kickoff -> ball at center, taker " + state.getCarrier().getLabel());
-    }
-
-    private void handlePossibleOutOfBounds() {
-        Ball ball = state.getBall();
-        String goalLine = ballEngine.checkGoalLine(ball, lastTouchTeam());
-        if (goalLine != null) {
-            restartManager.handleRestart(state, goalLine);
-            log("BAL", "OOB goal line -> " + goalLine + " ball" + p(ball.getPosition()));
-            log("RST", "restart " + goalLine + " ball" + p(ball.getPosition())
-                    + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel()));
-            return;
-        }
-        String sideline = ballEngine.checkSideline(ball, lastTouchTeam());
-        if (sideline != null) {
-            restartManager.handleRestart(state, sideline);
-            log("BAL", "OOB sideline -> " + sideline + " ball" + p(ball.getPosition()));
-            log("RST", "restart " + sideline + " ball" + p(ball.getPosition())
-                    + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel()));
-        }
-    }
-
-    private String lastTouchTeam() {
-        Player ballCarrier = state.getBall().getCarrier();
-        if (ballCarrier != null) return ballCarrier.getTeam();
-        return state.getCarrierTeam();
     }
 
     private void detectAndResolveDuels() {
@@ -329,9 +284,7 @@ public class MatchOrchestrator {
                 state.getMatchTicks() % 40 * 90 / 40);
     }
 
-    /**
-     * Run the simulation for a number of ticks.
-     */
+    /** Run the simulation for a number of ticks. */
     public void simulate(int ticks) {
         for (int i = 0; i < ticks; i++) {
             tick();

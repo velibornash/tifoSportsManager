@@ -49,7 +49,7 @@ public class DuelEngine {
         }
 
         // Shot block
-        if (distance <= SHOT_BLOCK_RADIUS && state.getBall().getCarrier() != null) {
+        if (distance <= SHOT_BLOCK_RADIUS && state.getCarrier() != null) {
             // Check if defender is between ball and goal
             return DuelType.SHOT_BLOCK;
         }
@@ -80,6 +80,11 @@ public class DuelEngine {
     public void applyDuelResult(MatchState state, Player winner, Player loser) {
         // Winner becomes carrier
         state.setCarrier(winner);
+        state.setLastTouchTeam(winner.getTeam());
+
+        // Ball snaps to winner's feet, velocity zero
+        state.getBall().setPosition(new Position(winner.getPosition().getRow(), winner.getPosition().getColumn()));
+        state.getBall().stop();
 
         // Loser is blocked for cooldown (unlocked by orchestrator after ticks expire)
         loser.setLocked(true);

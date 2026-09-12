@@ -31,17 +31,29 @@ public class MatchState {
 
     // Ball
     private final Ball ball;
-    private Player carrier; // null = no carrier (transition/loose)
-    private Player pendingReceiver; // who should receive the in-flight pass
+    private Player carrier;           // null = no carrier (transition/loose)
+    private Player pendingReceiver;   // who should receive the in-flight pass
+    private String lastTouchTeam;     // team that last touched the ball
+    private Player lastTouchPlayer;   // player who last touched the ball (for deflection exclusion)
+
+    // OOB hold state (4-tick visible hold before restart)
+    private String oobPending;        // restart type while hold active
+    private int oobHoldTicks;         // remaining hold ticks
+
+    // Pitch environment (goals, lines, OOB zones)
+    private final PitchEnvironment environment;
+
+    // Engine references (for execution)
+    private BallEngine ballEngine;
 
     // Action
     private Action currentAction;
 
     // Tactical / phase
     private MatchPhase phase;
-    private String setPieceType;  // CORNER, GOAL_KICK, THROW_IN, PENALTY, FREE_KICK
+    private String setPieceType;      // CORNER, GOAL_KICK, THROW_IN, PENALTY, FREE_KICK
     private String restartTeam;
-    private Player restartTaker;  // walks to the ball during a restart
+    private Player restartTaker;      // walks to the ball during a restart
 
     // Statistics
     private int passAttempts;
@@ -65,13 +77,22 @@ public class MatchState {
         this.homeGoals = 0;
         this.awayGoals = 0;
         this.players = new ArrayList<>();
-        this.ball = new Ball(new Position(4.0, 3.5), new Position(4.0, 3.5));
+        this.ball = new Ball(new Position(CENTER_ROW, CENTER_COL));
         this.carrier = null;
+        this.pendingReceiver = null;
+        this.lastTouchTeam = null;
+        this.oobPending = null;
+        this.oobHoldTicks = 0;
+        this.environment = new PitchEnvironment();
         this.currentAction = null;
         this.phase = MatchPhase.OPEN_PLAY;
         this.setPieceType = null;
         this.restartTeam = null;
     }
+
+    // --- constants for kickoff ---
+    public static final double CENTER_ROW = 4.5;
+    public static final double CENTER_COL = 4.0;
 
     // === CLOCK CONTROL ===
 
@@ -126,6 +147,28 @@ public class MatchState {
     public Player getCarrier() { return carrier; }
     public void setCarrier(Player carrier) { this.carrier = carrier; }
 
+    /** Team that last touched the ball (for goal/OOB attribution). */
+    public String getLastTouchTeam() { return lastTouchTeam; }
+    public void setLastTouchTeam(String team) { this.lastTouchTeam = team; }
+
+    /** Player who last touched the ball (for deflection exclusion). */
+    public Player getLastTouchPlayer() { return lastTouchPlayer; }
+    public void setLastTouchPlayer(Player p) { this.lastTouchPlayer = p; }
+
+    // === OOB HOLD ===
+    public String getOobPending() { return oobPending; }
+    public void setOobPending(String type) { this.oobPending = type; }
+    public int getOobHoldTicks() { return oobHoldTicks; }
+    public void setOobHoldTicks(int ticks) { this.oobHoldTicks = ticks; }
+    public void decrementOobHold() { if (oobHoldTicks > 0) oobHoldTicks--; }
+    public void clearOobPending() { this.oobPending = null; this.oobHoldTicks = 0; }
+
+    // === ENVIRONMENT ===
+    public PitchEnvironment getEnvironment() { return environment; }
+
+    public BallEngine getBallEngine() { return ballEngine; }
+    public void setBallEngine(BallEngine engine) { this.ballEngine = engine; }
+
     public Action getCurrentAction() { return currentAction; }
     public void setCurrentAction(Action currentAction) { this.currentAction = currentAction; }
 
@@ -151,7 +194,7 @@ public class MatchState {
     }
 
     public int getRoundPaceSkill(Player p) {
-        return roundPaceSkills.getOrDefault(p.getId(), (int) p.getSkills().pace());
+        return roundPaceSkills.getOrDefault(p.getId(), (int) Math.round(p.getSkills().pace()));
     }
 
     public void setRoundPaceSkill(String playerId, int skill) {
@@ -162,7 +205,7 @@ public class MatchState {
     public int getPassAttempts() { return passAttempts; }
     public void incrementPassAttempts() { this.passAttempts++; }
     public int getPassesCompleted() { return passesCompleted; }
-    public void setPassesCompleted(int passesCompleted) { this.passesCompleted = passesCompleted; }
+    public void incrementPassesCompleted() { this.passesCompleted++; }
     public int getShots() { return shots; }
     public void incrementShots() { this.shots++; }
     public int getShotsOnTarget() { return shotsOnTarget; }
