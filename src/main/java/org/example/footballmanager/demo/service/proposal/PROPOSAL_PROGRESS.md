@@ -63,22 +63,22 @@ Kada kažemo "dužina ćelije" misli se na **14 metara**.
 
 **Linije i golovi:**
 - Leva aut linija: **col 1.00**; desna aut linija: **col 7.00**.
-- Gol linija HOME: **row 1.00**; gol je od **1.00\|3.50 do 1.00\|4.50**
+- Gol linija HOME: **row 1.00**; gol je od **1.00|3.50 do 1.00|4.50**
   (širina 1.0, centar col **4.00**).
-- Gol linija AWAY: **row 8.00**; gol je od **8.00\|3.50 do 8.00\|4.50**.
-- Centar terena: **4.50\|4.00**.
+- Gol linija AWAY: **row 8.00**; gol je od **8.00|3.50 do 8.00|4.50**.
+- Centar terena: **4.50|4.00**.
 - Levica kaže: red 0 je **vizuelna OOB zona iza domaćeg gola** — lopta ulazi u
   taj red da korisnik vidno vidi da je van terena (gol-aut/korner).
 - red 8 je **vizuelna OOB zona iza away gola**.
 
-**Korneri:** HOME levi **1.0\|1.0**, HOME desni **1.0\|7.0**,
-AWAY levi **8.0\|1.0**, AWAY desni **8.0\|7.0**.
+**Korneri:** HOME levi **1.0|1.0**, HOME desni **1.0|7.0**,
+AWAY levi **8.0|1.0**, AWAY desni **8.0|7.0**.
 
-**Penali:** domaći **1.79\|4.00**, gostujući **7.21\|4.00**.
+**Penali:** domaći **1.79|4.00**, gostujući **7.21|4.00**.
 
 **Šesnaesterci (box):**
-- HOME: **1.00\|2.40, 1.00\|5.60, 2.14\|2.40, 2.14\|5.60**.
-- AWAY: **8.00\|2.40, 8.00\|5.60, 6.86\|2.40, 6.86\|5.60**.
+- HOME: **1.00|2.40, 1.00|5.60, 2.14|2.40, 2.14|5.60**.
+- AWAY: **8.00|2.40, 8.00|5.60, 6.86|2.40, 6.86|5.60**.
 
 **Smer napada istorijski:** HOME na početku utakmice napada levo→desno
 (od reda 1 ka redu 7); AWAY obrnuto. Za drugog poluvremena mora ostati
@@ -91,7 +91,139 @@ mogućnost zamene strana **bez rušenja sistema** (vidi §1 i "backlog").
 
 ---
 
-## 3. POČETNO STANJE (pre svih izmena ovog dokumenta)
+## 3. PODACI O IGRAČIMA — merodavne skilovi i nestandardni atributi
+
+Svi atributi su u opsegu **1–20** osim gde je drugačije navedeno.
+
+### 3.1 Osam osnovnih skilova (skill 1..20)
+
+| Ime | Skr. | Uloga u fizici / odluci |
+|---|---|---|
+| **Stamina** | sta | Fatigue drain (↑stamina = sporije umora), stamina drain rate u `FatigueSystem` |
+| **Keeper** | kep | GK samo: šansa za Save/Catch/Punch, `DuelEngine` aerial/header |
+| **Pace** | pac | Brzina kretanja igrača (cells/tick) = `pace/20 * 0.75`; chase sprint ×1.30 |
+| **Defending** | def | Tackle/block/interception; `DuelEngine` DRIBBLE/TACKLE power; pozicioniranje |
+| **Technique** | tec | Prvi dodir, kontrola loptine, execution quality (pass/shot deviation) |
+| **Playmaking** | pm | Viđenje opcija (VisionFilter), kvalitet odluke (OptionSelector) — **ne** passing |
+| **Passing** | pas | Brzina dodavanja (max ball speed za PASS/CROSS/CLEAR), tačnost |
+| **Striker** | str | Šut: xG, brzina šuta, ciljanje (far post), gol šansa |
+
+> **Napomena:** trenutni `PlayerSkills` record u kodu ima polja u drugom redosledu
+> `(pace, stamina, keeper, technique, playmaking, passing, striker, defender)`.
+> Dokumentovani redosled gore je **merodavan za specifikaciju**. Konstrukcije u
+> `MatchSimulationLauncher.randomSkills` moraju da mapiraju po imenu, ne po poziciji.
+
+### 3.2 Nestandardni atributi (ne-skills)
+
+| Atribut | Tip / opseg | Uloga |
+|---|---|---|
+| **Fatigue** | double 0.0–1.0 | Trenutno umor; `MovementEngine` smanjuje brzinu do −30% (`MAX_FATIGUE_SPEED_LOSS`). |
+| **Injury** | boolean | Igrač ne može da se kreće/igra; `isUnavailable()` true. |
+| **Form** | double 0.5–1.2 (default 1.0) | Množilac na sve fizičke/tehničke output-e; **samo dokumentovano**, još nije upotpunjeno u kod. |
+
+---
+
+## 4. FIZIKA LOPTE — merodavni pravila (source of truth)
+
+Ova sekcija je **specifikacija** koju engine **mora** da ispoštuje. Sve
+odstupanja su bagovi.
+
+### 4.1 Osnovni model
+
+- Lopta je **čista fizika**: pozicija + brzina (velX, velY u ćelijama/tik) +
+  rotacija/spin (0..1) + Airborne flag.
+- **NIJE** carrier, NIJE target, NIJE "ko je pozvao" — sve to je u `MatchState`.
+- Lansiranje: `launch(aim, speedCellsPerTick, airborne, spin)` —
+  smer = `aim - origin`, brzina = zadata, uzduž smera.
+
+### 4.2 Brzine (match time: 1 tik = 1.5 s, 40 TPM)
+
+| | m/s | ćelije/tik |
+|---|---:|---:|
+| Igrač pace 20 | 7.0 | 0.75 |
+| Lopta MIN (najslabije dodavanje) | 7.0 | **0.75** |
+| Lopta MAX (najjači šut/dodavanje) | 14.0 | **1.50** |
+
+> **Lansiranje dodavanja/šuta:** ExecutionQuality vraća `LaunchedBall(aim, speed, onTarget, spin)`.
+> - Brzina se **ne clamp-u** na cilj; lopta leti ka cilju koliko stigane, zatim se
+>   usporava i zaustavlja (ili postane LOOSE).
+> - Minimalna brzina na start: **0.75** (7 m/s). Slabije ne postoji.
+
+### 4.3 Usporenje (deceleration) — do nule
+
+| Tip | decel (ćelije/tik²) | napomena |
+|---|---:|---|
+| **Zemlja (ground pass/clearance)** | **0.35** | ~2.2 m/s² trenje; zaustavlja se brže |
+| **Vazduh (air shot/cross)** | **0.15** | ~0.9 m/s² otpor vazduha; leti daleko |
+| **Zaustavljanje** | kada brzina ≤ **0.02** → postavi na 0, `airborne=false` |
+
+**Landing:** vazdušna lopta čim padne ispod `LANDING_SPEED = 0.30` postaje
+zemaljska (nastavlja da se trči sa ground decel).
+
+### 4.4 Spin (efekat / zavijanje)
+
+- `spin ∈ [0, 1]` → lateralno ubrzanje svaki tik: `rotacija(brzina, spin * 0.05)`.
+- Blago krivljenje trajektorije (za free kick, corner, cross).
+
+### 4.5 Kolizije (svaki tik)
+
+Lopta proverava sudar **u ovom redosledu** (ranije = veći prioritet):
+
+1. **Stative/prečke (GoalPhysical)**: leva/desna stativa (radius 0.03 ćelije) na gol liniji.
+   - Sudar → odbijanje (reflect brzina po normali) + `BOUNCE_DAMP = 0.5`.
+   - Lopta postaje zemaljska.
+2. **Gol ravnа (goal plane)**: presek segmenta `prev→new` sa gol linijom
+   (HOME 1.0, AWAY 8.0).
+   - Ako presek u **usta gola** (kolona 3.50–4.50, isključujući stative) → **GOAL**.
+   - Gol atribuisan `lastTouchTeam` (poslednji tim koji je dodirnuo loptu).
+   - Takodje čisti OOB pending.
+3. **Igrači** (prvi kontakt duž segmenta pobedjuje; pendingReceiver ima prioritet na tie):
+   - **pendingReceiver** (istim timom) u radijusu `RECEIVE_R = 0.35` → **RECEIVE** (posed, brzina 0).
+   - **Protivnik** u `INTERCEPT_R = 0.30`:
+     - ako lopta **spora** (< `FAST_CONTACT = 1.00` ćelije/tik) → **INTERCEPT** (posed).
+     - ako lopta **brza** (≥ 1.00) → **BLOCK** (odbijanje + 0.5 damp, BEZ posed).
+   - **Bilo koga** u `DEFLECT_R = 0.18` → **DEFLECT** (blago odbijanje + damp).
+4. **OOB zona** (row ≤ 0.99 / ≥ 8.01 / col ≤ 0.99 / ≥ 7.01):
+   - Prvi ulazak → postavi `oobPending = restartTip` (iz `lastTouchTeam`),
+     `oobHoldTicks = 4`.
+   - Tokom hold-a lopta **nastavlja da se kreće** (vidljiva u OOB zoni!).
+   - Ako se vrati na teren pre isteka → `oobPending` se briše.
+   - Kada `ticks == 0` → vraća `dueRestart` (Orchestrator onda radi restart).
+   - **NIKADA instant teleport** na restart — 4-tik vidljivost.
+
+### 4.6 Loose ball pickup
+
+- Lopta zaustavljena (brzina ≤ 0.02) bez nosioca → svaki tik provera najbližeg
+  igrača u `PICKUP_R = 0.35` → on postaje carrier.
+
+### 4.7 GoalPhysical (stative + prečka — za UI i fiziku)
+
+```java
+class GoalPhysical {
+    double goalLineRow;       // 1.0 (HOME) ili 8.0 (AWAY)
+    double mouthLeftCol = 3.5;
+    double mouthRightCol = 4.5;
+    Position leftPost;   // (goalLineRow, 3.5)
+    Position rightPost;  // (goalLineRow, 4.5)
+    double postRadius = 0.03;     // fizički radijus stative
+    double heightMeters = 2.44;   // visina stative/prečke (za UI, budući 3D)
+    // crossbar = segment leftPost→rightPost na visini heightMeters
+}
+```
+U 2D fizici se proveravaju samo stative (tačke sa radijusom).
+Crossbar je **samo za UI/rendering** (bez fizike dok ne dodamo Z-osu).
+
+### 4.8 Šta engine NE sme da radi
+
+- ❌ Clamp-ovanje cilja loptine (row/col) — lopta slobodno ide i van terena.
+- ❌ Clamp-ovanje igračkih pozicija — igrači smeju da izađu van linija.
+- ❌ Znanje "ko je pozvao" (ActionExecutor loguje, BallPhysicsEngine NE).
+- ❌ Ciljna pozicija loptine ≠ gde lopta zaustavlja (lopta se usporava do 0).
+- ❌ Gol detekcija po radijusu oko centra — **samo presek gol linije u ustima**.
+
+---
+
+## 5. POČETNO STANJE (pre svih izmena ovog dokumenta)
 
 Proposal paket je nastao kao **paralelna, "čista" verzija** demo/service
 engine-a, isključivo da bi se svaki sloj mogao verifikovati kroz launcher —
@@ -117,13 +249,13 @@ bez Spring Boot-a, bez DB entiteta, bez UI-ja.
 
 ---
 
-## 4. ISTORIJA IZMENA I IMPLEMENTACIJA
+## 6. ISTORIJA IZMENA I IMPLEMENTACIJA
 
 > Format svakog upisa: **datum i vreme** · **komit hash** · šta je urađeno.
 
 ---
 
-### 4.1 `2026-09-12 22:25` · `ce7ddbd` — taktičko učitavanje + kickoff na svojoj polovini
+### 6.1 `2026-09-12 22:25` · `ce7ddbd` — taktičko učitavanje + kickoff na svojoj polovini
 
 - **Nova `proposal/tactics/`** klasa:
   - `TacticsRuleDTO`, `TacticsSlotDTO` — DTO iz `demo/service/tactics`.
@@ -156,7 +288,7 @@ bez Spring Boot-a, bez DB entiteta, bez UI-ja.
 
 ---
 
-### 4.2 `2026-09-12 22:29` · `730b787` — lopta pri nozi (SHOT/PASS sa mesta gde lopta nije)
+### 6.2 `2026-09-12 22:29` · `730b787` — lopta pri nozi (SHOT/PASS sa mesta gde lopta nije)
 
 **Problem (iz loga korisnika):**
 ```
@@ -179,22 +311,60 @@ geometrija odluke ≠ fizika lansiranja, a log je prikazivao igrača van lopte.
   nosilac **ne nastavlja da trči** ka starom carry cilju dok lopta leti.
 
 **Verifikacija:** svaki `DECISION` red prikazuje `ball` na istoj poziciji kao
-nosilac (npr. `ball(7.0,3.5) H10(7.0,3.5)`); gol u 0:65; 1440 tika bez
+nosioc (npr. `ball(7.0,3.5) H10(7.0,3.5)`); gol u 0:65; 1440 tika bez
 freeze-a (max gap 7 s); 2 gola/36 min.
 
 ---
 
-### 4.3 `2026-09-12 22:30` · `d5c2704` — ovaj dokument
+### 6.3 `2026-09-12 22:30` · `d5c2704` — ovaj dokument
 
 - Kreiran `PROPOSAL_PROGRESS.md`.
 - Upisana merodavna geometrija terena (§2) — uključujući OOB definiciju,
   box/penal/korner koordinate i smer napada sa mogućnošću zamene strana.
-- Definisani: Cilj (§1), Početno stanje (§3), Istorija (§4), Backlog (§5),
-  Pokretanje (§6).
+- Definisani: Cilj (§1), Početno stanje (§5), Istorija (§6), Backlog (§7),
+  Pokretanje (§8).
 
 ---
 
-## 5. BACKLOG — šta sledi
+### 6.4 `2026-09-13 10:15` · `b9a21e5` — comment wording cleanup
+
+Trivijalna ispravka komentara u `MatchOrchestrator`.
+
+---
+
+### 6.5 `2026-09-13 10:25` · *probe commit* — samostalan fizika probe (temp klasa)
+
+**Nema u produkcijskom kodu** — radi se o `proposal/probe/BallPhysicsProbe`
+(jedinstvena klasa sa `main`, bez Spring-a), napisana da se **prototipiraju i
+validiraju** sva nova pravila fizike **pre nego što se uljuju u pravi
+engine**. Probe je čisto Java, deterministička, koristi iste konstante i
+geometriju kao specifikacija u §4.
+
+**Scenariji (svi prolaze):**
+
+| ID | Opis | Ključni dogadjaj |
+|---|---|---|
+| S1 | Ground pass 14 m ka primaocu | **RECEIVE** u 2 tika |
+| S2 | Far-post šut (GK na pogrešnoj stativi) | **GOAL** preko gola |
+| S2b | Centralni power-šut u GK na liniji | **BLOCK** (parry, brzina ≥ 1.0) |
+| S3 | Šut u levu stativu | **POST_HIT** → OOB hold 4 t → GOAL_KICK |
+| S4 | Clearance vazduh sa spin iz svoje polovine | leti ~6 ćelija, landing, STOPPED u midfieldu |
+| S4b | Prejak šut iza away korner | **OOB_ENTER** → **OOB_HOLD** x4 → **OOB_RESTART** (CORNER_HOME) |
+| S5 | Branitelj na putanji dodavanja (pred primaocem) | **INTERCEPT** (prvi kontakt) |
+| S6 | Loose ball usporava do 0 → najbliži podiže | **LOOSE_PICKUP** |
+| S7a | Bare physics: varira **smer** (brzina 0.9, bez igrača) | 8 pravaca → zaustavlja se ~0.75 ćelijа |
+| S7b | Bare physics: varira **brzina** (pravac pravo ka away golu) | 0.75→0.45c, 0.9→0.75c, 1.05→1.05c, 1.2→1.5c, 1.35→1.95c, 1.5→2.5c |
+
+**Iz probe usvaćene u specifikaciju §4:**
+- Diskretni model usporavanja (decel pre move) → kraće stope nego kontinuirani.
+- Brza loptica na protivniku = **BLOCK/parry** (ne posed), spora = **INTERCEPT**.
+- OOB hold **mora da dekrementira i kad je lopta zaustavljena** (S3, S4b).
+- Gol detekcija = presek gol linije u ustima (3.50–4.50), stative isključuju.
+- Atribucija gola/restarta = `lastTouchTeam` u `MatchState`.
+
+---
+
+## 7. BACKLOG — šta sledi
 
 1. **Protok lopte (najvidljivije slomljeno):**
    - `100% kompletiranje dodavanja` (1283/1283) — nema izgubljenih lopti;
@@ -213,10 +383,14 @@ freeze-a (max gap 7 s); 2 gola/36 min.
 4. **Duel učestalost i visina** (DuelEngine je sada previše retko aktiviran).
 5. **Kartoni/prekršaji u "čistom" simu** — DisciplineService još nije
    uvezan u proposal.
+6. **Nova fizika lopte (§4)** — zameniti ceo `BallPhysicsEngine`,
+   `Ball` model, `ExecutionQuality`, `ActionExecutor`, `ActionEngine`,
+   `MovementEngine`, `MatchOrchestrator`, `RestartManager`, `DuelEngine`,
+   `MatchState`, `Player` po specifikaciji.
 
 ---
 
-## 6. POKRETANJE
+## 8. POKRETANJE
 
 ```bash
 # kompajliranje
