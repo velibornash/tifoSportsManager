@@ -77,6 +77,9 @@ public class ActionExecutor {
         ball.setCarrier(null);
         ball.setAirborne(false);
 
+        // Passer stops running toward his old dribble target during the flight
+        carrier.setTarget(null);
+
         // Remember who should receive the ball when it arrives.
         // Receiver holds position during flight (target cleared) so the
         // arrival snap stays on the pass line.
@@ -113,6 +116,9 @@ public class ActionExecutor {
         ball.setSpeed(result.getSpeed());
         ball.setCarrier(null);
         ball.setAirborne(true);
+
+        // Carrier stops running toward his old dribble target during the flight
+        carrier.setTarget(null);
 
         state.setCarrier(null);
         carrier.incrementConsecutiveCarries();
