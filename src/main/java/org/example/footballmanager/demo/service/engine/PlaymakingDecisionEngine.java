@@ -370,6 +370,56 @@ public class PlaymakingDecisionEngine {
             }
         }
 
+        // --- HARD RULE (user, authoritative — 2026-09-12): final 14 m row ---
+        // The last row before the goal mouth (row 7 for HOME attacking AWAY goal at
+        // 8.0, row 1 for AWAY attacking HOME goal at 1.0) has ZERO alternatives once
+        // the carrier reaches it. Central columns (2-5) → MANDATORY SHOT. Flank
+        // columns (1 / 6) → MANDATORY DELIVERY INTO THE BOX (CENTER / CROSS / THRU /
+        // air-pass / pass into the box); only if nobody inside the box can receive
+        // does the flank carrier shoot. No carries, no dribble to the goal line, no
+        // exceptions for "open" receivers — the user demanded an absolute rule.
+        boolean inFinalRow = ctx.isHome()
+                ? carrier.getPosition().getRow() >= 7.0
+                : carrier.getPosition().getRow() <= 1.0;
+        if (inFinalRow && result.getType() != DecisionType.SHOT && !state.isRestartFirstTouch()) {
+            double carrierCol = carrier.getPosition().getColumn();
+            boolean centralCols = carrierCol > 1.5 && carrierCol < 5.5;
+            if (centralCols) {
+                result = new DecisionOption(DecisionType.SHOT, 200.0,
+                        "final-row mandatory shot");
+                lastSelectionReason = "final-row MUST SHOT (col " + String.format("%.2f", carrierCol) + ")";
+            } else {
+                // Flank columns 1 / 6 — deliver the ball INTO THE BOX. Prefer any
+                // visible CENTER / CROSS / THRU / air-pass / pass-to-a-box-player;
+                // fall back to a forced SHOT only when no box receiver exists.
+                DecisionOption delivery = null;
+                for (DecisionOption opt : visible) {
+                    if (opt.getType() == DecisionType.CENTER
+                            || opt.getType() == DecisionType.CROSS
+                            || opt.getType() == DecisionType.THRU) {
+                        if (delivery == null || opt.getScore() > delivery.getScore()) {
+                            delivery = opt;
+                        }
+                    } else if (opt.getType() == DecisionType.PASS && opt.getTarget() != null) {
+                        double tRow = opt.getTarget().getPosition().getRow();
+                        boolean intoBox = ctx.isHome() ? tRow >= 6.0 : tRow <= 2.0;
+                        if (intoBox && (delivery == null || opt.getScore() > delivery.getScore())) {
+                            delivery = opt;
+                        }
+                    }
+                }
+                if (delivery != null) {
+                    result = delivery;
+                    lastSelectionReason = "final-row flank MUST deliver into box -> "
+                            + delivery.getType() + " (col " + String.format("%.2f", carrierCol) + ")";
+                } else {
+                    result = new DecisionOption(DecisionType.SHOT, 200.0,
+                            "final-row flank no box target — shoot");
+                    lastSelectionReason = "final-row flank: no box target, forced SHOT";
+                }
+            }
+        }
+
         // --- HARD RULE: carrier in final 2 rows can carry toward goal but not toward corner ---
         // In rows 6-7 (HOME) or rows 1-2 (AWAY), a CARRY toward the corner (cols 1 or 6)
         // is always wrong. CARRY toward the goal centre is fine — it improves the angle.
@@ -384,6 +434,50 @@ public class PlaymakingDecisionEngine {
                 result = new DecisionOption(DecisionType.SHOT, 200.0,
                         "final-rows corner-carry blocked: shoot");
                 lastSelectionReason = "final-rows: carry toward corner blocked, shoot instead";
+            }
+        }
+
+        // --- HARD RULE: inside the box corridor the carrier MUST shoot (user rule) ---
+        // The corner-carry rule above only blocks extreme corner columns, yet the
+        // user's watched match showed a CARRIER zigzagging the box (cols 2.4-4.3)
+        // for 30 s because CARRY kept re-winning near the goal line. ANY decision
+        // that is not a SHOT within 1.2 rows of the goal line (central corridor,
+        // col 1.9-5.1) is overridden so the carrier finishes decisively instead of
+        // reaching the goal line. Row-distance is used (NOT Euclidean to the goal
+        // centre): a column offset inflated the old distance past 1.2 cells and
+        // let the carrier wander the full width of the box before "getting close".
+        // The single exception (user clarification): a genuinely OPEN, ONSIDE
+        // teammate in a STRICTLY better position (closer to goal by >= 0.2 cell)
+        // may receive the pass instead — a pass to a marked / offside / worse
+        // positioned receiver never beats the shot.
+        if (!state.isRestartFirstTouch() && !ctx.isGoalkeeper()
+                && result.getType() != DecisionType.SHOT) {
+            Position goalPosPunch = ActionEngine.goalPositionFor(carrier.getTeam());
+            double rowDist = Math.abs(carrier.getPosition().getRow() - goalPosPunch.getRow());
+            double carrierCol = carrier.getPosition().getColumn();
+            boolean centralLane = carrierCol >= 1.9 && carrierCol <= 5.1;
+            if (rowDist <= 1.2 && centralLane) {
+                boolean keepPass = false;
+                if (result.getType() == DecisionType.PASS && result.getTarget() != null) {
+                    Player passTarget = result.getTarget();
+                    double tgtDist = SimUtils.distance(passTarget.getPosition(), goalPosPunch);
+                    boolean receiverOpen = receiverOpenness(passTarget, ctx.opponents()) >= 0.5;
+                    boolean betterPosition = tgtDist < rowDist - 0.2;
+                    boolean onside = !isClearlyOffsideAtPass(carrier, passTarget);
+                    if (receiverOpen && betterPosition && onside) {
+                        keepPass = true; // genuinely open, higher-value receiver wins (user rule)
+                    } else {
+                        result = new DecisionOption(DecisionType.SHOT, 200.0,
+                                "forced in-box shot");
+                        lastSelectionReason = "inside box corridor: force shot over PASS (open="
+                                + receiverOpen + " betterPos=" + betterPosition + " offside=" + !onside + ")";
+                    }
+                } else {
+                    result = new DecisionOption(DecisionType.SHOT, 200.0,
+                            "forced in-box shot");
+                    lastSelectionReason = "inside box corridor: force shot over "
+                            + result.getType() + " (rowDist=" + String.format("%.2f", rowDist) + ")";
+                }
             }
         }
 
@@ -553,15 +647,23 @@ public class PlaymakingDecisionEngine {
             if (thru != null) options.add(thru);
         }
 
-        // SHOT: candidate inside the shooting zone (last two rows, ~14-28 m from goal).
-        // 5% frequency gate AND 60-tick (~30 s) per-player cooldown. The cooldown is the
-        // single biggest brake on shot volume — without it, a single striker can fire
-        // 5+ shots in 2 minutes of possession. Real football: ~12-15 shots / 90 min /
-        // 22 players, so the whole match sees one shot every 6-7 minutes per team.
+// SHOT: candidate inside the shooting zone (last two rows, ~14-28 m from goal).
+        // Inside the BOX (final two rows) the shot is offered EVERY tick with NO
+        // cooldown — a carrier who dribbles into the penalty area must shoot
+        // decisively instead of wandering toward the goal line (user rule,
+        // 2026-09-12: "NE SME da luta levo-desno i zavrsi na gol liniji"). This
+        // was the root cause of the 30-second silent dribble: SHOT_COOLDOWN_TICKS
+        // = 40 meant the FIRST shot of a match could never be selected before
+        // match-tick 40, so a carrier in the box at tick 12 had nothing to pick
+        // but CARRY. Outside the box the 5% frequency gate + 40-tick per-player
+        // cooldown remain the brake on speculative long shots.
         int SHOT_COOLDOWN_TICKS = 40;
+        boolean inBox = ctx.isHome()
+                ? ctx.player().getPosition().getRow() >= 6.0
+                : ctx.player().getPosition().getRow() <= 3.0;
         if (ctx.canShoot()
-                && state.getMatchTicks() - ctx.player().getLastShotTick() >= SHOT_COOLDOWN_TICKS
-                && random.nextDouble() < 0.05) {
+                && (inBox || (state.getMatchTicks() - ctx.player().getLastShotTick() >= SHOT_COOLDOWN_TICKS
+                        && random.nextDouble() < 0.05))) {
             DecisionOption shot = scoreShot(ctx);
             shot.setScore(shot.getScore() - pmShotPenalty);
             options.add(shot);
@@ -1285,6 +1387,12 @@ public class PlaymakingDecisionEngine {
         if (insideBox && defendersInLane == 0) {
             double boxShotBoost = 40.0 * (1.0 - distanceToGoal / 1.5);
             score += Math.max(0, boxShotBoost);
+            // Decisiveness inside ~17 m: when the carrier already has the goal
+            // in range, an average finish must beat the late side-pass even with
+            // one defender pressing (the carry-wander fix, 2026-09-12).
+            if (distanceToGoal <= 1.2) {
+                score += 30.0;
+            }
         }
 
         DecisionOption option = new DecisionOption(DecisionType.SHOT, score, "shot scored");

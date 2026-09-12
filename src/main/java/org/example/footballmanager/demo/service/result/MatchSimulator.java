@@ -961,10 +961,17 @@ public class MatchSimulator {
             //    active action exists, so this branch is not re-entered.
             if (state.hasActiveAction() && state.getAction().getType() == ActionType.CARRY) {
                 Player c = state.getCarrier();
+                // NOTE on the VAR guard: a held-live review (pending ONSIDE_CHECK /
+                // marginal-offside flag, varDelayTicks == 0) does NOT stop play —
+                // the attack keeps running and the goal path performs the VAR once
+                // the shot resolves. Only an ACTIVE review (varDelayTicks > 0) freezes
+                // the clock. Blocking reDecide for the whole held-live stretch was the
+                // root cause of carriers dribbling to the goal line for 20+ ticks:
+                // the corridor/final-row SHOT override could never fire.
                 boolean canReDecide = c != null
                         && !state.isSetPiecePending()
                         && !state.isCelebrating()
-                        && !state.hasPendingVARReview()
+                        && !state.isVARReviewActive()
                         && duelEngine.getActiveDuelAttacker() == null
                         && !state.isBlockedAfterDuel(c)
                         && state.getBall().getCarrier() == c;
@@ -1706,7 +1713,30 @@ public class MatchSimulator {
                 }
                 saveChance = SimUtils.clamp(saveChance, 0.03, 0.90);
 
-                if (state.getRandom().nextDouble() < saveChance) {
+                // Point-blank dampener (user rule, 2026-09-12): a finish from
+                // <= 1.2 cells (~17 m) is much harder to save because the keeper
+                // barely has time to react — scale saveChance down toward
+                // point-blank range so close-range shots convert as they should.
+                double shotDistanceFromGoal = SimUtils.distance(shooter.getPosition(), goal);
+                if (shotDistanceFromGoal <= 1.2) {
+                    saveChance *= Math.max(0.25, 1.0 - (1.2 - shotDistanceFromGoal) * 1.4);
+                    saveChance = SimUtils.clamp(saveChance, 0.03, 0.90);
+                }
+
+                // EMPTY-GOAL GUARANTEE (user rule): a keeper who is clearly OFF
+                // the shot lane (gkInLane < 0.15 — e.g. hugging the wrong post,
+                // or 2+ cells away from the goal) cannot make a save — the goal
+                // is decided by geometry, NOT random. Fall through to the normal
+                // GOAL branch below with NO save roll.
+                boolean openGoal = gkInLane < 0.15;
+                if (openGoal) {
+                    logger.logActionOutcome(state, action,
+                            "OPEN GOAL: GK off the shot lane (inLane="
+                                    + String.format("%.2f", gkInLane)
+                                    + ") — goal, no save roll possible", shooter, keeper, "OUTCOME");
+                }
+
+                if (!openGoal && state.getRandom().nextDouble() < saveChance) {
                     actionEngine.shotSaved(keeper);
                     stats.onSave("HOME".equals(shooterTeam) ? "AWAY" : "HOME");
                     logger.logActionOutcome(state, action,

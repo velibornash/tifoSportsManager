@@ -693,12 +693,23 @@ public class ActionEngine {
             dc = state.getRandom().nextInt(3) - 1; // neutral / own half: random
         }
         if (dr == 0 && dc == 0) dr = 1;
-        double direction = home ? 1 : -1;
         // Carry 3-4 cells ahead so the carrier moves CONTINUOUSLY for several
         // seconds before the next decision. Shorter targets cause a visible
         // "jump-pause-jump" effect on the viewer (carrier completes one cell,
         // engine re-decides, starts new carry).
         int carryDistance = 3 + state.getRandom().nextInt(2); // 3 or 4 cells
+
+        // --- User rule (2026-09-12): NEVER park the carrier ON the goal line ---
+        // The final-row HARD RULE forces SHOT / delivery once the carrier reaches
+        // row 7 (HOME) / row 1 (AWAY). The carry TARGET must therefore stop half a
+        // cell BEFORE the line (7.5 / 1.5) — if the target pointed at the line the
+        // carrier would dribble INTO the goal mouth before the next decision.
+        // Stopping 0.5 cells short lets the shot/delivery decision fire on re-decide
+        // while the carrier is still on the pitch. The ball/player may still legally
+        // leave the field (restarts) — that is normal football, this only prevents
+        // freezing exactly ON the line.
+        double maxForwardRowHome = 7.5;
+        double minForwardRowAway = 1.5;
 
         // --- HARD RULE: no carry more than 1 cell ALONG THE SAME ROW ---
         // Side-to-side dribbles look ridiculous on the UI (a winger shuffling
@@ -710,7 +721,9 @@ public class ActionEngine {
             carryDistance = 1; // 1 cell * dc direction = at most 1.0 cells along row
         }
 
-        double nr = SimUtils.clamp(r + direction * dr * carryDistance, 1, 8);
+        double nr = home
+                ? SimUtils.clamp(r + dr * carryDistance, 1, maxForwardRowHome)
+                : SimUtils.clamp(r - dr * carryDistance, minForwardRowAway, 8);
         double nc = SimUtils.clamp(c + dc * carryDistance, 1, 6);
         return new Position(nr, nc);
     }

@@ -31,6 +31,11 @@ public class MovementEngine {
      *  in 30-tick chase loops. ×1.30 lifts pace-14 to 0.68, which catches a
      *  braking rolling ball within a few ticks. */
     public static final double CHASE_SPRINT_MULTIPLIER = 1.30;
+    /** Sprint multiplier for active threat-override pressers (user rule, 2026-09-12).
+     *  A defender who has claimed the carrier closes the gap with clear intent —
+     *  same sprint as a loose-ball chaser, so the press reaches DRIBBLE_DUEL_RADIUS
+     *  (0.10 cells) instead of trailing the carrier for half the pitch. */
+    public static final double PRESS_SPRINT_MULTIPLIER = 1.30;
     /** Lateral manoeuvre / collision-avoidance candidate step (small, for checks only). */
     private static final double COLLISION_STEP = 0.15;
     private static final double MIN_PLAYER_DISTANCE = 0.35;
@@ -107,7 +112,7 @@ public class MovementEngine {
             // real time (a 14m cell is far too coarse for keeper footwork). Let
             // the goalkeeper move toward its reactive target at full speed.
             boolean isGoalkeeper = "GK".equals(p.getRole());
-            if (!isCarrier && !isGoalkeeper && !isActiveChase(p)) {
+            if (!isCarrier && !isGoalkeeper && !isActiveChase(p) && !p.isThreatOverrideActive()) {
                 Position roundStart = state.getRoundStartPosition(p);
                 int pace = state.getRoundPaceSkill(p);
                 double maxDistance = pace / 20.0;
@@ -132,6 +137,9 @@ public class MovementEngine {
                     * fatigueSpeedMultiplier(p);
             if (activeChase) {
                 moveSpeed *= CHASE_SPRINT_MULTIPLIER;
+            }
+            if (p.isThreatOverrideActive()) {
+                moveSpeed *= PRESS_SPRINT_MULTIPLIER;
             }
             // Carrier with ball moves slightly slower (corePrinciples §49.1).
             if (isCarrier) {

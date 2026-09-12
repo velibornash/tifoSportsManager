@@ -23,7 +23,20 @@ public class DuelEngine {
     // The TYPE A threat-override already closes the defender to ~1.0 cell of the
     // carrier before the duel fires, so 0.15 is reachable within the press.
     public static final double DEFAULT_DUEL_RADIUS = 0.2;
-    public static final double DRIBBLE_DUEL_RADIUS = 0.15;
+    // DRIBBLE duel fires only at ~1.5 m contact (0.10 cells) — the presser from
+    // Threat Override must come right ONTO the carrier before the tackle is
+    // offered (user rule, 2026-09-12). The duel is the CONTACT EVENT; closing
+    // the gap is the threat-override press behaviour, not the duel trigger.
+    public static final double DRIBBLE_DUEL_RADIUS = 0.10;
+    // PRESS_DRIB_DUEL_RADIUS — a defender ACTIVELY pressing (threat override active)
+    // triggers the tackle a moment earlier, because MovementEngine's wall block
+    // (MIN_PLAYER_DISTANCE = 0.35 cells) keeps the presser at ~0.35-0.40 cells no
+    // matter how hard they close. With a 0.10 trigger the press could NEVER become
+    // a duel and carriers dribbled past the press untouched. 0.50 cells (~7 m)
+    // turns the closed press into a genuine tackle the instant both overlap
+    // (circle centres ~0.4 apart), satisfying "threat override MORA preci u duel".
+    // Non-presser tackle contact stays tight at 0.10.
+    public static final double PRESS_DRIB_DUEL_RADIUS = 0.50;
     public static final double RECEIVE_PASS_RADIUS = 0.2;
     // Aerial (cross/center/header) challenges use a wider radius — a defender
     // that is marking the landing attacker (0.45 cells goal-side) must contest
@@ -103,7 +116,8 @@ public class DuelEngine {
         DuelType type = typeFor(action);
         double radiusForType = switch (type) {
             case RECEIVE_PASS -> RECEIVE_PASS_RADIUS;
-            case DRIBBLE -> DRIBBLE_DUEL_RADIUS;
+            case DRIBBLE -> (defender.isThreatOverrideActive()
+                    ? PRESS_DRIB_DUEL_RADIUS : DRIBBLE_DUEL_RADIUS);
             case SHOT -> 0.3;  // tight block — defender must be right next to shooter
             case AERIAL -> AERIAL_DUEL_RADIUS;
             default -> duelRadius;

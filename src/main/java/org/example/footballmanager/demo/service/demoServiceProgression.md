@@ -1295,3 +1295,33 @@ Root cause: dozens of row-comparison literals used OLD geometry (AWAY goal at ro
 - **RestartManager**: throw-in row clamp `1..7`→`0..8`, right-touchline col `6.0`→`7.0`
 
 Possession improved: 75% → 63%. Goal ratio improved: 0.59 → 0.92.
+
+## Changes Applied (2026-09-12) — reDecide VAR deadlock, final-row hard rules, press duels
+
+User report (4 requirements): (1) app log must never go silent > 5s; (2) during CARRY
+teammates must reposition every tick, the central carrier must drive at goal and SHOOT
+within ~16m — never dribble to the goal line; the ball/player must never freeze ON the
+goal line; (3) Threat Override MUST end in a duel; (4) QA before implementing.
+
+### 1. Root cause of the 0:11 → 0:41 goal-line dribble — pending VAR blocked reDecide
+- **Probe** (temporary RE-DECIDE-SKIP PROBE in `MatchSimulator`, 20 lines in match.json): ticks 7-26 showed `var=true` every tick — `canReDecide` included `!state.hasPendingVARReview()`, and a *held-live* review (close ONSIDE_CHECK / marginal offside, `varDelayTicks == 0`, play continues until the shot resolves) froze the per-tick re-decision for the whole carry. The corridor/final-row SHOT override could never fire; the carrier dribbled to row 7.94.
+- **Fix**: guard changed to `!state.isVARReviewActive()` (blocks only an ACTIVE VAR delay; held-live pending reviews no longer suppress re-decisions). Probe removed.
+
+### 2. Final-row HARD RULES (`PlaymakingDecisionEngine.decide`, user rule 2026-09-12)
+- **Row 7 (HOME) / row 1 (AWAY)** — the last 14 m before the goal mouth:
+  - central columns (2-5, i.e. carrier col in 1.5..5.5) → **MANDATORY SHOT** (score 200), no exceptions;
+  - flank columns (1 / 6) → **MANDATORY DELIVERY INTO THE BOX** (best of CENTER / CROSS / THRU / pass-to-a-box-player); forced SHOT only if no box receiver exists.
+  - Runs BEFORE the corner-carry + corridor rules; matches the user's rule verbatim.
+- Carry target ("no stop on the line"): `ActionEngine.computeCarryTarget` row clamp `1..8` → HOME `1..7.5` / AWAY `1.5..8`. The carrier can never target the goal line; at every re-decision a shot/delivery fires from on-pitch rows.
+
+### 3. Press → duel, guaranteed (`MovementEngine` wall vs duel radius)
+- `MovementEngine.MIN_PLAYER_DISTANCE = 0.35` (players are walls) kept the presser ~0.35-0.40 cells from the carrier, outside the 0.10 DRIBBLE radius — the press could NEVER become a duel. Plus the press slot aimed 0.08 goal-side (`home ? -0.08 : 0.08`, `home` = the defender's team) forcing the presser to pass THROUGH the carrier's wall.
+- **Fix**: `DuelEngine.PRESS_DRIB_DUEL_RADIUS = 0.50` used when `defender.isThreatOverrideActive()` (regular contact stays 0.10); `TacticalIntentEngine.applyThreatOverride` press point = the attacker's EXACT position. The closed press now fires the DRIBBLE duel the moment both circles overlap.
+
+### Verification
+- `mvn compile` clean. Export seed 459920804855: **score 2-1**, events 3087, logs 5731, snapshots 3408.
+- Window 0:07-0:41 (the old frozen stretch): PASS → loose ball → **CHASE_BALL duel won by Away** (t=12) → Away build-up → **DRIBBLE duel won by Home FC 2** (t=23) → Home SHOT (t=27, from row 6.62, goodExec=false, scatter past line) → CLEAR (t=34) → **SHOT t=35 (score 99.5) → GOAL t=36 (1-0)**. No carry to the goal line anymore.
+- Duels: 17 DUEL_START / 17 DUEL_RESOLVED / 30 DUEL_WON (press duels fire). THREAT COVER 36.
+- No carrier reached attack row past ~6.65 (defensive third) / no final-row rule needed to fire — carriers re-decide earlier (reDecide unblocked). Carry teammates move during carries: 5-11/22 players reposition in sampled carry windows (requirement 2a).
+- **GapLogDiagnostic seed 459920804855 + seed 42: Mystery gaps (none).** Log gaps ≥ 4 ticks occur only during GOAL CELEBRATION heartbeats (logged every 4 ticks — user confirmed OK).
+- MatchBatchRunner 50: goals 3.3/match (77-88), SOT 8%, passes 98% (35675/36582), interceptions 17.18, duels ~21/match, possession HOME 61%, no penalties. `mvn compile` clean.

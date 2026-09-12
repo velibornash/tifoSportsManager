@@ -118,7 +118,12 @@ public class TacticalIntentEngine {
                 || desired.getColumn() != beforeThreat.getColumn()) {
             p.setThreatOverrideActive(true);
         }
-        return applyWideAnchorConstraint(p, desired);
+        // Threat/cover override wins over the flank anchor: a pressing fullback
+        // chases the threat instead of holding the touchline band (user rule).
+        if (p.isThreatOverrideActive()) {
+            return desired;
+        }
+        return applyGoalCover(p, applyWideAnchorConstraint(p, desired));
     }
 
     /**
@@ -295,6 +300,65 @@ public class TacticalIntentEngine {
         return new Position(desired.getRow(), desiredCol);
     }
 
+    /**
+     * GOAL COVER (user rule, 2026-09-12): second-man cover inside our own final
+     * ~1.4 cells (~20 m). When an opponent is carrying near our goal, exactly ONE
+     * spare defender — the closest-to-our-goal NON-presser on the WEAK side (the
+     * column farthest from the ball) — drops deep into the space between the ball
+     * and our goal: the depth safety net behind the presser. Runs LAST (after the
+     * threat override + wide anchor) so the cover target beats the flank band.
+     * Logged as "THREAT COVER: <player> drops deep". If the ball leaves the danger
+     * zone the normal tactical shape resumes (no move is sticky).
+     */
+    private Position applyGoalCover(Player p, Position desired) {
+        if (p.isSentOff() || p.isInjured() || p.isLocked()) return desired;
+        if ("GK".equals(p.getRole()) || !isDefender(p.getRole())) return desired;
+        if (p == state.getCarrier()) return desired;
+        if (p.isThreatOverrideActive()) return desired; // presser keeps pressing
+        if (state.getCarrier() != null && p.getTeam().equals(state.getCarrier().getTeam())) return desired;
+
+        boolean home = "HOME".equals(p.getTeam());
+        double ballRow = state.getBall().getPosition().getRow();
+        boolean dangerZone = home ? ballRow <= 2.4 : ballRow >= 6.6;
+        if (!dangerZone) return desired;
+
+        // Exactly one cover man: among our non-pressing defenders, the closest to OUR
+        // goal on the WEAK side (largest |col - ballCol|); tie-break by row to goal.
+        double ballCol = state.getBall().getPosition().getColumn();
+        Player cover = null;
+        double bestWeakGap = Double.NEGATIVE_INFINITY;
+        double bestRowToGoal = Double.MAX_VALUE;
+        for (Player t : state.getPlayers()) {
+            if (!p.getTeam().equals(t.getTeam())) continue;
+            if ("GK".equals(t.getRole()) || !isDefender(t.getRole())) continue;
+            if (t == state.getCarrier() || t == state.getReturningPlayer() || isActiveChase(t)
+                    || t.isSentOff() || t.isInjured() || t.isLocked()) continue;
+            if (t.isThreatOverrideActive()) continue;
+            double weakGap = Math.abs(t.getPosition().getColumn() - ballCol);
+            double tRowToGoal = home ? t.getPosition().getRow() : 8.0 - t.getPosition().getRow();
+            if (weakGap > bestWeakGap
+                    || (Math.abs(weakGap - bestWeakGap) < 1e-9 && tRowToGoal < bestRowToGoal)) {
+                cover = t;
+                bestWeakGap = weakGap;
+                bestRowToGoal = tRowToGoal;
+            }
+        }
+        if (cover == null || cover != p) return desired;
+
+        // p IS the cover man: take the deep central spot between ball and goal.
+        double coverRow = home
+                ? SimUtils.clamp(ballRow - 0.5, 1.8, 3.2)
+                : SimUtils.clamp(ballRow + 0.5, 5.8, 7.2);
+        double coverCol = SimUtils.clamp(ballCol, 2.0, 5.0);
+        if (logger != null) {
+            logger.logInfo(state, "THREAT COVER: " + p.getLabel()
+                    + " drops deep — ball in final zone (row=" + String.format(Locale.US, "%.2f", ballRow)
+                    + "), weak side of col " + String.format(Locale.US, "%.2f", ballCol),
+                    "THREAT", p);
+        }
+        return new Position(coverRow, coverCol);
+    }
+
     public void refreshTargetsIfBallStateChanged() {
         String currentKey = TacticsRules.ballStateKey(state.getBall().getPosition());
         String lastKey = state.getLastTacticalBallStateKey();
@@ -462,7 +526,14 @@ public class TacticalIntentEngine {
             }
         }
 
-        return bestThreat.getPosition();
+        Position threatPos = bestThreat.getPosition();
+        // --- Press slot: defender closes right ONTO the attacker (user rule, 2026-09-12) ---
+        // The presser chases the attacker's EXACT position. MovementEngine's wall
+        // (MIN_PLAYER_DISTANCE = 0.35) parks them ~0.35-0.4 cells apart at contact,
+        // which is INSIDE the presser duel radius (0.50) so the DRIBBLE duel fires.
+        // Aiming goal-side of the carrier forced the presser to pass THROUGH the
+        // carrier's wall and they could never get closer than ~0.4 → no duel.
+        return new Position(threatPos.getRow(), threatPos.getColumn());
     }
 
     /** Check if opponent is in our defensive third. */

@@ -162,6 +162,15 @@ public class ExecutionQuality {
         double onTargetProb = SimUtils.clamp(
                 onTargetFactor * speedOnFrame * distOnFrame * angleOnFrame * pressureFactor, 0.05, 0.90);
 
+        // ---- USER RULE (2026-09-12): short range NEVER misses the goal ----
+        // From <= ~1.2 cells (~17 m) the shot is ALWAYS on frame — a player
+        // simply cannot balloon a close-range chance wide. Only the goalkeeper
+        // can stop it (separated downstream in handleShotArrival via the save
+        // roll). Scatter / off-frame blasts remain the domain of longer range.
+        if (dist <= 1.2) {
+            onTargetProb = 1.0;
+        }
+
         // ---- Goalkeeper beaten / open-goal guarantee ----
         // If the keeper is NOT in the shot lane and no opponent blocks the path,
         // nobody is between the shooter and goal — the shot MUST stay on frame

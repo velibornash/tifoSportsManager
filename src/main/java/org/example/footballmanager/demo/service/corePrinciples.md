@@ -3537,3 +3537,51 @@ HOME possession is **63%** vs AWAY 37% — closer to 50/50 but still HOME-favour
 
 This baseline table is the comparison anchor: any tuning change should report
 the diff against these numbers using `MatchBatchRunner 200`.
+
+## 50.7 2026-09-12 — reDecide VAR guard, final-row hard rules, press duels
+
+### §50.7.1 Held-live VAR must not block re-decision (root cause)
+A *held-live* review (close-offside pending flag, `varDelayTicks == 0`, play goes
+on until the shot resolves) is NOT a clock freeze. `canReDecide` must use
+`!state.isVARReviewActive()` (blocks only when `varDelayTicks > 0`). Blocking the
+per-tick re-decision for a whole held-live stretch was the root cause of carries
+dribbling to the goal line for 20+ ticks (2026-09-12 repro: reDecide frozen ticks
+7-26, carrier reached row 7.94).
+
+### §50.7.2 Final-row (last 14 m) hard rules — ABSOLUTE, no exceptions
+When the carrier reaches row ≥ 7.0 (HOME, AWAY goal at 8.0) / row ≤ 1.0 (AWAY):
+- central columns (carrier col in 1.5..5.5) → **MANDATORY SHOT** (score 200);
+- flank columns (≤ 1.5 or ≥ 5.5) → **MANDATORY DELIVERY INTO THE BOX** — best of
+  CENTER / CROSS / THRU / pass-to-a-box-player; forced SHOT only if no box target.
+No carries, no "open receiver" exemptions. Runs before the corner-carry and the
+corridor (≤ 16 m) rules.
+
+### §50.7.3 Carry target never on the goal line
+`ActionEngine.computeCarryTarget` row clamp: HOME `1..7.5`, AWAY `1.5..8`. The
+carrier's running target is capped half a cell before the line, so the re-decision
+(now unblocked) fires SHOT / delivery while the carrier is still on the pitch.
+Ball and players may still legally leave the field (restarts); only freezing ON the
+line is prohibited.
+
+### §50.7.4 Press must end in a duel
+`MovementEngine.MIN_PLAYER_DISTANCE = 0.35` (player wall) + `DRIBBLE_DUEL_RADIUS =
+0.10` meant an actively pressing defender could never trigger the tackle. Now:
+- `DuelEngine.PRESS_DRIB_DUEL_RADIUS = 0.50` — used when
+  `defender.isThreatOverrideActive()` (non-press contact stays 0.10);
+- `TacticalIntentEngine.applyThreatOverride` press point = the attacker's EXACT
+  position (the old 0.08 goal-side offset made the presser walk THROUGH the
+  carrier's wall and never get closer than ~0.4 cells).
+
+The closed press converts to a DRIBBLE duel the moment both circles overlap
+(wall gap 0.35 < press radius 0.50).
+
+### §50.7.5 Verification (2026-09-12)
+Seed 459920804855 export: score 2-1; old frozen window 0:07-0:41 now ends with a
+CHASE_BALL duel (Away win), then a DRIBBLE duel (Home win), then SHOT (row 6.62,
+goodExec=false, miss crosses the line), then SHOT→GOAL (1-0, t=36). 17 duels,
+30 duel-wins, THREAT COVER 36. No carrier past ~row 6.65 in attack; final-row rule
+never needed to fire (carriers re-decide earlier). Teammates move 5-11/22 during
+carries. GapLogDiagnostic: Mystery gaps (none) on seeds 42 + 459920804855 (gaps ≥4
+ticks only during GOAL CELEBRATION heartbeats — user-confirmed acceptable).
+MatchBatchRunner 50: goals 3.3, SOT 8%, passes 98%, interceptions 17.18,
+possession HOME 61%.
