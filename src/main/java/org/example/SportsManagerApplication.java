@@ -16,6 +16,7 @@ import java.util.Arrays;
 @SpringBootApplication(scanBasePackages = {
     "org.example.config",
     "org.example.footballmanager.newLogic",
+    "org.example.footballmanager.demo.service.proposal",
     "org.example.footballtextmanager",
     "org.example.basketballmanager",
     "org.example.americanfootballmanager",

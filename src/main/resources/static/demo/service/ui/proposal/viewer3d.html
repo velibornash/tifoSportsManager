@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TIFO — Match Viewer 3D</title>
+  <link rel="stylesheet" href="css/pitch.css?v=20260905-7">
+  <style>
+    canvas#pitch { background: #0b0e13; }
+    .pitch-wrap3d { width: 100%; height: 100%; position: relative; }
+    .hint-3d { position: absolute; left: 10px; bottom: 8px; z-index: 5;
+               font-size: 10px; color: rgba(255,255,255,.45); pointer-events: none;
+               text-transform: uppercase; letter-spacing: .4px; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js",
+      "three/addons/": "./vendor/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─── LED Scoreboard ─── -->
+  <header class="led">
+    <div class="team home">
+      <span class="name" id="homeName">HOME</span>
+      <span class="score" id="homeScore">0</span>
+    </div>
+    <div class="clock" id="clock">00:00</div>
+    <div class="team away">
+      <span class="score" id="awayScore">0</span>
+      <span class="name" id="awayName">AWAY</span>
+    </div>
+    <div class="meta">
+      <span class="label" id="statusLabel"></span>
+    </div>
+  </header>
+
+  <!-- ─── Main ─── -->
+  <div class="main">
+
+    <!-- Empty state (shown only if match.json missing) -->
+    <div class="empty-state" id="emptyState" style="display:none">
+      <h2>Match Viewer 3D</h2>
+      <p>3D replay — skinned humanoid players straight from Mixamo.</p>
+      <div style="display:flex;gap:12px;margin-top:16px;">
+        <button id="simBtn" style="background:#2ea043;">&#9917; Generate Match</button>
+        <button id="playMatchBtn" style="background:#58a6ff;">&#9654; Play Match</button>
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:#8b949e;">
+        Generate simulates a match and saves it. Play loads the last generated match.
+        3D model: 35 Mixamo animations, one skinned rig.
+      </p>
+    </div>
+
+    <!-- Live ticker — landscape phones only -->
+    <div class="live-ticker" id="liveTicker" style="display:none">
+      <span class="ticker-icon" id="tickerIcon">&#9917;</span>
+      <span class="ticker-min" id="tickerMin">00:00</span>
+      <span class="ticker-desc" id="tickerDesc">Match not loaded</span>
+      <button class="ticker-toggle" id="tickerToggle">LOG &#9660;</button>
+    </div>
+
+    <!-- Pitch -->
+    <div class="pitch-wrap" style="display:none;padding:4px">
+      <div class="pitch-wrap3d">
+        <canvas id="pitch"></canvas>
+        <div class="hint-3d">space play/pause &middot; arrows seek</div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" style="display:none">
+      <h3>Events</h3>
+      <ul class="timeline" id="timeline"></ul>
+
+      <div class="controls">
+        <div class="controls-row">
+          <button id="playBtn">&#9654; Play</button>
+          <button id="pauseBtn" class="active">&#9646;&#9646; Pause</button>
+          <input type="range" id="speedSlider" min="0" max="4" value="1">
+          <span class="speed" id="speedLabel">0.5x</span>
+        </div>
+        <div class="controls-row">
+          <input type="range" id="seek" min="0" max="100" value="0">
+        </div>
+        <div class="controls-row">
+          <button id="simBtn2" style="font-size:11px;padding:3px 8px;">&#9917; New Match</button>
+          <button id="fileBtn" style="font-size:11px;padding:3px 8px;">Load JSON</button>
+          <input id="fileInput" type="file" accept="*.json">
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ─── Overlay (Halftime / Fulltime / Goal news) ─── -->
+<div class="overlay" id="overlay">
+  <div class="overlay-inner">
+    <div class="overlay-text" id="overlayText"></div>
+    <div class="overlay-sub" id="overlaySub"></div>
+  </div>
+</div>
+
+<!-- Loading overlay (visible until match.json loads) -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <span id="loadingText">Loading match…</span>
+</div>
+
+<script type="module" src="js/viewer3d.js?v=20260905-7"></script>
+
+</body>
+</html>

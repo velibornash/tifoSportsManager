@@ -75,7 +75,7 @@ public class MatchSimulationLauncher {
         return sb.toString();
     }
 
-    private static void addTeam(MatchState state, String team) {
+    public static void addTeam(MatchState state, String team) {
         double rowR = team.equals("HOME") ? 2.5 : 6.5;   // defender line
         double rowM = team.equals("HOME") ? 4.0 : 4.0;   // midfield line (adjusted below)
         double rowA = team.equals("HOME") ? 6.0 : 3.0;   // attacker line
