@@ -441,7 +441,7 @@ dostupan, kao fallback se koristi `/tactics_fallback.json` (isti sadržaj).
 
 ---
 
-### 6.8 `2026-09-13 22:37` · *tek komit* — viewer porat na nove klase (record-based) + cache fix
+### 6.8 `2026-09-13 22:37` · `50a4b1c` — viewer porat na nove klase (record-based) + cache fix
 
 Korisničko pravilo: **UI se ponaša IDENTIČNO kao `/demo/service` viewer** —
 Generate samo generiše (ne auto-igra), Play učitava match.json + KICK OFF
