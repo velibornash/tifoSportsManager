@@ -438,3 +438,46 @@ mvn -q exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.propo
 DB (ako je dostupan na `localhost:5432/sokker_db`): učitava se
 `team_tactics_profile` za tim 1 (4-4-2, version 5, 506 pravila). Ako DB nije
 dostupan, kao fallback se koristi `/tactics_fallback.json` (isti sadržaj).
+
+---
+
+### 6.8 `2026-09-13 22:37` · *tek komit* — viewer porat na nove klase (record-based) + cache fix
+
+Korisničko pravilo: **UI se ponaša IDENTIČNO kao `/demo/service` viewer** —
+Generate samo generiše (ne auto-igra), Play učitava match.json + KICK OFF
+overlay pa auto-start, eventi se pojavljuju 1-po-1 sinhronizovano sa satom,
+renderuje se svih 22 igrača iz snapshota. Logika je kopirana iz
+`demo/service/ui/js/viewer.js` (byte-equivalent) i samo prilagođena novim
+klasama — ne piše se nova logika.
+
+- **`ProposalViewerLauncher`** (port **8766**, zaseban od demo/service 8765):
+  - `POST /proposal/api/generate` — simulira meč proposal engine-om (3600 tika),
+    piše `proposal/proposal/match.json` (58MB, ~7200 eventa + 3600 snapshota),
+    vraća `{"ok":true,"score":...}`.
+  - `/proposal/match.json` — servering IgM JSON-a (recorder events + snapshots).
+  - Statika iz `static/demo/service/ui/proposal/`; **`Cache-Control: no-store`**
+    na sve fajlove — sprečava ponovni "stari viewer iz keša" problem.
+- **`viewer.js`** — prepisan kao 1:1 porat demo/service viewer-a:
+  - fetch `POST /proposal/api/generate` + `/proposal/match.json` (`/proposal`
+    prefix je KORISNIČKA TVRDA OBAVEZA — ne diraj).
+  - Snapshot polja: `homeGoals`/`awayGoals` (ne `goalCount`/`awayGoalCount`).
+  - `logEntries` filter: proposal `logs` su raw string-ovi → preskaču se,
+    recorder `events` (dict) su autoritativni za timeline.
+  - Proširen `EV_ICON`/`TIMELINE_EVENTS` proposal tipovima: RECEIVE, INTERCEPT,
+    DEFLECT, BLOCK, POST_HIT, OOB_ENTER, OOB_CANCEL, LOOSE_PICKUP, DUEL,
+    RESTART — GOAL sinteza iz snapshot delta.
+  - GOAL/offsale/VAR overlay-callovi zadržani (overlay elementi postoje u HTML-u;
+    user je rekao da overlay-i dolaze uskoro).
+- **`index.html`** — `viewer.js?v=3` + `pitch.css?v=3` (cache-buster).
+- **`MatchOrchestrator`** — recorder vez – RECEIVE/INTERCEPT/BLOCK/DEFLECT/
+  POST_HIT/GOAL/OOB_ENTER/RESTART/OOB_CANCEL/LOOSE_PICKUP + DECISION + DUEL
+  događaji.
+- **`MovementEngine`** — loose-ball chase: najbliži slobodan igrač unutar
+  4.0 ćelija sprinta do zaustavljene lose lopte + razdvajanje suparnika
+  (MIN_PLAYER_DISTANCE). Sprečava zamrzavanje meča posle kickoff-a.
+- **`recording/`** — MatchRecorder/MatchEvent/MatchSnapshot/PlayerSnapshot/
+  MatchRecording (JSON: `position.{row,column}`, `ballPosition`, `homeGoals`...).
+- **Verifikacija:** `mvn -q compile` ✅; launcher E2E ✅ (0:00 start, KICK OFF
+  overlay, play napreduje, timeline 0→5, 22 igrača, bez JS error-a);
+  `POST /proposal/api/generate` → 200, `/proposal/match.json` → 200 (58MB,
+  7186 eventa, 3600 snapshota).

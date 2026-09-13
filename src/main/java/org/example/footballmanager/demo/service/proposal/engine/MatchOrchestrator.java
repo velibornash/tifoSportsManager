@@ -2,6 +2,7 @@ package org.example.footballmanager.demo.service.proposal.engine;
 
 import org.example.footballmanager.demo.service.proposal.engine.decision.CleanDecisionEngine;
 import org.example.footballmanager.demo.service.proposal.model.*;
+import org.example.footballmanager.demo.service.proposal.recording.MatchRecorder;
 import org.example.footballmanager.demo.service.proposal.restarts.RestartManager;
 import org.example.footballmanager.demo.service.proposal.rules.FootballRules;
 import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
@@ -43,6 +44,7 @@ public class MatchOrchestrator {
     private final TacticalIntentEngine tacticalEngine;
 
     private final List<String> eventLog = new ArrayList<>();
+    private final MatchRecorder recorder = new MatchRecorder();
 
     private ActionType lastLoggedType;
     private String lastLoggedCarrier;
@@ -70,6 +72,7 @@ public class MatchOrchestrator {
 
     public List<String> getEventLog() { return eventLog; }
     public RestartManager getRestartManager() { return restartManager; }
+    public MatchRecorder getRecorder() { return recorder; }
 
     private void log(String tag, String msg) {
         String line = "[" + minute() + "|" + tag + "] " + msg;
@@ -129,7 +132,9 @@ public class MatchOrchestrator {
             if (changed) {
                 lastLoggedType = decision.getType();
                 lastLoggedCarrier = carrier.getLabel();
-                log("DEC", formatDecision(carrier, result));
+                String decMsg = formatDecision(carrier, result);
+                log("DEC", decMsg);
+                recorder.appendEvent(state.getMatchTicks(), "DECISION", decMsg, state);
             }
         }
 
@@ -171,61 +176,86 @@ public class MatchOrchestrator {
 
         // === 12. DECREMENT VAR TIMER ===
         state.decrementVAR();
+
+        // Capture snapshot for replay
+        recorder.captureSnapshot(state);
     }
 
     private void handleBallPhysicsResult(BallStepResult res) {
+        String eventMsg = "";
         switch (res.getType()) {
             case RECEIVE -> {
                 Player receiver = state.getCarrier(); // already set by ball engine
-                log("ORC", "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
-                        + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition()));
+                eventMsg = "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
+                        + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "RECEIVE", eventMsg, state);
                 state.incrementPassesCompleted();
             }
             case INTERCEPT -> {
                 Player interceptor = state.getCarrier();
-                log("ORC", "INTERCEPT " + interceptor.getLabel() + "(" + interceptor.getRole() + ")"
-                        + " at " + p(interceptor.getPosition()) + " | ball" + p(state.getBall().getPosition()));
+                eventMsg = "INTERCEPT " + interceptor.getLabel() + "(" + interceptor.getRole() + ")"
+                        + " at " + p(interceptor.getPosition()) + " | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "INTERCEPT", eventMsg, state);
             }
             case BLOCK -> {
-                log("ORC", "BLOCK " + res.getDetail() + " parried the shot | ball" + p(state.getBall().getPosition()));
+                eventMsg = "BLOCK " + res.getDetail() + " parried the shot | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "BLOCK", eventMsg, state);
             }
             case DEFLECT -> {
-                log("ORC", "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition()));
+                eventMsg = "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "DEFLECT", eventMsg, state);
             }
             case POST_HIT -> {
-                log("ORC", "POST_HIT deflect | ball" + p(state.getBall().getPosition()));
+                eventMsg = "POST_HIT deflect | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "POST_HIT", eventMsg, state);
             }
             case GOAL -> {
                 String scorerTeam = res.getScorerTeam();
                 if ("HOME".equals(scorerTeam)) state.addHomeGoal();
                 else state.addAwayGoal();
-                log("ORC", "*** GOAL " + scorerTeam
+                eventMsg = "*** GOAL " + scorerTeam
                         + " - score " + state.getHomeGoals() + ":" + state.getAwayGoals() + " ***"
-                        + " ball" + p(state.getBall().getPosition()));
+                        + " ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "GOAL", eventMsg, state);
                 // Reset for kickoff (clock keeps running)
                 String kickoffTeam = "HOME".equals(scorerTeam) ? "AWAY" : "HOME";
                 restartManager.handleKickoff(state, kickoffTeam);
                 log("RST", "kickoff -> ball at center, taker " + state.getCarrier().getLabel());
             }
             case OOB_ENTER -> {
-                log("BAL", "OOB enter -> " + res.getRestartType() + " (hold " + BallPhysicsEngine.OOB_HOLD_TICKS + " ticks) | ball" + p(state.getBall().getPosition()));
+                eventMsg = "OOB enter -> " + res.getRestartType() + " (hold " + BallPhysicsEngine.OOB_HOLD_TICKS + " ticks) | ball" + p(state.getBall().getPosition());
+                log("BAL", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "OOB_ENTER", eventMsg, state);
             }
             case OOB_HOLD -> {
-                log("BAL", "OOB hold " + res.getDetail() + " | ball" + p(state.getBall().getPosition()));
+                eventMsg = "OOB hold " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
+                log("BAL", eventMsg);
             }
             case OOB_RESTART -> {
                 String restartType = res.getRestartType();
                 restartManager.handleRestart(state, restartType);
-                log("RST", "restart " + restartType + " ball" + p(state.getBall().getPosition())
-                        + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel()));
+                eventMsg = "restart " + restartType + " ball" + p(state.getBall().getPosition())
+                        + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel());
+                log("RST", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "RESTART", eventMsg, state);
             }
             case OOB_CANCEL -> {
-                log("BAL", "OOB cancel — ball rolled back into play | ball" + p(state.getBall().getPosition()));
+                eventMsg = "OOB cancel — ball rolled back into play | ball" + p(state.getBall().getPosition());
+                log("BAL", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "OOB_CANCEL", eventMsg, state);
             }
             case LOOSE_PICKUP -> {
                 Player carrier = state.getCarrier();
-                log("ORC", "LOOSE BALL recovered by " + carrier.getLabel()
-                        + " | ball" + p(state.getBall().getPosition()) + " " + carrier.getLabel() + p(carrier.getPosition()));
+                eventMsg = "LOOSE BALL recovered by " + carrier.getLabel()
+                        + " | ball" + p(state.getBall().getPosition()) + " " + carrier.getLabel() + p(carrier.getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "LOOSE_PICKUP", eventMsg, state);
             }
             case STOPPED -> {
                 // ball stopped on pitch, no event needed
@@ -248,10 +278,12 @@ public class MatchOrchestrator {
             if (duelType != null) {
                 Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
                 duelEngine.applyDuelResult(state, winner, winner == carrier ? opponent : carrier);
-                log("DUL", "DUEL " + duelType + " won by " + winner.getLabel()
+                String duelMsg = "DUEL " + duelType + " won by " + winner.getLabel()
                         + " (" + carrier.getLabel() + p(carrier.getPosition())
                         + " v " + opponent.getLabel() + p(opponent.getPosition()) + ")"
-                        + " ball" + p(state.getBall().getPosition()));
+                        + " ball" + p(state.getBall().getPosition());
+                log("DUL", duelMsg);
+                recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
             }
         }
     }
