@@ -19,17 +19,30 @@ P7 enginee** (DisciplineService / OffsideService / VARService / PenaltyService
 pre nego ti engine-i nastanu; kad nastanu, track-uju se u P7, NE u P1.
 Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
+> **DEFERRED → P7 (NE checkbox stavke — isključeni iz P1 liste, idu u P7):
+>**
+> 1. Goals breakdown by type (open-play / center / cross / penalty / FK /
+>    corner) — needs subtype actions (P7 ActionEngine subtypes)
+> 2. Pass types (thru / center / cross / air / ground) — needs subtype actions (P7)
+> 3. Free-kicks / penalties restarts — when DisciplineService/PenaltyService
+>    exist (P7)
+> 4. Cards: yellow / red / double-yellow — when DisciplineService exists (P7)
+> 5. Offside / VAR counts — when OffsideService/VARService exist (P7)
+> 6. Per-player fouls committed / received — when DisciplineService exists (P7)
+> 7. Per-player cards (yellow, red, double-yellow) — when DisciplineService
+>    exists (P7)
+> 8. Per-player offside count — when OffsideService exists (P7)
+> 6. Per-player fouls committed / received — when DisciplineService exists (P7)
+> 7. Per-player cards (yellow, red, double-yellow) — when DisciplineService
+>    exists (P7)
+> 8. Per-player offside count — when OffsideService exists (P7)
+
 ### P1a — Per-team stats
 - [x] Shots: total / on-target / saved / missed / blocked / post
-- [~] Goals breakdown by type — needs subtype actions (P7 ActionEngine subtypes)
 - [x] Passes: total / successful (+ pass accuracy)
-- [~] Pass types (thru / center / cross / air / ground) — needs subtype actions (P7)
 - [x] Dribble: total / successful
 - [x] Interceptions, deflections
 - [x] Restarts: corners / throw-ins / goal-kicks
-- [~] Free-kicks / penalties restarts — when DisciplineService/PenaltyService exist
-- [~] Cards: yellow / red / double-yellow — when DisciplineService exists
-- [~] Offside / VAR counts — when OffsideService/VARService exist
 - [x] Possession: % (chain avg duration + longest chain — added 2026-09-14
   via chain tracking in `ProposalStatsCollector`/`TeamStats`, rendered as
   "Poss. chain (longest)" row in the viewer stats panel)
@@ -40,10 +53,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 - [x] Passes: total / successful (+ pass accuracy)
 - [x] Dribble: total / successful
 - [x] Interceptions, deflections
-- [~] Fouls committed / received — when DisciplineService exists
-- [~] Cards (yellow, red, double-yellow) — when DisciplineService exists
 - [x] Duels: total / won (tackles + duelsWon)
-- [~] Offside count — when OffsideService exists
 - [x] Saves (GK), clearances, assisted goals
 
 ### P1c — Implementation
