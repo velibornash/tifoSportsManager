@@ -481,3 +481,241 @@ klasama — ne piše se nova logika.
   overlay, play napreduje, timeline 0→5, 22 igrača, bez JS error-a);
   `POST /proposal/api/generate` → 200, `/proposal/match.json` → 200 (58MB,
   7186 eventa, 3600 snapshota).
+
+---
+
+### 6.9 `2026-09-14 12:00` · `c921402` — pass completion tuning + fizika kalibracija
+
+**Poluvremeni bug (kritičan):** `MatchClockService.tick()` vraća `true` kad
+`matchTicks == 1800` (half-time), ali `simulate()` nikad ne poziva
+`clockService.resume()`. Svi prethodni mečevi bili su **45 min**, ne 90 min
+— sve metrike (golovi, šutevi, dodavanja) merene na pola meča.
+
+Ispravka: `MatchOrchestrator.simulate()` nakon 1800 tikova radi `resume()` +
+`handleKickoff("AWAY")`. Sada su mečevi punih 3600 tikova (90 min).
+
+**Lopta — launch brzina za intercept:** `readIntercept` je koristio
+trenutnu (usporavanu) brzinu lopte; kod kraja leta (lopta ≈ 0.5 c/t)
+`speedFactor → 1.0` i intercept verovatnoća rasla na 0.45 svaki tik —
+umesto da ostane na početnoj brzini kojom je pas udaren. Ispravka:
+dodato `Ball.launchSpeed`, `readIntercept` koristi `max(current,
+launchSpeed)` — verovatnoća je konstantna tokom celog leta.
+
+**DEFLECT_R 0.07 → 0.035** (~0.5 m) — fizički kontakt sada samo kad lopta
+udari telo na 0.5 m (pre 1 m — bilo previše deflekcija).
+
+**Opening target:** `ActionExecutor.openingTarget()` — pas se šalje u
+slobodni prostor do 0.5 ćelija od primaoca (udaljen od najbližeg
+obrambenog), primalac trči na `receivePoint` tokom leta.
+
+**Šuterska kalibracija:** `ExecutionQuality.evaluateShot` —
+`onTargetProb = 0.03 + skill*0.006`, × `max(0.20, 1-dist/7)`, ×
+`(1-pressure/200)`, +0.05 close-range, kap 0.40. Frekvencijska kapija
+0.25. `CleanDecisionEngine` — openness ×40, lane-jammed −30.
+
+**Smer čišćenja (ROOT CAUSE prethodne AWAY dominacije):**
+`ActionExecutor.executeClear` imao inverzni smer
+(`home ? -2.0 : +2.0` → HOME čisti u svoj gol). Ispravljeno na
+`home ? +2.0 : -2.0`.
+
+**`ProposalBatchDiag`** — nova dijagnostička klasa (10+ mečeva, agregira
+golove/šuteve/SOT/pasove + H/A split + 0-0 broj). Zamenjuje
+ručno pokretanje `MatchSimulationLauncher` više puta.
+
+**Merene vrednosti (10 mečeva, 3600 tika):**
+
+| Metrika | Predlog | Demo/service | Status |
+|---|---|---|---|
+| Golovi/match | 1.2 | 2.4 | manje (preveriti na 3600 tika) |
+| Šutevi/match | 39.6 | 54 | manje |
+| SOT % | 12% | 11% | ≈ cilj |
+| Pass completion | 67% | 98% | mnogo manje |
+| H/A golovi | 0.9/0.3 | ≈1/1 | H blago dominira |
+| 0-0 | 3/10 | 0-1/10 | previše |
+
+**Glavni preostali gap:** pass completion 67% vs 98%. Uzroci (još uvek
+aktivna analiza):
+- `readIntercept` se poziva na svaki tik segmenta leta, za svakog
+  defanzivca unutar 0.14 ćelije od linije — kumulativna verovatnoća
+  presecanja po pasu je previsoka (demo/service radi isto ali sa
+  `action.getPassSpeed()` konstantnom brzinom celi let).
+- Defanzivci su pregusti u sredini (prosečan red intercepta 4.2) —
+  skoro svaki pas prolazi blizu nekog defanziva.
+- Decision engine bira „lane blocked" receptore jer penalitet −80
+  nije dovoljan kad forward +50 i openness +30 nadoknade.
+
+---
+
+## 7. ANALIZA — trenutno stanje po zahtevima faze
+
+Korisnik je definisao prioritete za **FAZU 1** (arhitektura + fizika +
+prikaz + log + statistika). Sledi analiza po tačkama:
+
+### 7.1 Razgraničenje odgovornosti engine-ova
+
+**Dobro:**
+- `CleanDecisionEngine` — samo bira opciju, ne menja je
+- `ActionExecutor` — samo izvršava (PASS/SHOT/DRIBBLE/CLEAR)
+- `BallPhysicsEngine` — čista fizika: pozicija + brzina, kolizije, OOB
+- `MovementEngine` — kretanje svih igrača ka cilju po pace skilu
+- `TacticalIntentEngine` — taktički ciljevi iz pravila
+- `DuelEngine` — detekcija + rezolucija duela
+- `RestartManager` — svi restarti (kickoff, korner, aut, gol aut, penal)
+- `FootballRules` — offside provera (minimalno)
+
+**Nedostaje:**
+- **Override sistem** ne postoji formalno — `CleanDecisionEngine.decide()`
+  ima ugneždene hard rules: final-2-row SHOT (linija 70-80), kickoff
+  specijal (linija 43-51). Te odluke bi trebalo da budu **override** sloj
+  koji interveniše NAKON odluke i PRE izvršenja — ne unutar decision engine-a.
+- **VAR** — stub postoji (`MatchState.varReviewActive`) ali nema VAR engine-a
+  koji bi pregledavao odluke.
+- **Discipline (fouls/kartoni)** — ne postoji. `FootballRules` ima samo offside.
+- **Fatigue** — nema (igrači se ne umaraju).
+- **Transition** — nema logike za promenu posed (npr. "šta se dešava kad
+  izgubimo loptu").
+- **Threat override** — nema (obrambeni pritisak na nosioca lopte).
+
+**Orchestrator:** ima ~340 linija — radi log formatiranje, event recording,
+result handling, duel detection. Previse za "samo koordinira".
+
+### 7.2 Fizika lopte
+
+**Dobro:**
+- Ball model: čista fizika (pozicija, brzina, spin, airborne, launchSpeed)
+- Deceleration: ground 0.35, air 0.15, stop 0.02
+- Kolizije: stative (reflect + damp) → gol ravan (goal detection) →
+  igrači (RECEIVE/INTERCEPT/BLOCK/DEFLECT) → OOB (4-tik hold)
+- Loose pickup 0.35
+- Spin lateralno ubrzanje
+- LaunchSpeed za readIntercept konstantan
+
+**Nedostaje:**
+- DEFLECT_R 0.035 možda previše mali — lopta može proći pored 10
+  igrača bez kontakta. Povećati na 0.05-0.07 i meriti uticaj.
+- Nema rotacije/tumble efekta na lopti (samo spin za krivljenje)
+- Bounce od igrača koristi 2D refleksiju — radi, ali nema
+  "realističkog" odbijanja
+
+### 7.3 Kretanje igrača (pace A→B)
+
+**Dobro:**
+- `moveAllTowardTargets` — pace-based, carrier 0.90, chase 1.30
+- Razdvajanje od suparnika (slide around) — `separateFromOpponents`
+- Loose-ball chase — najbliži sprinta do lopte
+- Nema boundary clamping (igrači smeju van linija)
+
+**Nedostaje:**
+- Separation je samo "slide" — ne pravi pravo zaobilaženje prepreka
+- `findSafePosition` postoji ali je nekorišćen (deprecated)
+- Nema per-tick refresh taktičkih ciljeva u zavisnosti od novonastalog
+  stanja (npr. "lopta se pomerila, promeni cilj")
+- Carrier drži loptu na istoj brzini — nema ubrzanje/usporavanje
+  prilikom pickup/loss
+
+### 7.4 UI prikaz
+
+**GOTOVO.**
+- `ProposalViewerLauncher` port 8766, `POST /proposal/api/generate`
+- `viewer.js` 1:1 port iz demo/service: LED scoreboard, canvas teren,
+  timeline, kontrole (Play/Pause/Seek/Speed)
+- `match.json` 58MB (snapshots + events)
+
+### 7.5 App log (debug)
+
+**Delimično:**
+- Orchestrator loguje DEC/ORC/BAL/DUL/RST tagovima → stdout
+- `MatchRecorder` beleži events + snapshots za JSON
+- Nedostaje: DuelEngine ne loguje unutar sebe, FootballRules ne loguje,
+  nema strukturiranog log-a (samo println)
+
+### 7.6 Kompaktan side log (korisnik)
+
+**GOTOVO.**
+- `viewer.js` filtrira timeline: samo GOAL, SHOT, SAVE, DUEL, RESTART...
+- DECISION/ACTION/OOC logovi su u app log-u, ne u sidebar-u
+
+### 7.7 Statistika — SVAKA akcija, po igraču i po timu
+
+**NAJVEĆI GAP — trenutno stanje:**
+
+MatchState ima samo osnovne globalne brojače:
+```
+passAttempts, passesCompleted, shots, shotsOnTarget, fouls, yellowCards, redCards
+```
+
+**Šta NEDOSTAJE (od zahteva korisnika):**
+
+| Kategorija | Trenutno | Šta treba |
+|---|---|---|
+| Šutevi | `shots`, `shotsOnTarget` | total, on-target, **blocked, saved, missed**, po igraču, po timu |
+| Golovi | `homeGoals`, `awayGoals` | total, **open play, center, cross, penalty, FK, corner**, po igraču |
+| Offside | ništa | **total**, po timu |
+| VAR | ništa | **total, confirmed, overturned**, po tipu |
+| Dodavanja | `passAttempts`, `passesCompleted` | total, **successful, thru, center, cross, air, ground**, po igraču |
+| Dribling | ništa | **total, successful**, po igraču |
+| Presecanja | ništa | **interceptions, deflections**, po igraču |
+| Restarti | ništa | **corners, throw-ins, goal kicks, free kicks, penalties**, po timu |
+| Kartoni | `fouls`, `yellowCards`, `redCards` | **yellow, red, double-yellow**, po igraču |
+
+**Takođe nedostaje:**
+- Per-player stats (pozicija, minuti, ocena,它所有 akcije)
+- Per-team stats breakdown
+- Match stats export u `match.json` (samo goals/shots/SOT u snapshotu)
+- Rating sistem (prosečna ocena na osnovu akcija)
+
+---
+
+## 8. PLAN — FAZA 1 (arhitektura + fizika + prikaz + log + statistika)
+
+Prioriteti po redu korisnika:
+
+### 8.1 Override sistem (čisto razgraničenje)
+- Nova klasa `OverrideService` koja se poziva između `decide()` i
+  `execute()`: prima `DecisionOption`, vraća isti ili modifikovani
+- Final-2-row SHOT, kickoff specijal, VAR overrides — sve tamo
+- `CleanDecisionEngine` ostaje čist scoring engine
+
+### 8.2 Statistika (najveći gap)
+- Nova klasa `MatchStats` — per-team i per-player akumulatori
+- `StatisticsEngine` / `StatsCollector` — poziva se iz orchestratora
+  nakon svakog eventa (RECEIVE, INTERCEPT, SHOT, GOAL, DUEL, RESTART...)
+- Sve kategorije iz tabele 7.7 — sa per-player ID i per-team
+- Export u `match.json` (novo polje `statistics`)
+- UI sidebar: Match Stats panel (prvo teksta, kasnije grafika)
+
+### 8.3 Orchestrator refaktor
+- Izvući `handleBallPhysicsResult()` u `BallResultHandler`
+- Izvući `detectAndResolveDuels()` u `DuelService`
+- Izvući log formatiranje u `ActionLogService`
+- Orchestrator ostaje čist: clock → unlock → ball → decision →
+  execution → tactical → movement → restart → rules → duels → stats
+
+### 8.4 Fizika lopte (kalibracija)
+- DEFLECT_R 0.035 → 0.05-0.07 (testirati oba)
+- readIntercept verovatnoća — meriti pass completion nakon smanjenja
+- Gol detekcija — verifikovati da off-target šutevi nikad ne
+  prelaze gol liniju unutar usta (testirano u sesiji 6.9)
+
+### 8.5 Kretanje igrača
+- `findSafePosition` oživeti ili zameniti pravim obstacle avoidance
+  (perpendicular slide na zid)
+- Per-tick refresh taktičkih ciljeva kada se lopta pomeri
+- Carrier brzina: brži kad nema pritiska, sporiji pod pritiskom
+
+### 8.6 VAR / Pravila igre (skeleton)
+- `VARService` — offside review, goal review, penalty review
+- `DisciplineService` — fouls + cards
+- `OffsideService` — pun offside check (drugi do poslednjeg)
+- Ovo su SKELETON implementacije — kalibracija dolazi kasnije
+
+### 8.7 App log
+- `ActionLogService` — centralizovan log sa tagovima i strukturiranim
+  porukama (svi engine-i loguju kroz njega)
+- Dve razine: FULL (stdout/file za debug) i COMPACT (sidebar/UI)
+
+### 8.8 Verifikacija
+- `ProposalBatchDiag 50` — 50 mečeva za stabilne proseke
+- Metrički ciljevi: golovi ~2.4, šutevi ~54, SOT ~11%, pass ~98%,
+  H/A balans, 0-0 ≤ 1/10
+- UI E2E: Play → viewer prikazuje sve evente + stats panel
