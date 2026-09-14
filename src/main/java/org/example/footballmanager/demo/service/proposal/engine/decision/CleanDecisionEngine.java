@@ -6,6 +6,7 @@ import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Clean Decision Engine - ONLY scores and selects actions.
@@ -25,6 +26,8 @@ public class CleanDecisionEngine {
         0.80  // 21 (capped)
     };
 
+    private final Random RNG = new Random();
+
     public DecisionOption decide(MatchState state) {
         return decideWithOptions(state).getChosen();
     }
@@ -35,6 +38,16 @@ public class CleanDecisionEngine {
             return new DecisionResult(
                     new DecisionOption(ActionType.PASS, null, 0.0, "no carrier"),
                     List.of());
+        }
+
+        // KICKOFF — never pass to the goalkeeper; force a short forward/lateral
+        // pass to an open, non-GK teammate. Mirrors demo/service generateKickoffPass.
+        if (state.isKickoffPending()) {
+            state.setKickoffPending(false);
+            DecisionOption kickoffPass = kickoffOption(state, carrier);
+            if (kickoffPass != null && kickoffPass.getTarget() != null) {
+                return new DecisionResult(kickoffPass, List.of(kickoffPass));
+            }
         }
 
         Player receiver = findBestReceiver(state, carrier);
@@ -54,6 +67,18 @@ public class CleanDecisionEngine {
         DecisionOption chosen = selectOptionWithPlaymaking(
                 passOption, carryOption, shotOption, clearOption, baseAccuracy, receiver);
 
+        // FINAL-2-ROW HARD RULE (mirror of demo/service): a carrier in the last
+        // two rows of the attacking third must not keep dribbling — either shoot
+        // or deliver. Prevents tap-ins from the 6-yard line.
+        boolean home = "HOME".equals(carrier.getTeam());
+        double carrierRow = carrier.getPosition().getRow();
+        boolean finalTwoRows = home ? carrierRow >= 6.0 : carrierRow <= 2.0;
+        if (finalTwoRows && chosen.getType() == ActionType.DRIBBLE) {
+            if (shotOption.getScore() >= 0) {
+                chosen = shotOption;
+            }
+        }
+
         return new DecisionResult(chosen, List.of(passOption, carryOption, shotOption, clearOption));
     }
 
@@ -70,13 +95,13 @@ public class CleanDecisionEngine {
             double forwardSteps = home ? receiver.getPosition().getRow() - carrier.getPosition().getRow()
                                        : carrier.getPosition().getRow() - receiver.getPosition().getRow();
             if (forwardSteps > 0) {
-                score += 20.0 + forwardSteps * 4.0;
-                reason.append("forward+" + String.format("%.0f ", forwardSteps * 4.0));
+                score += 50.0;
+                reason.append("forward+50 ");
             } else if (forwardSteps < -0.2) {
-                score -= 30.0; // backward pass is last resort
+                score -= 80.0; // backward pass is last resort
                 reason.append("backward ");
             } else {
-                score -= 5.0; // lateral
+                score -= 10.0; // lateral
                 reason.append("lateral ");
             }
 
@@ -94,10 +119,19 @@ public class CleanDecisionEngine {
                 reason.append("good distance ");
             }
 
-            // Receiver openness
+            // Receiver openness (up to +30) and direct marking penalty
             double openness = calculateOpenness(state, receiver);
-            score += openness * 20.0;
+            score += Math.max(0, openness) * 30.0;
             reason.append(String.format("openness %.1f ", openness));
+            if (openness < 0.17) {
+                score -= 40.0;
+                reason.append("marked ");
+            }
+
+            // Lane blocked by an opponent between passer and receiver -> deciding negative
+            double lanePenalty = laneBlockPenalty(state, carrier, receiver);
+            score -= lanePenalty * 80.0;
+            if (lanePenalty > 0) reason.append("lane blocked ");
 
             // Playmaking boost
             score += carrier.getSkills().playmaking() * 0.15;
@@ -169,6 +203,14 @@ public class CleanDecisionEngine {
             return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
         }
 
+        // Frequency gate — only a fraction of final-third touches are shots
+        // (real teams recycle, hold, and probe instead of shooting every touch).
+        if (RNG.nextDouble() > 0.25) {
+            score = -20.0;
+            reason.append("freq gate");
+            return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
+        }
+
         // Basic shot value
         score += 20.0;
         reason.append("in zone ");
@@ -184,18 +226,33 @@ public class CleanDecisionEngine {
         // Distance to goal (closer = better)
         Position goal = ActionEngine.goalPositionFor(team);
         double distToGoal = SimUtils.distance(carrier.getPosition(), goal);
-        if (distToGoal < 3.0) {
+        if (distToGoal < 2.0) {
             score += 15.0;
             reason.append("close ");
-        } else if (distToGoal < 5.0) {
+        } else if (distToGoal < 3.5) {
             score += 8.0;
             reason.append("medium ");
+        } else if (distToGoal < 5.0) {
+            score += 3.0;
+            reason.append("long ");
+        } else {
+            score -= 15.0;
+            reason.append("too far ");
         }
 
         // Check if goal is open
         double openness = calculateGoalOpenness(state, carrier, goal);
-        score += openness * 25.0;
+        score += openness * 40.0;
         reason.append(String.format("goal open %.1f ", openness));
+        if (openness < 0.1) {
+            score -= 30.0;
+            reason.append("lane jammed ");
+        }
+
+        // Pressure hurts shooting
+        double pressure = calculatePressure(state, carrier);
+        score -= pressure * 25.0;
+        reason.append(String.format("press -%.0f ", pressure * 25.0));
 
         reason.append(String.format("-> %.1f dist", distToGoal));
         return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
@@ -236,7 +293,9 @@ public class CleanDecisionEngine {
     }
 
     private Player findBestReceiver(MatchState state, Player carrier) {
-        // Find the best teammate - reward openness AND forward progress
+        // Best teammate = most open + clear lane + forward progress. A blocked
+        // lane is the deciding negative: threading a ball through the block is
+        // how passes get intercepted (demo/service lane weight ±80).
         Player best = null;
         double bestScore = -Double.MAX_VALUE;
         boolean home = "HOME".equals(carrier.getTeam());
@@ -248,17 +307,86 @@ public class CleanDecisionEngine {
             double forward = home ? teammate.getPosition().getRow() - carrier.getPosition().getRow()
                                   : carrier.getPosition().getRow() - teammate.getPosition().getRow();
             double prox = home ? teammate.getPosition().getRow() : 8.0 - teammate.getPosition().getRow();
-            // Forward + deep + open teammates win; over-long passes penalized
-            double score = openness * 10.0
-                    + Math.max(0, forward) * 8.0
-                    + prox * 2.0
-                    - (dist > 6.0 ? 15.0 : 0.0);
+            // Lane check: opponents between carrier and receiver block the pass.
+            double lanePenalty = laneBlockPenalty(state, carrier, teammate) * 80.0;
+            // How much space the receiver has (0-1) -> up to +30
+            double openScore = Math.max(0, openness) * 30.0;
+            // Receiver under direct pressure (opponent within ~0.5 cell) is a bad target
+            double pressure = calculateOpenness(state, teammate);
+            if (pressure < 0.17) openScore -= 40.0; // ~2.3m of space or less = marked
+            // Forward progress modest (forward +, lateral 0, backward big minus)
+            double direction = forward > 0 ? 50.0 : forward < -0.2 ? -80.0 : -10.0;
+            // Long balls through a congested midfield are how passes get
+            // intercepted — they need a genuinely clear lane to be worth it.
+            if (dist > 4.0) direction -= 25.0;
+            double score = direction + openScore + Math.max(0, prox) * 2.0
+                    - (dist > 6.0 ? 15.0 : 0.0)
+                    - lanePenalty;
             if (score > bestScore) {
                 bestScore = score;
                 best = teammate;
             }
         }
         return best;
+    }
+
+    /** Number of opponents whose body lies inside the passing corridor (0..1 normalized). */
+    private double laneBlockPenalty(MatchState state, Player passer, Player receiver) {
+        if (receiver == null) return 1.0;
+        Position a = passer.getPosition();
+        Position b = receiver.getPosition();
+        double corridor = 0.35; // cells around the pass line that block it (interception needs ~0.14)
+        for (Player opponent : state.getPlayers()) {
+            if (!opponent.getTeam().equals(passer.getTeam())) {
+                double d = pointToLineDistance(opponent.getPosition(), a, b);
+                if (d < corridor) {
+                    return 1.0;
+                }
+            }
+        }
+        return 0.0;
+    }
+
+    /** Kickoff: pick the best non-GK, non-defensive-row teammate, never backward to GK. */
+    private DecisionOption kickoffOption(MatchState state, Player carrier) {
+        boolean home = "HOME".equals(carrier.getTeam());
+        Player best = null;
+        double bestScore = -Double.MAX_VALUE;
+
+        for (Player candidate : state.getPlayers()) {
+            if (!candidate.getTeam().equals(carrier.getTeam()) || candidate.equals(carrier)) continue;
+            if (isGoalkeeper(candidate)) continue;
+            double openness = calculateOpenness(state, candidate);
+            double col = candidate.getPosition().getColumn();
+            double sidelineDist = Math.min(col - 1, 6 - col);
+            // Quadratic sideline penalty — keep kickoff passes away from the touchline
+            double sidelinePenalty = sidelineDist < 1.5 ? Math.pow(1.5 - sidelineDist, 2) * -15.0 : 0;
+            // Reward receivers near the centre column (3.5) — safest short passports
+            double centerBonus = (4.0 - Math.abs(col - 3.5)) * 3.0;
+            double lanePenalty = laneBlockPenalty(state, carrier, candidate) * 30.0;
+            double score = openness * 1.2 + 30 + sidelinePenalty + centerBonus - lanePenalty;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        if (best == null) {
+            // Absolute fallback: any non-GK teammate (never the GK at kickoff).
+            for (Player candidate : state.getPlayers()) {
+                if (candidate.getTeam().equals(carrier.getTeam())
+                        && !candidate.equals(carrier) && !isGoalkeeper(candidate)) {
+                    best = candidate;
+                    break;
+                }
+            }
+        }
+        if (best == null) return null;
+        return new DecisionOption(ActionType.PASS, best, bestScore,
+                "kickoff pass to " + best.getRole());
+    }
+
+    private boolean isGoalkeeper(Player p) {
+        return "GK".equals(p.getRole());
     }
 
     private double calculateOpenness(MatchState state, Player player) {

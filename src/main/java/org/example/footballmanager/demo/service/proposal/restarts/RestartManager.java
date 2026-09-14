@@ -71,6 +71,7 @@ public class RestartManager {
         state.setCarrier(null);
         state.setRestartTaker(null);
         state.setPendingReceiver(null);
+        state.setKickoffPending(true);
 
         // Every player to his own half (tactical position clamped to own half).
         tacticalEngine.placeOnOwnHalf(state, KICK_OFF_SPOT);

@@ -3,6 +3,7 @@ package org.example.footballmanager.demo.service.proposal.engine;
 import org.example.footballmanager.demo.service.proposal.model.*;
 
 import java.util.List;
+import java.util.Random;
 
 /**
  * Ball physics engine — pure physics, no decision-making, no rules enforcement.
@@ -12,6 +13,8 @@ import java.util.List;
  * lastTouchTeam from MatchState.
  */
 public class BallPhysicsEngine implements BallEngine {
+
+    private static final Random RNG = new Random();
 
     // --- Physics constants (cells/tick @ 40 TPM = 1 tick = 1.5 s match time) ---
     public static final double MAX_BALL_SPEED = 1.5;      // 14 m/s
@@ -24,9 +27,10 @@ public class BallPhysicsEngine implements BallEngine {
 
     // --- Contact radii (cells) ---
     public static final double RECEIVE_R = 0.35;
-    public static final double INTERCEPT_R = 0.30;
-    public static final double DEFLECT_R = 0.18;
+    public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
+    public static final double DEFLECT_R = 0.035;    // 0.5 m — ball physically strikes the body
     public static final double PICKUP_R = 0.35;
+    public static final double GK_SAVE_R = 0.75;   // goalkeeper reach on fast balls
     public static final double PICKUP_DISTANCE = PICKUP_R; // alias for orchestrator
     public static final double BALL_R = 0.015;
 
@@ -87,6 +91,8 @@ public class BallPhysicsEngine implements BallEngine {
         if (spd <= STOP_SPEED) {
             ball.stop();
             ball.setAirborne(false);
+            state.setPendingReceiver(null);
+            state.setReceivePoint(null);
             return BallStepResult.stopped();
         }
         double oldSpd = ball.getSpeed();
@@ -129,6 +135,8 @@ public class BallPhysicsEngine implements BallEngine {
         PitchEnvironment env = state.getEnvironment();
         boolean out = env.isOOB(curr);
         if (out && state.getOobPending() == null) {
+            state.setPendingReceiver(null);
+            state.setReceivePoint(null);
             String restart = env.oobRestartType(state.getLastTouchTeam(), curr);
             state.setOobPending(restart);
             state.setOobHoldTicks(OOB_HOLD_TICKS);
@@ -164,6 +172,7 @@ public class BallPhysicsEngine implements BallEngine {
         }
         ball.setAirborne(airborne);
         ball.setSpin(spin);
+        ball.setLaunchSpeed(speed);
     }
 
     // --- helpers ---
@@ -248,6 +257,19 @@ public class BallPhysicsEngine implements BallEngine {
             if (p == pending || p.isUnavailable()) continue;
             // Exclude the player who kicked the ball from immediate teammate deflection
             if (p == lastToucher) continue;
+
+            // --- GOALKEEPER SAVE: a ball heading toward his own goal within reach is
+            // saved regardless of current speed — GK reach GK_SAVE_R applies to a
+            // fast shot AND a decelerated bobble, else shots bleed in. ---
+            if (p.isGoalkeeper() && isTowardOwnGoal(state, p)) {
+                double d = pointSegmentDist(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+                double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+                if (d <= GK_SAVE_R && t < bestT) {
+                    bestT = t; ev = "SAVE"; hit = p;
+                }
+                continue;
+            }
+
             double d = pointSegmentDist(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
             double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
             if (t >= bestT) continue;
@@ -259,13 +281,24 @@ public class BallPhysicsEngine implements BallEngine {
                     bestT = t; ev = "DEFLECT"; hit = p;
                 }
             } else {
-                // opponent body
-                if (d <= INTERCEPT_R && !fast) {
-                    bestT = t; ev = "INTERCEPT"; hit = p;
-                } else if (d <= (fast ? DEFLECT_R : INTERCEPT_R)) {
-                    bestT = t; ev = "BLOCK"; hit = p;
-                } else if (d <= DEFLECT_R) {
-                    bestT = t; ev = "DEFLECT"; hit = p;
+                // Opponent body. A defender within 2 m of the line can only READ
+                // the ball (probabilistic, pm+def gated); the ball physically
+                // strikes them only within 1 m (guaranteed deflection). This is
+                // the demo/service model — a fast pass past a mid-distance
+                // defender normally sails by, it is not auto-intercepted.
+                if (d <= INTERCEPT_R) {
+                    if (d <= DEFLECT_R) {
+                        // Physical contact — ball strikes the body.
+                        if (readIntercept(state, p, spd)) {
+                            bestT = t; ev = "INTERCEPT"; hit = p;
+                        } else {
+                            bestT = t; ev = "DEFLECT"; hit = p;
+                        }
+                    } else if (readIntercept(state, p, spd)) {
+                        // 1-2 m off the line: only a genuine read beats the ball.
+                        bestT = t; ev = "INTERCEPT"; hit = p;
+                    }
+                    // else: too far to touch / no read — ball sails by.
                 }
             }
         }
@@ -275,10 +308,20 @@ public class BallPhysicsEngine implements BallEngine {
                 state.setCarrier(hit);
                 state.setLastTouchTeam(hit.getTeam());
                 state.setPendingReceiver(null);
+                state.setReceivePoint(null);
                 state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
                 state.getBall().stop();
                 if (ev.equals("RECEIVE")) return BallStepResult.receive(hit.getLabel());
                 return BallStepResult.intercept(hit.getLabel());
+            } else if (ev.equals("SAVE")) {
+                // Goalkeeper saves the shot — he holds the ball (distribution follows)
+                state.setCarrier(hit);
+                state.setLastTouchTeam(hit.getTeam());
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
+                state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
+                state.getBall().stop();
+                return BallStepResult.save(hit.getLabel());
             } else {
                 // BLOCK or DEFLECT — reflect off player body
                 Ball b = state.getBall();
@@ -298,6 +341,32 @@ public class BallPhysicsEngine implements BallEngine {
             }
         }
         return null;
+    }
+
+    private boolean isTowardOwnGoal(MatchState state, Player gk) {
+        double velY = state.getBall().getVelY();
+        return "HOME".equals(gk.getTeam()) ? velY < 0 : velY > 0;
+    }
+
+    /**
+     * Reading interception — demo/service model. A defender within 1-2 m of the
+     * flight line can only beat the ball if he READS it: playmaking+defending
+     * (reading skill) vs a speed-gated probability. Fast passes give almost no
+     * reaction time; slow ones let good readers step in. No read = ball sails by.
+     */
+    private boolean readIntercept(MatchState state, Player p, double spd) {
+        // Use the LAUNCH speed, not the current decelerated speed (demo/service
+        // model): a reception-speed ball that has slowed near the receiver must
+        // not suddenly become interceptable — the read difficulty was decided
+        // when the pass was struck.
+        double effective = Math.max(spd, state.getBall().getLaunchSpeed());
+        double speedFactor = Math.max(0.2, 1.0 - (effective - MIN_LAUNCH_SPEED)
+                        / (MAX_BALL_SPEED - MIN_LAUNCH_SPEED));
+        int pm = (int) Math.round(p.getSkills().playmaking());
+        int def = (int) Math.round(p.getSkills().defender());
+        if (pm + def <= 18) return false;   // can't read the pass
+        double prob = Math.min(0.45, (0.25 + (pm + def - 18) / 30.0) * speedFactor);
+        return RNG.nextDouble() < prob;
     }
 
     private Player nearestPlayer(MatchState state, String exceptTeam, double maxR) {

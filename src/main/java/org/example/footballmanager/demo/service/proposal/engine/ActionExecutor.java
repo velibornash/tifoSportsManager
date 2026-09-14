@@ -55,24 +55,37 @@ public class ActionExecutor {
         // Ball snapped to carrier already by orchestrator before decision
         Ball ball = state.getBall();
 
-        // Calculate pass speed based on passing skill
-        double passingSkill = carrier.getSkills().passing();
-        double desiredSpeed = calculatePassSpeed(passingSkill);
+        // Pass into the OPENING — the receiver's position nudged away from its
+        // nearest opponent (demo/service "openingTarget" model). Passing AT the
+        // receiver's occupied body lets the marker on the segment intercept;
+        // serving into ~0.5 cell of free space the receiver runs onto completes.
+        Position aimedTarget = openingTarget(state, receiver);
+
+        // Pass launch speed is the POSSESSOR-RELATIVE skill speed (demo/service
+        // model): the passer plays at the speed his passing skill can handle, so
+        // accuracy stays high (deviation comes only from overspeed). Short
+        // passes stay on the ground; anything at/over 1.5 cells is lofted (air
+        // decel) so it can cover the distance without dying mid-flight.
+        double dist = SimUtils.distance(carrier.getPosition(), receiver.getPosition());
+        boolean airborne = dist >= 1.5;
+        double desiredSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
 
         // ExecutionQuality gives deviated aim + launch speed + spin
         ExecutionQuality.PassResult result = ExecutionQuality.evaluatePass(
-                carrier, carrier.getPosition(), receiver.getPosition(), receiver, desiredSpeed);
+                carrier, carrier.getPosition(), aimedTarget, receiver, desiredSpeed);
 
         // Launch the ball toward the deviated aim
         state.getBallEngine().launch(ball, carrier.getPosition(),
-                result.getActualTarget(), result.getSpeed(), false, result.getSpin());
+                result.getActualTarget(), result.getSpeed(), airborne, result.getSpin());
 
         // Carrier stops running; receiver holds position during flight
         carrier.setTarget(null);
         receiver.setTarget(null);
 
-        // Remember who should receive
+        // Remember who should receive — and where the ball will land, so the
+        // receiver can RUN ONTO the pass during flight (demo/service model).
         state.setPendingReceiver(receiver);
+        state.setReceivePoint(result.getActualTarget());
         state.setCarrier(null);
         state.setLastTouchTeam(carrier.getTeam());
         state.setLastTouchPlayer(carrier);
@@ -80,6 +93,31 @@ public class ActionExecutor {
         carrier.incrementConsecutiveCarries();
         state.incrementPassAttempts();
         // passesCompleted incremented on actual RECEIVE in orchestrator
+    }
+
+    /** Compute the pass aim point: receiver's position nudged away from its
+     *  nearest opponent so the ball lands in free space, not on the marker. */
+    private Position openingTarget(MatchState state, Player receiver) {
+        Position pos = receiver.getPosition();
+        Player nearest = null;
+        double bestD = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (p.equals(receiver) || p.isUnavailable()) continue;
+            if (p.getTeam().equals(receiver.getTeam())) continue;
+            double d = SimUtils.distance(pos, p.getPosition());
+            if (d < bestD) { bestD = d; nearest = p; }
+        }
+        if (nearest == null) return pos;
+        // Nudge up to 0.5 cells directly away from the nearest opponent.
+        double dr = pos.getRow() - nearest.getPosition().getRow();
+        double dc = pos.getColumn() - nearest.getPosition().getColumn();
+        double len = Math.hypot(dr, dc);
+        if (len < 1e-9) return pos;
+        double nudge = Math.min(0.5, bestD / 2.0);
+        return new Position(
+                pos.getRow() + dr / len * nudge,
+                pos.getColumn() + dc / len * nudge
+        );
     }
 
     /** Execute a SHOT action. */
@@ -121,8 +159,12 @@ public class ActionExecutor {
         boolean home = "HOME".equals(carrier.getTeam());
         double forwardDelta = home ? 0.5 : -0.5;
 
+        // Carry target capped half a cell BEFORE the opponent goal line so the
+        // carrier never dribbles onto the line; the re-decision then fires a shot.
+        double maxRow = home ? 7.5 : 8.0;
+        double minRow = home ? 1.0 : 1.5;
         Position carryTarget = new Position(
-                SimUtils.clamp(current.getRow() + forwardDelta, 1.0, 7.0),
+                SimUtils.clamp(current.getRow() + forwardDelta, home ? 1.0 : 1.5, home ? 7.5 : 8.0),
                 current.getColumn()
         );
 
@@ -134,10 +176,13 @@ public class ActionExecutor {
         Player carrier = state.getCarrier();
         if (carrier == null) return;
 
-        // Clear direction — away from opponent goal (long air kick)
+        // Clear direction — away from OWN goal (long air kick).
+        // HOME defends row 1.0 so clears UP (+row, toward AWAY goal);
+        // AWAY defends row 8.0 so clears DOWN (-row, toward HOME goal).
+        // (This sign was inverted: HOME cleared to row 1.0 = into his own net.)
         Position current = carrier.getPosition();
         boolean home = "HOME".equals(carrier.getTeam());
-        double clearDelta = home ? -2.0 : 2.0; // deeper kick
+        double clearDelta = home ? +2.0 : -2.0; // deeper kick
 
         Position clearTarget = new Position(
                 SimUtils.clamp(current.getRow() + clearDelta, 1.0, 7.0),
@@ -153,10 +198,5 @@ public class ActionExecutor {
         state.setCarrier(null);
         state.setLastTouchTeam(carrier.getTeam());
         state.setLastTouchPlayer(carrier);
-    }
-
-    private double calculatePassSpeed(double passingSkill) {
-        return Math.min(BallPhysicsEngine.MAX_BALL_SPEED,
-                BallPhysicsEngine.MIN_LAUNCH_SPEED + (passingSkill / 20.0) * 0.75);
     }
 }

@@ -109,12 +109,15 @@ public class ExecutionQuality {
                 : Math.hypot(shotOrigin.getRow() - goalPosition.getRow(),
                              shotOrigin.getColumn() - goalPosition.getColumn());
 
-        // On-target probability based on skill, distance, pressure
-        double onTargetProb = 0.18 + skill / 20.0 * 0.30;   // 0.30..0.48
-        onTargetProb *= Math.max(0.30, 1.0 - dist / 7.0);
+        // On-target probability based on skill, distance, pressure.
+        // Striker skill drives finishing; distance cuts it; pressure reduces it.
+        // A point-blank chance is still not a guaranteed on-frame shot — a
+        // defender/GK covering, angle, and composure all intervene.
+        double onTargetProb = 0.03 + skill * 0.006;              // skill 1..20 -> 0.04..0.15 base
+        onTargetProb *= Math.max(0.20, 1.0 - dist / 7.0);        // far = much worse
         onTargetProb *= (1.0 - pressure / 200.0);
-
-        if (dist <= 1.2) onTargetProb = 1.0;
+        if (dist < 1.5) onTargetProb += 0.05;                    // close-range lift (cap below)
+        onTargetProb = Math.min(onTargetProb, 0.40);
 
         boolean onTarget = onTargetProb > RNG.nextDouble();
 
@@ -125,9 +128,21 @@ public class ExecutionQuality {
             actualRow = goalPosition.getRow();
             actualCol = goalPosition.getColumn() + (RNG.nextDouble() - 0.5) * 0.6; // within mouth
         } else {
-            // Off target — scatter around goal
-            actualRow = goalPosition.getRow() + (RNG.nextDouble() - 0.5) * 4.0;
-            actualCol = goalPosition.getColumn() + (RNG.nextDouble() - 0.5) * 3.0;
+            // Off target — MUST not cross the goal line inside the mouth. A shot
+            // aimed PAST the line "wide of the post" still crosses the line at a
+            // column between origin and aim — from a central origin that lands in
+            // the mouth. So off-target shots always land SHORT of the line and
+            // wide of the mouth: the flight segment never reaches goal-line height
+            // inside 3.5-4.5.
+            double mouthLeft = goalPosition.getColumn() - 0.5;
+            double mouthRight = goalPosition.getColumn() + 0.5;
+            if (RNG.nextBoolean()) {
+                actualCol = mouthLeft - (0.5 + RNG.nextDouble() * 1.0);   // wide of left post
+            } else {
+                actualCol = mouthRight + (0.5 + RNG.nextDouble() * 1.0);  // wide of right post
+            }
+            // Always short of the line: the ball stops well before the goal.
+            actualRow = goalPosition.getRow() - (0.3 + RNG.nextDouble() * 0.9);
         }
 
         Position actualTarget = new Position(actualRow, actualCol);

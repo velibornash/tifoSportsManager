@@ -199,6 +199,13 @@ public class MatchOrchestrator {
                 log("ORC", eventMsg);
                 recorder.appendEvent(state.getMatchTicks(), "INTERCEPT", eventMsg, state);
             }
+            case SAVE -> {
+                Player gk = state.getCarrier();
+                eventMsg = "*** SAVE by " + gk.getLabel() + "(" + gk.getRole() + ")"
+                        + " | ball" + p(state.getBall().getPosition());
+                log("ORC", eventMsg);
+                recorder.appendEvent(state.getMatchTicks(), "SAVE", eventMsg, state);
+            }
             case BLOCK -> {
                 eventMsg = "BLOCK " + res.getDetail() + " parried the shot | ball" + p(state.getBall().getPosition());
                 log("ORC", eventMsg);
@@ -320,6 +327,14 @@ public class MatchOrchestrator {
     public void simulate(int ticks) {
         for (int i = 0; i < ticks; i++) {
             tick();
+            // Half-time: the clock pauses at 1800 ticks (45'). Resume and start
+            // the second half with the AWAY team kicking off (teams keep the
+            // same attacking direction in this simplified model — HOME attacks
+            // row 8, AWAY attacks row 1 — so no end swap is needed).
+            if (state.isStopped() && state.getMatchTicks() == 1800) {
+                clockService.resume(state);
+                restartManager.handleKickoff(state, "AWAY");
+            }
         }
     }
 }

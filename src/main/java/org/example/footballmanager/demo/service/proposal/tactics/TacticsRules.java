@@ -134,10 +134,14 @@ public class TacticsRules {
         return byState == null ? null : byState.get(ballStateKey);
     }
 
-    /** Ball state key (0-based grid) for a physical ball position. */
+    /** Ball state key (0-based grid) for a physical ball position. This is the
+     *  inverse of parseCell(): editor index i holds the physical span [i+1, i+2)
+     *  whose centre is i+1.5, so a physical position P maps to editor index
+     *  round(P - 1.5). (Plain round(P)-1 shifts centre rows 1.5/4.5/… one cell
+     *  toward AWAY, collapsing defenders onto the ball.) */
     public static String ballStateKey(Position ball) {
-        int r = clamp((int) Math.round(ball.getRow()) - 1, 0, 6);
-        int c = clamp((int) Math.round(ball.getColumn()) - 1, 0, 5);
+        int r = clamp((int) Math.round(ball.getRow() - 1.5), 0, 6);
+        int c = clamp((int) Math.round(ball.getColumn() - 1.5), 0, 5);
         return "CELL_" + r + "_" + c;
     }
 

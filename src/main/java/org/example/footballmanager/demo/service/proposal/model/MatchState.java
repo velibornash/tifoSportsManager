@@ -33,6 +33,7 @@ public class MatchState {
     private final Ball ball;
     private Player carrier;           // null = no carrier (transition/loose)
     private Player pendingReceiver;   // who should receive the in-flight pass
+    private Position receivePoint;    // where the in-flight pass will land (receiver runs onto it)
     private String lastTouchTeam;     // team that last touched the ball
     private Player lastTouchPlayer;   // player who last touched the ball (for deflection exclusion)
 
@@ -54,6 +55,7 @@ public class MatchState {
     private String setPieceType;      // CORNER, GOAL_KICK, THROW_IN, PENALTY, FREE_KICK
     private String restartTeam;
     private Player restartTaker;      // walks to the ball during a restart
+    private boolean kickoffPending;   // true right after kickoff (match start / after goal)
 
     // Statistics
     private int passAttempts;
@@ -144,6 +146,10 @@ public class MatchState {
     public Player getPendingReceiver() { return pendingReceiver; }
     public void setPendingReceiver(Player pendingReceiver) { this.pendingReceiver = pendingReceiver; }
 
+    /** Where the in-flight pass is heading — the receiver runs onto it. */
+    public Position getReceivePoint() { return receivePoint; }
+    public void setReceivePoint(Position receivePoint) { this.receivePoint = receivePoint; }
+
     public Player getCarrier() { return carrier; }
     public void setCarrier(Player carrier) { this.carrier = carrier; }
 
@@ -183,6 +189,9 @@ public class MatchState {
 
     public Player getRestartTaker() { return restartTaker; }
     public void setRestartTaker(Player restartTaker) { this.restartTaker = restartTaker; }
+
+    public boolean isKickoffPending() { return kickoffPending; }
+    public void setKickoffPending(boolean kickoffPending) { this.kickoffPending = kickoffPending; }
 
     // === ROUND START POSITIONS ===
     public Position getRoundStartPosition(Player p) {

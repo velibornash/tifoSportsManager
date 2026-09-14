@@ -18,6 +18,7 @@ public class Ball {
     private double velY;      // cells/tick
     private double spin;      // 0..1 effect intensity
     private boolean airborne; // true = air decel, false = ground decel
+    private double launchSpeed; // speed at launch; readIntercept uses this, not the decelerated current speed
 
     public Ball(Position position) {
         this.position = position;
@@ -49,7 +50,11 @@ public class Ball {
         this.velX = 0;
         this.velY = 0;
         this.airborne = false;
+        this.launchSpeed = 0;
     }
+
+    public double getLaunchSpeed() { return launchSpeed; }
+    public void setLaunchSpeed(double launchSpeed) { this.launchSpeed = launchSpeed; }
 
     // --- Spin ---
     public double getSpin() { return spin; }
