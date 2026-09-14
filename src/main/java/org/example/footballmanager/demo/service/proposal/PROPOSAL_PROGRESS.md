@@ -659,7 +659,7 @@ passAttempts, passesCompleted, shots, shotsOnTarget, fouls, yellowCards, redCard
 | Kartoni | `fouls`, `yellowCards`, `redCards` | **yellow, red, double-yellow**, po igraču |
 
 **Takođe nedostaje:**
-- Per-player stats (pozicija, minuti, ocena,它所有 akcije)
+- Per-player stats (pozicija, minuti, ocena, it所有 akcije)
 - Per-team stats breakdown
 - Match stats export u `match.json` (samo goals/shots/SOT u snapshotu)
 - Rating sistem (prosečna ocena na osnovu akcija)
@@ -719,3 +719,52 @@ Prioriteti po redu korisnika:
 - Metrički ciljevi: golovi ~2.4, šutevi ~54, SOT ~11%, pass ~98%,
   H/A balans, 0-0 ≤ 1/10
 - UI E2E: Play → viewer prikazuje sve evente + stats panel
+
+---
+
+### 6.10 `2026-09-14` — chase sprint fix + placeholder stubs + backlog.md
+
+**Chase sprint ukinut:** `MovementEngine.CHASE_SPRINT_MULTIPLIER` (1.30)
+uklonjen korisnikovom direktivom: svi igrači kreću se pace-capped u
+svakom trenutku — JEDINI izuzetak je carrier (0.90, sporiji jer vodi
+loptu) i celebration (nije deo igre). Chasing loose ball / pressing
+protivnika NIJE brži od normalnog trčanja — pace skill odlučuje brzinu,
+override samo menja cilj.
+
+Takođe uklonjen `PRESS_SPRINT_MULTIPLIER` (bio deklarisan ali nekorišćen)
+da se spreči buduća zloupotreba.
+
+**Placeholder stubs (kompajliraju se, logika kasnije):**
+
+| Klasa | Paket | Opis |
+|---|---|---|
+| `VARService` | `rules/` | VAR review — offside/goal/red/penalty, freq gates |
+| `DisciplineService` | `rules/` | fouls + cards — modular (svako pravilo = svoja metoda) |
+| `OffsideService` | `rules/` | continuous tracking + per-pass check + margin |
+| `ThreatOverrideEngine` | `engine/` | TYPE A (press carrier), TYPE B (press isolated), TYPE C (offside retreat) |
+
+`EngineInterfaces.java` ažuriran sa odgovarajućim interfejsima za sva četiri.
+
+**Hard rules ostaju u `CleanDecisionEngine`:** korisnik eksplicitno traži
+da se hard rules NE zamene formalnim override sistemom — treba da ostanu
+dok ne mogu biti izraženi kao dovoljno jaki boost da engine sam izabere
+tu opciju. Stavljeno u backlog kao P7 (kasnije refaktorisanje).
+
+**`backlog.md` kreiran** — P1–P8, jasni zadaci sortirani po hitnosti:
+P1 (stats layer — najveći gap), P2 (orchestrator slim),
+P3 (fizika kalibracija), P4 (kretanje), P5 (offside full),
+P6 (pass completion kalibracija — deferred, implementacija kasnije),
+P7 (stubs logika — već kreirane prazne klase), P8 (fatigue, transition,
+app log, hard rules→boost, rating, viewer).
+
+**`PROPOSAL_CURRENT_STATE.md`** — trenutno stanje engine-a na engleskom
+(autoritativni opis arhitekture, merenja, merodavnih vrednosti).
+
+**`AGENTS.md` ažuriran:** dodat proposal engine deo u dokumentaciju +
+backlog referenca u tabeli + hotspot za proposal/.
+
+**Merene vrednosti (10 mečeva, 90 min — bez promena u ovoj sesiji):**
+golovi 1.2 (H 0.9/A 0.3), šutevi 39.6, SOT 12%, pass 298/446 = 67%.
+
+** sledeći korak:** P1 — stats layer (najveći gap: bez per-player i
+per-team statistika).

@@ -329,6 +329,65 @@ static/demo/service/ui/
 **Export:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchSnapshotExporter -Dexec.args=42`
 **Launcher:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchViewerLauncher` (port 8765)
 
+### `demo/service/proposal/` — Standalone Proposal Engine
+
+Clean-engine variant of demo/service, focused on responsibility separation.
+Base package: `org.example.footballmanager.demo.service.proposal`.
+
+```
+demo/service/proposal/
+  ├── PROPOSAL_PROGRESS.md          → session log + current state + plan
+  ├── backlog.md                    → prioritized tasks (all engines, stats, physics)
+  ├── MatchSimulationLauncher.java  → main() — single-match headless runner
+  ├── ProposalBatchDiag.java        → 10/50/100-match aggregate diagnostic
+  ├── controller/
+  │   └── ProposalMatchController   → /proposal/api/simulate, /proposal/api/generate
+  ├── engine/
+  │   ├── EngineInterfaces.java     → core engine interfaces (single-responsibility contract)
+  │   ├── MatchOrchestrator.java    → tick loop coordinator (thin — delegates to engines)
+  │   ├── MatchClockService.java    → tick counter, halftime pause (1800/3600)
+  │   ├── MovementEngine.java       → pace-capped A→B movement, collision avoidance
+  │   │   NOTE: NO sprint/chase/press multiplier — ALL players pace-capped
+  │   │   except carrier (0.90) and celebration (not part of play)
+  │   ├── BallPhysicsEngine.java    → velocity-based ball, collisions, OOB, goal plane
+  │   ├── TacticalIntentEngine.java → tactical targets from formation + defensive constraints
+  │   ├── DuelEngine.java           → duel detection + skill-based resolution
+  │   ├── ExecutionQuality.java     → pass/shot deviation, on-target probability
+  │   ├── ActionExecutor.java       → PASS/SHOT/DRIBBLE/CLEAR execution, opening-target
+  │   ├── ThreatOverrideEngine.java → TYPE A (press carrier), TYPE B (press isolated),
+  │   │                              TYPE C (offside retreat) — stub, logic per backlog
+  │   └── decision/
+  │       └── CleanDecisionEngine.java → action scoring + selection (5 actions)
+  ├── rules/
+  │   ├── FootballRules.java        → offside check + offside restart (active)
+  │   ├── VARService.java           → VAR review — stub, logic per backlog
+  │   ├── DisciplineService.java    → fouls/cards — stub, logic per backlog
+  │   └── OffsideService.java       → continuous tracking + per-pass check — stub
+  ├── model/
+  │   ├── MatchState.java           → single source of truth (ball, players, actions, stats)
+  │   ├── Player.java               → includes offside/consecutiveOffside/threatOverride flags
+  │   ├── Ball.java                 → physics model (position, velocity, launchSpeed, spin)
+  │   ├── Position.java, Action.java, ActionType.java, DecisionType.java,
+  │   │   DecisionOption.java, DecisionContext.java, MatchPhase.java, etc.
+  ├── tactics/
+  │   └── TacticsRules.java         → formation tactical targets from config
+  ├── recording/
+  │   ├── MatchRecorder.java        → events + snapshots for match.json
+  │   └── MatchEvent.java, MatchSnapshot.java
+  └── ui/
+      ├── ProposalViewerLauncher.java → port 8766
+      ├── ProposalViewer.java         → headless match.json generator
+      └── static/viewer.js            → canvas pitch, LED scoreboard, timeline, controls
+```
+
+**Key differences from demo/service:**
+- No God-classes: orchestrator is thin, each engine has single responsibility
+- `EngineInterfaces` defines contracts for every engine
+- All placeholder stubs (VARService, DisciplineService, OffsideService, ThreatOverrideEngine)
+  already exist as compilable classes with TODO methods — logic filled per backlog
+- MovementEngine: NO chase sprint multiplier (user rule 2026-09-14)
+- `backlog.md` tracks all work (stats, physics, movement, rules, fatigue, transitions)
+
 **Key design per corePrinciples:**
 - Decision engine scores actions → football rules override illegal actions (§15)
 - Kickoff is special center positioning event, not from TacticalEditor (§20)
@@ -695,6 +754,8 @@ All events are sealed records implementing `MatchEvent` interface. Each event ca
 | `TIFO_TEXT_MANAGER_PROGRESS.md` | Agent instructions — TIFO Text mode |
 | `TIFO_SPORTS_MANAGER_GUIDE.md` | **User-facing guide** in English — all sports explained for end users |
 | `demo/service/demoServiceProgression.md` | Agent instructions — demo/service engine (what's done, what's next) |
+| `demo/service/proposal/PROPOSAL_PROGRESS.md` | Agent instructions — proposal engine (current state, analysis, plan) |
+| `demo/service/proposal/backlog.md` | Prioritized tasks for proposal engine (P0-P7, stats, physics, rules) |
 
 The 4 sport-specific `.md` files are written as instructions for AI agents — they describe what's implemented and what's pending. The `TIFO_SPORTS_MANAGER_GUIDE.md` is a user manual written in English.
 
@@ -718,6 +779,7 @@ The 4 sport-specific `.md` files are written as instructions for AI agents — t
 - `cleanSheet/` and `old/` packages are legacy — do not add new features there
 - `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
 - **demo/service/** — self-contained service engine; source of truth is `corePrinciples.md`; only modify files under `demo/service/`; test via `MatchBatchRunner` and `MatchChainTrace`
+- **demo/service/proposal/** — self-contained clean-engine variant; `backlog.md` tracks all tasks; placeholder stubs exist (VAR, Discipline, Offside, ThreatOverride) with no logic; `ProposalBatchDiag` for verification
 - **demo/service/ui/** — web-based match viewer; pitch rendering in `PitchRenderer`, playback in `MatchViewer`
 - **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
 - **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events

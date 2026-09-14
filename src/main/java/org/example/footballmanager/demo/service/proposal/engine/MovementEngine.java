@@ -14,11 +14,15 @@ public class MovementEngine {
 
     public static final double PLAYER_SPEED_BASE = 0.75; // pace 20 = 0.75 cells/tick
     public static final double CARRIER_FACTOR = 0.90; // carrier moves slightly slower
-    public static final double CHASE_SPRINT_MULTIPLIER = 1.30; // active chasers sprint
-    public static final double PRESS_SPRINT_MULTIPLIER = 1.30; // threat override pressers
     public static final double MIN_PLAYER_DISTANCE = 0.35; // minimum distance before wall block
     public static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed loss from fatigue
     public static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball
+
+    // NOTE: no chase/sprint/press multiplier. User rule (2026-09-14): players
+    // move pace-capped at ALL times — the ONLY exceptions are the carrier
+    // (slower, CARRIER_FACTOR above) and celebrations (not part of play).
+    // Chasing a loose ball / pressing a threat is NOT faster than normal
+    // running: the pace skill decides speed, the override only decides target.
 
     /**
      * Move all players toward their targets for one tick.
@@ -47,10 +51,8 @@ public class MovementEngine {
                 playerSpeed *= CARRIER_FACTOR;
             }
 
-            // Chaser sprints
-            if (isChaser) {
-                playerSpeed *= CHASE_SPRINT_MULTIPLIER;
-            }
+            // Chaser moves at the same pace-capped speed as any other player
+            // (user rule 2026-09-14: only target overrides, never speed boosts).
 
             // Calculate movement vector toward target
             double dx = target.getColumn() - current.getColumn();
