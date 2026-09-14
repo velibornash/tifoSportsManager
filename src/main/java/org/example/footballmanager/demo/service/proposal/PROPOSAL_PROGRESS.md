@@ -8,6 +8,30 @@ Dokument praćenja napretka za **čisti, samostalni sim autor utakmice** u
 
 ---
 
+## Sesija 2026-09-14 predvece — P2#1: handleBallPhysicsResult → BallResultHandler
+
+**Tok sesije:** P2 (orchestrator slimming) stavka #1 — ekstrakcija
+`handleBallPhysicsResult()` (162-linijski switch RECEIVE/INTERCEPT/SAVE/
+BLOCK/DEFLECT/POST_HIT/GOAL/MISS/OOB_goalkick-throwin/OOB_corner/LOOSE/STOP/
+FLIGHT) iz `MatchOrchestrator` u novi zaseban helper `BallResultHandler`
+(215 linija) u istom paketu `proposal/engine`.
+
+- Orchestrator zadrzava: polje `ballResultHandler` (46), ctor init (75),
+  slim delegator `handleBallPhysicsResult()` → `ballResultHandler.handle()``
+  (235-237), poziv `handleBallPhysicsResult(ballResult)` na 119.
+- Helper replicira orchestrator-ove privatnike `log/p/minute` +
+  `resolveTeamByLabel` (iza DEFLECT). DEFLECT atribucija po label-u
+  igraca cije je telo lopta pogodila.
+- **Razlika:** iz orchestratora ispalo ~162 linije switch tela →
+  orchestrator 480→325 linija; braces uravnotezeni (38/38, 30/30).
+- Kompajl: `mvn -q -o compile` (korisnik mi je dozvolio da probam sam;
+  veza je prezivela) → **PASS**, nula gresaka.
+
+Verifikacija (grep, orchestrator linija 235): delegator `{ ballResultHandler
+.handle(res); }`, case RECEIVE u orchestratoru = 0. Backlog: P2#1 `[x]`.
+
+---
+
 ## Sesija 2026-09-14 poslepodne — P1 zatvaranje + P2 restarts (nastavak)
 
 **Tok sesije:** (1) fiksiran Bug #1 "action bez carrier-a na lopti" —

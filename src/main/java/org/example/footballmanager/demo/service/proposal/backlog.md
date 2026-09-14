@@ -69,7 +69,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 > Orchestrator has ~340 lines: log formatting, event recording, result
 > handling, duel detection.  Too much for "just coordinates."
 
-- [ ] Extract `handleBallPhysicsResult()` → `BallResultHandler` helper
+- [x] Extract `handleBallPhysicsResult()` → `BallResultHandler` helper (2026-09-14, seed 42: 3 real callers — orchestrator slim 480→325, DEFLECT/SAVE/POST_HIT/blocked-switch handled in helper)
 - [ ] Extract `detectAndResolveDuels()` → `DuelService` helper
 - [ ] Extract log formatting → `ActionLogService` (structured log with tags)
 - [ ] Orchestrator keeps only: clock → unlock → ball → decision →
