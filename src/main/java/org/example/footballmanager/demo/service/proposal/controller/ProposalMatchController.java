@@ -42,14 +42,22 @@ public class ProposalMatchController {
         view.put("homeGoals", state.getHomeGoals());
         view.put("awayGoals", state.getAwayGoals());
         view.put("finalScore", state.getHomeGoals() + "-" + state.getAwayGoals());
-        view.put("events", orchestrator.getEventLog());
+        view.put("events", orchestrator.getRecorder().getEvents());
+        view.put("snapshots", orchestrator.getRecorder().getSnapshots());
         view.put("logs", orchestrator.getEventLog());
-        // TODO: add snapshots when snapshot recording is implemented
+        view.put("stats", buildStats(orchestrator));
 
         // Write to static file for viewer
         writeMatchFile(view);
 
         return view;
+    }
+
+    private Map<String, Object> buildStats(MatchOrchestrator orchestrator) {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("teams", orchestrator.getStats().toTeamJson());
+        stats.put("players", orchestrator.getStats().toPlayersJson());
+        return stats;
     }
 
     private void writeMatchFile(Map<String, Object> view) {

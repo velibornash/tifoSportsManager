@@ -355,8 +355,19 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | **Threat override** | Defensive pressure on carrier (3 types) | ❌ STUB — `engine/ThreatOverrideEngine.java` created, no logic |
 | **Fatigue** | Player fatigue | ❌ NOT PRESENT (backlog P8) |
 | **Transition** | Possession-change logic | ❌ NOT PRESENT (backlog P8) |
-| **Stats layer** | Per-team + per-player stats | ❌ NOT PRESENT (backlog P1) |
+| **Stats layer** | Per-team + per-player stats + possession chains | ✅ DONE (P1) — `result/ProposalStatsCollector.java`, exported as `stats.teams`/`stats.players` with `avgPossessionTicks`/`longestPossessionTicks`, rendered in viewer sidebar (chain avg row) |
 | **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | ❌ TOO FAT (backlog P2) |
+
+**Recent correctness fixes (2026-09-14, user-reported):**
+- **Possession glue**: the ball is now glued to the carrier AFTER movement
+  (`MatchOrchestrator` step 8b) — a dribbling carrier never leaves the ball
+  behind, and shot/pass actions always start from the carrier's feet
+  (verified: 445/445 IN_POSSESSION snapshots, max gap 0.0000 cells).
+- **Restart side correctness**: `RestartManager.getRestartPosition(type, oobExit)`
+  now receives the OOB exit position — throw-ins land on the correct touchline
+  (col 1.0 left / 7.0 right) at the exit row, corners on the correct flag.
+  Taker teleport fast-path (>4.0 cells → snap to 0.6 behind the ball) prevents
+  the "taker never arrives" freeze.
 
 ---
 
@@ -396,7 +407,7 @@ Full prioritized task list is in `backlog.md`. Summary by priority:
 
 | P | Focus |
 |---|---|
-| **P1** | Stats layer — per-team + per-player, all actions (biggest gap) |
+| ~~**P1**~~ | ~~Stats layer~~ — ✅ **DONE 2026-09-14** (event enrichment + collector + export + viewer sidebar) |
 | **P2** | Orchestrator slimming (extract BallResultHandler / DuelService / ActionLogService) |
 | **P3** | Ball physics calibration (DEFLECT_R, readIntercept, goal plane) |
 | **P4** | Player movement (obstacle go-around, per-tick refresh, carrier speed under pressure) |

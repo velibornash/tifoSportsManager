@@ -40,7 +40,7 @@ public class ProposalViewerLauncher {
     private static final int PORT = 8766; // different from demo/service (8765)
     private static final Path STATIC_DIR = Path.of(
             "src/main/resources/static/demo/service/ui/proposal");
-    private static final Path MATCH_JSON = STATIC_DIR.resolve("proposal").resolve("match.json");
+    private static final Path MATCH_JSON = STATIC_DIR.resolve("match.json");
     private static final ObjectMapper OM = new ObjectMapper().findAndRegisterModules();
 
     public static void main(String[] args) throws Exception {
@@ -81,6 +81,7 @@ public class ProposalViewerLauncher {
                 view.put("events", orchestrator.getRecorder().getEvents());
                 view.put("snapshots", orchestrator.getRecorder().getSnapshots());
                 view.put("logs", orchestrator.getEventLog());
+                view.put("stats", buildStats(orchestrator));
 
                 Files.createDirectories(MATCH_JSON.getParent());
                 OM.writerWithDefaultPrettyPrinter().writeValue(MATCH_JSON.toFile(), view);
@@ -140,6 +141,13 @@ public class ProposalViewerLauncher {
         if (Desktop.isDesktopSupported()) {
             Desktop.getDesktop().browse(new java.net.URI(url));
         }
+    }
+
+    private static Map<String, Object> buildStats(MatchOrchestrator orchestrator) {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("teams", orchestrator.getStats().toTeamJson());
+        stats.put("players", orchestrator.getStats().toPlayersJson());
+        return stats;
     }
 
     private static void send(HttpExchange ex, int code, String contentType, String body)

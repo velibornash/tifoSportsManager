@@ -44,6 +44,12 @@ public class ActionExecutor {
 
         state.setLastDecisionScore(decision.getScore());
         state.setLastDecisionReason(decision.getReason());
+        // Track the last executed action for shot-outcome attribution (the
+        // carrier is null during flight, so the orchestrator reads this).
+        state.setLastActionType(type);
+        if (type == ActionType.SHOT && carrier != null) {
+            state.setLastShooter(carrier);
+        }
     }
 
     /** Execute a PASS action. */
@@ -147,6 +153,7 @@ public class ActionExecutor {
         if (result.isOnTarget()) {
             state.incrementShotsOnTarget();
         }
+        state.setLastShotOnTarget(result.isOnTarget());
     }
 
     /** Execute a CARRY (dribble) action. */

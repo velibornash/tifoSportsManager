@@ -55,9 +55,16 @@ public class RestartManager {
     /**
      * Execute an instant restart. No visible ball flight from OOB.
      * Clock continues running throughout.
+     * @param oobExit ball position where it left the pitch — used to place
+     *                throw-in at the correct touchline, corner at the correct flag
      */
+    public void handleRestart(MatchState state, String oobType, Position oobExit) {
+        executeRestart(state, parseRestartType(oobType), oobExit);
+    }
+
+    /** Overload without exit position — legacy callers / kickoff. */
     public void handleRestart(MatchState state, String oobType) {
-        executeRestart(state, parseRestartType(oobType));
+        executeRestart(state, parseRestartType(oobType), null);
     }
 
     /**
@@ -106,9 +113,10 @@ public class RestartManager {
         };
     }
 
-    private void executeRestart(MatchState state, RestartType type) {
-        // 1. INSTANT ball teleport to restart spot
-        Position ballPos = getRestartPosition(type);
+    private void executeRestart(MatchState state, RestartType type, Position oobExit) {
+        // 1. INSTANT ball teleport to restart spot (derived from OOB exit position
+        //    so throw-ins land on the correct touchline, corners on the correct flag)
+        Position ballPos = getRestartPosition(type, oobExit);
         state.getBall().setPosition(ballPos);
         state.getBall().stop();
 
@@ -119,9 +127,23 @@ public class RestartManager {
             p.setTarget(tactics.desiredCell(p.getRole(), ballPos, p.getTeam()));
         }
 
-        // 3. Select and position the taker - walks to the ball
-        Player taker = selectTaker(state, type);
+        // 3. Select and position the taker — teleport fast-path if far, then walk
+        Player taker = selectTaker(state, type, ballPos);
         if (taker != null) {
+            // Teleport fast-path (demo/service §48): if the nearest taker is
+            // > 4.0 cells from the ball spot, snap them to a point 0.6 cells
+            // behind the ball (toward own goal) so the walk is short and the
+            // ball is never visually alone for long.
+            double dist = SimUtils.distance(taker.getPosition(), ballPos);
+            if (dist > 4.0) {
+                double behindRow = taker.getTeam().equals("HOME")
+                        ? ballPos.getRow() - 0.6   // behind HOME goal side
+                        : ballPos.getRow() + 0.6;  // behind AWAY goal side
+                behindRow = SimUtils.clamp(behindRow,
+                        org.example.footballmanager.demo.service.proposal.model.PitchEnvironment.HOME_GOAL_LINE,
+                        org.example.footballmanager.demo.service.proposal.model.PitchEnvironment.AWAY_GOAL_LINE);
+                taker.setPosition(new Position(behindRow, ballPos.getColumn()));
+            }
             taker.setTarget(ballPos);
             state.setCarrier(null);
             state.setRestartTaker(taker);
@@ -136,24 +158,54 @@ public class RestartManager {
         // 5. Clock NEVER stops - handled by MatchClockService
     }
 
-    private Position getRestartPosition(RestartType type) {
-        return switch (type) {
-            case KICK_OFF -> KICK_OFF_SPOT; // center spot (4.5, 4.0)
-            case GOAL_KICK_HOME -> new Position(1.5, 3.5); // HOME goal area (HOME takes)
-            case GOAL_KICK_AWAY -> new Position(7.5, 3.5); // AWAY goal area (AWAY takes)
-            case CORNER_HOME -> new Position(8.0, 1.0); // HOME attacking corner (near AWAY goal)
-            case CORNER_AWAY -> new Position(1.0, 1.0); // AWAY attacking corner (near HOME goal)
-            case THROW_IN_HOME, THROW_IN_AWAY -> new Position(4.5, 1.0); // sideline
-            case FREE_KICK -> new Position(4.5, 4.0); // placeholder
-            case PENALTY_HOME -> new Position(7.5, 3.5);
-            case PENALTY_AWAY -> new Position(1.5, 3.5);
-        };
+    private Position getRestartPosition(RestartType type, Position oobExit) {
+        PitchEnvironment pe = new PitchEnvironment();
+        switch (type) {
+            case KICK_OFF:
+                return KICK_OFF_SPOT;
+            case GOAL_KICK_HOME:
+                return new Position(1.5, 3.5);
+            case GOAL_KICK_AWAY:
+                return new Position(7.5, 3.5);
+            case CORNER_HOME: {
+                // HOME attacking AWAY goal (row 8.0). The exit column determines
+                // which corner flag the ball went out near (FIFA Rule 17).
+                double exitCol = oobExit != null ? oobExit.getColumn() : 4.0;
+                double col = exitCol < pe.CENTER_COL ? pe.LEFT_TOUCHLINE : pe.RIGHT_TOUCHLINE;
+                return new Position(pe.AWAY_GOAL_LINE, col);
+            }
+            case CORNER_AWAY: {
+                // AWAY attacking HOME goal (row 1.0). Exit column → flag.
+                double exitCol = oobExit != null ? oobExit.getColumn() : 4.0;
+                double col = exitCol < pe.CENTER_COL ? pe.LEFT_TOUCHLINE : pe.RIGHT_TOUCHLINE;
+                return new Position(pe.HOME_GOAL_LINE, col);
+            }
+            case THROW_IN_HOME:
+            case THROW_IN_AWAY: {
+                // Throw-in at the touchline where the ball crossed. Exit column
+                // determines left (1.0) vs right (7.0) touchline; the row is
+                // clamped to the playable zone so the taker always arrives.
+                double exitCol = oobExit != null ? oobExit.getColumn() : 4.0;
+                double exitRow = oobExit != null ? oobExit.getRow() : pe.CENTER_ROW;
+                double col = exitCol < pe.CENTER_COL ? pe.LEFT_TOUCHLINE : pe.RIGHT_TOUCHLINE;
+                double row = SimUtils.clamp(exitRow,
+                        pe.HOME_GOAL_LINE + 0.5, pe.AWAY_GOAL_LINE - 0.5);
+                return new Position(row, col);
+            }
+            case FREE_KICK:
+                return KICK_OFF_SPOT; // placeholder
+            case PENALTY_HOME:
+                return new Position(7.5, 3.5);
+            case PENALTY_AWAY:
+                return new Position(1.5, 3.5);
+            default:
+                return KICK_OFF_SPOT;
+        }
     }
 
-    private Player selectTaker(MatchState state, RestartType type) {
+    private Player selectTaker(MatchState state, RestartType type, Position ballPos) {
         // The "_HOME"/"_AWAY" suffix encodes which team TAKES the restart.
         String takingTeam = type.name().endsWith("_AWAY") ? "AWAY" : "HOME";
-        Position ballPos = getRestartPosition(type);
         return switch (type) {
             case GOAL_KICK_HOME, GOAL_KICK_AWAY ->
                     findNearestDefender(state, takingTeam, ballPos);

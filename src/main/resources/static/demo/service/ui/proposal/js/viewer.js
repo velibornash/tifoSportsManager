@@ -830,7 +830,7 @@ class MatchViewer {
     try {
       const res = await fetch('/proposal/api/generate', { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const mres = await fetch('/proposal/match.json?' + Date.now());
+      const mres = await fetch('match.json?' + Date.now());
       if (!mres.ok) throw new Error('match.json not found');
       this.data = await mres.json();
      // this._initFromData();
@@ -845,7 +845,7 @@ class MatchViewer {
   async loadMatch() {
     this._showLoading(true, 'Loading match...');
     try {
-      const res = await fetch('/proposal/match.json?' + Date.now());
+      const res = await fetch('match.json?' + Date.now());
       if (!res.ok) throw new Error('No match.json — generate first');
       this.data = await res.json();
       this._initFromData();
@@ -961,8 +961,92 @@ class MatchViewer {
     // every new event and clutter the view.
     this._updateSeekRange();
     this._showEmpty(false);
+    this._renderStats();
     this.pitch._resize();
     this._renderFrame();
+  }
+
+  /* ─── Stats panel ─── */
+
+  _renderStats() {
+    const stats = this.data?.stats;
+    if (!stats) return;
+
+    const panel = document.getElementById('statsPanel');
+    if (!panel) return;
+    panel.style.display = '';
+
+    const home = stats.teams?.HOME || {};
+    const away = stats.teams?.AWAY || {};
+
+    const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+
+    const statRows = [
+      ['Possession',   `${home.possessionPercent ?? 0}%`, `${away.possessionPercent ?? 0}%`,   'pct'],
+      ['Poss. chain',  `${home.avgPossessionTicks ?? 0} (${home.longestPossessionTicks ?? 0})`,
+                       `${away.avgPossessionTicks ?? 0} (${away.longestPossessionTicks ?? 0})`, 'num'],
+      ['Shots',        `${home.shots ?? 0} (${home.shotsOnTarget ?? 0})`, `${away.shots ?? 0} (${away.shotsOnTarget ?? 0})`, 'num'],
+      ['Passes',       `${home.passesCompleted ?? 0}/${home.passesAttempted ?? 0} (${pct(home.passesCompleted, home.passesAttempted)}%)`,
+                       `${away.passesCompleted ?? 0}/${away.passesAttempted ?? 0} (${pct(away.passesCompleted, away.passesAttempted)}%)`, 'num'],
+      ['Dribbles',     `${home.dribbles ?? 0}`,       `${away.dribbles ?? 0}`,       'num'],
+      ['Clearances',   `${home.clearances ?? 0}`,     `${away.clearances ?? 0}`,     'num'],
+      ['Interceptions',`${home.interceptions ?? 0}`,  `${away.interceptions ?? 0}`,  'num'],
+      ['Saves',        `${home.saves ?? 0}`,          `${away.saves ?? 0}`,          'num'],
+      ['Corners',      `${home.corners ?? 0}`,        `${away.corners ?? 0}`,        'num'],
+      ['Goal kicks',   `${home.goalKicks ?? 0}`,      `${away.goalKicks ?? 0}`,      'num'],
+      ['Throw-ins',    `${home.throwIns ?? 0}`,       `${away.throwIns ?? 0}`,       'num'],
+      ['Fouls',        `${home.fouls ?? 0}`,          `${away.fouls ?? 0}`,          'num'],
+      ['Yellow cards', `${home.yellowCards ?? 0}`,    `${away.yellowCards ?? 0}`,    'num'],
+      ['Red cards',    `${home.redCards ?? 0}`,       `${away.redCards ?? 0}`,       'num'],
+    ];
+
+    let html = `<table class="stats-table"><thead><tr>
+      <th class="st-home">${home.teamName || 'HOME'}</th>
+      <th class="st-label"></th>
+      <th class="st-away">${away.teamName || 'AWAY'}</th>
+    </tr></thead><tbody>`;
+
+    for (const [label, hv, av] of statRows) {
+      // possession bar
+      let bar = '';
+      if (label === 'Possession') {
+        const hp = home.possessionPercent ?? 50;
+        bar = `<tr class="stat-row stat-bar-row"><td colspan="3"><div class="possession-bar">
+          <div class="possession-home" style="width:${hp}%"></div>
+          <div class="possession-away" style="width:${100 - hp}%"></div></div></td></tr>`;
+      }
+      html += `<tr class="stat-row"><td class="st-val">${hv}</td><td class="st-label">${label}</td><td class="st-val">${av}</td></tr>${bar}`;
+    }
+    html += '</tbody></table>';
+
+    // Player table
+    const players = stats.players || [];
+    let playerHtml = '';
+    if (players.length) {
+      playerHtml += '<h3 class="st-subheading">Player Ratings</h3><table class="player-table"><thead><tr>';
+      playerHtml += '<th>P</th><th>Role</th><th>G</th><th>A</th><th>S</th><th>SOT</th><th>Pass%</th><th>D</th><th>I</th><th>T</th><th>Rat</th>';
+      playerHtml += '</tr></thead><tbody>';
+      for (const p of players) {
+        const teamClass = p.teamName === (home.teamName || 'Home FC') ? 'st-home' : 'st-away';
+        playerHtml += `<tr class="player-row ${teamClass}">
+          <td class="pt-name">${p.playerName}</td>
+          <td>${p.role}</td>
+          <td>${p.goals || 0}</td>
+          <td>${p.assists || 0}</td>
+          <td>${p.shots || 0}</td>
+          <td>${p.shotsOnTarget || 0}</td>
+          <td>${p.passAccuracy ?? '-'}</td>
+          <td>${p.dribbles || 0}</td>
+          <td>${p.interceptions || 0}</td>
+          <td>${p.tackles || 0}</td>
+          <td class="pt-rating">${(p.rating ?? 0).toFixed(1)}</td>
+        </tr>`;
+      }
+      playerHtml += '</tbody></table>';
+    }
+
+    document.getElementById('statsTeams').innerHTML = html;
+    document.getElementById('statsPlayers').innerHTML = playerHtml;
   }
 
   /* ─── Snapshot interpolation ─── */

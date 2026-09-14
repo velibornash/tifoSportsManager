@@ -296,6 +296,32 @@ canvas#pitch{
   100%{transform:scale(1);opacity:1}
 }
 
+/* ─── Stats panel ─── */
+.stats-panel{border-bottom:1px solid var(--border);max-height:55%;overflow-y:auto}
+.stats-panel h3{position:sticky;top:0;z-index:1;background:var(--surface);margin:0;padding:12px 14px 8px;font-size:11px;border-bottom:1px solid var(--border)}
+.stats-panel .st-subheading{margin:12px 0 0;font-size:11px;border-bottom:1px solid var(--border)}
+.stats-table,.player-table{width:100%;border-collapse:collapse;font-size:12px}
+.stats-table th{padding:4px 6px;font-weight:600;text-align:center;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+.stats-table .st-home{text-align:left;color:var(--home)}
+.stats-table .st-away{text-align:right;color:var(--away)}
+.stats-table .st-label{text-align:center;color:var(--dim);font-size:11px;width:90px}
+.stat-row td{padding:3px 6px;text-align:center}
+.stat-row .st-home{text-align:left;font-variant-numeric:tabular-nums;color:var(--text)}
+.stat-row .st-away{text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.stat-row:hover{background:rgba(88,166,255,.04)}
+.possession-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--border);margin:2px 0}
+.possession-home{background:var(--home)}
+.possession-away{background:var(--away)}
+.player-table{margin-top:4px}
+.player-table th{padding:3px 5px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.2px;text-align:center;border-bottom:1px solid var(--border)}
+.player-table th:first-child,.player-row .pt-name{padding-left:8px;text-align:left}
+.player-row td{padding:3px 5px;text-align:center;font-variant-numeric:tabular-nums}
+.player-row.st-home td{color:var(--text)}
+.player-row.st-away td{color:var(--away);opacity:.9}
+.player-row:hover{background:rgba(88,166,255,.05)}
+.pt-name{font-weight:600;white-space:nowrap}
+.pt-rating{color:var(--gold);font-weight:700}
+
 /* ───────────────────────────────────────────────────────────────
    MOBILE / iPHONE-14-PRO LANDSCAPE — pitch fills screen, log
    collapses into a single horizontal ticker above the pitch.

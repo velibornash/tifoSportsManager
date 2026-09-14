@@ -19,8 +19,11 @@ public class MatchRecorder {
     }
 
     public void appendEvent(long tick, String type, String description, MatchState state) {
-        Player acting = state.getCarrier();
-        Player target = state.getPendingReceiver();
+        appendEvent(tick, type, description, state.getCarrier(), state.getPendingReceiver());
+    }
+
+    /** Append an enriched event with an explicit acting player + target (carrier may already be null). */
+    public void appendEvent(long tick, String type, String description, Player acting, Player target) {
         String team = acting != null ? acting.getTeam() : null;
         String playerId = acting != null ? acting.getId() : null;
         String playerName = acting != null ? acting.getLabel() : null;

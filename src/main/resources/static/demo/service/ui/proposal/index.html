@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TIFO — Proposal Match Viewer</title>
-  <link rel="stylesheet" href="css/pitch.css?v=3">
+  <link rel="stylesheet" href="css/pitch.css?v=4">
 </head>
 <body>
 
@@ -57,6 +57,13 @@
 
     <!-- Sidebar -->
     <aside class="sidebar" style="display:none">
+      <!-- Stats Panel -->
+      <div class="stats-panel" id="statsPanel" style="display:none">
+        <h3>Match Stats</h3>
+        <div class="stats-teams" id="statsTeams"></div>
+        <div class="stats-players" id="statsPlayers"></div>
+      </div>
+
       <h3>Events</h3>
       <ul class="timeline" id="timeline"></ul>
 
@@ -95,7 +102,7 @@
   <span id="loadingText">Simulating match...</span>
 </div>
 
-<script src="js/viewer.js?v=3"></script>
+<script src="js/viewer.js?v=4"></script>
 
 </body>
 </html>

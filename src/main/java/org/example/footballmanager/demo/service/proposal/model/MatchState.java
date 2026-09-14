@@ -70,6 +70,11 @@ public class MatchState {
     private double lastDecisionScore;
     private String lastDecisionReason;
 
+    // Last action (for shot outcome attribution)
+    private ActionType lastActionType;     // what the last decision executed (SHOT/PASS/DRIBBLE/CLEAR)
+    private Player lastShooter;            // who fired the last shot (carrier is null during flight)
+    private boolean lastShotOnTarget;      // predicted on-target by ExecutionQuality at fire time
+
     public MatchState() {
         this.matchId = UUID.randomUUID().toString();
         this.matchTicks = 0;
@@ -231,6 +236,14 @@ public class MatchState {
     public void setLastDecisionScore(double score) { this.lastDecisionScore = score; }
     public String getLastDecisionReason() { return lastDecisionReason; }
     public void setLastDecisionReason(String reason) { this.lastDecisionReason = reason; }
+
+    // === LAST ACTION (shot outcome attribution) ===
+    public ActionType getLastActionType() { return lastActionType; }
+    public void setLastActionType(ActionType lastActionType) { this.lastActionType = lastActionType; }
+    public Player getLastShooter() { return lastShooter; }
+    public void setLastShooter(Player lastShooter) { this.lastShooter = lastShooter; }
+    public boolean isLastShotOnTarget() { return lastShotOnTarget; }
+    public void setLastShotOnTarget(boolean onTarget) { this.lastShotOnTarget = onTarget; }
 
     // === UTILITY ===
     public String getMatchId() { return matchId; }

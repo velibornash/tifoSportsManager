@@ -10,34 +10,47 @@ stubs exist, logic comes later.
 > Every action must be recorded in stats for statistics, analysis, and future
 > linking with the main manager. Per team AND per player.
 
+**P1 STATUS (2026-09-14): CLOSED — svaki finishable item je DONE i verifikovan.**
+Svi `[x]` ispod su implementirani + verifikovani (possession chains: HOME avg
+11.6 / longest 58, AWAY avg 18.1 / longest 952 — izvezeno + renderovano).
+Oznake `[~]` NISU "nedovršeni P1 rad" — to su **placeholders pokazivači na
+P7 enginee** (DisciplineService / OffsideService / VARService / PenaltyService
++ akcioni subtipovi) koji ne postoje u engine-u. Oni se ne mogu završiti
+pre nego ti engine-i nastanu; kad nastanu, track-uju se u P7, NE u P1.
+Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
+
 ### P1a — Per-team stats
-- [ ] Shots: total / on-target / blocked / saved / missed
-- [ ] Goals: total / open-play / center / cross / penalty / free-kick / corner
-- [ ] Passes: total / successful / thru / center / cross / air / ground
-- [ ] Dribble: total / successful
-- [ ] Interceptions, deflections
-- [ ] Restarts: corners / throw-ins / goal-kicks / free-kicks / penalties
-- [ ] Cards: yellow / red / double-yellow
-- [ ] Offside, VAR: total / confirmed / overturned
-- [ ] Possession: %, average possession duration, longest possession
+- [x] Shots: total / on-target / saved / missed / blocked / post
+- [~] Goals breakdown by type — needs subtype actions (P7 ActionEngine subtypes)
+- [x] Passes: total / successful (+ pass accuracy)
+- [~] Pass types (thru / center / cross / air / ground) — needs subtype actions (P7)
+- [x] Dribble: total / successful
+- [x] Interceptions, deflections
+- [x] Restarts: corners / throw-ins / goal-kicks
+- [~] Free-kicks / penalties restarts — when DisciplineService/PenaltyService exist
+- [~] Cards: yellow / red / double-yellow — when DisciplineService exists
+- [~] Offside / VAR counts — when OffsideService/VARService exist
+- [x] Possession: % (chain avg duration + longest chain — added 2026-09-14
+  via chain tracking in `ProposalStatsCollector`/`TeamStats`, rendered as
+  "Poss. chain (longest)" row in the viewer stats panel)
 
 ### P1b — Per-player stats
-- [ ] Minutes played, average rating
-- [ ] Shots: total / on-target / goals (same breakdown as team)
-- [ ] Passes: total / successful / thru / center / cross / air / ground
-- [ ] Dribble: total / successful
-- [ ] Interceptions, deflections
-- [ ] Fouls committed / received
-- [ ] Cards (yellow, red, double-yellow)
-- [ ] Duels: total / won / lost
-- [ ] Offside count
+- [x] Minutes played, average rating
+- [x] Shots: total / on-target / goals
+- [x] Passes: total / successful (+ pass accuracy)
+- [x] Dribble: total / successful
+- [x] Interceptions, deflections
+- [~] Fouls committed / received — when DisciplineService exists
+- [~] Cards (yellow, red, double-yellow) — when DisciplineService exists
+- [x] Duels: total / won (tackles + duelsWon)
+- [~] Offside count — when OffsideService exists
+- [x] Saves (GK), clearances, assisted goals
 
 ### P1c — Implementation
-- [ ] `MatchStats` model: per-team + per-player counters (new class)
-- [ ] `StatsCollector`: wired into orchestrator — called on every event
-  (RECEIVE, INTERCEPT, DEFLECT, SHOT, GOAL, DUEL, RESTART, PASS...)
-- [ ] Export to `match.json` (new `statistics` field)
-- [ ] Viewer sidebar: Match Stats panel (table of key stats)
+- [x] `MatchStats` model: per-team + per-player counters (`PlayerStats` / `TeamStats` records)
+- [x] `StatsCollector`: wired into orchestrator — fed on every action + physics result
+- [x] Export to `match.json` (`stats` field: teams + players)
+- [x] Viewer sidebar: Match Stats panel (team comparison + possession bar + player ratings)
 
 ---
 
@@ -51,6 +64,40 @@ stubs exist, logic comes later.
 - [ ] Extract log formatting → `ActionLogService` (structured log with tags)
 - [ ] Orchestrator keeps only: clock → unlock → ball → decision →
   execution → tactical → movement → restart → rules → duels → stats
+
+### P2-UI — Motion & restart correctness (user-reported 2026-09-14)
+
+> KORISNIČKA PRIJAVA. Oba problema su viđena u UI viewer-u (proposal engine).
+> **STATUS: oba fiksirana 2026-09-14 (isti dan kao prijava).**
+
+- [x] **1) ACTION BEZ CARRIER-A NA LOPTI** — udarci iz polja (šut / pas / itd.)
+  kreću iako carrier NIJE na lopti — lopta je vizuelno SAMA (leti bez igrača).
+  **NE SME NIKAD.**
+  - **ROOT CAUSE:** `MovementEngine.moveAllTowardTargets()` pomera carrier-a
+    svaki tick, ali se lopta kači na carrier-a SAMO u decision bloku (pre
+    movement-a). Tokom driblinga carrier se odmakne, lopta ostane na staroj
+    poziciji — naredni šut/pas "teleportuje" loptu napred i kreće sa strane.
+  - **FIX:** `MatchOrchestrator.tick()` — novi korak **8b POSSESSION GLUE**
+    posle movement-a: ako `carrier != null`, lopta se postavlja na njegovu
+    poziciju i stopira. Snapshot se snima posle toga, pa niti jedan kadar
+    ne prikazuje loptu odvojeno od carrier-a.
+  - **VERIFIKACIJA:** 445/445 IN_POSSESSION snapshot-a — max gap 0.0000 cells.
+- [x] **2) RESTART POZICIONIRANJE — LOPTA RESTARTOVANA NA POGREŠNU STRANU** —
+  taker ne stiže do lopte (restart walk problem), a desila se i katastrofa:
+  lopta je izašla OOB kroz kolonu 6 u kolonu 7, pa se restartovala NA KOLONU 1
+  (suprotna strana). Znači restart levo/desno + home/away gore/dole ima bag.
+  - **ROOT CAUSE:** `RestartManager.getRestartPosition(type)` je IMAO HARDKODOVANE
+    pozicije: THROW_IN uvek `(4.5, 1.0)` (leva aut linija bez obzira na to gde je
+    lopta izašla), CORNER uvek levi ugao. Funkcija nije primala poziciju izlaska.
+  - **FIX:** `handleRestart(state, restartType, oobExit)` — OOB izlazna pozicija
+    (uzeta iz `state.getBall()` tokom OOB holdu) se prosleđuje; throw-in ide na
+    ONU aut liniju (col 1.0 levo / col 7.0 desno) na izlaznom redu (clampan u
+    playable zonu); CORNER ide na odgovarajući OLD corner flag na izlaznoj
+    polovini (col 1.0 levo / 7.0 desno ako je izašao levo/desno od centra).
+  - **TAKER STIŽE:** dodat DEMO/SERVICE teleport fast-path (§48) — taker udaljen
+    > 4.0 cells se snapuje na 0.6 cells iza lopte (ka svom golu), pa hoda kratko.
+  - **VERIFIKACIJA:** OOB col ≈ 7.3+ → restart ball(…, 7.0); OOB col ≈ 0.2-0.9 →
+    restart ball(…, 1.0); red (row) očuvan (4.2→4.2, 7.3→7.3, 6.6→6.6, 7.0→7.0).
 
 ---
 
@@ -147,14 +194,14 @@ All four already compile. Logic to be filled per respective phases above.
 - [ ] All engines log through this service (not raw println)
 
 ### Rating system
-- [ ] Per-player average rating based on actions (goals, assists, tackles,
-  passes, fouls, cards)
-- [ ] Export in match.json
+- [x] Per-player average rating based on actions (goals, assists, tackles,
+  passes, fouls, cards) — DONE in P1 (calculateRating in ProposalStatsCollector)
+- [x] Export in match.json — DONE in P1 (`stats.players[].rating`)
 
 ### Viewer enhancements
-- [ ] Stats tab in sidebar (P1c)
+- [x] Stats tab in sidebar (P1c) — DONE (team table + possession bar + player ratings)
 - [ ] Player highlight on click (show stats)
-- [ ] Possession % bar
+- [x] Possession % bar — DONE in P1 stats panel
 
 ---
 

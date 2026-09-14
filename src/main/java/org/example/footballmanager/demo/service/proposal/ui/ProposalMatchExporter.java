@@ -5,7 +5,7 @@ import org.example.footballmanager.demo.service.proposal.MatchSimulationLauncher
 import org.example.footballmanager.demo.service.proposal.engine.MatchOrchestrator;
 import org.example.footballmanager.demo.service.proposal.model.MatchState;
 import org.example.footballmanager.demo.service.proposal.model.Player;
-import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
+import org.example.footballmanager.demo.service.proposal.result.TeamStats;
 
 import java.io.File;
 import java.util.LinkedHashMap;
@@ -62,23 +62,28 @@ public class ProposalMatchExporter {
         view.put("homeGoals", state.getHomeGoals());
         view.put("awayGoals", state.getAwayGoals());
         view.put("finalScore", state.getHomeGoals() + "-" + state.getAwayGoals());
-        view.put("events", orchestrator.getEventLog());
-        view.put("snapshots", buildSnapshots(state, orchestrator.getEventLog()));
+        view.put("events", orchestrator.getRecorder().getEvents());
+        view.put("snapshots", orchestrator.getRecorder().getSnapshots());
         view.put("logs", orchestrator.getEventLog());
+        view.put("stats", buildStats(orchestrator));
 
         om.writerWithDefaultPrettyPrinter().writeValue(out, view);
 
+        TeamStats ht = orchestrator.getStats().buildTeamStats("HOME");
+        TeamStats at = orchestrator.getStats().buildTeamStats("AWAY");
         System.out.println("Wrote " + out.getAbsolutePath()
                 + " | matchId=" + state.getMatchId()
-                + " events=" + orchestrator.getEventLog().size()
+                + " events=" + orchestrator.getRecorder().getEvents().size()
                 + " snapshots=" + ((List<?>) view.get("snapshots")).size()
-                + " score=" + state.getHomeGoals() + "-" + state.getAwayGoals());
+                + " | " + (ht == null ? "HOME ?" : ht.summary())
+                + " | " + (at == null ? "AWAY ?" : at.summary()));
     }
 
-    private static List<Map<String, Object>> buildSnapshots(MatchState state, List<String> eventLog) {
-        // For the proposal engine, we don't have per-tick snapshots yet.
-        // We'll create a minimal snapshot from the final state.
-        // TODO: add snapshot recording during simulation.
-        return List.of();
+    /** Build the stats block for match.json: team table + per-player rows. */
+    private static Map<String, Object> buildStats(MatchOrchestrator orchestrator) {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("teams", orchestrator.getStats().toTeamJson());
+        stats.put("players", orchestrator.getStats().toPlayersJson());
+        return stats;
     }
 }

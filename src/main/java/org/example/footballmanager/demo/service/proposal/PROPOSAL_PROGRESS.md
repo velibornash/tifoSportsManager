@@ -8,6 +8,29 @@ Dokument praćenja napretka za **čisti, samostalni sim autor utakmice** u
 
 ---
 
+## Sesija 2026-09-14 poslepodne — P1 zatvaranje + P2 restarts (nastavak)
+
+**Tok sesije:** (1) fiksiran Bug #1 "action bez carrier-a na lopti" —
+root cause `MovementEngine` pomera carrier-a a lopta se kačila samo u decision
+bloku; fix `MatchOrchestrator` korak **8b POSSESSION GLUE** (posle movement-a
+lopta na carrier-a, snapshot posle toga). Verifikacija: 445/445 IN_POSSESSION
+snapshot-a gap 0.0000. (2) Bug #2 "restart na pogrešnu stranu" — root cause
+`RestartManager.getRestartPosition` hardkodovao THROW_IN uvek (4.5, 1.0) i
+corner uvek levi ugao; fix `handleRestart(state, type, oobExit)` +
+`executeRestart(state, type, oobExit)` + getRestartPosition po izlaznoj
+poziciji + taker teleport fast-path (§48, 4.0 cells). Verifikacija: restart
+posle OOB col 7.3 → col 7.0; col 0.2-0.9 → col 1.0; redovi očuvani. (3)
+Posession chain metrika dodata (`onPossessionTick` prati chains; TeamStats
+nosi `avgPossessionTicks`/`longestPossessionTicks`) — time je i poslednja
+implementabilna stavka P1 zatvorena; preostale P1 stavke su stub-blokirane
+(P7). Svi md-ovi ažurirani posle svakog završenog koraka.
+
+Stanje: P1 gotovo, P2-UI fiksirana, `backlog.md`/`PROPOSAL_*` ažurirani.
+Komanda za kompajl + export proveru je data korisniku (interface rule: ne
+radim kompajlove sam).
+
+---
+
 ## 1. CILJ — šta želimo da napravimo
 
 Runnable, determinističan, taktički-realističan sim fudbalskog meča 11v11 sa:
@@ -768,3 +791,144 @@ golovi 1.2 (H 0.9/A 0.3), šutevi 39.6, SOT 12%, pass 298/446 = 67%.
 
 ** sledeći korak:** P1 — stats layer (najveći gap: bez per-player i
 per-team statistika).
+
+---
+
+## P1 — Stats layer (DONE 2026-09-14)
+
+Korisnički zahtev: "Svaka akcija mora biti zabeležena u statistici — po timu
+I po igraču." Implementirano u četiri koraka:
+
+### P1a — Enrichment događaja (osnova za statistiku)
+
+Podaci za statistiku NE smeju da se generišu iz morale — mora da postoje
+strukturisani događaji koji ih nose. Zato je prvo obogaćen event stream:
+
+- **`MatchState`**: nova polja `lastActionType`, `lastShooter`, `lastShotOnTarget`
+  (getteri/setteri). `lastShooter` služi i kao **pending-shot flag** — ishod
+  (GOAL/SAVED/BLOCKED/POST/MISSED) ga troši, pa jedan šut nikad ne emituje
+  više epiloga.
+- **`MatchRecorder.appendEvent(tick, type, desc, Player actor, Player target)`**:
+  nova overload varijanta sa actor/target atribucijom; 5-arg ostaje za 3rd party.
+- **`MatchOrchestrator` decision blok**: PASS/SHOT/DRIBBLE/CLEAR eventi sada nose
+  igrača + tim + on/off-target sufix za šut.
+- **`ActionExecutor.execute`**: postavlja `lastActionType`/`lastShooter`/
+  `lastShotOnTarget` (u `executeShot`).
+- **Ful shot outcome lanac u `handleBallPhysicsResult`**:
+  - `SAVE` gated na `wasShot` → `SHOT_SAVED` (inace `GK_CATCH` za fast pass/clear ka GK)
+  - `BLOCK` gated → `SHOT_BLOCKED` (inace `BLOCK`)
+  - `POST_HIT` gated → `SHOT_POST`
+  - `OOB_ENTER`/`STOPPED` gated → `SHOT_MISSED`
+  - `GOAL` scorer preko `lastTouchPlayer` (fallback `lastShooter`)
+  - svaki od ovih troši `lastShooter = null` → **jedan šut = tačno jedan ishod**
+- `resolveTeamByLabel()` helper za DEFLECT timsku atribuciju.
+- Verifikovano: `mvn compile` clean, expor pokrenut, distribucija tipova eventova
+  smislena (SHOT_SAVED se javlja samo za prave šuteve, GK_CATCH za pass/clear).
+
+### P1b — Model + Collector
+
+- **`proposal/result/PlayerStats.java`** (record) i **`TeamStats.java`** (record)
+  i **`ProposalStatsCollector.java`** (akumulator).
+- Feed metode: `onPassAttempt`, `onPassCompleted`, `onShot`, `onDribble`,
+  `onClearance`, `onInterception`, `onDeflect`, `onSave`, `onBlock`, `onGoal`,
+  `onRestart`, `onDuelWon`, `onPossessionTick`.
+- Interni `TeamAcc` / `PlayerAcc`; `calculateRating()` = 6.0 + gol*1.5 +
+  asistencija*1.0 + pass*0.02 + intercept*0.3 + duel*0.2 + save*0.5
+  − faul*0.3 − zuti*0.5 − crveni*2.0.
+- Asistencija: `lastPasserId`/`lastPasserTeam` postavljen na PASS, kreditovan
+  na GOAL ako je isti tim.
+- **Possession popravka**: prethodno brojana preko carrier-a (null tokom leta
+  lopte → iskrivljeno). Sada preko `lastTouchTeam` — possession 49/51 u testu.
+- Ispravljen timski prikaz imena (`"HOME".equals(team) ? homeName : awayName`).
+
+### P1c — Export
+
+- `ProposalMatchExporter` i `ProposalMatchController`: strukturisani
+  `getEvents()` + `getSnapshots()` umesto raw log stringova + praznih snapshotova.
+- `match.json` sada nosi: `events` (strukturirani `MatchEvent`), `snapshots`
+  (per-tick `MatchSnapshot`), `stats.teams` (HOME/AWAY), `stats.players`.
+- `ProposalViewerLauncher`: **fix dvostrukog path-a** — `MATCH_JSON` je pokazivao
+  na `proposal/proposal/match.json` (STATIC_DIR već završava na `proposal`);
+  sada `STATIC_DIR/match.json`. Generate endpoint + `stats` u izlaz. Obrisan
+  stale `proposal/proposal/match.json`.
+
+### P1d — Viewer sidebar Stats panel
+
+- `index.html`: `statsPanel` sekcija (timovi + igrači) iznad event timeline-a.
+- `viewer.js`: `_renderStats()` — timska tabela (possession / shots / passes /
+  dribbles / clearances / interceptions / saves / restarts / cards) sa
+  possession bar-om + igračka tabela (G/A/S/SOT/Pass%/D/I/T/Rat, sortirano po
+  oceni). Fetch `match.json` relativno (radi i u launcher `/` i Spring Boot
+  `/demo/service/ui/proposal/` modu).
+- `pitch.css`: styling stats tabela + possession bar; `v=4` cache-bust.
+- `node --check` JS OK.
+
+### Napomene / poznato
+- RNG nije seed-ovan (static `new Random()` u ExecutionQuality, BallPhysicsEngine,
+  DuelEngine, CleanDecisionEngine) — exporter/launcher seed param se ignorise,
+  svaki run je drugaciji. Determinizam = zaseban zadatak (poput demo/service
+  SimulationRandom), van opsega P1.
+- SHOT_MISSED vs SHOT broj: posle fix-a svaki SHOT ima tacno jedan epilog;
+  SHOT_MISSED > SHOT nije vise moguc (ranije je `wasShot` trajao kroz restart walk).
+- Cards/fouls/offsides/VAR su 0 u izlazu — DisciplineService/OffsideService/VARService
+  su jos stubovi (P7). Statistika za te stavke je pripremljena ali ne i racunanja.
+
+---
+
+## P2-UI bug prijave — (BACKLOG 2026-09-14)
+
+Korisnik je u UI viewer-u video dva buga (prijavljeno u sesiji, stavljeno u
+`backlog.md` P2-UI, NIJE jos istrazeno/fiksano — samo zabelezeno):
+
+1. **Action bez carrier-a na lopti** — sut/pas krece kad lopta leti SAMA
+   (vizuelno bez igraca). Akcija mora da startuje samo kad je izvodjac NA lopti.
+2. **Restart pogresna strana** — taker ne stiže do lopte, i katastrofa: lopta
+   OOB kroz col 6 → col 7, pa restart NA COL 1 (suprotna strana). Restart
+   levo/desno + home/away gore/dole ima bag.
+
+Detaljni checklist se nalazi u `backlog.md` → P2-UI. Sledi istraga/fix.
+
+---
+
+## P2-UI — FIX (2026-09-14) — possession glue + restart side
+
+Korisničke prijave su istražene i OBA fiksirana istog dana:
+
+### 1) Action bez carrier-a na lopti — FIXED
+
+**Root cause:** `MovementEngine.moveAllTowardTargets()` pomera carrier-a svaki
+tick, ali lopta se kači na carrier-a samo u decision bloku (pre movement-a).
+Tokom DRIBBLE akcije (traje više tick-ova) carrier se odmakne, a lopta ostane
+na poziciji iz prethodnog decision bloka → vizuelno "lopta sama", a naredni
+udarac "teleportuje" loptu na carrier-a i kreće sa strane.
+
+**Fix:** `MatchOrchestrator.tick()` — korak **8b POSSESSION GLUE** posle koraka
+8 (movement): kad `carrier != null`, `setPosition(carrier.getPosition())` +
+`stop()`. Snapshot se snima na kraju tick-a, pa svaki kadar sa carrier-em
+prikazuje loptu 100% uz njega.
+
+**Verifikacija:** exporter run — 445/445 IN_POSSESSION snapshot-a, max gap
+između lopte i najbližeg igrača = **0.0000 cells**.
+
+### 2) Restart na pogrešnu stranu — FIXED
+
+**Root cause:** `RestartManager.getRestartPosition(type)` NIJE primalo poziciju
+izlaska — THROW_IN je bio hardkodovan na `(4.5, 1.0)` (UVEK leva aut linija),
+CORNER na uvek levi ugao. Zato je lopta koja je izašla desno (col 6→7) bila
+restartovana na koloni 1 (levo).
+
+**Fix:**
+- `handleRestart(state, restartType, oobExit)` — OOB izlaz se prosleđuje
+  (uzet iz `state.getBall()` tokom OOB holdu, pre teleporta).
+- THROW_IN: col = `1.0` (levo) ako je izašla levo od centra (4.0), inače `7.0`
+  (desno); row = izlazni red clampnut u [1.5, 7.5].
+- CORNER: ugao (levi/desni) na osnovu izlazne kolone; row = 1.0 (AWAY šutira ka
+  HOME golu) ili 8.0 (HOME šutira ka AWAY golu).
+- Taker teleport fast-path (demo/service §48): ako je taker > 4.0 cells daleko,
+  snapuje se 0.6 cells iza lopte (ka svom golu), pa hoda kratko — nema
+  "taker ne stiže" freeze-a.
+
+**Verifikacija (900-tick run):** OOB col 7.3+ → restart `ball(...,1.0)`? NE —
+sad `ball(row,7.0)`; OOB col 0.2-0.9 → `ball(row,1.0)`; row očuvan
+(4.2→4.2, 7.3→7.3, 6.6→6.6, 7.0→7.0). Taker uvek postavljen (H6/A3/H2/A4/A2/H7).
+`mvn -q -o compile` clean, exporter radi, stats struktura nepromenjena.
