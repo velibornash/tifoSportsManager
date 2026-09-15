@@ -1,5 +1,6 @@
 package org.example.footballmanager.demo.service.proposal.probe;
 
+import org.example.footballmanager.demo.service.proposal.engine.BallPhysicsEngine;
 import org.example.footballmanager.demo.service.proposal.model.Position;
 
 import java.util.ArrayList;
@@ -34,7 +35,7 @@ public class BallPhysicsProbe {
     static final double LANDING_SPEED = 0.30;     // air ball lands below this
     static final double RECEIVE_R = 0.35;
     static final double INTERCEPT_R = 0.30;
-    static final double DEFLECT_R = 0.18;
+    static final double DEFLECT_R = BallPhysicsEngine.DEFLECT_R;
     static final double FAST_CONTACT = 1.0;      // faster balls get BLOCKed (parry), not possessed
     static final double PICKUP_R = 0.35;
     static final double BALL_R = 0.015;

@@ -135,6 +135,11 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 ## P3 — Ball physics calibration
 
 - [ ] DEFLECT_R: 0.035 → 0.05 or 0.07 — test both, measure impact
+      SESSION-2026-09-15: probe wired to engine constant (was stale own-copy 0.18 —
+      probe now reads BallPhysicsEngine.DEFLECT_R at :38, own copy removed).
+      Engine DEFLECT_R already landed 0.035→0.05 (BallPhysicsEngine:31, commit 0a28a22 builds).
+      HONEST [ ] GREEN: probe→engine wiring compiled + headless rc=0; impact A/B/C measured = INVALID
+      (flip-harness path broke on all 3 runs → identical output; no honest delta). Re-run valid A/B/C before [x].
 - [ ] readIntercept: verify prob is realistic (not 0.45 near receiver)
 - [ ] Goal plane detection: confirm off-target shots never cross goal
   line inside mouth (tested in session 6.9)
