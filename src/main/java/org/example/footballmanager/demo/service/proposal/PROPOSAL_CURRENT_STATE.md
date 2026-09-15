@@ -356,7 +356,7 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | **Fatigue** | Player fatigue | ❌ NOT PRESENT (backlog P8) |
 | **Transition** | Possession-change logic | ❌ NOT PRESENT (backlog P8) |
 | **Stats layer** | Per-team + per-player stats + possession chains | ✅ DONE (P1) — `result/ProposalStatsCollector.java`, exported as `stats.teams`/`stats.players` with `avgPossessionTicks`/`longestPossessionTicks`, rendered in viewer sidebar (chain avg row) |
-| **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | 🟡 P2#1 `[x]` — `handleBallPhysicsResult()` 162-line switch → `BallResultHandler` (engine/BallResultHandler.java); orchestrator 324 l. / helper 224 l., kompajl PASS. Ostalo: duels→`DuelService`, log→`ActionLogService`, slim loop |
+| **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | 🟢 P2#1-3 `[x]` — `handleBallPhysicsResult()` 162-line switch → `BallResultHandler` (engine/BallResultHandler.java); orchestrator 324 l. / helper 224 l., kompajl PASS. Ostalo: duels→`DuelService`, log→`ActionLogService`, slim loop |
 
 **Recent correctness fixes (2026-09-14, user-reported):**
 - **Possession glue**: the ball is now glued to the carrier AFTER movement

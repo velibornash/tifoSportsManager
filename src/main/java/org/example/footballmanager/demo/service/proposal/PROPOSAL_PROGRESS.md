@@ -8,6 +8,17 @@ Dokument praćenja napretka za **čisti, samostalni sim autor utakmice** u
 
 ---
 
+## Sesija 2026-09-15 — P2#3: ActionLogService
+
+- **Cilj**: izvuci log/p/minute/formatDecision iz `MatchOrchestrator` u
+  `ActionLogService` (jedna odgovornost po klasi — SOLID/OOP, pravila 5+6).
+- **Rezultat**: `ActionLogService.java` (proposal/engine/, ~61 linija) — vlasnik
+  strukturisanog `[mm:ss|TAG]` loga; metode `log(tag,msg)` / `p(Position)` /
+  `minute()` / `formatDecision(Player, DecisionResult)`; ctor `(MatchState,
+  List<String> eventLog)` — deli isti eventLog sa BallResultHandler/DuelService.
+- Orkestrator tanki: `log/p/minute/formatDecision` → 1-linijske delegate
+  `{ actionLog.* }`; polje `actionLog` + ctor init.
+- **Gate**: `mvn -o -q compile` → exit 0, nema [ERROR]-ova.
 ## Sesija 2026-09-14 predvece — P2#1: handleBallPhysicsResult → BallResultHandler
 
 **Tok sesije:** P2 (orchestrator slimming) stavka #1 — ekstrakcija
