@@ -5,6 +5,22 @@ stubs exist, logic comes later.
 
 ---
 
+> **Radna pravila (trajno, na snazi svake sesije):**
+> 1. Korisnik piše na srpskom; TI odgovaraju **na engleskom** (korisnik ima
+>    100% srpski, samo mu je lakše da piše srpski — nemoj da prevodiš svoje
+>    odgovore na srpski).
+> 2. Ponašaj se kao profesionalni senior fullstack developer — čist, jednostavan
+>    kod bez overengineering-a. Ako imaš bilo kakvu nedoumicu — **pitaj
+>    korisnika umesto da se vrtiš u krug**. Taskovi su mali i jasni, ne bi
+>    smeo da gubiš vreme kružeći kao junior.
+> 3. Testiraj kao profesionalni senior QA — kratko, jasno, profesionalno.
+>    Nema zvrckanja, nema lažnih `[x]` checkbox-eva.
+> 4. Feature thinking: kao profesionalni Product Owner + fudbalski
+>    trener/analitičar — šta je realno potrebno igri, ne šta je tehnički
+>    zanimljivo.
+
+---
+
 ## P1 — Stats layer (highest gap per user requirement)
 
 > Every action must be recorded in stats for statistics, analysis, and future

@@ -41,7 +41,7 @@ public class MatchOrchestrator {
     private final MatchClockService clockService;
     private final FootballRules rules;
     private final RestartManager restartManager;
-    private final DuelEngine duelEngine;
+    private final DuelService duelService;
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
 
@@ -66,7 +66,7 @@ public class MatchOrchestrator {
         this.clockService = new MatchClockService();
         this.rules = new FootballRules();
         this.restartManager = new RestartManager(tactics);
-        this.duelEngine = new DuelEngine();
+        this.duelService = new DuelService(state, recorder, stats, eventLog);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
 
         // Wire engine reference into state for ActionExecutor
@@ -241,23 +241,7 @@ public class MatchOrchestrator {
         if (state.getCarrier() == null) return;
         Player carrier = state.getCarrier();
 
-        for (Player opponent : state.getPlayers()) {
-            if (opponent.getTeam().equals(carrier.getTeam())) continue;
-            if (opponent.isUnavailable() || opponent.isLocked()) continue;
-
-            DuelEngine.DuelType duelType = duelEngine.checkDuel(carrier, opponent, state);
-            if (duelType != null) {
-                Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
-                duelEngine.applyDuelResult(state, winner, winner == carrier ? opponent : carrier);
-                String duelMsg = "DUEL " + duelType + " won by " + winner.getLabel()
-                        + " (" + carrier.getLabel() + p(carrier.getPosition())
-                        + " v " + opponent.getLabel() + p(opponent.getPosition()) + ")"
-                        + " ball" + p(state.getBall().getPosition());
-                log("DUL", duelMsg);
-                recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
-                stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
-            }
-        }
+        duelService.detectAndResolveDuels();
     }
 
     private String formatDecision(Player carrier, DecisionResult result) {

@@ -2,6 +2,24 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## Agent Working Rules (na snazi svake sesije)
+
+1. **Jezici:** korisnik razgovara na srpskom; TI odgovaraš **na engleskom**
+   (korisnik ima 100% engleski, samo mu je lakše da piše srpski — nemoj
+   da se mučiš da prevodiš svoje odgovore na srpski).
+2. **Ponašaj se kao profesionalni senior fullstack developer:** piši čist,
+   jednostavan kod bez overengineering-a. Ako imaš bilo kakvu nedoumicu —
+   **pitaj korisnika umesto da se vrtiš u krug**. Taskovi su mali i jasni,
+   ne bi smeo da gubiš vreme kružeći kao junior. Ako nešto ne koristiš —
+   ne pravi to zasebnim helperom; slimming je po backlog-u, ne po ličnom
+   nagonu.
+3. **Testiranje:** testiraj kao profesionalni senior QA — kratko, jasno,
+   profesionalno. Nema zvrckanja, nema lažnih `[x]` checkbox-eva.
+4. **Feature thinking:** razmišljaj o feature-ima kao profesionalni Product
+   Owner + fudbalski trener/analitičar — šta je realno potrebno igri, ne šta
+   je tehnički zanimljivo.
+
+
 ## Project Summary
 
 TIFO Sports Manager is a multi-sport club management simulation game. The backend is a Spring Boot 3.3.3 REST API (Java 21) and the frontend is vanilla JS (ES6 modules) served as static files from the same Spring Boot app. PostgreSQL is the production database; H2 in-memory is used for tests. Main class: `org.example.footballmanager.SportsManagerApplication`.
