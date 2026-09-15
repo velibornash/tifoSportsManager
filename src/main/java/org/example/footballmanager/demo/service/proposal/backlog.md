@@ -155,15 +155,15 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
 ## P4 — Player movement improvements
 
-> Players move by pace skill A→B, can go around obstacles.
+> Players move by pace skill, can go around obstacles.
 
-- [ ] Obstacle avoidance: `separateFromOpponents` is slide-ring only —
-  implement real perpendicular go-around when blocked ahead
-- [ ] Per-tick tactical target refresh: when ball crosses a new grid cell,
+- [x] Obstacle avoidance: `separateFromOpponents` — perpendicular go-around
+  when blocked ahead (slide along movement tangent, both signs)
+- [x] Per-tick tactical target refresh: when ball crosses a new grid cell,
   all non-carrier players recalculate tactical targets from TacticalIntentEngine
-- [ ] Carrier speed modulation: faster when free (no defenders in 1 cell),
+- [x] Carrier speed modulation: faster when free (no defenders in 1 cell),
   slower under active pressure (TYPE A override active)
-- [ ] Wall avoidance: when blocked by teammate, slide perpendicular
+- [x] Wall avoidance: when blocked by teammate, slide perpendicular
   (same as opponent separation but for own team)
 
 ---

@@ -13,7 +13,12 @@ import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 public class MovementEngine {
 
     public static final double PLAYER_SPEED_BASE = 0.75; // pace 20 = 0.75 cells/tick
-    public static final double CARRIER_FACTOR = 0.90; // carrier moves slightly slower
+    public static final double CARRIER_FACTOR = 0.90; // carrier baseline (mild pressure)
+    public static final double CARRIER_FACTOR_FREE = 0.96; // free (no defender within 1 cell)
+    public static final double CARRIER_FACTOR_PRESSURE = 0.85; // defender within 1 cell
+    public static final double CARRIER_FACTOR_TYPE_A = 0.78; // active TYPE A press override
+    public static final double CARRIER_FREE_RADIUS = 1.0; // cells — no defender beyond = free
+    public static final double CARRIER_TYPE_A_PRESS_RADIUS = 0.5; // cells — TYPE A presser range
     public static final double MIN_PLAYER_DISTANCE = 0.35; // minimum distance before wall block
     public static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed loss from fatigue
     public static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball
@@ -48,7 +53,7 @@ public class MovementEngine {
             // Carrier with ball moves slightly slower
             boolean isCarrier = p == state.getCarrier();
             if (isCarrier) {
-                playerSpeed *= CARRIER_FACTOR;
+                playerSpeed *= carrierSpeedFactor(p, state);
             }
 
             // Chaser moves at the same pace-capped speed as any other player
@@ -91,25 +96,64 @@ public class MovementEngine {
         }
     }
 
-    /** Slide a proposed position away from any opposing player occupying it. */
+    /**
+     * Slide around a wall that blocks the proposed move — an opponent (P4#1)
+     * OR a teammate (P4#4). Perpendicular go-around is preferred: the player
+     * slides along the tangent of the wall circle in its own movement
+     * direction, so a dribbler rounds the wall instead of being pushed
+     * straight backward into pressure. A straight push-away ring is only the
+     * fallback when neither perpendicular direction improves clearance.
+     */
     private Position separateFromOpponents(Player p, Position proposed, MatchState state) {
+        // Movement-direction unit vector (0,0 when no movement) — used to pick
+        // the perpendicular (tangent) slide for the go-around, not the raw
+        // wall-carrier vector.
+        Position current = p.getPosition();
+        double dirRow = proposed.getRow() - current.getRow();
+        double dirCol = proposed.getColumn() - current.getColumn();
+        double dirLen = Math.hypot(dirRow, dirCol);
+        double uRow = dirLen > 1e-9 ? dirRow / dirLen : 0;
+        double uCol = dirLen > 1e-9 ? dirCol / dirLen : 0;
+        double perpRow = -uCol;
+        double perpCol = uRow;
+
         Position best = proposed;
-        double bestPush = 0;
+        double bestClearance = 0;
         for (Player other : state.getPlayers()) {
             if (other == p || other.isUnavailable() || other.isLocked()) continue;
-            if (other.getTeam().equals(p.getTeam())) continue; // same team may wall
             double d = SimUtils.distance(other.getPosition(), proposed);
-            if (d < MIN_PLAYER_DISTANCE && d > 1e-9) {
-                double push = MIN_PLAYER_DISTANCE - d;
-                if (push > bestPush) {
-                    bestPush = push;
-                    double dr = proposed.getRow() - other.getPosition().getRow();
-                    double dc = proposed.getColumn() - other.getPosition().getColumn();
-                    double len = Math.hypot(dr, dc);
-                    best = new Position(
-                            other.getPosition().getRow() + dr / len * MIN_PLAYER_DISTANCE,
-                            other.getPosition().getColumn() + dc / len * MIN_PLAYER_DISTANCE
-                    );
+            if (d >= MIN_PLAYER_DISTANCE || d <= 1e-9) continue;
+
+            double push = MIN_PLAYER_DISTANCE - d;
+
+            // 1) Perpendicular go-around (P4#1 / P4#4) — try both signs of the
+            //    tangent; keep the one that opens up the most free space.
+            for (int s = -1; s <= 1; s += 2) {
+                Position slide = new Position(
+                        proposed.getRow() + s * perpRow * push,
+                        proposed.getColumn() + s * perpCol * push
+                );
+                double clearance = SimUtils.distance(other.getPosition(), slide);
+                if (clearance > Math.max(d, bestClearance)) {
+                    bestClearance = clearance;
+                    best = slide;
+                }
+            }
+
+            // 2) Straight push-away fallback — only used when the perpendicular
+            //    slides cannot open any space (fully walled).
+            double dr = proposed.getRow() - other.getPosition().getRow();
+            double dc = proposed.getColumn() - other.getPosition().getColumn();
+            double len = Math.hypot(dr, dc);
+            if (len > 1e-9) {
+                Position straight = new Position(
+                        other.getPosition().getRow() + dr / len * MIN_PLAYER_DISTANCE,
+                        other.getPosition().getColumn() + dc / len * MIN_PLAYER_DISTANCE
+                );
+                double clearance = SimUtils.distance(other.getPosition(), straight);
+                if (clearance > bestClearance) {
+                    bestClearance = clearance;
+                    best = straight;
                 }
             }
         }
@@ -161,5 +205,29 @@ public class MovementEngine {
     /** Calculate player speed based on pace (1..20). */
     public static double playerSpeedFor(double pace) {
         return (pace / 20.0) * PLAYER_SPEED_BASE;
+    }
+
+    /**
+     * Carrier speed factor — modulates carrier pace by pressure:
+     * faster when FREE (no opponent within CARRIER_FREE_RADIUS), slower
+     * under pressure (opponent within that radius), slowest under active
+     * TYPE A press (opponent with threatOverrideActive within
+     * CARRIER_TYPE_A_PRESS_RADIUS).
+     */
+    public static double carrierSpeedFactor(Player carrier, MatchState state) {
+        double nearest = Double.MAX_VALUE;
+        boolean typeAPress = false;
+        for (Player other : state.getPlayers()) {
+            if (other == carrier || other.isUnavailable() || other.isLocked()) continue;
+            if (other.getTeam().equals(carrier.getTeam())) continue;
+            double d = SimUtils.distance(other.getPosition(), carrier.getPosition());
+            if (d < nearest) nearest = d;
+            if (d <= CARRIER_TYPE_A_PRESS_RADIUS && other.isThreatOverrideActive()) {
+                typeAPress = true;
+            }
+        }
+        if (typeAPress) return CARRIER_FACTOR_TYPE_A;
+        if (nearest > CARRIER_FREE_RADIUS) return CARRIER_FACTOR_FREE;
+        return CARRIER_FACTOR_PRESSURE;
     }
 }
