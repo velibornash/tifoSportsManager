@@ -91,8 +91,8 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 > handling, duel detection.  Too much for "just coordinates."
 
 - [x] Extract `handleBallPhysicsResult()` → `BallResultHandler` helper (2026-09-14, seed 42: 3 real callers — orchestrator slim 480→325, DEFLECT/SAVE/POST_HIT/blocked-switch handled in helper)
-- [ ] Extract `detectAndResolveDuels()` → `DuelService` helper
-- [ ] Extract log formatting → `ActionLogService` (structured log with tags)
+- [x] Extract `detectAndResolveDuels()` → `DuelService` helper
+- [x] Extract log formatting → `ActionLogService` (structured log with tags)
 - [ ] Orchestrator keeps only: clock → unlock → ball → decision →
   execution → tactical → movement → restart → rules → duels → stats
 

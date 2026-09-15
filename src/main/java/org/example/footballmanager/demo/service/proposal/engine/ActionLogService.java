@@ -24,7 +24,7 @@ public class ActionLogService {
     }
 
     /** Append a tagged, minute-prefixed line to the shared log (and stdout). */
-    private void log(String tag, String msg) {
+    public void log(String tag, String msg) {
         String line = "[" + minute() + "|" + tag + "] " + msg;
         eventLog.add(line);
         System.out.println(line);

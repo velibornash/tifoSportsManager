@@ -46,6 +46,7 @@ public class MatchOrchestrator {
     private final BallResultHandler ballResultHandler;
 
     private final List<String> eventLog = new ArrayList<>();
+    private final ActionLogService actionLog;
     private final MatchRecorder recorder = new MatchRecorder();
     private final ProposalStatsCollector stats = new ProposalStatsCollector("Home FC", "Away United");
 
@@ -59,6 +60,7 @@ public class MatchOrchestrator {
 
     public MatchOrchestrator(MatchState state, TacticsRules tactics) {
         this.state = state;
+        this.actionLog = new ActionLogService(state, eventLog);
         this.decisionEngine = new CleanDecisionEngine();
         this.actionExecutor = new ActionExecutor();
         this.movementEngine = new MovementEngine();
@@ -82,13 +84,11 @@ public class MatchOrchestrator {
     public ProposalStatsCollector getStats() { return stats; }
 
     private void log(String tag, String msg) {
-        String line = "[" + minute() + "|" + tag + "] " + msg;
-        eventLog.add(line);
-        System.out.println(line);
+        actionLog.log(tag, msg);
     }
 
     private String p(Position pos) {
-        return pos == null ? "?" : "(%.1f,%.1f)".formatted(pos.getRow(), pos.getColumn());
+        return actionLog.p(pos);
     }
 
     /** Execute one simulation tick. Called 40 times per minute. */
@@ -245,31 +245,11 @@ public class MatchOrchestrator {
     }
 
     private String formatDecision(Player carrier, DecisionResult result) {
-        DecisionOption chosen = result.getChosen();
-        Player receiver = chosen.getTarget();
-        StringBuilder sb = new StringBuilder();
-        sb.append("DECISION ").append(carrier.getLabel()).append("(").append(carrier.getRole()).append(")")
-                .append(" -> ").append(chosen.getType())
-                .append(" score=").append(String.format("%6.1f", chosen.getScore()));
-        for (DecisionOption o : result.getOptions()) {
-            if (o == chosen) continue;
-            sb.append(" | ").append(o.getType()).append("=")
-                    .append(String.format("%5.1f", o.getScore()));
-        }
-        sb.append(" | ball").append(p(state.getBall().getPosition()))
-                .append(" ").append(carrier.getLabel()).append(p(carrier.getPosition()));
-        if (receiver != null) {
-            sb.append(" -> ").append(receiver.getLabel()).append("(").append(receiver.getRole()).append(")")
-                    .append(p(receiver.getPosition()));
-        }
-        sb.append(" | ").append(chosen.getReason());
-        return sb.toString();
+        return actionLog.formatDecision(carrier, result);
     }
 
     private String minute() {
-        return String.format("%d:%02d",
-                state.getMatchTicks() / 40,
-                state.getMatchTicks() % 40 * 90 / 40);
+        return actionLog.minute();
     }
 
     /** Resolve which team a player (matched by short label) belongs to. */
