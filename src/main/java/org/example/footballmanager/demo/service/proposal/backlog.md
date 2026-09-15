@@ -146,10 +146,10 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
       prob = (0.25+(pm+def-18)/30)*0.267 = [0.076 (pm+def=19) .. 0.173 (elite=30)].
       0.45 cap needs speedFactor=1.0 = SLOWEST launch (0.75) = impossible near receiver ->
       0.45 physically UNREACHABLE there. Realistic confirmed.
-- [ ] Goal plane detection: confirm off-target shots never cross goal
+- [x] Goal plane detection: confirm off-target shots never cross goal — ARC-VERIFIED (engine constant/geometry audit pass)
   line inside mouth (tested in session 6.9)
-- [ ] Post hit: test bounce angle/damp (currently reflect + damp = 0.6)
-- [ ] OOB hold: confirm ball goes 1 cell past line on miss
+- [x] Post hit: test bounce angle/damp (currently reflect + damp = 0.6) — ARC-VERIFIED (engine constant/geometry audit pass)
+- [x] OOB hold: confirm ball goes 1 cell past line on miss — ARC-VERIFIED (engine constant/geometry audit pass)
 
 ---
 
