@@ -134,7 +134,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
 ## P3 — Ball physics calibration
 
-- [ ] DEFLECT_R: 0.035 → 0.05 or 0.07 — test both, measure impact
+- [x] DEFLECT_R: 0.035 → 0.05 (landed, committed) — A/B/C MEASURED 2026-09-15 headless: 0.035=4 / 0.05=4 / 0.07=4 body-contact tokens (identical in existing S1-S7 lane suite); boundary discriminator (body at 0.035<d<=0.05) NOT in suite — flagged as next row
       SESSION-2026-09-15: probe wired to engine constant (was stale own-copy 0.18 —
       probe now reads BallPhysicsEngine.DEFLECT_R at :38, own copy removed).
       Engine DEFLECT_R already landed 0.035→0.05 (BallPhysicsEngine:31, commit 0a28a22 builds).
