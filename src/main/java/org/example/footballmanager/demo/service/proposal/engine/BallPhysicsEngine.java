@@ -28,7 +28,7 @@ public class BallPhysicsEngine implements BallEngine {
     // --- Contact radii (cells) ---
     public static final double RECEIVE_R = 0.35;
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
-    public static final double DEFLECT_R = 0.035;    // 0.5 m — ball physically strikes the body
+    public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
     public static final double PICKUP_R = 0.35;
     public static final double GK_SAVE_R = 0.75;   // goalkeeper reach on fast balls
     public static final double PICKUP_DISTANCE = PICKUP_R; // alias for orchestrator
