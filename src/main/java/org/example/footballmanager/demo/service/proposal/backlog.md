@@ -140,7 +140,12 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
       Engine DEFLECT_R already landed 0.035→0.05 (BallPhysicsEngine:31, commit 0a28a22 builds).
       HONEST [ ] GREEN: probe→engine wiring compiled + headless rc=0; impact A/B/C measured = INVALID
       (flip-harness path broke on all 3 runs → identical output; no honest delta). Re-run valid A/B/C before [x].
-- [ ] readIntercept: verify prob is realistic (not 0.45 near receiver)
+- [x] readIntercept: verify prob is realistic (not 0.45 near receiver) — ARC-VERIFIED
+      engine arithmetic (BallPhysicsEngine.java:357-361, constants :20-21):
+      near-receiver is necessarily a FAST launch (effective=1.30) -> speedFactor=0.267 ->
+      prob = (0.25+(pm+def-18)/30)*0.267 = [0.076 (pm+def=19) .. 0.173 (elite=30)].
+      0.45 cap needs speedFactor=1.0 = SLOWEST launch (0.75) = impossible near receiver ->
+      0.45 physically UNREACHABLE there. Realistic confirmed.
 - [ ] Goal plane detection: confirm off-target shots never cross goal
   line inside mouth (tested in session 6.9)
 - [ ] Post hit: test bounce angle/damp (currently reflect + damp = 0.6)

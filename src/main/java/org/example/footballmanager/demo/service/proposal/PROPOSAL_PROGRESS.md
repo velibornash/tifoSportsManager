@@ -967,3 +967,5 @@ restartovana na koloni 1 (levo).
 sad `ball(row,7.0)`; OOB col 0.2-0.9 → `ball(row,1.0)`; row očuvan
 (4.2→4.2, 7.3→7.3, 6.6→6.6, 7.0→7.0). Taker uvek postavljen (H6/A3/H2/A4/A2/H7).
 `mvn -q -o compile` clean, exporter radi, stats struktura nepromenjena.| 2026-09-15 18:48 | P3#1 [x] (DEFLECT_R 0.035->0.05 landed+committed; 3-variant headless A/B/C rc=0 rc=0 rc=0, body-contact tokens 4/4/4 identical; boundary case open) | compile rc=0 | calibration: no fake checkbox |
+
+| 2026-09-15 | P3#2 [x] readIntercept near-receiver prob verified REALISTIC via engine arithmetic (0.076-0.173, 0.45 cap = slowest launch = unreachable near receiver) | compile rc=0 | ARC |
