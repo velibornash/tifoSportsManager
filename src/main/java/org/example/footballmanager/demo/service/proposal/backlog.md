@@ -6,8 +6,8 @@ stubs exist, logic comes later.
 ---
 
 > **Radna pravila (trajno, na snazi svake sesije):**
-> 1. Korisnik piše na srpskom; TI odgovaraju **na engleskom** (korisnik ima
->    100% srpski, samo mu je lakše da piše srpski — nemoj da prevodiš svoje
+> 1. Korisnik piše na srpskom; AI agenti odgovaraju **na engleskom** (korisnik zna
+>    100% engleski, samo mu je lakše da piše srpski — nemoj da prevodiš svoje
 >    odgovore na srpski).
 > 2. Ponašaj se kao profesionalni senior fullstack developer — čist, jednostavan
 >    kod bez overengineering-a. Ako imaš bilo kakvu nedoumicu — **pitaj
