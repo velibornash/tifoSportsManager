@@ -93,7 +93,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 - [x] Extract `handleBallPhysicsResult()` → `BallResultHandler` helper (2026-09-14, seed 42: 3 real callers — orchestrator slim 480→325, DEFLECT/SAVE/POST_HIT/blocked-switch handled in helper)
 - [x] Extract `detectAndResolveDuels()` → `DuelService` helper
 - [x] Extract log formatting → `ActionLogService` (structured log with tags)
-- [ ] Orchestrator keeps only: clock → unlock → ball → decision →
+- [x] Orchestrator keeps only: clock → unlock → ball → decision →
   execution → tactical → movement → restart → rules → duels → stats
 
 ### P2-UI — Motion & restart correctness (user-reported 2026-09-14)
