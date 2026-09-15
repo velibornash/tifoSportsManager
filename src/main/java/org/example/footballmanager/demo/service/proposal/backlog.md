@@ -18,6 +18,11 @@ stubs exist, logic comes later.
 > 4. Feature thinking: kao profesionalni Product Owner + fudbalski
 >    trener/analitičar — šta je realno potrebno igri, ne šta je tehnički
 >    zanimljivo.
+> 5. Piši kod po čistim SOLID i OOP principima — jedna odgovornost po klasi,
+>    čitljivo, bez overengineering-a.
+> 6. Svi fajlovi koje koristiš ili menjaš su unutar `proposal` podfoldera. Ako
+>    postoje dva fajla sa istim imenom (ili dva paketa koji liče) — **uvek koristi
+>    onaj iz `proposal`**; drugi je legacy i ne dira se.
 
 ---
 
