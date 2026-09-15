@@ -3123,6 +3123,39 @@ button.training-week-item {
 }
 
 @media (max-width: 980px) {
+    .dashboard-content {
+        width: 100%;
+        max-width: 100%;
+        padding-left: 12px;
+        padding-right: 12px;
+        box-sizing: border-box;
+    }
+
+    .fm-page,
+    .fm-panel,
+    .fm-page-title-block,
+    .fm-club-hero,
+    .fm-club-hero-main,
+    .fm-page-toolbar,
+    .club-profile-detail-list,
+    .fm-grid-top,
+    .fm-grid-bottom,
+    .fm-team-layout,
+    .fm-team-layout.has-side-panel,
+    .fm-player-grid,
+    .fm-ph-banner,
+    .fm-ph-id-cols,
+    .fm-skills-grid {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .fm-page {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
     .fm-grid-top,
     .fm-grid-bottom,
     .fm-team-layout.has-side-panel,
@@ -3140,7 +3173,40 @@ button.training-week-item {
         flex-direction: column;
     }
 
+    .fm-club-hero-main > *,
+    .fm-club-actions,
+    .fm-page-toolbar > * {
+        width: 100%;
+    }
+
+    .fm-club-actions {
+        display: flex;
+        flex-wrap: wrap;
+    }
+
     .fm-club-actions .fm-action-btn {
+        width: 100%;
+    }
+
+    .club-profile-brand-card,
+    .club-profile-detail-card {
+        width: 100%;
+    }
+
+    .club-profile-brand-mark {
+        width: 92px;
+        height: 92px;
+    }
+
+    .club-profile-detail-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 13px;
+    }
+
+    .club-profile-detail-row strong {
+        text-align: left;
         width: 100%;
     }
 
@@ -4197,6 +4263,26 @@ body {
 @media (max-width: 430px) {
     .dashboard-content {
         padding: 0 8px calc(18px + env(safe-area-inset-bottom));
+    }
+
+    .fm-panel,
+    .fm-page-title-block,
+    .club-profile-card,
+    .manager-card {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .fm-panel h2,
+    .fm-panel h3,
+    .fm-page-title-block h2,
+    .club-profile-detail-row strong,
+    .fm-match-score-name,
+    .fm-page-title-block p,
+    .fm-subtle,
+    .club-profile-detail-row span {
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     .fm-dashboard-shell .stats-grid {
