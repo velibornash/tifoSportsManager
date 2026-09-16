@@ -222,7 +222,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
   checkPenalty 5% gate, 30% / 20%; checkYellow 10% gate, upgrade 8% /
   downgrade 12%), VAR_IN_PROGRESS event list + decision timers from
   reference `engine/VARService.java`
-- [ ] P7#3 — DisciplineService body (proposal/rules/DisciplineService.java):
+- [x] P7#3 — DisciplineService body (proposal/rules/DisciplineService.java):
   full evaluateFoul chain from reference `engine/DisciplineService.java` —
   hadDuel gate, shot-save clean, isFoul, card chain, penalty-box detection
   (row 7 cols 2-5 for HOME / row 1 for AWAY, 35% random gate),

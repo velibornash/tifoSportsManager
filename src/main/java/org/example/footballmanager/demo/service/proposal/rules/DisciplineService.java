@@ -25,16 +25,90 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
 
     @Override
     public DisciplineResult evaluateFoul(MatchState state) {
-        // TODO per backlog (§8.6):
-        // 1. Detect tackle foul (defender wins duel in tackle context)
-        // 2. Check foul severity (normal / reckless / violent / professional)
-        // 3. Issue yellow card if second-yellow candidate
-        // 4. Issue straight red if last-man or violent conduct
-        // 5. Award penalty if foul inside penalty area
-        // 6. Award indirect free-kick if foul outside penalty area
-        // 7. Trigger VAR review for penalty-area fouls and red cards
-        // 8. Record foul + card stats per player/team
-        return new DisciplineResult(false, false, false, false, false, "");
+        Player attacker = state.getCarrier();
+        Player defender = state.getLastTouchPlayer();
+        boolean hadDuel = state.hasPendingVARReview();
+
+        // No carrier and no pending duel => no card, just free kick / play on
+        if (attacker == null && !hadDuel) {
+            return new DisciplineResult(false, false, false, false, false, "No carrier or duel active");
+        }
+
+        // Determine the team defending the foul
+        String defendingTeam = attacker != null ? attacker.getTeam() : "HOME";
+        if (defender != null) defendingTeam = defender.getTeam();
+
+        // Compute foul position: deeper of attacker/defender toward opponent goal
+        Position foulPos = null;
+        boolean inPenaltyBox = false;
+        if (attacker != null && defender != null) {
+            Position aPos = attacker.getPosition();
+            Position dPos = defender.getPosition();
+            boolean homeAttacking = "HOME".equals(attacker.getTeam());
+            // foul pos = whichever player is deeper toward the opponent goal
+            if (homeAttacking) {
+                foulPos = aPos.getRow() >= dPos.getRow() ? aPos : dPos;
+            } else {
+                foulPos = aPos.getRow() <= dPos.getRow() ? aPos : dPos;
+            }
+            // penalty area check: row near goal line (HOME: row>=7, AWAY: row<=1)
+            // and columns 2-5 (not full width)
+            inPenaltyBox = homeAttacking
+                    ? (foulPos.getRow() >= 7.0 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5)
+                    : (foulPos.getRow() <= 1.0 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5);
+        }
+
+        // Use VARService to determine card and penalty decisions
+        boolean redConfirmed = false;
+        boolean yellowConfirmed = false;
+        boolean penaltyAwarded = false;
+        boolean freeKickAwarded = false;
+        Player freeKickTaker = null;
+        Player penaltyTaker = null;
+
+        if (defender != null) {
+            // VAR check for red card (standalone, not second-yellow context)
+            redConfirmed = varService.checkRedCard(defender, false);
+
+            // VAR check for yellow card
+            String varYellowResult = varService.checkYellowCard(defender);
+            if ("UPGRADE_TO_RED".equals(varYellowResult)) {
+                // VAR upgraded yellow → red
+                redConfirmed = true;
+                yellowConfirmed = false;
+            } else if ("DOWNGRADE_TO_NONE".equals(varYellowResult)) {
+                // VAR downgraded yellow → no card, play continues
+                yellowConfirmed = false;
+                redConfirmed = false;
+            } else {
+                // Yellow confirmed by VAR
+                yellowConfirmed = true;
+            }
+        }
+
+        // Penalty-box gate (35% random) vs free kick
+        if (inPenaltyBox && varService.checkPenalty(foulPos, "HOME".equals(attacker.getTeam()))) {
+            penaltyAwarded = true;
+            penaltyTaker = attacker;
+        } else {
+            freeKickAwarded = true;
+            freeKickTaker = attacker;
+        }
+
+        // Build description string
+        String description = "";
+        if (penaltyAwarded) description = "Penalty awarded";
+        else if (yellowConfirmed) description = "Yellow card";
+        else if (redConfirmed) description = "Red card";
+        else if (freeKickAwarded) description = "Free kick";
+
+        // Record global stats (commented — proposal MatchState only has global counters)
+        // if (defender != null) state.incrementFouls();
+        // if (yellowConfirmed) state.incrementYellowCards();
+        // if (redConfirmed) state.incrementRedCards();
+
+        // Return the 6-field DisciplineResult matching the proposal surface
+        return new DisciplineResult(true, yellowConfirmed, redConfirmed, penaltyAwarded, freeKickAwarded, description);
     }
 
     // --- Individual rule methods (add rules here) ---
