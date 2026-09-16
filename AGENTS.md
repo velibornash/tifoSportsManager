@@ -383,7 +383,7 @@ demo/service/proposal/
   │       └── CleanDecisionEngine.java → action scoring + selection (5 actions)
   ├── rules/
   │   ├── FootballRules.java        → offside check + offside restart (active)
-  │   ├── VARService.java           → VAR review — stub, logic per backlog
+  │   ├── VARService.java           → VAR review — port done (P7#2) — 9/9 @Override, compile-green, logic per backlog
   │   ├── DisciplineService.java    → fouls/cards — stub, logic per backlog
   │   └── OffsideService.java       → continuous tracking + per-pass check —— port done (P7#1, 4/4 @Override, compile-green)
   ├── model/

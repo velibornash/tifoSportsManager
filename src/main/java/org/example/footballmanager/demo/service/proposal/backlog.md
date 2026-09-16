@@ -215,7 +215,7 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
   ONSIDE_CHECK gate 30% → always CONFIRMED; OFF_SIDE margin > 0 → always
   disallow), `confirmOffside` push-away ring + free-kick awarding from
   reference `engine/OffsideService.java`
-- [ ] P7#2 — VARService body (proposal/rules/VARService.java): the 5 gates +
+- [x] P7#2 — VARService body (proposal/rules/VARService.java): the 5 gates +
   margin-based overturn (checkOffside 4% gate w/ margin-overturn 40→5%;
   checkGoal 4% gate, 8% overturn, VAR_IN_PROGRESS emitted at once;
   checkRedCard 10% gate, 25% overturn / 2nd yellow never overturned;
