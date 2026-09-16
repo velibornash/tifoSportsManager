@@ -385,7 +385,7 @@ demo/service/proposal/
   │   ├── FootballRules.java        → offside check + offside restart (active)
   │   ├── VARService.java           → VAR review — stub, logic per backlog
   │   ├── DisciplineService.java    → fouls/cards — stub, logic per backlog
-  │   └── OffsideService.java       → continuous tracking + per-pass check — stub
+  │   └── OffsideService.java       → continuous tracking + per-pass check —— port done (P7#1, 4/4 @Override, compile-green)
   ├── model/
   │   ├── MatchState.java           → single source of truth (ball, players, actions, stats)
   │   ├── Player.java               → includes offside/consecutiveOffside/threatOverride flags

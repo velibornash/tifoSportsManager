@@ -20,6 +20,19 @@ public class MatchState {
     private boolean varReviewActive = false;
     private int varDelayTicks = 0;    // delay counter during review
 
+    // Pending VAR review (deferred decision — offside check held until the
+    // next action boundary resolves it).
+    private String pendingVARReviewType;   // OFFSIDE / ONSIDE_CHECK / GOAL / RED_CARD / PENALTY / YELLOW_CARD
+    private Player pendingVARReviewPlayer; // receiver subject to the review
+    private String pendingVARReviewTeam;   // team of the player under review (carrier team)
+
+    // Offside deferral state (marginal call — play continues, flag held).
+    private boolean offsideDeferred;              // flag is physically held
+    private double offsideDeferredMargin;         // margin when the flag was held (cells)
+    private boolean offsideLedToGoal;             // deferred call consumed by a goal path
+    private int offsideDeferredActionCount;       // action count at defer time
+    private boolean offsideDeferredDecisionForward; // the deferred(next) action attacked forward
+
     // Score
     private int homeGoals;
     private int awayGoals;
@@ -136,6 +149,46 @@ public class MatchState {
             }
         }
     }
+
+    /** Is there a held pending-VAR review (type/player/team set)? */
+    public boolean hasPendingVARReview() {
+        return pendingVARReviewType != null;
+    }
+
+    /** Type of the held review — OFFSIDE / OFF_SIDE / ONSIDE_CHECK / GOAL / ... */
+    public String getPendingVARReviewType() { return pendingVARReviewType; }
+
+    /** Player under review (the flagged receiver). */
+    public Player getPendingVARReviewPlayer() { return pendingVARReviewPlayer; }
+
+    /** Team of the player under review (the attacking/carrying team). */
+    public String getPendingVARReviewTeam() { return pendingVARReviewTeam; }
+
+    /** Hold a pending VAR review for a marginal (deferred) call. */
+    public void setPendingVARReview(String type, Player player, String team) {
+        this.pendingVARReviewType = type;
+        this.pendingVARReviewPlayer = player;
+        this.pendingVARReviewTeam = team;
+    }
+
+    /** Clear the held pending-VAR review (whistled or dropped). */
+    public void clearPendingVARReview() {
+        this.pendingVARReviewType = null;
+        this.pendingVARReviewPlayer = null;
+        this.pendingVARReviewTeam = null;
+    }
+
+    // === OFF-SIDE DEFERRAL (marginal-call hold) ===
+    public boolean isOffsideDeferred() { return offsideDeferred; }
+    public void setOffsideDeferred(boolean deferred) { this.offsideDeferred = deferred; }
+    public double getOffsideDeferredMargin() { return offsideDeferredMargin; }
+    public void setOffsideDeferredMargin(double margin) { this.offsideDeferredMargin = margin; }
+    public boolean isOffsideLedToGoal() { return offsideLedToGoal; }
+    public void setOffsideLedToGoal(boolean ledToGoal) { this.offsideLedToGoal = ledToGoal; }
+    public int getOffsideDeferredActionCount() { return offsideDeferredActionCount; }
+    public void setOffsideDeferredActionCount(int count) { this.offsideDeferredActionCount = count; }
+    public boolean isOffsideDeferredDecisionForward() { return offsideDeferredDecisionForward; }
+    public void setOffsideDeferredDecisionForward(boolean forward) { this.offsideDeferredDecisionForward = forward; }
 
     // === GOALS ===
     public int getHomeGoals() { return homeGoals; }

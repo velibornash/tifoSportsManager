@@ -195,6 +195,11 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
 ## P7 — Rules stubs (already created, logic later)
 
+### PLAN — execute P7 before P5 (user rule 2026-09-16: P5 = offside full impl
+### depends on P7 rules; "P7 pa P5 odmah iza"). Logic ports → proposal stubs
+### from the working reference (`demo/service/engine/` — offside retreat
+### "radi sigurno dobro" per user).
+
 | Class | Package | Status |
 |---|---|---|
 | `VARService` | `rules/` | stub — method signatures, no logic |
@@ -202,7 +207,41 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 | `OffsideService` | `rules/` | stub — tracking + check, no logic |
 | `ThreatOverrideEngine` | `engine/` | stub — TYPE A/B/C methods, no logic |
 
-All four already compile. Logic to be filled per respective phases above.
+- [x] P7#1 — OffsideService body (proposal/rules/OffsideService.java): port
+  universal per-tick tracking (both teams, all attackers forward of carrier),
+  margin bands (clear > 0.5 → confirm; 0..0.5 marginal → defer VAR;
+  tight onside −0.8..0 → defer ONSIDE_CHECK; onside → reset counter),
+  `resolvePendingVAROffside`, `resolveOffsideVAROnGoal` (VAR-only on goal,
+  ONSIDE_CHECK gate 30% → always CONFIRMED; OFF_SIDE margin > 0 → always
+  disallow), `confirmOffside` push-away ring + free-kick awarding from
+  reference `engine/OffsideService.java`
+- [ ] P7#2 — VARService body (proposal/rules/VARService.java): the 5 gates +
+  margin-based overturn (checkOffside 4% gate w/ margin-overturn 40→5%;
+  checkGoal 4% gate, 8% overturn, VAR_IN_PROGRESS emitted at once;
+  checkRedCard 10% gate, 25% overturn / 2nd yellow never overturned;
+  checkPenalty 5% gate, 30% / 20%; checkYellow 10% gate, upgrade 8% /
+  downgrade 12%), VAR_IN_PROGRESS event list + decision timers from
+  reference `engine/VARService.java`
+- [ ] P7#3 — DisciplineService body (proposal/rules/DisciplineService.java):
+  full evaluateFoul chain from reference `engine/DisciplineService.java` —
+  hadDuel gate, shot-save clean, isFoul, card chain, penalty-box detection
+  (row 7 cols 2-5 for HOME / row 1 for AWAY, 35% random gate),
+  handleRedCard/handleYellowCard/handleNoCard, free-kick awarding with
+  restart manager
+- [ ] P7#4 — ThreatOverrideEngine TYPE A/B/C bodies (proposal/engine/):
+  TYPE A press (isThreatOverrideActive + press point on carrier),
+  TYPE B isolated (final 2.5 rows, no defender within 0.5 cells),
+  TYPE C offside retreat (consecutive offside ≥ threshold, retreat row from
+  reference `engine/TacticalIntentEngine` TypeC) — port exact logic
+- [ ] P7#5 — UI overlays verify (proposal viewer): VAR freeze overlay +
+  VAR decision banner + offside/gold overlay + card overlay — confirm
+  proposal/viewer.js dispatch is byte-identical to reference and wire any
+  missing RULES_ events through the overlay dispatch (user: "pogledaj i
+  overleje za njih na UI")
+
+Order: P7#1 → P7#2 → P7#3 → P7#4 → P7#5, then P5 rows flip with port
+reuse. After each task: flip [x] + backlog.md + AGENTS.md mirror + commit.
+All four stubs already compile — each body lands behind a compile gate.
 
 ---
 
