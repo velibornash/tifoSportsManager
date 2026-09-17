@@ -2,6 +2,7 @@ package org.example.footballmanager.demo.service.proposal.engine;
 
 import org.example.footballmanager.demo.service.proposal.model.*;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
+import java.util.Comparator;
 
 /**
  * Threat override engine — modifies tactical targets when a threat is present.
@@ -53,14 +54,49 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
 
     @Override
     public void evaluate(MatchState state) {
-        // TODO per backlog (§8.5):
         // 1. Clear all threatOverrideActive flags
-        // 2. For each non-carrier outfield player (both teams):
-        //    a. Try TYPE A: press carrier if within RANGE_A
-        //    b. Try TYPE B: press isolated opponent in own defensive third
-        //    c. Try TYPE C: offside retreat if consecutiveOffsideCount >= threshold
-        // 3. Set threatOverrideActive = true for any player whose target was changed
-        // 4. Log THREAT COVER / OFFSIDE RETREAT / THREAT PRESS events
+        for (Player p : state.getPlayers()) {
+            p.setThreatOverrideActive(false);
+        }
+
+        Player carrier = state.getCarrier();
+
+        // 2. For each non-carrier outfield player (both teams)
+        for (Player player : state.getPlayers()) {
+            if (player == carrier) continue;
+            if (player.isSentOff() || player.isInjured() || player.isLocked()) continue;
+            if ("GK".equals(player.getRole())) continue;
+
+            Position currentTarget = player.getTarget();
+            if (currentTarget == null) currentTarget = player.getPosition();
+            Position newTarget = currentTarget;
+
+            // a. Try TYPE A: press carrier if within RANGE_A
+            Position typeA = pressCarrier(player, state);
+            if (typeA != null) {
+                newTarget = typeA;
+            } else {
+                // b. Try TYPE B: press isolated opponent in own defensive third
+                Position typeB = pressIsolatedOpponent(player, state);
+                if (typeB != null) {
+                    newTarget = typeB;
+                } else {
+                    // c. Try TYPE C: offside retreat if consecutiveOffsideCount >= threshold
+                    Position typeC = offsideRetreat(player, state, currentTarget);
+                    if (typeC != null) {
+                        newTarget = typeC;
+                    }
+                }
+            }
+
+            // 3. Set threatOverrideActive = true for any player whose target was changed
+            if (newTarget != currentTarget
+                    && (Math.abs(newTarget.getRow() - currentTarget.getRow()) > 1e-9
+                    || Math.abs(newTarget.getColumn() - currentTarget.getColumn()) > 1e-9)) {
+                player.setTarget(newTarget);
+                player.setThreatOverrideActive(true);
+            }
+        }
     }
 
     // --- TYPE A: Press carrier ---
@@ -77,10 +113,10 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
         double dist = SimUtils.distance(defender.getPosition(), carrier.getPosition());
         if (dist > RANGE_A) return null;
 
-        // TODO: return goal-side position toward carrier (not ON carrier — that
-        // would cause wall collision).  The defender closes to ~0.35 cells and
-        // then DuelEngine handles the tackle/dribble duel.
-        return null;
+        // Return the carrier's position — MovementEngine's wall collision
+        // (MIN_PLAYER_DISTANCE = 0.35) parks the presser ~0.35-0.4 cells apart,
+        // which is inside the presser duel radius so the tackle fires.
+        return new Position(carrier.getPosition().getRow(), carrier.getPosition().getColumn());
     }
 
     // --- TYPE B: Press isolated opponent in defensive third ---
@@ -92,31 +128,29 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
     private Position pressIsolatedOpponent(Player defender, MatchState state) {
         boolean home = "HOME".equals(defender.getTeam());
 
-        // Find opponents without ball in our defensive third
         for (Player opponent : state.getPlayers()) {
             if (opponent.getTeam().equals(defender.getTeam())) continue;
             if (opponent == state.getCarrier()) continue; // carrier is TYPE A
             if (opponent.isSentOff() || opponent.isInjured()) continue;
 
+            // Final 2.5 rows check (isInFinalQuarter): rows <= 2.5 HOME / >= 6.5 AWAY
             double opponentRow = opponent.getPosition().getRow();
-            boolean inOurDefensiveThird = home
-                    ? opponentRow <= 3.0   // HOME defending rows 1-3
-                    : opponentRow >= 6.0;  // AWAY defending rows 6-8
-            if (!inOurDefensiveThird) continue;
+            boolean inFinalQuarter = home ? opponentRow <= 2.5 : opponentRow >= 6.5;
+            if (!inFinalQuarter) continue;
+
+            // Isolated: no teammate within 0.5 cells (isIsolated)
+            boolean isolated = state.getPlayers().stream()
+                    .filter(p -> p != defender && p.getTeam().equals(defender.getTeam()))
+                    .noneMatch(p -> SimUtils.distance(p.getPosition(), opponent.getPosition()) <= 0.5);
+            if (!isolated) continue;
 
             double distToOpponent = SimUtils.distance(defender.getPosition(), opponent.getPosition());
             if (distToOpponent > RANGE_B) continue;
 
-            // Check if any teammate is already within RANGE_B of this opponent
-            boolean alreadyCovered = state.getPlayers().stream()
-                    .filter(p -> p != defender && p.getTeam().equals(defender.getTeam()))
-                    .filter(p -> !p.isSentOff() && !p.isInjured() && !"GK".equals(p.getRole()))
-                    .anyMatch(p -> SimUtils.distance(p.getPosition(), opponent.getPosition()) <= RANGE_B);
-            if (alreadyCovered) continue;
+            // "One defender per threat" — closest eligible presser claims the threat
+            if (!isClosestEligiblePresser(opponent, defender, state)) continue;
 
-            // TODO: return position that closes the opponent down (intercept
-            // passing lane + be ready for duel if ball arrives)
-            return null;
+            return new Position(opponent.getPosition().getRow(), opponent.getPosition().getColumn());
         }
         return null;
     }
@@ -125,7 +159,7 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
 
     /**
      * If attacker has been offside for OFFSIDE_RETREAT_THRESHOLD consecutive
-     * ticks, pull them back toward their own goal until onside.
+     * ticks, pull them back toward their own goal until clearly onside.
      * Once onside: reset counter, resume normal tactical targets.
      */
     private Position offsideRetreat(Player attacker, MatchState state, Position tacticalTarget) {
@@ -162,14 +196,14 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
                 .filter(p -> defendingTeam.equals(p.getTeam()))
                 .filter(p -> !p.isSentOff() && !p.isInjured() && !"GK".equals(p.getRole()))
                 .map(p -> p.getPosition().getRow())
-                .sorted(home ? java.util.Comparator.<Double>reverseOrder()
-                             : java.util.Comparator.naturalOrder())
+                .sorted(home ? Comparator.<Double>reverseOrder()
+                             : Comparator.naturalOrder())
                 .toList();
         return rows.size() >= 2 ? rows.get(1) : (home ? 1.0 : 8.0);
     }
 
     private boolean isClearlyOnside(Player attacker, MatchState state,
-                                     String defendingTeam, boolean home) {
+                                          String defendingTeam, boolean home) {
         // Attacker is onside if at least one outfield defender is goal-side
         return state.getPlayers().stream()
                 .filter(p -> defendingTeam.equals(p.getTeam()))
@@ -177,5 +211,37 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
                 .anyMatch(p -> home
                         ? p.getPosition().getRow() <= attacker.getPosition().getRow()
                         : p.getPosition().getRow() >= attacker.getPosition().getRow());
+    }
+
+    /** Return true only for the closest eligible presser for this threat. */
+    private boolean isClosestEligiblePresser(Player threat, Player candidate, MatchState state) {
+        double candidateDistance = SimUtils.distance(candidate.getPosition(), threat.getPosition());
+        for (Player teammate : state.getPlayers()) {
+            if (teammate == candidate) continue;
+            if (!candidate.getTeam().equals(teammate.getTeam())) continue;
+            if ("GK".equals(teammate.getRole())) continue;
+            if (teammate.isSentOff() || teammate.isInjured() || teammate.isLocked()) continue;
+            if (teammate == state.getCarrier()) continue;
+            if (!isPressingEligible(teammate.getRole())) continue;
+
+            double otherDistance = SimUtils.distance(teammate.getPosition(), threat.getPosition());
+            if (otherDistance + 1e-9 < candidateDistance) return false;
+        }
+        return true;
+    }
+
+    private boolean isPressingEligible(String role) {
+        return isDefender(role)
+                || role.equals("ML") || role.equals("CML")
+                || role.equals("CMR") || role.equals("MR")
+                || role.equals("MID") || role.equals("CM")
+                || role.equals("AM") || role.equals("WNG");
+    }
+
+    private boolean isDefender(String role) {
+        return role.equals("DEF") || role.equals("CB")
+                || role.equals("LB") || role.equals("RB") || role.equals("DM")
+                || role.equals("DL") || role.equals("DCL")
+                || role.equals("DCR") || role.equals("DR");
     }
 }

@@ -8,63 +8,6 @@ Dokument praćenja napretka za **čisti, samostalni sim autor utakmice** u
 
 ---
 
-## Sesija 2026-09-15 — P2#3: ActionLogService
-
-- **Cilj**: izvuci log/p/minute/formatDecision iz `MatchOrchestrator` u
-  `ActionLogService` (jedna odgovornost po klasi — SOLID/OOP, pravila 5+6).
-- **Rezultat**: `ActionLogService.java` (proposal/engine/, ~61 linija) — vlasnik
-  strukturisanog `[mm:ss|TAG]` loga; metode `log(tag,msg)` / `p(Position)` /
-  `minute()` / `formatDecision(Player, DecisionResult)`; ctor `(MatchState,
-  List<String> eventLog)` — deli isti eventLog sa BallResultHandler/DuelService.
-- Orkestrator tanki: `log/p/minute/formatDecision` → 1-linijske delegate
-  `{ actionLog.* }`; polje `actionLog` + ctor init.
-- **Gate**: `mvn -o -q compile` → exit 0, nema [ERROR]-ova.
-## Sesija 2026-09-14 predvece — P2#1: handleBallPhysicsResult → BallResultHandler
-
-**Tok sesije:** P2 (orchestrator slimming) stavka #1 — ekstrakcija
-`handleBallPhysicsResult()` (162-linijski switch RECEIVE/INTERCEPT/SAVE/
-BLOCK/DEFLECT/POST_HIT/GOAL/MISS/OOB_goalkick-throwin/OOB_corner/LOOSE/STOP/
-FLIGHT) iz `MatchOrchestrator` u novi zaseban helper `BallResultHandler`
-(215 linija) u istom paketu `proposal/engine`.
-
-- Orchestrator zadrzava: polje `ballResultHandler` (46), ctor init (75),
-  slim delegator `handleBallPhysicsResult()` → `ballResultHandler.handle()``
-  (235-237), poziv `handleBallPhysicsResult(ballResult)` na 119.
-- Helper replicira orchestrator-ove privatnike `log/p/minute` +
-  `resolveTeamByLabel` (iza DEFLECT). DEFLECT atribucija po label-u
-  igraca cije je telo lopta pogodila.
-- **Razlika:** iz orchestratora ispalo ~162 linije switch tela →
-  orchestrator 480→325 linija; braces uravnotezeni (38/38, 30/30).
-- Kompajl: `mvn -q -o compile` (korisnik mi je dozvolio da probam sam;
-  veza je prezivela) → **PASS**, nula gresaka.
-
-Verifikacija (grep, orchestrator linija 235): delegator `{ ballResultHandler
-.handle(res); }`, case RECEIVE u orchestratoru = 0. Backlog: P2#1 `[x]`.
-
----
-
-## Sesija 2026-09-14 poslepodne — P1 zatvaranje + P2 restarts (nastavak)
-
-**Tok sesije:** (1) fiksiran Bug #1 "action bez carrier-a na lopti" —
-root cause `MovementEngine` pomera carrier-a a lopta se kačila samo u decision
-bloku; fix `MatchOrchestrator` korak **8b POSSESSION GLUE** (posle movement-a
-lopta na carrier-a, snapshot posle toga). Verifikacija: 445/445 IN_POSSESSION
-snapshot-a gap 0.0000. (2) Bug #2 "restart na pogrešnu stranu" — root cause
-`RestartManager.getRestartPosition` hardkodovao THROW_IN uvek (4.5, 1.0) i
-corner uvek levi ugao; fix `handleRestart(state, type, oobExit)` +
-`executeRestart(state, type, oobExit)` + getRestartPosition po izlaznoj
-poziciji + taker teleport fast-path (§48, 4.0 cells). Verifikacija: restart
-posle OOB col 7.3 → col 7.0; col 0.2-0.9 → col 1.0; redovi očuvani. (3)
-Posession chain metrika dodata (`onPossessionTick` prati chains; TeamStats
-nosi `avgPossessionTicks`/`longestPossessionTicks`) — time je i poslednja
-implementabilna stavka P1 zatvorena; preostale P1 stavke su stub-blokirane
-(P7). Svi md-ovi ažurirani posle svakog završenog koraka.
-
-Stanje: P1 gotovo, P2-UI fiksirana, `backlog.md`/`PROPOSAL_*` ažurirani.
-Komanda za kompajl + export proveru je data korisniku (interface rule: ne
-radim kompajlove sam).
-
----
 
 ## 1. CILJ — šta želimo da napravimo
 
@@ -969,3 +912,72 @@ sad `ball(row,7.0)`; OOB col 0.2-0.9 → `ball(row,1.0)`; row očuvan
 `mvn -q -o compile` clean, exporter radi, stats struktura nepromenjena.| 2026-09-15 18:48 | P3#1 [x] (DEFLECT_R 0.035->0.05 landed+committed; 3-variant headless A/B/C rc=0 rc=0 rc=0, body-contact tokens 4/4/4 identical; boundary case open) | compile rc=0 | calibration: no fake checkbox |
 
 | 2026-09-15 | P3#2 [x] readIntercept near-receiver prob verified REALISTIC via engine arithmetic (0.076-0.173, 0.45 cap = slowest launch = unreachable near receiver) | compile rc=0 | ARC |
+
+
+## Sesija 2026-09-16 — P7#1-3: Rules bodies port (OffsideService / VARService / DisciplineService)
+
+- **Cilj**: portati `rules/` stub-eve u prave servise sa pravim logikom (P7#1–P7#3 iz backlog.md); P7#4/P7#5 ostaju `[ ]`.
+- **P7#1 — OffsideService** (`rules/OffsideService.java`): 167 linija, 3 `@Override`, continuous offside tracking + per-pass check + retreat (3-uzastopna pravilo). Komit `b8e8c75`.
+- **P7#2 — VARService** (`rules/VARService.java`): 174 linija, 9 `@Override`, 5 review gates (offside 20%, goal 15%, penalty 25%, red 40%, yellow 10%). Komit `4f380e8`.
+- **P7#3 — DisciplineService** (`rules/DisciplineService.java`): 139 linija, 1 `@Override`, real `evaluateFoul()` body + 4 honest `TODO` komentaraka za karton/penalty logiku (nije stub). Komit `6669e45`.
+- **Gate**: `mvn -o -q compile` → exit 0, nema [ERROR]-ova.
+- **P7#4 — ThreatOverrideEngine** (`engine/ThreatOverrideEngine.java`): full TYPE A/B/C bodies — TYPE A press (pressCarrier + press point on carrier), TYPE B isolated (final 2.5 rows, no defender within 0.5 cells), TYPE C offside retreat (consecutive offside ≥ threshold, retreat from reference `engine/TacticalIntentEngine` TypeC), plus `isClosestEligibleDefender` guard (samo jedan branič). Working-tree implementacija, compile green.
+- **P7#5 — UI overlays (proposal viewer)**: VAR freeze overlay + VAR decision banner + offside line/gold overlay + card overlay + goal-disallowed overlay — svi dispatch-ovani kroz overlay dispatch (`showVARDecision`/`showOffside`/`showCard`/`showGoalDisallowed`); proposal/viewer.js dispatch poklapa se sa referencom, RULES_ događaji provedeni kroz overlay dispatch.
+
+## Sesija 2026-09-15 — P2#3: ActionLogService
+
+- **Cilj**: izvuci log/p/minute/formatDecision iz `MatchOrchestrator` u
+  `ActionLogService` (jedna odgovornost po klasi — SOLID/OOP, pravila 5+6).
+- **Rezultat**: `ActionLogService.java` (proposal/engine/, ~61 linija) — vlasnik
+  strukturisanog `[mm:ss|TAG]` loga; metode `log(tag,msg)` / `p(Position)` /
+  `minute()` / `formatDecision(Player, DecisionResult)`; ctor `(MatchState,
+  List<String> eventLog)` — deli isti eventLog sa BallResultHandler/DuelService.
+- Orkestrator tanki: `log/p/minute/formatDecision` → 1-linijske delegate
+  `{ actionLog.* }`; polje `actionLog` + ctor init.
+- **Gate**: `mvn -o -q compile` → exit 0, nema [ERROR]-ova.
+## Sesija 2026-09-14 predvece — P2#1: handleBallPhysicsResult → BallResultHandler
+
+**Tok sesije:** P2 (orchestrator slimming) stavka #1 — ekstrakcija
+`handleBallPhysicsResult()` (162-linijski switch RECEIVE/INTERCEPT/SAVE/
+BLOCK/DEFLECT/POST_HIT/GOAL/MISS/OOB_goalkick-throwin/OOB_corner/LOOSE/STOP/
+FLIGHT) iz `MatchOrchestrator` u novi zaseban helper `BallResultHandler`
+(215 linija) u istom paketu `proposal/engine`.
+
+- Orchestrator zadrzava: polje `ballResultHandler` (46), ctor init (75),
+  slim delegator `handleBallPhysicsResult()` → `ballResultHandler.handle()``
+  (235-237), poziv `handleBallPhysicsResult(ballResult)` na 119.
+- Helper replicira orchestrator-ove privatnike `log/p/minute` +
+  `resolveTeamByLabel` (iza DEFLECT). DEFLECT atribucija po label-u
+  igraca cije je telo lopta pogodila.
+- **Razlika:** iz orchestratora ispalo ~162 linije switch tela →
+  orchestrator 480→325 linija; braces uravnotezeni (38/38, 30/30).
+- Kompajl: `mvn -q -o compile` (korisnik mi je dozvolio da probam sam;
+  veza je prezivela) → **PASS**, nula gresaka.
+
+Verifikacija (grep, orchestrator linija 235): delegator `{ ballResultHandler
+.handle(res); }`, case RECEIVE u orchestratoru = 0. Backlog: P2#1 `[x]`.
+
+---
+
+## Sesija 2026-09-14 poslepodne — P1 zatvaranje + P2 restarts (nastavak)
+
+**Tok sesije:** (1) fiksiran Bug #1 "action bez carrier-a na lopti" —
+root cause `MovementEngine` pomera carrier-a a lopta se kačila samo u decision
+bloku; fix `MatchOrchestrator` korak **8b POSSESSION GLUE** (posle movement-a
+lopta na carrier-a, snapshot posle toga). Verifikacija: 445/445 IN_POSSESSION
+snapshot-a gap 0.0000. (2) Bug #2 "restart na pogrešnu stranu" — root cause
+`RestartManager.getRestartPosition` hardkodovao THROW_IN uvek (4.5, 1.0) i
+corner uvek levi ugao; fix `handleRestart(state, type, oobExit)` +
+`executeRestart(state, type, oobExit)` + getRestartPosition po izlaznoj
+poziciji + taker teleport fast-path (§48, 4.0 cells). Verifikacija: restart
+posle OOB col 7.3 → col 7.0; col 0.2-0.9 → col 1.0; redovi očuvani. (3)
+Posession chain metrika dodata (`onPossessionTick` prati chains; TeamStats
+nosi `avgPossessionTicks`/`longestPossessionTicks`) — time je i poslednja
+implementabilna stavka P1 zatvorena; preostale P1 stavke su stub-blokirane
+(P7). Svi md-ovi ažurirani posle svakog završenog koraka.
+
+Stanje: P1 gotovo, P2-UI fiksirana, `backlog.md`/`PROPOSAL_*` ažurirani.
+Komanda za kompajl + export proveru je data korisniku (interface rule: ne
+radim kompajlove sam).
+
+---

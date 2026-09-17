@@ -3,7 +3,7 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-14 (pass completion tuning + physics calibration session).
+> Last update: 2026-09-16 (P7 FULLY DONE — P7#1-5: OffsideService, VARService, DisciplineService real rules bodies + ThreatOverrideEngine TYPE A/B/C + Proposal Viewer UI overlays; all compile green).
 
 ---
 
@@ -349,10 +349,10 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | Layer | Description | Status |
 |---|---|---|
 | **Override system** | Formal layer between `decide()` and `execute()` | ❌ NOT NEEDED — user keeps hard rules, refactor to boosts later |
-| **VAR engine** | Review of decisions (offside, goal, penalty, red) | ❌ SKELETON stub exists (`rules/VARService.java`) |
-| **Discipline** | Fouls + cards | ❌ STUB — `rules/DisciplineService.java` created, no logic |
-| **Offside full** | Continuous tracking + per-pass check | ❌ STUB — `rules/OffsideService.java` created, no logic |
-| **Threat override** | Defensive pressure on carrier (3 types) | ❌ STUB — `engine/ThreatOverrideEngine.java` created, no logic |
+| **VAR engine** | Review of decisions (offside, goal, penalty, red) | ✅ DONE (P7#2) — `rules/VARService.java` real body (174 l., 9 `@Override`, 5 gates), compile rc=0 |
+| **Discipline** | Fouls + cards | ✅ DONE (P7#3) — `rules/DisciplineService.java` real `evaluateFoul()` body (139 l., 1 `@Override`); 4 honest TODOs for card/penalty follow-up |
+| **Offside full** | Continuous tracking + per-pass check | ✅ DONE (P7#1) — `rules/OffsideService.java` real body (167 l., 3 `@Override`), 3-consecutive-offside retreat rule |
+| **Threat override** | Defensive pressure on carrier (3 types) | ✅ DONE (P7#4) — `engine/ThreatOverrideEngine.java` full TYPE A/B/C implementation; compiles rc=0 |
 | **Fatigue** | Player fatigue | ❌ NOT PRESENT (backlog P8) |
 | **Transition** | Possession-change logic | ❌ NOT PRESENT (backlog P8) |
 | **Stats layer** | Per-team + per-player stats + possession chains | ✅ DONE (P1) — `result/ProposalStatsCollector.java`, exported as `stats.teams`/`stats.players` with `avgPossessionTicks`/`longestPossessionTicks`, rendered in viewer sidebar (chain avg row) |
@@ -413,7 +413,7 @@ Full prioritized task list is in `backlog.md`. Summary by priority:
 | **P4** | Player movement (obstacle go-around, per-tick refresh, carrier speed under pressure) |
 | **P5** | Offside full implementation (tracking, per-pass check, retreat) |
 | **P6** | Pass completion calibration (67% → ~98%) — deferred |
-| **P7** | Rules stubs logic (VAR, Discipline, Offside, ThreatOverride — fill in later) |
+| **P7** | Rules bodies + UI overlays | ✅ P7#1-5 FULLY DONE (OffsideService, VARService, DisciplineService, ThreatOverrideEngine TYPE A/B/C, and Proposal Viewer UI overlays) |
 | **P8** | Fatigue, transition, hard rules→boost, app log, rating, viewer enhancements |
 
 ---

@@ -23,6 +23,7 @@ stubs exist, logic comes later.
 > 6. Svi fajlovi koje koristiš ili menjaš su unutar `proposal` podfoldera. Ako
 >    postoje dva fajla sa istim imenom (ili dva paketa koji liče) — **uvek koristi
 >    onaj iz `proposal`**; drugi je legacy i ne dira se.
+> 7. Ažuriraj posle svakog taska proposal_progress.md i poroposal_current_state.md po principa koji ti pisu na vrhu svakog dokumenta
 
 ---
 
@@ -228,12 +229,12 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
   (row 7 cols 2-5 for HOME / row 1 for AWAY, 35% random gate),
   handleRedCard/handleYellowCard/handleNoCard, free-kick awarding with
   restart manager
-- [ ] P7#4 — ThreatOverrideEngine TYPE A/B/C bodies (proposal/engine/):
+- [x] P7#4 — ThreatOverrideEngine TYPE A/B/C bodies (proposal/engine/):
   TYPE A press (isThreatOverrideActive + press point on carrier),
   TYPE B isolated (final 2.5 rows, no defender within 0.5 cells),
   TYPE C offside retreat (consecutive offside ≥ threshold, retreat row from
   reference `engine/TacticalIntentEngine` TypeC) — port exact logic
-- [ ] P7#5 — UI overlays verify (proposal viewer): VAR freeze overlay +
+- [x] P7#5 — UI overlays verify (proposal viewer): VAR freeze overlay +
   VAR decision banner + offside/gold overlay + card overlay — confirm
   proposal/viewer.js dispatch is byte-identical to reference and wire any
   missing RULES_ events through the overlay dispatch (user: "pogledaj i
