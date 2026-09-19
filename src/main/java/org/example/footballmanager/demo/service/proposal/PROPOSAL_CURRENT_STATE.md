@@ -3,7 +3,7 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-16 (P7 FULLY DONE — P7#1-5: OffsideService, VARService, DisciplineService real rules bodies + ThreatOverrideEngine TYPE A/B/C + Proposal Viewer UI overlays; all compile green).
+> Last update: 2026-09-17 (P6#0 — port `proposal/engine/MatchSimulator.java` (thin full-match driver, compile-green `mvn -o compile` EXIT=0); backlog.md: P-UI — restart taker / akcija bez igrača na lopti + kompletna UI provera vs `/demo/service`; both open).
 
 ---
 

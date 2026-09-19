@@ -171,13 +171,13 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
 ## P5 — Offside full implementation
 
-- [ ] Continuous tracking: `trackOffsidePositions()` every tick for all
+- [x] Continuous tracking: `trackOffsidePositions()` every tick for all
   attackers on both teams (per corePrinciples §16)
-- [ ] Per-pass check: offside at pass/cross/through-ball moment
-- [ ] Second-to-last defender rule (not last — FIFA Rule 11)
-- [ ] Offside retreat: already in ThreatOverrideEngine stub (TYPE C) —
-  implement `applyOffsideRetreat()` logic from demo/service
-- [ ] Counter reset: when player is clearly onside, counter resets
+- [x] Per-pass check: offside at pass/cross/through-ball moment
+- [x] Second-to-last defender rule (not last — FIFA Rule 11)
+- [x] Offside retreat: already implemented in ThreatOverrideEngine (TYPE C) —
+  `applyOffsideRetreat()` logic ported (real body, not stub)
+- [x] Counter reset: when player is clearly onside, counter resets
 
 ---
 
@@ -283,6 +283,34 @@ All four stubs already compile — each body lands behind a compile gate.
 - [x] Stats tab in sidebar (P1c) — DONE (team table + possession bar + player ratings)
 - [ ] Player highlight on click (show stats)
 - [x] Possession % bar — DONE in P1 stats panel
+
+### P-UI — Restart taker / akcija bez igrača na lopti (KORISNIČKA PRIJAVA 2026-09-17)
+
+> "i dalje krece pas ili sut iako nema igraca na lopti iako bi trebalo da udu"
+> — na proposal UI viewer-u restart (ili bilo koja nova akcija) krene PAS/ŠUT
+> iako **NA LOPTU niko nije stigao** — taker hoda ka lopti, ali akcija krene pre
+> nego što stigne, ili lopta stoji a akcija se pokrene bez carrier-a na njoj.
+> Ovo je regresija od P2-UI#1 (koja je fiksirala "ACTION BEZ CARRIER-A NA LOPTI"
+> u engine-u) — **na UI-u se i dalje dešava**.
+
+- [ ] Reprodukovati na proposal viewer-u sa determinističkim seed-om
+- [ ] Taker restart-a (walk to ball) mora da stigne NA loptu pre prve odluke —
+      PAS/ŠUT se ne sme desiti dok taker nije na lopti (isto pravilo kao i
+      `demo/service` engine §"ACTION BEZ CARRIER-A NA LOPTI")
+- [ ] Proveriti da restart hold / walk ne "pusti" akciju ranije (restartWalk
+      vs actionDelay ticking — taker može da stigne tek posle N tick-ova)
+
+### P-UI — Kompletna UI provera vs demo/service (KORISNIČKA PRIJAVA 2026-09-17)
+
+> "ui generalno ceo mora da se proveri, da se uporedi sa /demo/service jer je
+> tamo dosta toga radilo ok"
+
+- [ ] Uporediti proposal viewer sa referentom `/demo/service` viewer-om:
+      restart pozicioniranje (korner / gol-aut / aut / penali / free kick),
+      taker walk, kickoff, half-time, VAR freeze, celebration hold, subs,
+      cards, OOB restart posle SHOT_MISSED / SHOT_BLOCKED / corner
+- [ ] Označiti svaki nesklad kao zaseban bug-rod (ne paliti sve u jedan)
+- [ ] Za svaki nesklad: portovati ponašanje iz `/demo/service` (ne novu maštu)
 
 ---
 
