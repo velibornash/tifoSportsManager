@@ -1168,3 +1168,61 @@ u oba pokretanja: **0 run-ova** → nema zamrzavanja ni "neprirodnog stajanja".
   ne mehanike. CLEAR 32/226 odluka je isto posledica zbijene šarže.
 
 ---
+
+## Session 6.13 — ThreatOverrideEngine WIRED + offside retreat + press→duel
+
+Context: `ThreatOverrideEngine` TYPE A/B/C bodies existed (P7#4) but were DEAD
+CODE — orchestrator never instantiated/called it, and
+`OffsideService.trackOffsidePositions` (the consecutive-offside counter) was
+never invoked either. Result: no offside retreat, no press, no carrier-press
+duels. User: "vrati offside retreat" + "threat override da se pridje igracu sa
+loptom sa idejom da se udje u duel".
+
+### Wiring (MatchOrchestrator)
+- **Step 1b** — `offsideService.trackOffsidePositions(state)` every tick
+  (increments `consecutiveOffside` for attackers forward of the ball with <2
+  opponents goal-side; onside tick resets). Without this the TYPE C counter was
+  permanently 0.
+- **Step 7b** — `threatOverrideEngine.evaluate(state)` between
+  `refreshTargets` and `moveAllTowardTargets` so the override rewrites the
+  target the Movement Engine follows THIS tick.
+
+### Press must end in a duel
+`MIN_PLAYER_DISTANCE = 0.35` (wall) parks a presser ~0.35-0.4 cells from the
+carrier — outside the 0.15 DRIBBLE radius, so a pressed carrier was never
+tackled. `DuelEngine`: new `PRESS_DRIB_DUEL_RADIUS = 0.50` — when
+`defender.isThreatOverrideActive()`, the DRIBBLE duel fires at 0.50 (identical
+to the demo/service 2026-09-12 fix).
+
+### TYPE A alignment (no swarm)
+- `pressCarrier` now requires `isPressingEligible(role)` (defenders + MID/AM/WNG)
+  and `isClosestEligiblePresser(carrier, defender)` — exactly ONE defender
+  claims the carrier; others hold shape. Press point = the carrier's EXACT
+  position (wall parks inside the 0.50 press-duel radius).
+- TYPE C `isClearlyOnside` ported to the demo/service rule: retreat ends only
+  when ≥2 opponents (incl. GK, excl. locked/sentOff/injured) are goal-side.
+  Threshold stays `OFFSIDE_RETREAT_THRESHOLD = 3` (matches demo/service/user:
+  "3 uzastopne offside pozicije").
+
+### Freeze regression caught (DEAD-WATCH)
+First full run after wiring froze: `DEAD-WATCH dead=1443 restartTaker=A6
+d=1.40` — refreshTargets SKIPS the taker (keeps walk target), but the newly
+wired threat override re-routed him to a press target → taker never reached the
+ball. Fix: `evaluate()` skips `state.getRestartTaker()`. After fix: DEAD-WATCH 0.
+
+### Verify (full 3600-tick match)
+`match.json` runs clean, exit 0, no DEAD-WATCH:
+- **TYPE_A 828** carrier presses → **427 DUEL DRIBBLE + 18 DUEL SHOT** (press→duel
+  adjacency on the same timestamp confirmed) — the user requirement works.
+- **TYPE_C 1182** offside retreats — camped strikers at 7.5 pulled back to row
+  2.5-5.0 toward own goal; counter resets once ≥2 opponents goal-side.
+- **TYPE_B 4652** — high raw count is LOG repetition (demo/service throttles by
+  signature; actual behavior is one closest defender tracking the isolated
+  attacker, recomputed each tick). Not a distortion.
+- Score 3:0, 40 shots (18 on target), 273/334 passes, 1648 decisions.
+- `mvn -o -q compile` clean.
+
+Fouls/cards still 0 (duel→foul chain not wired into DuelService) — not in scope;
+backlog item.
+
+---

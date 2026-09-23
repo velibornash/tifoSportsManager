@@ -52,6 +52,7 @@ public class MatchOrchestrator {
     private final DuelService duelService;
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
+    private final ThreatOverrideEngine threatOverrideEngine;
 
     private final List<String> eventLog = new ArrayList<>();
     private final ActionLogService actionLog;
@@ -81,6 +82,7 @@ public class MatchOrchestrator {
         this.restartManager = new RestartManager(tactics);
         this.duelService = new DuelService(state, recorder, stats, eventLog);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
+        this.threatOverrideEngine = new ThreatOverrideEngine();
 
         // Wire engine reference into state for ActionExecutor
         state.setBallEngine(ballEngine);
@@ -111,6 +113,13 @@ public class MatchOrchestrator {
         // === 1. ADVANCE CLOCK ===
         boolean running = clockService.tick(state);
         if (!running) return;
+
+        // === 1b. OFFSIDE POSITION TRACKING (every tick) ===
+        // Accumulates consecutiveOffside per attacker (forward of the ball with
+        // < 2 opponents goal-side). ThreatOverrideEngine TYPE C reads the counter
+        // and pulls a chronic offender back toward his own goal (retreat). Being
+        // onside on any tick resets the streak — this is what feeds the retreat.
+        offsideService.trackOffsidePositions(state);
 
         // A restart is consumed the moment ANYONE takes the ball (the restart
         // ball physically sits at its spot; whoever reaches it first plays it).
@@ -239,6 +248,15 @@ public class MatchOrchestrator {
             tacticsSourceLogged = true;
         }
         tacticalEngine.refreshTargets(state);
+
+        // === 7b. THREAT OVERRIDE ENGINE ===
+        // Runs AFTER tactical targets are computed and BEFORE movement, so an
+        // override rewrites the target the Movement Engine follows THIS tick.
+        // TYPE A: nearest eligible defender approaches the ball carrier all the
+        // way to duel range (the press-duel radius then fires the tackle).
+        // TYPE B: defender presses an isolated opponent in the defensive final
+        // quarter. TYPE C: chronic-offside attacker retreats toward own goal.
+        threatOverrideEngine.evaluate(state);
 
         // === 8. MOVEMENT ENGINE ===
         // Capture on-ball state BEFORE movement: the glue in 8b is a

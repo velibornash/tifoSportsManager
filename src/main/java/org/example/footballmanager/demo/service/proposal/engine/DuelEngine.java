@@ -17,6 +17,7 @@ public class DuelEngine {
 
     // Duel radii (1 cell = 14m x 10m)
     public static final double DRIBBLE_DUEL_RADIUS = 0.15; // ~2m - very tight
+    public static final double PRESS_DRIB_DUEL_RADIUS = 0.50; // ~7m - TYPE A presser engages here
     public static final double RECEIVE_PASS_RADIUS = 0.2;
     public static final double AERIAL_DUEL_RADIUS = 0.5;
     public static final double SHOT_BLOCK_RADIUS = 0.3;
@@ -36,8 +37,15 @@ public class DuelEngine {
         double distance = SimUtils.distance(
             attacker.getPosition(), defender.getPosition());
 
-        // Dribble duel - tightest radius
-        if (distance <= DRIBBLE_DUEL_RADIUS) {
+        // Dribble duel - tightest radius, EXCEPT for a TYPE A presser who chased the
+        // carrier all the way to his press point. The Movement Engine wall
+        // (MIN_PLAYER_DISTANCE = 0.35) parks the presser ~0.35-0.4 cells apart,
+        // which is outside the 0.15 tight radius — without the wider press radius
+        // a pressed carrier would never be tackled (the press "ends" in stares).
+        double dribbleRadius = defender.isThreatOverrideActive()
+                ? PRESS_DRIB_DUEL_RADIUS
+                : DRIBBLE_DUEL_RADIUS;
+        if (distance <= dribbleRadius) {
             if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS)) {
                 return DuelType.DRIBBLE;
             }

@@ -809,7 +809,7 @@ The 4 sport-specific `.md` files are written as instructions for AI agents — t
 - `cleanSheet/` and `old/` packages are legacy — do not add new features there
 - `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
 - **demo/service/** — self-contained service engine; source of truth is `corePrinciples.md`; only modify files under `demo/service/`; test via `MatchBatchRunner` and `MatchChainTrace`
-- **demo/service/proposal/** — self-contained clean-engine variant; `backlog.md` tracks all tasks; placeholder stubs exist (VAR, Discipline, Offside, ThreatOverride) with no logic; `ProposalBatchDiag` for verification
+- **demo/service/proposal/** — self-contained clean-engine variant; `backlog.md` tracks all tasks; VAR/Discipline/Offside/ThreatOverride all have real wired bodies (offside retreat, press→duel, shot on-target calibrated, carry = 3-cell run); `ProposalBatchDiag` + `ProposalPhysicsDiagnostic` for verification
 - **demo/service/ui/** — web-based match viewer; pitch rendering in `PitchRenderer`, playback in `MatchViewer`
 - **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
 - **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events

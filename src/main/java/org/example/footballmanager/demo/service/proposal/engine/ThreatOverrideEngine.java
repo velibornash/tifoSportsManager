@@ -32,7 +32,11 @@ import java.util.Comparator;
  * <p><b>Critical rule:</b> overrides change the TARGET, never the speed.
  * All players are pace-capped at all times — no sprint boosts for pressing.</p>
  *
- * <p>Placeholder — logic to be implemented per backlog (§8.5).</p>
+ * <p>Wired into MatchOrchestrator step 7b (after tactical targets, before
+ * movement). TYPE A pressers are closest-eligible-only and pressing-eligible-role
+ * only; the press park point lands inside PRESS_DRIB_DUEL_RADIUS (0.50), so a
+ * press properly ends in a DRIBBLE duel. TYPE C reads consecutiveOffsideCount
+ * accumulated by OffsideService.trackOffsidePositions every tick.</p>
  */
 public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngine {
 
@@ -66,6 +70,10 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
             if (player == carrier) continue;
             if (player.isSentOff() || player.isInjured() || player.isLocked()) continue;
             if ("GK".equals(player.getRole())) continue;
+            // The designated restart taker keeps his walk-to-ball target — a
+            // threat override here would re-route him away from the restart spot
+            // and freeze the match on a dead ball (DEAD-WATCH regression).
+            if (player == state.getRestartTaker()) continue;
 
             Position currentTarget = player.getTarget();
             if (currentTarget == null) currentTarget = player.getPosition();
@@ -127,13 +135,20 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
         Player carrier = state.getCarrier();
         if (carrier == null) return null;
         if (defender.getTeam().equals(carrier.getTeam())) return null; // don't press own carrier
+        // Only defenders AND midfielders contest the carrier — a striker marking
+        // the ball looks absurd and every outfield player would swarm the ball.
+        if (!isPressingEligible(defender.getRole())) return null;
 
         double dist = SimUtils.distance(defender.getPosition(), carrier.getPosition());
         if (dist > RANGE_A) return null;
 
+        // "One defender per threat" — only the closest eligible presser claims
+        // the carrier; everyone else holds their tactical shape (no swarm).
+        if (!isClosestEligiblePresser(carrier, defender, state)) return null;
+
         // Return the carrier's position — MovementEngine's wall collision
         // (MIN_PLAYER_DISTANCE = 0.35) parks the presser ~0.35-0.4 cells apart,
-        // which is inside the presser duel radius so the tackle fires.
+        // which is inside the presser duel radius (0.50) so the tackle fires.
         return new Position(carrier.getPosition().getRow(), carrier.getPosition().getColumn());
     }
 
@@ -222,13 +237,21 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
 
     private boolean isClearlyOnside(Player attacker, MatchState state,
                                           String defendingTeam, boolean home) {
-        // Attacker is onside if at least one outfield defender is goal-side
-        return state.getPlayers().stream()
-                .filter(p -> defendingTeam.equals(p.getTeam()))
-                .filter(p -> !p.isSentOff() && !p.isInjured() && !"GK".equals(p.getRole()))
-                .anyMatch(p -> home
-                        ? p.getPosition().getRow() <= attacker.getPosition().getRow()
-                        : p.getPosition().getRow() >= attacker.getPosition().getRow());
+        // FIFA offside line: the attacker is onside when at least TWO opponents
+        // (including the goalkeeper) are level with or closer to the goal line
+        // he is attacking. The retreat ends only then (mirrors the demo/service
+        // user rule), then the counter resets and normal tactics resume.
+        double playerRow = attacker.getPosition().getRow();
+        int opponentsGoalSide = 0;
+        for (Player p : state.getPlayers()) {
+            if (!defendingTeam.equals(p.getTeam())) continue;
+            if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
+            double defRow = p.getPosition().getRow();
+            if (home ? defRow > playerRow : defRow < playerRow) {
+                opponentsGoalSide++;
+            }
+        }
+        return opponentsGoalSide >= 2;
     }
 
     /** Return true only for the closest eligible presser for this threat. */
