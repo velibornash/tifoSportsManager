@@ -1226,3 +1226,62 @@ Fouls/cards still 0 (duel→foul chain not wired into DuelService) — not in sc
 backlog item.
 
 ---
+
+---
+
+## Session 7.1 — Compact console log + live side panel
+
+User (IntelliJ run-console): "ne vidim pocetak meca u app log u run konzoli";
+UI side log should "load actions AS THEY HAPPEN on the field, not all at once".
+
+### Compact console log (ActionLogService)
+A full match produced ~28k tagged lines on stdout — TAC/THR/BAL per-tick
+noise was ~80% of it and scrolled the match start out of IntelliJ's buffer.
+
+- **Default = compact**: stdout prints ONLY the on-pitch match story via
+  `CONSOLE_NOTABLE` (GOAL, SHOT_SAVED/MISSED/MISS, PENALTY_*, DUL, OFF, RST,
+  FOUL, cards, KICKOFF, POSSESSION_CHANGE, VAR_*), plus ORC lines that carry
+  the `***` epilogues (GOAL / SHOT_SAVED / SHOT_MISSED). A full 3600-tick
+  match is now ~805 lines (was ~28k): DUL 448, RST 185, OFF 124, ORC 27
+  (25 SHOT_SAVED + 2 GOAL — file parity confirmed), LCH 1. No DEC/EXE/TAC/
+  THR/BAL on the console in compact mode.
+- **Nothing is lost**: the FULL stream always goes to
+  `target/proposal-app.log` (`-Dproposal.log.file=<path>` overrides) and into
+  the shared `eventLog` (match.json `logs`), so QA greps (`-Dproposal.log.console=full`)
+  and the improvement tuning work are unaffected.
+- **Reasoning anchored in a number**: file log for the same match = 27,512
+  lines (TAC ~16k + THR ~6.7k + BAL ~1.7k dominated); compact console = 7,688
+  with the earlier noise-deny-list, still too fat for the IntelliJ buffer —
+  that's why the allowlist (story events only) replaced the deny-list.
+- `BallResultHandler` + `DuelService` printed directly via `System.out.println`
+  (BAL/DUL lines bypassed the filter). Both now log through
+  `state.getActionLogger()`; their private eventLog fields/constructor params
+  (and List imports) were removed; `MatchOrchestrator` constructor calls
+  updated accordingly.
+- Full mode also re-verified: 720-tick diagnostic with `proposal.log.console=full`
+  prints TAC/THR/BAL again (file parity), compact default prints only the story.
+
+### Live side panel (viewer.js proposal)
+- `_buildTimeline()` now renders ONLY events up to `this.currentTick` (clears
+  DOM, resets `_pendingTimelineEvents`, advances `_displayedEventIdx`),
+  used at load (kickoff only, first event tick=1) and on seek.
+- `_makeTimelineItem(ev)` extracted — single shared row builder used by
+  `_buildTimeline()` and `_flushTimelineEvents()`.
+- `_processEventsForTick` enqueues timeline-worthy events
+  (`TIMELINE_EVENTS.has(ev.type)`) into `_pendingTimelineEvents`; flushed once
+  per RAF in `_renderFrame` (batched DocumentFragment — no per-event layout
+  thrash). The old PRE-POPULATED timeline comments removed.
+- **DOM cap guard added to _buildTimeline too**: seeks / load now trim to
+  `_MAX_TIMELINE_EVENTS` (800) just like playback streaming — a seek-to-end
+  previously risked building the full 2.8k-row timeline (Firefox freeze).
+
+### Verify
+- `mvn -o -q compile` clean (exit 0); `node --check viewer.js` OK.
+- `MatchSimulationLauncher 3600`: exit 0, compact console 805 lines, both
+  goals logged (`GOAL HOME by H11 - score 1:0 / 2:0`), no DEAD-WATCH.
+- Viewer server (port 8766) POST `/proposal/api/generate`: "✅ Generated match:
+  5-0 (events=28853)"; server console logged 0 noise lines; regenerated
+  match.json = 2883 recorder events + 3599 snapshots.
+- match.json stays uncommitted (user rule).
+
+---

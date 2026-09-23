@@ -8,8 +8,6 @@ import org.example.footballmanager.demo.service.proposal.recording.MatchRecorder
 import org.example.footballmanager.demo.service.proposal.result.ProposalStatsCollector;
 import org.example.footballmanager.demo.service.proposal.restarts.RestartManager;
 
-import java.util.List;
-
 /**
  * Handles a single ball-physics step result: converts low-level physics
  * outcomes (RECEIVE/INTERCEPT/SAVE/BLOCK/DEFLECT/POST/GOAL/OOB/LOOSE/...)
@@ -22,16 +20,13 @@ public class BallResultHandler {
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
     private final RestartManager restartManager;
-    private final List<String> eventLog;
 
     public BallResultHandler(MatchState state, MatchRecorder recorder,
-                             ProposalStatsCollector stats, RestartManager restartManager,
-                             List<String> eventLog) {
+                             ProposalStatsCollector stats, RestartManager restartManager) {
         this.state = state;
         this.recorder = recorder;
         this.stats = stats;
         this.restartManager = restartManager;
-        this.eventLog = eventLog;
     }
 
     public void handle(BallStepResult res) {
@@ -207,9 +202,9 @@ public class BallResultHandler {
     }
 
     private void log(String tag, String msg) {
-        String line = "[" + minute() + "|" + tag + "] " + msg;
-        eventLog.add(line);
-        System.out.println(line);
+        // Route through the shared action logger so the compact-console filter
+        // and the full-log file (target/proposal-app.log) apply uniformly.
+        state.getActionLogger().log(tag, msg);
     }
 
     private String p(Position pos) {

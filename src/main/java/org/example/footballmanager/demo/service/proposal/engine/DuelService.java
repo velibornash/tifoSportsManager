@@ -6,8 +6,6 @@ import org.example.footballmanager.demo.service.proposal.model.Position;
 import org.example.footballmanager.demo.service.proposal.recording.MatchRecorder;
 import org.example.footballmanager.demo.service.proposal.result.ProposalStatsCollector;
 
-import java.util.List;
-
 /**
  * Detects and resolves a deterministic single-opponent duel for the current
  * ball carrier. Every non-carrier opponent of the opposite team is checked;
@@ -19,15 +17,13 @@ public class DuelService {
     private final MatchState state;
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
-    private final List<String> eventLog;
     private final DuelEngine duelEngine = new DuelEngine();
 
     public DuelService(MatchState state, MatchRecorder recorder,
-                       ProposalStatsCollector stats, List<String> eventLog) {
+                       ProposalStatsCollector stats) {
         this.state = state;
         this.recorder = recorder;
         this.stats = stats;
-        this.eventLog = eventLog;
     }
 
     public void detectAndResolveDuels() {
@@ -54,9 +50,9 @@ public class DuelService {
     }
 
     private void log(String tag, String msg) {
-        String line = "[" + minute() + "|" + tag + "] " + msg;
-        eventLog.add(line);
-        System.out.println(line);
+        // Route through the shared action logger so the compact-console filter
+        // and the full-log file (target/proposal-app.log) apply uniformly.
+        state.getActionLogger().log(tag, msg);
     }
 
     private String p(Position pos) {

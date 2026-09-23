@@ -80,7 +80,7 @@ public class MatchOrchestrator {
         this.varService = new VARService(state, new Random());
         this.offsideService = new OffsideService(state, varService);
         this.restartManager = new RestartManager(tactics);
-        this.duelService = new DuelService(state, recorder, stats, eventLog);
+        this.duelService = new DuelService(state, recorder, stats);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
         this.threatOverrideEngine = new ThreatOverrideEngine();
 
@@ -91,8 +91,7 @@ public class MatchOrchestrator {
         // spec), not just the change-gated orchestrator DEC/EXE summaries.
         state.setActionLogger(actionLog);
         stats.registerPlayers(state.getPlayers());
-        ballResultHandler = new BallResultHandler(
-                state, recorder, stats, restartManager, eventLog);
+        ballResultHandler = new BallResultHandler(state, recorder, stats, restartManager);
     }
 
     public List<String> getEventLog() { return eventLog; }

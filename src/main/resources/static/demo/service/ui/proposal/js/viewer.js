@@ -954,10 +954,11 @@ class MatchViewer {
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
     this._updateScoreboard();
-    // The events log runs FROM MATCH START — the full timeline is populated
-    // immediately at load (not empty until the playhead reaches each event).
-    // The user scrolls freely through the whole match log; nothing is appended
-    // during playback. See _buildTimeline().
+    // The events log STREAMS AS PLAYBACK REACHES each event (2026-09-23) — the
+    // timeline is intentionally NOT pre-populated from match start. At load it
+    // shows only the current tick's events (kickoff), then _processEventsForTick
+    // appends rows batched per RAF frame. Seeking rebuilds the log up to the
+    // seeked tick. See _buildTimeline().
     this._updateSeekRange();
     this._showEmpty(false);
     this._buildTimeline();
@@ -1170,10 +1171,11 @@ class MatchViewer {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
       if (ev.tick >= fromTick) {
-        // The timeline is PRE-POPULATED from match start (see _buildTimeline),
-        // so playback never appends rows here — the user scrolls the full log
-        // freely and there is no per-tick DOM mutation during playback. Only
-        // overlays/flash/animations are driven from the event stream below.
+        // The timeline STREAMS during playback (2026-09-23) — each timeline-worthy
+        // event is queued and flushed to the DOM in a single batched mutation per
+        // RAF frame (_flushTimelineEvents), so the side log fills exactly as the
+        // actions happen on the pitch. Overlays/flash/animations are driven from
+        // the same event stream below.
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
           this._flashStart = performance.now();
@@ -1318,9 +1320,13 @@ class MatchViewer {
           this._flashStart = performance.now();
         }
         // Live ticker (landscape phones): keep showing the latest notable event
-        // now that playback no longer appends timeline rows.
         if (TIMELINE_EVENTS.has(ev.type) && !MINOR_EVENTS.has(ev.type)) {
           this._updateLiveTicker(ev, matchMinute(ev.tick), EV_ICON[ev.type] || '', formatEventDesc(ev));
+        }
+        // Stream the event into the side panel (batched per RAF in _renderFrame).
+        // Only timeline-worthy types; the rest stays in the app log / match.json.
+        if (TIMELINE_EVENTS.has(ev.type)) {
+          this._pendingTimelineEvents.push(ev);
         }
       }
       this._displayedEventIdx++;
@@ -1468,20 +1474,7 @@ class MatchViewer {
     }
     const fragment = document.createDocumentFragment();
     for (const ev of this._pendingTimelineEvents) {
-      const li = document.createElement('li');
-      const cls = classifyEvent(ev);
-      const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
-      const minute = matchMinute(ev.tick);
-      const desc = formatEventDesc(ev);
-      const isMinor = MINOR_EVENTS.has(ev.type);
-
-      const descHtml = desc
-        .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
-        .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
-
-      li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
-      li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
-      fragment.appendChild(li);
+      fragment.appendChild(this._makeTimelineItem(ev));
     }
     // One single DOM mutation instead of N
     ul.appendChild(fragment);
@@ -1583,32 +1576,48 @@ class MatchViewer {
     const ul = document.getElementById('timeline');
     if (!ul) return;
 
-    // Populate the FULL events log once, from match start. The stats panel was
-    // removed (2026-09-23) so the sidebar now dedicates all its space to the
-    // event history; every timeline-worthy event appears immediately and the
-    // user scrolls freely. Playback appends nothing (see _processEventsForTick).
-    if (this._timelineBuilt) return;
-    this._timelineBuilt = true;
-
+    // Rebuild the log up to the CURRENT tick (2026-09-23 streaming side log):
+    // at load this shows just the kickoff/start events; on seek it shows
+    // everything up to the seeked position. Events beyond the playhead are
+    // streamed in during playback by _processEventsForTick -> _flushTimelineEvents.
     ul.innerHTML = '';
+    this._pendingTimelineEvents.length = 0;
+    // Advance the event cursor past everything already shown, so
+    // _processEventsForTick does not re-stream (duplicate) rows it rebuilt.
+    this._displayedEventIdx = 0;
+    while (this._displayedEventIdx < this.events.length
+           && this.events[this._displayedEventIdx].tick <= this.currentTick) {
+      this._displayedEventIdx++;
+    }
+    const upto = this._displayedEventIdx;
     const fragment = document.createDocumentFragment();
-    for (const ev of this.events) {
+    for (let i = 0; i < upto; i++) {
+      const ev = this.events[i];
       if (!TIMELINE_EVENTS.has(ev.type)) continue;
-      const li = document.createElement('li');
-      const cls = classifyEvent(ev);
-      const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
-      const minute = matchMinute(ev.tick);
-      const desc = formatEventDesc(ev);
-      const isMinor = MINOR_EVENTS.has(ev.type);
-      const descHtml = desc
-        .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
-        .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
-      li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
-      li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
-      fragment.appendChild(li);
+      fragment.appendChild(this._makeTimelineItem(ev));
     }
     ul.appendChild(fragment);
+    // Trim to the same cap as playback streaming so a seek-to-end never grows
+    // the DOM unbounded (Firefox freeze historically appeared past ~4000 nodes).
+    while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
+      ul.removeChild(ul.firstChild);
+    }
     ul.scrollTop = ul.scrollHeight;
+  }
+
+  _makeTimelineItem(ev) {
+    const li = document.createElement('li');
+    const cls = classifyEvent(ev);
+    const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
+    const minute = matchMinute(ev.tick);
+    const desc = formatEventDesc(ev);
+    const isMinor = MINOR_EVENTS.has(ev.type);
+    const descHtml = desc
+      .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
+      .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
+    li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
+    li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
+    return li;
   }
 
   _showEmpty(show = true) {

@@ -3,14 +3,15 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-23 (session 6.13 — ThreatOverrideEngine wired into the tick
-> (step 7b) + trackOffsidePositions now runs every tick (step 1b): offside retreat
-> (TYPE C) and carrier press→duel (TYPE A → DRIBBLE duel at PRESS_DRIB_DUEL_RADIUS
-> 0.50) both work; fixed the restart-taker freeze (DEAD-WATCH) the wiring exposed.
-> Plus session 6.12 · 537fef2: offside was permanently disabled (setPieceType
-> never cleared), FIFA Law 11 preconditions added to the margin, shot on-target
-> calibration (0%→52% on-frame), carry target widened 0.5→3 cells, new
-> ProposalPhysicsDiagnostic).
+> Last update: 2026-09-23 (session 7.1 — compact console log: stdout shows only
+> the on-pitch story via CONSOLE_NOTABLE ~805 lines/match so the IntelliJ
+> run-console never cuts the match start; full stream always mirrored to
+> target/proposal-app.log + match.json logs; BallResultHandler/DuelService now
+> log through ActionLogService. UI side log streams live: _buildTimeline up-to-tick
+> on load/seek, events enqueued per tick and flushed per RAF in the viewer).
+> Commit 41fc866 (session 6.13): ThreatOverrideEngine wired (offside retreat +
+> carrier press→duel at PRESS_DRIB_DUEL_RADIUS 0.50), trackOffsidePositions runs
+> every tick, restart-taker freeze fixed. Plus session 6.12 · 537fef2.
 
 ---
 
