@@ -1100,3 +1100,71 @@ Event gaps >250 ticks: 0. Exports: seed 42 → 2-0 (poss 55/45), seed 999 → 4-
 **Compile:** `mvn -o -q compile` → clean.
 
 ---
+## Session 6.12 · 537fef2 — dijagnostika + 3 kritična bug-fixa (offside, šut/AUT, nošenje lopte)
+
+**User prvobitno tražio "dizajn test"** koji sa svim igračima na skill 14, 2–3
+minuta meča, traga: pozicije/ciljeve svakog igrača, decision-engine izbore,
+izvršenje pasa i šuteva, offside provere, brzine lopte i igrača. Rezultat je
+`ProposalPhysicsDiagnostic.java` (dodaje se kao stalna dijagnostika), a on je
+odmah otkrio **3 prava root-causa**:
+
+### Root cause 1 — OFFSIDE JE BIO TRAJNO ISKLJUČEN
+`RestartManager.setSetPieceType("KICK_OFF"/…)` se postavlja a NIGDE ne čisti
+(pre nije postojao `clearSetPieceType()`). Pošto `OffsideService.checkOffside`
+u prvom redu ranog izlaska ima `if (isKickoffPending || setPieceType != null)
+return onside`, posle prvog kickoffa otkačena je **svaka** provera do kraja
+meča. Dijagnostika: 20 pasa u 3 min, **0 OFF-TRACE linija**, 0 OFF događaja.
+To je tačno "offside detekcija NE RADI" iz user prijave.
+
+- `MatchState`: nov `clearSetPieceType()`.
+- `MatchOrchestrator` top-of-tick restart-blok: čim postoji `carrier != null`
+  (restart je "pojeden"), `clearSetPieceType()` — loptu vraćamo u igru, tako da
+  set-piece guard štiti SAMO dok je restart pending (throw-in/corner/gol-aut po
+  FIFA ne poznaju offside; FK i dalje prolaze kroz check jer samo pending-faza).
+
+### Root cause 1b — margin ignorisao `passOrigin` (FIFA predu-slovi)
+`calculateOffsideMargin` je poredio samo receiver row sa 2. po defanzivcu,
+bez: (a) "primatelj je u protivničkoj polovini" i (b) "primatelj je ISPED lopte"
+u momentu dodavanja. Dodata oba predu-slova → backward/nivelisan pas i primatelj
+u svojoj polovini su uvek ONSIDE (return -5.0, bez whistle i bez VAR hold-a).
+
+**Posle:** 69 offside provera u 9 min → 36 CLEAR-OFF (zvižduk + IFK), 7
+MARG-OFF (VAR hold), 26 ONSIDE. Bands rade kako su projektovani.
+
+### Root cause 2 — šut "iz izgledne pozicije u AUT" (on-target kalibracija)
+`ExecutionQuality.evaluateShot`: `onTargetProb = (0.03 + skill*0.006)` … cap
+**0.40**. Na skill 14 (0.114 base) sa 1.7–2.8 ćelija → ~0.07–0.08 on-target,
+čak i sa 0.5 ćelije ~0.14. Dijagnostika: 3 šuta, **0/3 on-target**, jedan sa
+1.73 ćelije (3.4 m). Upravo "spic iz izgledne pozicije … AUT".
+
+**Nova kalibracija:** `skillBase = 0.12 + skill*0.028` (14 → 0.512) ×
+`distFactor = max(0.25, 1 − dist/9)` + `+0.20 ako dist < 2.0`, cap **0.85**.
+Skill 14: 1.0 ćel = ~0.66, 1.8 ćel = ~0.61, 3 ćel = ~0.34, 7 ćel = ~0.13.
+**Posle:** 11/21 on-target (52%) u 9 min; 9 min → 2 GOAL, 10 SAVED, 1 POST,
+8 MISSED (loši uglovi/izdaleka).
+
+### Root cause 3 — "igrač neprirodno stane u posedu lopte"
+`ActionExecutor.executeCarry` target samo **0.5 ćelije** ispred + per-tick
+re-decision → MovementEngine stigne mikro-cilj za ~1 tik i carrier šeta
+(stop/start). Carrier avg 0.245 Ć/T vs non-carrier 0.476 (skoro duplo manje).
+
+**Fix (preslikano na /demo/service):** carry cilj **3 ćelije** ispred u jednom
+potezu (+ blagi unutrašnji drift kolone ka centru 3.0–5.0 → 4.0, clamp 1.0–7.0;
+row clamp HOME [1.0,7.5] / AWAY [1.5,8.0]). `CleanDecisionEngine` byline-trap
+mirror usklađen (3.0 a ne 0.5) da odluka i izvršenje računaju isto.
+**Posle:** carrier avg 0.245 → 0.284; stand-still detector (≥3 tika u posedu)
+u oba pokretanja: **0 run-ova** → nema zamrzavanja ni "neprirodnog stajanja".
+
+### Verifikacija
+- `mvn -o -q compile` → clean.
+- `ProposalPhysicsDiagnostic 120` / `360`: exit 0; pasovi 37 → 28 RECEIVE,
+  4 DEFLECT, 4 INTERCEPT, 1 GK_CATCH, devijacije 0.2–1.8 ćel.
+- `MatchSimulationLauncher 480` (12 min): HOME 2:0, 21 šut (12 on-target),
+  34/47 pasa; bez izuzetaka, bez tihih prozora.
+- Napomena: najveći per-tick "max move" (~2.8) je posledica kickoff reset
+  teleporta posle gola (igrači sa 7.5 na 4.5) — nije in-play glide.
+- Napomena (tuning, van ovog sessiona): strikers kampuju na 7.5 (pred samim
+  gol-manom) → mnogo šuteva iz <1.5 ćel; to je pitanje taktičke šarže,
+  ne mehanike. CLEAR 32/226 odluka je isto posledica zbijene šarže.
+
+---

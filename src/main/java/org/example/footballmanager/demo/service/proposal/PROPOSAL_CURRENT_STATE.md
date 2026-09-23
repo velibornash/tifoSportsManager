@@ -3,7 +3,10 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-23 (rigid-ball physics: OOB freeze at crossing point, strike-hold, in-bounds player clamp, DEFLECT contact placement, central OOB-dead guard, restart-clear nudge + viewer: stats panel removed, events log runs from match start).
+> Last update: 2026-09-23 (session 6.12 · 537fef2 — offside was permanently disabled
+> (setPieceType never cleared), FIFA Law 11 preconditions added to the margin,
+> shot on-target calibration (0%→52% on-frame), carry dribble target widened
+> 0.5→3 cells (no more in-possession stop-start), new ProposalPhysicsDiagnostic).
 
 ---
 
