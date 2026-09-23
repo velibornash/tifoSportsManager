@@ -127,6 +127,10 @@ public class MatchOrchestrator {
             }
             state.setRestartTaker(null);
             restartTakerAge = 0;
+            // The restart has been consumed — the ball is back in play, so the
+            // set-piece guard in OffsideService must lift (it skips offside checks
+            // only while a set piece is PENDING, not for the rest of the match).
+            state.clearSetPieceType();
         }
 
         // === 2. UNLOCK DUEL LOSERS ===

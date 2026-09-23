@@ -111,13 +111,15 @@ public class ExecutionQuality {
 
         // On-target probability based on skill, distance, pressure.
         // Striker skill drives finishing; distance cuts it; pressure reduces it.
-        // A point-blank chance is still not a guaranteed on-frame shot — a
-        // defender/GK covering, angle, and composure all intervene.
-        double onTargetProb = 0.03 + skill * 0.006;              // skill 1..20 -> 0.04..0.15 base
-        onTargetProb *= Math.max(0.20, 1.0 - dist / 7.0);        // far = much worse
+        // Calibrated so a good finisher at close range puts the ball on frame the
+        // majority of the time (real football), while long-range/stressed shots
+        // degrade heavily. Even a sitter is never a guaranteed on-frame shot.
+        double skillBase = 0.12 + skill * 0.028;               // skill 1..20 -> 0.15..0.68
+        double distFactor = Math.max(0.25, 1.0 - dist / 9.0);  // close = 1.0, 9+ cells = 0.25
+        double onTargetProb = skillBase * distFactor;
+        if (dist < 2.0) onTargetProb += 0.20;                  // close-range lift (inside ~4 m)
         onTargetProb *= (1.0 - pressure / 200.0);
-        if (dist < 1.5) onTargetProb += 0.05;                    // close-range lift (cap below)
-        onTargetProb = Math.min(onTargetProb, 0.40);
+        onTargetProb = Math.min(onTargetProb, 0.85);
 
         boolean onTarget = onTargetProb > RNG.nextDouble();
 

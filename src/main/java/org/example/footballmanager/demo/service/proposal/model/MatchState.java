@@ -261,6 +261,7 @@ public class MatchState {
 
     public String getSetPieceType() { return setPieceType; }
     public void setSetPieceType(String setPieceType) { this.setPieceType = setPieceType; }
+    public void clearSetPieceType() { this.setPieceType = null; }
 
     public String getRestartTeam() { return restartTeam; }
     public void setRestartTeam(String restartTeam) { this.restartTeam = restartTeam; }

@@ -23,6 +23,15 @@ import java.util.List;
  */
 public class OffsideService implements EngineInterfaces.OffsideService {
 
+    /**
+     * Diagnostic flag (ProposalPhysicsDiagnostic): print a trace for every PASS
+     * offside check — receiver position, second-to-last defender's distance from
+     * the goal line, and whether the receiver was actually forward of the ball /
+     * in the opponent's half (FIFA Law 11 preconditions). Behavior is unchanged;
+     * this is stdout-only diagnostics.
+     */
+    public static boolean TRACE = false;
+
     private final MatchState state;
     private final VARService varService;
 
@@ -72,6 +81,40 @@ public class OffsideService implements EngineInterfaces.OffsideService {
         }
 
         double margin = calculateOffsideMargin(receiver, passOrigin, state);
+
+        if (TRACE) {
+            boolean home = "HOME".equals(receiver.getTeam());
+            List<Double> defRows = new ArrayList<>();
+            String defendingTeam = home ? "AWAY" : "HOME";
+            for (Player opp : state.getPlayers()) {
+                if (!defendingTeam.equals(opp.getTeam())) continue;
+                if (opp.isSentOff() || opp.isInjured()) continue;
+                defRows.add(opp.getPosition().getRow());
+            }
+            defRows.sort(home ? Comparator.reverseOrder() : Comparator.naturalOrder());
+            double lineRow = defRows.size() < 2
+                    ? (home ? 0.0 : 9.0)
+                    : defRows.get(1);
+            double goalLineDist = home ? 8.0 - lineRow : lineRow - 1.0;
+            boolean forwardOfBall = home
+                    ? receiver.getPosition().getRow() > passOrigin.getRow()
+                    : receiver.getPosition().getRow() < passOrigin.getRow();
+            boolean inOppHalf = home
+                    ? receiver.getPosition().getRow() > 4.5
+                    : receiver.getPosition().getRow() < 4.5;
+            String band = margin > 0.5 ? "CLEAR-OFF(whistle)"
+                    : margin > 0 ? "MARG-OFF(VAR hold)"
+                    : margin > -0.8 ? "TIGHT-ON(VAR hold)" : "ONSIDE";
+            System.out.printf("[OFF-TRACE] pass %s(%s) -> receiver %s at (%.2f,%.2f) | ball at strike (%.2f,%.2f) | "
+                            + "last-2-def row %.2f & 2nd-last %.2f (%.2f cells off goal line) | forward-of-ball:%b in-opp-half:%b | margin %+.3f -> %s%n",
+                    state.getCarrier() == null ? "?" : state.getCarrier().getLabel(),
+                    "HOME".equals(receiver.getTeam()) ? "H" : "A",
+                    receiver.getLabel(), receiver.getPosition().getRow(), receiver.getPosition().getColumn(),
+                    passOrigin.getRow(), passOrigin.getColumn(),
+                    defRows.isEmpty() ? Double.NaN : defRows.get(0),
+                    lineRow, goalLineDist,
+                    forwardOfBall, inOppHalf, margin, band);
+        }
 
         if (margin > 0.5) {
             return confirmOffside(receiver, carrierTeam(receiver, state), state,
@@ -149,6 +192,20 @@ public class OffsideService implements EngineInterfaces.OffsideService {
 
     private double calculateOffsideMargin(Player receiver, Position passOrigin, MatchState state) {
         boolean home = "HOME".equals(receiver.getTeam());
+        double receiverRow = receiver.getPosition().getRow();
+
+        // FIFA Law 11 preconditions (a player can only be offside if BOTH hold):
+        //  (1) the receiver is in the OPPONENT'S half at the moment the pass is played,
+        //  (2) the receiver is FORWARD OF THE BALL (closer to the opponents' goal line).
+        // Backward / level passes and own-half receivers are always onside.
+        boolean inOppHalf = home ? receiverRow > 4.5 : receiverRow < 4.5;
+        boolean forwardOfBall = home
+                ? receiverRow > passOrigin.getRow()
+                : receiverRow < passOrigin.getRow();
+        if (!inOppHalf || !forwardOfBall) {
+            return -5.0; // clear onside, no whistle, no VAR hold
+        }
+
         String defendingTeam = home ? "AWAY" : "HOME";
         List<Double> rows = new ArrayList<Double>();
         for (Player opp : state.getPlayers()) {
@@ -160,8 +217,8 @@ public class OffsideService implements EngineInterfaces.OffsideService {
         rows.sort(home ? Comparator.reverseOrder() : Comparator.naturalOrder());
         double lineRow = rows.get(1);
         return home
-                ? receiver.getPosition().getRow() - lineRow
-                : lineRow - receiver.getPosition().getRow();
+                ? receiverRow - lineRow
+                : lineRow - receiverRow;
     }
 }
 

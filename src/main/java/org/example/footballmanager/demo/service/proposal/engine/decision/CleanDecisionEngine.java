@@ -205,7 +205,7 @@ public class CleanDecisionEngine {
         // so a DRIBBLE here makes NO progress and would re-win forever — a silent
         // standing-spot loop. Ban it: the carrier must shoot or deliver instead.
         double row = carrier.getPosition().getRow();
-        // Mirror the executor's carry clamp exactly (ActionExecutor: forward 0.5,
+        // Mirror the executor's carry clamp exactly (ActionExecutor: forward 3,
         // HOME [1.0, 7.5] / AWAY [1.5, 8.0]) and ban the carry when it cannot make
         // forward progress — near the byline the clamp lands on the playable cap
         // row, and the Movement Engine converges on the cap with floating-point
@@ -213,7 +213,7 @@ public class CleanDecisionEngine {
         // means the dribble is a standing-spot loop: force SHOT or a delivery.
         double carryMinRow = home ? 1.0 : 1.5;
         double carryMaxRow = home ? 7.5 : 8.0;
-        double targetRow = SimUtils.clamp(row + (home ? 0.5 : -0.5), carryMinRow, carryMaxRow);
+        double targetRow = SimUtils.clamp(row + (home ? 3.0 : -3.0), carryMinRow, carryMaxRow);
         boolean bylineTrapped = Math.abs(targetRow - row) < 0.05;
         if (bylineTrapped) {
             score = -60.0;

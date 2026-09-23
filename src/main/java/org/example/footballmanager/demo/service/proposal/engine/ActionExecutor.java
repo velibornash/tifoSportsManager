@@ -188,18 +188,21 @@ public class ActionExecutor {
         Player carrier = state.getCarrier();
         if (carrier == null) return;
 
-        // Calculate carry target — forward direction
+        // Calculate carry target — 3 cells forward (one smooth continuous run,
+        // matching /demo/service: a 0.5-cell nudge + per-tick re-decision made the
+        // carrier shuffle/stop every other tick). A gentle inward column drift
+        // keeps wingers from hugging the touchline into the corner.
         Position current = carrier.getPosition();
         boolean home = "HOME".equals(carrier.getTeam());
-        double forwardDelta = home ? 0.5 : -0.5;
+        double forwardDelta = home ? 3.0 : -3.0;
 
         // Carry target capped half a cell BEFORE the opponent goal line so the
         // carrier never dribbles onto the line; the re-decision then fires a shot.
-        double maxRow = home ? 7.5 : 8.0;
-        double minRow = home ? 1.0 : 1.5;
+        double col = current.getColumn();
+        double inward = col < 3.0 ? 0.6 : col > 5.0 ? -0.6 : 0.0;
         Position carryTarget = new Position(
                 SimUtils.clamp(current.getRow() + forwardDelta, home ? 1.0 : 1.5, home ? 7.5 : 8.0),
-                current.getColumn()
+                SimUtils.clamp(col + inward, 1.0, 7.0)
         );
 
         carrier.setTarget(carryTarget);
