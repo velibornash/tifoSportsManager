@@ -73,16 +73,18 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
 
             // a. Try TYPE A: press carrier if within RANGE_A
             Position typeA = pressCarrier(player, state);
+            Position typeB = null;
+            Position typeC = null;
             if (typeA != null) {
                 newTarget = typeA;
             } else {
                 // b. Try TYPE B: press isolated opponent in own defensive third
-                Position typeB = pressIsolatedOpponent(player, state);
+                typeB = pressIsolatedOpponent(player, state);
                 if (typeB != null) {
                     newTarget = typeB;
                 } else {
                     // c. Try TYPE C: offside retreat if consecutiveOffsideCount >= threshold
-                    Position typeC = offsideRetreat(player, state, currentTarget);
+                    typeC = offsideRetreat(player, state, currentTarget);
                     if (typeC != null) {
                         newTarget = typeC;
                     }
@@ -95,6 +97,22 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
                     || Math.abs(newTarget.getColumn() - currentTarget.getColumn()) > 1e-9)) {
                 player.setTarget(newTarget);
                 player.setThreatOverrideActive(true);
+
+                // Shared action logger — every threat override that re-routes a
+                // defender writes a trace line (which player pressed who, and why).
+                // This is the press→duel path: THR should be followed by a DRIBBLE
+                // duel at the press point, never by a silent stuck corridor.
+                if (state.getActionLogger() != null) {
+                    String which = typeA != null ? "TYPE_A" : typeB != null ? "TYPE_B" : "TYPE_C";
+                    String what = state.getCarrier() != null && typeA != null
+                            ? state.getCarrier().getLabel() + "(" + state.getCarrier().getRole() + ")"
+                            : (typeB != null ? "isolated-opponent-in-final-quarter" : "offside-retreat");
+                    state.getActionLogger().log("THR",
+                            which + " " + player.getLabel() + "(" + player.getRole() + ")"
+                                    + " presses " + what
+                                    + " at " + state.getActionLogger().p(newTarget)
+                                    + " from " + state.getActionLogger().p(currentTarget));
+                }
             }
         }
     }

@@ -3,7 +3,7 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-17 (P6#0 — port `proposal/engine/MatchSimulator.java` (thin full-match driver, compile-green `mvn -o compile` EXIT=0); backlog.md: P-UI — restart taker / akcija bez igrača na lopti + kompletna UI provera vs `/demo/service`; both open).
+> Last update: 2026-09-23 (rigid-ball physics: OOB freeze at crossing point, strike-hold, in-bounds player clamp, DEFLECT contact placement, central OOB-dead guard, restart-clear nudge + viewer: stats panel removed, events log runs from match start).
 
 ---
 
@@ -167,8 +167,12 @@ The ball checks collisions in this order (earlier = higher priority):
    - Anyone within `DEFLECT_R = 0.18` → **DEFLECT** (slight bounce + damp).
 4. **OOB zone** (row ≤ 0.99 / ≥ 8.01 / col ≤ 0.99 / ≥ 7.01):
    - First entry → `oobPending = restartType`, `oobHoldTicks = 4`.
-   - During hold the ball **keeps moving** (visible in the OOB zone).
-   - If it returns to the pitch before expiry → `oobPending` cleared.
+   - **The ball FREEZES at the crossing point** (`ball.stop()` on enter) — it
+     must never keep sliding along the OOB zone, and the restart spot is
+     computed from the TRUE exit (user rigid-ball rule 2026-09-23).
+   - Step 0 central guard: an OOB ball is ALWAYS dead — possession, pickups and
+     carrier are cleared before every other check (a RECEIVE that lands just
+     outside the touchline can never become a held ball).
    - When `ticks == 0` → returns `dueRestart`.
    - **NEVER instant teleport** to a restart — 4-tick visibility.
 
@@ -195,10 +199,20 @@ In 2D physics only the posts are checked. Crossbar = UI/rendering only.
 ### 4.8 What the engine MUST NOT do
 
 - ❌ Clamp the ball target (row/col).
-- ❌ Clamp player positions.
 - ❌ Know "who called it" (ActionExecutor logs, BallPhysicsEngine does NOT).
 - ❌ Ball target position ≠ where the ball stops.
 - ❌ Goal detection by radius around center — only goal-line intersection in the mouth.
+
+> **User overrides (2026-09-23):**
+> - `MovementEngine` **clamps player positions** to the pitch (rows 1.0–8.0,
+>   cols 1.0–7.0) — no player may ever stand off the field (fixes throw-in churn:
+>   off-pitch MR attracted touchline passes that went out again). This overrides
+>   the historical "no player clamp" rule.
+> - An **OOB ball is always dead** — never possessed, never picked up (central
+>   guard at `stepBall` step 0).
+> - The **striker roots in place** for 1 tick after PASS/SHOT/CLEAR
+>   (`Player.strikeHoldTicks` consumed by `MovementEngine`) — the ball visibly
+>   leaves his foot before he moves.
 
 ---
 
@@ -312,6 +326,10 @@ passAttempts, passesCompleted, shots, shotsOnTarget, fouls, yellowCards, redCard
 | Cards | `fouls`, `yellowCards`, `redCards` | yellow, red, double-yellow, per player |
 | Per-player | none | position, minutes, rating, all actions |
 | Rating | none | average rating based on actions |
+
+> **Viewer note (2026-09-23):** stats are still computed and exported
+> (`stats.teams`/`stats.players`) but the sidebar stats panel was REMOVED — the
+> vacated space now holds the full events log which runs from match start.
 
 ### 5.9 Diagnostics
 

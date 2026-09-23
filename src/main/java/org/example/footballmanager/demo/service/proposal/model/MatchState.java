@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.example.footballmanager.demo.service.proposal.engine.ActionLogService;
+
 /**
  * Authoritative match state — single source of truth.
  * All engines read from match state, write to it through documented operations.
@@ -60,8 +62,16 @@ public class MatchState {
     // Engine references (for execution)
     private BallEngine ballEngine;
 
+    // Shared action logger — every engine that makes a decision or executes an
+    // action writes through this single shared service so the app log shows the
+    // full decision→execution trace (who decided, why, where the ball went).
+    // Mirrors the setBallEngine wiring pattern (AGENTS.md "mirror setBallEngine
+    // at MatchState.java 233–234").
+    private ActionLogService actionLogger;
+
     // Action
     private Action currentAction;
+    private int actionCount; // total decisions executed (for offside-deferral boundary)
 
     // Tactical / phase
     private MatchPhase phase;
@@ -233,8 +243,18 @@ public class MatchState {
     public BallEngine getBallEngine() { return ballEngine; }
     public void setBallEngine(BallEngine engine) { this.ballEngine = engine; }
 
+    /** Shared decision/action logger — single owner injected by MatchOrchestrator
+     *  ctor (mirror of setBallEngine). Every engine writes through this so the
+     *  app log shows the full decision trace, not just the change-gated tags. */
+    public ActionLogService getActionLogger() { return actionLogger; }
+    public void setActionLogger(ActionLogService logger) { this.actionLogger = logger; }
+
     public Action getCurrentAction() { return currentAction; }
     public void setCurrentAction(Action currentAction) { this.currentAction = currentAction; }
+
+    /** Number of decisions executed so far — offside deferrals wait for the NEXT action boundary. */
+    public int getActionCount() { return actionCount; }
+    public void incrementActionCount() { this.actionCount++; }
 
     public MatchPhase getPhase() { return phase; }
     public void setPhase(MatchPhase phase) { this.phase = phase; }

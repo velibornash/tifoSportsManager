@@ -4,6 +4,7 @@ import org.example.footballmanager.demo.service.proposal.model.MatchState;
 import org.example.footballmanager.demo.service.proposal.model.Player;
 import org.example.footballmanager.demo.service.proposal.model.Position;
 import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
+import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 /**
  * Tactical Intent Engine — the ONLY source of movement targets for players
@@ -27,6 +28,11 @@ import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
     public class TacticalIntentEngine {
 
     private final TacticsRules tactics;
+
+    /** Players whose TACTICAL TARGET lands within this distance of a restart
+     *  ball spot are pushed off it (they never stand ON the restart ball). */
+    private static final double RESTART_CLEAR_RADIUS = 0.6;
+    private static final double RESTART_CLEAR_PUSH = 0.9;
 
     public TacticalIntentEngine(TacticsRules tactics) {
         this.tactics = tactics;
@@ -55,7 +61,48 @@ import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
                 continue;
             }
             Position desired = tactics.desiredCell(p.getRole(), state.getBall().getPosition(), p.getTeam());
-            p.setTarget(desired);
+            Position prev = p.getTarget();
+            // RESTART-BALL CLEARANCE (user 2026-09-23): while a restart is pending
+            // (taker designated), no non-taker may settle ON the ball spot. The
+            // GK anchor for HOME is exactly the goal-kick spot (1.5,3.5) and the
+            // home DCL anchors on it too — after every goal kick the GK + DCL +
+            // pressing striker stacked directly ON the ball, so the taker's first
+            // touch (CLEAR/DRIBBLE) launched from a scrum and instantly "deflected
+            // off" a teammate standing at the kick origin (the in-air deflect).
+            // Any desired target within keep-out distance of the ball spot is
+            // pushed radially away from the ball.
+            Position target = desired;
+            if (taker != null && taker != p
+                    && SimUtils.distance(desired, state.getBall().getPosition()) < RESTART_CLEAR_RADIUS) {
+                double dr = desired.getRow() - state.getBall().getPosition().getRow();
+                double dc = desired.getColumn() - state.getBall().getPosition().getColumn();
+                double len = Math.hypot(dr, dc);
+                if (len < 1e-9) {
+                    // exactly ON the spot — push toward own half side
+                    target = new Position(
+                            desired.getRow() + ("HOME".equals(p.getTeam()) ? -RESTART_CLEAR_PUSH : RESTART_CLEAR_PUSH),
+                            desired.getColumn());
+                } else {
+                    target = new Position(
+                            desired.getRow() + dr / len * RESTART_CLEAR_PUSH,
+                            desired.getColumn() + dc / len * RESTART_CLEAR_PUSH);
+                }
+            }
+            p.setTarget(target);
+            // Shared action logger — log a TAC line only when this player's
+            // desired cell actually moved (receiver-on-pass run plus tactical
+            // drift as the ball repositions). No log = no contract-drawn
+            // movement that tick, so "players wandering with no order" becomes
+            // attributable to either a desiredCell change here or an action.
+            if (state.getActionLogger() != null && prev != null
+                    && (Math.abs(prev.getRow() - target.getRow()) > 0.01
+                    || Math.abs(prev.getColumn() - target.getColumn()) > 0.01)) {
+                state.getActionLogger().log("TAC",
+                        p.getLabel() + "(" + p.getRole() + ")"
+                                + " target " + state.getActionLogger().p(prev)
+                                + " -> " + state.getActionLogger().p(target)
+                                + " (ball " + state.getActionLogger().p(state.getBall().getPosition()) + ")");
+            }
         }
     }
 

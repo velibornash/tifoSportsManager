@@ -82,8 +82,9 @@ public class DuelEngine {
         state.setCarrier(winner);
         state.setLastTouchTeam(winner.getTeam());
 
-        // Ball snaps to winner's feet, velocity zero
-        state.getBall().setPosition(new Position(winner.getPosition().getRow(), winner.getPosition().getColumn()));
+        // RIGID RULE (user 2026-09-17): the ball stays where it physically is —
+        // the winner is already within a duel radius (≤ 0.3 cells) of it and the
+        // Movement Engine walks him onto it before any action starts. No teleport.
         state.getBall().stop();
 
         // Loser is blocked for cooldown (unlocked by orchestrator after ticks expire)

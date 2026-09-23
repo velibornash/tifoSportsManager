@@ -235,7 +235,8 @@ public class RestartManager {
     private Player findNearestPlayerOfTeam(MatchState state, String team, Position target,
                                            boolean attackersOnly, boolean defendersOnly) {
         return state.getPlayers().stream()
-                .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
+                .filter(p -> !p.isSentOff() && !p.isInjured() && !p.isLocked()
+                        && p.getTeam().equals(team))
                 .filter(p -> !attackersOnly || p.isAttacker())
                 .filter(p -> !defendersOnly || p.isDefender())
                 .min((a, b) -> Double.compare(
@@ -246,7 +247,8 @@ public class RestartManager {
 
     private Player findWinger(MatchState state, String team, boolean left) {
         return state.getPlayers().stream()
-                .filter(p -> !p.isSentOff() && !p.isInjured() && p.getTeam().equals(team))
+                .filter(p -> !p.isSentOff() && !p.isInjured() && !p.isLocked()
+                        && p.getTeam().equals(team))
                 .filter(p -> left ? (p.getRole().equals("ML") || p.getRole().equals("DL"))
                                 : (p.getRole().equals("MR") || p.getRole().equals("DR")))
                 .findFirst().orElse(null);

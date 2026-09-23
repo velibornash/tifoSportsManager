@@ -4,6 +4,13 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Agent Working Rules (na snazi svake sesije)
 
+> ### 🔴 ABSOLUTNE PROMENLJIVE — NIKADA NE MENJAJ OVE RULOVE
+> 1. **📢 TI UVIJEK ODGOVARAS NA ENGLESKOM. UVEK. NIJEDAN IZUZETAK.**
+>    Korisnik pise na srpskom, ali svaki tvoj odgovor, svaka poruka, svaki
+>    komentar u kodu — NA ENGLESKOM. Ako si napisao/la ista na srpskom van
+>    koda, to je greska — prepravi odmah. Ovaj pravilo je vazno za sva
+>    vremena i ne sme se prevideti ni u jednoj sesiji.
+
 1. **Jezici:** korisnik razgovara na srpskom; TI odgovaraš **na engleskom**
    (korisnik ima 100% engleski, samo mu je lakše da piše srpski — nemoj
    da se mučiš da prevodiš svoje odgovore na srpski).

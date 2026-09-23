@@ -1,9 +1,12 @@
 package org.example.footballmanager.demo.service.proposal.engine;
 
 import org.example.footballmanager.demo.service.proposal.model.*;
+import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.HashMap;
 
 /**
  * Ball physics engine — pure physics, no decision-making, no rules enforcement.
@@ -16,6 +19,22 @@ public class BallPhysicsEngine implements BallEngine {
 
     private static final Random RNG = new Random();
 
+    /**
+     * Once-per-pass read cache (P6). The demo/service javadoc contract says a
+     * pass's intercept READ "was decided when the pass was struck" — but the old
+     * code re-rolled INTERCEPT_R (2 m) lane defenders EVERY flight tick
+     * (~10-25 ticks x 1-2 defenders, prob up to 0.45/tick). Cumulative
+     * P(intercept) = 1-(1-p)^n ≈ 75-95% → passes died → 67% completion.
+     * Instance is news'd once per match (MatchOrchestrator:67; per-match at 5
+     * sites) so per-flight state is safe. Decided ONCE per defender per pass at
+     * first lane contact, cached for the whole flight, cleared at launch() —
+     * the strike boundary (each NEW pass re-decides from scratch).
+     */
+    private final Map<String, Boolean> passReadDecisions = new HashMap<>();
+
+    /** Consecutive ticks a stopped loose ball has gone unpicked (DEAD-WATCH diag). */
+    private int deadTickCount;
+
     // --- Physics constants (cells/tick @ 40 TPM = 1 tick = 1.5 s match time) ---
     public static final double MAX_BALL_SPEED = 1.5;      // 14 m/s
     public static final double MIN_LAUNCH_SPEED = 0.75;   // 7 m/s
@@ -26,6 +45,14 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double FAST_CONTACT = 1.0;        // >= this: BLOCK (parry), <: INTERCEPT
 
     // --- Contact radii (cells) ---
+    /**
+     * RIGID RULE (user 2026-09-17): a player is "ON the ball" — allowed to
+     * decide/execute PASS/SHOT/DRIBBLE/CLEAR — only when physically within
+     * this distance of the ball's position. No action ever starts with the
+     * ball teleported onto the player; the player walks onto the ball first.
+     * 0.05 cells ≈ 0.7 m — visually the player dot is on the ball dot.
+     */
+    public static final double ON_BALL_EPS = 0.05;
     public static final double RECEIVE_R = 0.35;
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
@@ -47,6 +74,24 @@ public class BallPhysicsEngine implements BallEngine {
     public BallStepResult stepBall(MatchState state) {
         Ball ball = state.getBall();
 
+        // 0. OOB BALL IS ALWAYS DEAD (user 2026-09-23). The moment the ball is
+        // physically outside the field — regardless of who "holds" it — play
+        // stops and the referee restart is prepared. Previously the OOB check
+        // only ran in the MOVING/no-carrier path, so a RECEIVE that landed just
+        // outside the touchline (a pass deviation can land at col 0.8) gave
+        // possession of an OOB ball. With players now field-clamped the carrier
+        // could never step onto it (ON_BALL_EPS unreachable), so the re-decision
+        // gate never fired and the carrier "held" the ball for the rest of the
+        // half (AWAY-7 held 3443 ticks on an OOB ball). Centralizing the OOB
+        // check at tick start makes possession impossible while the ball is out.
+        if (state.getEnvironment().isOOB(ball.getPosition())) {
+            state.setCarrier(null);
+            state.setPendingReceiver(null);
+            state.setReceivePoint(null);
+            ball.stop();
+            return oobHoldOrRestart(state);
+        }
+
         // 1. Possession — ball glued to carrier (orchestrator snaps position)
         if (state.getCarrier() != null) {
             return BallStepResult.flight();
@@ -63,15 +108,57 @@ public class BallPhysicsEngine implements BallEngine {
                 }
                 return BallStepResult.oobHold(state.getOobPending(), state.getOobHoldTicks());
             }
-            // Pickup by nearest player
+            // Pickup by nearest player. A PENDING receiver that physically reaches the
+            // ball gets it first — the pass completed him (RIGID RULE: the ball is
+            // never carried to him; he comes to the ball). If he never gets there,
+            // the nearest available player picks the dead ball up as LOOSE.
+            Player pending = state.getPendingReceiver();
+            if (pending != null
+                    && SimUtils.distance(pending.getPosition(), ball.getPosition()) <= PICKUP_R) {
+                deadTickCount = 0;
+                state.setCarrier(pending);
+                state.setLastTouchTeam(pending.getTeam());
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
+                ball.stop();
+                return BallStepResult.receive(pending.getLabel());
+            }
             Player near = nearestPlayer(state, null, PICKUP_R);
             if (near != null) {
+                deadTickCount = 0;
                 state.setCarrier(near);
                 state.setLastTouchTeam(near.getTeam());
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
                 ball.stop();
                 return BallStepResult.loosePickup(near.getLabel());
             }
+            // Ball is dead and nobody within reach can receive/pick it up this tick.
+            // Drop any stale pending receiver NOW, or the loose-ball chase (which is
+            // suppressed while a pending receiver exists) would never recover the
+            // ball and the match would freeze for the rest of the half.
+            state.setPendingReceiver(null);
+            state.setReceivePoint(null);
             ball.stop();
+            // DEAD-WATCH (diagnostic): a stopped loose ball with no one within pickup
+            // reach must be recovered by the Movement Engine's chaser shortly. If it
+            // stays dead for many ticks, log the exact suppression state every 30
+            // ticks so the freeze root cause is visible in the event log.
+            deadTickCount++;
+            if (deadTickCount % 30 == 3) {
+                Player taker = state.getRestartTaker();
+                String nearest = nearest3(state);
+                if (state.getActionLogger() != null) {
+                    state.getActionLogger().log("BAL",
+                            "DEAD-WATCH dead=" + deadTickCount + " carrier="
+                                    + (state.getCarrier() == null ? "null" : state.getCarrier().getLabel())
+                                    + " pending=" + (pending == null ? "null" : pending.getLabel())
+                                    + " restartTaker=" + (taker == null ? "null" : taker.getLabel())
+                                    + " oob=" + state.getOobPending()
+                                    + " speed=" + String.format("%.3f", ball.getSpeed())
+                                    + " | " + nearest);
+                }
+            }
             return BallStepResult.stopped();
         }
 
@@ -91,8 +178,9 @@ public class BallPhysicsEngine implements BallEngine {
         if (spd <= STOP_SPEED) {
             ball.stop();
             ball.setAirborne(false);
-            state.setPendingReceiver(null);
-            state.setReceivePoint(null);
+            // RIGID RULE: keep the pending receiver — the pass physically stopped,
+            // next tick the stopped-ball pickup either completes it (receiver
+            // reached the ball) or it becomes a LOOSE recovery by the nearest player.
             return BallStepResult.stopped();
         }
         double oldSpd = ball.getSpeed();
@@ -135,6 +223,16 @@ public class BallPhysicsEngine implements BallEngine {
         PitchEnvironment env = state.getEnvironment();
         boolean out = env.isOOB(curr);
         if (out && state.getOobPending() == null) {
+            // RIGID RULE (user 2026-09-23): the ball FREEZES at the crossing
+            // point — it must not keep rolling along the OOB zone during the
+            // visible hold. Previously the ball kept its velocity for the
+            // 4-tick hold, sliding far outside and parallel to the touchline
+            // (e.g. exit at (6.9,0.99) then 4 ticks later at (1.7,0.75)); the
+            // restart spot was then computed from that DRIFTED position, so the
+            // throw-in restarted up to 5 cells away from where the ball went
+            // out — the "ball restarts backward, then flies forward along the
+            // OOB zone" artifact the user reported.
+            ball.stop();
             state.setPendingReceiver(null);
             state.setReceivePoint(null);
             String restart = env.oobRestartType(state.getLastTouchTeam(), curr);
@@ -143,25 +241,63 @@ public class BallPhysicsEngine implements BallEngine {
             return BallStepResult.oobEnter(restart);
         }
         if (state.getOobPending() != null) {
-            if (!out) {
-                state.clearOobPending();
-                return BallStepResult.oobCancel();
-            }
-            state.decrementOobHold();
-            if (state.getOobHoldTicks() <= 0) {
-                String due = state.getOobPending();
-                state.clearOobPending();
-                return BallStepResult.oobRestart(due);
-            }
-            return BallStepResult.oobHold(state.getOobPending(), state.getOobHoldTicks());
+            return oobHoldOrRestart(state);
+        }
+
+        // Shared action logger — during an unattended flight (carrier null, ball
+        // moving, no OOB) log the ball A→B so the "ball with no one on it" phase
+        // is attributable: who it is aimed at (pendingReceiver), where it is and
+        // how far the receiver still is from the landing point.
+        if (state.getActionLogger() != null && state.getCarrier() == null && spd > STOP_SPEED) {
+            Player recv = state.getPendingReceiver();
+            Position land = state.getReceivePoint();
+            state.getActionLogger().log("BAL",
+                    "flight " + state.getActionLogger().p(ball.getPosition())
+                            + " speed " + String.format("%.2f", ball.getSpeed())
+                            + " airborne " + ball.isAirborne()
+                            + (recv != null && land != null
+                            ? " -> " + recv.getLabel() + "(" + recv.getRole() + ")"
+                            + " land " + state.getActionLogger().p(land)
+                            + " recvDist " + String.format("%.2f",
+                            SimUtils.distance(ball.getPosition(), land))
+                            : " (no receiver set)"));
         }
 
         return BallStepResult.flight();
     }
 
+    /**
+     * Shared OOB hold/restart flow (used by the centralized tick-start guard and
+     * the moving-ball step-10 detection). Returns the pending-hold step each
+     * tick until the hold expires, then fires the restart. Because the ball is
+     * frozen at the crossing point (see step 10), the exit position stays the
+     * true crossing point and never drifts down the touchline.
+     */
+    private BallStepResult oobHoldOrRestart(MatchState state) {
+        String pending = state.getOobPending();
+        if (pending == null) {
+            String restart = state.getEnvironment()
+                    .oobRestartType(state.getLastTouchTeam(), state.getBall().getPosition());
+            state.setOobPending(restart);
+            state.setOobHoldTicks(OOB_HOLD_TICKS);
+            return BallStepResult.oobEnter(restart);
+        }
+        state.decrementOobHold();
+        if (state.getOobHoldTicks() <= 0) {
+            state.clearOobPending();
+            return BallStepResult.oobRestart(pending);
+        }
+        return BallStepResult.oobHold(pending, state.getOobHoldTicks());
+    }
+
     /** Launch the ball toward an aim point with given speed (cells/tick), air/ground, spin. */
     public void launch(Ball ball, Position origin, Position aim, double speed, boolean airborne, double spin) {
+        deadTickCount = 0;
         ball.setPosition(origin);
+        // P6: this is the STRIKE boundary. Each NEW pass flight re-decides the
+        // read for every lane defender from scratch — never carries the previous
+        // flight's (now stale) read cache into flight.
+        passReadDecisions.clear();
         double dx = aim.getColumn() - origin.getColumn();
         double dy = aim.getRow() - origin.getRow();
         double len = Math.hypot(dx, dy);
@@ -304,14 +440,28 @@ public class BallPhysicsEngine implements BallEngine {
         }
 
         if (ev != null) {
-            if (ev.equals("RECEIVE") || ev.equals("INTERCEPT")) {
+            if (ev.equals("RECEIVE")) {
+                state.setCarrier(hit);
+                state.setLastTouchTeam(hit.getTeam());
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
+                // RIGID RULE (user 2026-09-17): the ball stays where it physically
+                // stopped — no teleport onto the receiver. The receiver becomes the
+                // carrier and the Movement Engine walks him onto the ball before any
+                // action starts.
+                state.getBall().stop();
+                return BallStepResult.receive(hit.getLabel());
+            }
+            if (ev.equals("INTERCEPT")) {
+                // Interception is a physical contact: the defender steps into the
+                // flight lane and traps the ball at his body (ball may be at most
+                // INTERCEPT_R from him along the segment).
                 state.setCarrier(hit);
                 state.setLastTouchTeam(hit.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
                 state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
                 state.getBall().stop();
-                if (ev.equals("RECEIVE")) return BallStepResult.receive(hit.getLabel());
                 return BallStepResult.intercept(hit.getLabel());
             } else if (ev.equals("SAVE")) {
                 // Goalkeeper saves the shot — he holds the ball (distribution follows)
@@ -323,10 +473,31 @@ public class BallPhysicsEngine implements BallEngine {
                 state.getBall().stop();
                 return BallStepResult.save(hit.getLabel());
             } else {
-                // BLOCK or DEFLECT — reflect off player body
+                // BLOCK or DEFLECT — reflect off player body. RIGID RULE (user
+                // 2026-09-23): the deflection must be PHYSICAL. (a) The ball is
+                // placed at the CONTACT POINT on the flight segment (where it
+                // touched the body), not at the segment end — previously the
+                // reflect used `curr`, so a teammate standing AT the launch
+                // origin of a kick bounced the ball back the very first tick
+                // with the ball visually never touching anyone ("DEFLECT off H1
+                // from air"). (b) A contact at the very START of the segment (a
+                // teammate co-located with the kicker) is NOT a deflection — the
+                // ball is just leaving that player's feet — so it is skipped.
                 Ball b = state.getBall();
-                double nr = hit.getPosition().getRow() - curr.getRow();
-                double nc = hit.getPosition().getColumn() - curr.getColumn();
+                double contactT = bestT;
+                Position contact = new Position(
+                        prev.getRow() + (curr.getRow() - prev.getRow()) * contactT,
+                        prev.getColumn() + (curr.getColumn() - prev.getColumn()) * contactT
+                );
+                double traveled = Math.abs(SimUtils.distance(contact, prev));
+                if (traveled <= 0.05) {
+                    // Ball hasn't reached the body — the contact is the launch
+                    // origin (players stacked on the kicker). Let the ball fly.
+                    return null;
+                }
+                b.setPosition(contact);
+                double nr = hit.getPosition().getRow() - contact.getRow();
+                double nc = hit.getPosition().getColumn() - contact.getColumn();
                 double len = Math.hypot(nr, nc);
                 if (len > 1e-9) {
                     nr /= len; nc /= len;
@@ -366,7 +537,18 @@ public class BallPhysicsEngine implements BallEngine {
         int def = (int) Math.round(p.getSkills().defender());
         if (pm + def <= 18) return false;   // can't read the pass
         double prob = Math.min(0.45, (0.25 + (pm + def - 18) / 30.0) * speedFactor);
-        return RNG.nextDouble() < prob;
+        // P6: decide ONCE per defender per pass. The read difficulty was decided
+        // WHEN the pass was struck — never re-rolled per flight tick (that gave
+        // cumulative 1-(1-p)^n ≈ 75-95% mid-flight → 67% completion). Keyed by
+        // defender label so each nearest-lane defender gets ONE roll per pass;
+        // cache cleared at launch() (the strike boundary) so each NEW flight
+        // re-decides from scratch. Matches /demo/ (98%).
+        String key = p.getLabel();
+        Boolean cached = passReadDecisions.get(key);
+        if (cached != null) return cached;
+        boolean decision = RNG.nextDouble() < prob;
+        passReadDecisions.put(key, decision);
+        return decision;
     }
 
     private Player nearestPlayer(MatchState state, String exceptTeam, double maxR) {
@@ -379,6 +561,26 @@ public class BallPhysicsEngine implements BallEngine {
             if (d <= bestD) { bestD = d; best = p; }
         }
         return best;
+    }
+
+    /** DEAD-WATCH aid: nearest 3 available players to the ball with distances. */
+    private String nearest3(MatchState state) {
+        List<Player> sorted = new java.util.ArrayList<>(state.getPlayers());
+        sorted.removeIf(Player::isUnavailable);
+        double bx = state.getBall().getPosition().getColumn();
+        double by = state.getBall().getPosition().getRow();
+        sorted.sort(java.util.Comparator.comparingDouble(
+                p -> Math.hypot(p.getPosition().getRow() - by, p.getPosition().getColumn() - bx)));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(3, sorted.size()); i++) {
+            Player p = sorted.get(i);
+            if (i > 0) sb.append(" | ");
+            sb.append(p.getLabel()).append("(").append(p.getRole()).append(")")
+                    .append(p.isLocked() ? "[LOCK]" : "")
+                    .append(" d=").append(String.format("%.2f", Math.hypot(
+                    p.getPosition().getRow() - by, p.getPosition().getColumn() - bx)));
+        }
+        return sb.toString();
     }
 
     // --- geometry utils ---

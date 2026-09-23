@@ -980,4 +980,123 @@ Stanje: P1 gotovo, P2-UI fiksirana, `backlog.md`/`PROPOSAL_*` ažurirani.
 Komanda za kompajl + export proveru je data korisniku (interface rule: ne
 radim kompajlove sam).
 
+### 6.11 2026-09-17 · c73f27a — P6#0: MatchSimulator port thin driver (TOTAL_MATCH_TICKS=3600,
+mvn -o compile EXIT=0; backlog.md: P-UI restart bez igrača, UI vs /demo/service uporedba).
+
+---
+
+## Session (rigid ball rules follow-up) — dead-ball freeze family, final fix
+
+**Context:** the rigid-ball rules (carrier must be physically ON the ball;
+no action without the ball at the foot; ball must never be left dead)
+introduced a match-freeze family. After the byline DRIBBLE fix and the
+stale-`pendingReceiver` clear, two dead-ball freeze variants remained:
+
+- **Variant 1 (chaser wall-ring):** players press a stopped ball and park on
+  a ring at exactly 0.40–0.45 cells (just outside `PICKUP_R = 0.35`); the wall
+  separation floor (`MIN_PLAYER_DISTANCE = 0.35`) blocks the loose-ball chaser
+  from stepping onto the ball spot, so the ball is never picked.
+- **Variant 2 (dangling restart taker):** a restart ball was picked up via the
+  generic LOOSE `near` path (even by the taker himself) while
+  `state.restartTaker` was still set; after the duel that transferred
+  possession, `restartTaker` stayed set forever. The taker was then skipped by
+  `TacticalIntentEngine.refreshTargets` (`if (p == carrier || p == taker)`),
+  his stale walk target was abandoned, the loose-ball chaser was suppressed by
+  `restartTaker != null`, and a dead ball upfield froze for 1700+ ticks.
+
+**Fixes (verified across 8 full 3600-tick plain-java runs):**
+
+1. `MovementEngine`: new `CLAIM_REACH_RADIUS = 0.7` — the restart taker and the
+   loose-ball chaser skip `separateFromOpponents` when within 0.7 cells of the
+   ball, so they can lunge exactly onto the ball spot through a wall-ring
+   (mirrors the existing carrier-off-ball exemption).
+2. `RestartManager.findNearestPlayerOfTeam` + `findWinger`: restart taker
+   selection now filters `!p.isLocked()` (a duel-locked player can never be
+   the taker).
+3. `MatchOrchestrator` step 2: **`restartTaker` is cleared the moment any
+   carrier exists** — a restart is consumed when anyone takes the ball;
+   logs `RST ... restart taken before taker: X beat Y` when a non-taker wins it.
+4. `MatchOrchestrator` step 9: `restartTakerAge` + stall-claim — claim radius
+   widens to 0.6 after 40 ticks (pure backstop; never fired during QA).
+5. `BallPhysicsEngine`: permanent DEAD-WATCH watchdog — if the ball sits
+   stopped unrecovered, logs `dead=N carrier/pending/restartTaker/oob/speed |
+   nearest3 distances` once per 30 dead ticks (rings the alarm if this class
+   of freeze ever recurs).
+
+**Verification:** 8/8 runs complete. DEAD-WATCH hits = 0 in 7 runs; 1 benign
+9-tick blip in f27 (taker walking from 0.68 cells, recovered normally).
+Goals 3–7/match, decisions 1900–2256, actions 1000–1600. Max log gap 3 ticks
+(~4.5 s) — within the "no silence > 5 s" user rule. `restart-taken-before-taker`
+fires 1–3/match as a normal game mechanic (attacker lunging in on a loose
+restart). Compile: `mvn -o -q compile` → clean.
+
+---
+
+## Session 2026-09-23 — rigid-ball physics: OOB freeze, strike-hold, in-bounds clamp, DEFLECT contact, restart-clear, central OOB guard + viewer
+
+**Context (user report):** the ball kept sliding along the OOB zone during the
+visible 4-tick hold and the restart spot was computed from the DRIFTED exit
+(throw-in restarted up to 5 cells away from where the ball actually went out);
+the striker visibly moved in the very tick he struck (pass/shot/clear); DEFLECT
+fired from "air" (GK standing on the CLEAR launch origin bounced it backward on
+its first flight tick); ball/players wandered off the pitch (throw-ins passed
+along the touchline OUTSIDE the field, then re-out again → throw-in churn);
+players stacked on the restart ball spot (HOME GK anchor `CELL_0_2` == goal-kick
+spot (1.5,3.5) → GK + DCL + pressing striker on the spot every goal kick).
+
+**Analysis (match.json, ~3021 events):** confirmed all three:
+1. "Carrier moved while ball frozen" (519 ticks pre-fix): after PASS/SHOT/CLEAR
+   the striker's target is nulled, then step 7 `refreshTargets` re-assigns a
+   tactical target and step 8 movement runs him off in the SAME tick the ball
+   was struck (the ball flies on the next tick).
+2. OOB drift: `BallPhysicsEngine` moved the ball BEFORE the OOB branch, so the
+   4-tick hold kept rolling (e.g. exit (4.88,0.66) → slid to (1.73,0.75) during
+   the hold; restart then placed at the drifted row).
+3. `MovementEngine` had "NO field boundary clamping" → off-pitch players existed
+   and passes were played to them along the touchline.
+
+**Fixes (all compile-green, verified across seeds 42/7/999 on 3600-tick plain-java runs):**
+
+1. **strike-hold** — `Player.strikeHoldTicks` (new field); `ActionExecutor` sets
+   it to 1 on PASS/SHOT/CLEAR (with a RIGID RULE comment); `MovementEngine` skips
+   the rooted player until it expires → the striker is visibly planted while the
+   ball leaves his foot.
+2. **OOB freeze** — on OOB ENTER the ball is jumped/stopped at the crossing point
+   (`ball.stop()`); the hold therefore shows the ball sitting exactly where it
+   went out. The restart spot is computed from the TRUE exit. Verified: 0 hold-
+   drift offenders across the match.
+3. **Central OOB guard** (`stepBall` step 0) — an OOB ball is ALWAYS dead:
+   possession (RECEIVE landing just-OUT, e.g. pass deviation to col 0.8),
+   pickups, and carrier exist are cleared and the referee hold/restart starts.
+   This fixed a REGRESSION my own clamp introduced: after the in-bounds player
+   clamp, a carrier whose ball landed OOB could never reach `ON_BALL_EPS`
+   (clamped ≥1.0 vs ball at 0.8) → re-decision gate never fired → carrier held
+   an OOB ball 3443 ticks (AWAY-7). With the guard, an OOB ball always dies.
+4. **DEFLECT contact placement** — DEFLECT/BLOCK now place the ball at the actual
+   contact point (`prev + (curr-prev)*bestT`) and skip contacts where the ball
+   travelled ≤0.05 to the impact (launch-origin / stacked-player phantom bounces).
+5. **In-bounds clamp** — `MovementEngine` clamps every player's final position
+   to the pitch (rows 1.0–8.0, cols 1.0–7.0). All 22 players can never leave
+   the field; no more OOB throw-in churn on the touchline.
+6. **Restart-clear nudge** — `TacticalIntentEngine.refreshTargets` pushes non-taker
+   desired targets within `RESTART_CLEAR_RADIUS(0.6)` radially away from the
+   restart ball spot (`RESTART_CLEAR_PUSH(0.9)`), so the GK/DCL stack is cleared
+   before every restart.
+
+**Viewer (proposal):** removed the stats panel entirely (`_renderStats` + HTML)
+and the events log now runs FROM MATCH START — the full timeline (~560 events)
+is populated immediately via `_buildTimeline()` (single DocumentFragment), no
+per-tick DOM mutation during playback; the landscape live ticker still updates
+from the event stream via `_updateLiveTicker`. Stats tables/players CSS left
+unused in pitch.css (no breakage). `index.html` script bumped to v=5.
+
+**Verification on the fixes:** strike-tick check = 790 strikes, only 3 outliers
+(all AWAY-10 restart-taker teleports 1.1–1.9 cells — restart placement, not
+in-play glide). DEFLECT = 104 events, 0 with ball off the deflector. OOB holds:
+0 drift offenders. Possession: max single-carrier share 112 ticks (no domination).
+Event gaps >250 ticks: 0. Exports: seed 42 → 2-0 (poss 55/45), seed 999 → 4-0
+(56/44), seed 7 → 3-0 (51/49) — healthy, no freezes.
+
+**Compile:** `mvn -o -q compile` → clean.
+
 ---

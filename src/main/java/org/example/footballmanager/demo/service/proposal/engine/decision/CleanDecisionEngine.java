@@ -79,6 +79,19 @@ public class CleanDecisionEngine {
             }
         }
 
+        // SharEd action logger — write the FULL decision trace on every decide
+        // (no stream): chosen action + score + all viable alternatives (carry/
+        // shot/clear always evaluated, pass when a receiver exists) + the reason
+        // string. Same "every engine that decides writes" contract as the demo
+        // baseline; the orchestrator's DEC line remains the change-gated
+        // viewer/event summary.
+        if (state.getActionLogger() != null) {
+            state.getActionLogger().log("DEC",
+                    state.getActionLogger().formatDecision(carrier,
+                            new DecisionResult(chosen,
+                                    List.of(passOption, carryOption, shotOption, clearOption))));
+        }
+
         return new DecisionResult(chosen, List.of(passOption, carryOption, shotOption, clearOption));
     }
 
@@ -185,6 +198,28 @@ public class CleanDecisionEngine {
         reason.append(String.format("press -%.0f ", pressure * 30.0));
 
         reason.append(String.format("to (%.1f,%.1f)", target.getRow(), target.getColumn()));
+
+        // RIGID CARRY GUARD (mirror of demo/service "carry boundary freeze" +
+        // final-row hard rules): at the byline the carry target clamps back onto
+        // the carrier's own position (ActionExecutor min row 1.5 / max row 7.5),
+        // so a DRIBBLE here makes NO progress and would re-win forever — a silent
+        // standing-spot loop. Ban it: the carrier must shoot or deliver instead.
+        double row = carrier.getPosition().getRow();
+        // Mirror the executor's carry clamp exactly (ActionExecutor: forward 0.5,
+        // HOME [1.0, 7.5] / AWAY [1.5, 8.0]) and ban the carry when it cannot make
+        // forward progress — near the byline the clamp lands on the playable cap
+        // row, and the Movement Engine converges on the cap with floating-point
+        // error (7.4999999…), so `row >= 7.5` never triggers. Abs(progress) < eps
+        // means the dribble is a standing-spot loop: force SHOT or a delivery.
+        double carryMinRow = home ? 1.0 : 1.5;
+        double carryMaxRow = home ? 7.5 : 8.0;
+        double targetRow = SimUtils.clamp(row + (home ? 0.5 : -0.5), carryMinRow, carryMaxRow);
+        boolean bylineTrapped = Math.abs(targetRow - row) < 0.05;
+        if (bylineTrapped) {
+            score = -60.0;
+            reason.append("byline - no forward space ");
+        }
+
         return new DecisionOption(ActionType.DRIBBLE, null, score, reason.toString());
     }
 

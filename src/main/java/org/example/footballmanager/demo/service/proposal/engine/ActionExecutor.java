@@ -50,6 +50,25 @@ public class ActionExecutor {
         if (type == ActionType.SHOT && carrier != null) {
             state.setLastShooter(carrier);
         }
+
+        // Shared action logger — every executed action writes a trace line so the
+        // app log shows the full decision→execution chain and the empty-ball
+        // (no carrier) phase is attributable to the launch that produced it.
+        if (state.getActionLogger() != null) {
+            Player target = decision.getTarget();
+            state.getActionLogger().log("EXE",
+                    "EXEC " + type
+                            + " by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                            + " at " + state.getActionLogger().p(carrier.getPosition())
+                            + " -> " + state.getActionLogger().p(state.getBall().getPosition())
+                            + (target != null
+                            ? " target " + target.getLabel()
+                            + "(" + target.getRole() + ")"
+                            + state.getActionLogger().p(target.getPosition())
+                            : "")
+                            + " score=" + String.format("%6.1f", decision.getScore())
+                            + " [" + decision.getReason() + "]");
+        }
     }
 
     /** Execute a PASS action. */
@@ -87,6 +106,11 @@ public class ActionExecutor {
         // Carrier stops running; receiver holds position during flight
         carrier.setTarget(null);
         receiver.setTarget(null);
+        // RIGID RULE (user 2026-09-23): the striker must NOT move from his
+        // position in the tick he struck the ball — the ball leaves his feet
+        // next tick. Rooted for the strike tick (movement resumes on the
+        // following tick, when the ball is already visibly in flight).
+        carrier.setStrikeHoldTicks(1);
 
         // Remember who should receive — and where the ball will land, so the
         // receiver can RUN ONTO the pass during flight (demo/service model).
@@ -144,6 +168,9 @@ public class ActionExecutor {
 
         // Carrier stops running
         carrier.setTarget(null);
+        // RIGID RULE (user 2026-09-23): the shooter stays rooted the tick he
+        // strikes — the ball leaves next tick.
+        carrier.setStrikeHoldTicks(1);
         state.setCarrier(null);
         state.setLastTouchTeam(carrier.getTeam());
         state.setLastTouchPlayer(carrier);
@@ -202,6 +229,9 @@ public class ActionExecutor {
                 BallPhysicsEngine.MAX_BALL_SPEED, true, 0.2);
 
         carrier.setTarget(null);
+        // RIGID RULE (user 2026-09-23): the clearer stays rooted the tick he
+        // strikes — the ball leaves next tick.
+        carrier.setStrikeHoldTicks(1);
         state.setCarrier(null);
         state.setLastTouchTeam(carrier.getTeam());
         state.setLastTouchPlayer(carrier);

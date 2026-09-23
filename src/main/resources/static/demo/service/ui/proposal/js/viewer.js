@@ -954,99 +954,15 @@ class MatchViewer {
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
     this._updateScoreboard();
-    // Timeline stays dynamic — events appear as the playhead reaches them
-    // and auto-scroll to the latest event keeps the newest entry visible.
-    // The user scrolls UP within the timeline to inspect earlier events;
-    // pre-populating with ALL events would force auto-scroll-to-bottom on
-    // every new event and clutter the view.
+    // The events log runs FROM MATCH START — the full timeline is populated
+    // immediately at load (not empty until the playhead reaches each event).
+    // The user scrolls freely through the whole match log; nothing is appended
+    // during playback. See _buildTimeline().
     this._updateSeekRange();
     this._showEmpty(false);
-    this._renderStats();
+    this._buildTimeline();
     this.pitch._resize();
     this._renderFrame();
-  }
-
-  /* ─── Stats panel ─── */
-
-  _renderStats() {
-    const stats = this.data?.stats;
-    if (!stats) return;
-
-    const panel = document.getElementById('statsPanel');
-    if (!panel) return;
-    panel.style.display = '';
-
-    const home = stats.teams?.HOME || {};
-    const away = stats.teams?.AWAY || {};
-
-    const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
-
-    const statRows = [
-      ['Possession',   `${home.possessionPercent ?? 0}%`, `${away.possessionPercent ?? 0}%`,   'pct'],
-      ['Poss. chain',  `${home.avgPossessionTicks ?? 0} (${home.longestPossessionTicks ?? 0})`,
-                       `${away.avgPossessionTicks ?? 0} (${away.longestPossessionTicks ?? 0})`, 'num'],
-      ['Shots',        `${home.shots ?? 0} (${home.shotsOnTarget ?? 0})`, `${away.shots ?? 0} (${away.shotsOnTarget ?? 0})`, 'num'],
-      ['Passes',       `${home.passesCompleted ?? 0}/${home.passesAttempted ?? 0} (${pct(home.passesCompleted, home.passesAttempted)}%)`,
-                       `${away.passesCompleted ?? 0}/${away.passesAttempted ?? 0} (${pct(away.passesCompleted, away.passesAttempted)}%)`, 'num'],
-      ['Dribbles',     `${home.dribbles ?? 0}`,       `${away.dribbles ?? 0}`,       'num'],
-      ['Clearances',   `${home.clearances ?? 0}`,     `${away.clearances ?? 0}`,     'num'],
-      ['Interceptions',`${home.interceptions ?? 0}`,  `${away.interceptions ?? 0}`,  'num'],
-      ['Saves',        `${home.saves ?? 0}`,          `${away.saves ?? 0}`,          'num'],
-      ['Corners',      `${home.corners ?? 0}`,        `${away.corners ?? 0}`,        'num'],
-      ['Goal kicks',   `${home.goalKicks ?? 0}`,      `${away.goalKicks ?? 0}`,      'num'],
-      ['Throw-ins',    `${home.throwIns ?? 0}`,       `${away.throwIns ?? 0}`,       'num'],
-      ['Fouls',        `${home.fouls ?? 0}`,          `${away.fouls ?? 0}`,          'num'],
-      ['Yellow cards', `${home.yellowCards ?? 0}`,    `${away.yellowCards ?? 0}`,    'num'],
-      ['Red cards',    `${home.redCards ?? 0}`,       `${away.redCards ?? 0}`,       'num'],
-    ];
-
-    let html = `<table class="stats-table"><thead><tr>
-      <th class="st-home">${home.teamName || 'HOME'}</th>
-      <th class="st-label"></th>
-      <th class="st-away">${away.teamName || 'AWAY'}</th>
-    </tr></thead><tbody>`;
-
-    for (const [label, hv, av] of statRows) {
-      // possession bar
-      let bar = '';
-      if (label === 'Possession') {
-        const hp = home.possessionPercent ?? 50;
-        bar = `<tr class="stat-row stat-bar-row"><td colspan="3"><div class="possession-bar">
-          <div class="possession-home" style="width:${hp}%"></div>
-          <div class="possession-away" style="width:${100 - hp}%"></div></div></td></tr>`;
-      }
-      html += `<tr class="stat-row"><td class="st-val">${hv}</td><td class="st-label">${label}</td><td class="st-val">${av}</td></tr>${bar}`;
-    }
-    html += '</tbody></table>';
-
-    // Player table
-    const players = stats.players || [];
-    let playerHtml = '';
-    if (players.length) {
-      playerHtml += '<h3 class="st-subheading">Player Ratings</h3><table class="player-table"><thead><tr>';
-      playerHtml += '<th>P</th><th>Role</th><th>G</th><th>A</th><th>S</th><th>SOT</th><th>Pass%</th><th>D</th><th>I</th><th>T</th><th>Rat</th>';
-      playerHtml += '</tr></thead><tbody>';
-      for (const p of players) {
-        const teamClass = p.teamName === (home.teamName || 'Home FC') ? 'st-home' : 'st-away';
-        playerHtml += `<tr class="player-row ${teamClass}">
-          <td class="pt-name">${p.playerName}</td>
-          <td>${p.role}</td>
-          <td>${p.goals || 0}</td>
-          <td>${p.assists || 0}</td>
-          <td>${p.shots || 0}</td>
-          <td>${p.shotsOnTarget || 0}</td>
-          <td>${p.passAccuracy ?? '-'}</td>
-          <td>${p.dribbles || 0}</td>
-          <td>${p.interceptions || 0}</td>
-          <td>${p.tackles || 0}</td>
-          <td class="pt-rating">${(p.rating ?? 0).toFixed(1)}</td>
-        </tr>`;
-      }
-      playerHtml += '</tbody></table>';
-    }
-
-    document.getElementById('statsTeams').innerHTML = html;
-    document.getElementById('statsPlayers').innerHTML = playerHtml;
   }
 
   /* ─── Snapshot interpolation ─── */
@@ -1254,16 +1170,10 @@ class MatchViewer {
       const ev = this.events[this._displayedEventIdx];
       if (ev.tick > toTick) break;
       if (ev.tick >= fromTick) {
-        // Only show compact timeline events. Verbose engine logs (DECISION,
-        // ACTION_EXECUTION, ACTION_OUTCOME, INFO, RESTART, POSSESSION,
-        // VAR_IN_PROGRESS) and per-tick chase progress logs are still in the
-        // app log / JSON but are NOT shown in the timeline — keeps the timeline
-        // short and readable. DUEL_START / DUEL_RESOLVED / DUEL_WON and
-        // CHASE_POSSESSION ARE shown so the user sees who contested whom
-        // and who won each challenge / loose-ball chase.
-        if (TIMELINE_EVENTS.has(ev.type)) {
-          this._pendingTimelineEvents.push(ev);
-        }
+        // The timeline is PRE-POPULATED from match start (see _buildTimeline),
+        // so playback never appends rows here — the user scrolls the full log
+        // freely and there is no per-tick DOM mutation during playback. Only
+        // overlays/flash/animations are driven from the event stream below.
         if (ev.type === 'GOAL') {
           this._flashEvent = ev;
           this._flashStart = performance.now();
@@ -1406,6 +1316,11 @@ class MatchViewer {
           // Show as a brief non-blocking flash in the timeline (not a blocking overlay)
           this._flashEvent = { type: 'FOUL', team, playerName, description: `${playerName} (${foulType})`, _age: 0 };
           this._flashStart = performance.now();
+        }
+        // Live ticker (landscape phones): keep showing the latest notable event
+        // now that playback no longer appends timeline rows.
+        if (TIMELINE_EVENTS.has(ev.type) && !MINOR_EVENTS.has(ev.type)) {
+          this._updateLiveTicker(ev, matchMinute(ev.tick), EV_ICON[ev.type] || '', formatEventDesc(ev));
         }
       }
       this._displayedEventIdx++;
@@ -1640,10 +1555,11 @@ class MatchViewer {
     if (!seek._dragging) seek.value = this.currentTick;
   }
 
-  // Maximum events shown in the timeline DOM. Beyond this, we prune the
-  // oldest entries to prevent the DOM from growing unbounded (which causes
-  // Firefox to freeze after a few minutes of playback with 4000+ events).
-  _MAX_TIMELINE_EVENTS = 200;
+  // Maximum events kept in the timeline DOM. The full log is populated at
+  // load (~500-700 events per match), well under this cap — it guards only
+  // against pathological matches growing the DOM unbounded (Firefox freeze
+  // historically appeared past ~4000 nodes).
+  _MAX_TIMELINE_EVENTS = 800;
 
   // REMOVED: _addTimelineEvent — replaced by _flushTimelineEvents (batching via
   // DocumentFragment, one DOM mutation per RAF tick instead of one per event).
@@ -1664,7 +1580,35 @@ class MatchViewer {
   }
 
   _buildTimeline() {
-    document.getElementById('timeline').innerHTML = '';
+    const ul = document.getElementById('timeline');
+    if (!ul) return;
+
+    // Populate the FULL events log once, from match start. The stats panel was
+    // removed (2026-09-23) so the sidebar now dedicates all its space to the
+    // event history; every timeline-worthy event appears immediately and the
+    // user scrolls freely. Playback appends nothing (see _processEventsForTick).
+    if (this._timelineBuilt) return;
+    this._timelineBuilt = true;
+
+    ul.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (const ev of this.events) {
+      if (!TIMELINE_EVENTS.has(ev.type)) continue;
+      const li = document.createElement('li');
+      const cls = classifyEvent(ev);
+      const icon = EV_ICON[ev.type] || '\uD83D\uDCDD';
+      const minute = matchMinute(ev.tick);
+      const desc = formatEventDesc(ev);
+      const isMinor = MINOR_EVENTS.has(ev.type);
+      const descHtml = desc
+        .replace(/(HOME\s*\w*)/g, '<span class="team-home">$1</span>')
+        .replace(/(AWAY\s*\w*)/g, '<span class="team-away">$1</span>');
+      li.className = `event ${cls} ${isMinor ? 'minor' : ''}`;
+      li.innerHTML = `<span class="min">${minute}'</span><span class="icon">${icon}</span><span class="desc">${descHtml}</span>`;
+      fragment.appendChild(li);
+    }
+    ul.appendChild(fragment);
+    ul.scrollTop = ul.scrollHeight;
   }
 
   _showEmpty(show = true) {

@@ -6,10 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
-import org.example.footballmanager.newLogic.model.Lineup;
 
 @Data
 @NoArgsConstructor

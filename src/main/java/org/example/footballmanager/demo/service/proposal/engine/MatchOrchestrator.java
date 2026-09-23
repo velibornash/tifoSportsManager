@@ -6,11 +6,17 @@ import org.example.footballmanager.demo.service.proposal.recording.MatchRecorder
 import org.example.footballmanager.demo.service.proposal.result.ProposalStatsCollector;
 import org.example.footballmanager.demo.service.proposal.restarts.RestartManager;
 import org.example.footballmanager.demo.service.proposal.rules.FootballRules;
+import org.example.footballmanager.demo.service.proposal.rules.OffsideService;
+import org.example.footballmanager.demo.service.proposal.engine.EngineInterfaces.OffsideService.OffsideResult;
+import org.example.footballmanager.demo.service.proposal.rules.VARService;
 import org.example.footballmanager.demo.service.proposal.tactics.TacticsRules;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
+import java.util.Random;
+import java.util.Random;
 
 /**
  * Match Orchestrator — coordinates all engine calls within a single tick.
@@ -40,6 +46,8 @@ public class MatchOrchestrator {
     private final BallPhysicsEngine ballEngine;
     private final MatchClockService clockService;
     private final FootballRules rules;
+    private final OffsideService offsideService;
+    private final VARService varService;
     private final RestartManager restartManager;
     private final DuelService duelService;
     private final TacticalIntentEngine tacticalEngine;
@@ -53,6 +61,7 @@ public class MatchOrchestrator {
     private ActionType lastLoggedType;
     private String lastLoggedCarrier;
     private boolean tacticsSourceLogged;
+    private int restartTakerAge; // ticks the current restart taker has been designated
 
     public MatchOrchestrator(MatchState state) {
         this(state, new TacticsRules());
@@ -67,12 +76,18 @@ public class MatchOrchestrator {
         this.ballEngine = new BallPhysicsEngine();
         this.clockService = new MatchClockService();
         this.rules = new FootballRules();
+        this.varService = new VARService(state, new Random());
+        this.offsideService = new OffsideService(state, varService);
         this.restartManager = new RestartManager(tactics);
         this.duelService = new DuelService(state, recorder, stats, eventLog);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
 
         // Wire engine reference into state for ActionExecutor
         state.setBallEngine(ballEngine);
+        // Hand the orchestrator-owned shared action logger to the state so every
+        // engine writes through ONE logger (sets "decision engine writes" per AGENTS
+        // spec), not just the change-gated orchestrator DEC/EXE summaries.
+        state.setActionLogger(actionLog);
         stats.registerPlayers(state.getPlayers());
         ballResultHandler = new BallResultHandler(
                 state, recorder, stats, restartManager, eventLog);
@@ -96,6 +111,23 @@ public class MatchOrchestrator {
         // === 1. ADVANCE CLOCK ===
         boolean running = clockService.tick(state);
         if (!running) return;
+
+        // A restart is consumed the moment ANYONE takes the ball (the restart
+        // ball physically sits at its spot; whoever reaches it first plays it).
+        // If the taker is still designated while a carrier exists, the restart
+        // is over — clear it. Otherwise the ex-taker stays frozen as "taker":
+        // refreshTargets skips him (no renewed walk target), looseBallChaser is
+        // suppressed (dead ball never recovered), and the match freezes for
+        // the rest of the half (wall-ring on a dead ball).
+        if (state.getCarrier() != null) {
+            Player designated = state.getRestartTaker();
+            if (designated != null && designated != state.getCarrier()) {
+                log("RST", "restart taken before taker: " + state.getCarrier().getLabel()
+                        + " beat " + designated.getLabel() + " to the ball (taker released)");
+            }
+            state.setRestartTaker(null);
+            restartTakerAge = 0;
+        }
 
         // === 2. UNLOCK DUEL LOSERS ===
         for (Player p : state.getPlayers()) {
@@ -121,18 +153,39 @@ public class MatchOrchestrator {
         // === 6. DECISION + EXECUTION ===
         // Re-decide every tick while a player is in possession (carrier != null)
         // and ball is not in flight (handled by physics result not being FLIGHT/IN_TRANSITION)
-        if (canReDecide && state.getCarrier() != null) {
+        if (canReDecide && state.getCarrier() != null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
 
-            // Ball must be at the carrier's feet before deciding/executing.
-            // Orchestrator ensures this: after RECEIVE/LOOSE_PICKUP ball pos = carrier pos.
-            // For safety, snap here too.
+            // RIGID RULE (user 2026-09-17): the carrier must be physically ON the
+            // ball before deciding/executing ANY action. An off-ball carrier leaves
+            // the ball where it lies and the Movement Engine walks him onto it —
+            // the decision is deferred until he actually arrives. Only once he is
+            // on the ball (within ON_BALL_EPS) is it glued to his feet.
             state.getBall().setPosition(carrier.getPosition());
             state.getBall().stop();
 
             DecisionResult result = decisionEngine.decideWithOptions(state);
             DecisionOption decision = result.getChosen();
-            actionExecutor.execute(state, decision);
+
+            // Offside at pass-moment: a CLEAR offside is whistled immediately
+            // (IFK restart set by OffsideService, pass NOT executed); a marginal
+            // band is deferred to VAR which resolves at the RULES CHECK step.
+            boolean offsideBlockedPass = false;
+            if (decision.getType() == ActionType.PASS && decision.getTarget() != null) {
+                OffsideResult offside = offsideService.checkOffside(
+                        decision.getTarget(), carrier.getPosition(), state);
+                if (offside.confirmed()) {
+                    log("OFF", "offside whistle (clear band) - pass to "
+                            + decision.getTarget().getLabel() + " disallowed, indirect free kick");
+                    recorder.appendEvent(state.getMatchTicks(), "OFFSIDE",
+                            "OFFSIDE by " + decision.getTarget().getLabel()
+                                    + " - indirect free kick",
+                            carrier, decision.getTarget());
+                    offsideBlockedPass = true;
+                }
+            }
+            if (!offsideBlockedPass) {
+                actionExecutor.execute(state, decision);
 
             boolean changed = decision.getType() != lastLoggedType
                     || !carrier.getLabel().equals(lastLoggedCarrier);
@@ -169,6 +222,7 @@ public class MatchOrchestrator {
                 }
                 case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
             }
+            }
         }
 
         // === 7. TACTICAL INTENT ENGINE ===
@@ -183,37 +237,60 @@ public class MatchOrchestrator {
         tacticalEngine.refreshTargets(state);
 
         // === 8. MOVEMENT ENGINE ===
+        // Capture on-ball state BEFORE movement: the glue in 8b is a
+        // follow-the-feet attach (continuous possession, ball moves WITH the
+        // player), not a teleport — it must survive the carrier's run this tick.
+        boolean carrierOnBallBeforeMove = state.getCarrier() != null && isCarrierOnBall();
         // Players move toward their tactical targets every tick
         movementEngine.moveAllTowardTargets(state);
 
         // === 8b. POSSESSION GLUE ===
-        // Movement moved the carrier; the ball must follow him. Without this,
-        // a carrier dribbling is visually left behind (ball alone), and the next
-        // action would appear to start with the carrier NOT on the ball
-        // (user-reported bug 2026-09-14: shot/pass fires, ball flies alone).
-        if (state.getCarrier() != null) {
+        // Movement moved the carrier; the ball follows him ONLY while he had
+        // controlled possession (was on the ball) at tick start (RIGID RULE
+        // user 2026-09-17). An off-ball carrier leaves the ball where it lies —
+        // the Movement Engine walks him onto it, next tick isCarrierOnBall()
+        // turns true and the glue resumes.
+        if (state.getCarrier() != null && carrierOnBallBeforeMove) {
             Position carryPos = state.getCarrier().getPosition();
             state.getBall().setPosition(carryPos);
             state.getBall().stop();
         }
 
         // === 9. RESTART TAKER CLAIMS THE BALL ===
-        // After movement, if taker reached the ball, they claim it
+        // After movement, if taker reached the ball (physically ON it, RIGID RULE
+        // user 2026-09-17), he claims it — the ball is already at the restart
+        // spot, so no snap is needed.
         if (state.getCarrier() == null && state.getRestartTaker() != null) {
             Player taker = state.getRestartTaker();
-            if (SimUtils.distance(taker.getPosition(), state.getBall().getPosition()) <= BallPhysicsEngine.PICKUP_DISTANCE) {
+            restartTakerAge++;
+            int age = restartTakerAge;
+            double dist = SimUtils.distance(taker.getPosition(), state.getBall().getPosition());
+            // Normal claim: taker physically ON the ball (RIGID RULE). A stalled
+            // taker (wall-ringed, locked mid-walk, etc.) eventually claims from a
+            // slightly wider reach so a restart can NEVER freeze the match.
+            double claimRadius = restartTakerAge > 40 ? 0.6 : BallPhysicsEngine.ON_BALL_EPS;
+            if (dist <= claimRadius) {
                 state.setCarrier(taker);
-                state.getBall().setPosition(new Position(taker.getPosition().getRow(), taker.getPosition().getColumn()));
                 state.getBall().stop();
                 state.setRestartTaker(null);
-                log("RST", "TAKER claims ball: " + taker.getLabel()
-                        + " ball" + p(state.getBall().getPosition()) + " " + taker.getLabel() + p(taker.getPosition()));
+                restartTakerAge = 0;
+                if (dist > BallPhysicsEngine.ON_BALL_EPS) {
+                    log("RST", "TAKER stall-claim: " + taker.getLabel()
+                            + " at " + p(taker.getPosition()) + " ball" + p(state.getBall().getPosition())
+                            + " (was " + String.format("%.2f", dist) + " cells, age " + age + ")");
+                } else {
+                    log("RST", "TAKER claims ball: " + taker.getLabel()
+                            + " ball" + p(state.getBall().getPosition()) + " " + taker.getLabel() + p(taker.getPosition()));
+                }
             }
+        } else {
+            restartTakerAge = 0;
         }
 
         // === 10. RULES CHECK ===
-        // Offside checked AFTER action execution, not before
-        rules.checkOffsideAfterAction(state);
+        // Offside whistle resolved AFTER action execution (deferred offside +
+        // VAR cadence), not before — see step 6 for the pass-moment check.
+        offsideService.resolvePendingVAROffside(state);
 
         // === 11. DUEL DETECTION ===
         detectAndResolveDuels();
@@ -230,6 +307,19 @@ public class MatchOrchestrator {
         if (possTeam != null) {
             stats.onPossessionTick(possTeam);
         }
+    }
+
+    /**
+     * RIGID RULE (user 2026-09-17): a player is "ON the ball" — allowed to decide/
+     * execute PASS/SHOT/DRIBBLE/CLEAR — only when physically within ON_BALL_EPS of
+     * the ball's position. No action ever starts with the ball teleported onto the
+     * player; the player walks onto the ball first.
+     */
+    private boolean isCarrierOnBall() {
+        Player carrier = state.getCarrier();
+        if (carrier == null) return false;
+        return SimUtils.distance(carrier.getPosition(), state.getBall().getPosition())
+                <= BallPhysicsEngine.ON_BALL_EPS;
     }
 
     private void handleBallPhysicsResult(BallStepResult res) {

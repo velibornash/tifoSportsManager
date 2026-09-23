@@ -30,6 +30,9 @@ public class Player {
     private int lastSaveTick = -100;
     private int carryStartTick = -100;
     private boolean threatOverrideActive;
+    /** Remaining ticks the player must stay rooted after striking the ball
+     * (PASS/SHOT/CLEAR) — the ball must be visibly leaving before he moves. */
+    private int strikeHoldTicks;
 
     public Player(String id, String label, String team, String role,
                   Position position, Position alternativePosition, PlayerSkills skills) {
@@ -130,6 +133,9 @@ public class Player {
 
     public boolean isThreatOverrideActive() { return threatOverrideActive; }
     public void setThreatOverrideActive(boolean active) { this.threatOverrideActive = active; }
+
+    public int getStrikeHoldTicks() { return strikeHoldTicks; }
+    public void setStrikeHoldTicks(int ticks) { this.strikeHoldTicks = Math.max(0, ticks); }
 
     public int heightSkill() {
         return Math.max(1, Math.min(20, (int) Math.round((heightCm - 160) / 2.0)));

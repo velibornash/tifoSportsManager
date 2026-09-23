@@ -8,31 +8,44 @@ import java.util.List;
 /**
  * Football rules engine - ONLY checks football rules (offside, etc.).
  * Does NOT make decisions. Does NOT move players.
- * 
- * Core principle: Rules are checked AFTER execution, not before.
- * A player may ATTEMPT an illegal action - rules are checked after.
+ *
+ * Offside geometry (FIFA Law 11): a player is in an offside POSITION when,
+ * AT THE MOMENT THE BALL IS PLAYED, he is in the opponent's half AND nearer
+ * to the opponent's goal line than both the ball AND the second-to-last
+ * opponent (incl. the goalkeeper).
  */
 public class FootballRules {
 
+    /** Offside position = strictly beyond the second-to-last opponent. */
+    public static final double DEEP_OFFSIDE_FILTER_CELLS = 0.7;
+
     /**
-     * Check if a receiver is in offside position.
-     * Offside = in opponent's half AND closer to goal line than
-     * second-last opponent AND forward of ball.
+     * Offside margin of a receiver relative to the second-to-last opponent
+     * (incl. GK), measured at the moment of the pass. Positive = offside,
+     * negative = onside.
+     *
+     * Returns {@code -Double.MAX_VALUE} when the receiver does NOT qualify
+     * for an offside check at all (not forward of the ball, not in the
+     * opponent's half, or fewer than 2 opponents available) — callers treat
+     * that as "clearly onside".
      */
-    public boolean isOffside(Player passer, Player receiver, MatchState state) {
+    public double offsideDepth(Player passer, Player receiver, MatchState state) {
+        if (passer == null || receiver == null) return -Double.MAX_VALUE;
         boolean home = "HOME".equals(passer.getTeam());
+        if (receiver.getTeam().equals(passer.getTeam()) == false) return -Double.MAX_VALUE;
+
         double passerRow = passer.getPosition().getRow();
         double receiverRow = receiver.getPosition().getRow();
 
-        // Must be forward of ball
+        // Must be forward of the ball (the passer is on the ball at pass time).
         boolean forward = home ? receiverRow > passerRow : receiverRow < passerRow;
-        if (!forward) return false;
+        if (!forward) return -Double.MAX_VALUE;
 
-        // Must be in opponent's half
+        // Must be in the opponent's half.
         boolean opponentHalf = home ? receiverRow >= 4.5 : receiverRow <= 4.5;
-        if (!opponentHalf) return false;
+        if (!opponentHalf) return -Double.MAX_VALUE;
 
-        // Find second-last opponent
+        // Second-to-last opponent (incl. GK), sorted toward the goal line.
         String defendingTeam = home ? "AWAY" : "HOME";
         List<Double> opponentRows = new ArrayList<>();
         for (Player opponent : state.getPlayers()) {
@@ -41,39 +54,28 @@ public class FootballRules {
                 opponentRows.add(opponent.getPosition().getRow());
             }
         }
-        if (opponentRows.size() < 2) return false;
+        if (opponentRows.size() < 2) return -Double.MAX_VALUE;
 
         opponentRows.sort(home ? java.util.Comparator.reverseOrder()
-                                : java.util.Comparator.naturalOrder());
+                : java.util.Comparator.naturalOrder());
         double secondLast = opponentRows.get(1);
 
-        // Check margin (0.5 cells = ~7m)
-        double margin = home ? receiverRow - secondLast
-                                : secondLast - receiverRow;
+        return home ? receiverRow - secondLast : secondLast - receiverRow;
+    }
 
-        return margin > 0.5;
+    /** True when the receiver is in an offside position at the moment of the pass. */
+    public boolean isInOffsidePosition(Player passer, Player receiver, MatchState state) {
+        return offsideDepth(passer, receiver, state) > 0;
     }
 
     /**
-     * Check offside after a pass/shot/cross.
-     * Called after ball arrives, not before.
+     * Offside call threshold (the referee's clear-call band): beyond 0.5 cells
+     * (~7 m) past the second-to-last opponent the offside is obvious and is
+     * whistled immediately. Trailing that the flag is held for VAR.
      */
-    public void checkOffsideAfterAction(MatchState state) {
-        Player carrier = state.getCarrier();
-        if (carrier == null) return;
-
-        Action action = state.getCurrentAction();
-        if (action == null) return;
-
-        Player receiver = action.getTarget();
-        if (receiver == null) return;
-
-        if (isOffside(carrier, receiver, state)) {
-            receiver.setOffside(true);
-            receiver.incrementConsecutiveOffside();
-            // Handle restart (offside = indirect FK)
-            handleOffsideRestart(state, receiver);
-        }
+    public boolean isOffside(Player passer, Player receiver, MatchState state) {
+        double depth = offsideDepth(passer, receiver, state);
+        return depth > 0.5;
     }
 
     /**
@@ -81,11 +83,5 @@ public class FootballRules {
      */
     public boolean isShotOnTarget(Player shooter, Position shotTarget, Position goal) {
         return SimUtils.distance(shotTarget, goal) < 1.0;
-    }
-
-    private void handleOffsideRestart(MatchState state, Player offender) {
-        // Offside = indirect free kick for defending team
-        state.setPhase(MatchPhase.SET_PIECE);
-        state.setSetPieceType("OFFSID_FREE_KICK");
     }
 }

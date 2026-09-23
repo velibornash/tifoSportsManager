@@ -1,6 +1,7 @@
 package org.example.footballmanager.demo.service.proposal.engine;
 
 import org.example.footballmanager.demo.service.proposal.model.MatchState;
+import org.example.footballmanager.demo.service.proposal.model.PitchEnvironment;
 import org.example.footballmanager.demo.service.proposal.model.Player;
 import org.example.footballmanager.demo.service.proposal.model.Position;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
@@ -8,7 +9,7 @@ import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 /**
  * Movement engine — handles player movement toward targets with collision avoidance.
  * Moves players from A to B each tick, respects pace limits.
- * NO field boundary clamping — players may move off the pitch.
+ * Players are clamped to the pitch after every move (they cannot leave the field).
  */
 public class MovementEngine {
 
@@ -20,6 +21,16 @@ public class MovementEngine {
     public static final double CARRIER_FREE_RADIUS = 1.0; // cells — no defender beyond = free
     public static final double CARRIER_TYPE_A_PRESS_RADIUS = 0.5; // cells — TYPE A presser range
     public static final double MIN_PLAYER_DISTANCE = 0.35; // minimum distance before wall block
+    /**
+     * Claiming-reach radius: a restart taker or loose-ball chaser (the player
+     * "claiming" a stopped ball) is exempt from opponent separation once within
+     * this distance of the ball spot, so he can lunge THROUGH a wall-ring of
+     * players pressing the ball (they sit at ~MIN_PLAYER_DISTANCE, just outside
+     * PICKUP_R) and land exactly ON the ball. Without this, a ring of 2-3
+     * players around a dead ball blocks the taker from reaching ON_BALL_EPS and
+     * the restart/chase never completes -> match freezes for the whole half.
+     */
+    public static final double CLAIM_REACH_RADIUS = 0.7;
     public static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed loss from fatigue
     public static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball
 
@@ -42,17 +53,43 @@ public class MovementEngine {
         for (Player p : state.getPlayers()) {
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
 
+            // RIGID RULE (user 2026-09-23): a player who just struck the ball
+            // (PASS/SHOT/CLEAR) stays rooted for the strike tick — the ball must
+            // be visibly leaving his feet before he moves. Without this the
+            // passer/shotter ran off to his tactical spot in the SAME tick the
+            // ball left, so the ball looked frozen while the player glided away.
+            if (p.getStrikeHoldTicks() > 0) {
+                p.setStrikeHoldTicks(p.getStrikeHoldTicks() - 1);
+                continue;
+            }
+
             boolean isChaser = p == chaser;
+            boolean isCarrier = p == state.getCarrier();
+            Position current = p.getPosition();
+
+            // RIGID RULE (user 2026-09-17): an off-ball carrier walks onto the ball
+            // BEFORE any action starts — his target is the ball itself, and he runs
+            // at normal pace (the carrier slow-down applies only once he is ON the
+            // ball, i.e. continuous possession/dribbling).
+            boolean carrierOffBall = isCarrier
+                    && SimUtils.distance(current, state.getBall().getPosition()) > BallPhysicsEngine.ON_BALL_EPS;
+
+            // A claiming player (restart taker / loose-ball chaser) within reach of
+            // the stopped ball may push through a wall-ring onto the exact ball spot
+            // (see CLAIM_REACH_RADIUS javadoc). Otherwise the dead ball with no one
+            // able to step onto it would freeze the match.
+            boolean nearClaimSpot = (isChaser || p == state.getRestartTaker())
+                    && SimUtils.distance(current, state.getBall().getPosition()) <= CLAIM_REACH_RADIUS;
+
             Position target = isChaser ? state.getBall().getPosition() : p.getTarget();
+            if (carrierOffBall) target = state.getBall().getPosition();
             if (target == null) continue;
 
-            Position current = p.getPosition();
             double pace = state.getRoundPaceSkill(p);
             double playerSpeed = playerSpeedFor(pace);
 
             // Carrier with ball moves slightly slower
-            boolean isCarrier = p == state.getCarrier();
-            if (isCarrier) {
+            if (isCarrier && !carrierOffBall) {
                 playerSpeed *= carrierSpeedFactor(p, state);
             }
 
@@ -70,9 +107,22 @@ public class MovementEngine {
                 continue;
             }
 
-            // Apply movement
-            double moveX = (dx / dist) * playerSpeed;
-            double moveY = (dy / dist) * playerSpeed;
+            // Apply movement — step capped so the player EXACTLY reaches the
+            // target instead of overshooting it and oscillating around it.
+            // Previously the player always stepped the full playerSpeed, which
+            // on the final approach (dist < playerSpeed) sailed past the target
+            // and snapped back forever — the whole team jittered up/down within
+            // the same cell with every tick re-decide.
+            double step = Math.min(playerSpeed, dist);
+            double moveX = (dx / dist) * step;
+            double moveY = (dy / dist) * step;
+
+            // Final approach: land exactly on the target (avoids floating-point
+            // wiggle keeping the movement loop alive on the next tick).
+            if (step >= dist - 1e-12) {
+                moveX = dx;
+                moveY = dy;
+            }
 
             // Opposing-player separation: never let an opponent and this player
             // occupy the same spot. If the proposed position would sit inside an
@@ -84,8 +134,32 @@ public class MovementEngine {
                     current.getRow() + moveY,
                     current.getColumn() + moveX
             );
-            Position resolved = separateFromOpponents(p, newPosition, state);
+            // RIGID RULE: the arriving carrier is allowed to reach the EXACT ball
+            // spot even when another player sits within MIN_PLAYER_DISTANCE of it —
+            // otherwise the 0.35 separation floor would bounce him forever just off
+            // the ball and the on-ball decision gate would deadlock (match freeze).
+            // He physically claims the ball spot; the other player's own separation
+            // (computed when that player moves) clears them away. The claiming
+            // taker/chaser gets the same right within CLAIM_REACH_RADIUS so a
+            // wall-ring of players pressing the ball can never starve a restart.
+            Position resolved = (carrierOffBall || nearClaimSpot)
+                    ? newPosition
+                    : separateFromOpponents(p, newPosition, state);
             newPosition = resolved;
+
+            // FIELD BOUNDARY (user 2026-09-23): players NEVER leave the pitch.
+            // Previously the MR/ML wide midfielders chased loose balls past the
+            // touchline into the OOB zone; a throw-in pitched to that off-pitch
+            // receiver then travelled ALONG the touchline outside the field for
+            // the whole pass (ball in OOB for 4+ ticks) and every one of those
+            // passes ended in another throw-in — a circular OOB churn. Clamping
+            // the final position to the playing surface (goal lines 1.0/8.0,
+            // touchlines 1.0/7.0) keeps throw-in takers (who walk to ON the
+            // line) legal while no player can ever receive a ball from OOB.
+            newPosition = new Position(
+                    SimUtils.clamp(newPosition.getRow(), PitchEnvironment.HOME_GOAL_LINE, PitchEnvironment.AWAY_GOAL_LINE),
+                    SimUtils.clamp(newPosition.getColumn(), PitchEnvironment.LEFT_TOUCHLINE, PitchEnvironment.RIGHT_TOUCHLINE)
+            );
 
             p.setPosition(newPosition);
 
