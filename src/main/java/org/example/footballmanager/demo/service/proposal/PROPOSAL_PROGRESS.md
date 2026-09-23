@@ -1285,3 +1285,75 @@ noise was ~80% of it and scrolled the match start out of IntelliJ's buffer.
 - match.json stays uncommitted (user rule).
 
 ---
+
+## Session 7.2 — Offside whistle at reception + precise/fast kickoff pass + TYPE B danger-zone press
+
+User requests (2026-09-23):
+1. **Offside NE SMEda teleportuje loptu** — pas leti normalno, svira se tek kad
+   ofsajd igrač PRIMI loptu (bez ubrzavanja/teleporta; igrač to ne vidi).
+2. **Kickoff pas mora biti precizan i najbrži** — lopta tačno kod primaoca i
+   brža od svih (protivnik ne stiže).
+3. **TYPE B pritisak** — jedan najbliži defanzivac prilazi slobodnom napadaču
+   u NAŠOJ ZONI OPASNOSTI (blizu našeg gola), uz očuvanje formacije (samo 1).
+
+### 1) Offside — whistle at reception (flag at pass → whistle at RECEIVE)
+- `OffsideService.checkOffside`: CLEAR i MARGINAL opseg spojeni u jedno —
+  **ne pozivaju više `confirmOffside`** (nema teleporta) i **ne postavljaju**
+  `offsideDeferred`/`pendingVARReview`. Samo `state.setOffsideFlaggedReceiver(receiver)`
+  i `return new OffsideResult(false, true)`. `confirmOffside` + `carrierTeam`
+  ostavljeni (referencira ih legacy `resolvePendingVAROffside`).
+- `MatchState`: polje `offsideFlaggedReceiver` (Player) + getter/setter.
+- `BallResultHandler`: u RECEIVE grani, ako je `flagged == receiver` →
+  **svira se OFFSIDE**: carrier=null, lopta OSTOJI na mestu fizički stiglog
+  prijema (bez teleporta), `restartTeam` = tim koji brani, diskrecioni
+  `OFFSIDE` event, `restartManager.handleOffsideFreeKick(state, spot)`, `break`
+  (preskaču se pass-completed/brojači). Flag se briše u INTERCEPT / SAVE /
+  BLOCK / DEFLECT / POST_HIT / GOAL / OOB_ENTER / OOB_CANCEL / LOOSE_PICKUP /
+  STOPPED (protivnik prvi dirne loptu = nema prekršaja).
+- `RestartManager.handleOffsideFreeKick`: lopta OSTAJE na spotu, bez OOB
+  animacije (instantan restart §48 stil, sa 0.6-behind fast-path za takerа),
+  svi igrači preko `tactics.desiredCell`, taker = najbliži defanzivac tima
+  `state.getRestartTeam()`, `phase=SET_PIECE`, `setPieceType("FREE_KICK")`.
+- Sat se ne zaustavlja; slaže se sa korisnikovim pravilom "nikad ne
+  teleportovati loptu u offsajdu".
+- **Napomena za PO/QA:** `MatchOrchestrator` step 6 (`offsideBlockedPass`) je
+  sada inertan jer `checkOffside` za CLEAR/MARG uvek vraća confirmed=false;
+  ceo flag-based put se završava u `BallResultHandler`. Frekvencija (82/60min)
+  je preegzistirajuća kalibracija, nije deo ovog zahteva.
+
+### 2) Kickoff pass — precise + max speed
+- `CleanDecisionEngine`: kickoff grana VIŠE ne čisti `kickoffPending` na početku
+  odluke — flag ostaje dok se pas stvarno ne lansira.
+- `ActionExecutor.executePass`: `state.isKickoffPending()` →
+  `aimedTarget = receiver.getPosition()` TAČNO (bez `openingTarget` pomeranja),
+  `new ExecutionQuality.PassResult(receiver.getPosition(), BallPhysicsEngine.MAX_BALL_SPEED, 0., passing, 0.)`
+  (nula devijacije i spina), posle lansiranja `setKickoffPending(false)`.
+- MAX_BALL_SPEED 1.5 vs PLATFORM_MAX_PLAYER_SPEED 0.75 → niko ne stiže.
+
+### 3) ThreatOverrideEngine — TYPE B bang-bang zona opasnosti
+- `RANGE_B` 1.5 → **2.0** (~28 m, javadoc ažuriran).
+- Band izmenjen sa "final 2.5 reda" (HOME ≤2.5 / AWAY ≥6.5) na **ZONU
+  OPASNOSTI — 2 ćelije od sopstvenog gola: HOME rows ≤ 3.0 / AWAY ≥ 6.0**;
+  lokal `inFinalQuarter` → `inDangerZone`.
+- Log string: `isolated-opponent-in-final-quarter` → `isolated-opponent-in-danger-zone`.
+- Izolacija 0.5 i `isClosestEligiblePresser` (tačno jedan defanzivac tvrdi) netaknuti.
+
+### Verify
+- `mvn -o -q compile` clean.
+- `MatchSimulationLauncher 2400`:
+  - Kickoff: `EXEC PASS by H10 at (4.5,4.0) -> (4.5,4.0) target H4(DCL)(3.5,3.5)
+    [kickoff pass to DCL]` → `RECEIVE H4(DCL) at (3.5,3.5) | ball(3.5,3.5)` —
+    lansiran tačno na poziciju primaoca, nema presretanja.
+  - Offside (82 "whistle at reception" u 2400 tick-ova): let normalan —
+    `flight (4.2,3.6) speed 1.01` → `flight (3.5,3.1) speed 0.86` → `*** OFFSIDE
+    by A11 ... at (2.9,2.7) (whistle at reception)`; lopta se zaustavlja na
+    MESTU prijema, `offside IFK -> taker H2` + instant `TAKER claims ball`.
+  - TYPE_B linije 5079 / TYPE_A 488 / TYPE_C 735 u 2400 tick-ova (obe ekipe).
+- `ProposalPhysicsDiagnostic 2400`: OFF bands 61 CLEAR-OFF / 38 MARG-OFF /
+  63 TIGHT-ON; BALL max speed 1.500 (= MAX_BALL_SPEED, min 0.075, avg 1.064);
+  23 šuta (17 saved / 2 post / 4 miss); nema stand-still ≥3 tick-a u posedu.
+- (Diag AWAY-2 max 4.897 = restart-taker teleport fast-path, preegzistirajući,
+  po specifikaciji §48.)
+- match.json ostaje nekomitovan (pravilo korisnika).
+
+---

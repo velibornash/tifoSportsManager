@@ -39,6 +39,31 @@ public class BallResultHandler {
                 switch (res.getType()) {
                     case RECEIVE -> {
                         Player receiver = state.getCarrier(); // already set by ball engine
+                        Player flagged = state.getOffsideFlaggedReceiver();
+                        if (flagged != null && flagged == receiver) {
+                            // OFFSIDE AT RECEPTION (user rule 2026-09-23): the pass
+                            // flew normally from the passer (no teleport, no sudden
+                            // acceleration). The whistle fires NOW, at the exact spot
+                            // where the flagged receiver physically touched the ball.
+                            state.setOffsideFlaggedReceiver(null);
+                            Position spot = state.getBall().getPosition();
+                            String defendingTeam = "HOME".equals(receiver.getTeam()) ? "AWAY" : "HOME";
+                            state.setRestartTeam(defendingTeam);
+                            state.setCarrier(null);
+                            state.getBall().stop();
+                            String offMsg = "*** OFFSIDE by " + receiver.getLabel()
+                                    + " - indirect free kick " + defendingTeam
+                                    + " at " + p(spot) + " (whistle at reception)";
+                            log("ORC", offMsg);
+                            recorder.appendEvent(state.getMatchTicks(), "OFFSIDE", offMsg, state);
+                            // No pass completed / no receive stat — play is dead.
+                            restartManager.handleOffsideFreeKick(state, spot);
+                            log("RST", "offside IFK -> taker "
+                                    + (state.getRestartTaker() == null ? "none"
+                                        : state.getRestartTaker().getLabel())
+                                    + " at ball" + p(state.getBall().getPosition()));
+                            break; // skip normal receive counters
+                        }
                         eventMsg = "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
                                 + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
@@ -48,6 +73,7 @@ public class BallResultHandler {
                     }
                     case INTERCEPT -> {
                         Player interceptor = state.getCarrier();
+                        state.setOffsideFlaggedReceiver(null); // defender reached it first — no offense
                         eventMsg = "INTERCEPT " + interceptor.getLabel() + "(" + interceptor.getRole() + ")"
                                 + " at " + p(interceptor.getPosition()) + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
@@ -56,6 +82,7 @@ public class BallResultHandler {
                     }
                     case SAVE -> {
                         Player gk = state.getCarrier();
+                        state.setOffsideFlaggedReceiver(null);
                         if (wasShot) {
                             // Real save: ball in flight was a SHOT, GK stopped it.
                             eventMsg = "*** SHOT_SAVED by " + gk.getLabel() + "(" + gk.getRole() + ")"
@@ -75,6 +102,7 @@ public class BallResultHandler {
                         }
                     }
                     case BLOCK -> {
+                        state.setOffsideFlaggedReceiver(null);
                         // Only a fast ball in flight following a SHOT is a shot block;
                         // otherwise it's a body deflection of a pass/clear.
                         if (wasShot) {
@@ -95,6 +123,7 @@ public class BallResultHandler {
                         }
                     }
                     case DEFLECT -> {
+                        state.setOffsideFlaggedReceiver(null);
                         eventMsg = "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "DEFLECT", eventMsg, state);
@@ -103,6 +132,7 @@ public class BallResultHandler {
                         stats.onDeflect(resolveTeamByLabel(res.getDetail()));
                     }
                     case POST_HIT -> {
+                        state.setOffsideFlaggedReceiver(null);
                         eventMsg = "SHOT_POST hit the post"
                                 + (wasShot && shooter != null ? " | shot by " + shooter.getLabel() : "")
                                 + " | ball" + p(state.getBall().getPosition());
@@ -112,6 +142,7 @@ public class BallResultHandler {
                         if (wasShot) state.setLastShooter(null); // shot outcome consumed
                     }
                     case GOAL -> {
+                        state.setOffsideFlaggedReceiver(null);
                         String scorerTeam = res.getScorerTeam();
                         if ("HOME".equals(scorerTeam)) state.addHomeGoal();
                         else state.addAwayGoal();
@@ -132,6 +163,7 @@ public class BallResultHandler {
                         log("RST", "kickoff -> ball at center, taker " + state.getCarrier().getLabel());
                     }
                     case OOB_ENTER -> {
+                        state.setOffsideFlaggedReceiver(null);
                         eventMsg = "OOB enter -> " + res.getRestartType() + " (hold " + BallPhysicsEngine.OOB_HOLD_TICKS + " ticks) | ball" + p(state.getBall().getPosition());
                         log("BAL", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "OOB_ENTER", eventMsg, state);
@@ -163,18 +195,21 @@ public class BallResultHandler {
                         stats.onRestart(restartType);
                     }
                     case OOB_CANCEL -> {
+                        state.setOffsideFlaggedReceiver(null);
                         eventMsg = "OOB cancel — ball rolled back into play | ball" + p(state.getBall().getPosition());
                         log("BAL", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "OOB_CANCEL", eventMsg, state);
                     }
                     case LOOSE_PICKUP -> {
                         Player carrier = state.getCarrier();
+                        state.setOffsideFlaggedReceiver(null);
                         eventMsg = "LOOSE BALL recovered by " + carrier.getLabel()
                                 + " | ball" + p(state.getBall().getPosition()) + " " + carrier.getLabel() + p(carrier.getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "LOOSE_PICKUP", eventMsg, state);
                     }
                     case STOPPED -> {
+                        state.setOffsideFlaggedReceiver(null); // ball died, no touch by the flagged receiver
                         // Ball died on the pitch. If it was a shot (off target / didn't reach
                         // the goal), emit the missing epilogue so the sidebar shows the full
                         // shot outcome chain: SHOT → SAVED/BLOCKED/POST/MISSED.

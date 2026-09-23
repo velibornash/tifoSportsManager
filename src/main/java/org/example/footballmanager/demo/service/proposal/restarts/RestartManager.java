@@ -101,6 +101,49 @@ public class RestartManager {
         state.setRestartTeam(kickoffTeam);
     }
 
+    /**
+     * Offside indirect free kick (user rule 2026-09-23): called at the moment
+     * an offside receiver TOUCHES the ball. The ball stays EXACTLY where it
+     * physically arrived (no teleport — the ball never re-accelerates). The
+     * defending team's nearest available field player walks to the spot and
+     * claims it via the standard restart-taker path (MatchOrchestrator step 9);
+     * all other players reposition toward their tactical targets for the spot.
+     * Clock never stops (§48 instant-restart style). restartTeam must be set
+     * to the defending team before calling.
+     */
+    public void handleOffsideFreeKick(MatchState state, Position spot) {
+        state.getBall().setPosition(spot);
+        state.getBall().stop();
+        state.setPendingReceiver(null);
+
+        for (Player p : state.getPlayers()) {
+            if (p.isUnavailable()) continue;
+            p.setTarget(tactics.desiredCell(p.getRole(), spot, p.getTeam()));
+        }
+
+        Player taker = findNearestPlayerOfTeam(state, state.getRestartTeam(), spot);
+        if (taker != null) {
+            double dist = SimUtils.distance(taker.getPosition(), spot);
+            if (dist > 4.0) {
+                double behindRow = taker.getTeam().equals("HOME")
+                        ? spot.getRow() - 0.6
+                        : spot.getRow() + 0.6;
+                behindRow = SimUtils.clamp(behindRow,
+                        PitchEnvironment.HOME_GOAL_LINE,
+                        PitchEnvironment.AWAY_GOAL_LINE);
+                taker.setPosition(new Position(behindRow, spot.getColumn()));
+            }
+            taker.setTarget(spot);
+            state.setRestartTaker(taker);
+        } else {
+            state.setRestartTaker(null);
+        }
+
+        state.setCarrier(null);
+        state.setPhase(MatchPhase.SET_PIECE);
+        state.setSetPieceType("FREE_KICK");
+    }
+
     private RestartType parseRestartType(String oobType) {
         return switch (oobType) {
             case "GOAL_KICK_HOME" -> RestartType.GOAL_KICK_HOME;

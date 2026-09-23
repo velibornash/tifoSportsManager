@@ -42,8 +42,12 @@ public class CleanDecisionEngine {
 
         // KICKOFF — never pass to the goalkeeper; force a short forward/lateral
         // pass to an open, non-GK teammate. Mirrors demo/service generateKickoffPass.
+        // NOTE: kickoffPending is NOT cleared here — it stays true until the
+        // pass is actually LAUNCHED (ActionExecutor.executePass), so the launch
+        // path can detect it and make the kickoff pass exact + max-speed
+        // (user rule 2026-09-23). It is also consumed by OffsideService during
+        // the kickoff pass flight.
         if (state.isKickoffPending()) {
-            state.setKickoffPending(false);
             DecisionOption kickoffPass = kickoffOption(state, carrier);
             if (kickoffPass != null && kickoffPass.getTarget() != null) {
                 return new DecisionResult(kickoffPass, List.of(kickoffPass));

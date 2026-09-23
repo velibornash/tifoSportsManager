@@ -35,6 +35,14 @@ public class MatchState {
     private int offsideDeferredActionCount;       // action count at defer time
     private boolean offsideDeferredDecisionForward; // the deferred(next) action attacked forward
 
+    // Offside whistle-at-reception flag (user rule 2026-09-23): set at pass-moment
+    // when the intended receiver is (clear or marginal) offside. The pass flies
+    // NORMALLY — no block, no teleport, the ball never accelerates. The whistle
+    // fires only when that receiver actually TOUCHES the ball (BallResultHandler
+    // RECEIVE); if anyone else reaches the ball first (intercept/save/block/
+    // deflect/OOB/dead ball) the flag is cleared and play continues (no offense).
+    private Player offsideFlaggedReceiver;
+
     // Score
     private int homeGoals;
     private int awayGoals;
@@ -199,6 +207,10 @@ public class MatchState {
     public void setOffsideDeferredActionCount(int count) { this.offsideDeferredActionCount = count; }
     public boolean isOffsideDeferredDecisionForward() { return offsideDeferredDecisionForward; }
     public void setOffsideDeferredDecisionForward(boolean forward) { this.offsideDeferredDecisionForward = forward; }
+
+    // === OFFSIDE WHISTLE-AT-RECEPTION ===
+    public Player getOffsideFlaggedReceiver() { return offsideFlaggedReceiver; }
+    public void setOffsideFlaggedReceiver(Player offsideFlaggedReceiver) { this.offsideFlaggedReceiver = offsideFlaggedReceiver; }
 
     // === GOALS ===
     public int getHomeGoals() { return homeGoals; }

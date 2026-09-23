@@ -14,9 +14,11 @@ import java.util.List;
  * integration (proposal surface port).
  *
  * Band rules (margin = receiver forward of the second-to-last defender incl. GK):
- *   margin > 0.5        CLEAR offside, whistle + indirect FK
- *   0 < margin <= 0.5   MARGINAL, flag held, play continues; VAR confirms offside
- *                       only if the next action attacked forward or led to a GOAL
+ *   margin > 0.5        CLEAR offside — receiver flagged at pass-moment, pass flies
+ *                       normally, WHISTLE fires when he touches the ball (user rule
+ *                       2026-09-23: the ball never teleports/accelerates)
+ *   0 < margin <= 0.5   MARGINAL — same flag-and-whistle-at-reception (the "action
+ *                       after the pass" IS the reception the user asked for)
  *   -0.8 < margin <= 0  tight onside margin, check held; VAR confirms ONSIDE only
  *                       if the next action was a GOAL
  *   margin <= -0.8      clear onside, no call
@@ -102,8 +104,8 @@ public class OffsideService implements EngineInterfaces.OffsideService {
             boolean inOppHalf = home
                     ? receiver.getPosition().getRow() > 4.5
                     : receiver.getPosition().getRow() < 4.5;
-            String band = margin > 0.5 ? "CLEAR-OFF(whistle)"
-                    : margin > 0 ? "MARG-OFF(VAR hold)"
+            String band = margin > 0.5 ? "CLEAR-OFF(flag@recv)"
+                    : margin > 0 ? "MARG-OFF(flag@recv)"
                     : margin > -0.8 ? "TIGHT-ON(VAR hold)" : "ONSIDE";
             System.out.printf("[OFF-TRACE] pass %s(%s) -> receiver %s at (%.2f,%.2f) | ball at strike (%.2f,%.2f) | "
                             + "last-2-def row %.2f & 2nd-last %.2f (%.2f cells off goal line) | forward-of-ball:%b in-opp-half:%b | margin %+.3f -> %s%n",
@@ -116,18 +118,15 @@ public class OffsideService implements EngineInterfaces.OffsideService {
                     forwardOfBall, inOppHalf, margin, band);
         }
 
-        if (margin > 0.5) {
-            return confirmOffside(receiver, carrierTeam(receiver, state), state,
-                    "CLEAR offside (margin=" + String.format("%.2f", margin) + ")");
-        }
-
-        if (margin > 0) {
-            state.setPendingVARReview("OFFSIDE", receiver,
-                    "HOME".equals(receiver.getTeam()) ? "AWAY" : "HOME");
-            state.setOffsideDeferred(true);
-            state.setOffsideDeferredMargin(margin);
-            state.setOffsideLedToGoal(false);
-            state.setOffsideDeferredActionCount(state.getOffsideDeferredActionCount() + 1);
+        if (margin > 0.5 || margin > 0) {
+            // CLEAR + MARGINAL bands (user rule 2026-09-23): the pass is NOT
+            // blocked and the ball is NOT teleported to the receiver at
+            // pass-moment — that is what made the ball "suddenly accelerate".
+            // The receiver is FLAGGED so the whistle fires only when he actually
+            // touches the ball (the direct reception = the "action after the
+            // pass" the user asked for). If any defender/opponent gets there
+            // first the flag is cleared and play continues (no offense).
+            state.setOffsideFlaggedReceiver(receiver);
             return new OffsideResult(false, true);
         }
 

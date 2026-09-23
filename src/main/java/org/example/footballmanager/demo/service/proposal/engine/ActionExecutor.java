@@ -80,11 +80,17 @@ public class ActionExecutor {
         // Ball snapped to carrier already by orchestrator before decision
         Ball ball = state.getBall();
 
+        // KICKOFF (user rule 2026-09-23): the kickoff pass must be EXACT — it
+        // goes straight AT the target player (no opening-target nudge, zero
+        // deviation) and launches at MAX ball speed (1.5 cells/tick) so NO
+        // opponent can beat the ball (max non-carrier pace is 0.75 cells/tick).
+        boolean kickoff = state.isKickoffPending();
+
         // Pass into the OPENING — the receiver's position nudged away from its
         // nearest opponent (demo/service "openingTarget" model). Passing AT the
         // receiver's occupied body lets the marker on the segment intercept;
         // serving into ~0.5 cell of free space the receiver runs onto completes.
-        Position aimedTarget = openingTarget(state, receiver);
+        Position aimedTarget = kickoff ? receiver.getPosition() : openingTarget(state, receiver);
 
         // Pass launch speed is the POSSESSOR-RELATIVE skill speed (demo/service
         // model): the passer plays at the speed his passing skill can handle, so
@@ -95,13 +101,25 @@ public class ActionExecutor {
         boolean airborne = dist >= 1.5;
         double desiredSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
 
-        // ExecutionQuality gives deviated aim + launch speed + spin
-        ExecutionQuality.PassResult result = ExecutionQuality.evaluatePass(
-                carrier, carrier.getPosition(), aimedTarget, receiver, desiredSpeed);
+        // ExecutionQuality gives deviated aim + launch speed + spin. The kickoff
+        // pass bypasses it entirely: exact receiver position, max speed, no spin.
+        ExecutionQuality.PassResult result = kickoff
+                ? new ExecutionQuality.PassResult(receiver.getPosition(),
+                        BallPhysicsEngine.MAX_BALL_SPEED, 0.0,
+                        (int) carrier.getSkills().passing(), 0.0)
+                : ExecutionQuality.evaluatePass(
+                        carrier, carrier.getPosition(), aimedTarget, receiver, desiredSpeed);
 
         // Launch the ball toward the deviated aim
         state.getBallEngine().launch(ball, carrier.getPosition(),
                 result.getActualTarget(), result.getSpeed(), airborne, result.getSpin());
+
+        // The kickoff is consumed the moment the ball leaves the center spot —
+        // the receiver's own decision (next tick) is a NORMAL decision, no more
+        // kickoff logic. OffsideService only skips the check during this flight.
+        if (kickoff) {
+            state.setKickoffPending(false);
+        }
 
         // Carrier stops running; receiver holds position during flight
         carrier.setTarget(null);

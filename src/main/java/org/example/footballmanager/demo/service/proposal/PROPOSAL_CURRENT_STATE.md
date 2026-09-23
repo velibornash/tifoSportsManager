@@ -3,15 +3,13 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-23 (session 7.1 — compact console log: stdout shows only
-> the on-pitch story via CONSOLE_NOTABLE ~805 lines/match so the IntelliJ
-> run-console never cuts the match start; full stream always mirrored to
-> target/proposal-app.log + match.json logs; BallResultHandler/DuelService now
-> log through ActionLogService. UI side log streams live: _buildTimeline up-to-tick
-> on load/seek, events enqueued per tick and flushed per RAF in the viewer).
-> Commit 41fc866 (session 6.13): ThreatOverrideEngine wired (offside retreat +
-> carrier press→duel at PRESS_DRIB_DUEL_RADIUS 0.50), trackOffsidePositions runs
-> every tick, restart-taker freeze fixed. Plus session 6.12 · 537fef2.
+> Last update: 2026-09-23 (session 7.2 — offside whistle AT RECEPTION:
+> `OffsideService` CLEAR+MARG samo flag-uje primaoca (`offsideFlaggedReceiver`),
+> `BallResultHandler.RECEIVE` svira kad ofsajd igrač primi loptu — nema teleporta;
+> `RestartManager.handleOffsideFreeKick` instant IFK. Kickoff pass tačno na
+> primaoca + MAX_BALL_SPEED 1.5 (precision/brzina). TYPE B pritisak na slobodnog
+> napadača u ZONI OPASNOSTI (HOME ≤3.0 / AWAY ≥6.0, RANGE_B 2.0).
+> Session 7.1 (compact log + live side panel) i prethodno 41fc866 (6.13).)
 
 ---
 
@@ -287,14 +285,22 @@ returns `(r + 1.5, c + 1.5)` (cell center).
 3.  VAR timer
 4.  ballEngine.stepBall       → BallStepResult
 5.  handle result              → RECEIVE / INTERCEPT / BLOCK / GOAL / RESTART
-6.  decision + execution       → only if carrier exists and ball NOT in flight
+6.  decision + execution       → only if carrier exists and ball NOT in flight (checkOffside flag for PASS)
 7.  tactical intent            → refreshTargets
 8.  movement                   → moveAllTowardTargets
 9.  restart taker claim        → taker walks to the ball
-10. rules                      → offside
+10. rules                      → offside (resolvePendingVAROffside only)
 11. duels                      → DuelEngine
 12. VAR timer update
 ```
+
+**Offside flag → whistle flow (session 7.2):** `checkOffside` (step 6, pass-moment)
+marks the intended receiver (`offsideFlaggedReceiver`) for CLEAR/MARG bands — the
+pass is NOT blocked and nothing is teleported. The actual whistle fires in
+`BallResultHandler` (step 5) on the RECEIVE result when the flagged player
+touches the ball; it stops at the physically-arrived spot and
+`RestartManager.handleOffsideFreeKick` produces an instant IFK. If anyone else
+reaches the ball first the flag is cleared (no offense).
 
 **Log tags:** `[mm:ss|DEC]` decision, `[mm:ss|ORC]` orchestrator,
 `[mm:ss|BAL]` ball physics, `[mm:ss|DUL]` duel, `[mm:ss|RST]` restart,
@@ -385,6 +391,9 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | 🟢 P2#1-3 `[x]` — `handleBallPhysicsResult()` 162-line switch → `BallResultHandler` (engine/BallResultHandler.java); orchestrator 324 l. / helper 224 l., kompajl PASS. Ostalo: duels→`DuelService`, log→`ActionLogService`, slim loop |
 
 **Recent correctness fixes (2026-09-14, user-reported):**
+- **Offside whistle at reception (7.2)**: no ball teleport/acceleration on an
+  offside — pass flies normally (ball physics untouched), ball stops at the
+  received spot, IFK is instant.
 - **Possession glue**: the ball is now glued to the carrier AFTER movement
   (`MatchOrchestrator` step 8b) — a dribbling carrier never leaves the ball
   behind, and shot/pass actions always start from the carrier's feet

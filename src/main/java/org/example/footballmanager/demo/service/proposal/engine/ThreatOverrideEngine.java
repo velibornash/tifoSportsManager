@@ -45,8 +45,10 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
     /** TYPE A: max distance (cells) from carrier to activate press. */
     public static final double RANGE_A = 1.5;
 
-    /** TYPE B: max distance (cells) from opponent to activate anticipation press. */
-    public static final double RANGE_B = 1.5;
+    /** TYPE B: max distance (cells) from dangerous isolated opponent to activate
+     *  the approach press. 2.0 = ~28 m — the nearest defender in/near our box
+     *  genuinely closes the free striker down (user rule 2026-09-23). */
+    public static final double RANGE_B = 2.0;
 
     /** TYPE C: ticks in offside before retreat begins. */
     public static final int OFFSIDE_RETREAT_THRESHOLD = 3;
@@ -114,7 +116,7 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
                     String which = typeA != null ? "TYPE_A" : typeB != null ? "TYPE_B" : "TYPE_C";
                     String what = state.getCarrier() != null && typeA != null
                             ? state.getCarrier().getLabel() + "(" + state.getCarrier().getRole() + ")"
-                            : (typeB != null ? "isolated-opponent-in-final-quarter" : "offside-retreat");
+                            : (typeB != null ? "isolated-opponent-in-danger-zone" : "offside-retreat");
                     state.getActionLogger().log("THR",
                             which + " " + player.getLabel() + "(" + player.getRole() + ")"
                                     + " presses " + what
@@ -166,10 +168,12 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
             if (opponent == state.getCarrier()) continue; // carrier is TYPE A
             if (opponent.isSentOff() || opponent.isInjured()) continue;
 
-            // Final 2.5 rows check (isInFinalQuarter): rows <= 2.5 HOME / >= 6.5 AWAY
+            // Danger zone = 2 cells from OUR OWN GOAL (user rule 2026-09-23):
+            // HOME goal line row 1 -> rows <= 3.0; AWAY goal line row 8 -> rows
+            // >= 6.0 (previously final 2.5 rows 2.5/6.5 — slightly too narrow).
             double opponentRow = opponent.getPosition().getRow();
-            boolean inFinalQuarter = home ? opponentRow <= 2.5 : opponentRow >= 6.5;
-            if (!inFinalQuarter) continue;
+            boolean inDangerZone = home ? opponentRow <= 3.0 : opponentRow >= 6.0;
+            if (!inDangerZone) continue;
 
             // Isolated: no teammate within 0.5 cells (isIsolated)
             boolean isolated = state.getPlayers().stream()
