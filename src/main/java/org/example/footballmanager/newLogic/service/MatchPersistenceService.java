@@ -10,6 +10,7 @@ import org.example.footballmanager.newLogic.repository.MatchTickStateRepository;
 import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.util.match.MatchRatingCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ public class MatchPersistenceService {
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PlayerRepository playerRepository;
+    private final MatchTeamStatsService matchTeamStatsService;
     private final ObjectMapper objectMapper;
 
     public MatchPersistenceService(MatchRepository matchRepository,
@@ -40,7 +42,8 @@ public class MatchPersistenceService {
                                    MatchTickStateRepository matchTickStateRepository,
                                    SeasonCompetitionRepository seasonCompetitionRepository,
                                    CompetitionEntryRepository competitionEntryRepository,
-                                   PlayerRepository playerRepository) {
+                                   PlayerRepository playerRepository,
+                                   MatchTeamStatsService matchTeamStatsService) {
         this.matchRepository = matchRepository;
         this.matchEventRepository = matchEventRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
@@ -48,6 +51,7 @@ public class MatchPersistenceService {
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
         this.playerRepository = playerRepository;
+        this.matchTeamStatsService = matchTeamStatsService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -57,7 +61,8 @@ public class MatchPersistenceService {
         updateMatchEntity(match, result);
         matchRepository.save(match);
         saveMatchEvents(result, match);
-        savePlayerStats(result, match);
+        List<MatchPlayerStats> playerStats = savePlayerStats(result, match);
+        saveMatchTeamStats(result, match, playerStats);
         saveTickHistory(result, match);
     }
 
@@ -158,6 +163,8 @@ public class MatchPersistenceService {
         match.setAwayGoals(result.awayGoals());
         match.setPossessionHome(result.homePossession());
         match.setPossessionAway(result.awayPossession());
+        match.setHomeFormation(result.homeFormation());
+        match.setAwayFormation(result.awayFormation());
         match.setPlayed(true);
         match.setFinished(true);
         match.setEventJson(serializeEvents(result.events()));
@@ -177,33 +184,67 @@ public class MatchPersistenceService {
         }
     }
 
-    private void savePlayerStats(MatchResult result, Match match) {
+    private void saveMatchTeamStats(MatchResult result, Match match, List<MatchPlayerStats> playerStats) {
+        try {
+            MatchTeamStats stats = matchTeamStatsService.compute(match, result, playerStats);
+            match.setStatsJson(objectMapper.writeValueAsString(stats.toMap()));
+        } catch (Exception e) {
+            log.warn("Failed to persist team stats for match {}: {}", match.getId(), e.getMessage());
+        }
+    }
+
+    private List<MatchPlayerStats> savePlayerStats(MatchResult result, Match match) {
+        if (match.getHomeTeam() == null || match.getAwayTeam() == null) return List.of();
         Team homeTeam = match.getHomeTeam();
         Team awayTeam = match.getAwayTeam();
         Map<Long, PlayerStatsAccumulator> accs = new HashMap<>();
 
         for (MatchEvent event : result.events()) {
             if (event instanceof GoalEvent g) {
-                accs.computeIfAbsent(g.scorerId(), k -> mkAcc(g.scorerName(), sideTeam(g.teamSide(), homeTeam, awayTeam))).addGoal();
+                accs.computeIfAbsent(g.scorerId(), k -> mkAcc(g.scorerName(), sideTeam(g.teamSide(), homeTeam, awayTeam))).addGoals(1);
                 if (g.assistantId() != null) {
-                    accs.computeIfAbsent(g.assistantId(), k -> mkAcc(g.assistantName(), sideTeam(g.teamSide(), homeTeam, awayTeam))).addAssist();
+                    accs.computeIfAbsent(g.assistantId(), k -> mkAcc(g.assistantName(), sideTeam(g.teamSide(), homeTeam, awayTeam))).addAssists(1);
                 }
             } else if (event instanceof ShotEvent s) {
-                accs.computeIfAbsent(s.shooterId(), k -> mkAcc(s.shooterName(), sideTeam(s.teamSide(), homeTeam, awayTeam))).addShot();
+                PlayerStatsAccumulator a = accs.computeIfAbsent(s.shooterId(), k -> mkAcc(s.shooterName(), sideTeam(s.teamSide(), homeTeam, awayTeam)));
+                a.addShot();
+                if (s.onTarget() || s.isGoal()) a.shotsOnTarget++;
+            } else if (event instanceof ShotSavedEvent ss1) {
+                PlayerStatsAccumulator a = accs.computeIfAbsent(ss1.shooterId(), k -> mkAcc(ss1.shooterName(), sideTeam(ss1.teamSide(), homeTeam, awayTeam)));
+                a.addShot();
+                a.shotsOnTarget++;
+                accs.computeIfAbsent(ss1.goalkeeperId(), k -> mkAcc(ss1.goalkeeperName(), sideTeam(opposite(ss1.teamSide()), homeTeam, awayTeam))).addSave();
+            } else if (event instanceof ShotMissedEvent sm) {
+                PlayerStatsAccumulator a = accs.computeIfAbsent(sm.shooterId(), k -> mkAcc(sm.shooterName(), sideTeam(sm.teamSide(), homeTeam, awayTeam)));
+                a.addShot();
+            } else if (event instanceof ShotBlockedEvent sb) {
+                accs.computeIfAbsent(sb.shooterId(), k -> mkAcc(sb.shooterName(), sideTeam(sb.teamSide(), homeTeam, awayTeam))).addShot();
+            } else if (event instanceof CrossHeaderEvent hd) {
+                if (hd.headerId() != 0) {
+                    PlayerStatsAccumulator a = accs.computeIfAbsent(hd.headerId(), k -> mkAcc(hd.headerName(), sideTeam(hd.teamSide(), homeTeam, awayTeam)));
+                    a.addShot();
+                    if (hd.onTarget()) a.shotsOnTarget++;
+                }
             } else if (event instanceof PassEvent p) {
                 accs.computeIfAbsent(p.passerId(), k -> mkAcc(p.passerName(), sideTeam(p.teamSide(), homeTeam, awayTeam))).addPass(p.completed());
+            } else if (event instanceof PassIncompleteEvent pi) {
+                accs.computeIfAbsent(pi.passerId(), k -> mkAcc(pi.passerName(), sideTeam(pi.teamSide(), homeTeam, awayTeam))).addPass(false);
+            } else if (event instanceof PassInterceptedEvent pi) {
+                accs.computeIfAbsent(pi.interceptorId(), k -> mkAcc(pi.interceptorName(), sideTeam(pi.interceptorTeamSide(), homeTeam, awayTeam))).addInterception();
+            } else if (event instanceof GkSaveEvent gk) {
+                accs.computeIfAbsent(gk.goalkeeperId(), k -> mkAcc(gk.goalkeeperName(), sideTeam(gk.teamSide(), homeTeam, awayTeam))).addSave();
             } else if (event instanceof FoulEvent f) {
                 accs.computeIfAbsent(f.takerId(), k -> mkAcc(f.takerName(), sideTeam(f.teamSide(), homeTeam, awayTeam))).addFoul();
             } else if (event instanceof CardEvent c) {
                 accs.computeIfAbsent(c.playerId(), k -> mkAcc(c.playerName(), sideTeam(c.teamSide(), homeTeam, awayTeam))).addCard(c.cardType() == CardEvent.CardType.YELLOW);
             } else if (event instanceof DuelEvent d) {
                 accs.computeIfAbsent(d.player1Id(), k -> mkAcc(d.player1Name(), sideTeam(d.teamSide(), homeTeam, awayTeam))).addDuel(d.attackerWon());
+            } else if (event instanceof TackleEvent t) {
+                accs.computeIfAbsent(t.defenderId(), k -> mkAcc(t.defenderName(), sideTeam(t.defenderTeamSide(), homeTeam, awayTeam))).addTackle(t.success());
             } else if (event instanceof CrossEvent cr) {
                 accs.computeIfAbsent(cr.crosserId(), k -> mkAcc(cr.crosserName(), sideTeam(cr.teamSide(), homeTeam, awayTeam))).addCross();
             } else if (event instanceof CrossHeaderEvent ch) {
                 accs.computeIfAbsent(ch.headerId(), k -> mkAcc(ch.headerName(), sideTeam(ch.teamSide(), homeTeam, awayTeam))).addHeader();
-            } else if (event instanceof TackleEvent t) {
-                accs.computeIfAbsent(t.defenderId(), k -> mkAcc(t.defenderName(), sideTeam(t.defenderTeamSide(), homeTeam, awayTeam))).addTackle(t.success());
             } else if (event instanceof InjuryEvent i) {
                 accs.computeIfAbsent(i.playerId(), k -> mkAcc(i.playerName(), sideTeam(i.teamSide(), homeTeam, awayTeam))).addInjury();
             } else if (event instanceof SubstitutionEvent sub) {
@@ -217,7 +258,11 @@ public class MatchPersistenceService {
             }
         }
 
-        List<MatchPlayerStats> statsList = new ArrayList<>();
+        int homeScored = result.homeGoals();
+        int awayScored = result.awayGoals();
+
+        List<MatchPlayerStats> saved = new ArrayList<>();
+
         for (Map.Entry<Long, PlayerStatsAccumulator> e : accs.entrySet()) {
             PlayerStatsAccumulator a = e.getValue();
             if (a.team == null) continue;
@@ -236,6 +281,15 @@ public class MatchPersistenceService {
                 continue;
             }
 
+            boolean isHome = homeTeam.equals(a.team);
+            int teamGoals = isHome ? homeScored : awayScored;
+            int conceded = isHome ? awayScored : homeScored;
+            boolean cleanSheet = conceded == 0 && a.minutesPlayed >= 60
+                    && (p.getPositionEnum() == Position.GK || p.getPositionEnum() == Position.DEF);
+            int rating = MatchRatingCalculator.calculate(
+                    p, a.goals, a.assists, a.interceptions, a.saves, cleanSheet,
+                    a.yellowCards, a.redCards, teamGoals, conceded, a.minutesPlayed);
+
             MatchPlayerStats s = new MatchPlayerStats();
             s.setMatch(match);
             s.setPlayer(p);
@@ -244,9 +298,18 @@ public class MatchPersistenceService {
             s.setYellowCards(a.yellowCards);
             s.setRedCards(a.redCards);
             s.setMinutesPlayed(a.minutesPlayed);
-            s.setRating(a.rating);
+            s.setRating(rating);
+            s.setInterceptions(a.interceptions);
+            s.setSaves(a.saves);
+            s.setCleanSheet(cleanSheet);
+            s.setShots(a.shots);
+            s.setPassesAttempted(a.passesAttempted);
+            s.setPassesCompleted(a.passesCompleted);
+            saved.add(s);
             matchPlayerStatsRepository.save(s);
         }
+
+        return saved;
     }
 
     private void saveTickHistory(MatchResult result, Match match) {
@@ -278,6 +341,10 @@ public class MatchPersistenceService {
         return "HOME".equals(side) ? home : away;
     }
 
+    private static String opposite(String side) {
+        return "HOME".equals(side) ? "AWAY" : "HOME";
+    }
+
     private PlayerStatsAccumulator mkAcc(String name, Team team) {
         return new PlayerStatsAccumulator(name, team);
     }
@@ -285,21 +352,30 @@ public class MatchPersistenceService {
     private static class PlayerStatsAccumulator {
         final String name;
         final Team team;
-        int goals, assists, yellowCards, redCards, minutesPlayed = 90, rating = 60;
+        int goals, assists, yellowCards, redCards;
+        int interceptions, saves;
+        int shots, shotsOnTarget;
+        int passesAttempted, passesCompleted;
+        int minutesPlayed = 90;
 
         PlayerStatsAccumulator(String name, Team team) { this.name = name; this.team = team; }
 
-        void addGoal() { goals++; rating += 5; }
-        void addAssist() { assists++; rating += 3; }
-        void addShot() {}
-        void addPass(boolean completed) { if (completed) rating += 1; }
-        void addFoul() { rating -= 1; }
-        void addCard(boolean yellow) { if (yellow) { yellowCards++; rating -= 2; } else { redCards++; rating -= 5; } }
-        void addDuel(boolean won) { rating += won ? 1 : -1; }
-        void addCross() { rating += 1; }
-        void addHeader() { rating += 1; }
-        void addTackle(boolean won) { rating += won ? 2 : -2; }
-        void addInjury() { rating -= 10; minutesPlayed = Math.max(15, minutesPlayed - 30); }
+        void addGoals(int n) { goals += n; }
+        void addAssists(int n) { assists += n; }
+        void addShot() { shots++; }
+        void addPass(boolean completed) {
+            passesAttempted++;
+            if (completed) passesCompleted++;
+        }
+        void addInterception() { interceptions++; }
+        void addSave() { saves++; }
+        void addFoul() {}
+        void addCard(boolean yellow) { if (yellow) yellowCards++; else redCards++; }
+        void addDuel(boolean won) {}
+        void addCross() {}
+        void addHeader() {}
+        void addTackle(boolean won) {}
+        void addInjury() { minutesPlayed = Math.max(15, minutesPlayed - 30); }
         void setSubIn(boolean v) {}
     }
 }

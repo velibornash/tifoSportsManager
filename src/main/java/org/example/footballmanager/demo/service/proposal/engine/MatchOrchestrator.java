@@ -3,6 +3,8 @@ package org.example.footballmanager.demo.service.proposal.engine;
 import org.example.footballmanager.demo.service.proposal.engine.decision.CleanDecisionEngine;
 import org.example.footballmanager.demo.service.proposal.model.*;
 import org.example.footballmanager.demo.service.proposal.recording.MatchRecorder;
+import org.example.footballmanager.demo.service.proposal.result.ProposalMatchOutcome;
+import org.example.footballmanager.demo.service.proposal.result.ProposalMatchOutcomeBuilder;
 import org.example.footballmanager.demo.service.proposal.result.ProposalStatsCollector;
 import org.example.footballmanager.demo.service.proposal.restarts.RestartManager;
 import org.example.footballmanager.demo.service.proposal.rules.FootballRules;
@@ -98,6 +100,7 @@ public class MatchOrchestrator {
     public RestartManager getRestartManager() { return restartManager; }
     public MatchRecorder getRecorder() { return recorder; }
     public ProposalStatsCollector getStats() { return stats; }
+    public MatchState getState() { return state; }
 
     private void log(String tag, String msg) {
         actionLog.log(tag, msg);
@@ -396,5 +399,10 @@ public class MatchOrchestrator {
                 restartManager.handleKickoff(state, "AWAY");
             }
         }
+    }
+
+    /** Build the complete post-match outcome (report-ready). */
+    public ProposalMatchOutcome buildOutcome() {
+        return new ProposalMatchOutcomeBuilder().build(this);
     }
 }

@@ -124,6 +124,17 @@ public class ZoxApiController {
     // ─── Stats ────────────────────────────────────────────────
 
     private Map<String, Object> computeTeamStats(Match match) {
+        String statsJson = match.getStatsJson();
+        if (statsJson != null && !statsJson.isBlank()) {
+            try {
+                Map<String, Object> canonical = objectMapper.readValue(statsJson,
+                    new TypeReference<LinkedHashMap<String, Object>>() {});
+                return canonical;
+            } catch (Exception e) {
+                log.warn("Failed to parse statsJson for match {}: {}", match.getId(), e.getMessage());
+            }
+        }
+
         String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
         String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
 

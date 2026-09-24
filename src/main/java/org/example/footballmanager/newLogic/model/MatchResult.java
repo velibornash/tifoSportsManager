@@ -27,6 +27,12 @@ public record MatchResult(
     int homeRedCards,
     int awayRedCards,
     double homeAvgRating,
-    double awayAvgRating
+    double awayAvgRating,
+    int homePassesAttempted,
+    int homePassesCompleted,
+    int awayPassesAttempted,
+    int awayPassesCompleted,
+    String homeFormation,
+    String awayFormation
 ) {
 }

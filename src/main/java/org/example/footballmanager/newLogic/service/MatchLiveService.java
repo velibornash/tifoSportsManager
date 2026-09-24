@@ -307,8 +307,14 @@ public class MatchLiveService {
             simulator.getAwayYellowCards(),
             simulator.getHomeRedCards(),
             simulator.getAwayRedCards(),
+0.0,
             0.0,
-            0.0
-        );
+            simulator.getHomeTotalPasses(),
+             simulator.getHomeSuccessfulPasses(),
+             simulator.getAwayTotalPasses(),
+             simulator.getAwaySuccessfulPasses(),
+             match.getHomeTeam() != null ? match.getHomeTeam().getFormation() : null,
+             match.getAwayTeam() != null ? match.getAwayTeam().getFormation() : null
+         );
     }
 }

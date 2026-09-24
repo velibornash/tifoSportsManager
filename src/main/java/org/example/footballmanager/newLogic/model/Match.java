@@ -61,6 +61,9 @@ public class Match {
     @Column(columnDefinition = "text")
     private String lineupJson;
 
+    @Column(columnDefinition = "text")
+    private String statsJson;
+
     private Long replayId;
     private Boolean finished;
 

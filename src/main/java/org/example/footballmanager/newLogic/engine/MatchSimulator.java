@@ -1304,7 +1304,11 @@ public final class MatchSimulator {
             homeCorners, awayCorners,
             homeYellowCards, awayYellowCards,
             homeRedCards, awayRedCards,
-            0.0, 0.0
+            0.0, 0.0,
+            homeTotalPasses, homeSuccessfulPasses,
+            awayTotalPasses, awaySuccessfulPasses,
+            match.getHomeTeam() != null ? match.getHomeTeam().getFormation() : null,
+            match.getAwayTeam() != null ? match.getAwayTeam().getFormation() : null
         );
     }
 

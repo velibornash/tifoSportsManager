@@ -83,6 +83,8 @@ public class MatchStatisticEngine {
         Team team = players.stream().findFirst().map(Player::getTeam).orElse(null);
         List<MatchEvent> matchEvents = preloadedMatchEvents != null ? preloadedMatchEvents : matchEventRepository.findByMatch(match);
         Map<Long, Integer> interceptionsByPlayerId = buildInterceptionsByPlayer(matchEvents);
+        Map<Long, Integer> shotsByPlayerId = buildShotsByPlayer(matchEvents);
+        Map<Long, int[]> passesByPlayerId = buildPassesByPlayer(matchEvents);
         Map<Long, Integer> shotsOnTargetByTeamId = buildShotsOnTargetByTeam(matchEvents, match);
         Map<Long, MatchPlayerStats> existingStatsByPlayerId = Optional.ofNullable(matchPlayerStatsRepository.findByMatchId(match.getId()))
                 .orElseGet(List::of)
@@ -135,6 +137,8 @@ public class MatchStatisticEngine {
                     && (player.getPositionEnum() == Position.GK || player.getPositionEnum() == Position.DEF);
             int interceptions = resolveInterceptions(player, minutesPlayed, concededGoals, interceptionsByPlayerId);
             int saves = resolveSaves(player, minutesPlayed, concededGoals, opponentShotsOnTarget, goalkeeperMinutes, totalGoalkeeperMinutes);
+            int shots = shotsByPlayerId.getOrDefault(player.getId(), 0);
+            int[] passes = passesByPlayerId.getOrDefault(player.getId(), new int[]{0, 0});
             int calculatedRating = MatchRatingCalculator.calculate(
                     player,
                     (int) goals,
@@ -163,6 +167,9 @@ public class MatchStatisticEngine {
             stats.setSaves(saves);
             stats.setCleanSheet(cleanSheet);
             stats.setRating(calculatedRating);
+            stats.setShots(shots);
+            stats.setPassesAttempted(passes[0]);
+            stats.setPassesCompleted(passes[1]);
             statsToSave.add(stats);
         }
 
@@ -477,6 +484,28 @@ public class MatchStatisticEngine {
                 .map(PassInterceptedEvent.class::cast)
                 .forEach(event -> interceptions.merge(event.interceptorId(), 1, Integer::sum));
         return interceptions;
+    }
+
+    private Map<Long, Integer> buildShotsByPlayer(List<MatchEvent> matchEvents) {
+        Map<Long, Integer> shots = new HashMap<>();
+        matchEvents.stream()
+                .filter(ShotEvent.class::isInstance)
+                .map(ShotEvent.class::cast)
+                .forEach(event -> shots.merge(event.shooterId(), 1, Integer::sum));
+        return shots;
+    }
+
+    private Map<Long, int[]> buildPassesByPlayer(List<MatchEvent> matchEvents) {
+        Map<Long, int[]> passes = new HashMap<>();
+        matchEvents.stream()
+                .filter(PassEvent.class::isInstance)
+                .map(PassEvent.class::cast)
+                .forEach(event -> {
+                    int[] acc = passes.computeIfAbsent(event.passerId(), k -> new int[2]);
+                    acc[0]++;
+                    if (event.completed()) acc[1]++;
+                });
+        return passes;
     }
 
     private Map<Long, Integer> buildShotsOnTargetByTeam(List<MatchEvent> matchEvents, Match match) {

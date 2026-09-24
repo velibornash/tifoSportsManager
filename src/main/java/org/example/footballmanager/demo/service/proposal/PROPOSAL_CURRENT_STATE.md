@@ -272,10 +272,11 @@ returns `(r + 1.5, c + 1.5)` (cell center).
 ### 5.5 Recording
 
 | Class | Description |
-|---|---|
+|---|---|---|
 | `MatchRecorder` | Event + snapshot recording |
 | `MatchEvent` / `MatchSnapshot` / `MatchRecording` | JSON-friendly models |
 | `PlayerSnapshot` | Player position at snapshot time |
+| `ProposalMatchOutcome` / `ProposalMatchOutcomeBuilder` (result/) | Post-match report payload (JSON-ready) + builder from `MatchOrchestrator` |
 
 ### 5.6 Orchestrator — per-tick order
 
@@ -319,27 +320,32 @@ reaches the ball first the flag is cleared (no offense).
 
 ### 5.8 Statistics
 
-**Current state (MAJOR GAP):**
-MatchState has only basic global counters:
-```
-passAttempts, passesCompleted, shots, shotsOnTarget, fouls, yellowCards, redCards
-```
+**Current state (2026-09-24 — out-of-match "izveštaj" shape is ready):**
+`ProposalStatsCollector` gathers per-team + per-player stats live during play,
+and `result/ProposalMatchOutcomeBuilder` turns a finished orchestrator into a
+**`ProposalMatchOutcome`** (`result/ProposalMatchOutcome.java`) — the JSON-ready
+"match report" payload that maps 1:1 onto the newLogic match/report model.
 
-**What is missing:**
+The outcome carries: score, possession, expected goals (derived per-shot from
+distance-to-goal, same xG bands as newLogic), formations (derived from role
+counts), full `TeamOutcome` / `PlayerOutcome` / `EventEntry` (typed timeline)
+lists, and player-of-the-match. Fouls / cards are structural **0** until
+`DisciplineService` is wired into the orchestrator.
 
 | Category | Current | Needed |
 |---|---|---|
-| Shots | `shots`, `shotsOnTarget` | blocked, saved, missed, per player, per team |
-| Goals | `homeGoals`, `awayGoals` | open play, center, cross, penalty, FK, corner, per player |
-| Offside | none | total, per team |
+| Shots | `shots`, `shotsOnTarget` per team+player | blocked, saved, missed (per player inherited from demo counters is partial) |
+| Goals | `homeGoals`, `awayGoals` + per player | open play / penalty / FK split |
+| Offside | derived from recorder `OFFSIDE` events (per team) | per player |
 | VAR | none | total, confirmed, overturned, per type |
-| Passes | `passAttempts`, `passesCompleted` | thru, center, cross, air, ground, per player |
-| Dribbles | none | total, successful, per player |
-| Interceptions | none | interceptions, deflections, per player |
-| Restarts | none | corners, throw-ins, goal kicks, free kicks, penalties, per team |
-| Cards | `fouls`, `yellowCards`, `redCards` | yellow, red, double-yellow, per player |
-| Per-player | none | position, minutes, rating, all actions |
-| Rating | none | average rating based on actions |
+| Passes | `passesAttempted/passesCompleted` per team+player | thru / center / cross split |
+| Dribbles | per team+player | successful dribble split vs lost |
+| Interceptions | per team+player | — |
+| Restarts | corners, throw-ins, goal kicks per team | free kicks, penalties per team |
+| Cards | structural 0 (DisciplineService not wired) | yellow, red, double-yellow, per player |
+| Rating | per player + team avg (`calculateRating`) | — |
+| Expected goals | derived per-shot on outcome build | — |
+| Match outcome JSON | `MatchOrchestrator.buildOutcome()` / launcher print | persist via future newLogic adapter |
 
 > **Viewer note (2026-09-23):** stats are still computed and exported
 > (`stats.teams`/`stats.players`) but the sidebar stats panel was REMOVED — the
@@ -389,6 +395,8 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | **Transition** | Possession-change logic | ❌ NOT PRESENT (backlog P8) |
 | **Stats layer** | Per-team + per-player stats + possession chains | ✅ DONE (P1) — `result/ProposalStatsCollector.java`, exported as `stats.teams`/`stats.players` with `avgPossessionTicks`/`longestPossessionTicks`, rendered in viewer sidebar (chain avg row) |
 | **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | 🟢 P2#1-3 `[x]` — `handleBallPhysicsResult()` 162-line switch → `BallResultHandler` (engine/BallResultHandler.java); orchestrator 324 l. / helper 224 l., kompajl PASS. Ostalo: duels→`DuelService`, log→`ActionLogService`, slim loop |
+| **Match outcome (report shape)** | Post-match report payload for future newLogic adapter + statsJson | ✅ DONE (2026-09-24) — `result/ProposalMatchOutcome.java` + `ProposalMatchOutcomeBuilder.java`; xG/offsides/formations/MOTM derived on build; `MatchOrchestrator.buildOutcome()` + launcher JSON print. Fallback: fouls/cards 0 (DisciplineService) |
+| **newLogic connect** | Canonical per-team stats writer/reader so proposal output slots into the report | ✅ DONE (2026-09-24) — `Match.statsJson` + `newLogic/service/MatchTeamStatsService.java` + `newLogic/model/MatchTeamStats.java`; `ZoxApiController.computeTeamStats` reads statsJson first (legacy fallback unchanged) |
 
 **Recent correctness fixes (2026-09-14, user-reported):**
 - **Offside whistle at reception (7.2)**: no ball teleport/acceleration on an

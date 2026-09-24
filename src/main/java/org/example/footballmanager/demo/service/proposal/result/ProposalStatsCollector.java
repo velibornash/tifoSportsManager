@@ -52,6 +52,9 @@ public class ProposalStatsCollector {
         teams.get("AWAY").teamName = awayName;
     }
 
+    public String getHomeName() { return homeName; }
+    public String getAwayName() { return awayName; }
+
     // ==================== FEED METHODS ====================
 
     /** Call from decision block when PASS is executed. */

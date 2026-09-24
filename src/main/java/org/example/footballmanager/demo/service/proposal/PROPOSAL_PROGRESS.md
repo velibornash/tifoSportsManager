@@ -1357,3 +1357,79 @@ User requests (2026-09-23):
 - match.json ostaje nekomitovan (pravilo korisnika).
 
 ---
+
+## Sesija 2026-09-24 — Data-layer fit: proposal outcome "u obliku izveštaja" + newLogic match-data connect
+
+> Uvodi komit `HASH`.
+
+Zadatak korisnika: newLogic data sloj je ostao "pola odrađen" — tako da, kada
+proposal postane zvanični engine, može da se uklopi u njega. Dva smera:
+(1) **newLogic** — proširiti modele i povezati matcheve, (2) **proposal** —
+pripremiti izlaz meča sa svim stavkama koje izveštaj ("report") traži.
+Replay preskačemo — fokus na backend.
+
+### Faktno stanje koje je otkrilo istraživanje
+- proposal ne simulira FOUL/CARD/PENALTY (DisciplineService stub, nije u
+  orchestratoru) → izlaz će nositi strukturu, ali 0 za te metrike.
+- newLogic `MatchSimulator` **ne emituje `ShotEvent`** — samo po jedan od
+  `GOAL` / `SHOT_SAVED` / `SHOT_MISSED` po šutu; stari `ZoxApiController`
+  `computeTeamStats` je brojao šuteve preko `shooterId` ključa pa je
+  prikazivao pogrešne brojeve (`homeShots -= homeGoals` hack, xG izmišljen
+  `goals*0.7+0.5`, passAccuracy hardkoder 78.0, dominance 50).
+- newLogic `MatchSimulator` **već prati** per-team `home/awayTotalPasses` +
+  `home/awaySuccessfulPasses`, ali `MatchResult` ih nije izlagao.
+- Oba path-a čuvaju igrače: `MatchStatisticEngine` (realistični) je veću
+  `MatchPersistenceService` (newLogic MatchOrchestrator) **nije** — ovaj
+  drugi nije setovao interceptions/saves/cleanSheet.
+
+### newLogic — match-data connect
+- `MatchResult` proširen sa `homePassesAttempted/homePassesCompleted/
+  awayPassesAttempted/awayPassesCompleted`; `MatchSimulator.buildResult` +
+  `MatchLiveService.buildResult` ih prosleđuju (iz simulator-šaltera).
+- **`MatchTeamStats`** (novi record u `newLogic/model`) — kanonski timski
+  izveštaj: poseda, xG, šutevi (+ na gol), pass pokušaji/kompletirani, korneri,
+  ofsajdi, kartoni, faulovi, prosek rejtinga; `toMap()` daje iste ključeve
+  koje report očekuje.
+- **`MatchTeamStatsService`** — računa xG (suma `xG` nad GOAL/SHOT_SAVED/
+  SHOT_MISSED/SHOT_BLOCKED/CROSS_HEADER/PENALTY, penali bez duplog brojanja)
+  i ofsajde iz tipizovanih događaja; prosek rejtinga iz `MatchPlayerStats`.
+- **`Match.statsJson`** (text kolona, nullable — sigurno uz `ddl-auto=update`).
+  `MatchPersistenceService` upisuje kanonski payload; `ZoxApiController`
+  `computeTeamStats` čita `statsJson` pa: ako postoji → vraća kao jeste,
+  inače fallback na stari sniffing (legacy ne-menja se).
+- `MatchPersistenceService.savePlayerStats`:
+  - **vraća** sačuvane redove (za proseke),
+  - per-player šutevi sada iz `GOAL`/`SHOT_SAVED`/`SHOT_MISSED`/`SHOT_BLOCKED`
+    (crediti iz pravih događaja koji engine emituje), header → šut + onTarget,
+  - saves sa GK atribucijom na SUPROTNU stranu od šutera (ShotSavedEvent meša
+    teamSide = šuterski tim),
+  - pass attempts uključuju `PassIncompleteEvent` (dok se `PassEvent` emituje
+    samo za kompletirane).
+
+### proposal — izlaz "u obliku izveštaja"
+- **`ProposalMatchOutcome`** (novi record, JSON-serializable) — nosi sve što
+  report treba + sve za budući newLogic adapter: rezultat, poseda, očekivani
+  golovi, formacije, `TeamOutcome`/`PlayerOutcome`/`EventEntry` liste.
+- **`ProposalMatchOutcomeBuilder`** — izvodi stavke koje engine ne prati:
+  - **xG** — svaki šut emituje TAČNO jedan outcome event (GOAL/SHOT_SAVED/
+    SHOT_BLOCKED/SHOT_POST/SHOT_MISSED sa pozicijom) → distanca ka golu
+    (HOME gol row 8.0, AWAY row 1.0, ćelija = 14 m) preko iste xG tabele kao
+    newLogic;
+  - **ofsajdi** — broji recorder `OFFSIDE` event-e po timu (kolektor još nema);
+  - **formacije** — izvedene iz role brojanja (GK/D/M/A → "4-4-2");
+  - **MOTM / proseci rejtinga** — iz `buildPlayerStats` (sort po rejtingu).
+- `ProposalStatsCollector` dobija `getHomeName()/getAwayName()`.
+- `MatchOrchestrator.buildOutcome()` (+ `getState()`) — okidač; launcher
+  (`MatchSimulationLauncher`) ispisuje `=== MATCH OUTCOME (JSON) ===`.
+- Faulovi/kartoni u izlazu = **0** dok DisciplineService ne uđe u orchestrator
+  (struktura postoji od sada).
+
+### Verify
+- `mvn -o -q compile` clean (i `mvn -o -q test-compile` clean).
+- `MatchSimulationLauncher 1600`: ključna polja popunjena — formacije 4-4-2,
+  poseda HOME 47.2 / AWAY 52.8, xG 0.5/0.3, timske statistike (šutevi, pass
+  accuracy, korneri, gol-auti, auti), 22 × `PlayerOutcome` (role, šutevi,
+  passovi, dueli, rejting), ~visak događaja u `events`, MOTM (H5, Home FC).
+- match.json ostaje nekomitovan (pravilo korisnika).
+
+---

@@ -25,4 +25,8 @@ public class MatchPlayerStats {
     private int interceptions;
     private int saves;
     private boolean cleanSheet;
+
+    private Integer shots;
+    private Integer passesAttempted;
+    private Integer passesCompleted;
 }

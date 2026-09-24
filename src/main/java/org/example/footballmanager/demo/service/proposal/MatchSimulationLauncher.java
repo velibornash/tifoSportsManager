@@ -2,6 +2,7 @@ package org.example.footballmanager.demo.service.proposal;
 
 import org.example.footballmanager.demo.service.proposal.engine.MatchOrchestrator;
 import org.example.footballmanager.demo.service.proposal.model.*;
+import org.example.footballmanager.demo.service.proposal.result.ProposalMatchOutcome;
 import org.example.footballmanager.demo.service.proposal.util.SimUtils;
 
 /**
@@ -62,6 +63,20 @@ public class MatchSimulationLauncher {
         System.out.println("\nPlayer positions at end:");
         System.out.println("  HOME : " + formatTeam(state, "HOME"));
         System.out.println("  AWAY : " + formatTeam(state, "AWAY"));
+
+        printOutcome(orchestrator);
+    }
+
+    private static void printOutcome(MatchOrchestrator orchestrator) {
+        ProposalMatchOutcome outcome = orchestrator.buildOutcome();
+        try {
+            String json = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writerWithDefaultPrettyPrinter().writeValueAsString(outcome);
+            System.out.println("\n=== MATCH OUTCOME (JSON) ===");
+            System.out.println(json);
+        } catch (Exception e) {
+            System.err.println("Failed to serialize outcome: " + e.getMessage());
+        }
     }
 
     private static String formatTeam(MatchState state, String team) {
