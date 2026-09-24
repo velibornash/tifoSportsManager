@@ -3,14 +3,14 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-24 (session 7.3 — Level 2: real DB players in the
-> engine's 4-4-2 slot structure. `RealSquadFactory` maps a `Lineup` (11
-> starters) into 4-4-2 slots by Position (GK/DEF/MID/WNG/ATT), real names,
-> real `Skills.getExact` → `PlayerSkills`, anchor from `FormationSlotCatalog`
-> + tactical mirror (AWAY GK 7.5); falls back to synthetic when lineup missing.
-> `SimMatchRunner.run(..., homeSquad, awaySquad)` + `SimMatchService.simulate(
-> MatchFixture, storeReplay)`; controller/async callers now pass the fixture.
-> Session 7.2 (offside whistle at reception) i prethodni pass-i ispod.)
+> Last update: 2026-09-24 (session 7.4 — full entity wiring in the persist path.
+> `SimMatchService.persist()` now, besides the Match row + JSON blobs + league
+> table, links `Match.homeLineup/awayLineup` to the real Lineups, writes one
+> `MatchPlayerStats` row per real DB player (rating ×10 → 10-100 scale,
+> cleanSheet logic, synthetic ids skipped), bumps `Player.totalGoals/totalAssists`
+> and `rating`, and sets stadium + attendance via `AttendanceService`. Session
+> 7.3 (Level 2: `RealSquadFactory` maps DB lineups into 4-4-2 slots, fixture-
+> based `simulate`, controller/async callers) i prethodni pass-i ispod.)
 
 ---
 

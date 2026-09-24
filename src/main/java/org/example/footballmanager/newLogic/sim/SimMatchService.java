@@ -7,23 +7,30 @@ import org.example.footballmanager.newLogic.model.CompetitionEntry;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.LineupRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
 import org.example.footballmanager.newLogic.sim.result.SimReportMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.footballmanager.newLogic.service.AttendanceService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Official match path: runs the sim engine headless for a fixture and persists
@@ -42,6 +49,9 @@ public class SimMatchService {
     private final SeasonService seasonService;
     private final SimReplayStore replayStore;
     private final LineupRepository lineupRepository;
+    private final MatchPlayerStatsRepository matchPlayerStatsRepository;
+    private final PlayerRepository playerRepository;
+    private final AttendanceService attendanceService;
     private final ObjectMapper objectMapper;
 
     /** Simulate a full match between two DB teams using their real saved squads
@@ -64,14 +74,11 @@ public class SimMatchService {
         if (storeReplay) {
             replayId = replayStore.store(SimReplayView.build(orchestrator, homeName, awayName));
         }
-        return new SimMatchOutcome(outcome, replayId);
+        return new SimMatchOutcome(outcome, replayId, fixture.getHomeTeam(), fixture.getAwayTeam());
     }
 
     private List<Player> loadRealSquad(Team team, String side) {
-        if (team == null || team.getId() == null) return null;
-        Lineup lineup = lineupRepository
-                .findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId())
-                .orElse(null);
+        Lineup lineup = loadLineup(team);
         if (lineup == null) return null;
         return RealSquadFactory.buildSquad(lineup, side);
     }
@@ -100,13 +107,22 @@ public class SimMatchService {
             match.setHomeResultRevealed(true);
             match.setAwayResultRevealed(true);
 
+            match.setHomeLineup(loadLineup(fixture.getHomeTeam()));
+            match.setAwayLineup(loadLineup(fixture.getAwayTeam()));
+
             if (outcome != null) {
                 match.setEventJson(SimReportMapper.eventJson(objectMapper, outcome));
                 match.setStatsJson(objectMapper.writeValueAsString(SimReportMapper.statsMap(outcome)));
                 match.setLineupJson(SimReportMapper.lineupJson(objectMapper, outcome));
             }
 
+            attendanceService.ensureAttendance(match);
             match = matchRepository.save(match);
+
+            if (outcome != null) {
+                persistPlayerStats(match, outcome);
+                bumpCareerStats(outcome);
+            }
 
             fixture.setPlayed(true);
             fixture.setPlayedMatch(match);
@@ -124,6 +140,83 @@ public class SimMatchService {
             log.error("Failed to persist sim match for fixture={}", fixture.getId(), e);
             return null;
         }
+    }
+
+    private Lineup loadLineup(Team team) {
+        if (team == null || team.getId() == null) return null;
+        return lineupRepository
+                .findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId())
+                .orElse(null);
+    }
+
+    /** Writes one MatchPlayerStats row per real DB player who took part (synthetic
+     *  fallback ids like "HOME-1" cannot resolve and are skipped). */
+    private void persistPlayerStats(Match match, ProposalMatchOutcome outcome) {
+        Team homeTeam = match.getHomeTeam();
+        Team awayTeam = match.getAwayTeam();
+        int homeConceded = outcome.awayGoals();
+        int awayConceded = outcome.homeGoals();
+
+        for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
+            Long dbId = parsePlayerId(po.playerId());
+            if (dbId == null) continue;
+            org.example.footballmanager.newLogic.model.Player dbPlayer = playerRepository.findById(dbId).orElse(null);
+            if (dbPlayer == null) continue;
+
+            boolean isHome = homeTeam != null && homeTeam.getName().equals(po.teamName());
+            int conceded = isHome ? homeConceded : awayConceded;
+            boolean cleanSheet = conceded == 0
+                    && po.minutesPlayed() >= 60
+                    && (dbPlayer.getPositionEnum() == Position.GK || dbPlayer.getPositionEnum() == Position.DEF);
+
+            MatchPlayerStats st = new MatchPlayerStats();
+            st.setMatch(match);
+            st.setPlayer(dbPlayer);
+            st.setGoals(po.goals());
+            st.setAssists(po.assists());
+            st.setYellowCards(po.yellowCards());
+            st.setRedCards(po.redCards());
+            st.setMinutesPlayed(po.minutesPlayed());
+            st.setRating(rating100(po.rating()));
+            st.setInterceptions(po.interceptions());
+            st.setSaves(po.saves());
+            st.setCleanSheet(cleanSheet);
+            st.setShots(po.shots());
+            st.setPassesAttempted(po.passesAttempted());
+            st.setPassesCompleted(po.passesCompleted());
+            matchPlayerStatsRepository.save(st);
+        }
+    }
+
+    /** Bumps career totalGoals/totalAssists and sets match rating (10-100 scale)
+     *  on every real DB player who took part. */
+    private void bumpCareerStats(ProposalMatchOutcome outcome) {
+        Set<org.example.footballmanager.newLogic.model.Player> updated = new LinkedHashSet<>();
+        for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
+            Long dbId = parsePlayerId(po.playerId());
+            if (dbId == null) continue;
+            org.example.footballmanager.newLogic.model.Player dbPlayer = playerRepository.findById(dbId).orElse(null);
+            if (dbPlayer == null) continue;
+            dbPlayer.setTotalGoals(dbPlayer.getTotalGoals() + po.goals());
+            dbPlayer.setTotalAssists(dbPlayer.getTotalAssists() + po.assists());
+            int rating = rating100(po.rating());
+            if (rating > 0) dbPlayer.setRating(rating);
+            if (updated.add(dbPlayer)) {
+                playerRepository.save(dbPlayer);
+            }
+        }
+    }
+
+    private static Long parsePlayerId(String playerId) {
+        try {
+            return playerId != null && !playerId.isEmpty() ? Long.valueOf(playerId) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static int rating100(double rating10) {
+        return (int) Math.round(Math.max(0.0, Math.min(10.0, rating10)) * 10.0);
     }
 
     private void updateLeagueTable(Match match, int homeGoals, int awayGoals) {
@@ -149,7 +242,8 @@ public class SimMatchService {
         competitionEntryRepository.saveAll(List.of(homeEntry, awayEntry));
     }
 
-    public record SimMatchOutcome(ProposalMatchOutcome outcome, long replayId) {
+    public record SimMatchOutcome(ProposalMatchOutcome outcome, long replayId,
+                                  Team homeTeam, Team awayTeam) {
         public int homeGoals() { return outcome != null ? outcome.homeGoals() : 0; }
         public int awayGoals() { return outcome != null ? outcome.awayGoals() : 0; }
     }

@@ -1474,3 +1474,38 @@ Realni DB igrači (prava imena, pravi skills) umesto sintetičkih u dashboard
   ovom passu).
 
 ---
+
+## Session 7.4 — Full entity wiring: MatchPlayerStats + lineups + career bumps + attendance
+
+Kompletno povezivanje persiste perssim putanje (nakon Level 2, `76c914b`):
+`SimMatchService.persist()` sada piše Match → ali i celu okolnu mrežu entiteta.
+
+### Šta je urađeno
+- **`Match.homeLineup` / `awayLineup`** — postavljeni na stvarne `Lineup`-ove
+  timova (isti upit kao simulacija). Ranije su bili `null`.
+- **`MatchPlayerStats` redovi** — po jedan za svakog REALNOG DB igrača iz
+  `outcome.players()` (parseLable-Long `playerId` + `PlayerRepository.findById`);
+  sintetički fallback id-jevi (`"HOME-1"`) se preskaču. Mape: goals/assists/
+  cards/minutes/interceptions/saves/shots/passes, `rating` ×10 → 10-100 skala
+  (konzistentno sa `MatchPlayerStatsController` i `ZoxApiController`, koji dele
+  sa 10), `cleanSheet` = tim primio 0 golova + GK/DEF + ≥60 min.
+- **`Player` karijerni bijмп** — `totalGoals +=`, `totalAssists +=`, `rating`
+  (10-100), saveAll putem `playerRepository`.
+- **Stadion + poseta** — `AttendanceService.ensureAttendance(match)` pre gate-a:
+  rezolucija stadiona + procena posete (kao legacy `RuntimeSaveToDB`).
+- **`SimMatchOutcome`** — dodat `homeTeam/awayTeam` (korisno za tekuća stanja;
+  `homeGoals()`/`awayGoals()` ostaju).
+- `loadRealSquad` sveden na deljeni `loadLineup(team)` helper.
+- Log poruka persist-a čišćen (višak `playerStats={}` placeholder uklonjen).
+
+### Verify
+- `SimMatchPersistWiringTest` (2, BaseTest + H2):
+  1. `persistWires...`: 22 stats reda, home 5 clean sheet (2-0), rating 80 za
+     strelca (2 gola, rating 8.0×10), karijerni bijмп (goals/assists/rating),
+     home/away lineup vezani, league table entry-ji kreirani za oba tima.
+  2. `persistSkipsSyntheticPlayerIds`: samo sintetički id-jevi → 0 redova,
+     Match se i dalje piše (1-0).
+- `mvn -o test -Dtest='!TifoUITest'` — isto 9 poznatih legacy `demo.service`
+  kvarova, bez novih (53 run, 9 fail: 3+3+3).
+
+---
