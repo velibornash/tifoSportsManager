@@ -463,7 +463,7 @@ export function createMatchView(deps) {
             document.getElementById("view-replay").addEventListener("click", () => {
                 void (async () => {
                     await revealMatchResultIfAllowed();
-                    window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(matchId)}&mode=replay`;
+                    window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(matchId)}`;
                 })();
             });
             document.getElementById("view-report").addEventListener("click", () => void showMatchReport());

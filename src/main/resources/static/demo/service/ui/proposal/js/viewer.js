@@ -861,6 +861,25 @@ class MatchViewer {
     }
   }
 
+  async loadMatchById(id) {
+    this._showLoading(true, 'Loading match...');
+    try {
+      let res = await fetch(`/api/sim/replay/${id}`);
+      if (!res.ok) res = await fetch(`/api/sim/replay/by-match/${id}`);
+      if (!res.ok) throw new Error('Replay not found (HTTP ' + res.status + ')');
+      this.data = await res.json();
+      this._initFromData();
+      const homeName = this.data.homeTeamName || 'HOME';
+      const awayName = this.data.awayTeamName || 'AWAY';
+      this.overlays.showKickoff(homeName, awayName);
+      this.play();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      this._showLoading(false);
+    }
+  }
+
   loadFromFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1747,4 +1766,8 @@ class MatchViewer {
 document.addEventListener('DOMContentLoaded', () => {
   const v = new MatchViewer();
   window.viewer = v;
+  const matchId = new URLSearchParams(window.location.search).get('matchId');
+  if (matchId) {
+    v.loadMatchById(matchId);
+  }
 });

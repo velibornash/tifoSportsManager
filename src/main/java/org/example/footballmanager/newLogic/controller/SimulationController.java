@@ -1,17 +1,14 @@
 package org.example.footballmanager.newLogic.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.commonmanager.model.User;
 import org.example.commonmanager.repository.UserRepository;
-import org.example.footballmanager.newLogic.dto.TacticsRuleDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
 import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.tactics.TeamTacticsProfile;
 import org.example.footballmanager.newLogic.repository.*;
 import org.example.footballmanager.newLogic.service.*;
-import org.example.footballmanager.newLogic.store.MatchStore;
+import org.example.footballmanager.newLogic.sim.SimMatchService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,56 +36,12 @@ public class SimulationController {
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
     private final MatchFixtureRepository matchFixtureRepository;
-    private final SeasonRepository seasonRepository;
-    private final MatchRepository matchRepository;
-    private final MatchStore matchStore;
     private final CurrentRoundSimulationStateService stateService;
-    private final CompetitionEntryRepository competitionEntryRepository;
-    private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionRepository competitionRepository;
     private final SeasonService seasonService;
     private final TrainingProgressionService trainingProgressionService;
-    private final ObjectMapper objectMapper;
     private final AsyncSimulationRunner asyncSimulationRunner;
-    private final PlayerRepository playerRepository;
-    private final TeamTacticsService teamTacticsService;
-    private final FormationSlotCatalog formationSlotCatalog;
-    private final LineupRepository lineupRepository;
-
-    private MatchOrchestrator newOrchestrator() {
-        return new MatchOrchestrator(matchStore, teamRepository, playerRepository, lineupRepository);
-    }
-
-    private record TacticsWithSlots(TacticRules rules, List<String> slots) {}
-
-    private TacticsWithSlots loadTacticsForTeam(Long teamId) {
-        if (teamId == null) return null;
-        try {
-            org.example.footballmanager.newLogic.dto.TacticsEditorDTO editor = teamTacticsService.getTacticsEditor(teamId, null);
-            if (editor == null) return null;
-
-            List<String> slotKeys = editor.getSlotDefinitions().stream()
-                .map(TacticsSlotDTO::getSlotKey).toList();
-            List<TacticsRuleDTO> rulesList = editor.getMovementRules();
-
-            TacticRules rules = TacticRules.createDefault(slotKeys);
-            for (TacticsRuleDTO rule : rulesList) {
-                if (rule == null) continue;
-                boolean inPossession = "WE_HAVE_BALL".equals(rule.getPossessionContext());
-                rules.setRule(rule.getSlotKey(), rule.getBallStateKey(), inPossession, rule.getTargetCellKey());
-            }
-
-            return new TacticsWithSlots(rules, slotKeys);
-        } catch (Exception e) {
-            log.warn("Failed to load tactics for teamId={}, using defaults", teamId, e);
-            return null;
-        }
-    }
-
-    private Long resolveTeamId(String teamName) {
-        org.example.footballmanager.newLogic.model.Team dbTeam = teamRepository.findByName(teamName).orElse(null);
-        return dbTeam != null ? dbTeam.getId() : null;
-    }
+    private final SimMatchService simMatchService;
 
     @Transactional
     @PostMapping("/current-round/prepare")
@@ -103,23 +56,18 @@ public class SimulationController {
             return ResponseEntity.ok(payload);
         }
 
-        long matchStoreId = simulateAndStore(context.homeName(), context.awayName(), true);
-        MatchResult result = matchStore.getResult(matchStoreId);
-
-        Long dbMatchId = persistMatchToDB(context.fixture(), result, matchStoreId);
+        SimMatchService.SimMatchOutcome sim = simulateAndStore(context.homeName(), context.awayName(), true);
+        Long dbMatchId = persistSimMatchToDB(context.fixture(), sim);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("status", "ok");
         payload.put("action", "START_MATCH");
-        payload.put("message", "Realistic simulation started - replay data is available.");
-        payload.put("matchId", matchStoreId);
+        payload.put("message", "Simulation finished - replay is available.");
+        payload.put("matchId", sim.replayId());
         payload.put("dbMatchId", dbMatchId);
-        payload.put("position_socket", "/demo-position-updates");
-        payload.put("event_socket", "/demo-match-events");
-        payload.put("replay_metadata", "/api/zox/replay/" + matchStoreId + "/metadata");
-        payload.put("replay_chunk_template", "/api/zox/replay/" + matchStoreId + "/chunks/{chunkIndex}");
+        payload.put("viewer_url", "/demo/service/ui/proposal/index.html?matchId=" + sim.replayId());
         stateService.setPrepareSnapshot(payload);
-        stateService.setFeedSnapshot(buildSingleMatchFeed(context, matchStoreId, result));
+        stateService.setFeedSnapshot(buildSingleMatchFeed(context, sim));
         return ResponseEntity.ok(payload);
     }
 
@@ -184,21 +132,21 @@ public class SimulationController {
         int simulatedCount = 0;
 
         for (MatchFixture fixture : userLeagueFixtures) {
-            long matchStoreId = simulateAndStore(fixture.getHomeTeam().getName(), fixture.getAwayTeam().getName(), isUserMatch(user, fixture));
-            MatchResult result = matchStore.getResult(matchStoreId);
-            persistMatchToDB(fixture, result, matchStoreId);
+            SimMatchService.SimMatchOutcome sim = simulateAndStore(fixture.getHomeTeam().getName(), fixture.getAwayTeam().getName(), isUserMatch(user, fixture));
+            persistSimMatchToDB(fixture, sim);
             simulatedCount++;
 
             Map<String, Object> matchPayload = new LinkedHashMap<>();
             matchPayload.put("fixtureId", fixture.getId());
             matchPayload.put("homeTeam", fixture.getHomeTeam().getName());
             matchPayload.put("awayTeam", fixture.getAwayTeam().getName());
-            matchPayload.put("homeGoals", result != null ? result.homeGoals() : 0);
-            matchPayload.put("awayGoals", result != null ? result.awayGoals() : 0);
+            matchPayload.put("homeGoals", sim.homeGoals());
+            matchPayload.put("awayGoals", sim.awayGoals());
             matchPayload.put("isUserMatch", isUserMatch(user, fixture));
             matchPayload.put("events", List.of());
             matchPayload.put("played", true);
-            matchPayload.put("matchId", matchStoreId);
+            matchPayload.put("matchId", sim.replayId());
+            matchPayload.put("viewer_url", "/demo/service/ui/proposal/index.html?matchId=" + sim.replayId());
 
             String leagueName = fixture.getCompetition() != null ? fixture.getCompetition().getName() : "League";
             leagues.computeIfAbsent(leagueName, key -> new ArrayList<>()).add(matchPayload);
@@ -355,158 +303,19 @@ public class SimulationController {
         return ResponseEntity.ok(stateService.getAdvanceSnapshot());
     }
 
-    private long simulateAndStore(String homeName, String awayName, boolean isUserMatch) {
-        MatchOrchestrator orchestrator = newOrchestrator();
+    private SimMatchService.SimMatchOutcome simulateAndStore(String homeName, String awayName, boolean isUserMatch) {
+        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(homeName, awayName, isUserMatch);
+        log.info("Sim match finished: {} {} - {} {} (replayId={})",
+                homeName, sim.homeGoals(), sim.awayGoals(), awayName, sim.replayId());
+        return sim;
+    }
 
-        // Load tactical editor rules from DB/backup for both teams
-        Long homeTeamId = resolveTeamId(homeName);
-        Long awayTeamId = resolveTeamId(awayName);
-        TacticsWithSlots homeTactics = loadTacticsForTeam(homeTeamId);
-        TacticsWithSlots awayTactics = loadTacticsForTeam(awayTeamId);
-
-        long matchId = orchestrator.startMatch(
-            homeName, awayName,
-            homeTactics != null ? homeTactics.rules() : null,
-            homeTactics != null ? homeTactics.slots() : null,
-            awayTactics != null ? awayTactics.rules() : null,
-            awayTactics != null ? awayTactics.slots() : null
-        );
-
-        // Set userMatch flag on the in-memory Match for logging control
-        org.example.footballmanager.newLogic.model.Match storeMatch = matchStore.getMatch(matchId);
-        if (storeMatch != null) {
-            storeMatch.setUserMatch(isUserMatch);
-        }
-
-        orchestrator.simulate(matchId);
-
-        // Analyze the simulated match for realism metrics (non-invasive)
-        try {
-            var result = orchestrator.getResult(matchId);
-            var match = orchestrator.getMatch(matchId);
-            var metrics = org.example.footballmanager.newLogic.util.analysis.MatchAnalyzer.analyze(match, result);
-            log.info("Match realism metrics for matchStoreId={}: {}", matchId, metrics);
-        } catch (Exception e) {
-            log.warn("Failed to analyze match {}: {}", matchId, e.getMessage());
-        }
-
+    private Long persistSimMatchToDB(MatchFixture fixture, SimMatchService.SimMatchOutcome sim) {
+        long replayId = sim != null ? sim.replayId() : -1L;
+        Long matchId = sim != null
+                ? simMatchService.persist(fixture, sim.outcome(), replayId)
+                : simMatchService.persist(fixture, null, replayId);
         return matchId;
-    }
-
-    private Long persistMatchToDB(MatchFixture fixture, MatchResult result, long matchStoreId) {
-        try {
-            Match match = new Match();
-            match.setHomeTeam(fixture.getHomeTeam());
-            match.setAwayTeam(fixture.getAwayTeam());
-            match.setCompetition(fixture.getCompetition());
-            match.setSeasonYear(fixture.getSeasonYear());
-            match.setRoundNumber(fixture.getRoundNumber());
-            match.setWeekNumber(fixture.getWeekNumber());
-            match.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : LocalDateTime.now());
-            match.setHomeGoals(result != null ? result.homeGoals() : 0);
-            match.setAwayGoals(result != null ? result.awayGoals() : 0);
-            match.setPossessionHome(result != null ? result.homePossession() : 50.0);
-            match.setPossessionAway(result != null ? result.awayPossession() : 50.0);
-            match.setPlayed(true);
-            match.setStarted(true);
-            match.setFinished(true);
-            match.setReplayId(matchStoreId);
-            match.setHomeResultRevealed(true);
-            match.setAwayResultRevealed(true);
-
-            if (result != null && result.events() != null) {
-                try {
-                    match.setEventJson(objectMapper.writeValueAsString(result.events()));
-                } catch (Exception e) {
-                    log.warn("Failed to serialize match events for matchStoreId={}", matchStoreId, e);
-                }
-            }
-
-            // Persist lineup data from MatchStore
-            try {
-                org.example.footballmanager.newLogic.model.Match storeMatch = matchStore.getMatch(matchStoreId);
-                if (storeMatch != null) {
-                    java.util.Map<String, Object> lineupData = new java.util.LinkedHashMap<>();
-                    
-                    // Home lineup
-                    java.util.List<java.util.Map<String, Object>> homeLineup = new java.util.ArrayList<>();
-                    if (storeMatch.homeTeam() != null && storeMatch.homeTeam().startingXI() != null) {
-                        for (org.example.footballmanager.newLogic.model.Player p : storeMatch.homeTeam().startingXI()) {
-                            java.util.Map<String, Object> playerData = new java.util.LinkedHashMap<>();
-                            playerData.put("id", p.getId());
-                            playerData.put("name", p.getName());
-                            playerData.put("position", p.getPosition() != null ? p.getPosition().name() : "UNKNOWN");
-                            playerData.put("rating", p.getRating());
-                            homeLineup.add(playerData);
-                        }
-                    }
-                    lineupData.put("homeLineup", homeLineup);
-                    
-                    // Away lineup
-                    java.util.List<java.util.Map<String, Object>> awayLineup = new java.util.ArrayList<>();
-                    if (storeMatch.awayTeam() != null && storeMatch.awayTeam().startingXI() != null) {
-                        for (org.example.footballmanager.newLogic.model.Player p : storeMatch.awayTeam().startingXI()) {
-                            java.util.Map<String, Object> playerData = new java.util.LinkedHashMap<>();
-                            playerData.put("id", p.getId());
-                            playerData.put("name", p.getName());
-                            playerData.put("position", p.getPosition() != null ? p.getPosition().name() : "UNKNOWN");
-                            playerData.put("rating", p.getRating());
-                            awayLineup.add(playerData);
-                        }
-                    }
-                    lineupData.put("awayLineup", awayLineup);
-                    
-                    match.setLineupJson(objectMapper.writeValueAsString(lineupData));
-                }
-            } catch (Exception e) {
-                log.warn("Failed to serialize lineup data for matchStoreId={}", matchStoreId, e);
-            }
-
-            match = matchRepository.save(match);
-
-            fixture.setPlayed(true);
-            fixture.setPlayedMatch(match);
-            matchFixtureRepository.save(fixture);
-
-            updateLeagueTable(match, result);
-
-            log.info("Persisted match to DB: id={}, {} {} - {} {} (replayId={})",
-                    match.getId(),
-                    fixture.getHomeTeam().getName(), result != null ? result.homeGoals() : 0,
-                    result != null ? result.awayGoals() : 0, fixture.getAwayTeam().getName(),
-                    matchStoreId);
-
-            return match.getId();
-        } catch (Exception e) {
-            log.error("Failed to persist match to DB for fixture={}", fixture.getId(), e);
-            return null;
-        }
-    }
-
-    private void updateLeagueTable(Match match, MatchResult result) {
-        if (match.getCompetition() == null || match.getSeasonYear() == null) return;
-
-        SeasonCompetition sc = seasonService.ensureSeasonCompetition(match.getCompetition(), match.getSeasonYear());
-
-        int homeGoals = result != null ? result.homeGoals() : 0;
-        int awayGoals = result != null ? result.awayGoals() : 0;
-
-        CompetitionEntry homeEntry = seasonService.findOrCreateEntry(sc, match.getHomeTeam());
-        CompetitionEntry awayEntry = seasonService.findOrCreateEntry(sc, match.getAwayTeam());
-
-        if (homeGoals > awayGoals) { homeEntry.setPoints(homeEntry.getPoints() + 3); homeEntry.setWins(homeEntry.getWins() + 1); }
-        else if (homeGoals == awayGoals) { homeEntry.setPoints(homeEntry.getPoints() + 1); homeEntry.setDraws(homeEntry.getDraws() + 1); }
-        else { homeEntry.setLosses(homeEntry.getLosses() + 1); }
-        homeEntry.setGoalsScored(homeEntry.getGoalsScored() + homeGoals);
-        homeEntry.setGoalsConceded(homeEntry.getGoalsConceded() + awayGoals);
-
-        if (awayGoals > homeGoals) { awayEntry.setPoints(awayEntry.getPoints() + 3); awayEntry.setWins(awayEntry.getWins() + 1); }
-        else if (homeGoals == awayGoals) { awayEntry.setPoints(awayEntry.getPoints() + 1); awayEntry.setDraws(awayEntry.getDraws() + 1); }
-        else { awayEntry.setLosses(awayEntry.getLosses() + 1); }
-        awayEntry.setGoalsScored(awayEntry.getGoalsScored() + awayGoals);
-        awayEntry.setGoalsConceded(awayEntry.getGoalsConceded() + homeGoals);
-
-        competitionEntryRepository.saveAll(List.of(homeEntry, awayEntry));
     }
 
     private PreparedMatchContext resolvePreparedMatch(@AuthenticationPrincipal User user) {
@@ -561,17 +370,18 @@ public class SimulationController {
         return null;
     }
 
-    private Map<String, Object> buildSingleMatchFeed(PreparedMatchContext context, long matchId, MatchResult result) {
+    private Map<String, Object> buildSingleMatchFeed(PreparedMatchContext context, SimMatchService.SimMatchOutcome sim) {
         Map<String, Object> match = new LinkedHashMap<>();
         match.put("fixtureId", context.fixture().getId());
         match.put("homeTeam", context.homeName());
         match.put("awayTeam", context.awayName());
-        match.put("homeGoals", result != null ? result.homeGoals() : 0);
-        match.put("awayGoals", result != null ? result.awayGoals() : 0);
+        match.put("homeGoals", sim.homeGoals());
+        match.put("awayGoals", sim.awayGoals());
         match.put("events", List.of());
         match.put("isUserMatch", true);
         match.put("played", true);
-        match.put("matchId", matchId);
+        match.put("matchId", sim.replayId());
+        match.put("viewer_url", "/demo/service/ui/proposal/index.html?matchId=" + sim.replayId());
 
         Map<String, Object> league = new LinkedHashMap<>();
         league.put("leagueName", context.fixture().getCompetition() != null ? context.fixture().getCompetition().getName() : "League");

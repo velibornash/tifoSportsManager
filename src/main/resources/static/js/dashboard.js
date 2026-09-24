@@ -778,7 +778,7 @@ async function loadRecentMatches() {
                 const replayId = Number(button.dataset.replayId || matchId);
                 if (!matchId) return;
                 await revealMatchResult(matchId);
-                window.location.href = `/realisticDemo.html?matchId=${encodeURIComponent(replayId)}&mode=replay`;
+                window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(replayId)}`;
             });
         });
     } catch (err) {

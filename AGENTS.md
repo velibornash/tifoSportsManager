@@ -359,19 +359,26 @@ static/demo/service/ui/
 **Export:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchSnapshotExporter -Dexec.args=42`
 **Launcher:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchViewerLauncher` (port 8765)
 
-### `demo/service/proposal/` — Standalone Proposal Engine
+### `newLogic/sim/` — Standalone Proposal Engine
 
 Clean-engine variant of demo/service, focused on responsibility separation.
-Base package: `org.example.footballmanager.demo.service.proposal`.
+Base package: `org.example.footballmanager.newLogic.sim`. This is the engine used by the
+dashboard "Watch Your Match" flow (`prepare → SimMatchService.simulate → SimReplayStore →
+proposal viewer replay → persisted Match`).
 
 ```
-demo/service/proposal/
+newLogic/sim/
   ├── PROPOSAL_PROGRESS.md          → session log + current state + plan
+  ├── PROPOSAL_CURRENT_STATE.md     → current state snapshot
   ├── backlog.md                    → prioritized tasks (all engines, stats, physics)
   ├── MatchSimulationLauncher.java  → main() — single-match headless runner
+  ├── SimMatchRunner.java           → main() — runs full 3600-tick match, returns orchestrator
+  ├── SimMatchService.java          → simulate + persist (dashboard path)
+  ├── SimReplayStore.java           → @Component in-memory replay store (AtomicLong ids)
   ├── ProposalBatchDiag.java        → 10/50/100-match aggregate diagnostic
   ├── controller/
-  │   └── ProposalMatchController   → /proposal/api/simulate, /proposal/api/generate
+  │   ├── ProposalMatchController   → /proposal/api/simulate, /proposal/api/generate
+  │   └── SimReplayController       → /api/sim/replay/{id}, /api/sim/replay/by-match/{matchId}
   ├── engine/
   │   ├── EngineInterfaces.java     → core engine interfaces (single-responsibility contract)
   │   ├── MatchOrchestrator.java    → tick loop coordinator (thin — delegates to engines)
@@ -403,11 +410,15 @@ demo/service/proposal/
   │   └── TacticsRules.java         → formation tactical targets from config
   ├── recording/
   │   ├── MatchRecorder.java        → events + snapshots for match.json
-  │   └── MatchEvent.java, MatchSnapshot.java
+  │   ├── MatchEvent.java, MatchSnapshot.java
+  │   └── SimReplayView.java        → downsampled replay view (SNAPSHOT_STRIDE=10)
+  ├── result/
+  │   ├── ProposalMatchOutcome.java, ProposalMatchOutcomeBuilder.java, ProposalStatsCollector.java
+  │   └── SimReportMapper.java      → statsMap/eventJson/lineupJson for Match persistence
   └── ui/
       ├── ProposalViewerLauncher.java → port 8766
-      ├── ProposalViewer.java         → headless match.json generator
-      └── static/viewer.js            → canvas pitch, LED scoreboard, timeline, controls
+      ├── ProposalMatchExporter.java  → headless match.json generator
+      └── (static) static/demo/service/ui/proposal/js/viewer.js → canvas pitch, LED scoreboard, timeline, controls
 ```
 
 **Key differences from demo/service:**
@@ -784,8 +795,8 @@ All events are sealed records implementing `MatchEvent` interface. Each event ca
 | `TIFO_TEXT_MANAGER_PROGRESS.md` | Agent instructions — TIFO Text mode |
 | `TIFO_SPORTS_MANAGER_GUIDE.md` | **User-facing guide** in English — all sports explained for end users |
 | `demo/service/demoServiceProgression.md` | Agent instructions — demo/service engine (what's done, what's next) |
-| `demo/service/proposal/PROPOSAL_PROGRESS.md` | Agent instructions — proposal engine (current state, analysis, plan) |
-| `demo/service/proposal/backlog.md` | Prioritized tasks for proposal engine (P0-P7, stats, physics, rules) |
+| `newLogic/sim/PROPOSAL_PROGRESS.md` | Agent instructions — proposal engine (current state, analysis, plan) |
+| `newLogic/sim/backlog.md` | Prioritized tasks for proposal engine (P0-P7, stats, physics, rules) |
 
 The 4 sport-specific `.md` files are written as instructions for AI agents — they describe what's implemented and what's pending. The `TIFO_SPORTS_MANAGER_GUIDE.md` is a user manual written in English.
 
@@ -809,7 +820,7 @@ The 4 sport-specific `.md` files are written as instructions for AI agents — t
 - `cleanSheet/` and `old/` packages are legacy — do not add new features there
 - `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
 - **demo/service/** — self-contained service engine; source of truth is `corePrinciples.md`; only modify files under `demo/service/`; test via `MatchBatchRunner` and `MatchChainTrace`
-- **demo/service/proposal/** — self-contained clean-engine variant; `backlog.md` tracks all tasks; VAR/Discipline/Offside/ThreatOverride all have real wired bodies (offside retreat, press→duel, shot on-target calibrated, carry = 3-cell run); `ProposalBatchDiag` + `ProposalPhysicsDiagnostic` for verification
+- **newLogic/sim/** — self-contained clean-engine variant (dashboard "Watch Your Match" path: `SimMatchService.simulate` → `SimReplayStore` → proposal viewer → persisted Match); `backlog.md` tracks all tasks; VAR/Discipline/Offside/ThreatOverride all have real wired bodies (offside retreat, press→duel, shot on-target calibrated, carry = 3-cell run); `ProposalBatchDiag` + `ProposalPhysicsDiagnostic` for verification
 - **demo/service/ui/** — web-based match viewer; pitch rendering in `PitchRenderer`, playback in `MatchViewer`
 - **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
 - **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events
