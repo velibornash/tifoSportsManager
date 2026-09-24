@@ -56,7 +56,7 @@ public class SimulationController {
             return ResponseEntity.ok(payload);
         }
 
-        SimMatchService.SimMatchOutcome sim = simulateAndStore(context.homeName(), context.awayName(), true);
+        SimMatchService.SimMatchOutcome sim = simulateAndStore(context.fixture(), true);
         Long dbMatchId = persistSimMatchToDB(context.fixture(), sim);
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -132,7 +132,7 @@ public class SimulationController {
         int simulatedCount = 0;
 
         for (MatchFixture fixture : userLeagueFixtures) {
-            SimMatchService.SimMatchOutcome sim = simulateAndStore(fixture.getHomeTeam().getName(), fixture.getAwayTeam().getName(), isUserMatch(user, fixture));
+            SimMatchService.SimMatchOutcome sim = simulateAndStore(fixture, isUserMatch(user, fixture));
             persistSimMatchToDB(fixture, sim);
             simulatedCount++;
 
@@ -303,10 +303,11 @@ public class SimulationController {
         return ResponseEntity.ok(stateService.getAdvanceSnapshot());
     }
 
-    private SimMatchService.SimMatchOutcome simulateAndStore(String homeName, String awayName, boolean isUserMatch) {
-        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(homeName, awayName, isUserMatch);
+    private SimMatchService.SimMatchOutcome simulateAndStore(MatchFixture fixture, boolean isUserMatch) {
+        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, isUserMatch);
         log.info("Sim match finished: {} {} - {} {} (replayId={})",
-                homeName, sim.homeGoals(), sim.awayGoals(), awayName, sim.replayId());
+                fixture.getHomeTeam().getName(), sim.homeGoals(),
+                fixture.getAwayTeam().getName(), sim.awayGoals(), sim.replayId());
         return sim;
     }
 

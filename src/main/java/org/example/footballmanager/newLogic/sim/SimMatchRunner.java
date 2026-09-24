@@ -5,6 +5,8 @@ import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.util.SimTeamFactory;
 
+import java.util.List;
+
 /**
  * Headless full-match runner for the sim engine. Builds the two synthetic
  * squads, kicks off, and runs the tick loop to completion. The caller keeps
@@ -17,9 +19,21 @@ public final class SimMatchRunner {
     private SimMatchRunner() {}
 
     public static MatchOrchestrator run(String homeName, String awayName, int ticks) {
+        return run(homeName, awayName, ticks, null, null);
+    }
+
+    /**
+     * Runs a full match with explicitly provided squads. A null/empty squad for a
+     * side falls back to the synthetic {@link SimTeamFactory} squad so the engine
+     * always has 11 players per side.
+     */
+    public static MatchOrchestrator run(String homeName, String awayName, int ticks,
+                                        List<Player> homeSquad, List<Player> awaySquad) {
         MatchState state = new MatchState();
-        SimTeamFactory.addTeam(state, "HOME");
-        SimTeamFactory.addTeam(state, "AWAY");
+        boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
+        boolean awayReal = awaySquad != null && awaySquad.size() >= 11;
+        if (homeReal) state.getPlayers().addAll(homeSquad); else SimTeamFactory.addTeam(state, "HOME");
+        if (awayReal) state.getPlayers().addAll(awaySquad); else SimTeamFactory.addTeam(state, "AWAY");
 
         MatchOrchestrator orchestrator = new MatchOrchestrator(state);
         orchestrator.getStats().setDisplayNames(homeName, awayName);

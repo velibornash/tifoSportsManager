@@ -50,10 +50,7 @@ public class AsyncSimulationRunner {
                         if (fixture == null || fixture.isPlayed()) return;
                         if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) return;
 
-                        String homeName = fixture.getHomeTeam().getName();
-                        String awayName = fixture.getAwayTeam().getName();
-
-                        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(homeName, awayName, false);
+                        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, false);
                         simMatchService.persist(fixture, sim.outcome(), -1L);
                     });
                     simulatedCount.incrementAndGet();

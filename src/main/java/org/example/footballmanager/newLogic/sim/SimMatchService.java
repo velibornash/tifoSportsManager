@@ -4,12 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.SeasonCompetition;
+import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
+import org.example.footballmanager.newLogic.repository.LineupRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
 import org.example.footballmanager.newLogic.sim.result.SimReportMapper;
@@ -37,11 +41,23 @@ public class SimMatchService {
     private final CompetitionEntryRepository competitionEntryRepository;
     private final SeasonService seasonService;
     private final SimReplayStore replayStore;
+    private final LineupRepository lineupRepository;
     private final ObjectMapper objectMapper;
 
-    /** Simulate a full match. Returns the outcome plus an in-memory replay key (-1 if none requested). */
-    public SimMatchOutcome simulate(String homeName, String awayName, boolean storeReplay) {
-        var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS);
+    /** Simulate a full match between two DB teams using their real saved squads
+     *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
+     *  squads when a team has no lineup template. */
+    public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay) {
+        Team homeTeam = fixture.getHomeTeam();
+        Team awayTeam = fixture.getAwayTeam();
+        String homeName = homeTeam != null ? homeTeam.getName() : "Home FC";
+        String awayName = awayTeam != null ? awayTeam.getName() : "Away FC";
+
+        List<Player> homeSquad = loadRealSquad(homeTeam, "HOME");
+        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY");
+
+        var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
+                homeSquad, awaySquad);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
 
         long replayId = -1L;
@@ -49,6 +65,15 @@ public class SimMatchService {
             replayId = replayStore.store(SimReplayView.build(orchestrator, homeName, awayName));
         }
         return new SimMatchOutcome(outcome, replayId);
+    }
+
+    private List<Player> loadRealSquad(Team team, String side) {
+        if (team == null || team.getId() == null) return null;
+        Lineup lineup = lineupRepository
+                .findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId())
+                .orElse(null);
+        if (lineup == null) return null;
+        return RealSquadFactory.buildSquad(lineup, side);
     }
 
     @Transactional

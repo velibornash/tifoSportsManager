@@ -3,13 +3,14 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-23 (session 7.2 — offside whistle AT RECEPTION:
-> `OffsideService` CLEAR+MARG samo flag-uje primaoca (`offsideFlaggedReceiver`),
-> `BallResultHandler.RECEIVE` svira kad ofsajd igrač primi loptu — nema teleporta;
-> `RestartManager.handleOffsideFreeKick` instant IFK. Kickoff pass tačno na
-> primaoca + MAX_BALL_SPEED 1.5 (precision/brzina). TYPE B pritisak na slobodnog
-> napadača u ZONI OPASNOSTI (HOME ≤3.0 / AWAY ≥6.0, RANGE_B 2.0).
-> Session 7.1 (compact log + live side panel) i prethodno 41fc866 (6.13).)
+> Last update: 2026-09-24 (session 7.3 — Level 2: real DB players in the
+> engine's 4-4-2 slot structure. `RealSquadFactory` maps a `Lineup` (11
+> starters) into 4-4-2 slots by Position (GK/DEF/MID/WNG/ATT), real names,
+> real `Skills.getExact` → `PlayerSkills`, anchor from `FormationSlotCatalog`
+> + tactical mirror (AWAY GK 7.5); falls back to synthetic when lineup missing.
+> `SimMatchRunner.run(..., homeSquad, awaySquad)` + `SimMatchService.simulate(
+> MatchFixture, storeReplay)`; controller/async callers now pass the fixture.
+> Session 7.2 (offside whistle at reception) i prethodni pass-i ispod.)
 
 ---
 

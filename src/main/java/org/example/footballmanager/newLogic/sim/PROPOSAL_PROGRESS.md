@@ -1433,3 +1433,44 @@ Replay preskačemo — fokus na backend.
 - match.json ostaje nekomitovan (pravilo korisnika).
 
 ---
+
+## Session 7.3 — Level 2: realni igrači iz baze u 4-4-2 slot strukturu
+
+Realni DB igrači (prava imena, pravi skills) umesto sintetičkih u dashboard
+"Watch Your Match" putanju.
+
+### Šta je urađeno
+- **`RealSquadFactory`** (nov) — mapira `Lineup` (11 startnih igrača) u engine-
+  ovu 4-4-2 slot strukturu:
+  - deterministički slot assignment po poziciji (GK→GK, DEF→D*, MID→M*/C*,
+    WNG→ML/MR/STL/STR, ATT→STL/STR), ostatak se dodeljuje po lineup redu;
+  - preslikava `Position` (GK/DEF/MID/ATT/WNG) → `PlayerSkills` preko
+    `Skills.getExact`, clamp 1-20;
+  - anchor pozicija iz `FormationSlotCatalog.getSlots("4-4-2")` +
+    `TacticalPerspectiveTransformer.toPhysical(...)` → HOME / AWAY zrcaljenje
+    (AWAY GK 7.5);
+  - label = pravo ime, id = DB id, heightCm = m×100 (+180 fallback).
+  - vrati `null` (→ sintetički fallback) kad lineup ima < 11 startera ili
+    ne postoji.
+- **`SimMatchRunner.run(homeName, awayName, ticks, homeSquad, awaySquad)`** —
+  realni squad-ovi se dodaju u `MatchState` kad su ≥ 11 po strani, inače
+  `SimTeamFactory.addTeam` fallback. Stari 3-arg poziv delegira sa null.
+- **`SimMatchService.simulate(MatchFixture, storeReplay)`** (nov overload) —
+  učitava realne sastave oba tima (`LineupRepository.findFirstByTeamIdAndMatchIsNull...
+  , `RealSquadFactory.buildSquad`), pokreće `SimMatchRunner`, fallback na
+  sintetiku po strani kad nema lineup-a.
+- **Calleri** prebačeni na fixture-putanju (realni igrači):
+  `SimulationController.simulateAndStore` (ispred user-match `true`), 
+  `AsyncSimulationRunner` (simulate-all, `false`).
+- Staro `simulate(String,String,boolean)` uklonjeno (niko ga više ne koristi).
+
+### Verify
+- `RealSquadFactoryTest` (5) + `RealSquadSimulationSmokeTest` (2) — zeleno,
+  7/7. Smoke run: 3600 tikova sa realnim sastavima, HOME/AWAY golovi ≥ 0,
+  tick == 3600.
+- `mvn -o test -Dtest='!TifoUITest'` — isto 9 poznatih legacy `demo.service`
+  kvarova (framework), bez novih.
+- Open item: determinizam — engine RNG raštrkan na 5 mesta (nema seed-anja u
+  ovom passu).
+
+---
