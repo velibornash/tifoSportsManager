@@ -1543,11 +1543,27 @@ class MatchViewer {
   }
 
   /* ─── UI updates ─── */
+  // Last snapshot at or before the requested tick — used for the running
+  // scoreboard. Snapshots are downsampled every SNAPSHOT_STRIDE ticks, so on
+  // non-snapshot ticks the score must be read from the nearest PREVIOUS
+  // snapshot; falling back to this.data.homeGoals (the FINAL score) made the
+  // scoreboard jump to FT as soon as the playhead left a snapshot tick.
+  _snapshotAt(intTick) {
+    if (!this._snapTicks.length) return null;
+    let lo = 0, hi = this._snapTicks.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this._snapTicks[mid] <= intTick) lo = mid;
+      else hi = mid - 1;
+    }
+    return this._snapIndex.get(this._snapTicks[lo]) || null;
+  }
+
   _updateScoreboard() {
     const intTick = Math.floor(this.currentTick);
-    const snap = this._snapIndex?.get(intTick) || null;
-    const hg = snap?.homeGoals ?? this._prevGoalCount[0] ?? this.data.homeGoals ?? 0;
-    const ag = snap?.awayGoals ?? this._prevGoalCount[1] ?? this.data.awayGoals ?? 0;
+    const snap = this._snapshotAt(intTick);
+    const hg = snap ? (snap.homeGoals || 0) : 0;
+    const ag = snap ? (snap.awayGoals || 0) : 0;
     document.getElementById('homeScore').textContent = hg;
     document.getElementById('awayScore').textContent = ag;
     document.getElementById('clock').textContent = tickToMinute(this.currentTick);

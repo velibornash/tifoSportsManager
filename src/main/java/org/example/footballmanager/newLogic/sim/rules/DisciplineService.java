@@ -2,113 +2,79 @@ package org.example.footballmanager.newLogic.sim.rules;
 
 import org.example.footballmanager.newLogic.sim.engine.EngineInterfaces;
 import org.example.footballmanager.newLogic.sim.model.*;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 /**
  * Discipline service — foul detection, card issuance, VAR integration.
  *
- * Modular design: each rule type (tackle foul, push, dangerous play,
- * second-yellow, straight-red, penalty-box foul) is a separate private
- * method so new rules can be added without touching existing ones.
- *
- * Placeholder — all methods return safe defaults.  Logic per backlog
- * (PROPOSAL_PROGRESS.md §8.6).
+ * The wiring layer (DuelService) calls {@link #evaluateFoul(MatchState)} AFTER
+ * a defender wins a defensive duel on a ball carrier and sets the defending
+ * player as {@code lastTouchPlayer}. This implementation decides *whether* a
+ * foul occurred (probability-gated by the defender's tackling skill) and what
+ * sanction follows — yellow / straight-red / penalty-box penalty. Cards are
+ * seeded through {@link SimulationRandom} so matches stay reproducible.
  */
 public class DisciplineService implements EngineInterfaces.DisciplineService {
 
-    private final MatchState state;
-    private final VARService varService;
-
     public DisciplineService(MatchState state, VARService varService) {
-        this.state = state;
-        this.varService = varService;
     }
 
     @Override
     public DisciplineResult evaluateFoul(MatchState state) {
         Player attacker = state.getCarrier();
         Player defender = state.getLastTouchPlayer();
-        boolean hadDuel = state.hasPendingVARReview();
 
-        // No carrier and no pending duel => no card, just free kick / play on
-        if (attacker == null && !hadDuel) {
-            return new DisciplineResult(false, false, false, false, false, "No carrier or duel active");
+        // Only evaluate a genuine defensive contest on a ball carrier.
+        if (attacker == null || defender == null) {
+            return new DisciplineResult(false, false, false, false, false, "No contest");
         }
 
-        // Determine the team defending the foul
-        String defendingTeam = attacker != null ? attacker.getTeam() : "HOME";
-        if (defender != null) defendingTeam = defender.getTeam();
+        // Foul probability follows the defender's tackling skill: skilled
+        // defenders win the ball cleanly, weaker ones mistime the challenge.
+        // Base 0.13 at skill 10 → 0.06 at skill 20, 0.20 at skill 1.
+        double defenderSkill = defender.getSkills() != null
+                ? defender.getSkills().defender() : 10.0;
+        double foulProb = Math.max(0.05, Math.min(0.22, 0.16 - defenderSkill * 0.005));
 
-        // Compute foul position: deeper of attacker/defender toward opponent goal
-        Position foulPos = null;
-        boolean inPenaltyBox = false;
-        if (attacker != null && defender != null) {
-            Position aPos = attacker.getPosition();
-            Position dPos = defender.getPosition();
-            boolean homeAttacking = "HOME".equals(attacker.getTeam());
-            // foul pos = whichever player is deeper toward the opponent goal
-            if (homeAttacking) {
-                foulPos = aPos.getRow() >= dPos.getRow() ? aPos : dPos;
-            } else {
-                foulPos = aPos.getRow() <= dPos.getRow() ? aPos : dPos;
-            }
-            // penalty area check: row near goal line (HOME: row>=7, AWAY: row<=1)
-            // and columns 2-5 (not full width)
-            inPenaltyBox = homeAttacking
-                    ? (foulPos.getRow() >= 7.0 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5)
-                    : (foulPos.getRow() <= 1.0 && foulPos.getColumn() >= 2 && foulPos.getColumn() <= 5);
+        if (SimulationRandom.nextDouble() >= foulProb) {
+            return new DisciplineResult(false, false, false, false, false, "Clean tackle");
         }
 
-        // Use VARService to determine card and penalty decisions
-        boolean redConfirmed = false;
-        boolean yellowConfirmed = false;
-        boolean penaltyAwarded = false;
-        boolean freeKickAwarded = false;
-        Player freeKickTaker = null;
-        Player penaltyTaker = null;
+        // Foul confirmed — determine the sanction.
+        boolean redConfirmed = SimulationRandom.nextDouble() < 0.02;   // straight red (rare)
+        boolean yellowConfirmed = !redConfirmed && SimulationRandom.nextDouble() < 0.35;
 
-        if (defender != null) {
-            // VAR check for red card (standalone, not second-yellow context)
-            redConfirmed = varService.checkRedCard(defender, false);
+        // Penalty instead of free kick when the foul lands in the penalty area.
+        boolean penaltyAwarded = isInsidePenaltyArea(attacker, defender);
+        boolean freeKickAwarded = !penaltyAwarded;
 
-            // VAR check for yellow card
-            String varYellowResult = varService.checkYellowCard(defender);
-            if ("UPGRADE_TO_RED".equals(varYellowResult)) {
-                // VAR upgraded yellow → red
-                redConfirmed = true;
-                yellowConfirmed = false;
-            } else if ("DOWNGRADE_TO_NONE".equals(varYellowResult)) {
-                // VAR downgraded yellow → no card, play continues
-                yellowConfirmed = false;
-                redConfirmed = false;
-            } else {
-                // Yellow confirmed by VAR
-                yellowConfirmed = true;
-            }
-        }
+        state.incrementFouls();
+        if (yellowConfirmed) state.incrementYellowCards();
+        if (redConfirmed) state.incrementRedCards();
 
-        // Penalty-box gate (35% random) vs free kick
-        if (inPenaltyBox && varService.checkPenalty(foulPos, "HOME".equals(attacker.getTeam()))) {
-            penaltyAwarded = true;
-            penaltyTaker = attacker;
-        } else {
-            freeKickAwarded = true;
-            freeKickTaker = attacker;
-        }
+        String description = penaltyAwarded ? "Penalty awarded"
+                : redConfirmed ? "Red card"
+                : yellowConfirmed ? "Yellow card" : "Free kick";
 
-        // Build description string
-        String description = "";
-        if (penaltyAwarded) description = "Penalty awarded";
-        else if (yellowConfirmed) description = "Yellow card";
-        else if (redConfirmed) description = "Red card";
-        else if (freeKickAwarded) description = "Free kick";
+        return new DisciplineResult(true, yellowConfirmed, redConfirmed,
+                penaltyAwarded, freeKickAwarded, description);
+    }
 
-        // Record global stats (commented — proposal MatchState only has global counters)
-        // if (defender != null) state.incrementFouls();
-        // if (yellowConfirmed) state.incrementYellowCards();
-        // if (redConfirmed) state.incrementRedCards();
-
-        // Return the 6-field DisciplineResult matching the proposal surface
-        return new DisciplineResult(true, yellowConfirmed, redConfirmed, penaltyAwarded, freeKickAwarded, description);
+    /** Foul is a spot kick when it lands in the defensive penalty area:
+     *  HOME defends rows ≤ 1.5, AWAY defends rows ≥ 6.5, cols 2–5. */
+    private boolean isInsidePenaltyArea(Player attacker, Player defender) {
+        Position aPos = attacker.getPosition();
+        Position dPos = defender.getPosition();
+        if (aPos == null || dPos == null) return false;
+        boolean homeAttacking = "HOME".equals(attacker.getTeam());
+        double row = homeAttacking
+                ? Math.max(aPos.getRow(), dPos.getRow())
+                : Math.min(aPos.getRow(), dPos.getRow());
+        double col = (aPos.getColumn() + dPos.getColumn()) / 2.0;
+        boolean inBox = homeAttacking
+                ? (row >= 6.5 && col >= 2 && col <= 5)
+                : (row <= 1.5 && col >= 2 && col <= 5);
+        return inBox;
     }
 
     // --- Individual rule methods (add rules here) ---
@@ -128,12 +94,6 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
     /** Professional foul — last-man stopping clear goal-scoring opportunity = red. */
     private boolean isProfessionalFoul(Player defender, Player attacker) {
         // TODO: check if attacker was through on goal
-        return false;
-    }
-
-    /** Inside penalty area → penalty instead of direct FK. */
-    private boolean isInsidePenaltyArea(Position foulPosition, boolean homeAttacking) {
-        // TODO: use pitch geometry (HOME penalty area rows 1-1.5, cols 2-6)
         return false;
     }
 }

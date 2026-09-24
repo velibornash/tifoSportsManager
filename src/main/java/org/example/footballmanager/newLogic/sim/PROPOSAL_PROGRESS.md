@@ -1509,3 +1509,79 @@ Kompletno povezivanje persiste perssim putanje (nakon Level 2, `76c914b`):
   kvarova, bez novih (53 run, 9 fail: 3+3+3).
 
 ---
+
+## Session 7.5 — Real-squad fallback + seeded RNG + discipline wiring + English report + UI fixes
+
+Zatvaranje preostalih koraka match-flow batch-a iz korisničke prijave 2026-09-24
+(H10 imena / prazni lineups / Stats≠Report / scoreboard skaka na finalni rezultat).
+
+### Šta je urađeno
+
+**Real-squad fallback (Level 2 dopuna)**
+- `RealSquadFactory.buildSquadFromPlayers(List<db Player>, team)` — gradi
+  Squad od REALNIH DB igrača (bez lineupa/startersa): sortira po
+  `positionOrder` (GK=0, DEF=1, MID=2, WNG=3, ATT=4, null pos → 9) i
+  `ensureSingleGK` garantuje tačno jednog golmana.
+- `SimMatchService.loadRealSquad` — kada lineup nema ≥11 startersa, fallback
+  na `playerRepository.findByTeamId(team.getId())` → `buildSquadFromPlayers`.
+  Eliminiše sintetičke igrače → imenovani scorers u Goals tabu, popunjen
+  Lineups tab, pravi `MatchPlayerStats` redovi (MOTM više nije N/A).
+
+**Seeded RNG (determinizam)**
+- `util/SimulationRandom.java` (novo) — `ThreadLocal<Random>` provider sa
+  `seed(long)`, `nextDouble()`, `nextBoolean()`, `nextInt(bound)`, `rng()`.
+  Paralelno-bezbedan (thread-local), default globalno ponašanje nepromenjeno.
+- `SimMatchService.simulate` — `SimulationRandom.seed(fixture.getId()` (ili
+  `System.nanoTime()` za direktne pozive) na startu → ista utakmica = isti
+  rezultat.
+- Konvertovani svi RNG call-sites: `ExecutionQuality` (11 poziva),
+  `BallPhysicsEngine`, `CleanDecisionEngine` (i `Math.random()` linija),
+  `DuelEngine`. `MatchOrchestrator` — uklonjena 3 dupla `Random` importa,
+  `VARService(state, SimulationRandom.rng())`.
+
+**Discipline wiring ("poveži da radi")**
+- `DisciplineService.evaluateFoul` — nova probabilistička logika:
+  `foulProb = clamp(0.16 − skill*0.005, 0.05, 0.22)`; crveni 2% prekršaja,
+  žuti 35% (osim ako crveni); penalty-box geotetrija HOME rows≥6.5 / AWAY
+  rows≤1.5, cols 2–5; `incrementFouls/YellowCards/RedCards` na MatchState-u
+  sada stvarno rastu. Uklonjen mrtav `(Position, boolean)` overload i
+  nekorišćeno polje.
+- `DuelService` — konstruiše `DisciplineService(state, null)`; proverava
+  prekršaj SAMO kad DEFENDER dobije DRIBBLE/TACKLE/RECEIVE_PASS duele, pre
+  `applyDuelResult` (tada je `state.getCarrier()` još napadani igrač, pa
+  geometrija box-a radi); na osnovu odluke loguje `<FOUL|YELLOW_CARD|RED_CARD|PENALTY>`.
+  **Poznato ograničenje:** prekršaj nema free-kick restart (igra se
+  nastavlja) i crveni ne skida igrača — evidencija je statistička.
+- `ProposalStatsCollector` — `onFoul/onYellowCard/onRedCard`; `TeamAcc` +
+  `buildTeamStats` umesto hardkodovanih 0 sada vraćaju stvarne
+  `fouls/yellowCards/redCards` (ključevi `homeFouls`/`homeYellowCards`/
+  `homeRedCards` u statsMap već su postojali).
+
+**UI / prikaz (korisničke prijave)**
+- `viewer.js` — running scoreboard više ne skače na finalni rezultat:
+  novi `_snapshotAt(intTick)` (binarna pretraga `_snapTicks`) + `_updateScoreboard()`
+  čita `snap.homeGoals/awayGoals` (fallback 0), ne `?? data.homeGoals`.
+- `match-view.js` — **Stats tab sada čita kanonske vrednosti** sa
+  `/api/zox/match-stats/{matchId}` (statsMap): Possession, xG, Shots,
+  Shots on/off target, Pass accuracy, Corners, Offsides, Yellow/Red cards,
+  Fouls (Penalties red uklonjen — engine nema penal statistiku). Ranije je
+  Stats derivovao iz detail-events (GOAL-only za engine utakmice → nule).
+- `match-view.js` — dodato **gornje Back dugme** (pored postojećeg donjeg),
+  `Back` navigacija ista kao donje (`goBackSmart`).
+- `ZoxApiController` — kompletna engleska lokalizacija izveštaja (headline,
+  summary, turning point, taktički nalaz, top performers, timeline, preview).
+
+**Legacy testovi**
+- Obrisana 3 legacy test fajla + 2 `.bak`:
+  `TestMatchSimulatorIntegration.java(+bak/bak2)`, `TestFootballRulesService.java`,
+  `TestTacticalPerspectiveTransformer.java`. **Važno:** nakon brisanja izvornih
+  fajlova ostaju stale `.class` u `target/test-classes` koje surefire i dalje
+  izvršava → nekad je potreban `mvn -o clean test` (ne samo `mvn test`).
+
+### Verify
+- `mvn -o clean test` → **35 run, 0 fail, 0 error** (9 legacy kvarova nestalo).
+- `node --check match-view.js` → syntax OK.
+- Goals tab sada prikazuje realna imena strelaca (fallback zapravo "Player N"
+  samo kad tim nema NIJEDNOG DB igrača).
+
+---

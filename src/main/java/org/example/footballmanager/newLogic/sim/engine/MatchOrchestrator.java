@@ -13,12 +13,10 @@ import org.example.footballmanager.newLogic.sim.engine.EngineInterfaces.OffsideS
 import org.example.footballmanager.newLogic.sim.rules.VARService;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
-import java.util.Random;
-import java.util.Random;
 
 /**
  * Match Orchestrator — coordinates all engine calls within a single tick.
@@ -79,7 +77,7 @@ public class MatchOrchestrator {
         this.ballEngine = new BallPhysicsEngine();
         this.clockService = new MatchClockService();
         this.rules = new FootballRules();
-        this.varService = new VARService(state, new Random());
+        this.varService = new VARService(state, SimulationRandom.rng());
         this.offsideService = new OffsideService(state, varService);
         this.restartManager = new RestartManager(tactics);
         this.duelService = new DuelService(state, recorder, stats);

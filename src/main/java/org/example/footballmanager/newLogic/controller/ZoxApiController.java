@@ -54,7 +54,7 @@ public class ZoxApiController {
         preview.put("awayTeamRating", Math.round(awayRating * 10.0) / 10.0);
         preview.put("homeRecentForm", "");
         preview.put("awayRecentForm", "");
-        preview.put("expectedResult", homeP > 0.53 ? "Domaćin pobeda" : homeP < 0.47 ? "Gost pobeda" : "Nerešeno");
+        preview.put("expectedResult", homeP > 0.53 ? "Home win" : homeP < 0.47 ? "Away win" : "Draw");
         preview.put("homeWinProbability", Math.round(homeP * 100.0) / 100.0);
         preview.put("drawProbability", 0.25);
         preview.put("awayWinProbability", Math.round((1.0 - homeP - 0.25) * 100.0) / 100.0);
@@ -70,12 +70,12 @@ public class ZoxApiController {
         preview.put("awayAvailabilityScore", 93);
         preview.put("homePositionMismatches", 0);
         preview.put("awayPositionMismatches", 0);
-        preview.put("homePlayStyle", "Uravnote\u017Een");
-        preview.put("awayPlayStyle", "Uravnote\u017Een");
-        preview.put("analysisText", "O\u010dekuje se izjedna\u010dena utakmica.");
-        preview.put("predictionReasons", List.of("Obe ekipe su sli\u010dnog kvaliteta"));
-        preview.put("homeInsights", List.of(Map.of("label", "Forma", "value", "Nepoznato", "tone", "neutral")));
-        preview.put("awayInsights", List.of(Map.of("label", "Forma", "value", "Nepoznato", "tone", "neutral")));
+        preview.put("homePlayStyle", "Balanced");
+        preview.put("awayPlayStyle", "Balanced");
+        preview.put("analysisText", "An evenly matched contest is expected.");
+        preview.put("predictionReasons", List.of("Both sides are of similar quality"));
+        preview.put("homeInsights", List.of(Map.of("label", "Form", "value", "Unknown", "tone", "neutral")));
+        preview.put("awayInsights", List.of(Map.of("label", "Form", "value", "Unknown", "tone", "neutral")));
         preview.put("homeAbsentees", List.of());
         preview.put("awayAbsentees", List.of());
         preview.put("homeLineup", List.of());
@@ -95,10 +95,10 @@ public class ZoxApiController {
         List<MatchPlayerStats> stats = statsRepository.findByMatchId(matchId);
 
         String headline = match.getHomeGoals() > match.getAwayGoals()
-            ? homeTeam + " savladao " + awayTeam + " " + match.getHomeGoals() + "-" + match.getAwayGoals()
+            ? homeTeam + " defeated " + awayTeam + " " + match.getHomeGoals() + "-" + match.getAwayGoals()
             : match.getAwayGoals() > match.getHomeGoals()
-            ? awayTeam + " savladao " + homeTeam + " " + match.getAwayGoals() + "-" + match.getHomeGoals()
-            : homeTeam + " i " + awayTeam + " remizirali " + match.getHomeGoals() + "-" + match.getAwayGoals();
+            ? awayTeam + " defeated " + homeTeam + " " + match.getAwayGoals() + "-" + match.getHomeGoals()
+            : homeTeam + " and " + awayTeam + " drew " + match.getHomeGoals() + "-" + match.getAwayGoals();
 
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("headline", headline);
@@ -260,7 +260,7 @@ public class ZoxApiController {
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("minute", minute);
                     item.put("icon", "YELLOW".equals(cardType) ? "yellow_card" : "red_card");
-                    item.put("title", ev.get("playerName") + " - " + ("YELLOW".equals(cardType) ? "\u017Duti karton" : "Crveni karton"));
+                    item.put("title", ev.get("playerName") + " - " + ("YELLOW".equals(cardType) ? "Yellow card" : "Red card"));
                     item.put("teamName", teamName);
                     item.put("detail", "");
                     timeline.add(item);
@@ -272,7 +272,7 @@ public class ZoxApiController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("minute", minute);
                 item.put("icon", "substitution");
-                item.put("title", "Izlazi: " + ev.get("playerOutName") + ", Ulazi: " + ev.get("playerInName"));
+                item.put("title", "Out: " + ev.get("playerOutName") + ", In: " + ev.get("playerInName"));
                 item.put("teamName", teamName);
                 item.put("detail", "");
                 timeline.add(item);
@@ -283,7 +283,7 @@ public class ZoxApiController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("minute", minute);
                 item.put("icon", "penalty");
-                item.put("title", "Penal za " + teamName + " (" + ev.getOrDefault("takerName", "") + ")");
+                item.put("title", "Penalty to " + teamName + " (" + ev.getOrDefault("takerName", "") + ")");
                 item.put("teamName", teamName);
                 item.put("detail", "");
                 timeline.add(item);
@@ -295,7 +295,7 @@ public class ZoxApiController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("minute", minute);
                 item.put("icon", "injury");
-                item.put("title", ev.get("playerName") + " - Povreda");
+                item.put("title", ev.get("playerName") + " - Injury");
                 item.put("teamName", teamName);
                 item.put("detail", "");
                 timeline.add(item);
@@ -361,7 +361,7 @@ public class ZoxApiController {
                 Map<String, Object> p = new LinkedHashMap<>();
                 p.put("playerName", s.getPlayer().getName());
                 p.put("position", s.getPlayer().getPosition() != null ? s.getPlayer().getPosition().name() : "");
-                p.put("summary", s.getGoals() + " golova, " + s.getAssists() + " asistencija");
+                p.put("summary", s.getGoals() + " goals, " + s.getAssists() + " assists");
                 p.put("rating10", Math.round(rating10 * 10.0) / 10.0);
                 return p;
             })
@@ -374,53 +374,52 @@ public class ZoxApiController {
         int hg = match.getHomeGoals();
         int ag = match.getAwayGoals();
         if (hg > ag) {
-            return homeTeam + " je zaslu\u017Eeno pobedio sa " + hg + "-" + ag
-                + ". Tim je pokazao bolju igru i realizaciju.";
+            return homeTeam + " deservedly won " + hg + "-" + ag
+                + ". The side showed the better game and finishing quality.";
         } else if (ag > hg) {
-            return awayTeam + " je ostvario va\u017Enu pobedu na gostovanju rezultatom "
+            return awayTeam + " secured an important away win by "
                 + ag + "-" + hg + ".";
         } else {
-            return "Utakmica je zavr\u0161ena nere\u0161eno " + hg + "-" + ag
-                + ". Obe ekipe su imale svoje \u0161anse.";
+            return "The match ended in a draw " + hg + "-" + ag
+                + ". Both teams had their chances.";
         }
     }
 
     private String findTurningPoint(Match match, String homeTeam, String awayTeam) {
         List<Map<String, Object>> events = parseEvents(match.getEventJson());
-        if (events == null) return "Prvi gol na utakmici.";
+        if (events == null) return "The opening goal of the match.";
 
         for (Map<String, Object> ev : events) {
             if (ev.containsKey("scorerName")) {
                 String scorer = (String) ev.get("scorerName");
                 Integer min = ev.containsKey("minute") ? ((Number) ev.get("minute")).intValue() : null;
                 if (min != null && min <= 30) {
-                    return "Rani gol " + scorer + " u " + min + ". minutu je postavio ton utakmici.";
+                    return "An early goal by " + scorer + " in the " + min + "' minute set the tone for the match.";
                 }
                 if (min != null) {
-                    return "Gol " + scorer + " u " + min + ". minutu je bio klju\u010Dni trenutak.";
+                    return scorer + "'s goal in the " + min + "' minute was the key moment.";
                 }
             }
             if (ev.containsKey("cardType") && "RED".equals(ev.get("cardType"))) {
                 String player = (String) ev.get("playerName");
                 Integer min = ev.containsKey("minute") ? ((Number) ev.get("minute")).intValue() : null;
-                return "Crveni karton za " + player + " u "
-                    + (min != null ? min + ". minutu" : "") + " je promenio tok utakmice.";
+                return "A red card for " + player + " in the "
+                    + (min != null ? min + "' minute" : "match") + " changed the course of the game.";
             }
         }
-        return "Prvi gol na utakmici.";
+        return "The opening goal of the match.";
     }
 
     private String generateTacticalVerdict(Match match, String homeTeam, String awayTeam) {
         int hg = match.getHomeGoals();
         int ag = match.getAwayGoals();
         if (hg > ag) {
-            return homeTeam + " je bio takti\u010Dki superiorniji. Dobra organizacija odbrane "
-                + "i efikasnost u napadu doneli su pobedu.";
+            return homeTeam + " were tactically superior. Solid defensive organisation "
+                + "and attacking efficiency brought home the win.";
         } else if (ag > hg) {
-            return awayTeam + " je odigrao takti\u010Dki zrelo, iskoristiv\u0161i kontranapade.";
+            return awayTeam + " played a tactically mature game, capitalising on counter-attacks.";
         } else {
-            return "Takti\u010Dki izjedna\u010Dena utakmica gde nijedna ekipa nije uspela "
-                + "da nametne svoj stil.";
+            return "A tactically even match where neither side managed to impose its style.";
         }
     }
 

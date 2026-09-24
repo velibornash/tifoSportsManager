@@ -3,10 +3,10 @@ package org.example.footballmanager.newLogic.sim.engine.decision;
 import org.example.footballmanager.newLogic.sim.engine.ActionEngine;
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 /**
  * Clean Decision Engine - ONLY scores and selects actions.
@@ -25,8 +25,6 @@ public class CleanDecisionEngine {
         0.60, 0.62, 0.64, 0.66, 0.68, 0.70, 0.72, 0.74, 0.76, 0.78,  // 11-20
         0.80  // 21 (capped)
     };
-
-    private final Random RNG = new Random();
 
     public DecisionOption decide(MatchState state) {
         return decideWithOptions(state).getChosen();
@@ -244,7 +242,7 @@ public class CleanDecisionEngine {
 
         // Frequency gate — only a fraction of final-third touches are shots
         // (real teams recycle, hold, and probe instead of shooting every touch).
-        if (RNG.nextDouble() > 0.25) {
+        if (SimulationRandom.nextDouble() > 0.25) {
             score = -20.0;
             reason.append("freq gate");
             return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
@@ -528,7 +526,7 @@ public class CleanDecisionEngine {
         // Playmaking determines if we pick the best or consider alternatives
         if (second != null && (best.getScore() - second.getScore()) < 5.0) {
             // Close decision - use playmaking to break tie
-            if (Math.random() < playmakingAccuracy) {
+            if (SimulationRandom.nextDouble() < playmakingAccuracy) {
                 return best; // Take the best option
             } else {
                 return second; // Take the second option (shows creativity)

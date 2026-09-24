@@ -62,8 +62,18 @@ export function createMatchView(deps) {
                 hour: '2-digit', minute: '2-digit'
             });
 
+            let backTarget = 'results';
+            if (caller === 'match' || caller === 'results') backTarget = 'results';
+            else if (caller === 'leagueMatches') backTarget = 'leagueMatches';
+            else if (caller === 'leagueTable') backTarget = 'leagueTable';
+            else if (caller === 'leagueSchedule') backTarget = 'leagueSchedule';
+            else console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
+
             mainContent.innerHTML = `
             <div class="team-card">
+                <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
+                    <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget}')">&#8592; Back</button>
+                </div>
                 <h2 style="text-align:center;">Match Details</h2>
                 <div class="fm-match-scoreline" style="font-size:1.3em; margin:20px 0; font-weight:bold;">
                     <div class="fm-match-score-team">
@@ -94,13 +104,6 @@ export function createMatchView(deps) {
             </div>`;
 
             const backButton = document.getElementById('back-button');
-            let backTarget = 'results';
-            if (caller === 'match' || caller === 'results') backTarget = 'results';
-            else if (caller === 'leagueMatches') backTarget = 'leagueMatches';
-            else if (caller === 'leagueTable') backTarget = 'leagueTable';
-            else if (caller === 'leagueSchedule') backTarget = 'leagueSchedule';
-            else console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
-
             backButton.dataset.target = backTarget;
             backButton.style.display = 'inline-block';
 
@@ -302,72 +305,53 @@ export function createMatchView(deps) {
                 }
             }
 
-            function showStats() {
-                const homeShotsOn = events.filter(e => e.eventType === "ShotOnTargetEvent" && e.shotOnTargetTeam === homeTeamName).length;
-                const awayShotsOn = events.filter(e => e.eventType === "ShotOnTargetEvent" && e.shotOnTargetTeam === awayTeamName).length;
-                const homeShotsOff = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === homeTeamName).length;
-                const awayShotsOff = events.filter(e => e.eventType === "ShotOffTargetEvent" && e.shotOffTargetTeam === awayTeamName).length;
-                const homeGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === homeTeamName && e.goalScored !== false).length;
-                const awayGoalsCount = events.filter(e => e.eventType === "GoalEvent" && e.scoreTeam === awayTeamName && e.goalScored !== false).length;
+            async function showStats() {
+                // Canonical stats come from the engine's statsJson (statsMap),
+                // read verbatim by /api/zox/match-stats/{id}. Deriving them from
+                // the detail events (eventJson) yields zeros for engine matches
+                // because eventJson only carries GOAL events.
+                let payload = null;
+                try {
+                    const resp = await authFetch(`/api/zox/match-stats/${matchId}`);
+                    if (resp.ok) payload = await resp.json();
+                } catch (error) {
+                    console.error('Failed to load match stats:', error);
+                }
+                if (!payload || typeof payload !== 'object') {
+                    infoDiv.innerHTML = `<p style="color:#ffb3b3; text-align:center; padding:30px;">Match stats are not available for this match.</p>`;
+                    return;
+                }
 
-                const adjHomeShotsOn = homeShotsOn + homeGoalsCount;
-                const adjAwayShotsOn = awayShotsOn + awayGoalsCount;
-                const homeTotalShots = adjHomeShotsOn + homeShotsOff;
-                const awayTotalShots = adjAwayShotsOn + awayShotsOff;
-
-                const homeCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === homeTeamName).length;
-                const awayCorners = events.filter(e => e.eventType === "CornerEvent" && e.eventTeam === awayTeamName).length;
-                const homeYellows = events.filter(e => e.eventType === "YellowCardEvent" && e.eventTeam === homeTeamName).length;
-                const awayYellows = events.filter(e => e.eventType === "YellowCardEvent" && e.eventTeam === awayTeamName).length;
-                const homeReds = events.filter(e => e.eventType === "RedCardEvent" && e.eventTeam === homeTeamName).length;
-                const awayReds = events.filter(e => e.eventType === "RedCardEvent" && e.eventTeam === awayTeamName).length;
-                const homePenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === homeTeamName).length;
-                const awayPenalties = events.filter(e => e.eventType === "PenaltyEvent" && e.eventTeam === awayTeamName).length;
-
-                const extractEventXg = event => {
-                    const rawValue = Number(event?.xG ?? event?.xg ?? 0);
-                    return Number.isFinite(rawValue) ? rawValue : 0;
+                const n = (v, fallback = 0) => {
+                    const num = Number(v);
+                    return Number.isFinite(num) ? num : fallback;
                 };
-                const isXgEvent = event =>
-                    event.eventType === "ShotOnTargetEvent" ||
-                    event.eventType === "ShotOffTargetEvent" ||
-                    (event.eventType === "GoalEvent" && event.goalScored !== false);
-                const resolveXgTeam = event => {
-                    if (event.eventType === "GoalEvent") return event.scoreTeam || event.eventTeam;
-                    if (event.eventType === "ShotOnTargetEvent") return event.shotOnTargetTeam || event.eventTeam;
-                    if (event.eventType === "ShotOffTargetEvent") return event.shotOffTargetTeam || event.eventTeam;
-                    return event.eventTeam;
-                };
-                const sumTeamXg = teamName =>
-                    events.reduce((sum, event) => {
-                        if (!isXgEvent(event) || resolveXgTeam(event) !== teamName) return sum;
-                        return sum + extractEventXg(event);
-                    }, 0);
+                const homeShotsOn = n(payload.homeShotsOnTarget);
+                const awayShotsOn = n(payload.awayShotsOnTarget);
+                const homeShotsOff = n(payload.homeShotsOffTarget);
+                const awayShotsOff = n(payload.awayShotsOffTarget);
 
-                const homeXg = sumTeamXg(homeTeamName);
-                const awayXg = sumTeamXg(awayTeamName);
-
-                const countTeamEvents = (type, teamName) =>
-                    events.filter(e => e.eventType === type && e.eventTeam === teamName).length;
-
-                const homePossWeight =
-                    (countTeamEvents("ChanceEvent", homeTeamName) * 3.0) +
-                    (homeShotsOn * 2.0) + (homeShotsOff * 1.4) +
-                    (homeCorners * 1.2) + (countTeamEvents("FreeKickEvent", homeTeamName) * 0.9) +
-                    (homePenalties * 1.3) + (countTeamEvents("GoalEvent", homeTeamName) * 1.1);
-                const awayPossWeight =
-                    (countTeamEvents("ChanceEvent", awayTeamName) * 3.0) +
-                    (awayShotsOn * 2.0) + (awayShotsOff * 1.4) +
-                    (awayCorners * 1.2) + (countTeamEvents("FreeKickEvent", awayTeamName) * 0.9) +
-                    (awayPenalties * 1.3) + (countTeamEvents("GoalEvent", awayTeamName) * 1.1);
-
-                const baselineWeight = 18.0;
-                const totalPoss = (homePossWeight + baselineWeight) + (awayPossWeight + baselineWeight);
-                let homePossPct = totalPoss > 0
-                    ? Math.round(((homePossWeight + baselineWeight) / totalPoss) * 100)
-                    : 50;
-                homePossPct = Math.max(32, Math.min(68, homePossPct));
-                const awayPossPct = 100 - homePossPct;
+                const rows = [
+                    ['Possession', n(payload.homePossession).toFixed(0) + '%', n(payload.awayPossession).toFixed(0) + '%'],
+                    ['xG', n(payload.homeExpectedGoals).toFixed(2), n(payload.awayExpectedGoals).toFixed(2)],
+                    ['Shots', homeShotsOn + homeShotsOff, awayShotsOn + awayShotsOff],
+                    ['Shots on target', homeShotsOn, awayShotsOn],
+                    ['Shots off target', homeShotsOff, awayShotsOff],
+                    ['Pass accuracy', n(payload.homePassAccuracy).toFixed(0) + '%', n(payload.awayPassAccuracy).toFixed(0) + '%'],
+                    ['Corners', n(payload.homeCorners), n(payload.awayCorners)],
+                    ['Offsides', n(payload.homeOffsides), n(payload.awayOffsides)],
+                    ['Yellow cards', n(payload.homeYellowCards), n(payload.awayYellowCards)],
+                    ['Red cards', n(payload.homeRedCards), n(payload.awayRedCards)],
+                    ['Fouls', n(payload.homeFouls), n(payload.awayFouls)],
+                ];
+                const body = rows.map(([label, homeVal, awayVal], i) => {
+                    const zebra = i % 2 === 1 ? ' style="background:rgba(255,255,255,0.04);"' : '';
+                    const accent = label === 'Yellow cards' ? 'color:#ff9800;'
+                        : label === 'Red cards' ? 'color:#f44336;'
+                        : label === 'Possession' || label === 'Shots on target' ? 'font-weight:bold;'
+                        : '';
+                    return `<tr${zebra}><td style="padding:10px;">${label}</td><td style="text-align:center;${accent}">${homeVal}</td><td style="text-align:center;${accent}">${awayVal}</td></tr>`;
+                }).join('');
 
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Match Stats</h3>`;
                 html += `
@@ -379,17 +363,7 @@ export function createMatchView(deps) {
                             <th style="padding:12px; text-align:center;">${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${htmlEscape(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr><td style="padding:10px;">Possession</td><td style="text-align:center;font-weight:bold;">${homePossPct}%</td><td style="text-align:center;font-weight:bold;">${awayPossPct}%</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">xG</td><td style="text-align:center;">${homeXg.toFixed(2)}</td><td style="text-align:center;">${awayXg.toFixed(2)}</td></tr>
-                        <tr><td style="padding:10px;">Shots</td><td style="text-align:center;">${homeTotalShots}</td><td style="text-align:center;">${awayTotalShots}</td></tr>
-                        <tr><td style="padding:10px;">Shots on target</td><td style="text-align:center;">${adjHomeShotsOn}</td><td style="text-align:center;">${adjAwayShotsOn}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Shots off target</td><td style="text-align:center;">${homeShotsOff}</td><td style="text-align:center;">${awayShotsOff}</td></tr>
-                        <tr><td style="padding:10px;">Corners</td><td style="text-align:center;">${homeCorners}</td><td style="text-align:center;">${awayCorners}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Yellow cards</td><td style="text-align:center;color:#ff9800;">${homeYellows}</td><td style="text-align:center;color:#ff9800;">${awayYellows}</td></tr>
-                        <tr><td style="padding:10px;">Red cards</td><td style="text-align:center;color:#f44336;">${homeReds}</td><td style="text-align:center;color:#f44336;">${awayReds}</td></tr>
-                        <tr style="background:rgba(255,255,255,0.04);"><td style="padding:10px;">Penalties</td><td style="text-align:center;">${homePenalties}</td><td style="text-align:center;">${awayPenalties}</td></tr>
-                    </tbody>
+                    <tbody>${body}</tbody>
                 </table>`;
                 infoDiv.innerHTML = html;
             }
@@ -459,7 +433,7 @@ export function createMatchView(deps) {
                     });
                 });
             });
-            document.getElementById("view-stats").addEventListener("click", showStats);
+            document.getElementById("view-stats").addEventListener("click", () => void showStats());
             document.getElementById("view-replay").addEventListener("click", () => {
                 void (async () => {
                     await revealMatchResultIfAllowed();

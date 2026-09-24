@@ -1,7 +1,7 @@
 package org.example.footballmanager.newLogic.sim.engine;
 
 import org.example.footballmanager.newLogic.sim.model.*;
-import java.util.Random;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 /**
  * Execution quality — only calculates execution quality. Does NOT override decisions.
@@ -9,8 +9,6 @@ import java.util.Random;
  * NO target clamping — ball physics decides where it stops.
  */
 public class ExecutionQuality {
-
-    private static final Random RNG = new Random();
 
     /** Result for a pass execution. */
     public static class PassResult {
@@ -81,8 +79,8 @@ public class ExecutionQuality {
         double sideRow = -dirCol;  // perpendicular left
         double sideCol = dirRow;
 
-        double longitudinal = (RNG.nextDouble() * 2 - 1) * maxDeviation;
-        double lateral = (RNG.nextDouble() * 2 - 1) * maxDeviation * 2.5;
+        double longitudinal = (SimulationRandom.nextDouble() * 2 - 1) * maxDeviation;
+        double lateral = (SimulationRandom.nextDouble() * 2 - 1) * maxDeviation * 2.5;
 
         double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
         double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
@@ -91,7 +89,7 @@ public class ExecutionQuality {
         // speed clamped to launch limits
         double speed = Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, Math.min(BallPhysicsEngine.MAX_BALL_SPEED, desiredSpeed));
         // small spin for ground passes (0..0.2)
-        double spin = RNG.nextDouble() * 0.2;
+        double spin = SimulationRandom.nextDouble() * 0.2;
 
         return new PassResult(actualTarget, speed, spin, skill, maxDeviation);
     }
@@ -121,14 +119,14 @@ public class ExecutionQuality {
         onTargetProb *= (1.0 - pressure / 200.0);
         onTargetProb = Math.min(onTargetProb, 0.85);
 
-        boolean onTarget = onTargetProb > RNG.nextDouble();
+        boolean onTarget = onTargetProb > SimulationRandom.nextDouble();
 
         // Determine actual target (deviated)
         double actualRow, actualCol;
         if (onTarget) {
             // Aim for goal mouth center with small spread
             actualRow = goalPosition.getRow();
-            actualCol = goalPosition.getColumn() + (RNG.nextDouble() - 0.5) * 0.6; // within mouth
+            actualCol = goalPosition.getColumn() + (SimulationRandom.nextDouble() - 0.5) * 0.6; // within mouth
         } else {
             // Off target — MUST not cross the goal line inside the mouth. A shot
             // aimed PAST the line "wide of the post" still crosses the line at a
@@ -138,18 +136,18 @@ public class ExecutionQuality {
             // inside 3.5-4.5.
             double mouthLeft = goalPosition.getColumn() - 0.5;
             double mouthRight = goalPosition.getColumn() + 0.5;
-            if (RNG.nextBoolean()) {
-                actualCol = mouthLeft - (0.5 + RNG.nextDouble() * 1.0);   // wide of left post
+            if (SimulationRandom.nextBoolean()) {
+                actualCol = mouthLeft - (0.5 + SimulationRandom.nextDouble() * 1.0);   // wide of left post
             } else {
-                actualCol = mouthRight + (0.5 + RNG.nextDouble() * 1.0);  // wide of right post
+                actualCol = mouthRight + (0.5 + SimulationRandom.nextDouble() * 1.0);  // wide of right post
             }
             // Always short of the line: the ball stops well before the goal.
-            actualRow = goalPosition.getRow() - (0.3 + RNG.nextDouble() * 0.9);
+            actualRow = goalPosition.getRow() - (0.3 + SimulationRandom.nextDouble() * 0.9);
         }
 
         Position actualTarget = new Position(actualRow, actualCol);
         double speed = ballSpeedForSkill(skill);
-        double spin = RNG.nextDouble() * 0.3; // shots can have more spin
+        double spin = SimulationRandom.nextDouble() * 0.3; // shots can have more spin
 
         return new ShotResult(actualTarget, onTarget, speed, spin);
     }

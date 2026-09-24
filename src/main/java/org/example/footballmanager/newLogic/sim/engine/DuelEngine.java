@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.sim.engine;
 
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 import java.util.List;
 
 /**
@@ -75,7 +76,7 @@ public class DuelEngine {
         double defenderPower = calculateDuelPower(defender, getDefensiveDuelType(duelType));
 
         // Add randomness (controlled, from seed)
-        double randomFactor = (Math.random() - 0.5) * 2.0; // -1 to 1
+        double randomFactor = (SimulationRandom.nextDouble() - 0.5) * 2.0; // -1 to 1
 
         double attackerFinal = attackerPower + randomFactor;
 

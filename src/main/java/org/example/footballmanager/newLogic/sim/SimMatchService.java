@@ -21,6 +21,7 @@ import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
 import org.example.footballmanager.newLogic.sim.result.SimReportMapper;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.example.footballmanager.newLogic.service.AttendanceService;
@@ -58,6 +59,11 @@ public class SimMatchService {
      *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
      *  squads when a team has no lineup template. */
     public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay) {
+        // Deterministic run: seed the engine RNG from the fixture id so
+        // re-simulating the same fixture always reproduces the same match.
+        SimulationRandom.seed(fixture != null && fixture.getId() != null
+                ? fixture.getId() : System.nanoTime());
+
         Team homeTeam = fixture.getHomeTeam();
         Team awayTeam = fixture.getAwayTeam();
         String homeName = homeTeam != null ? homeTeam.getName() : "Home FC";
@@ -78,9 +84,22 @@ public class SimMatchService {
     }
 
     private List<Player> loadRealSquad(Team team, String side) {
+        if (team == null || team.getId() == null) return null;
         Lineup lineup = loadLineup(team);
-        if (lineup == null) return null;
-        return RealSquadFactory.buildSquad(lineup, side);
+        if (lineup != null) {
+            List<org.example.footballmanager.newLogic.model.Player> ordered =
+                    lineup.getOrderedStartingPlayers();
+            if (ordered != null && ordered.size() >= 11) {
+                return RealSquadFactory.buildSquad(lineup, side);
+            }
+        }
+        // No usable lineup template → build the XI from the team's real DB
+        // players (position-sorted fallback) so real names/ids reach the sim,
+        // the detail view and MatchPlayerStats even without a saved lineup.
+        List<org.example.footballmanager.newLogic.model.Player> squad =
+                playerRepository.findByTeamId(team.getId());
+        if (squad == null || squad.size() < 11) return null;
+        return RealSquadFactory.buildSquadFromPlayers(squad, side);
     }
 
     @Transactional

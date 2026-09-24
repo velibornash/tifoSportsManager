@@ -3,14 +3,22 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-24 (session 7.4 — full entity wiring in the persist path.
-> `SimMatchService.persist()` now, besides the Match row + JSON blobs + league
-> table, links `Match.homeLineup/awayLineup` to the real Lineups, writes one
-> `MatchPlayerStats` row per real DB player (rating ×10 → 10-100 scale,
-> cleanSheet logic, synthetic ids skipped), bumps `Player.totalGoals/totalAssists`
-> and `rating`, and sets stadium + attendance via `AttendanceService`. Session
-> 7.3 (Level 2: `RealSquadFactory` maps DB lineups into 4-4-2 slots, fixture-
-> based `simulate`, controller/async callers) i prethodni pass-i ispod.)
+> Last update: 2026-09-24 (session 7.5 — real-squad fallback, seeded RNG,
+> discipline wired, English report, running scoreboard + Stats tab fixed.
+> `RealSquadFactory.buildSquadFromPlayers` now builds squads from real DB
+> players when a lineup has <11 starters (no more synthetic H-numbers, named
+> scorers, populated Lineups + MOTM). All engine RNG flows through the
+> thread-local `SimulationRandom`, seeded from the fixture id in
+> `SimMatchService.simulate` (deterministic replay). `DisciplineService` fouls
+> are evaluated only when the defender wins DRIBBLE/TACKLE/RECEIVE_PASS duels
+> (probability-gated, penalty-box geometry; fouls/yellows/reds now land in
+> MatchState, TeamStats and statsMap — play continues after a foul, red is
+> statistical only). `ZoxApiController` report/preview/timeline is fully
+> English. `viewer.js` scoreboard reads per-tick snapshot goals (no jump to
+> final score); Stats tab in `match-view.js` renders the canonical
+> `/api/zox/match-stats/{matchId}` values; top Back button added. The 3 legacy
+> `demo.service` tests (+2 .bak) are deleted — `mvn -o clean test` is green:
+> 35 run, 0 fail. Sessions 7.4/7.3 i prethodni pass-i ispod.)
 
 ---
 

@@ -12,7 +12,10 @@ import org.example.footballmanager.newLogic.sim.tactics.TacticsSlotDTO;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Maps a real DB lineup onto the sim engine's 4-4-2 slot structure. The 11
@@ -32,7 +35,7 @@ public final class RealSquadFactory {
     /**
      * Builds a sim squad (11 players) from the team's saved lineup template.
      * Returns {@code null} when the lineup is absent or has fewer than 11
-     * starters — the caller then falls back to the synthetic squad.
+     * starters.
      */
     public static List<Player> buildSquad(Lineup lineup, String team) {
         if (lineup == null) return null;
@@ -41,7 +44,32 @@ public final class RealSquadFactory {
         if (ordered == null || ordered.size() < 11) return null;
         List<org.example.footballmanager.newLogic.model.Player> starters =
                 new ArrayList<>(ordered.subList(0, 11));
+        return buildFromStarters(starters, team);
+    }
 
+    /**
+     * Builds a sim squad (11 players) directly from the team's real DB players
+     * when NO lineup template exists: sort by position, keep a single GK, take
+     * the best 11. Mirrors MatchOrchestrator.loadTeamFromDB's fallback so real
+     * DB ids/names flow through the sim and into MatchPlayerStats/MOTM even for
+     * teams that never saved a tactical lineup. Returns {@code null} when fewer
+     * than 11 valid players exist — the caller then falls back to synthetic.
+     */
+    public static List<Player> buildSquadFromPlayers(
+            List<org.example.footballmanager.newLogic.model.Player> players, String team) {
+        if (players == null) return null;
+        List<org.example.footballmanager.newLogic.model.Player> valid = players.stream()
+                .filter(p -> p != null && p.getId() != null && p.getName() != null)
+                .sorted(Comparator.comparingInt(p -> positionOrder(p.getPosition())))
+                .collect(Collectors.toList());
+        if (valid.size() < 11) return null;
+        ensureSingleGK(valid);
+        return buildFromStarters(new ArrayList<>(valid.subList(0, 11)), team);
+    }
+
+    /** Maps an ordered list of exactly-11 DB starters onto the slot grid. */
+    private static List<Player> buildFromStarters(
+            List<org.example.footballmanager.newLogic.model.Player> starters, String team) {
         int[] slotPlayer = assignSlots(starters);
 
         List<Player> squad = new ArrayList<>(11);
@@ -102,6 +130,44 @@ public final class RealSquadFactory {
                     || "STL".equals(slot) || "STR".equals(slot);
             case ATT -> "STL".equals(slot) || "STR".equals(slot);
         };
+    }
+
+    private static int positionOrder(org.example.footballmanager.newLogic.model.Position p) {
+        if (p == null) return 9;
+        return switch (p) {
+            case GK -> 0;
+            case DEF -> 1;
+            case MID -> 2;
+            case WNG -> 3;
+            case ATT -> 4;
+        };
+    }
+
+    /** Ensure at most one GK among the first 11; swap extras out (match
+     *  the MatchOrchestrator fallback behaviour). */
+    private static void ensureSingleGK(List<org.example.footballmanager.newLogic.model.Player> sorted) {
+        boolean haveGK = sorted.stream()
+                .limit(11L)
+                .anyMatch(p -> p.getPosition() == org.example.footballmanager.newLogic.model.Position.GK);
+        if (!haveGK) {
+            for (int i = 11; i < sorted.size(); i++) {
+                if (sorted.get(i).getPosition() == org.example.footballmanager.newLogic.model.Position.GK) {
+                    Collections.swap(sorted, 0, i);
+                    break;
+                }
+            }
+        } else {
+            for (int i = 1; i < 11; i++) {
+                if (sorted.get(i).getPosition() == org.example.footballmanager.newLogic.model.Position.GK) {
+                    for (int j = sorted.size() - 1; j >= 11; j--) {
+                        if (sorted.get(j).getPosition() != org.example.footballmanager.newLogic.model.Position.GK) {
+                            Collections.swap(sorted, i, j);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private static Position anchorForRole(String role, String team) {

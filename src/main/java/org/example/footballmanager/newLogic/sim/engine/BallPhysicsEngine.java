@@ -2,10 +2,10 @@ package org.example.footballmanager.newLogic.sim.engine;
 
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.HashMap;
 
 /**
@@ -16,8 +16,6 @@ import java.util.HashMap;
  * lastTouchTeam from MatchState.
  */
 public class BallPhysicsEngine implements BallEngine {
-
-    private static final Random RNG = new Random();
 
     /**
      * Once-per-pass read cache (P6). The demo/service javadoc contract says a
@@ -546,7 +544,7 @@ public class BallPhysicsEngine implements BallEngine {
         String key = p.getLabel();
         Boolean cached = passReadDecisions.get(key);
         if (cached != null) return cached;
-        boolean decision = RNG.nextDouble() < prob;
+        boolean decision = SimulationRandom.nextDouble() < prob;
         passReadDecisions.put(key, decision);
         return decision;
     }

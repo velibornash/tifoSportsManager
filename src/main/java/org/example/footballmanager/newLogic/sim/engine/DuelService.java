@@ -5,6 +5,8 @@ import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.model.Position;
 import org.example.footballmanager.newLogic.sim.recording.MatchRecorder;
 import org.example.footballmanager.newLogic.sim.result.ProposalStatsCollector;
+import org.example.footballmanager.newLogic.sim.rules.DisciplineService;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 /**
  * Detects and resolves a deterministic single-opponent duel for the current
@@ -18,12 +20,14 @@ public class DuelService {
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
     private final DuelEngine duelEngine = new DuelEngine();
+    private final DisciplineService discipline;
 
     public DuelService(MatchState state, MatchRecorder recorder,
                        ProposalStatsCollector stats) {
         this.state = state;
         this.recorder = recorder;
         this.stats = stats;
+        this.discipline = new DisciplineService(state, null);
     }
 
     public void detectAndResolveDuels() {
@@ -37,6 +41,17 @@ public class DuelService {
             DuelEngine.DuelType duelType = duelEngine.checkDuel(carrier, opponent, state);
             if (duelType != null) {
                 Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
+
+                // Discipline — only on a genuine defensive contest where the DEFENDER
+                // won (tackle/dribble/receive). Evaluated BEFORE applyDuelResult so
+                // state.getCarrier() still points at the fouled attacker for the foul
+                // position/penalty-box checks.
+                if (winner == opponent && (duelType == DuelEngine.DuelType.DRIBBLE
+                        || duelType == DuelEngine.DuelType.TACKLE
+                        || duelType == DuelEngine.DuelType.RECEIVE_PASS)) {
+                    evaluateDiscipline(opponent, carrier);
+                }
+
                 duelEngine.applyDuelResult(state, winner, winner == carrier ? opponent : carrier);
                 String duelMsg = "DUEL " + duelType + " won by " + winner.getLabel()
                         + " (" + carrier.getLabel() + p(carrier.getPosition())
@@ -47,6 +62,28 @@ public class DuelService {
                 stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
             }
         }
+    }
+
+    private void evaluateDiscipline(Player offender, Player fouled) {
+        state.setLastTouchPlayer(offender);
+        DisciplineService.DisciplineResult res = discipline.evaluateFoul(state);
+        if (!res.foul()) return;
+
+        stats.onFoul(offender.getTeam(), offender.getId());
+        String event = res.penalty() ? "PENALTY"
+                : res.redCard() ? "RED_CARD"
+                : res.yellowCard() ? "YELLOW_CARD" : "FOUL";
+        String msg = res.penalty()
+                ? "Penalty for " + fouled.getTeam() + " — foul by " + offender.getLabel()
+                : res.redCard()
+                ? "Red card: " + offender.getLabel()
+                : res.yellowCard()
+                ? "Yellow card: " + offender.getLabel()
+                : "Free kick: foul by " + offender.getLabel() + " on " + fouled.getLabel();
+        log("FOU", msg);
+        recorder.appendEvent(state.getMatchTicks(), event, msg, state);
+        if (res.yellowCard()) stats.onYellowCard(offender.getTeam(), offender.getId());
+        if (res.redCard()) stats.onRedCard(offender.getTeam(), offender.getId());
     }
 
     private void log(String tag, String msg) {

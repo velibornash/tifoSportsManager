@@ -175,6 +175,30 @@ public class ProposalStatsCollector {
         if (l != null) l.tackles++; // defensive action by loser = tackle attempt
     }
 
+    /** Call from DisciplineService after a confirmed foul. */
+    public void onFoul(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.fouls++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.foulsCommitted++;
+    }
+
+    /** Call after a confirmed yellow card. */
+    public void onYellowCard(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.yellowCards++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.yellowCards++;
+    }
+
+    /** Call after a confirmed red card. */
+    public void onRedCard(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.redCards++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.redCards++;
+    }
+
     /** Call from possession tick tracking (carrier != null). */
     public void onPossessionTick(String carrierTeam) {
         int idx;
@@ -235,7 +259,7 @@ public class ProposalStatsCollector {
                 ta.passesAttempted, ta.passesCompleted, ta.dribbles,
                 ta.clearances, ta.interceptions, ta.deflections, ta.blocks, ta.saves,
                 ta.corners, ta.goalKicks, ta.throwIns, 0, // offsides not yet wired
-                0, 0, 0, // fouls, yellow, red — not yet wired
+                ta.fouls, ta.yellowCards, ta.redCards,
                 Math.round(poss * 10.0) / 10.0,
                 avgDur, posLongest[idx]
         );
@@ -331,6 +355,7 @@ public class ProposalStatsCollector {
         int passesAttempted, passesCompleted, dribbles, clearances;
         int interceptions, deflections, blocks, saves;
         int corners, goalKicks, throwIns, offsides;
+        int fouls, yellowCards, redCards;
         TeamAcc(String name) { this.teamName = name; }
     }
 
