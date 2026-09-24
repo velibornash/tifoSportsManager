@@ -1360,7 +1360,7 @@ User requests (2026-09-23):
 
 ## Sesija 2026-09-24 — Data-layer fit: proposal outcome "u obliku izveštaja" + newLogic match-data connect
 
-> Uvodi komit `HASH`.
+> Uvodi komit `b1508a7`.
 
 Zadatak korisnika: newLogic data sloj je ostao "pola odrađen" — tako da, kada
 proposal postane zvanični engine, može da se uklopi u njega. Dva smera:
