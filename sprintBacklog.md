@@ -35,12 +35,12 @@ Sprint 2  The economy                 ──┘   (economy depends on Sprint 1's
 Sprint 3  Contracts & transfers            honest per-match numbers for
 Sprint 4  Training v2                       broadcast/prize income)
 Sprint 5  Juniors v2
-Sprint 6  Delete the dead code        ── independent, can run in parallel
-Sprint 7  AI-vs-AI consistency        ── depends on Sprint 1
+Sprint 6  Delete the dead code        ✅ DONE (engines); stubs + docs remain
+Sprint 7  AI-vs-AI verification       ── reduced to a regression test, depends on S1
 Sprint 8  Presentation + deployment   ── last
 ```
 
-**Suggested order:** S0 → S1 → S2 → S4 (you flagged training as critical) → S3 → S5 → S7 → S6 → S8.
+**Suggested order:** S0 → S1 → S2 → S4 (you flagged training as critical) → S3 → S5 → S7 → S8. S6 docs are cheap and should be done right after S1 so `AGENTS.md` stops describing deleted engines.
 
 ---
 
@@ -202,7 +202,8 @@ Three documented-but-inert code paths. Small cleanup, but each one is a trap for
 
 # Sprint 1 — Engine calibration
 
-**Effort:** 8–10 days · **Type:** `FIX` + `FEATURE` · **Depends on:** S0.4 (perturbation)
+**Effort:** 16–20 days · **Type:** `FIX` + `FEATURE` · **Depends on:** S0.4 (perturbation)
+**Revised 2026-09-26:** +3 tasks added — S1.6 (port the injury model, now orphaned by the quarantine), S1.7 (implement penalties, currently never taken), S1.8 (implement substitutions, currently impossible). These are correctness gaps, not polish, and the injury model is the only one in the codebase.
 **Reference:** `PROPOSAL_SEASON_REPORT.md` and `expertAudit.md` §5
 
 > **Method:** change one thing → run `ProposalBatchDiag 100` → record → decide. Never change two calibrations in one commit.
@@ -286,7 +287,68 @@ Currently `MovementEngine` has **no** sprint/chase bonus at all (deliberate owne
 
 ---
 
-### S1.6 — Fix the remaining calibration outliers
+### S1.6 — Port the injury model into the proposal engine
+
+> ⚠️ **Added 2026-09-26.** The only injury generator in the codebase was `RealisticMatchEngine.maybeTriggerInjury:1410-1489`, which was quarantined to `footballForDelete/backend/newLogic/engine_v1/RealisticMatchEngine.java`. **The live proposal engine currently has no injury generator at all.** Sprints 1, 2 and 4 all assume injuries exist.
+
+This is the best mechanic found in the whole audit. Port it:
+
+| # | Task | Source |
+|---|---|---|
+| 1 | Port `maybeTriggerInjury` — minute window `8..88`, `chance = 0.00028 + max(0, fatigue − 18) × 0.00008`, `+0.00008` for WNG/ATT | `footballForDelete/.../RealisticMatchEngine.java:1410-1443` |
+| 2 | Port `pickInjuryRiskPlayer` — weight selection by `1 + max(0, fatigue − 10) × 0.25` so tired players are both more likely to be chosen *and* more likely to be injured | same, `:1477-1489` |
+| 3 | Port `applyInjury` — stamp season/week, add `+6` fatigue, set injury days | same, `:1445-1460` |
+| 4 | Improve `rollInjuryDays`: replace the 3 hardcoded buckets (72% → 1-10d, 23% → 11-16d, 5% → 17-20d) with an **injury type** model (hamstring / ankle / knee / fracture / concussion) that maps to realistic day ranges and a recurrence chance | same, `:1462-1467` |
+| 5 | Wire it into the proposal tick loop and emit an `INJURY` event so the viewer and stats see it | `sim/engine/MatchOrchestrator.java` |
+| 6 | Fix `Player.injured` desync — `isInjured()` derives from `injuryDaysRemaining` and ignores the flag; `decrementInjuriesByWeek` never calls `setInjured(false)` | `SeasonService.java:341-358` |
+| 7 | **Blocked by S1.7 (substitutions)** — an injured player must be replaceable, or injuries are just a number that reduces goals | `sim/backlog.md:489-492` |
+
+**Verify:** over 50 matches, injury frequency lands in a realistic 0.3–0.6 per match per team, and it correlates with fatigue.
+
+---
+
+### S1.7 — Implement penalties (they are awarded but never taken)
+
+> ⚠️ **Added 2026-09-26.** `DuelService.java:101-105` awards the penalty and increments a stat. `ActionLogService.java:50` declares the channels `PENALTY_KICK` / `PENALTY_SAVED` / `PENALTY_MISS` — and **no code in the repo produces them.** The award rate is already correct (`PENALTY_FROM_BOX_FOUL = 0.06` → 0.2/match vs a real 0.27). Only the execution is missing.
+
+| # | Task |
+|---|---|
+| 1 | Penalty taker selection: highest `shooting + technique` on the attacking team, respecting the striker if they are on the pitch |
+| 2 | Run-up + strike: reuse `ExecutionQuality.evaluateShot` with a fixed, very short target and no distance penalty |
+| 3 | Goalkeeper dive: `GoalkeeperEngine` needs a penalty-specific branch — a keeper cannot cover a 10 m mouth from a 2 m run-up |
+| 4 | Conversion model targeting ~76% (real: 75–78%). Keeper skill and taker skill both matter, plus a small angle factor |
+| 5 | Emit `PENALTY_KICK` / `PENALTY_SAVED` / `PENALTY_MISS` / `PENALTY_SCORED`, with the taker credited with a goal + assist |
+| 6 | VAR interaction already exists (`VARService:128-134`) — wire the outcome through |
+| 7 | Miss → goal kick. Goal → restart, centre spot |
+
+**Verify:** over 50 matches, ~0.2 penalties/match and ~76% conversion. No penalty awarded without a kick event following it.
+
+> Sokker's famous bug is 80% missed penalties. This engine's bug is 100% un-taken penalties. Strictly worse, and much cheaper to fix.
+
+---
+
+### S1.8 — Implement substitutions (currently the biggest engine gap)
+
+> ⚠️ **Added 2026-09-26.** `sim/model/Player.java:112` has `isUnavailable() { return sentOff || injured || substituted; }` and a `substituted` flag — **but nothing ever sets it.** `backlog.md:489-492` states it plainly: *"there is no bench/slot/substitution-limit contract exists"*.
+
+Consequences today: the same 11 play 90 minutes regardless of fatigue, injuries or bookings. A red card means 10-vs-11 for the rest of the match with no recourse. **This is also why fatigue and injuries barely matter** — being tired is only a slightly slower player, never a lineup change.
+
+| # | Task |
+|---|---|
+| 1 | `SubstitutionSlot` model: bench of 9, 5 substitutions allowed, 3 substitution windows (S1.8a below) |
+| 2 | Pick the bench automatically from squad role, condition and tactics — or let the manager pre-select it (do both; auto is the default) |
+| 3 | **Manual substitution** UI in the viewer: click a player, click a substitute |
+| 4 | **Automatic substitution** on injury, on red card, and on fatigue threshold |
+| 5 | **Tactical substitution** — change shape mid-match. This is the single biggest immersion win available |
+| 6 | Substitution windows: 3 moments, max 5 players. (Optional: allow rolling substitutions if the squad depth is high — a nice modern rule) |
+| 7 | A substituted player cannot return (unless you adopt rolling subs) |
+| 8 | Feed the sub into stats: minutes played, and a rating that reflects entry minute |
+
+**Verify:** a full match shows 0–5 substitutions depending on injuries/fatigue; a red card forces an emergency sub; the tactical view can change shape at half time.
+
+---
+
+### S1.9 — Fix the remaining calibration outliers
 
 | Metric | Now | Target | Approach |
 |---|---:|---:|---|
@@ -294,14 +356,14 @@ Currently `MovementEngine` has **no** sprint/chase bonus at all (deliberate owne
 | Red cards | 1.0 | 0.2 | `DisciplineService:68` `straightRed = rand < 0.004` with `foulProb` 0.16–0.22 → product ≈ 0.0008/duel × ~600 duels. **Will drop sharply once S1.4 cuts duels to ~120.** Re-measure before touching |
 | Fouls | 29.6 | 22 | Same — re-measure after S1.4 |
 | Nil-draws | 0 / 200 | ~6% | Should resolve once goals come down to 2.7–3.0. If not, check the finishing model for a floor |
-| Through balls | 13.2 | 5–10 | `THRU_FREQUENCY_GATE = 0.032` → try 0.022. Note THRU is only reachable from the final-2-row hard rule (`CleanDecisionEngine.java:141`) — see S1.8 |
+| Through balls | 13.2 | 5–10 | `THRU_FREQUENCY_GATE = 0.032` → try 0.022. Note THRU is only reachable from the final-2-row hard rule (`CleanDecisionEngine.java:141`) — see S1.10 |
 | Highest score | 10 | 7–8 | Should resolve with S1.1 |
 
-**Rule: re-measure S1.6 items after S1.4 lands.** Most of them are downstream of the duel count.
+**Rule: re-measure S1.9 items after S1.4 lands.** Most of them are downstream of the duel count.
 
 ---
 
-### S1.7 — Persist replays
+### S1.10 — Persist replays
 
 `SimReplayStore` is an unbounded in-memory `ConcurrentHashMap` (`SimReplayStore.java:17-29`). A restart loses every replay; `Match.replayId` survives in the DB as a dangling id.
 
@@ -314,7 +376,7 @@ Currently `MovementEngine` has **no** sprint/chase bonus at all (deliberate owne
 
 ---
 
-### S1.8 — Wire THRU / CROSS / CENTER into the decision engine
+### S1.11 — Wire THRU / CROSS / CENTER into the decision engine
 
 Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:126-127`). Deliveries enter **only** via the final-2-row hard rule (`:141`). So the tactical variety in the design docs does not exist in play.
 
@@ -778,14 +840,17 @@ Target: Sokker-parity on the academy. Currently at ~"tier-3 academy, no scouts".
 
 # Sprint 6 — Delete the dead code
 
-**Effort:** 2–3 days · **Type:** `DELETE` · **Independent — can run any time**
-**~40,000 LOC removed.**
+**Effort:** 1 day remaining · **Type:** `DELETE` · **Independent — can run any time**
 
-Do this once Sprints 0–2 have landed, because some of it is currently load-bearing for understanding behaviour.
+> ✅ **S6.1, S6.2 and S6.3 (the engines) are DONE — 2026-09-26.** 125 files moved to `footballForDelete/`, `mvn compile` clean, `mvn test` 84/84 green. See `footballForDelete/README.md` and `sprintProgress.md`.
+>
+> What was quarantined: `engine_v1/` (12 files, ~9,775 LOC), the v2 `newLogic/engine/` package (26 files, ~4,563 LOC), `NewMatchController`, 8 dead services, `RuntimeSaveToDB`, `util/events/` (6), `tools/SimulationRunner`, `old/` (4), the v2 `model/MatchState` + `MatchRuntime`, `demo/swingUIDemo/` (55), and 8 orphaned frontend files.
+>
+> **Still open in this sprint:** S6.4 (stub services + empty controllers) and S6.5 (documentation rewrite). The latter is now urgent — `AGENTS.md` describes engines that were just deleted, and the two `MatchOrchestrator` / `MatchState` name collisions are exactly the kind of thing that misleads the next agent.
 
 ---
 
-### S6.1 — Delete the two dead engines
+### S6.1 — Delete the two dead engines ✅ DONE 2026-09-26
 
 | Path | LOC | Reason |
 |---|---:|---|
@@ -806,7 +871,7 @@ Do this once Sprints 0–2 have landed, because some of it is currently load-bea
 
 ---
 
-### S6.2 — Freeze `demo/service/` as a reference module
+### S6.2 — Freeze `demo/service/` as a reference module (partially done)
 
 19,488 LOC. Its `corePrinciples.md` §1–48 is the design spec the proposal engine was ported from, and `ComprehensiveBatchRunner` / `MatchDetailedAnalyzer` are the calibration oracle. **Keep it. Stop editing it. Move it out of the main build path** so nobody "improves" it again.
 
@@ -817,7 +882,7 @@ Also keep the **viewer assets** the SPA actually uses: `static/demo/service/ui/p
 
 ---
 
-### S6.3 — Delete the dead frontend
+### S6.3 — Delete the dead frontend ✅ DONE 2026-09-26 (quarantined)
 
 | File | LOC | Notes |
 |---|---:|---|
@@ -875,39 +940,44 @@ Then fix the 13 dead routes (S8.1).
 
 ---
 
-# Sprint 7 — AI-vs-AI consistency
+# Sprint 7 — AI-vs-AI verification (reduced 2026-09-26)
 
-**Effort:** 5–7 days · **Type:** `FIX` · **Depends on:** S1
+**Effort:** 1–2 days · **Type:** `FIX` · **Depends on:** S1
 
----
-
-### S7.1 — Run the real engine for every fixture
-
-**The core problem:** the user's match goes through the tick engine; everyone else's goes through a strength-ratio → Poisson draw with hardcoded 4-4-2 lineups and events synthesised after the fact from the final score. **The league table is statistically incoherent with the match engine.**
-
-3,600 ticks × 22 players is trivially cheap in Java. There is no performance reason for the split.
-
-| # | Task | File:line |
-|---|---|---|
-| 1 | Route `MatchEngine.simulateFixture` through `SimMatchService` / `MatchOrchestrator` | `engine_v1/MatchEngine.java:1274+` |
-| 2 | Use each club's **real** formation and tactics, not hardcoded 4-4-2 | `MatchEngine.java:1285-1286` |
-| 3 | Use `TeamTacticsProfile` (Tactic Editor output) so the AI honours its own settings | — |
-| 4 | Suppress replay/snapshot recording for AI fixtures (saves memory + DB) | — |
-| 5 | Batch-parallelise across fixtures (the engines are already deterministic per `fixture.getId()`) | |
-| 6 | Delete `simulateQuickScore:1578-1602`, `generateSimulatedMatchEvents:1323`, and `MatchStatisticEngine.simulateInjuriesAndCards:31-46` (the last is a theatre stub that logs and discards) | |
-
-**Verify:** "Simulate All Results" for a full round produces league-table movement consistent with the engine's calibration, and an AI-vs-AI match in the same round as your own match has the same statistical profile.
+> **This sprint was originally 5–7 days and has been cut to 1–2.** The audit claimed AI-vs-AI league matches were produced by a Poisson dice roll (`MatchEngine.simulateQuickScore`) with hardcoded 4-4-2 lineups, leaving the league table statistically incoherent with the match engine.
+>
+> **That was wrong.** `POST /simulation/current-round/simulate-all` (`SimulationController.java:129-158`) already routes **every** fixture through `SimMatchService.simulate()` — the proposal engine. The user's league runs synchronously in-loop (`:133-137`); all other leagues run via `AsyncSimulationRunner.simulateInBackground()` → `simMatchService.simulate(fixture, false)` (`AsyncSimulationRunner.java:59`). The league table is written by `SimMatchService:246-261`.
+>
+> The dead `simulateQuickScore` was only reachable from `WeekPreparationAsyncService` and `RoundSimulationAsyncService`, **both of which have 0 callers** and were quarantined on 2026-09-26. See `footballForDelete/README.md` and `expertAudit.md` §4.1.
+>
+> So this sprint is now purely about **locking in the invariant with a test**, so the next person does not reintroduce a second simulation path.
 
 ---
 
-### S7.2 — Make results pre-revealed and inspectable
+### S7.1 — Add a regression test that all fixtures use the proposal engine
 
 | # | Task |
 |---|---|
-| 1 | The "results hidden until you play your match" gate is a good design. Keep it, but make the mechanism robust — the current `sessionStorage.dashboardWeekConsumed` client-side guard should be server-enforced |
-| 2 | Bulk-simulated AI fixtures should be watchable afterwards, same as your own match |
+| 1 | Assert that `SimMatchService` is the only class that produces a `Match` result for a played fixture — no `simulateQuickScore` / `simulateRestOfMatchDay` equivalent exists |
+| 2 | Assert `AsyncSimulationRunner` and `SimulationController.simulateCurrentRound` both go through `SimMatchService` |
+| 3 | Add a static check (test or build step) that fails if any class outside `sim/` calls into a simulation loop directly. This is the guard that would have caught the original rot |
+| 4 | Document in `ENGINE.md`: `newLogic/sim/` is the only engine; the dashboard button id `start-realistic-demo-btn` is a historical name; the viewer is `static/demo/service/ui/proposal/` |
+
+**Verify:** the test fails if you reintroduce `engine_v1/MatchEngine` or `newLogic/engine/MatchSimulator` into the build.
 
 ---
+
+### S7.2 — Make AI-vs-AI fixtures inspectable
+
+The engine is consistent; the only real gap is observability. AI fixtures are simulated with replay recording suppressed, so unlike your own match they cannot be watched afterwards.
+
+| # | Task |
+|---|---|
+| 1 | Offer to record a replay for a selection of AI fixtures (or all, if storage allows) so the user can review a neighbouring match |
+| 2 | Keep the "results hidden until you play your match" gate — it is good design. But move the guard server-side; the current `sessionStorage.dashboardWeekConsumed` check is client-side only (`demo.js:634-637`) |
+| 3 | Add a post-round summary showing which AI fixtures were close, so the round feels consequential rather than random |
+
+**Verify:** a simulated round is followed by a summary; selected AI fixtures are watchable in the same viewer as your own match.
 
 # Sprint 8 — Presentation, integration and deployment
 
@@ -1021,22 +1091,22 @@ Also: `ensureEntriesForSeasonCompetition:126-134` deletes and rebuilds all entri
 | Sprint | Scope | Effort | Type |
 |---|---|---:|---|
 | **0** | Fix the exploits | 3–4 d | `FIX` |
-| **1** | Engine calibration | 8–10 d | `FIX` + `FEATURE` |
+| **1** | Engine calibration + injuries + penalties + subs | 16–20 d | `FIX` + `FEATURE` |
 | **2** | **The economy** | 15–18 d | `FEATURE` |
 | **3** | Contracts and transfers v2 | 12–15 d | `FEATURE` |
 | **4** | **Training v2** | 12–15 d | `FEATURE` |
 | **5** | Juniors v2 | 8–10 d | `FEATURE` |
-| **6** | Delete the dead code (~40k LOC) | 2–3 d | `DELETE` |
-| **7** | AI-vs-AI consistency | 5–7 d | `FIX` |
+| **6** | Delete the dead code — engines ✅ done, stubs + docs remain | 1 d | `DELETE` |
+| **7** | AI-vs-AI verification (reduced from 5–7 d) | 1–2 d | `FIX` |
 | **8** | Presentation, integration, deployment | 10–12 d | `INFRA` |
-| | **Total** | **~77–94 days** | |
+| | **Total** | **~79–95 days** | |
 
 ### Critical path
 
 ```
-S0 (4d) → S1 (10d) → S2 (18d) → S4 (15d) → S3 (15d) → S5 (10d) → S8 (12d)
-                                    └──────── S7 (7d) ────────┘
-S6 (3d) — parallel, any time after S2
+S0 (4d) → S1 (20d) → S2 (18d) → S4 (15d) → S3 (15d) → S5 (10d) → S8 (12d)
+                                    └──────── S7 (2d) ────────┘
+S6 (1d) — parallel, any time
 ```
 
 ### The first 30 days
@@ -1044,9 +1114,9 @@ S6 (3d) — parallel, any time after S2
 | Days | Work | Outcome |
 |---|---|---|
 | 1–4 | **Sprint 0** | Exploits closed, training now reaches the engine, `/api/**` locked |
-| 5–14 | **Sprint 1** | 5.4 → ~2.8 goals, 598 → ~130 duels, restarts fixed, corners unskewed, **penalties and substitutions implemented** |
-| 15–32 | **Sprint 2** | Every club has money, wages, staff, sponsors, a board and a ledger. **The game is now a manager game.** |
-| 33–35 | **Sprint 6** | 40k LOC of dead code deleted, docs rewritten |
+| 5–24 | **Sprint 1** | 5.4 → ~2.8 goals, 598 → ~130 duels, restarts fixed, corners unskewed, **injuries / penalties / substitutions implemented** |
+| 25–42 | **Sprint 2** | Every club has money, wages, staff, sponsors, a board and a ledger. **The game is now a manager game.** |
+| — | **Sprint 6** | ✅ Engines already quarantined (done 2026-09-26, 125 files). Docs + stubs remain |
 
 After ~5 weeks the project goes from *"a beautiful match sim with 30 menu pages"* to *"a football manager that happens to have an excellent match engine."*
 

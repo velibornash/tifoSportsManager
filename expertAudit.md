@@ -44,7 +44,7 @@ Credit where it is due — this is not a codebase in trouble, it is a codebase w
 | **Proposal match engine architecture** (`newLogic/sim/`) | Thin orchestrator + single-responsibility engines (`BallPhysicsEngine`, `DuelService`, `GoalkeeperEngine`, `OffsideService`, `VARService`, `DisciplineService`, `FatigueSystem`, `ThreatOverrideEngine`), contracts in `EngineInterfaces`. Real ball with velocity, per-mode deceleration, lateral spin, goal-plane crossing, OOB bands. Per-tick pipeline order is explicit at `engine/MatchOrchestrator.java:114-368`. This is professional structure. |
 | **Determinism** | `SimulationRandom.seed(fixture.getId())` (`SimMatchService.java:64-65`) + thread-local `Random` (`util/SimulationRandom.java:17-29`). Batch runs are reproducible, which is the only reason calibration was possible at all. |
 | **Goalkeeper model** (`sim/engine/GoalkeeperEngine.java`) | Bisector positioning between ball and goal centre, advance ramp as the ball closes, 1v1 rush (`RUSH_ADVANCE 2.6`), `MAX_ADVANCE 2.8`, clamped to the mouth ± `POST_MARGIN 0.9`, never crosses the ball. Save model: `REACH = 0.34 + skill/20 × 0.32`, scaled by `1 − speedFactor × 0.40`, `chance = 1.10 × (0.70 + skill/20 × 0.50) × (1 − (d/reach)³)`. Correctly solves both Sokker failure modes (keeper magnet, keeper never saves). Covered by 11 unit tests. **Do not touch it again.** |
-| **League pyramid infrastructure** | 31 leagues / 5 tiers / 310 clubs (`DatabaseInitializer.java:291-348`), circle-method double round-robin with odd-team bye padding (`SeasonService.java:173-237`), mirrored second half, **real promotion/relegation with a 2-leg playoff** (`SeasonService.java:407-566`, `:667-687`), season rollover with aging and table reset (`:360-405`). League table deliberately recomputed from scratch each round to avoid double-counting (`MatchStatisticEngine.java:231-306`). This is a lot of correct, non-obvious work. |
+| **League pyramid infrastructure** | 31 leagues / 5 tiers / 310 clubs (`DatabaseInitializer.java:291-348`), circle-method double round-robin with odd-team bye padding (`SeasonService.java:173-237`), mirrored second half, **real promotion/relegation with a 2-leg playoff** (`SeasonService.java:407-566`, `:667-687`), season rollover with aging and table reset (`:360-405`). League table updated incrementally by the proposal engine's persistence step (`SimMatchService.java:246-261`). This is a lot of correct, non-obvious work. |
 | **Training Reports UI** (`static/js/pages/views/training-view.js:577-799`) | Per-player, per-skill `before / after / decimalΔ / integerΔ` with the focus skill accented, plus a full season×week matrix graph rebuilt from serialized JSON reports (`TrainingProgressionService.java:160-188`). **Better reporting than Sokker has.** |
 | **Junior promotion reveal** (`academy.js:186-193`, `player-view.js:290-318`) | Backend returns `allocationSequence`; UI blanks the 7 skill cells and allocates 1 point per second with a "remaining budget" banner. The best-designed single UX moment in the app. |
 | **Tactic editor** (`tactic-editor-view.js`, 311 lines) | Zone-state drag-to-shape tactical rules, localStorage drafts with discard/save, version counter, 5 set-piece taker selectors. A real tool, not a mockup. |
@@ -132,16 +132,16 @@ A player at 13.9 technique is **byte-identical** to one at 13.0 as far as the ma
 
 | Location | Change |
 |---|---|
-| `engine_v1/RealisticMatchEngine.java:1353` | GK +1 every 18 min |
-| `engine_v1/RealisticMatchEngine.java:1374` | outfield +1 at 16–24%/min, +2 after min 75 |
-| `engine_v1/RealisticMatchEngine.java:1456` | injury +6 |
+| `engine_v1/RealisticMatchEngine.java:1353` *(quarantined)* | GK +1 every 18 min |
+| `engine_v1/RealisticMatchEngine.java:1374` *(quarantined)* | outfield +1 at 16–24%/min, +2 after min 75 |
+| `engine_v1/RealisticMatchEngine.java:1456` *(quarantined)* | injury +6 |
 | `service/TeamMedicalService.java:55` | **−12, manual button only** |
 
 There is **no weekly passive decay** anywhere. `SeasonService.decrementInjuriesByWeek:341-358` touches only injury days. `TrainingProgressionService` never touches fatigue.
 
 And `static/js/pages/views/medical-view.js:95` **tells the user** *"Weekly passive healing still applies."* That is false in the backend.
 
-**Consequence:** fatigue is a monotonic ratchet toward 100 — which is exactly the input to `maybeTriggerInjury` (`RealisticMatchEngine:1426`) and to `Team.getAvailablePlayers()` (`model/Team.java:69`, `fatigue < 8`). The medical button stops being a strategic option and becomes a mandatory chore that dominates the medical page. It is also **completely free and unbounded** — no cooldown, no cost, no medical-staff quality factor. Click nine times: fatigue 100 → 0.
+**Consequence:** fatigue is a monotonic ratchet toward 100 — which is exactly the input to `maybeTriggerInjury` (`RealisticMatchEngine:1426`, **quarantined** — the live proposal engine has no injury generator at all; see §9.1 and Sprint 1.6) and to `Team.getAvailablePlayers()` (`model/Team.java:69`, `fatigue < 8`). The medical button stops being a strategic option and becomes a mandatory chore that dominates the medical page. It is also **completely free and unbounded** — no cooldown, no cost, no medical-staff quality factor. Click nine times: fatigue 100 → 0.
 
 ### 3.6 Penalties are awarded but never taken
 
@@ -185,36 +185,47 @@ A bare-club-name "Register interest" (`addInterest:141-161`) writes a club name 
 
 ## 4. P1 — Four engines, one live
 
+> ✅ **RESOLVED 2026-09-26.** The full dead set was verified by walking every caller chain to an HTTP endpoint, then moved to `footballForDelete/`. `mvn compile` clean, `mvn test` 84/84 green. See `footballForDelete/README.md` for the per-file rationale and `sprintProgress.md` for the log.
+
 | Engine | LOC | Reachable from UI? | Verdict |
 |---|---:|---|---|
-| `newLogic/sim/` (proposal) | 11,783 | ✅ **LIVE** — `/simulation/current-round/prepare` → `SimMatchService` → `SimReplayStore` → `demo/service/ui/proposal/index.html` | **Keep and finish** |
-| `newLogic/engine_v1/` (RealisticMatchEngine) | 9,775 | ❌ Spring bean whose only entry point, `WeekPreparationAsyncService.startOrGetRunningJob`, has **0 callers** | Delete |
-| `newLogic/engine/` (MatchSimulator v2) | 4,563 | ❌ only `/api/v2/match/*`, called only by `realisticDemo.html`, which **nothing links to** | Delete |
-| `demo/service/` | 19,488 | ❌ only its **viewer HTML/JS/CSS** is reused | Freeze as reference |
-| `demo/swingUIDemo/` | 11,912 | ❌ desktop JVM `main()` | Delete |
+| `newLogic/sim/` (proposal) | 11,783 | ✅ **LIVE** — `/simulation/current-round/prepare` → `SimMatchService` → `SimReplayStore` → `demo/service/ui/proposal/index.html` | **The engine.** Keep and finish |
+| `newLogic/engine_v1/` (RealisticMatchEngine) | 9,775 | ❌ `RealisticMatchEngine → SimulationService → WeekPreparationAsyncService` → **0 callers** | Quarantined |
+| `newLogic/engine/` (MatchSimulator v2) | 4,563 | ❌ only `/api/v2/match/*`, called only by `realisticDemo.html`, which **nothing links to** | Quarantined |
+| `demo/service/` | 19,488 | ❌ only its **viewer HTML/JS/CSS** is reused | **Kept** as reference + calibration oracle |
+| `demo/swingUIDemo/` | 55 files | ❌ desktop JVM `main()` | Quarantined |
 
 The dashboard button is still `id="start-realistic-demo-btn"` (`dashboard.js:164`) and `/start-realistic-demo` is still in the security permit list (`SecurityConfig.java:90`) — **no controller maps it any more.** The name is a fossil. `AGENTS.md` still documents that path as the primary runtime.
 
-**Two concepts from the dead engines are worth salvaging before deletion:**
+**Two name collisions were found during verification and are worth remembering** — a naive reference search gets both wrong:
 
-- `newLogic/engine/MatchSimulator.clampPaceThisTick():361-379` — the hard no-teleport invariant (speed-capped movement, blended over many ticks). Conceptually correct and not present in the proposal engine in this form.
-- `newLogic/engine/ZonePositionCalculator` (229 lines) + the 5×5 zone model — cleaner than the proposal engine's `TacticsRules` cell model in places.
+- `MatchOrchestrator` exists twice: `newLogic/service/MatchOrchestrator.java` (v2, dead) and `newLogic/sim/engine/MatchOrchestrator.java` (**live** proposal orchestrator).
+- `MatchState` exists twice: `newLogic/model/MatchState.java` (v2, dead) and `newLogic/sim/model/MatchState.java` (**live**). All live usage imports the `sim.model` one.
 
-### 4.1 The worse half: AI-vs-AI is a dice roll
+**Salvaged / still worth stealing before final deletion:**
 
-The user's own match goes through the tick engine. Everyone else's goes through `engine_v1/MatchEngine.simulateQuickScore:1578-1602`:
+- `engine_v1/RealisticMatchEngine.maybeTriggerInjury:1410-1489` — the **only** injury generator in the codebase and the best mechanic in the audit. **Migration tracked as Sprint 1.6.** Currently only in `footballForDelete/`.
+- `engine/MatchSimulator.clampPaceThisTick():361-379` — a hard no-teleport speed invariant, not present in this form in the proposal engine.
+- `engine/ZonePositionCalculator` (229 lines) — the 5×5 zone model.
+- `engine_v1/PlayerMovementDecisionService` shot-duel resolution (`:600-660`) — reference if shot outcomes ever need revisiting.
 
-```java
-double homeExpectedGoals = calculateExpectedGoals(homeStrength, awayStrength, homeTactics, awayTactics, true);
-return new QuickSimScore(sampleGoals(homeExpectedGoals, random, 6), sampleGoals(awayExpectedGoals, random, 6));
-```
+### 4.1 ~~The worse half: AI-vs-AI is a dice roll~~ — **CORRECTION: it is not**
 
-A strength-ratio → Poisson draw. Then:
-- AI lineups are **hardcoded 4-4-2** regardless of the club's actual tactics (`:1285-1286`)
-- Events are **synthesised after the fact from the final score** (`generateSimulatedMatchEvents:1323`)
-- `MatchStatisticEngine.simulateInjuriesAndCards:31-46` is pure theatre — 5% chance to `log.info(...)` and **discard** the `InjuryEvent`
+**This section was wrong in the first draft of the audit.** The claim was that league fixtures for AI-vs-AI matches were produced by a Poisson dice roll (`MatchEngine.simulateQuickScore:1578-1602`), leaving the league table statistically incoherent with the match engine.
 
-**So the league table is statistically incoherent with your match engine.** You watch 29 shots and 12 on target; the neighbours' results come from a different probability distribution entirely, with a hardcoded formation. 3,600 ticks × 22 players is trivially cheap in Java — there is no performance reason for this split.
+**That is not the case.** The live path `POST /simulation/current-round/simulate-all` (`SimulationController.java:129-158`) routes **every** fixture through `SimMatchService.simulate()` — the proposal engine:
+
+- the user's own league: synchronously, in-loop (`:133-137`)
+- all other leagues: `AsyncSimulationRunner.simulateInBackground()` → `simMatchService.simulate(fixture, false)` (`AsyncSimulationRunner.java:59`)
+
+The league table is likewise written by the proposal engine's persistence step (`SimMatchService.java:246-261`), not by `MatchStatisticEngine`.
+
+`simulateQuickScore` was only reachable from `WeekPreparationAsyncService` and `RoundSimulationAsyncService`, **both of which have zero callers.** A reference search had reported `RoundSimulationAsyncService` as live; it is not injected anywhere. That misreport is the source of the error, and it is why deadness was subsequently verified by walking caller chains up to an HTTP endpoint rather than by counting references.
+
+**Consequence:** Sprint 7 in `sprintBacklog.md` was largely unnecessary. It has been reduced to a verification test plus cleanup of the superseded code paths. The remaining real inconsistency is narrower and still worth fixing:
+
+- AI-vs-AI fixtures run the proposal engine with **no replay/snapshot recording**, so unlike your own match they are not watchable afterwards. The engine itself is consistent; only the observability differs.
+- `MatchEngine.createMatch` (via the dead chain) was the old path for creating the user's fixture; `SimMatchService` owns that now.
 
 ---
 
@@ -564,7 +575,7 @@ Market visibility gap: `getAllTransfers:71-76` filters `status == LISTED`, so a 
 
 ### 9.1 Medical: the good part and the bad part
 
-**The good part — fatigue-driven injury risk is the best mechanic in the whole codebase.** `engine_v1/RealisticMatchEngine.maybeTriggerInjury:1410-1443`:
+**The good part — fatigue-driven injury risk is the best mechanic in the whole codebase.** `engine_v1/RealisticMatchEngine.maybeTriggerInjury:1410-1443` — **quarantined 2026-09-26; the live proposal engine currently has NO injury generator at all. Migration is Sprint 1.6:**
 ```java
 if (minute < 8 || minute > 88) return;
 int fatigue = fatigueOf(injured);
@@ -583,7 +594,7 @@ if (position == WNG || position == ATT) chance += 0.00008;
 
 ### 9.2 Morale is completely inert
 
-`newLogic/engine/MoraleSystem.java`, 34 lines:
+`newLogic/engine/MoraleSystem.java` (now in `footballForDelete/`), 34 lines:
 ```java
 public double getConfidenceModifier(long playerId) { return 0.7 + (getMorale(playerId)/100.0)*0.6; }
 ```
@@ -705,7 +716,7 @@ Grep for `boardRating|managerRating|happiness|dressingRoom|chemistry|teamSpirit`
 ### 11.3 Backend duplication and data hazards
 
 - **Two week-advance implementations:** async `AdvanceWeekAsyncService` + synchronous `SimulationController:218`.
-- **Three copies of the league-table comparator:** `MatchStatisticEngine:231-306`, `CountryController:109-112`, `SeasonService:745-753`.
+- **League-table comparator duplicated across two live call sites:** `CountryController:109-112` and `SeasonService:745-753`. A third copy (`MatchStatisticEngine:231-306`) was quarantined; `SimMatchService:246-261` is now the live writer. → Sprint 8.4
 - `ensureEntriesForSeasonCompetition:126-134` **deletes and rebuilds all entries** on membership drift → would wipe table data mid-season.
 - `SeasonService:59` hardcodes `competitionRepository.findById(1L)` for Superliga.
 - Season advance is wrapped in a `TransactionTemplate` (`AdvanceWeekAsyncService:39`) *and* `@Transactional` services — a mid-run failure in league 14 of 16 rolls back the entire week.
@@ -724,9 +735,9 @@ Grep for `boardRating|managerRating|happiness|dressingRoom|chemistry|teamSpirit`
 - `TransferService` — 787 lines: **contains the €1 bug and the TL soft-lock**
 - `TrainingProgressionService` — 467 lines: **contains the infinite-training bug**
 - `YouthAcademyService` — 487 lines
-- `TeamMedicalService`, `RoundSimulationAsyncService`, `WeekPreparationAsyncService`, `MatchPersistenceService`
+- `TeamMedicalService`, `MatchPersistenceService` (`RoundSimulationAsyncService` and `WeekPreparationAsyncService` were quarantined — they had 0 callers)
 - **Every controller** (21 files, 3,753 lines)
-- Both dead engines (`newLogic/engine/`, `engine_v1/`)
+- Both dead engines — **quarantined 2026-09-26, which is precisely why they rotted unnoticed**
 
 **The exploits in §3 exist precisely because nobody wrote the test that would have caught them.** `AGENTS.md:568` claims `NewMatchSimulatorTest` and `NewMatchControllerTest` exist — they do not.
 
@@ -798,9 +809,9 @@ Fix Sprint 0 (1 week), then Sprint 2 (3 weeks), and the project goes from *"a be
 | Dead `FootballRules` | `newLogic/sim/engine/MatchOrchestrator.java:48,80` |
 | Unreachable offside block | `newLogic/sim/rules/OffsideService.java:121,186,196,199` |
 | Replay store in-memory | `newLogic/sim/SimReplayStore.java:17-29` |
-| Fatigue → injury chain | `newLogic/engine_v1/RealisticMatchEngine.java:1410-1489` |
-| AI-vs-AI dice roll | `newLogic/engine_v1/MatchEngine.java:1578-1602` |
-| Hardcoded AI 4-4-2 | `newLogic/engine_v1/MatchEngine.java:1285-1286` |
+| Fatigue → injury chain | `footballForDelete/backend/newLogic/engine_v1/RealisticMatchEngine.java:1410-1489` — **quarantined, migrate per Sprint 1.6** |
+| ~~AI-vs-AI dice roll~~ | **CORRECTED — not real.** `simulate-all` already uses `SimMatchService`; see §4.1. The dead `simulateQuickScore` is at `footballForDelete/backend/newLogic/engine_v1/MatchEngine.java:1578-1602` |
+| Hardcoded AI 4-4-2 (dead path) | `footballForDelete/backend/newLogic/engine_v1/MatchEngine.java:1285-1286` |
 | Promotion / relegation | `newLogic/service/SeasonService.java:407-566,667-687` |
 | Season rollover | `newLogic/service/SeasonService.java:360-405` |
 | Fixture generation | `newLogic/service/SeasonService.java:173-237` |
@@ -811,7 +822,7 @@ Fix Sprint 0 (1 week), then Sprint 2 (3 weeks), and the project goes from *"a be
 | `juniorCoachSkill` random roll | `newLogic/service/YouthAcademyService.java:369-374` |
 | `youthRating` dead hook | `newLogic/model/Country.java:25` |
 | Junior reveal | `newLogic/service/YouthAcademyService.java:148,234-256`; `static/js/pages/features/academy.js:186-193` |
-| Inert morale | `newLogic/engine/MoraleSystem.java:30` (0 callers) |
+| Inert morale | `footballForDelete/backend/newLogic/engine/MoraleSystem.java:30` (0 callers, quarantined) |
 | `Player.form` drift | `newLogic/model/Player.java:29`; `TeamMedicalService.java:69` |
 | Fake staff | `static/js/pages/features/staff-directory.js:12-51`; `DummyDataController.java:28-35` |
 | Fake finances | `static/js/pages/features/club-management.js:21-66`; `DummyDataController.java:57` |
