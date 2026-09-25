@@ -207,7 +207,7 @@ public class CleanDecisionEngine {
             double prox = goalProximity(home, receiver.getPosition().getRow());
             if (forwardSteps > 0) {
                 score += prox * 3.5;
-                reason.append("prox +" + String.format("%.1f ", prox * 3.5));
+                reason.append(String.format("prox %+.1f ", prox * 3.5));
             }
 
             // Distance factor (prefer short passes, discourage long deep balls)
@@ -274,7 +274,7 @@ public class CleanDecisionEngine {
         boolean home = "HOME".equals(carrier.getTeam());
         double prox = goalProximity(home, carrier.getPosition().getRow());
         score += prox * 2.5;
-        reason.append("prox +" + String.format("%.1f ", prox * 2.5));
+        reason.append(String.format("prox %+.1f ", prox * 2.5));
 
         // Pace helps carrying
         score += carrier.getSkills().pace() * 0.15;
@@ -397,17 +397,28 @@ public class CleanDecisionEngine {
     }
 
     /**
-     * Distance from a player to the OPPONENT's goal line, in cells
-     * (0 = standing on the goal line, ~3.5 = own half-way line).
+     * PROXIMITY to the opponent's goal, in cells: 0 on the half-way line, +3.5
+     * standing on the opponent's goal line, negative in your own half.
+     * Mirrored exactly about 4.5 (HOME's goal is row 8.0, AWAY's is row 1.0).
      *
-     * Mirrored exactly: HOME's opponent goal is row 8.0, AWAY's is row 1.0.
-     * It used to be {@code home ? row : 8.0 - row}, which measured HOME from row
-     * 0 (a constant +1.0-cell HOME bonus) instead of from its target goal. The
-     * scale is deliberately preserved, because the caller multiplies it by 3.5
-     * to reward forward passes.
+     * It used to return the DISTANCE to the goal line
+     * ({@code home ? 8.0 - row : row - 1.0}) while the callers ADD it as a bonus
+     * ({@code prox * 3.5} on passes, {@code prox * 2.5} on carries, and the same
+     * term inside {@code findBestReceiver}), so a bigger number meant "further
+     * from goal" and the engine paid out for it. A pass to a player at row 2.2
+     * scored +20.3 while a pass to a striker at row 5.8 scored +7.7 — the safe
+     * pass backwards won by 12.6 points, which is more than twice the 5.0-point
+     * band the whole playmaking random operates in. That is why defenders kept
+     * recycling the ball instead of finding the forwards ("nema pas unapred ka
+     * napadacima"), and why carrying the ball in your own half scored well
+     * (see the CARRY prox term).
+     *
+     * The javadoc already said "0 = standing on the goal line" while the code
+     * returned 0 for a player ON the goal line and 6 for one in his own half —
+     * the code was a correct distance used backwards as a proximity.
      */
     private static double goalProximity(boolean home, double row) {
-        return home ? 8.0 - row : row - 1.0;
+        return home ? row - 4.5 : 4.5 - row;
     }
 
     /** First non-vetoed option among the deliveries (used by the final-row rule). */

@@ -2079,3 +2079,55 @@ najviši rezultat **16 golova**, dueli 601→**335**, prekršaji 28.1→**15.8**
 Delimično povećanje je očekivano (smrznuti mečevi nisu davali golove), ali 6.1 je
 i dalje previsoko → zasebna kalibracija golova (SHOT gate / konverzija) +
 vraćanje prekršaja na ~22. **Nije dirano u ovom batchu.**
+
+---
+
+## 2026-09-25 — REC 1: goalProximity sign (DecisionEngineProbe finding #1)
+
+**Nađeno `DecisionEngineProbe`-om.** `goalProximity()` je vraćala **UDALJENOST**
+od protivničkog gola (`home ? 8.0 - row : row - 1.0`), a pozivaoci su je
+**DODAVALI** kao bonus (`prox * 3.5` za pas, `prox * 2.5` za carry, isti termin
+unutar `findBestReceiver`). Veći broj je značio "dalje od gola" i engine je za to
+plaćao.
+
+Dokaz (proba, DCR sa loptom na (2.2, 5.0)):
+
+| igrač | row | prox danas | prox ispravno |
+|---|---|---|---|
+| H_DCL | 2.2 | **+20.3** | −8.0 |
+| H_DR | 2.6 | +18.9 | −6.6 |
+| H_STR | 5.8 | +7.7 | **+4.5** |
+
+Pas nazad bezbbedniku je dobijao **12.6 poena više** od pasa napadu — dvostruko
+više od celog opsega od 5.0 u kojem radi playmaking random. Zato su odbrambeni
+stalno reciklirali loptu umesto da nađu napadače ("nema pas unapred ka
+napadacima"), a carry u sopstvenoj polovini je bio *nagrađivan*.
+
+**Fix:** `home ? row - 4.5 : 4.5 - row` (0 na srednjoj liniji, +3.5 na gol-liniji
+protivnika, negativno iza). Javadoc je već govorio "0 = standing on the goal
+line" — kod je vraćao 0 igraču NA gol-liniji i 6 igraču u sopstvenoj polovini.
+
+**Efekat (200 mečeva, seed 42) — pre/post:**
+
+| metrika | pre | post | efekat |
+|---|---|---|---|
+| dribling | 250.2 | **199.3** | −20% (carry više nije nagrađen u sopstvenoj polovini) |
+| izbacivanja | 81.7 | **126.8** | +55% (odbrambeni čiste umesto da driblaju iz opasnosti) |
+| prolaznost | 82.2 / 82.2 | **79.3 / 80.5** | ambicizniji pasovi (realno 80-85%) |
+| pasovi | 578.4 | 549.6 | |
+| centri | 46.7 | 38.2 | |
+| lopte iz ugla | 7.2 | 7.7 | |
+| udarci sa strane | 62.7 | 57.1 | |
+| ofsajd | 3.4 | 4.6 | |
+| posed lopte | 49.7/50.3 | 49.9/50.1 | simetrično |
+| dueli | 335.2 | 300.7 | |
+
+Ovo je tačno traženo ponašanje: mnogo manje besmisljenog dribljanja, mnogo
+više čišćenja, i realnija prolaznost.
+
+**NE rešeno ovim fixom (konzistentno sa nalazom #2):** golovi **5.5** (realno 2.7),
+najviši rezultat 11; prekršaji 13.1 (realno ~22), žuti 2.4, crveni 0.3; AWAY
+rezultati 68/94/38. Golove ne dira ovaj fix — krivac je frequency gate (REC 2).
+
+`mvn test` → 84 run, 0 fail. Log format `prox %+.1f` da se negativne vrednosti ne
+prikazuju kao "prox +-6.6".
