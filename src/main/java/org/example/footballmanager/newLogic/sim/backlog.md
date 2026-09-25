@@ -370,10 +370,14 @@ kod šuta, samo za `CLEAR` (detalji u `PROPOSAL_PROGRESS.md` 7.10).
       egzaktne nejednakosti sistematske, a ne egzotične). `MovementEngine`
       chaser i `ActionExecutor` marker već koriste `<`; nije bilo merljivog
       uticaja, pa se ne dira.
-- [ ] konverzija SOT→gol je 61% (realno ~30%), ali ukupan broj golova je dobar
-      jer ima MNOGO MANJE šutova u okvir nego u stvarnosti. Pravi fix je
-      gradijent model spašavanja (skill vratara + mesto udarca + brzina)
-      umesto fiksnog `GK_SAVE_R` geometrijskog dometa.
+- [x] konverzija SOT→gol 61% (realno ~30%) — REŠENO 2026-09-25 pravim modelom
+      vratara (`engine/GoalkeeperEngine.java`): pozicioniranje na simetrali
+      lopta→centar gola, silazak sa gol linije, izlazak na jedan na jedan,
+      i OCENJENO spremanje (veština širi domet, brzina ga sužava, mesto udarca
+      pada sa kubom udaljenosti). Šutevi u okvir se raspršuju preko celog usta
+      gola umesto ±0.3 od centra. Rezultat **61% → 44%**; golovi 7.0 → 5.2.
+      Preostalo: SOT% je i dalje 43% (realno 33%) pa vratara ima 12.1 šutova
+      u okvir umesto 8-9 — to je kalibracija `ExecutionQuality`, ne vratara.
 - [~] **HA-9 `WE_HAVE_BALL` / `OPPONENT_HAS_BALL` pravila su no-op — NAMERNO
       ODLOŽENO (2026-09-25, vlasnik produkta).** Svih 506 pravila u
       `tactics_fallback.json` su IDENTIČNA za oba konteksta. To su za sada

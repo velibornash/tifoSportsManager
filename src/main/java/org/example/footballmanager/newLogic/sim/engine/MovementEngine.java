@@ -32,6 +32,14 @@ public class MovementEngine {
      */
     public static final double CLAIM_REACH_RADIUS = 0.7;
     public static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed loss from fatigue
+
+    /**
+     * Lateral speed multiplier for goalkeepers. A keeper is not a slow
+     * outfield player with a high pace value — his job is short, fast,
+     * side-to-side movement in a set position, which the generic pace cap
+     * (pace 11 -> 0.41 cells/tick) could not express.
+     */
+    public static final double GOALKEEPER_MOVEMENT_FACTOR = 1.9;
     public static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball
 
     // NOTE: no chase/sprint/press multiplier. User rule (2026-09-14): players
@@ -89,6 +97,14 @@ public class MovementEngine {
 
             double pace = state.getRoundPaceSkill(p);
             double playerSpeed = playerSpeedFor(pace) * FatigueSystem.speedFactor(p);
+
+            // Goalkeepers shuffle far quicker than outfield players. A keeper is
+            // paced by his ability to move laterally in a set position, not by
+            // his outfield pace, so the generic pace cap left him unable to
+            // track a ball served into the far corner — he was always late.
+            if (p.isGoalkeeper()) {
+                playerSpeed *= GOALKEEPER_MOVEMENT_FACTOR;
+            }
 
             // Carrier with ball moves slightly slower
             if (isCarrier && !carrierOffBall) {

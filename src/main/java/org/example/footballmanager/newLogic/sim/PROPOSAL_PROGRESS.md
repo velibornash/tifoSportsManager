@@ -209,7 +209,47 @@ preko aut linije.
 
 Puni test suite: **63 testova, 0 grešaka**. Stanje: `PROPOSAL_SEASON_REPORT.md`.
 
-## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.9)
+### 🥅 Vratar — pravi model, ne fiksni radijus
+
+Umesto fiksnog `GK_SAVE_R` radijusa (fiksni radijus ne može da izrazi mesto
+udarca, snagu udarca ni veštinu vratara) napravljen je `engine/GoalkeeperEngine.java`:
+
+**Pozicioniranje** — vatar staje na SIMETRALI između lopte i centra svog gola
+(mesto koje najviše sužava ugao šuta) i prilazi se toj strani. Silazi sa gol
+linije kako lopta prilazi (0.35 ćelija kad je daleko, ~1.5 kad je blizu) i
+izlazi na jedan na jedan u prostoru. NIKADA ne prolazi dalje od lopte
+(`advance <= ballDistance` — bez te klauzule `t` prelazi 1 i simetrala se
+ekstrapolira IZA centra gola, što je bacalo vratara na drugu stranu terena
+svaki put kad je zatvorio napadača ispod jedne ćelije), i ograničen je na širinu
+usta gola plus margina. Verifikovano u logu: spašavanja sada se dešavaju od
+reda 1.4 (na liniji) do 7.7, kolone 3.7-4.2, umesto uvek sa jedne tačke.
+
+**Spremanje — ocenjeno, ne geometrijski:**
+- veština vratara širi domet (`0.34 + skill/20 * 0.32` ćelija) i ruke
+  (`0.70 + skill/20 * 0.50`)
+- brzina lopte skraćuje domet za 40% (šut maksimalnom snagom mu ostavlja manje
+  od jednog ticka da se postavi)
+- mesto udarca: šansa da zadrži loptu pada sa KUBOM udaljenosti od njegovog
+  tela, pa je udarac na ivici dometa mnogo teži od udarca u grudi — to je što
+  izbacuje udarce u ugao umesto da geometrijski sačuva sve unutar radijusa
+
+Šutevi u okvir sada se raspršuju preko CEOG usta gola umesto da se grupišu u
+±0.3 od centra — što je upravo mesto gde vatar stoji. To je bio drugi razlog
+zašto ga ništa nije pobijedilo. Meta je bila u njegovu domaćem prostoru.
+
+Kretanje: `MovementEngine` primenjuje `GOALKEEPER_MOVEMENT_FACTOR = 1.9` jer
+brzina vratara opisuje bočno šetkanje u postavljenom položaju, a ne outfield
+brzinu — uz generički pace cap je uvek kasnio na loptu u ugao.
+
+Uticaj: SOT→gol **61% → 44%** (realno ~30%), golovi 7.0 → **5.2**, spašavanja
+9.4 po meču (realno 3-4, prate visok SOT% od 43%).
+`GoalkeeperEngineTest` (11 testova): simetrala, rampа silaska sa linije, izlazak
+na jedan na jedan, nikad preko lopte, egaktno zrcaljenje HOME/AWAY, i ocenjeno
+spremanje (veština širi domet, brzina ga sužava, lopta van dometa uvek prolazi).
+
+Puni test suite: **74 testova, 0 grešaka**.
+
+## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.10)
 
 ### P6 — kalibracija pass completion-a (76% → 84%)
 

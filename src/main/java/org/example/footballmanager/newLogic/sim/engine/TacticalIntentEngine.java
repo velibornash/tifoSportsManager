@@ -28,6 +28,7 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     public class TacticalIntentEngine {
 
     private final TacticsRules tactics;
+    private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     /** Players whose TACTICAL TARGET lands within this distance of a restart
      *  ball spot are pushed off it (they never stand ON the restart ball). */
@@ -65,8 +66,15 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
                 p.setTarget(state.getReceivePoint());
                 continue;
             }
-            Position desired = tactics.desiredCell(
-                    p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam);
+            // The keeper is NOT a static anchor: he stands on the bisector
+            // between the ball and the middle of his goal and advances off his
+            // line as the ball comes at him (further for a one-on-one). Using
+            // the tactical cell for him left him frozen on a fixed spot, so he
+            // never narrowed the angle and never came out.
+            Position desired = p.isGoalkeeper()
+                    ? goalkeeperEngine.targetPosition(state, p)
+                    : tactics.desiredCell(
+                            p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam);
             Position prev = p.getTarget();
             // RESTART-BALL CLEARANCE (user 2026-09-23): while a restart is pending
             // (taker designated), no non-taker may settle ON the ball spot. The

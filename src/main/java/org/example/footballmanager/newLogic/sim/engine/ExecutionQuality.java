@@ -142,9 +142,18 @@ public class ExecutionQuality {
         // Determine actual target (deviated)
         double actualRow, actualCol;
         if (onTarget) {
-            // Aim for goal mouth center with small spread
+            // On target: the aim is spread across the whole goal mouth, not
+            // clustered in the middle. It used to be ±0.3 of the 1.0-cell
+            // mouth, so every on-target shot arrived within a third of a cell of
+            // the centre — exactly where a keeper stands, and therefore
+            // unsaveable-looking on paper and unsaveable in practice. Real shots
+            // on frame go to corners. Spread covers the full mouth, clamped
+            // strictly inside the posts.
             actualRow = goalPosition.getRow();
-            actualCol = goalPosition.getColumn() + (SimulationRandom.nextDouble() - 0.5) * 0.6; // within mouth
+            double mouthLeft = GoalPhysical.MOUTH_LEFT + 0.05;
+            double mouthRight = GoalPhysical.MOUTH_RIGHT - 0.05;
+            actualCol = mouthLeft
+                    + SimulationRandom.nextDouble() * (mouthRight - mouthLeft);
         } else {
             // Off target — MUST not cross the goal line inside the mouth. A shot
             // aimed PAST the line "wide of the post" still crosses the line at a

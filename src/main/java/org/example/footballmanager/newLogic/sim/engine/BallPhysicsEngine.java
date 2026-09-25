@@ -55,6 +55,8 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double RECEIVE_R = 0.35;
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
+    private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
+
     public static final double PICKUP_R = 0.35;
     /**
      * How close to the shot's flight line a defender must be to block it.
@@ -63,17 +65,6 @@ public class BallPhysicsEngine implements BallEngine {
      * "blocked" (real: 2-4).
      */
     public static final double SHOT_BLOCK_R = 0.18;
-    /**
-     * Goalkeeper save reach, in cells (1 cell = 14 m).
-     *
-     * It was 0.75 — TEN METRES. The goal mouth is 1 cell (14 m) wide and the
-     * keeper stands near its centre, so a 0.75-cell reach covered essentially
-     * the whole goal: every on-target shot was "saved" by pure geometry and only
-     * ~4% of shots on target became goals. A real keeper's standing reach is
-     * ~2.5-3.5 m; 0.28 cells (3.9 m) covers a bit over half the mouth from the
-     * centre, which leaves the far corners genuinely available.
-     */
-    public static final double GK_SAVE_R = 0.28;
     public static final double PICKUP_DISTANCE = PICKUP_R; // alias for orchestrator
     public static final double BALL_R = 0.015;
 
@@ -431,13 +422,18 @@ public class BallPhysicsEngine implements BallEngine {
             // Exclude the player who kicked the ball from immediate teammate deflection
             if (p == lastToucher) continue;
 
-            // --- GOALKEEPER SAVE: a ball heading toward his own goal within reach is
-            // saved regardless of current speed — GK reach GK_SAVE_R applies to a
-            // fast shot AND a decelerated bobble, else shots bleed in. ---
+            // --- GOALKEEPER SAVE (graded) ---
+            // The keeper only sees a ball coming at his own goal, and stopping it
+            // is a probability, not a hard radius: his reach grows with his
+            // skill and shrinks with the ball's speed (a 14 m/s shot gives him
+            // well under a tick to set himself), and once the ball is inside
+            // that reach the chance of actually holding it falls off with how
+            // far it passes from his body. That fall-off is what lets a shot
+            // into the far corner beat him — a fixed GK_SAVE_R could not.
             if (p.isGoalkeeper() && isTowardOwnGoal(state, p)) {
-                double d = pointSegmentDist(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+                double d = goalkeeperEngine.distanceToSegment(p.getPosition(), prev, curr);
                 double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
-                if (d <= GK_SAVE_R && t < bestT) {
+                if (t < bestT && goalkeeperEngine.trySave(p, d, spd)) {
                     bestT = t; ev = "SAVE"; hit = p;
                 }
                 continue;

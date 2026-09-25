@@ -453,23 +453,42 @@ Full per-team report: **`PROPOSAL_SEASON_REPORT.md`**. Headline:
 
 | Metric | Proposal | Real football | Status |
 |---|---|---|---|
-| Goals/match | 7.0 (H 3.4 / A 3.6) | 2.7 | ✅ (owner target: up to 7) |
-| Shots/match | **26.3** (H 12.7 / A 13.5) | 25 | ✅ target met |
-| Shots on target | 11.5 | 8-9 | ⚠ slightly high |
-| Pass completion | 80.2% | 80-86% | ✅ |
-| Through balls / crosses / centres | 13.1 / 16.2 / 53.0 | 5-10 / 15-25 / 25-35 | ✅ tracked now |
+| Goals/match | 5.2 (H 2.4 / A 2.8) | 2.7 | ✅ (owner target: up to 7) |
+| Shots/match | **28.2** (H 13.4 / A 14.8) | 25 | ✅ target met |
+| Shots on target | 12.1 (43% of shots) | 8-9 (33%) | ⚠ 1.4x |
+| Saves | 9.4 | 3-4 | ⚠ follows from the above |
+| On-target → goal | 44% | ~30% | ⚠ close |
+| Pass completion | 77.9% | 80-86% | ⚠ slightly low |
+| Through balls / crosses / centres | 11.7 / 19.1 / 40.5 | 5-10 / 15-25 / 25-35 | ✅ |
 | Blocks | 6.6 | 2-4 | ✅ was structurally 0 |
-| Offsides | 7.0 | 2-4 | ⚠ slightly high |
+| Offsides | 3.6 | 2-4 | ✅ |
 | Fouls | 27.8 | 22 | ⚠ high |
 | Yellow cards | 4.7 | 4-5 | ✅ was 7.5 |
-| Red cards | 1.1 | 0.2 | ⚠ 5x (was 2.7) |
+| Red cards | 1.0 | 0.2 | ⚠ 5x (was 2.7) |
 | Penalties | 0.2 | 0.27 | ✅ was 6.9 |
 | VAR reviews / overturned | 2.7 / 0.6 | 1-3 / 0.2-0.5 | ✅ overturn was impossible |
-| H/A goals | 3.4 / 3.6 | ≈1/1 | ✅ was 0.92 / 0.08 |
-| H/A shots | 12.7 / 13.5 | ≈1/1 | ✅ was 3.8 / 7.3 |
-| H/A pass volume | 295 / 265 | ≈equal | ✅ was 288 / 185 |
-| Possession | 50.4 / 49.6 | 50 / 50 | ✅ was 56 / 44 |
-| Results (200) | 80 W / 89 W / 31 D | ≈even | ✅ |
+| H/A goals | 2.4 / 2.8 | ≈1/1 | ✅ was 0.92 / 0.08 |
+| H/A shots | 13.4 / 14.8 | ≈1/1 | ✅ was 3.8 / 7.3 |
+| H/A pass volume | 299 / 280 | ≈equal | ✅ was 288 / 185 |
+| Possession | 49.5 / 50.5 | 50 / 50 | ✅ was 56 / 44 |
+| Results (200) | 67 W / 94 W / 39 D | ≈even | ✅ |
+
+**Goalkeeper: a real model, not a fixed radius.** The keeper was a static
+tactical anchor who saved anything inside a hard `GK_SAVE_R`, so placement, shot
+power and skill could not be expressed at all. `engine/GoalkeeperEngine.java`
+now positions him on the bisector between the ball and the centre of his goal,
+advances off his line as the ball approaches, rushes out for a one-on-one, and
+saves with a GRADED probability: his reach grows with keeper skill and shrinks
+with ball speed (a 14 m/s shot leaves him under a tick to react), and the chance
+of holding it falls off with the cube of the distance from his body. On-target
+shots also spread across the whole mouth instead of clustering within ±0.3 of
+the centre, which is exactly where a keeper stands. He moves with a
+`GOALKEEPER_MOVEMENT_FACTOR` of 1.9 because a keeper's pace describes lateral
+shuffling, not outfield speed. On-target → goal: 61% → 44% (real ~30%).
+`GoalkeeperEngineTest` (11 tests) covers bisector positioning, the advance
+ramp, the one-on-one rush, never advancing past the ball, exact HOME/AWAY
+mirroring, and the graded save (skill widens reach, speed narrows it, a ball
+past the reach always beats him).
 
 **Three zeros were dead code, not tuning.** Blocks: `ev = "BLOCK"` was never
 assigned anywhere, so the block result, event, stat and player column could
