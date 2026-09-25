@@ -10,7 +10,8 @@ Running log of completed work. Newest entry at the top.
 
 ## Pre-Sprint 0 — Dead code quarantine
 
-**Date:** 2026-09-26 · **Duration:** ~45 min · **Commit:** _(see git log — "Quarantine dead match engines and orphaned pages")_
+**Date:** 2026-09-26 · **Duration:** ~50 min · **Commit:** `80bf15a` — *"Quarantine dead match engines and orphaned pages (~40k LOC)"*
+**Files changed:** 129 (125 renames R100, 2 modified, 2 added)
 
 ### What was done
 
