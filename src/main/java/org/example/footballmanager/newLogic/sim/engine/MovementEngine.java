@@ -52,11 +52,19 @@ public class MovementEngine {
      * Move all players toward their targets for one tick.
      */
     public void moveAllTowardTargets(MatchState state) {
-        // Loose-ball chase: when the ball is stopped, has no carrier, no pending
-        // receiver, no restart taker, and is not awaiting an OOB restart, the
-        // single nearest available player sprints to the ball so a loose ball
-        // is never left dead on the pitch.
-        Player chaser = looseBallChaser(state);
+        // Loose-ball chase: when the ball has no carrier, no pending receiver, no
+        // restart taker and is not awaiting an OOB restart, the nearest available
+        // player of EACH team goes for it.
+        //
+        // It used to be the single nearest player, and only while the ball was
+        // STOPPED. A deflected or blocked ball therefore had NO chaser at all
+        // while it was still rolling: the ball travelled, both teams stood
+        // around it, and the recovery happened seconds later — the owner saw
+        // 8 s of a dead ball with players standing next to it, and a duel that
+        // resolved a foot away from the ball instead of on it. Now both sides
+        // converge on a loose ball whether it is moving or stopped.
+        Player homeChaser = looseBallChaser(state, "HOME");
+        Player awayChaser = looseBallChaser(state, "AWAY");
 
         for (Player p : state.getPlayers()) {
             p.setVelX(0.0);
@@ -73,7 +81,7 @@ public class MovementEngine {
                 continue;
             }
 
-            boolean isChaser = p == chaser;
+            boolean isChaser = p == homeChaser || p == awayChaser;
             boolean isCarrier = p == state.getCarrier();
             Position current = p.getPosition();
 
@@ -254,24 +262,33 @@ public class MovementEngine {
         return best;
     }
 
-    /** Nearest available player to a stopped loose ball, or null. */
-    private Player looseBallChaser(MatchState state) {
+    /**
+     * Nearest available player of one team to a loose ball, or null.
+     *
+     * Applies to a loose ball whether it is moving or stopped. Suppressed only
+     * when the ball is owned, a pass is on its way to a receiver, a restart is
+     * pending, or play is dead for an out-of-bounds restart.
+     */
+    private Player looseBallChaser(MatchState state, String team) {
         if (state.getCarrier() != null
                 || state.getPendingReceiver() != null
                 || state.getRestartTaker() != null
                 || state.getOobPending() != null) {
             return null;
         }
-        if (state.getBall().getSpeed() > BallPhysicsEngine.STOP_SPEED) return null;
 
         Player best = null;
         double bestD = Double.MAX_VALUE;
         for (Player p : state.getPlayers()) {
+            if (!p.getTeam().equals(team)) continue;
             if (p.isUnavailable() || p.isLocked()) continue;
             double d = SimUtils.distance(p.getPosition(), state.getBall().getPosition());
             if (d < bestD) { bestD = d; best = p; }
         }
-        return bestD <= 4.0 ? best : null; // only chase from a sensible range
+        // A moving ball is chased from further away than a stationary one —
+        // it is going somewhere, and everyone converges on where it lands.
+        double range = state.getBall().getSpeed() > BallPhysicsEngine.STOP_SPEED ? 6.0 : 4.0;
+        return bestD <= range ? best : null;
     }
 
     /**

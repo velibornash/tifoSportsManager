@@ -117,6 +117,25 @@ public class CleanDecisionEngine {
         DecisionOption crossOption = scoreCrossOptions(state, carrier);
         DecisionOption centerOption = scoreCenterOptions(state, carrier);
 
+        boolean home = "HOME".equals(carrier.getTeam());
+        double carrierRow = carrier.getPosition().getRow();
+
+        // DEFENSIVE-THIRD NO-DRIBBLE (owner rule 2026-09-25): "na 0:10 bek
+        // odlucuje da DRIBLA u opasnoj zoni ispred svog gola umesto da odigra
+        // pas, imao je sigurnih opcija ili ako nema pas unapred ka napadacima
+        // NIKAKO DRIBLING".
+        //
+        // A defender in his own third must not carry the ball forward as a first
+        // choice. If a pass is available at all it is taken — the safe option is
+        // then chosen by the ordinary scoring. The dribble is only left open when
+        // there is genuinely nobody to pass to, because a carrier with no
+        // options at all would otherwise stand still.
+        boolean inOwnDefensiveThird = home ? carrierRow <= 3.0 : carrierRow >= 6.0;
+        if (inOwnDefensiveThird && passOption.getScore() > UNAVAILABLE) {
+            carryOption = new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
+                    "DRIBBLE: not in own defensive third with a pass available");
+        }
+
         // Apply playmaking-based selection (not hard rules)
         double pmSkill = carrier.getSkills().playmaking();
         int accuracyIndex = SimUtils.clampInt((int) pmSkill, 1, 20);
@@ -130,8 +149,6 @@ public class CleanDecisionEngine {
         // two rows of the attacking third must not keep dribbling — either shoot
         // or deliver. Prevents tap-ins from the 6-yard line. Mirrored about 4.5,
         // so the AWAY bound is 3.0 (see scoreShotOptions).
-        boolean home = "HOME".equals(carrier.getTeam());
-        double carrierRow = carrier.getPosition().getRow();
         boolean finalTwoRows = home ? carrierRow >= 6.0 : carrierRow <= 3.0;
         if (finalTwoRows && chosen.getType() == ActionType.DRIBBLE) {
             // By the line the carrier must shoot OR deliver — never keep dribbling.

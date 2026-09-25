@@ -48,6 +48,12 @@ public class BallResultHandler {
                 Player shooter = state.getLastShooter(); // attribution for shot epilogue
                 switch (res.getType()) {
                     case RECEIVE -> {
+                        // The kickoff half-line hold ends when the kickoff pass is
+                        // actually received, so the kickoff reads as a kickoff.
+                        if (state.isKickoffHalfHold()) {
+                            state.setKickoffHalfHold(false);
+                            log("RST", "kickoff taken — half-line hold released");
+                        }
                         Player receiver = state.getCarrier(); // already set by ball engine
                         Player flagged = state.getOffsideFlaggedReceiver();
                         if (flagged != null && flagged == receiver) {

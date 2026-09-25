@@ -30,6 +30,9 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     private final TacticsRules tactics;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
+    /** How far inside his own half a player must stand at kickoff (7 m). */
+    public static final double KICKOFF_HALF_BUFFER = 0.5;
+
     /** Players whose TACTICAL TARGET lands within this distance of a restart
      *  ball spot are pushed off it (they never stand ON the restart ball). */
     private static final double RESTART_CLEAR_RADIUS = 0.6;
@@ -75,6 +78,19 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
                     ? goalkeeperEngine.targetPosition(state, p)
                     : tactics.desiredCell(
                             p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam);
+
+            // KICKOFF HALF-LINE HOLD (owner rule 2026-09-25): excluding the
+            // player taking the kickoff, everyone must be at least 0.5 cells in
+            // his OWN half. The placement in handleKickoff put them there, but
+            // the constraint was one-shot: on the very next tick the ordinary
+            // attacking targets took over and the away side walked straight
+            // across the half-way line — the owner saw the away attackers
+            // standing in the home half at kickoff. The hold is released the
+            // moment the kickoff pass is struck (kickoffPending is cleared by
+            // ActionExecutor when the ball leaves the centre spot).
+            if (state.isKickoffHalfHold() && p != state.getRestartTaker()) {
+                desired = holdInOwnHalf(desired, p.getTeam());
+            }
             Position prev = p.getTarget();
             // RESTART-BALL CLEARANCE (user 2026-09-23): while a restart is pending
             // (taker designated), no non-taker may settle ON the ball spot. The
@@ -140,6 +156,17 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
             Position desired = tactics.desiredCell(p.getRole(), centerSpot, p.getTeam());
             playableOwnHalf(desired, p.getTeam(), p);
         }
+    }
+
+    /**
+     * Keep a player at least {@link #KICKOFF_HALF_BUFFER} cells inside his own
+     * half: HOME rows &lt;= 4.0, AWAY rows &gt;= 5.0 (the half-way line is 4.5).
+     */
+    private static Position holdInOwnHalf(Position desired, String team) {
+        double row = "HOME".equals(team)
+                ? Math.min(desired.getRow(), 4.5 - KICKOFF_HALF_BUFFER)
+                : Math.max(desired.getRow(), 4.5 + KICKOFF_HALF_BUFFER);
+        return new Position(row, desired.getColumn());
     }
 
     private void playableOwnHalf(Position desired, String team, Player p) {

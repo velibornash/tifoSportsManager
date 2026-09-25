@@ -18,6 +18,16 @@ public class MatchState {
     private int matchTicks;           // 0..10800 (90 min @ 40 TPM)
     private boolean stopped;          // true = clock paused (half time, etc.)
     private boolean halfTime;         // half time reached (replay overlay)
+    /**
+     * Kickoff half-line hold: every player except the kicker must stay at least
+     * 0.5 cells in his own half. Cleared when the kickoff pass is actually
+     * RECEIVED, not when it is struck — the strike releases the legal
+     * restriction, but holding it for the flight makes the kickoff read as a
+     * kickoff instead of both teams streaming across the half-way line while the
+     * ball is still in the air.
+     */
+    private boolean kickoffHalfHold;
+    private int kickoffHalfHoldTick;
     private boolean matchFinished;    // full time reached (replay overlay)
 
     // VAR review state
@@ -152,6 +162,11 @@ public class MatchState {
     // FULL TIME overlays off these, so they must reflect reality — the
     // recorder used to hardcode `false, false`, which meant the overlays
     // could never fire in the proposal viewer.
+
+    public boolean isKickoffHalfHold() { return kickoffHalfHold; }
+    public void setKickoffHalfHold(boolean kickoffHalfHold) { this.kickoffHalfHold = kickoffHalfHold; }
+    public int getKickoffHalfHoldTick() { return kickoffHalfHoldTick; }
+    public void setKickoffHalfHoldTick(int t) { this.kickoffHalfHoldTick = t; }
 
     /** True from the moment the clock reaches half time onwards. */
     public boolean isHalfTime() { return halfTime; }

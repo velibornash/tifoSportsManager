@@ -101,6 +101,13 @@ const IMPORTANT_EVENTS = new Set([
   'FOUL', 'CARD',
 ]);
 
+/**
+ * Ticks of playback between the goal event and the GOAL overlay, so the shot
+ * and the ball crossing the goal mouth are visible before the overlay.
+ * 3 ticks is ~1.6 s at 1x playback.
+ */
+const GOAL_OVERLAY_DELAY_TICKS = 3;
+
 const MINOR_EVENTS = new Set([
   'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
   'CARRY', 'CARRY_COMPLETED',
@@ -981,6 +988,7 @@ class MatchViewer {
   }
 
   _initFromData() {
+    this._pendingGoal = null;
     this.snapshots = this.data.snapshots || [];
 
     // Index per-player match stats for the click-to-inspect card. The
@@ -1311,7 +1319,17 @@ class MatchViewer {
           const hg = ev.homeScore ?? this.data.homeGoals ?? 0;
           const ag = ev.awayScore ?? this.data.awayGoals ?? 0;
           const goalTeam = ev.team === 'HOME' || ev.team === 'AWAY' ? ev.team : 'HOME';
-          this.overlays.showGoal(goalTeam, homeName, awayName, hg, ag);
+          // DELAY the overlay (owner 2026-09-25: "kod gola se ne vidi da je
+          // prvo bio sut, zatim da je lopta prosla KROZ GOAL MOUTH pa tek onda
+          // overlay"). Showing it on the GOAL event covered the pitch at the
+          // exact moment the ball was crossing the line. The goal is queued and
+          // shown a few ticks later, so the shot and the ball going through the
+          // mouth are both visible first.
+          this._pendingGoal = {
+            ev, goalTeam, homeName, awayName, hg, ag,
+            showAtTick: ev.tick + GOAL_OVERLAY_DELAY_TICKS,
+            queuedAt: performance.now(),
+          };
         }
         // OFFSIDE overlay
         if (ev.type === 'OFFSIDE') {
@@ -1588,8 +1606,24 @@ class MatchViewer {
     if (this._pendingTimelineEvents.length > 0) {
       this._flushTimelineEvents();
     }
+    this._maybeShowQueuedGoal();
     this._updateScoreboard();
     this._updateSeek();
+  }
+
+  /**
+   * Show a queued goal overlay once the playhead has moved past the goal event.
+   * A real-time floor keeps the sequence visible even at 10x, where 3 ticks
+   * fly by in a fraction of a second.
+   */
+  _maybeShowQueuedGoal() {
+    const g = this._pendingGoal;
+    if (!g) return;
+    const dueByTick = this.currentTick >= g.showAtTick;
+    const dueByClock = performance.now() - g.queuedAt >= 400;
+    if (!dueByTick && !dueByClock) return;
+    this._pendingGoal = null;
+    this.overlays.showGoal(g.goalTeam, g.homeName, g.awayName, g.hg, g.ag);
   }
 
   _flushTimelineEvents() {

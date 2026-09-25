@@ -79,6 +79,12 @@ public class DuelService {
                 log("DUL", duelMsg);
                 recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
                 stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
+
+                // ONE contest per tick. The loop used to keep going after a duel
+                // resolved, so a carrier surrounded by opponents could win five
+                // duels in the same tick — the ball never moved and the match
+                // stalled. One contest, then normal play resumes.
+                break;
             }
         }
     }

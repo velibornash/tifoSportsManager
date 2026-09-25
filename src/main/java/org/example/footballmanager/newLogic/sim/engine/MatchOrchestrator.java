@@ -45,6 +45,10 @@ public class MatchOrchestrator {
     private final MovementEngine movementEngine;
     private final BallPhysicsEngine ballEngine;
     private final MatchClockService clockService;
+
+    /** Safety cap on the kickoff half-line hold (a kickoff pass that is never
+     *  received must not freeze both teams in their own halves). */
+    private static final int KICKOFF_HOLD_MAX_TICKS = 20;
     private final FootballRules rules;
     private final OffsideService offsideService;
     private final VARService varService;
@@ -352,6 +356,15 @@ public class MatchOrchestrator {
 
         // === 11. DUEL DETECTION ===
         detectAndResolveDuels();
+
+        // Kickoff half-line hold: a safety release, so a kickoff pass that is
+        // never received (intercepted, deflected out) can never freeze every
+        // player in his own half for the rest of the match.
+        if (state.isKickoffHalfHold()
+                && state.getMatchTicks() > state.getKickoffHalfHoldTick() + KICKOFF_HOLD_MAX_TICKS) {
+            state.setKickoffHalfHold(false);
+            log("RST", "kickoff hold released by timeout");
+        }
 
         // === 12. DECREMENT VAR TIMER ===
         state.decrementVAR();

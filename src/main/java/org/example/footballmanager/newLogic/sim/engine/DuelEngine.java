@@ -122,6 +122,13 @@ public class DuelEngine {
         // Loser is blocked for cooldown (unlocked by orchestrator after ticks expire)
         loser.setLocked(true);
         loser.setLockTicks(DRIBBLE_COOLDOWN_TICKS);
+
+        // BOTH contestants enter the duel cooldown. The loser is additionally
+        // movement-locked above; the winner is only duel-suppressed, so he keeps
+        // the ball and runs with it instead of instantly re-contesting the next
+        // opponent (which is what froze the match).
+        winner.setLastDuelTick(state.getMatchTicks());
+        loser.setLastDuelTick(state.getMatchTicks());
     }
 
     private double calculateDuelPower(Player player, DuelType duelType) {
@@ -168,11 +175,30 @@ public class DuelEngine {
         };
     }
 
-    /** True when this pair contested less than {@code cooldown} ticks ago. */
+    /**
+     * True when EITHER player contested a duel less than {@code cooldown} ticks
+     * ago.
+     *
+     * It used to be PAIRWISE ("did this exact pair fight recently"), which let a
+     * carrier chain duels forever: he beat the defender on his left, that
+     * defender was locked for 7 ticks, so he immediately beat the next defender
+     * over, and when the first one's lock expired he beat him again. The winner
+     * was never on cooldown, so he kept the ball and the match froze — a live
+     * match showed the same "DUEL DRIBBLE won by ..." line every 2-3 ticks with
+     * the ball never moving, for 44 minutes of match time.
+     *
+     * A PER-PLAYER cooldown makes duels mutually exclusive in time: after winning
+     * one, the carrier is out of duels for the whole window, so he has to carry
+     * the ball and complete an action before anyone can contest it again. The
+     * cooldown suppresses only new contests — it does not lock the player, so the
+     * winner can still move, pass and shoot.
+     */
     private boolean isOnCooldown(Player a, Player b, int cooldown, MatchState state) {
+        int now = state.getMatchTicks();
+        if (now - a.getLastDuelTick() < cooldown) return true;
+        if (now - b.getLastDuelTick() < cooldown) return true;
         Integer last = lastDuelTick.get(pairKey(a, b));
-        if (last == null) return false;
-        return state.getMatchTicks() - last < cooldown;
+        return last != null && now - last < cooldown;
     }
 
     private void markDuel(Player a, Player b, MatchState state) {

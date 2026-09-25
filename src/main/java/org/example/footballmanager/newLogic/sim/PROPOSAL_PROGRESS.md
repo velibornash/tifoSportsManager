@@ -1992,3 +1992,90 @@ Zatvaranje preostalih koraka match-flow batch-a iz korisničke prijave 2026-09-2
   samo kad tim nema NIJEDNOG DB igrača).
 
 ---
+
+---
+
+## 2026-09-25 — LOOSE-BALL CHASE, DRIBBLE FREEZE, KICKOFF HOLD, BALL PHYSICS, GOAL SEQUENCE
+
+### 1. DRIBBLE FREEZE — 44 minutes of duels, ball never moving (URGENT)
+**Simptom (iz loga):** `DUEL DRIBBLE won by Šumenko Dabić` ponavljao se svakih
+2-3 ticka, lopta nije pomerena (`ball(5.9,3.6)`) — od 30:69 do 89:78, dakle
+**44 minute meča bez ijednog poteza**. Igrač je bio "zakačen".
+
+**Uzrok:** duel cooldown je bio **PAIRWISE** (`DuelEngine.isOnCooldown` → mapa
+po paru igrača). Nosilac pobedi levog bezbbednika → taj je zaključan 7 tickova →
+nosilac odmah pobedi sledećeg → kad se prvi cooldown istekne, opet pobija njega.
+Pobednik NIJE nikad bio na cooldownu, pa je zadržavao loptu zauvek, a tick loop
+je svaki tick trošio na duele — `DECISION` se uopšte nije izvršavao.
+
+**Fix:**
+- `Player.lastDuelTick` — cooldown je sada **po igraču**, ne po paru: duel kreće
+  samo ako **oba** takmičara su van cooldowna. Pobednik je samo duel-potisnut
+  (NIJE movement-lokovan), pa i dalje može da se kreće, pase i šutira, ali ne
+  može odmah da se bori sa sledećim.
+- `DuelService` — **jedan duel po ticku** (`break` posle rezultatа); ranije je
+  pet duelova moglo da se reši u istom ticku.
+- `DuelEngine.applyDuelResult` — upisuje `lastDuelTick` za **oba** igrača.
+
+**Verify (seed 777, single match):** najduži niz duel linija bez decision-a
+**2** (bilo stotinama), najveći gap između događaja **29 s** (bilo 44 min).
+
+### 2. LOOSE-BALL CHASE — obe ekipe, i pokretna lopta
+`MovementEngine.looseBallChaser` je vraćao `null` dok je lopta u pokretu
+(`speed > STOP_SPEED`) i samo **jednog** najbližeg igrača. Iskosa lopta je
+zato rolala bez ijednog igrača, pa je recovery dolazio sekundama kasnije.
+Sada: najbliži slobodni igrač **svake ekipe** (kontejneri `homeChaser`/
+`awayChaser`), za pokretnu i za zaustavljenu loptu; domet 6.0 (pokretna) / 4.0
+(stojeca) ćelije.
+
+### 3. KICKOFF — pola terena držan do prihvata lopte
+Vlasnik: "svi osim izvodioca moraju biti barem 0.5 ćelije u SVOJOJ polovini".
+Plasman je to radio, ali samo trenutno: već sledeći tick su preuzele napadačke
+ meteže i AWAY je prešao srednju liniju (probe: tick 1 AWAY min row **4.10**).
+- `TacticalIntentEngine.KICKOFF_HALF_BUFFER = 0.5` + `holdInOwnHalf()` — drži
+  HOME ≤ 4.0, AWAY ≥ 5.0.
+- Držanje traje dok lopta **ne bude primljena** (`MatchState.kickoffHalfHold`,
+  brisanje u `BallResultHandler` na `RECEIVE`), ne samo do udara — inače se
+  ceo napad odvija dok je lopta još u vazduhu.
+- `MatchOrchestrator` safety cap 20 tickova (iskosa koja se nikad ne primi ne
+  sme da zamrzne obe ekipe do kraja meča).
+- **Verify (probe):** tick 0 i 1 AWAY min **5.00**, HOME max **4.50** (izvođilac),
+  oslobađanje na ticku 2. `KickoffHalfLineTest` — 5 testova.
+
+### 4. BALL PHYSICS — lopta više nije sporija od igrača
+Vlasnik: "napadač posle kikofa pređe više prostora nego lopta".
+`GROUND_DECEL 0.35` = **2.2 m/s²** (stvarno 0.3-0.5), `AIR_DECEL 0.15` =
+**0.9 m/s²** (stvarno ~0.1). Udar od 11 m/s posle 2 ticka pada na 4.7 m/s —
+**sporije od sprinta igrača**.
+Fix: `GROUND_DECEL 0.08` (~0.5 m/s²), `AIR_DECEL 0.03` (~0.19 m/s²).
+**Efekat (150 mečeva):** golovi 2.8 (realno 2.7), prolaznost **82.2/82.2**
+(bila 79/77), udarci 29.3, konverzija 23%, uglovi 3.0/4.2 (bilo 0.8/4.3),
+izbacivanja 62.7 (bilo 17.6), udarci sa strane 29.5 (bilo 17.4), ofsajd 3.4.
+
+### 5. DEFENSIVE-THIRD NO-DRIBBLE (vlasnik 2026-09-25)
+Vlasnik: "bek odlučuje da dribla u opasnoj zoni ispred svog gola umesto pas-a,
+imao je sigurnih opcija ili ako nema pas unapred ka napadačima NIKAKO DRIBLING".
+`CleanDecisionEngine`: u SVOJOJ defanzivnoj trećini (HOME ≤ 3.0 / AWAY ≥ 6.0),
+ako postoji bilo koji pas (`passOption > UNAVAILABLE`) → DRIBBLE = `UNAVAILABLE`.
+Veto se primenjuje **pre** `selectOptionWithPlaymaking` (prvo je bio posle, pa
+je bio bez efekta).
+
+### 6. GOAL OVERLAY — prvo lopta kroz gol, pa overlay
+Vlasnik: "kod gola se ne vidi da je prvo bio šut, zatim da je lopta prošla KROZ
+GOAL MOUTH pa tek onda overlay". Overlay se prikazivao na `GOAL` eventu i pokrivao
+hodu u trenutku prelaska linije. Sada se **enqueue-uje** i prikazuje
+`GOAL_OVERLAY_DELAY_TICKS = 3` ticka kasnije (`_maybeShowQueuedGoal`, sa
+real-time podlom od 400 ms da sekvenca ostane vidljiva i na 10x).
+
+### Verify
+- `mvn test` → **84 run, 0 fail, 0 error** (79 + 5 `KickoffHalfLineTest`).
+- `node --check viewer.js` → OK.
+
+### OPEN — scoring calibration (ne puširano)
+Uklanjanje 44-minutnog zamrzavanja otkriva da su prethodne cifre bile potisnute
+vešitim zamrzavanjima. **150 mečeva posle fixa:** golovi **6.1** (realno 2.7),
+najviši rezultat **16 golova**, dueli 601→**335**, prekršaji 28.1→**15.8**,
+žuti 4.5→**2.7**, crveni 0.8→**0.4**, udarci 33.9, SOT 14.1.
+Delimično povećanje je očekivano (smrznuti mečevi nisu davali golove), ali 6.1 je
+i dalje previsoko → zasebna kalibracija golova (SHOT gate / konverzija) +
+vraćanje prekršaja na ~22. **Nije dirano u ovom batchu.**

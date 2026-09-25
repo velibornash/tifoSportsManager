@@ -37,8 +37,20 @@ public class BallPhysicsEngine implements BallEngine {
     // --- Physics constants (cells/tick @ 40 TPM = 1 tick = 1.5 s match time) ---
     public static final double MAX_BALL_SPEED = 1.5;      // 14 m/s
     public static final double MIN_LAUNCH_SPEED = 0.75;   // 7 m/s
-    public static final double GROUND_DECEL = 0.35;       // ~2.2 m/s^2
-    public static final double AIR_DECEL = 0.15;          // ~0.9 m/s^2
+    /**
+     * Rolling deceleration on grass, in cells/tick^2 (1 cell = 14 m, 1 tick = 1.5 s).
+     *
+     * 0.35 was 2.2 m/s^2, i.e. 4-7x real rolling friction (0.3-0.5 m/s^2). The
+     * consequence the owner reported: an 11 m/s pass was down to 4.7 m/s within
+     * two ticks, which is SLOWER than an outfield sprint, so a defender covered
+     * more ground than the ball and the ball appeared to hang in the air while
+     * players ran past it. Physically a ball can never be out-run by a player it
+     * was struck to.
+     */
+    public static final double GROUND_DECEL = 0.08;      // ~0.5 m/s^2
+
+    /** Air drag on a struck ball, in cells/tick^2 (real: ~0.1 m/s^2). */
+    public static final double AIR_DECEL = 0.03;         // ~0.19 m/s^2
     public static final double STOP_SPEED = 0.02;
     public static final double LANDING_SPEED = 0.30;      // air -> ground transition
     public static final double FAST_CONTACT = 1.0;        // >= this: BLOCK (parry), <: INTERCEPT

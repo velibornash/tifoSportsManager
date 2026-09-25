@@ -15,7 +15,13 @@ public class Player {
     private Position position;
     private Position target;
     private boolean locked;
-    private int lockTicks; // remaining ticks the player is blocked after duel loss
+    private int lockTicks;
+    /**
+     * Tick of this player's last duel (win or loss). A duel only starts when
+     * BOTH contestants are outside the duel cooldown, which guarantees a carrier
+     * cannot chain duels and freeze the match.
+     */
+    private int lastDuelTick = -9999; // remaining ticks the player is blocked after duel loss
     private boolean offside;
     private boolean sentOff;
     private int sentOffTick = -1;
@@ -88,6 +94,9 @@ public class Player {
 
     public boolean isLocked() { return locked; }
     public void setLocked(boolean locked) { this.locked = locked; }
+
+    public int getLastDuelTick() { return lastDuelTick; }
+    public void setLastDuelTick(int t) { this.lastDuelTick = t; }
 
     public int getLockTicks() { return lockTicks; }
     public void setLockTicks(int lockTicks) { this.lockTicks = Math.max(0, lockTicks); }
