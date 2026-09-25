@@ -27,6 +27,7 @@ import { createFixtureView } from './pages/views/fixture-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createClubView } from './pages/views/club-view.js';
+import { createAdminView } from './pages/views/admin-view.js';
     let currentUserTeamId = null;
     let currentUserTeamName = '';
 	    let currentUsername = '';
@@ -366,6 +367,11 @@ import { createClubView } from './pages/views/club-view.js';
     const clubView = createClubView({
         authFetch, getTeamId: () => currentUserTeamId, buildClubActionsHtml
     });
+    const adminView = createAdminView({
+        getTeamId: () => currentUserTeamId,
+        getTeamName: () => currentUserTeamName,
+        getUsername: () => currentUsername
+    });
     async function loadPage(page, options = {}) {
         const pushHistory = options.pushHistory !== false;
         const mainContent = document.getElementById("main-content");
@@ -497,6 +503,11 @@ import { createClubView } from './pages/views/club-view.js';
 
                 case "events":
                     await loadEvents();
+                    break;
+
+                // ADMIN (menu entry is role-gated; the view guards itself too)
+                case "admin":
+                    await adminView.loadAdmin();
                     break;
 
                 // STATS

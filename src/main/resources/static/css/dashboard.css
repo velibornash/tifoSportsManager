@@ -3440,6 +3440,14 @@ body {
     -webkit-backdrop-filter: blur(18px);
 }
 
+/* Role-gated menu entries (Admin tab).
+   The HTML `hidden` attribute is display:none from the UA stylesheet, but any class
+   selector that sets `display` (e.g. .menu-button { display: inline-flex }) beats it on
+   specificity - the element would stay visible for non-admins. This restores the intent. */
+[data-admin-only][hidden] {
+    display: none !important;
+}
+
 .menu-button,
 .top-menu button {
     display: inline-flex;
@@ -3530,6 +3538,13 @@ body {
     background: linear-gradient(180deg, rgba(17, 23, 37, 0.98), rgba(9, 14, 23, 0.97));
     border-right: 1px solid rgba(143, 211, 255, 0.12);
     box-shadow: 10px 0 30px rgba(0, 0, 0, 0.3);
+    /* The sidebar is position:fixed with a viewport-relative height and its content is a
+       tall flex column (Club accordion alone has 9 rows when expanded). Without this the
+       last entries - including the live clock - are clipped and unreachable on short
+       phones. Momentum scrolling keeps it consistent with the rest of the mobile layout. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 #mobileSidebar {

@@ -64,7 +64,21 @@ public class CleanDecisionEngine {
      * 0.17 -> 16.5 shots / 1.8 goals, 0.30 -> 28.7 / 3.5, 0.42 -> 39.9 / 4.7.
      * 0.30 lands closest to the real 25 shots and 2.7 goals.
      */
-    private static final double SHOT_FREQUENCY_GATE = 0.30;
+    private static final double SHOT_FREQUENCY_GATE = 0.14;
+
+    /**
+     * Share of pressured touches in the defensive third that become a clearance.
+     *
+     * Without a gate, CLEAR always scores 13-28 (10 base + up to 15 under pressure
+     * + defending skill), so it beat a negative pass and was chosen on essentially
+     * every defensive-third touch: 127.8 clearances a match against a real ~18-20.
+     * It grew to that after the goalProximity sign fix, which made the safe
+     * backward pass properly unattractive and left CLEAR as the least-bad option.
+     *
+     * Rolled once per possession like the shot gate. Calibrated with
+     * `ProposalSeasonDiag 200 42`.
+     */
+    private static final double CLEAR_FREQUENCY_GATE = 0.16;
 
     /**
      * TEMPORARY MEASUREMENT SWITCH for the "a gated shot must not become a
@@ -73,9 +87,12 @@ public class CleanDecisionEngine {
      * THRU / CROSS / CENTER are not given to the selector at all, so the dribble
      * in the final two rows is the ONLY path by which a delivery is ever chosen.
      * Vetoing the dribble therefore deletes the deliveries. The rule is correct
-     * but cannot be enabled until the deliveries compete on merit (REC 3).
+     * but could not be enabled until the deliveries competed on merit (REC 3).
+     *
+     * ENABLED in REC 3: the selector is now handed all seven options, so a gated
+     * shot recycles through THRU / CROSS / CENTER instead of a byline walk.
      */
-    private static final boolean GATE_BLOCKS_DRIBBLE = false;
+    private static final boolean GATE_BLOCKS_DRIBBLE = true;
 
     /**
      * Share of eligible moments that become a through ball. Real sides play
@@ -175,9 +192,36 @@ public class CleanDecisionEngine {
         int accuracyIndex = SimUtils.clampInt((int) pmSkill, 1, 20);
         double baseAccuracy = PLAYMAKING_ACCURACY_TABLE[accuracyIndex - 1];
 
-        // Use weighted random selection based on scores
+        // PLAYMAKING VISIBILITY — what the carrier can even PERCEIVE.
+        //
+        // Until now every option was always on the table, so playmaking could not
+        // influence HOW MANY choices a player had, only how a near-tie was broken
+        // (the measured candidate count was a flat 2.05 from playmaking 1 to 20).
+        // A creative pass is a read: a low-playmaking player does not see the run
+        // behind the defence, the overlap on the flank or the centre hanging in
+        // the box, so those options are not perceived at all. A high-playmaking
+        // player sees most of them. This is the missing half of "skill affects the
+        // number of options".
+        //
+        // The roll is cached per possession, like the shot gate: perception is a
+        // read of the situation, not a fresh coin flip every tick.
+        int pmIndex = accuracyIndex;
+        thruOption = perceive(state, thruOption, "THRU_VISION",
+                0.10 + pmIndex / 20.0 * 0.60, pmIndex);
+        crossOption = perceive(state, crossOption, "CROSS_VISION",
+                0.30 + pmIndex / 20.0 * 0.55, pmIndex);
+        centerOption = perceive(state, centerOption, "CENTER_VISION",
+                0.30 + pmIndex / 20.0 * 0.55, pmIndex);
+
+        // Use weighted random selection based on scores. ALL SEVEN options compete
+        // now: THRU / CROSS / CENTER used to be unreachable, because the selector
+        // was only handed {pass, carry, shot, clear} and a delivery could therefore
+        // only ever be chosen through the final-two-rows DRIBBLE fallback. The
+        // report's centre/cross/through-ball counts were a side effect of a byline
+        // dribble, not a decision anybody made.
         DecisionOption chosen = selectOptionWithPlaymaking(
-                passOption, carryOption, shotOption, clearOption, baseAccuracy, receiver);
+                passOption, carryOption, shotOption, clearOption,
+                thruOption, crossOption, centerOption, baseAccuracy);
 
         // FINAL-2-ROW HARD RULE (mirror of demo/service): a carrier in the last
         // two rows of the attacking third must not keep dribbling — either shoot
@@ -383,13 +427,8 @@ public class CleanDecisionEngine {
         // every tick of a carry, so a per-tick roll meant a striker who hesitated
         // in the box got 5+ attempts at the gate and shot ~63% of the time, while
         // a striker who got one look shot 17%. Hesitation was being rewarded.
-        boolean gateAllowsShot;
-        if (state.isShotGateCachedFor(carrier.getId())) {
-            gateAllowsShot = state.getShotGatePassed();
-        } else {
-            gateAllowsShot = SimulationRandom.nextDouble() <= SHOT_FREQUENCY_GATE;
-            state.cacheShotGate(carrier.getId(), gateAllowsShot);
-        }
+        boolean gateAllowsShot = state.possessionRoll("SHOT_GATE",
+                () -> SimulationRandom.nextDouble() <= SHOT_FREQUENCY_GATE);
         if (!gateAllowsShot) {
             state.setShotGateBlocked(true);
             return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
@@ -667,6 +706,14 @@ public class CleanDecisionEngine {
         if (!inDefensiveThird) {
             return new DecisionOption(ActionType.CLEAR, null, UNAVAILABLE,
                     "CLEAR: not in defensive third");
+        }
+
+        // Frequency gate — a defender under pressure usually plays out of trouble,
+        // and hoofing it is the exception, not the default (see the constant).
+        if (!state.possessionRoll("CLEAR_GATE",
+                () -> SimulationRandom.nextDouble() <= CLEAR_FREQUENCY_GATE)) {
+            return new DecisionOption(ActionType.CLEAR, null, UNAVAILABLE,
+                    "CLEAR: freq gate");
         }
 
         // Pressure from opponents
@@ -963,12 +1010,30 @@ public class CleanDecisionEngine {
         return "HOME".equals(team) ? 1.0 : -1.0;
     }
 
+    /**
+     * Veto an option the carrier cannot perceive, keeping its reason for the log.
+     * {@code chance} is the probability that a carrier of this playmaking reads it
+     * at all, rolled ONCE per possession.
+     */
+    private DecisionOption perceive(MatchState state, DecisionOption option, String rollKey,
+                                    double chance, int pmIndex) {
+        if (option == null || option.getScore() <= UNAVAILABLE) return option;
+        boolean seen = state.possessionRoll(rollKey,
+                () -> SimulationRandom.nextDouble() <= chance);
+        if (seen) return option;
+        return new DecisionOption(option.getType(), option.getTarget(), UNAVAILABLE,
+                option.getType() + ": not perceived (playmaking " + pmIndex + ")");
+    }
+
     private DecisionOption selectOptionWithPlaymaking(
             DecisionOption pass, DecisionOption carry, DecisionOption shot, DecisionOption clear,
-            double playmakingAccuracy, Player receiver) {
+            DecisionOption thru, DecisionOption cross, DecisionOption center,
+            double playmakingAccuracy) {
 
-        // Collect all options
-        DecisionOption[] options = {pass, carry, shot, clear};
+        // ALL options compete. THRU / CROSS / CENTER are included on purpose: they
+        // are real actions with real scores, and a delivery the engine can only
+        // reach through a dribble fallback is not a decision at all.
+        DecisionOption[] options = {pass, carry, shot, clear, thru, cross, center};
 
         // Filter out negative scores (unless all are negative)
         DecisionOption[] viable = Arrays.stream(options)

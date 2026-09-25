@@ -18,6 +18,7 @@
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
 	    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
+	    <div id="admin-menu-button" class="menu-button desktop-only" data-admin-only hidden onclick="loadPage('admin')">&#128295; Admin</div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>
@@ -74,6 +75,12 @@
 	        <div class="mobile-accordion">
 	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('chat')">
 	                &#128172; Community Chat
+	            </div>
+	        </div>
+
+	        <div class="mobile-accordion" data-admin-only hidden>
+	            <div id="admin-mobile-button" class="accordion-header" onclick="closeMobileMenu(); loadPage('admin')">
+	                &#128295; Admin
 	            </div>
 	        </div>
 

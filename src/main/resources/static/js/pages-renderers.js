@@ -361,12 +361,11 @@ export function buildTrainingActionsHtml(currentPage = '') {
 }
 
 export function buildCommunityActionsHtml(currentPage = '', options = {}) {
+    // Admin tooling used to be linked from here as "DB Tools". It now lives behind the
+    // role-gated Admin tab, so this row is community-only.
     const actions = [
-        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['chat', 'events'] },
+        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['chat', 'events', 'forum'] },
     ];
-    if (options.showAdminTools) {
-        actions.push({ label: 'DB Tools', page: 'forum', currentPages: ['forum'] });
-    }
     return buildActionRowHtml(actions, currentPage);
 }
 

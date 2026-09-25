@@ -341,3 +341,67 @@ export async function authFetch(url, options = {}) {
 
     return response;
 }
+
+// ---------------------------------------------------------------------------
+// Session role (single source of truth for "is this user an admin?")
+// ---------------------------------------------------------------------------
+// Previously three separate implementations existed: dashboard.js isAdminUser(),
+// community.js isAdminViewer(), and a private currentUserRole in each of pages.js
+// and dashboard.js. They could disagree. Everything now goes through here.
+//
+// The role set matches the backend gate in SecurityConfig
+// (hasAnyRole("ADMIN", "OWNER", "DEV")) on /admin/**. DEV is included so the
+// developer account can still reach DB tools while testing.
+
+const ADMIN_ROLES = new Set(['ADMIN', 'OWNER', 'DEV']);
+
+let sessionRole = '';
+
+function normalizeRole(role) {
+    return String(role ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/^ROLE_/, '');
+}
+
+/** Record the role returned by /auth/me. Notifies listeners so menus can reveal themselves. */
+export function setSessionRole(role) {
+    const normalized = normalizeRole(role);
+    if (normalized === sessionRole) return;
+    sessionRole = normalized;
+    document.dispatchEvent(new CustomEvent('tifo:role-changed', {
+        detail: { role: sessionRole, isAdmin: isAdminSession() }
+    }));
+}
+
+export function getSessionRole() {
+    return sessionRole;
+}
+
+export function isAdminSession() {
+    return ADMIN_ROLES.has(sessionRole);
+}
+
+/**
+ * Reveal every [data-admin-only] element for admins and hide it for everyone else.
+ * Elements must start out `hidden` in the markup so a non-admin never sees a flash
+ * of the admin tab while /auth/me is still in flight.
+ */
+export function applyAdminVisibility(root = document) {
+    const isAdmin = isAdminSession();
+    root.querySelectorAll('[data-admin-only]').forEach((el) => {
+        el.hidden = !isAdmin;
+        if (isAdmin) {
+            el.removeAttribute('aria-hidden');
+        } else {
+            el.setAttribute('aria-hidden', 'true');
+        }
+    });
+    return isAdmin;
+}
+
+// Inline onclick handlers in the static markup need window scope.
+window.setSessionRole = setSessionRole;
+window.getSessionRole = getSessionRole;
+window.isAdminSession = isAdminSession;
+window.applyAdminVisibility = applyAdminVisibility;

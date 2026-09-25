@@ -1,3 +1,5 @@
+import { isAdminSession } from '../../auth.js';
+
 export function createCommunityFeature(deps) {
     const {
         authFetch,
@@ -25,7 +27,7 @@ export function createCommunityFeature(deps) {
                             <h2>${escapeHtml(title || 'Community')}</h2>
                             <p class="fm-subtle">${escapeHtml(subtitle || '')}</p>
                         </div>
-                        ${buildCommunityActionsHtml(currentPage, { showAdminTools: isAdminViewer() })}
+                        ${buildCommunityActionsHtml(currentPage)}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">${statHtml}</div>
                 </section>
@@ -33,9 +35,10 @@ export function createCommunityFeature(deps) {
             </div>`;
     }
 
+    // Single source of truth is auth.js isAdminSession(), which matches the backend
+    // /admin/** gate. Previously this was a third copy of the same role check.
     function isAdminViewer() {
-        const role = String(getUserRole?.() || '').toUpperCase();
-        return role === 'OWNER' || role === 'ADMIN' || role === 'DEV';
+        return isAdminSession();
     }
 
     function formatCommunityDate(value, fallback = '—') {
@@ -137,73 +140,6 @@ export function createCommunityFeature(deps) {
             }).join('')}`;
     }
 
-    async function handleAdminTool(button) {
-        const action = button?.dataset?.communityAdminAction;
-        if (action === 'export-tactics') {
-            await exportDefaultTactics(button);
-            return;
-        }
-        const handler = action === 'reset' ? window.resetDatabase : window.initializeDatabase;
-        if (typeof handler !== 'function') {
-            alert('This admin action is not available right now.');
-            return;
-        }
-
-        button.disabled = true;
-        try {
-            await handler();
-        } finally {
-            button.disabled = false;
-        }
-    }
-
-    async function exportDefaultTactics(button) {
-        const teamId = getTeamId();
-        if (!teamId) { alert('No team assigned.'); return; }
-        button.disabled = true;
-        try {
-            const res = await authFetch(`/teams/${teamId}/tactics-editor`);
-            if (!res.ok) throw new Error('Failed to load tactics');
-            const current = await res.json();
-            const saveRes = await authFetch(`/teams/${teamId}/tactics-editor`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    formation: current.formation,
-                    style: current.style,
-                    starterIds: current.starterIds,
-                    benchIds: current.benchIds,
-                    movementRules: current.movementRules,
-                    setPieceAssignments: current.setPieceAssignments
-                })
-            });
-            if (saveRes.ok) {
-                alert('Default tactics saved successfully! They will persist after DB reset.');
-            } else {
-                alert('Failed to save default tactics.');
-            }
-        } catch (e) {
-            alert('Error exporting tactics: ' + e.message);
-        } finally {
-            button.disabled = false;
-        }
-    }
-
-    async function handleSeasonFlowTool(button) {
-        const action = button?.dataset?.communitySeasonAction;
-        const handler = {
-            'play-match': window.startRealisticDemoTest,
-            'simulate-round': window.simulateCurrentRoundTest,
-            'advance-week': window.advanceWeekTest,
-        }[action];
-        if (typeof handler !== 'function') {
-            alert('This season flow action is not available right now.');
-            return;
-        }
-
-        await handler();
-    }
-
     async function handleSendMessage(form) {
         const textarea = form.querySelector('textarea');
         const recipientSelect = form.querySelector('select[name="recipientUserId"]');
@@ -277,14 +213,6 @@ export function createCommunityFeature(deps) {
 
         mainContent.querySelectorAll('[data-registration-action]').forEach(button => {
             button.addEventListener('click', async () => handleRegistrationAction(button));
-        });
-
-        mainContent.querySelectorAll('[data-community-admin-action]').forEach(button => {
-            button.addEventListener('click', async () => handleAdminTool(button));
-        });
-
-        mainContent.querySelectorAll('[data-community-season-action]').forEach(button => {
-            button.addEventListener('click', async () => handleSeasonFlowTool(button));
         });
     }
 
@@ -374,80 +302,17 @@ export function createCommunityFeature(deps) {
         }
     }
 
+    /**
+     * The forum route no longer hosts admin tooling.
+     *
+     * DB Tools moved to the Admin tab (js/pages/views/admin-view.js). The "Season flow
+     * controls" block that sat beside them was an exact duplicate of the dashboard's
+     * "Match Week Controls" - same three actions bound to the same handlers - so it has
+     * been removed rather than moved. The dashboard is now the single entry point for
+     * watch / simulate / advance.
+     */
     async function loadForum() {
-        const mainContent = document.getElementById('main-content');
-        if (!isAdminViewer()) {
-            return loadChat();
-        }
-
-        mainContent.innerHTML = buildCommunityPageShell({
-            currentPage: 'forum',
-            eyebrow: 'Community control room',
-            title: 'Admin DB Tools',
-            subtitle: 'Reset and initialization actions are available here again until further notice, while the chat remains the shared community/forum feed.',
-            stats: [
-                { value: getUserRole?.() || 'ADMIN', label: 'Role' },
-                { value: getUsername?.() || 'Manager', label: 'Signed in as' },
-                { value: '5', label: 'Admin actions' },
-                { value: getTeamName?.() || 'Unassigned', label: 'Current club' }
-            ],
-            bodyHtml: `
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Database controls</h3>
-                            <p class="fm-subtle">Use these only when you really want to clear or rebuild the local data. Both actions reuse the existing admin endpoints.</p>
-                        </div>
-                        <span class="fm-panel-action">Admin only</span>
-                    </div>
-                    <div class="community-tool-grid">
-                        <article class="community-tool-card">
-                            <h4>Reset DB</h4>
-                            <p class="fm-subtle">Clears local data and rebuilds the usable football baseline so login and dashboard boot work again.</p>
-                            <button type="button" class="fm-action-btn secondary" data-community-admin-action="reset">Reset DB</button>
-                        </article>
-                        <article class="community-tool-card">
-                            <h4>Initialize DB</h4>
-                            <p class="fm-subtle">Runs the full initializer again and rebuilds the football structure.</p>
-                            <button type="button" class="fm-action-btn" data-community-admin-action="initialize">Initialize DB</button>
-                        </article>
-                        <article class="community-tool-card">
-                            <h4>Export Default Tactics</h4>
-                            <p class="fm-subtle">Saves the current tactical editor setup as the default for your team. Loaded automatically after DB reset.</p>
-                            <button type="button" class="fm-action-btn" data-community-admin-action="export-tactics">Save Default Tactics</button>
-                        </article>
-                    </div>
-                </section>
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Season flow controls</h3>
-                            <p class="fm-subtle">Same manual round controls as the dashboard, now available here next to the DB tools for admin testing.</p>
-                        </div>
-                        <span class="fm-panel-action">Manual flow</span>
-                    </div>
-                    <div id="dashboard-season-flow-status" class="fm-season-flow-status">Choose the next manual season action for the current week.</div>
-                    <div class="community-tool-grid fm-season-flow-buttons">
-                        <article class="community-tool-card">
-                            <h4>Play your match</h4>
-                            <p class="fm-subtle">Starts your club's current scheduled live/replay-ready match when one exists for this week.</p>
-                            <button type="button" id="start-realistic-demo-btn" class="fm-action-btn fm-dashboard-cta" data-label="⚽ Play Your Match" data-community-season-action="play-match">⚽ Play Your Match</button>
-                        </article>
-                        <article class="community-tool-card">
-                            <h4>Simulate other results</h4>
-                            <p class="fm-subtle">Runs the remaining fixtures for the current round across the Serbian league pyramid and shows a summary.</p>
-                            <button type="button" id="simulate-current-round-btn" class="fm-action-btn" data-label="🧮 Simulate Other Results" data-community-season-action="simulate-round">🧮 Simulate Other Results</button>
-                        </article>
-                        <article class="community-tool-card">
-                            <h4>Advance week</h4>
-                            <p class="fm-subtle">Moves the calendar forward once the current round is fully resolved and training/season logic can continue.</p>
-                            <button type="button" id="advance-week-btn" class="fm-action-btn secondary" data-label="📅 Advance Week" data-community-season-action="advance-week">📅 Advance Week</button>
-                        </article>
-                    </div>
-                </section>`
-        });
-
-        bindCommunityInteractions(mainContent);
+        return loadChat();
     }
 
     async function loadEvents() {

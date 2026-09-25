@@ -29,23 +29,23 @@ public class MatchState {
     private boolean kickoffHalfHold;
 
     /**
-     * SHOT FREQUENCY GATE — rolled ONCE per possession, not once per tick.
+     * Per-POSSESSION random decisions, cached against the current carrier.
      *
-     * The decision engine re-decides on every tick while a player is on the ball,
-     * so a gate rolled inside the scorer was a fresh coin flip on every tick. A
+     * <p>The decision engine re-decides on every tick while a player is on the
+     * ball, so a roll taken inside a scorer was a fresh coin flip every tick. A
      * striker who lingered in the box rolled 5+ times and shot ~63% of the time
-     * (1-0.83^5), while a striker who got a single look shot 17% of the time —
-     * the gate rewarded hesitation. Caching the roll for the whole possession
-     * makes it one decision per attack: you get your chance when you arrive.
+     * (1-0.83^5) while a striker who got a single look shot 17% — the gate
+     * rewarded hesitation. Caching each roll for the whole possession makes every
+     * one of them a single decision per attack: you get your chance when you
+     * arrive, and then you commit.
      *
-     * Invalidated in {@link #setCarrier} whenever the carrier actually changes,
+     * <p>Invalidated in {@link #setCarrier} whenever the carrier actually changes,
      * which is the single chokepoint for every possession change (pickup, duel
      * winner, restart taker, ball struck loose).
      */
-    private String shotGateCarrierId;
-    private boolean shotGatePassed;
+    private final java.util.Map<String, Boolean> possessionRolls = new java.util.HashMap<>();
 
-    /** True when the gate blocked the shot during the current decide() call. */
+    /** True when the shot gate blocked the shot during the current decide() call. */
     private boolean shotGateBlocked;
     private int kickoffHalfHoldTick;
     private boolean matchFinished;    // full time reached (replay overlay)
@@ -185,14 +185,16 @@ public class MatchState {
 
     public boolean isKickoffHalfHold() { return kickoffHalfHold; }
     public void setKickoffHalfHold(boolean kickoffHalfHold) { this.kickoffHalfHold = kickoffHalfHold; }
-    public boolean isShotGateCachedFor(String carrierId) {
-        return shotGateCarrierId != null && shotGateCarrierId.equals(carrierId);
+    /**
+     * A 0/1 random decision taken ONCE per possession for the given key and
+     * remembered until the carrier changes. {@code roller} is only invoked on the
+     * first call for a key within a possession.
+     */
+    public boolean possessionRoll(String key, java.util.function.BooleanSupplier roller) {
+        String k = (carrier != null ? carrier.getId() : "-") + "|" + key;
+        return possessionRolls.computeIfAbsent(k, x -> roller.getAsBoolean());
     }
-    public boolean getShotGatePassed() { return shotGatePassed; }
-    public void cacheShotGate(String carrierId, boolean passed) {
-        this.shotGateCarrierId = carrierId;
-        this.shotGatePassed = passed;
-    }
+
     public boolean isShotGateBlocked() { return shotGateBlocked; }
     public void setShotGateBlocked(boolean shotGateBlocked) { this.shotGateBlocked = shotGateBlocked; }
 
@@ -393,11 +395,7 @@ public class MatchState {
     public Player getCarrier() { return carrier; }
     public void setCarrier(Player carrier) {
         // A new carrier is a new possession, so the shot gate must be rolled again.
-        String newId = carrier != null ? carrier.getId() : null;
-        if (shotGateCarrierId != null && !shotGateCarrierId.equals(newId)) {
-            shotGateCarrierId = null;
-            shotGatePassed = false;
-        }
+        if (this.carrier != carrier) possessionRolls.clear();  // new possession
         this.carrier = carrier;
     }
 

@@ -1,5 +1,5 @@
 // dashboard.js
-import { authFetch, handleAuthFailure } from './auth.js';
+import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility } from './auth.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
@@ -111,9 +111,10 @@ function buildImportantTickerMarkup(message) {
     return `<div class="fm-dashboard-ticker-move"><span>${safeMessage}</span></div>`;
 }
 
+// Single source of truth lives in auth.js (isAdminSession), which matches the
+// backend /admin/** gate. This wrapper is kept because the inline markup calls it.
 function isAdminUser() {
-    const normalizedRole = String(currentUserRole || '').trim().toUpperCase().replace(/^ROLE_/, '');
-    return normalizedRole === 'ADMIN' || normalizedRole === 'OWNER' || normalizedRole === 'DEV';
+    return isAdminSession();
 }
 
 function readDashboardFlowFlash() {
@@ -340,6 +341,8 @@ window.addEventListener('load', async () => {
         currentUserCountryName = user.countryName ?? null;
         currentUserCountryIsoCode = user.countryIsoCode ?? null;
         currentUserRole = user.role ?? null;
+        setSessionRole(currentUserRole);
+        applyAdminVisibility(document);
         updateCountryMenuLabels();
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
