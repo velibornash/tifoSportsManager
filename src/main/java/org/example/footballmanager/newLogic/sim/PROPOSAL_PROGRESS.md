@@ -2222,11 +2222,25 @@ prepolovio (1.76 → 0.92), a tie rate playmakinga pao sa **18% na 0.3%**.
 **0.34** je kompromis: prolaznost 80.7/81.3, rezultati 86/84/30, izbacivanja 40.6.
 REC 4 (weighted selection) treba da omogući da se gate vrati niže.
 
-### 5. Stanje (200 mečeva, shot gate 0.30, clear gate 0.34)
-golovi 4.5, udarci 38.2, SOT 15.4, prolaznost 80.7/81.3, **izbacivanja 40.6**,
-prodorni 9.4, centri 24.2, krsevi 28.5, udarci sa strane 72, ofsajd 9.0,
-prekršaji 18.5, žuti 3.0, posed ~50/50, rezultati 86/84/30, 1 bez gola.
+### 5. Stanje (200 mečeva, seed 42, shot gate 0.30, clear gate 0.34)
+```
+goals          2.2 / 2.2    = 4.5      shots        18.6/19.6  = 38.2
+shotsOnTarget  7.4 / 7.8    = 15.2     saves        9.1 / 8.3  = 17.5
+blocked        2.2 / 1.6    = 3.9      passes     359.2/366.0 = 725.2
+passAccuracy  80.7/81.3     = 162.0    dribbles     91.0/92.5  = 183.5
+clearances    20.3/20.2     = 40.6     duelsWon    184.7/176.4 = 361.1
+throughBalls   4.8 / 4.6    = 9.4      interceptions 28.5/26.1 = 54.6
+centers       12.5/11.8     = 24.2     corners       2.1 / 3.5 = 5.6
+crosses       15.9/12.6     = 28.5     goalKicks    11.5/12.1 = 23.6
+fouls          8.6 / 9.1    = 17.8     throwIns     37.5/33.8 = 71.3
+yellowCards    1.5 / 1.5    = 3.0      offsides      3.8 / 4.7 = 8.5
+redCards       0.3 / 0.2    = 0.5      possession   49.2/50.8
+results: HOME 86 / AWAY 84 / 30 draws, 1 scoreless, highest 11
+```
 Vlasnik: "ma to je ok 30-40 udaraca nema veze" → shot gate drži 0.30.
+Za realnu (2015-16 PL, prosečno): udarci 25, SOT 8.5, golovi 2.7, prolaznost
+80-85, izbacivanja ~18, krsevi 15-25, centri 25-35, prodorni 5-10, prekršaji 22,
+žuti 4, uglovi 10, ofsajd 2-4, izbacivanja lopte 12-15.
 
 Provera zamrzavanja (seed 777): niz duela 1.
 
