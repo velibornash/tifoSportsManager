@@ -48,6 +48,18 @@ public class TransferController {
         return transferService.addInterest(playerId, teamId, club);
     }
 
+    @PostMapping("/interest/{playerId}/withdraw")
+    public TransferDTO withdrawInterest(@PathVariable Long playerId,
+                                        @RequestParam(required = false) String club,
+                                        @RequestParam(required = false) Long teamId) {
+        return transferService.withdrawInterest(playerId, teamId, club);
+    }
+
+    @PostMapping("/interest/{playerId}/clear")
+    public TransferDTO clearInterest(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
+        return transferService.clearAllInterest(playerId, request.getTeamId());
+    }
+
     @PostMapping("/buy/{playerId}")
     public TransferDTO buyListedPlayer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
         return transferService.buyListedPlayer(playerId, request.getTeamId(), request.getPrice());

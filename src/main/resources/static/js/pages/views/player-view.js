@@ -162,7 +162,15 @@ export function createPlayerView(deps) {
         if (transferStatus.canRemove) {
             actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="remove" data-player-id="${player.id}">Remove from TL</button>`);
         } else if (transferStatus.ownedByViewer && transferStatus.listed) {
-            actionButtons.push(`<button type="button" class="fm-action-btn secondary" disabled title="Cannot remove while another club has registered interest.">Remove from TL</button>`);
+            // Only a live priced offer blocks delisting (Sprint 0.2). Bare interest does not,
+            // and the seller always keeps a "clear interest" escape hatch.
+            const blockedBy = transferStatus.hasPricedOffer
+                ? 'Cannot remove while a club has a live offer. Reject or clear the offers first.'
+                : 'Cannot remove right now.';
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" disabled title="${htmlEscape(blockedBy)}">Remove from TL</button>`);
+        }
+        if (transferStatus.canClearInterest) {
+            actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="clear-interest" data-player-id="${player.id}">Clear interest</button>`);
         }
         if (transferStatus.canBuyListed) {
             actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="interest" data-player-id="${player.id}">Register interest</button>`);
@@ -453,6 +461,19 @@ export function createPlayerView(deps) {
                     const params = new URLSearchParams({ teamId: String(teamId) });
                     await performTransferJsonAction(`/transfers/interest/${resolvedPlayerId}?${params.toString()}`);
                     await reloadCurrent?.();
+                    return;
+                }
+                case 'withdraw-interest': {
+                    const params = new URLSearchParams({ teamId: String(teamId) });
+                    await performTransferJsonAction(`/transfers/interest/${resolvedPlayerId}/withdraw?${params.toString()}`);
+                    await reloadCurrent?.();
+                    return;
+                }
+                case 'clear-interest': {
+                    if (!window.confirm('Clear every registered interest and offer on this player? He stays on the transfer list.')) return;
+                    const result = await performTransferJsonAction(`/transfers/interest/${resolvedPlayerId}/clear`, { teamId });
+                    if (result?.actionMessage) window.alert(result.actionMessage);
+                    await (reloadOwned || reloadCurrent)?.();
                     return;
                 }
                 case 'buy-listed': {

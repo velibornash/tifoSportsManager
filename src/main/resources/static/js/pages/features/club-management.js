@@ -263,6 +263,19 @@ export function createClubManagementFeature(deps) {
                             maybeShowTransferMessage(await sendTransferRequest(`/transfers/interest/${playerId}?${params.toString()}`));
                             break;
                         }
+                        case 'withdraw-interest': {
+                            const params = new URLSearchParams({ teamId: String(teamId) });
+                            if (teamName) params.set('club', teamName);
+                            maybeShowTransferMessage(await sendTransferRequest(`/transfers/interest/${playerId}/withdraw?${params.toString()}`));
+                            break;
+                        }
+                        case 'clear-interest': {
+                            if (!window.confirm('Clear every registered interest and offer on this player? He stays on the transfer list.')) return;
+                            maybeShowTransferMessage(await sendTransferRequest(`/transfers/interest/${playerId}/clear`, {
+                                payload: { teamId }
+                            }));
+                            break;
+                        }
                         case 'buy': {
                             const price = promptTransferPrice(
                                 'Enter agreed fee for this listed player:',
@@ -418,7 +431,8 @@ export function createClubManagementFeature(deps) {
                                                             <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || teamId}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || myOverview?.teamName || 'Club')}">Open</button>
                                                             ${transfer.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${transfer.playerId}">Accept best offer</button>` : ''}
                                                             ${transfer.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${transfer.playerId}">Reject offers</button>` : ''}
-                                                            <button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>
+                                                            ${transfer.canClearInterest ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="clear-interest" data-player-id="${transfer.playerId}">Clear interest</button>` : ''}
+                                                            <button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : `disabled title="${transfer.hasPricedOffer ? 'A club has a live offer on this player. Reject or clear it first.' : 'Cannot remove right now.'}"`}>Remove</button>
                                                         </div>
                                                     </td>
                                                 </tr>`;
@@ -498,7 +512,7 @@ export function createClubManagementFeature(deps) {
                                                     <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                                         <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${player.id}" data-seller-team-id="${teamId}" data-seller-team-name="${escapeHtml(myOverview?.teamName || 'Club')}">Open</button>
                                                         ${isListed
-                                                            ? `${listedTransfer?.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>` : ''}${listedTransfer?.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${player.id}">Reject offers</button>` : ''}<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${player.id}" ${(listedTransfer?.removalAllowed ?? false) ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>`
+                                                            ? `${listedTransfer?.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>` : ''}${listedTransfer?.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${player.id}">Reject offers</button>` : ''}${listedTransfer?.canClearInterest ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="clear-interest" data-player-id="${player.id}">Clear interest</button>` : ''}<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${player.id}" ${(listedTransfer?.removalAllowed ?? false) ? '' : `disabled title="${listedTransfer?.hasPricedOffer ? 'A club has a live offer on this player. Reject or clear it first.' : 'Cannot remove right now.'}"`}>Remove</button>`
                                                             : `<button type="button" class="fm-action-btn" data-transfer-action="list" data-player-id="${player.id}" data-default-price="${Math.round(Number(player.value || 1))}">List</button>`}
                                                     </div>
                                                 </td>

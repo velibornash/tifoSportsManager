@@ -29,5 +29,9 @@ public class PlayerTransferStatusDTO {
     private boolean canDirectBuy;
     private boolean canAcceptOffer;
     private boolean canRejectOffer;
+    /** At least one club has made a priced offer (an "X offered EUR Y" entry). */
+    private boolean hasPricedOffer;
+    /** The owning club can clear all interest/offers without accepting one (Sprint 0.2). */
+    private boolean canClearInterest;
     private String summary;
 }

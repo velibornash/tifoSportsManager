@@ -128,11 +128,14 @@ public class TransferService {
         dto.setInterestedTeams(sortedInterests(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setCanList(ownedByViewer && !listed);
-        dto.setCanRemove(ownedByViewer && listed && sortedInterests(transfer).isEmpty());
+        dto.setCanRemove(ownedByViewer && listed && !hasPricedOffer(transfer));
         dto.setCanBuyListed(listed && viewerTeamId != null && !ownedByViewer);
         dto.setCanDirectBuy(viewerTeamId != null && !ownedByViewer && !listed);
         dto.setCanAcceptOffer(ownedByViewer && openOffer);
         dto.setCanRejectOffer(ownedByViewer && openOffer);
+        // Bare interest entries must not be able to trap a seller on the list (Sprint 0.2).
+        dto.setCanClearInterest(ownedByViewer && listed && !sortedInterests(transfer).isEmpty());
+        dto.setHasPricedOffer(hasPricedOffer(transfer));
         dto.setSummary(buildPlayerSummary(dto));
         return dto;
     }
@@ -168,13 +171,97 @@ public class TransferService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "Only the owning club can remove this player from the transfer list.");
         }
-        if (!sortedInterests(transfer).isEmpty()) {
-            throw new ApiException(HttpStatus.CONFLICT, "ACTIVE_INTEREST",
-                    "Cannot remove this player from the transfer list while another club has active interest.");
+        // Only a PRICED offer blocks delisting. A bare "register interest" entry is not an offer,
+        // so treating it as one used to soft-lock the player on the list forever: canRemove went
+        // false while canRejectOffer stayed false too, leaving no escape route.
+        if (hasPricedOffer(transfer)) {
+            throw new ApiException(HttpStatus.CONFLICT, "ACTIVE_OFFER",
+                    "Cannot remove this player from the transfer list while a club has a live offer on him. "
+                            + "Reject the offers first.");
         }
         transfer.setStatus(TransferStatus.CANCELLED);
         transfer.setCompletedAt(LocalDateTime.now());
+        transfer.getInterestedTeams().clear();
         transferRepository.save(transfer);
+    }
+
+    /**
+     * Withdraw this club's own interest in a listed player.
+     *
+     * <p>Gives an interested club a clean exit so it cannot hold a seller's player hostage, and lets
+     * AI clubs back out without a seller having to clear the whole list.
+     */
+    @Transactional
+    public TransferDTO withdrawInterest(Long playerId, Long withdrawingTeamId, String clubName) {
+        Transfer transfer = getActiveTransfer(playerId);
+        String resolvedClub = clubName;
+        if ((resolvedClub == null || resolvedClub.isBlank()) && withdrawingTeamId != null) {
+            resolvedClub = loadTeam(withdrawingTeamId).getName();
+        }
+        if (resolvedClub == null || resolvedClub.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CLUB_REQUIRED",
+                    "Club name or team id is required to withdraw interest.");
+        }
+
+        String normalized = resolvedClub.trim();
+        boolean removed = transfer.getInterestedTeams().removeIf(existing -> {
+            String value = existing == null ? "" : existing.trim();
+            return value.equalsIgnoreCase(normalized) || parseOfferDetails(value) != null
+                    && parseOfferDetails(value).clubName().equalsIgnoreCase(normalized);
+        });
+
+        if (!removed) {
+            throw new ApiException(HttpStatus.CONFLICT, "NO_INTEREST_FOUND",
+                    resolvedClub + " has no registered interest in this player.");
+        }
+        return toTransferDto(transferRepository.save(transfer), withdrawingTeamId);
+    }
+
+    /**
+     * Clear every interest and offer on a listing without accepting any of them.
+     *
+     * <p>{@link #rejectOffers} could only be reached when a priced offer existed, so a listing held
+     * hostage by bare interest entries had no seller-side exit at all. This is that exit.
+     */
+    @Transactional
+    public TransferDTO clearAllInterest(Long playerId, Long actingTeamId) {
+        Transfer transfer = getActiveTransfer(playerId);
+        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
+        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Only the owning club can clear interest on this player.");
+        }
+
+        int cleared = transfer.getInterestedTeams().size();
+        transfer.getInterestedTeams().clear();
+        transfer.setBuyerTeam(null);
+        transfer.setStatus(TransferStatus.LISTED);
+        transfer.setCompletedAt(null);
+        TransferDTO dto = toTransferDto(transferRepository.save(transfer), actingTeamId);
+        dto.setOfferAccepted(false);
+        dto.setActionMessage("Cleared " + cleared + " interest/offer entr" + (cleared == 1 ? "y" : "ies")
+                + ". The player remains on the transfer list.");
+        return dto;
+    }
+
+    /**
+     * Admin override: force a player off the transfer list regardless of any interest or offers.
+     * Exists so a stuck listing can always be resolved by an operator.
+     */
+    @Transactional
+    public TransferDTO forceUnlist(Long playerId) {
+        Transfer transfer = transferRepository.findByPlayerId(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND",
+                        "Transfer listing not found."));
+        int cleared = transfer.getInterestedTeams().size();
+        transfer.getInterestedTeams().clear();
+        transfer.setBuyerTeam(null);
+        transfer.setStatus(TransferStatus.CANCELLED);
+        transfer.setCompletedAt(LocalDateTime.now());
+        TransferDTO dto = toTransferDto(transferRepository.save(transfer), null);
+        dto.setActionMessage("Force-unlisted by admin. Cleared " + cleared + " entr"
+                + (cleared == 1 ? "y" : "ies") + ".");
+        return dto;
     }
 
     @Transactional
@@ -399,7 +486,21 @@ public class TransferService {
         if (transfer == null || transfer.getPlayer() == null) {
             return false;
         }
-        return transfer.getBuyerTeam() == null && sortedInterests(transfer).stream().anyMatch(this::isOfferEntry);
+        return transfer.getBuyerTeam() == null && hasPricedOffer(transfer);
+    }
+
+    /**
+     * A <em>priced</em> offer exists (an "X offered EUR Y" entry), as opposed to a bare
+     * "register interest" entry which carries no price and no commitment.
+     *
+     * <p>This distinction is the whole point: a bare interest must never be able to block a seller
+     * from delisting, otherwise the listing becomes permanently stuck.
+     */
+    private boolean hasPricedOffer(Transfer transfer) {
+        if (transfer == null || transfer.getPlayer() == null) {
+            return false;
+        }
+        return sortedInterests(transfer).stream().anyMatch(this::isOfferEntry);
     }
 
     private Team loadTeam(Long teamId) {
