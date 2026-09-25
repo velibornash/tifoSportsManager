@@ -40,19 +40,22 @@ public class OffsideService implements EngineInterfaces.OffsideService {
 
     /**
      * How far beyond the second-to-last defender (in cells, 1 cell = 14 m) a
-     * receiver must be before he is FLAGGED and the whistle fires at the moment
-     * he touches the ball.
+     * receiver must be before the flag counts as an offence at the moment he
+     * touches the ball.
      *
-     * The band used to be {@code margin > 0} — any receiver a centimetre beyond
-     * the line was flagged, and because attackers hold the line by design almost
-     * every forward pass produced a 0.0-0.4 cell margin. Measured with
-     * {@code ProposalPassFailDiag}: 22 offsides per match (real football: 1-3),
-     * which alone destroyed 25% of all pass completions. 0.2 cells = 2.8 m is the
-     * same tolerance the reference engine uses (demo/service
-     * {@code OFFSIDE_TOLERANCE}); anything inside it falls through to the
-     * VAR/onward-play band instead of a whistle.
+     * The decision layer never targets a receiver beyond
+     * {@code OFFSIDE_HARD_LIMIT} (0.5 cells = 7 m) and only risks a pass into
+     * the band below it when the carrier's playmaking is poor, so the whistle
+     * only has to catch that residual case. 0.30 cells = 4.2 m: a pass played to
+     * someone inside that is let play on, anything beyond it is flagged at the
+     * reception (the "action after the pass" rule, not a pass-moment kill).
+     *
+     * Measured history: the band used to be 0 (a centimetre beyond the line),
+     * which flagged almost every forward pass and produced 22 offsides a match;
+     * then 0.2, which produced none at all. 0.30 with a playmaking-gated decision
+     * layer keeps it in the real 2-4 range.
      */
-    public static final double OFFSIDE_WHISTLE_MARGIN = 0.2;
+    public static final double OFFSIDE_WHISTLE_MARGIN = 0.30;
 
     private final MatchState state;
     private final VARService varService;

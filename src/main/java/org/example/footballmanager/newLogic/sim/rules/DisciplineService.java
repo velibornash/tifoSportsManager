@@ -31,6 +31,19 @@ import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
  */
 public class DisciplineService implements EngineInterfaces.DisciplineService {
 
+    /**
+     * Share of fouls committed inside the penalty area that become penalties.
+     * Real football: a penalty is a rare, denied-chance offence, not the default
+     * for contact in the box — roughly 1% of all fouls end up as penalties.
+     */
+    public static final double PENALTY_FROM_BOX_FOUL = 0.06;
+
+    /** Straight red (violent tackle / DOGSO) as a share of all fouls. */
+    public static final double STRAIGHT_RED_RATE = 0.004;
+
+    /** Caution as a share of all fouls (real: ~3-4 yellows a match a side). */
+    public static final double YELLOW_RATE = 0.20;
+
     private final VARService varService;
 
     public DisciplineService(MatchState state, VARService varService) {
@@ -60,7 +73,12 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
 
         state.incrementFouls();
         boolean homeAttacking = "HOME".equals(attacker.getTeam());
-        boolean penaltyAwarded = isInsidePenaltyArea(attacker, defender);
+        // A foul inside the box is NOT automatically a penalty — that was worth
+        // 6.9 penalties per match (24% of all fouls; real football is ~1%).
+        // Most challenges in the area are survived by the attacker or are
+        // ordinary contact, so the box only makes a penalty CANDIDATE.
+        boolean inBox = isInsidePenaltyArea(attacker, defender);
+        boolean penaltyAwarded = inBox && SimulationRandom.nextDouble() < PENALTY_FROM_BOX_FOUL;
         boolean freeKickAwarded = !penaltyAwarded;
         String varDecision = "NONE";
 
@@ -72,10 +90,12 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
             varDecision = reviewDecision();
         }
 
-        // Baseline sanction BEFORE the card's own VAR review: straight red is
-        // rare; otherwise a yellow-worthy foul (35%).
-        boolean straightRedRolled = SimulationRandom.nextDouble() < 0.02;
-        boolean yellowWorthy = !straightRedRolled && SimulationRandom.nextDouble() < 0.35;
+        // Sanction ladder. Real matches: ~3-4 yellows, ~0.2 reds per side. The
+        // straight-red roll was 2% of fouls (≈0.6/match on its own) and the
+        // caution rate 35% (≈10 yellows/match), which is what produced 2.7 reds
+        // and 7.5 yellows per match.
+        boolean straightRedRolled = SimulationRandom.nextDouble() < STRAIGHT_RED_RATE;
+        boolean yellowWorthy = !straightRedRolled && SimulationRandom.nextDouble() < YELLOW_RATE;
 
         boolean yellowConfirmed = false;
         boolean redConfirmed = false;
@@ -144,8 +164,19 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
         return d;
     }
 
-    /** Foul is a spot kick when it lands in the defensive penalty area:
-     *  HOME defends rows ≤ 2.5, AWAY defends rows ≥ 6.5, cols 2–5. */
+    /**
+     * The box band must be mirrored about 4.5. HOME attacks a box in front of
+     * the AWAY goal (row 8.0), so the band starts 1.5 cells out: row >= 6.5.
+     * AWAY therefore needs 1.0 + 1.5 = row <= 2.5, not row <= 1.5 — the old
+     * bound made HOME's penalty area 1.5 cells deep and AWAY's only 0.5, a
+     * 3x one-directional difference in how often fouls became penalties.
+     *
+     * The column window is the real 40.3 m width, not "most of the pitch":
+     * cols 2.5-5.5 is 3 cells of the 6 playable ones.
+     */
+    private static final double BOX_HALF_WIDTH = 1.5;
+    private static final double BOX_MOUTH_CENTRE = 3.5;
+
     private boolean isInsidePenaltyArea(Player attacker, Player defender) {
         Position aPos = attacker.getPosition();
         Position dPos = defender.getPosition();
@@ -155,15 +186,9 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
                 ? Math.max(aPos.getRow(), dPos.getRow())
                 : Math.min(aPos.getRow(), dPos.getRow());
         double col = (aPos.getColumn() + dPos.getColumn()) / 2.0;
-        // The box band must be mirrored about 4.5. HOME attacks a box in front of
-        // the AWAY goal (row 8.0), so the band starts 1.5 cells out: row >= 6.5.
-        // AWAY therefore needs 1.0 + 1.5 = row <= 2.5, not row <= 1.5 — the old
-        // bound made HOME's penalty area 1.5 cells deep and AWAY's only 0.5, a
-        // 3x one-directional difference in how often fouls became penalties.
-        boolean inBox = homeAttacking
-                ? (row >= 6.5 && col >= 2 && col <= 5)
-                : (row <= 2.5 && col >= 2 && col <= 5);
-        return inBox;
+        return homeAttacking
+                ? (row >= 6.5 && Math.abs(col - BOX_MOUTH_CENTRE) <= BOX_HALF_WIDTH)
+                : (row <= 2.5 && Math.abs(col - BOX_MOUTH_CENTRE) <= BOX_HALF_WIDTH);
     }
 
     // --- Individual rule methods (add rules here) ---

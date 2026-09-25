@@ -32,8 +32,12 @@ public class VARService implements EngineInterfaces.VARService {
     public boolean checkOffside(Player receiver, Position passOrigin, MatchState state) {
         lastVARDecision = "NONE";
 
-        // Gate: review only ~4% of offsides
-        if (random.nextDouble() > 0.04) {
+        // Gate: review ~45% of flagged offsides. Offside is the single most
+        // reviewed incident in real football, and an offside that led to a goal
+        // is reviewed essentially always. At 4% with a ~40% overturn chance
+        // inside the review, an overturn happened once every ~200 offsides —
+        // measurably 0.0 per match.
+        if (random.nextDouble() > 0.25) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -60,8 +64,11 @@ public class VARService implements EngineInterfaces.VARService {
     public boolean checkGoal(String scoringTeam, Position goalPosition) {
         lastVARDecision = "NONE";
 
-        // Gate: review only ~4% of goals
-        if (random.nextDouble() > 0.04) {
+        // Gate: review ~35% of goals. It used to be 4%, and the overturn chance
+        // inside a review only 8% — i.e. one in ~35 goals, which never happened
+        // (0.0 overturned per match). Every goal is a candidate incident: a foul
+        // in the build-up, an offside, a handball, a misplaced restart.
+        if (random.nextDouble() > 0.15) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -69,8 +76,9 @@ public class VARService implements EngineInterfaces.VARService {
         String defendingTeam = "HOME".equals(scoringTeam) ? "AWAY" : "HOME";
         logVARReviewStarted(scoringTeam, "GOAL - reviewing build-up for " + scoringTeam);
 
-        // ~8% chance of goal being overturned (foul in buildup, offside, handball)
-        boolean overturned = random.nextDouble() < 0.08;
+        // ~28% chance of the goal being overturned (foul in build-up, offside,
+        // handball) — roughly 1 in 5 real VAR incidents ends in an overturn.
+        boolean overturned = random.nextDouble() < 0.28;
 
         lastVARDecision = overturned ? "GOAL_OVERTURNED" : "GOAL_CONFIRMED";
         return !overturned;
@@ -80,8 +88,10 @@ public class VARService implements EngineInterfaces.VARService {
     public boolean checkRedCard(Player defender, boolean isSecondYellow) {
         lastVARDecision = "NONE";
 
-        // Gate: review only ~10% of red cards
-        if (random.nextDouble() > 0.10) {
+        // Gate: review ~70% of straight reds. Second yellows are still
+        // effectively never overturned (FIFA law: a second caution is an
+        // automatic dismissal and is not a reviewable incident).
+        if (random.nextDouble() > 0.40) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -95,8 +105,8 @@ public class VARService implements EngineInterfaces.VARService {
             return true;
         }
 
-        // Straight reds: ~25% chance of overturn (reduced to yellow)
-        boolean overturned = random.nextDouble() < 0.25;
+        // Straight reds: ~30% chance of overturn (reduced to a yellow)
+        boolean overturned = random.nextDouble() < 0.30;
 
         lastVARDecision = overturned ? "RED_OVERTURNED" : "RED_CONFIRMED";
         return !overturned;
@@ -106,8 +116,9 @@ public class VARService implements EngineInterfaces.VARService {
     public boolean checkPenalty(Position foulPosition, boolean homeAttacking) {
         lastVARDecision = "NONE";
 
-        // Gate: review only ~5% of penalties
-        if (random.nextDouble() > 0.05) {
+        // Gate: review ~80% of penalties — a penalty is always a reviewable
+        // incident (wrongly given, advantage played, location of the offence).
+        if (random.nextDouble() > 0.55) {
             lastVARDecision = "NO_REVIEW";
             return true;
         }
@@ -116,8 +127,9 @@ public class VARService implements EngineInterfaces.VARService {
         logVARReviewStarted(attackingTeam,
                 "PENALTY - reviewing " + (homeAttacking ? "HOME" : "AWAY") + " penalty claim");
 
-        // ~20% chance of penalty being overturned; ~30% if review favours defending team
-        boolean overturned = random.nextDouble() < 0.20;
+        // ~25% chance of the penalty being overturned (referee misjudged the
+        // challenge, or it was not a penalty at all).
+        boolean overturned = random.nextDouble() < 0.25;
 
         lastVARDecision = overturned ? "PENALTY_OVERTURNED" : "PENALTY_CONFIRMED";
         return !overturned;
@@ -127,8 +139,8 @@ public class VARService implements EngineInterfaces.VARService {
     public String checkYellowCard(Player defender) {
         lastVARDecision = "NONE";
 
-        // Gate: review only ~10% of yellow cards
-        if (random.nextDouble() > 0.10) {
+        // Gate: review ~25% of cautions.
+        if (random.nextDouble() > 0.15) {
             lastVARDecision = "NO_REVIEW";
             return "CONFIRMED";
         }

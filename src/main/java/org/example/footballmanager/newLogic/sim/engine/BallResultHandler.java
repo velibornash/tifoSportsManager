@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.sim.model.Position;
 import org.example.footballmanager.newLogic.sim.recording.MatchRecorder;
 import org.example.footballmanager.newLogic.sim.result.ProposalStatsCollector;
 import org.example.footballmanager.newLogic.sim.restarts.RestartManager;
+import org.example.footballmanager.newLogic.sim.rules.VARService;
 
 /**
  * Handles a single ball-physics step result: converts low-level physics
@@ -21,13 +22,21 @@ public class BallResultHandler {
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
     private final RestartManager restartManager;
+    private final VARService varService;
 
     public BallResultHandler(MatchState state, MatchRecorder recorder,
                              ProposalStatsCollector stats, RestartManager restartManager) {
+        this(state, recorder, stats, restartManager, null);
+    }
+
+    public BallResultHandler(MatchState state, MatchRecorder recorder,
+                             ProposalStatsCollector stats, RestartManager restartManager,
+                             VARService varService) {
         this.state = state;
         this.recorder = recorder;
         this.stats = stats;
         this.restartManager = restartManager;
+        this.varService = varService;
     }
 
     public void handle(BallStepResult res) {
@@ -167,6 +176,37 @@ public class BallResultHandler {
                             return;
                         }
                         String scorerTeam = res.getScorerTeam();
+
+                        // VAR goal check — a goal can be overturned for offside, a
+                        // foul in the build-up, a handball or a disallowed restart.
+                        // {@code checkGoal} existed but was never called from
+                        // anywhere, so this whole overturn path was dead code and
+                        // VAR never changed a goal. Run it BEFORE the goal is
+                        // counted, so an overturned goal leaves no trace in the
+                        // scoreline or the stats.
+                        if (varService != null
+                                && !varService.checkGoal(scorerTeam, state.getBall().getPosition())) {
+                            String defending = "HOME".equals(scorerTeam) ? "AWAY" : "HOME";
+                            String overturnedMsg = "*** GOAL DISALLOWED by VAR for "
+                                    + scorerTeam + " — free kick to " + defending;
+                            log("VAR", overturnedMsg);
+                            recorder.appendEvent(state.getMatchTicks(), "GOAL_DISALLOWED",
+                                    overturnedMsg, state);
+                            recorder.appendEvent(state.getMatchTicks(), "VAR_GOAL_OVERTURNED",
+                                    "VAR GOAL OVERTURNED — " + overturnedMsg,
+                                    scorerTeam, state.getLastTouchPlayer(), null,
+                                    null, null,
+                                    Integer.valueOf(state.getHomeGoals()),
+                                    Integer.valueOf(state.getAwayGoals()),
+                                    null, null, null, null, "GOAL", "OVERTURNED");
+                            state.setLastShooter(null);
+                            state.clearPassContext();
+                            state.setRestartTeam(defending);
+                            restartManager.handleFreeKick(state,
+                                    state.getBall().getPosition(), defending);
+                            return;
+                        }
+
                         if ("HOME".equals(scorerTeam)) state.addHomeGoal();
                         else state.addAwayGoal();
                         Player scorer = state.getLastTouchPlayer() != null ? state.getLastTouchPlayer() : shooter;

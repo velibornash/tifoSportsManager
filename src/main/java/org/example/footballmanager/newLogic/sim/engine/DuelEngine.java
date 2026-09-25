@@ -26,6 +26,20 @@ public class DuelEngine {
     public static final int DRIBBLE_COOLDOWN_TICKS = 7;
 
     /**
+     * Last tick each unordered pair contested, so the same challenge is not
+     * re-judged every tick while the two players stay in contact.
+     *
+     * This used to be a stub that always returned false ("would track last duel
+     * tick in state"). With a presser parked within PRESS_DRIB_DUEL_RADIUS the
+     * duel therefore fired EVERY tick: 713 duels per match, and — because a
+     * defender win also runs the discipline check — roughly 350 independent
+     * chances per match to be whistled, which is where 28 fouls, 6 penalties and
+     * 2.7 reds per match came from. A challenge is judged once, not once per
+     * frame of contact.
+     */
+    private final java.util.Map<String, Integer> lastDuelTick = new java.util.HashMap<>();
+
+    /**
      * Check if a duel should be triggered between attacker and defender.
      * Returns duel type if duel fires, null otherwise.
      */
@@ -47,20 +61,29 @@ public class DuelEngine {
                 ? PRESS_DRIB_DUEL_RADIUS
                 : DRIBBLE_DUEL_RADIUS;
         if (distance <= dribbleRadius) {
-            if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS)) {
+            if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS, state)) {
+                markDuel(attacker, defender, state);
                 return DuelType.DRIBBLE;
             }
         }
 
         // Receive pass duel
         if (distance <= RECEIVE_PASS_RADIUS && attacker.getTarget() != null) {
-            return DuelType.RECEIVE_PASS;
+            if (!isOnCooldown(attacker, defender, DUEL_COOLDOWN_TICKS, state)) {
+                markDuel(attacker, defender, state);
+                return DuelType.RECEIVE_PASS;
+            }
+            return null;
         }
 
         // Shot block
         if (distance <= SHOT_BLOCK_RADIUS && state.getCarrier() != null) {
             // Check if defender is between ball and goal
-            return DuelType.SHOT_BLOCK;
+            if (!isOnCooldown(attacker, defender, DUEL_COOLDOWN_TICKS, state)) {
+                markDuel(attacker, defender, state);
+                return DuelType.SHOT_BLOCK;
+            }
+            return null;
         }
 
         return null; // no duel
@@ -145,9 +168,21 @@ public class DuelEngine {
         };
     }
 
-    private boolean isOnCooldown(Player a, Player b, int cooldown) {
-        // Simplified - would track last duel tick in state
-        return false;
+    /** True when this pair contested less than {@code cooldown} ticks ago. */
+    private boolean isOnCooldown(Player a, Player b, int cooldown, MatchState state) {
+        Integer last = lastDuelTick.get(pairKey(a, b));
+        if (last == null) return false;
+        return state.getMatchTicks() - last < cooldown;
+    }
+
+    private void markDuel(Player a, Player b, MatchState state) {
+        lastDuelTick.put(pairKey(a, b), state.getMatchTicks());
+    }
+
+    /** Order-independent key, so (a,b) and (b,a) are the same contest. */
+    private static String pairKey(Player a, Player b) {
+        String ka = a.getId(), kb = b.getId();
+        return ka.compareTo(kb) <= 0 ? ka + "|" + kb : kb + "|" + ka;
     }
 
     public enum DuelType {

@@ -139,7 +139,77 @@ svaka egzaktna nejednakost išla AWAY-ju (poslednji u listi) — sada striktan
 
 Puni test suite: **63 testova, 0 grešaka**.
 
-## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.8)
+### ⚙️ Sesija 7.10 — kalibracija discipline, offside pravilo, THRU/CENTER/CROSS, VAR, blokovi
+
+**CLEAR van defanzivne trećine = VETO (kao i šut).** Isti bug kao kod šuta: score
+`-40` je i dalje pobeđivao `PASS=-60..-90` i `DRIBBLE=-60`, pa je čišćenje
+bilo birano kad je bilo "najmanje loša" opcija — i to **u protivničkoj polovini**,
+gde "čisti od svog gola" šalje loptu ka protivnikovoj gol liniji. Mereno: 41%
+AWAY i 32% HOME čišćenja je polazilo iz pogrešne polovine. Posledica: 59 gol
+autova po meču, teritorijalna asimetrija (HOME 37 gol autova vs AWAY 22, AWAY
+9.2 kornera vs HOME 0.3), posed 56/44 i razlika u broju pasova 288 vs 185.
+Rezultat: gol autovi **19/20**, korneri **0.8/3.6**, posed **50.4/49.6**, pasovi
+**295/265**, udaljenost 11% (bila 56%).
+
+**Disciplina — kriterijumi prilagođeni.** Bilo 6.9 penala i 2.7 crvenih po meču
+(realno 0.27 i 0.2). Uzrok: 24% SVIH prekršaja u kaznenom prostoru postajalo
+je penal (realno ~1%). `isInsidePenaltyArea` je vraćala "u prostoru" bez
+ikakve verovatnoće, a kazneni prostor je imao 3x veću dubinu za HOME. Sada:
+`PENALTY_FROM_BOX_FOUL = 0.06` (prekršaj u prostoru je samo KANDIDAT za
+penal), uža kolona (2.5-5.5 = stvarna širina 40.3 m), `STRAIGHT_RED_RATE`
+0.02 → 0.004, `YELLOW_RATE` 0.35 → 0.20. Rezultat: penali **0.2**, žuti
+**4.7**, crveni **1.1**. Takođe implementiran `DuelEngine.isOnCooldown` koji je
+bio stub koji UVEK vraća false — duelovi su se ponavljali svaki tick dok je
+pritisak trajao.
+
+**Offside po korisnikovom pravilu.** "Kad je vise od 0.5 cella igrac u
+offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze da krene
+pass... veci skill ce retko gadati offside." U `CleanDecisionEngine`:
+`OFFSIDE_HARD_LIMIT = 0.5` ćelija → meta se uopšte NE razmatra; unutar 0.5
+igrac je kandidat, ali se pass igra samo ako `carrierWillRiskOffside(carrier)`
+prođe — verovatnoća 0.95 (playmaking 1) do 0.10 (playmaking 20). U
+`OffsideService` zvižduk je na 0.30 ćelije (4.2 m), pa je "malo van linije"
+prihvaćeno. Offside: 0 → **7.0** po meču (realno 2-4).
+
+**Nova akcija: THRU / CENTER / CROSS.** `ActionType` je dobio tri vrednosti sa
+punim ciklusom (skorovanje, izvršenje, statistika, događaj):
+- **THRU** — vođeni pas u prostor IZA linije odbrane za napadača; traži
+  timskog igrača na liniji ili iza nje (`offsideMargin <= 0`), boduje brzinu i
+  prostor iza njega, frekvencija `0.032` (realno 5-10 po meču).
+- **CROSS** — visoki pas sa bočne strane u kazneni prostor, meta je napadač u
+  prostoru, cilja se preko lopte ka golu.
+- **CENTER** — isti visoki pas, ali iz manje ekstremne bočne pozicije, u centar
+  prostora. Frekvencija 0.45.
+Svi se broje kao PASSOVI za tačnost, ali imaju svoju statistiku i svoj događaj.
+Rezultat: **13.1 / 16.2 / 53.0** po meču (realno 5-10 / 15-25 / 25-35).
+
+**VAR — prevrti više nisu nemogući.** `VARService.checkGoal` je POSTOJALO ali se
+NIJE NIKUDA zvao — dakle gol se nikad nije mogao preglasiti (ofsajd, prekršaj u
+nastavku, rukomet). Sada se zove u `BallResultHandler` pre brojanja gola:
+prevrt daje `GOAL_DISALLOWED` + `VAR_GOAL_OVERTURNED` i slobodan udarac
+protivniku, bez traga u rezultatu ni statistici. Kapije pregleda su podignute
+(goal 4%→15%, offside 4%→25%, crveni 10%→40%, penal 5%→55%, žuti 10%→15%) i
+verovatnoće prevrtaju (goal 8%→28%, crveni 25%→30%, penal 20%→25%).
+Rezultat: pregleda **2.7**, prevrti **0.6** po meču (bilo 0.0).
+
+**Blokovi — odgovor na pitanje "da li uopste imamo block kategoriju".** Postojala
+je cea infrastruktura (`BallStepResult.block`, `BLOCK` događaj, `stats.onBlock`,
+kolona `blocks` kod igrača) ALI `ev = "BLOCK"` se nigde nije dodeljivao — dakle
+je bila mrtva i nijedan blok se nije mogao desiti (0.0 po meču). Sada
+obranin u `SHOT_BLOCK_R` (0.18 ćelija = 2.5 m) linije leta šuta parira loptu.
+Rezultat: **6.6** po meču (realno 2-4).
+
+**Lopta i aut.** Nema nikakvog klampovanja lopte u letu — `stepBall` postavlja
+poziciju slobodno pa tek proverava `isOOB`, a `clampToField` važi samo za
+taktičke meteže igrača. Dakle lopta slobodno izlazi ako ima brzinu, kao što je
+traženo; ništa ovde nije menjano. Autovi su ipak ređi od realnosti (16.6 vs
+35-45) jer lopta izlazi uglavnom preko gol-linije (čišćenje se lanci iz
+`MAX_BALL_SPEED`, v²/2a ≈ 7.5 ćelija bez obzira na metu od 2 ćelije), a ne
+preko aut linije.
+
+Puni test suite: **63 testova, 0 grešaka**. Stanje: `PROPOSAL_SEASON_REPORT.md`.
+
+## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.9)
 
 ### P6 — kalibracija pass completion-a (76% → 84%)
 

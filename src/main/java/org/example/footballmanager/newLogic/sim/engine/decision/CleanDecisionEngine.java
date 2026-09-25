@@ -23,12 +23,23 @@ import java.util.List;
 public class CleanDecisionEngine {
 
     /**
-     * A receiver further than this (in cells) beyond the second-to-last defender
-     * is CLEARLY offside and is never picked as a pass target. Mirrors
-     * {@code OffsideService.OFFSIDE_WHISTLE_MARGIN} (0.2 cells = 2.8 m) so the
-     * decision layer never chooses a pass the rules layer will kill.
+     * Beyond this (in cells, 1 cell = 14 m) a receiver is CLEARLY offside and is
+     * never a pass target: 0.5 cells = 7 m, per the user's rule ("kad je vise od
+     * 0.5 cella igrac u offside, sto je 7m, nema ni smisla da ide pass").
      */
-    private static final double OFFSIDE_WHISTLE_MARGIN = 0.2;
+    private static final double OFFSIDE_HARD_LIMIT = 0.5;
+
+    /**
+     * Chance that a carrier with the given playmaking skill (1-20) still plays a
+     * pass to a team-mate standing inside the 7 m offside band. Skill 1 plays it
+     * ~95% of the time, skill 20 ~10%: "veci skill ce retko gadati offside".
+     */
+    private static boolean carrierWillRiskOffside(Player carrier) {
+        int pm = (int) Math.round(carrier.getSkills().playmaking());
+        double pmClamped = Math.max(1, Math.min(20, pm));
+        double chance = 0.95 - (pmClamped - 1) / 19.0 * 0.85;
+        return SimulationRandom.nextDouble() < chance;
+    }
 
     /**
      * Score that makes an action strictly worse than every real alternative, so
@@ -44,6 +55,20 @@ public class CleanDecisionEngine {
      * every touch. Tuned with `ProposalSeasonDiag 150 42`.
      */
     private static final double SHOT_FREQUENCY_GATE = 0.17;
+
+    /**
+     * Share of eligible moments that become a through ball. Real sides play
+     * 5-10 per match; at 0.4 the engine played 106 a match. A good playmaker
+     * reads the defence more often, so the gate scales with the skill.
+     */
+    private static final double THRU_FREQUENCY_GATE = 0.032;
+
+    /**
+     * Share of eligible moments that become a cross or a centre. Real sides
+     * deliver 15-25 crosses and 25-35 centres a match, i.e. these are ROUTINE
+     * in the final third, not a special event.
+     */
+    private static final double DELIVERY_FREQUENCY_GATE = 0.45;
 
     private static final double[] PLAYMAKING_ACCURACY_TABLE = {
         0.40, 0.42, 0.44, 0.46, 0.48, 0.50, 0.52, 0.54, 0.56, 0.58,  // 1-10
@@ -84,6 +109,12 @@ public class CleanDecisionEngine {
         DecisionOption carryOption = scoreCarryOptions(state, carrier);
         DecisionOption shotOption = scoreShotOptions(state, carrier);
         DecisionOption clearOption = scoreClearOptions(state, carrier);
+        // Distinct attacking deliveries (previously every one of them was a
+        // generic PASS, so the engine had no way to get a ball behind a defence
+        // or into a box and the report could not show them).
+        DecisionOption thruOption = scoreThruOptions(state, carrier);
+        DecisionOption crossOption = scoreCrossOptions(state, carrier);
+        DecisionOption centerOption = scoreCenterOptions(state, carrier);
 
         // Apply playmaking-based selection (not hard rules)
         double pmSkill = carrier.getSkills().playmaking();
@@ -102,8 +133,14 @@ public class CleanDecisionEngine {
         double carrierRow = carrier.getPosition().getRow();
         boolean finalTwoRows = home ? carrierRow >= 6.0 : carrierRow <= 3.0;
         if (finalTwoRows && chosen.getType() == ActionType.DRIBBLE) {
+            // By the line the carrier must shoot OR deliver — never keep dribbling.
             if (shotOption.getScore() >= 0) {
                 chosen = shotOption;
+            } else {
+                DecisionOption delivery = bestDelivery(thruOption, crossOption, centerOption);
+                if (delivery != null) {
+                    chosen = delivery;
+                }
             }
         }
 
@@ -117,10 +154,12 @@ public class CleanDecisionEngine {
             state.getActionLogger().log("DEC",
                     state.getActionLogger().formatDecision(carrier,
                             new DecisionResult(chosen,
-                                    List.of(passOption, carryOption, shotOption, clearOption))));
+                                    List.of(passOption, carryOption, shotOption, clearOption,
+                                            thruOption, crossOption, centerOption))));
         }
 
-        return new DecisionResult(chosen, List.of(passOption, carryOption, shotOption, clearOption));
+        return new DecisionResult(chosen, List.of(passOption, carryOption, shotOption, clearOption,
+                thruOption, crossOption, centerOption));
     }
 
     private DecisionOption scorePassOptions(MatchState state, Player carrier, Player receiver) {
@@ -353,9 +392,180 @@ public class CleanDecisionEngine {
         return home ? 8.0 - row : row - 1.0;
     }
 
+    /** First non-vetoed option among the deliveries (used by the final-row rule). */
+    private static DecisionOption bestDelivery(DecisionOption... options) {
+        DecisionOption best = null;
+        for (DecisionOption o : options) {
+            if (o == null || o.getScore() <= UNAVAILABLE) continue;
+            if (best == null || o.getScore() > best.getScore()) best = o;
+        }
+        return best != null && best.getScore() > 0 ? best : null;
+    }
+
+    /**
+     * THROUGH BALL — a driven pass played into the space BEHIND the defensive
+     * line for a forward to run onto ("eventualno iza ledja odbrane za spica").
+     *
+     * Requires an onside team-mate beyond the second-to-last defender (the
+     * offside margin must be <= 0, i.e. level with or behind the line) and
+     * rewards the striker skill of that team-mate plus the carrier's playmaking.
+     */
+    private DecisionOption scoreThruOptions(MatchState state, Player carrier) {
+        StringBuilder reason = new StringBuilder("THRU: ");
+        String team = carrier.getTeam();
+        double carrierRow = carrier.getPosition().getRow();
+        boolean home = "HOME".equals(team);
+        // Only worth playing from the attacking half.
+        boolean inAttackingHalf = home ? carrierRow >= 3.0 : carrierRow <= 6.0;
+        if (!inAttackingHalf) {
+            return new DecisionOption(ActionType.THRU, null, UNAVAILABLE, "THRU: not in attacking half");
+        }
+
+        Player best = null;
+        double bestScore = -Double.MAX_VALUE;
+        for (Player mate : state.getPlayers()) {
+            if (!mate.getTeam().equals(team) || mate.equals(carrier)) continue;
+            if (mate.isUnavailable()) continue;
+            // Must be ON the line or behind it — a pass beyond it is offside.
+            if (offsideMargin(state, carrier, mate) > 0) continue;
+            // Prefer a forward.
+            double score = mate.isAttacker() ? 30.0 : 0.0;
+            score += mate.getSkills().pace() * 1.5;          // he has to run onto it
+            score -= SimUtils.distance(carrier.getPosition(), mate.getPosition()) * 4.0;
+            // Space behind him: the further the defensive line is up the pitch,
+            // the more room he has to run into.
+            double line = secondLastDefenderRow(state, team);
+            double spaceBehind = home ? line - mate.getPosition().getRow()
+                                      : mate.getPosition().getRow() - line;
+            score += Math.max(0, Math.min(1.5, spaceBehind)) * 20.0;
+            score -= calculateOpenness(state, mate) * 10.0;   // a marked striker is useless
+            if (score > bestScore) {
+                bestScore = score;
+                best = mate;
+            }
+        }
+        if (best == null) {
+            return new DecisionOption(ActionType.THRU, null, UNAVAILABLE, "THRU: nobody behind the line");
+        }
+
+        // Playmaking decides whether the through ball is actually played. The
+        // gate is small on purpose: a real side plays ~5-10 through balls a
+        // match, not one every time a forward happens to be level with the line.
+        double pm = carrier.getSkills().playmaking();
+        if (SimulationRandom.nextDouble() > THRU_FREQUENCY_GATE) {
+            return new DecisionOption(ActionType.THRU, null, UNAVAILABLE, "THRU: freq gate");
+        }
+
+        double score = 10.0 + bestScore * 0.5
+                + carrier.getSkills().passing() * 0.20 + pm * 0.25
+                - calculatePressure(state, carrier) * 20.0;
+        reason.append(String.format("pace %.0f behind-line %.2f -> %s",
+                best.getSkills().pace(), 0.0, best.getLabel()));
+        return new DecisionOption(ActionType.THRU, best, score, reason.toString());
+    }
+
+    /**
+     * CROSS — a lofted delivery from the FLANK into the box for a team-mate to
+     * attack. The wide player ("po strani u prostor za bocnog igraca") is the
+     * crosser; the target is the best-attacking team-mate inside the box.
+     */
+    private DecisionOption scoreCrossOptions(MatchState state, Player carrier) {
+        return scoreBoxDelivery(state, carrier, true);
+    }
+
+    /**
+     * CENTER — the same lofted delivery into the box, but from a less extreme
+     * wide position, aimed at the middle of the area rather than the far side.
+     */
+    private DecisionOption scoreCenterOptions(MatchState state, Player carrier) {
+        return scoreBoxDelivery(state, carrier, false);
+    }
+
+    /**
+     * Shared scoring for CROSS (from the flank) and CENTER (from a wide but not
+     * extreme position). Both need a ball in the final third and a team-mate in
+     * the box; they differ in how far from the centre line the crosser must be.
+     */
+    private DecisionOption scoreBoxDelivery(MatchState state, Player carrier, boolean fromFlank) {
+        ActionType type = fromFlank ? ActionType.CROSS : ActionType.CENTER;
+        StringBuilder reason = new StringBuilder(type + ": ");
+        String team = carrier.getTeam();
+        double row = carrier.getPosition().getRow();
+        boolean home = "HOME".equals(team);
+        boolean inFinalThird = home ? row >= 5.0 : row <= 4.0;
+        if (!inFinalThird) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": not in final third");
+        }
+        double wide = Math.abs(carrier.getPosition().getColumn() - 4.0);
+        if (fromFlank && wide < 1.5) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": not wide enough");
+        }
+        if (!fromFlank && (wide < 0.5 || wide > 2.5)) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": not in a crossing position");
+        }
+
+        // Best attacker inside the box, and how many team-mates are in there.
+        Player target = null;
+        double bestAttack = -Double.MAX_VALUE;
+        int inBox = 0;
+        for (Player mate : state.getPlayers()) {
+            if (!mate.getTeam().equals(team) || mate.equals(carrier)) continue;
+            if (mate.isUnavailable()) continue;
+            if (!isInBox(state, mate, team)) continue;
+            inBox++;
+            double attack = mate.getSkills().striker() * 1.2 + mate.getSkills().technique() * 0.8
+                    + (mate.isGoalkeeper() ? -50 : 0);
+            if (attack > bestAttack) {
+                bestAttack = attack;
+                target = mate;
+            }
+        }
+        if (target == null || inBox < 2) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": nobody in the box");
+        }
+
+        double pm = carrier.getSkills().playmaking();
+        if (SimulationRandom.nextDouble() > DELIVERY_FREQUENCY_GATE) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": freq gate");
+        }
+
+        double score = 8.0
+                + carrier.getSkills().technique() * 0.30 + pm * 0.30
+                + carrier.getSkills().passing() * 0.20
+                + Math.min(3, inBox) * 4.0
+                - calculatePressure(state, carrier) * 15.0
+                - SimUtils.distance(carrier.getPosition(), target.getPosition()) * 1.5;
+        reason.append(String.format("%d in box, %s (striker %.0f) width %.1f",
+                inBox, target.getLabel(), target.getSkills().striker(), wide));
+        return new DecisionOption(type, target, score, reason.toString());
+    }
+
+    /** Is this player inside the penalty area the given team is attacking? */
+    private boolean isInBox(MatchState state, Player player, String attackingTeam) {
+        boolean home = "HOME".equals(attackingTeam);
+        double row = player.getPosition().getRow();
+        boolean inRows = home ? row >= 6.5 : row <= 2.5;
+        return inRows && Math.abs(player.getPosition().getColumn() - 3.5) <= 1.5;
+    }
+
+    /** Row of the second-to-last defender of the team ATTACKING (the offside line). */
+    private double secondLastDefenderRow(MatchState state, String attackingTeam) {
+        boolean home = "HOME".equals(attackingTeam);
+        String defendingTeam = home ? "AWAY" : "HOME";
+        java.util.List<Double> rows = new ArrayList<>();
+        for (Player opp : state.getPlayers()) {
+            if (!defendingTeam.equals(opp.getTeam())) continue;
+            if (opp.isSentOff() || opp.isInjured()) continue;
+            rows.add(opp.getPosition().getRow());
+        }
+        if (rows.size() < 2) return home ? 8.0 : 1.0;
+        rows.sort(home ? Comparator.reverseOrder() : Comparator.naturalOrder());
+        return rows.get(1);
+    }
+
     private DecisionOption scoreClearOptions(MatchState state, Player carrier) {
         double score = 0.0;
-        StringBuilder reason = new StringBuilder("CLEAR: ");
+        StringBuilder reason = new StringBuilder();
 
         // Only clear when under pressure in defensive third. Mirrored about 4.5:
         // HOME defends rows 1.0-3.0 (2 cells from its own goal at 1.0), so AWAY
@@ -365,10 +575,17 @@ public class CleanDecisionEngine {
         double carrierRow = carrier.getPosition().getRow();
         boolean inDefensiveThird = "HOME".equals(team) ? carrierRow <= 3.0 : carrierRow >= 6.0;
 
+        // Same lesson as the shot gate: this has to be a VETO. At -40 the
+        // clearance still beat PASS=-60..-90 and DRIBBLE=-60, so it was picked
+        // whenever it was the least-bad option — including deep in the OPPONENT's
+        // half, where "clear away from my own goal" hoofed the ball at the
+        // opponent's goal line. Measured: 41% of AWAY clearances and 32% of HOME
+        // clearances were launched from the wrong half, which sent the ball out
+        // for goal kicks 59 times a match and produced the whole territorial skew
+        // (HOME 37 goal kicks vs AWAY 22, AWAY 9.2 corners vs HOME 0.3).
         if (!inDefensiveThird) {
-            score = -40.0;
-            reason.append("not in defensive third");
-            return new DecisionOption(ActionType.CLEAR, null, score, reason.toString());
+            return new DecisionOption(ActionType.CLEAR, null, UNAVAILABLE,
+                    "CLEAR: not in defensive third");
         }
 
         // Pressure from opponents
@@ -387,7 +604,7 @@ public class CleanDecisionEngine {
         reason.append("clearance ");
 
         reason.append(String.format("pressure %.1f", pressure));
-        return new DecisionOption(ActionType.CLEAR, null, score, reason.toString());
+        return new DecisionOption(ActionType.CLEAR, null, score, "CLEAR: " + reason);
     }
 
     private Player findBestReceiver(MatchState state, Player carrier) {
@@ -401,18 +618,23 @@ public class CleanDecisionEngine {
         for (Player teammate : state.getPlayers()) {
             if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
 
-            // A player does not pass to a teammate who is standing offside. The
-            // rules layer (OffsideService) kills such a pass at reception, so
-            // scoring it like any other target was pure self-sabotage: measured
-            // with ProposalPassFailDiag, 17.5 offsides per match (real football
-            // 1-3) and 20% of ALL failed passes. Clearly-offside targets are
-            // excluded outright; marginal ones (inside the 0.2-cell tolerance)
-            // take a heavy score penalty so an onside alternative wins unless
-            // the carrier is truly stuck.
+            // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
+            // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
+            // da krene pass... veci skill ce retko gadati offside".
+            //  - beyond 0.5 cells (7 m) he is CLEARLY offside: never a target.
+            //  - inside 0.5 cells the pass may be played, and whether the carrier
+            //    actually does it depends on his PLAYMAKING skill (1-20): a
+            //    poor passer sees the flag and plays it anyway, a good one
+            //    almost never does.
+            // The rules layer (OffsideService) kills such a pass at reception, so
+            // selecting purely-offside targets was self-sabotage: measured with
+            // ProposalPassFailDiag, 17.5 offsides per match and 20% of all
+            // failed passes.
             double offsideMargin = offsideMargin(state, carrier, teammate);
-            if (offsideMargin > OFFSIDE_WHISTLE_MARGIN) {
-                continue;
+            if (offsideMargin > OFFSIDE_HARD_LIMIT) {
+                continue;   // clearly offside (>7 m) — not a passing option at all
             }
+            boolean marginalOffside = offsideMargin > 0;
 
             double openness = calculateOpenness(state, teammate);
             double dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
@@ -437,12 +659,14 @@ public class CleanDecisionEngine {
             } else if (dist < 0.7) {
                 distancePenalty = 8.0; // too close, not progressive
             }
-            // Marginal offside = plays on with a whistle risk: heavy penalty.
-            double offsidePenalty = offsideMargin > 0 ? 120.0 : 0.0;
+            // Marginal offside: the pass is still an option, but only if the
+            // carrier's playmaking lets him get away with it.
+            if (marginalOffside && !carrierWillRiskOffside(carrier)) {
+                continue;
+            }
             double score = direction + openScore + Math.max(0, prox) * 2.0
                     - distancePenalty
-                    - lanePenalty
-                    - offsidePenalty;
+                    - lanePenalty;
             if (score > bestScore) {
                 bestScore = score;
                 best = teammate;

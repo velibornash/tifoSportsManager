@@ -103,6 +103,30 @@ public class ProposalStatsCollector {
     }
 
     /** Call from decision block when DRIBBLE is executed (changed = true). */
+    /** A THROUGH BALL played into the space behind the defence. */
+    public void onThroughBall(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.throughBalls++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.throughBalls++;
+    }
+
+    /** A CROSS from the flank into the box. */
+    public void onCross(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.crosses++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.crosses++;
+    }
+
+    /** A CENTER — lofted delivery into the middle of the box. */
+    public void onCenter(String team, String playerId) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.centers++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) pa.centers++;
+    }
+
     public void onDribble(String team, String playerId) {
         TeamAcc ta = teams.get(team);
         if (ta != null) ta.dribbles++;
@@ -290,6 +314,7 @@ public class ProposalStatsCollector {
                 ta.passesAttempted, ta.passesCompleted, ta.dribbles,
                 ta.clearances, ta.interceptions, ta.deflections, ta.blocks, ta.saves,
                 ta.corners, ta.goalKicks, ta.throwIns, ta.offsides,
+                ta.throughBalls, ta.crosses, ta.centers,
                 ta.fouls, ta.yellowCards, ta.redCards,
                 Math.round(poss * 10.0) / 10.0,
                 avgDur, posLongest[idx]
@@ -307,6 +332,7 @@ public class ProposalStatsCollector {
                         p.passesAttempted, p.passesCompleted,
                         p.dribbles, p.clearances, p.interceptions, p.deflections,
                         p.blocks, p.saves, p.tackles, p.duelsWon,
+                        p.throughBalls, p.crosses, p.centers,
                         p.foulsCommitted, p.yellowCards, p.redCards,
                         minutesPlayed(p.player),
                         calculateRating(p)
@@ -367,6 +393,9 @@ public class ProposalStatsCollector {
         m.put("blocks", ps.blocks());
         m.put("saves", ps.saves());
         m.put("tackles", ps.tackles());
+        m.put("throughBalls", ps.throughBalls());
+        m.put("crosses", ps.crosses());
+        m.put("centers", ps.centers());
         m.put("duelsWon", ps.duelsWon());
         m.put("minutesPlayed", ps.minutesPlayed());
         m.put("rating", Math.round(ps.rating() * 10.0) / 10.0);
@@ -394,6 +423,7 @@ public class ProposalStatsCollector {
         int passesAttempted, passesCompleted, dribbles, clearances;
         int interceptions, deflections, blocks, saves;
         int corners, goalKicks, throwIns, offsides;
+        int throughBalls, crosses, centers;
         int fouls, yellowCards, redCards;
         int penalties;
         TeamAcc(String name) { this.teamName = name; }
@@ -405,6 +435,7 @@ public class ProposalStatsCollector {
         int passesAttempted, passesCompleted, dribbles, clearances;
         int interceptions, deflections, blocks, saves;
         int tackles, duelsWon;
+        int throughBalls, crosses, centers;
         int foulsCommitted, yellowCards, redCards;
         PlayerAcc(Player p) { this.player = p; }
     }

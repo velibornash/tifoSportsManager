@@ -93,7 +93,7 @@ public class MatchOrchestrator {
         // spec), not just the change-gated orchestrator DEC/EXE summaries.
         state.setActionLogger(actionLog);
         stats.registerPlayers(state.getPlayers());
-        ballResultHandler = new BallResultHandler(state, recorder, stats, restartManager);
+        ballResultHandler = new BallResultHandler(state, recorder, stats, restartManager, varService);
     }
 
     public List<String> getEventLog() { return eventLog; }
@@ -246,6 +246,20 @@ public class MatchOrchestrator {
             // Feed the stats collector for each executed action (one per decision change).
             switch (decision.getType()) {
                 case PASS -> stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                // A through ball, cross and centre are all PASSES for the
+                // pass-accuracy counters, and additionally get their own stat.
+                case THRU -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onThroughBall(carrier.getTeam(), carrier.getId());
+                }
+                case CROSS -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onCross(carrier.getTeam(), carrier.getId());
+                }
+                case CENTER -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onCenter(carrier.getTeam(), carrier.getId());
+                }
                 case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
                 case DRIBBLE -> {
                     if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());

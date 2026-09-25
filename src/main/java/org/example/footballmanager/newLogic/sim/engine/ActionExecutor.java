@@ -29,6 +29,15 @@ public class ActionExecutor {
             case PASS:
                 executePass(state, decision);
                 break;
+            case THRU:
+                executeThroughBall(state, decision);
+                break;
+            case CROSS:
+                executeCross(state, decision);
+                break;
+            case CENTER:
+                executeCenter(state, decision);
+                break;
             case SHOT:
                 executeShot(state, decision);
                 break;
@@ -167,6 +176,103 @@ public class ActionExecutor {
                 pos.getRow() + dr / len * nudge,
                 pos.getColumn() + dc / len * nudge
         );
+    }
+
+    /**
+     * THROUGH BALL — a driven pass into the space BEHIND the defensive line.
+     *
+     * The ball is played into open space ahead of the striker rather than at
+     * his feet, so the receiver runs onto it: the aim point is pushed forward
+     * along the attack direction by the room he has behind him, and the pass is
+     * driven flat and hard (a lofted ball there would be a different action).
+     */
+    private void executeThroughBall(MatchState state, DecisionOption decision) {
+        Player carrier = state.getCarrier();
+        Player runner = decision.getTarget();
+        if (carrier == null || runner == null) return;
+        state.clearPassContext();
+
+        boolean home = "HOME".equals(carrier.getTeam());
+        Position from = carrier.getPosition();
+        Position runnerPos = runner.getPosition();
+        // How far behind him is the last defender? That is the room to play into.
+        double line = lastDefenderRow(state, carrier.getTeam());
+        double room = home ? line - runnerPos.getRow() : runnerPos.getRow() - line;
+        double lead = Math.max(0.4, Math.min(1.6, room));
+        Position aim = new Position(
+                runnerPos.getRow() + (home ? lead : -lead),
+                runnerPos.getColumn());
+
+        launchDelivery(state, carrier, runner, aim, false,
+                ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing()));
+    }
+
+    /**
+     * CROSS — a lofted delivery from the flank into the box. Aimed at the
+     * receiving team-mate's actual position with a small spread, lofted (air
+     * deceleration) so it drops into the area.
+     */
+    private void executeCross(MatchState state, DecisionOption decision) {
+        executeBoxDelivery(state, decision, true);
+    }
+
+    /** CENTER — the same lofted delivery into the middle of the box. */
+    private void executeCenter(MatchState state, DecisionOption decision) {
+        executeBoxDelivery(state, decision, false);
+    }
+
+    private void executeBoxDelivery(MatchState state, DecisionOption decision, boolean fromFlank) {
+        Player carrier = state.getCarrier();
+        Player target = decision.getTarget();
+        if (carrier == null || target == null) return;
+        state.clearPassContext();
+
+        boolean home = "HOME".equals(carrier.getTeam());
+        Position targetPos = target.getPosition();
+        // A cross is served ACROSS the face of the goal, a centre goes to the
+        // middle of the area — so they aim at different columns.
+        double aimCol = fromFlank
+                ? (home ? targetPos.getColumn() + 0.8 : targetPos.getColumn() - 0.8)
+                : targetPos.getColumn();
+        Position aim = new Position(targetPos.getRow(), SimUtils.clamp(aimCol, 1.5, 6.5));
+
+        launchDelivery(state, carrier, target, aim, true,
+                BallPhysicsEngine.MAX_BALL_SPEED * 0.85);
+    }
+
+    /** Shared launch for THRU / CROSS / CENTER: aim, flight, pending receiver. */
+    private void launchDelivery(MatchState state, Player carrier, Player receiver,
+                                Position aim, boolean airborne, double speed) {
+        Ball ball = state.getBall();
+        state.getBallEngine().launch(ball, carrier.getPosition(), aim, speed, airborne, 0.15);
+
+        carrier.setTarget(null);
+        receiver.setTarget(null);
+        carrier.setStrikeHoldTicks(1);
+
+        state.setPendingReceiver(receiver);
+        state.setReceivePoint(aim);
+        state.setCarrier(null);
+        state.setLastTouchTeam(carrier.getTeam());
+        state.setLastTouchPlayer(carrier);
+        state.beginPass(carrier, receiver);
+
+        carrier.incrementConsecutiveCarries();
+        state.incrementPassAttempts();
+    }
+
+    /** Row of the LAST defender of the team being attacked (not the offside line). */
+    private double lastDefenderRow(MatchState state, String attackingTeam) {
+        String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
+        double last = "HOME".equals(attackingTeam) ? -Double.MAX_VALUE : Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (!defendingTeam.equals(p.getTeam())) continue;
+            if (p.isUnavailable()) continue;
+            double row = p.getPosition().getRow();
+            if ("HOME".equals(attackingTeam)) last = Math.max(last, row);
+            else last = Math.min(last, row);
+        }
+        return last;
     }
 
     /** Execute a SHOT action. */

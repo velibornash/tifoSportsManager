@@ -348,18 +348,32 @@ sidra GK-a 1.5/7.5), `ActionExecutor` (carry clamp, `clearDelta ±2.0`),
 `TacticsRules.desiredCell` (zrcalni dokaz histogram redova 506 pravila:
 HOME `{1.5:80 … 7.5:46}` = AWAY `{7.5:80 … 1.5:46}`).
 
+**Rezultat (200 mečeva, `ProposalSeasonDiag 200 42`):**
+
+| Metrika | Pre (11:1) | Sada | Realno |
+|---|---|---|---|
+| goals H/A | 0.92 / 0.08 | **3.4 / 3.6** | ~1/1 |
+| shots H/A | 3.8 / 7.3 | **12.7 / 13.5** | ≈jednako |
+| SOT H/A | 1.9 / 3.5 | **5.5 / 6.0** | ≈jednako |
+| pass volume H/A | 288 / 185 | **295 / 265** | ≈jednako |
+| possession HOME | 35% | **50.4%** | 50% |
+| gol autovi H/A | 37.0 / 21.7 | **18.1 / 20.1** | ≈jednako |
+| korneri H/A | 0.3 / 9.2 | **0.8 / 3.6** | ≈jednako |
+| rezultati (200) | — | **80 W / 89 W / 31 D** | ≈jednako |
+
+Uzrok zaostale teritorijalne asimetrije bio je isti "penal umesto veto" bug kao
+kod šuta, samo za `CLEAR` (detalji u `PROPOSAL_PROGRESS.md` 7.10).
+
 **Preostalo (otvoreno, zasebno):**
-- [ ] goals ratio još 2.2:1 (2.68/1.20) iako su šutovi, SOT, presretanja i
-      posed izjednačeni → problem je u KONVERZIJI: HOME pretvara 9.2% šutova u
-      gol, AWAY 3.7%, uz skoro isti save rate (65.6% vs 70.9%). Sledeći korak:
-      distribucija distance šuta po timu + `GK_SAVE_R` vs ugao leta lopte.
-- [ ] **HA-3 tie-break po redosledu liste.** `BallPhysicsEngine.nearestPlayer`
-      koristi `d <= bestD` (poslednji pobedjuje → AWAY, jer su AWAY igrači
-      posle HOME u listi), dok `MovementEngine` chaser i `ActionExecutor` marker
-      koriste `d < bestD` (prvi pobedjuje → HOME). Pošto su oblici TAČNO zrcalni,
-      svaki par na osi simetrije je jednako udaljen — a to se dešava
-      sistematski (col 3.5 je i centar mreže i kolona svih restart spotova).
-      Potrebno: striktan `<` + eksplicitan deterministički tie-break.
+- [~] HA-3 tie-break — `BallPhysicsEngine.nearestPlayer` je popravljen (striktan
+      `<` + rotacija po tick-u, jer su oblici TAČNO zrcalni pa su
+      egzaktne nejednakosti sistematske, a ne egzotične). `MovementEngine`
+      chaser i `ActionExecutor` marker već koriste `<`; nije bilo merljivog
+      uticaja, pa se ne dira.
+- [ ] konverzija SOT→gol je 61% (realno ~30%), ali ukupan broj golova je dobar
+      jer ima MNOGO MANJE šutova u okvir nego u stvarnosti. Pravi fix je
+      gradijent model spašavanja (skill vratara + mesto udarca + brzina)
+      umesto fiksnog `GK_SAVE_R` geometrijskog dometa.
 - [~] **HA-9 `WE_HAVE_BALL` / `OPPONENT_HAS_BALL` pravila su no-op — NAMERNO
       ODLOŽENO (2026-09-25, vlasnik produkta).** Svih 506 pravila u
       `tactics_fallback.json` su IDENTIČNA za oba konteksta. To su za sada

@@ -93,8 +93,8 @@ public class ProposalSeasonDiag {
         System.out.printf("%nresults: HOME %d wins / AWAY %d wins / %d draws, %d scoreless (0-0), "
                         + "highest score %d goals%n",
                 homeWins, awayWins, draws, scoreless, maxGoals);
-        System.out.println("throughBalls / centers / crosses: NOT TRACKED by the engine "
-                + "(ActionType has no such values — every through ball, centre and cross is a PASS).");
+        System.out.println("throughBalls / centers / crosses: now real ActionTypes (THRU / CENTER / CROSS), "
+                + "counted as passes for accuracy AND with their own per-team counters.");
     }
 
     // ==================== accumulation ====================
@@ -128,9 +128,9 @@ public class ProposalSeasonDiag {
         add(into, "yellowCards", t.yellowCards());
         add(into, "redCards", t.redCards());
         add(into, "possession", t.possessionPercent());
-        add(into, "throughBalls", 0);
-        add(into, "centers", 0);
-        add(into, "crosses", 0);
+        add(into, "throughBalls", t.throughBalls());
+        add(into, "centers", t.centers());
+        add(into, "crosses", t.crosses());
 
         for (Map.Entry<String, Double> e : ev.entrySet()) {
             add(into, e.getKey(), e.getValue());

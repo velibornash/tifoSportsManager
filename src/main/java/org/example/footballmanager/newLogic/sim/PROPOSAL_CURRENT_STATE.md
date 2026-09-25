@@ -453,34 +453,31 @@ Full per-team report: **`PROPOSAL_SEASON_REPORT.md`**. Headline:
 
 | Metric | Proposal | Real football | Status |
 |---|---|---|---|
-| Goals/match | 4.9 (H 2.4 / A 2.6) | 2.7 | ✅ (owner target: up to 7) |
-| Shots/match | **23.6** (H 11.4 / A 12.2) | 25 | ✅ target met |
-| Shots on target | 9.1 | 8-9 | ✅ |
-| On-target rate | 39% | 33% | ✅ |
-| Pass completion | 85.6% | 80-86% | ✅ |
-| H/A goals | 2.4 / 2.6 | ≈1/1 | ✅ was 0.92 / 0.08 |
-| H/A shots | 11.4 / 12.2 | ≈1/1 | ✅ was 3.8 / 7.3 |
-| H/A shots on target | 4.5 / 4.6 | ≈1/1 | ✅ was 1.9 / 3.5 |
-| H/A results (200) | 80 W / 94 W / 26 D | ≈even | ✅ |
-| Possession | 56.3 / 43.7 | 50 / 50 | ⚠ last territorial skew |
-| Pass volume H/A | 288 / 185 | ≈equal | ❌ 56% apart |
-| Red cards | 2.7 | 0.2 | ❌ 13x |
-| Penalties | 3.9 | 0.27 | ❌ 15x |
-| Offsides | 0.0 | 2-4 | ❌ none flagged |
-| Dribbles | 246.9 | 40-60 | ❌ 4-5x |
-| Clearances | 133.8 | 20-30 | ❌ 4-5x |
-| Goal kicks | 58.7 | 12-15 | ❌ 4x |
-| Throw-ins | 20.1 | 35-45 | ❌ half |
-| Blocks | 0.0 | 2-4 | ❌ never parried |
-| Through balls / centres / crosses | not modelled | 5-35 | ⚠ no ActionType |
+| Goals/match | 7.0 (H 3.4 / A 3.6) | 2.7 | ✅ (owner target: up to 7) |
+| Shots/match | **26.3** (H 12.7 / A 13.5) | 25 | ✅ target met |
+| Shots on target | 11.5 | 8-9 | ⚠ slightly high |
+| Pass completion | 80.2% | 80-86% | ✅ |
+| Through balls / crosses / centres | 13.1 / 16.2 / 53.0 | 5-10 / 15-25 / 25-35 | ✅ tracked now |
+| Blocks | 6.6 | 2-4 | ✅ was structurally 0 |
+| Offsides | 7.0 | 2-4 | ⚠ slightly high |
+| Fouls | 27.8 | 22 | ⚠ high |
+| Yellow cards | 4.7 | 4-5 | ✅ was 7.5 |
+| Red cards | 1.1 | 0.2 | ⚠ 5x (was 2.7) |
+| Penalties | 0.2 | 0.27 | ✅ was 6.9 |
+| VAR reviews / overturned | 2.7 / 0.6 | 1-3 / 0.2-0.5 | ✅ overturn was impossible |
+| H/A goals | 3.4 / 3.6 | ≈1/1 | ✅ was 0.92 / 0.08 |
+| H/A shots | 12.7 / 13.5 | ≈1/1 | ✅ was 3.8 / 7.3 |
+| H/A pass volume | 295 / 265 | ≈equal | ✅ was 288 / 185 |
+| Possession | 50.4 / 49.6 | 50 / 50 | ✅ was 56 / 44 |
+| Results (200) | 80 W / 89 W / 31 D | ≈even | ✅ |
 
-**Shot calibration — the real cause of 83 shots/match.** The "frequency gate" was
-not a veto: it returned `-20`, which still beat `PASS=-60..-90`, `DRIBBLE=-60`
-and `CLEAR=-40`, so the shot was always the least-bad option in the final third.
-Fixed with a true `UNAVAILABLE` veto, `SHOT_FREQUENCY_GATE = 0.17`, a
-direction-aware "lane jammed" veto, `GK_SAVE_R` 0.75 → 0.28 cells (0.75 cells =
-10.5 m, which covered a 14 m goal mouth whole) and a lower on-target
-probability. 83.4 → 23.6 shots, 3.88 → 4.9 goals, 53.8 → 9.1 on target.
+**Three zeros were dead code, not tuning.** Blocks: `ev = "BLOCK"` was never
+assigned anywhere, so the block result, event, stat and player column could
+never fire. VAR overturns: `VARService.checkGoal` was never called, so a goal
+could never be overturned, and the other gates (4-10% review × 8-25% overturn)
+made them effectively never either. Through balls / centres / crosses:
+`ActionType` had no such values, so all three were ordinary `PASS` actions with
+no way to express "behind the defence" or "lofted into the box".
 
 **P0 — HOME/AWAY asymmetry: 6 mirror bugs found and fixed.** The squads were not
 mirror images (skills hashed from the *team name*, so mirrored midfield duels
