@@ -181,7 +181,9 @@ public class TransferService {
     public TransferDTO buyListedPlayer(Long playerId, Long buyerTeamId, Double offeredPrice) {
         Transfer transfer = getActiveTransfer(playerId);
         Team buyerTeam = loadTeam(buyerTeamId);
-        double price = normalizePrice(offeredPrice, transfer.getAskingPrice());
+        // A listed player is sold at (or above) the asking price only. resolveAgreedPrice is the
+        // single choke point that enforces this - it also protects direct-buy.
+        double price = resolveAgreedPrice(offeredPrice, transfer.getAskingPrice());
         return toTransferDto(completeTransfer(transfer.getPlayer(), buyerTeam, price, transfer), buyerTeamId);
     }
 
@@ -198,7 +200,7 @@ public class TransferService {
 
         transfer.setPlayer(player);
         double fallbackPrice = transfer.getAskingPrice() > 0 ? transfer.getAskingPrice() : Math.max(1.0, player.getPlayerValue());
-        double price = normalizePrice(offeredPrice, fallbackPrice);
+        double price = resolveAgreedPrice(offeredPrice, fallbackPrice);
 
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
         if (buyerBudget + 0.0001 < price) {
@@ -207,6 +209,7 @@ public class TransferService {
         }
 
         if (isActiveListing(transfer)) {
+            // Listed player: reaching the asking price closes the deal (see buyListedPlayer).
             TransferDTO dto = toTransferDto(completeTransfer(player, buyerTeam, price, transfer), buyerTeamId);
             dto.setOfferAccepted(true);
             dto.setActionMessage("Offer accepted by " + sellerTeam.getName() + ". Transfer completed for €" + Math.round(price) + ".");
@@ -323,6 +326,14 @@ public class TransferService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TRANSFER", "You cannot buy your own player.");
         }
 
+        // Defence in depth: no code path may move a player for less than the agreed floor.
+        // resolveAgreedPrice is the primary guard; this catches any future caller that bypasses it.
+        double floor = transfer == null ? 0.0 : transfer.getAskingPrice();
+        if (floor > 0 && price + 0.0001 < floor) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICE_BELOW_ASKING",
+                    "Agreed price must be at least the asking price of €" + Math.round(floor) + ".");
+        }
+
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
         if (buyerBudget + 0.0001 < price) {
             throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_BUDGET",
@@ -418,9 +429,37 @@ public class TransferService {
                 .toList();
     }
 
-    private double normalizePrice(Double requestedPrice, double fallbackPrice) {
-        double resolved = requestedPrice == null ? fallbackPrice : requestedPrice;
-        return Math.max(1.0, resolved);
+    /**
+     * Single choke point for every agreed price in the transfer flow.
+     *
+     * <p>Historically this was {@code Math.max(1.0, requested)} with no lower bound against the
+     * asking price, which let any listed player be bought for EUR 1. The floor is now mandatory.
+     *
+     * @param requestedPrice client-supplied price; {@code null} means "accept the floor"
+     * @param floorPrice     the agreed minimum (asking price when listed, market value otherwise)
+     * @throws ApiException {@code PRICE_BELOW_ASKING} if the request is under the floor
+     * @throws ApiException {@code INVALID_PRICE} if the request is not a positive finite amount
+     */
+    private double resolveAgreedPrice(Double requestedPrice, double floorPrice) {
+        double floor = floorPrice > 0 ? floorPrice : 0.0;
+
+        if (requestedPrice == null) {
+            return floor > 0 ? floor : 1.0;
+        }
+        if (requestedPrice.isNaN() || requestedPrice.isInfinite()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_PRICE",
+                    "Offered price must be a valid number.");
+        }
+        if (requestedPrice <= 0) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_PRICE",
+                    "Offered price must be greater than zero.");
+        }
+        if (floor > 0 && requestedPrice + 0.0001 < floor) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICE_BELOW_ASKING",
+                    "Offered price €" + Math.round(requestedPrice) + " is below the asking price of €"
+                            + Math.round(floor) + ".");
+        }
+        return requestedPrice;
     }
 
     private double round2(double value) {
