@@ -23,6 +23,10 @@
     </div>
     <div class="meta">
       <span class="label" id="statusLabel"></span>
+      <!-- Match identity: the seed + matchId currently loaded. The engine log
+           prints the same pair, so the replay on screen can be verified against
+           the log line at any moment (a stale match used to be invisible). -->
+      <span class="label dim" id="matchIdLabel" title="seed / matchId of the loaded replay"></span>
     </div>
   </header>
 
@@ -33,9 +37,13 @@
     <div class="empty-state" id="emptyState">
       <h2>Proposal Match Viewer</h2>
       <p>Generate a new match using the proposal engine, then play the replay.</p>
-      <div style="display:flex;gap:12px;margin-top:16px;">
+      <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;">
         <button id="simBtn" style="background:#2ea043;">⚽ Generate Match</button>
         <button id="playMatchBtn" style="background:#58a6ff;">▶ Play Match</button>
+        <button id="playMatch2dBtn" style="background:#8b949e;">🏹 3D Replay</button>
+        <label style="font-size:12px;color:#8b949e;">Seed
+          <input id="seedInput" type="number" min="0" step="1" placeholder="random" style="width:110px;margin-left:5px;padding:5px 7px;">
+        </label>
       </div>
       <p style="margin-top:16px;font-size:12px;color:#8b949e;">
         Generate simulates a match with the proposal engine and saves it. Play loads the last generated match.
@@ -57,11 +65,25 @@
 
     <!-- Sidebar -->
     <aside class="sidebar" style="display:none">
+      <div class="player-card" id="playerCard" style="display:none">
+        <div class="pc-head">
+          <span class="pc-num" id="pcNum">-</span>
+          <div class="pc-id">
+            <span class="pc-name" id="pcName">-</span>
+            <span class="pc-meta" id="pcMeta"></span>
+          </div>
+          <span class="pc-rating" id="pcRating"></span>
+        </div>
+        <div class="pc-grid" id="pcGrid"></div>
+        <button class="pc-close" id="pcClose">✕ close</button>
+      </div>
+
       <h3>Events</h3>
       <ul class="timeline" id="timeline"></ul>
 
       <div class="controls">
         <div class="controls-row">
+          <button id="backBtn" style="font-size:11px;padding:3px 8px;">← Back</button>
           <button id="playBtn">▶ Play</button>
           <button id="pauseBtn" class="active">⏸ Pause</button>
           <input type="range" id="speedSlider" min="0" max="4" value="2">

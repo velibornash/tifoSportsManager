@@ -67,7 +67,18 @@ public class ProposalMatchOutcomeBuilder {
                     ev.getTeam(),
                     ev.getPlayerId(),
                     ev.getPlayerName(),
-                    ev.getDescription()));
+                    ev.getTargetPlayerId(),
+                    ev.getDescription(),
+                    ev.getAssistantId(),
+                    ev.getAssistantName(),
+                    ev.getHomeScoreAfter(),
+                    ev.getAwayScoreAfter(),
+                    ev.getCardType(),
+                    ev.getPenaltyFoul(),
+                    ev.getTakerId(),
+                    ev.getTakerName(),
+                    ev.getVarType(),
+                    ev.getVarDecision()));
         }
 
         return new ProposalMatchOutcome(
@@ -93,6 +104,7 @@ public class ProposalMatchOutcomeBuilder {
     private ProposalMatchOutcome.TeamOutcome toTeamOutcome(ProposalStatsCollector stats, String side, int offsides) {
         TeamStats ts = stats.buildTeamStats(side);
         if (ts == null) return null;
+        int penalties = stats.getPenalties(side);
         double avgRating = averageRating(stats, side);
         return new ProposalMatchOutcome.TeamOutcome(
                 ts.teamName(), ts.goals(), ts.shots(), ts.shotsOnTarget(),
@@ -100,6 +112,7 @@ public class ProposalMatchOutcomeBuilder {
                 ts.dribbles(), ts.clearances(), ts.interceptions(), ts.deflections(),
                 ts.blocks(), ts.saves(), ts.corners(), ts.goalKicks(), ts.throwIns(),
                 offsides, ts.fouls(), ts.yellowCards(), ts.redCards(),
+                penalties,
                 ts.possessionPercent(), avgRating
         );
     }

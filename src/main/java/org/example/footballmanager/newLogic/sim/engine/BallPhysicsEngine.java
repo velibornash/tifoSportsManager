@@ -4,6 +4,7 @@ import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -55,7 +56,17 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
     public static final double PICKUP_R = 0.35;
-    public static final double GK_SAVE_R = 0.75;   // goalkeeper reach on fast balls
+    /**
+     * Goalkeeper save reach, in cells (1 cell = 14 m).
+     *
+     * It was 0.75 — TEN METRES. The goal mouth is 1 cell (14 m) wide and the
+     * keeper stands near its centre, so a 0.75-cell reach covered essentially
+     * the whole goal: every on-target shot was "saved" by pure geometry and only
+     * ~4% of shots on target became goals. A real keeper's standing reach is
+     * ~2.5-3.5 m; 0.28 cells (3.9 m) covers a bit over half the mouth from the
+     * centre, which leaves the far corners genuinely available.
+     */
+    public static final double GK_SAVE_R = 0.28;
     public static final double PICKUP_DISTANCE = PICKUP_R; // alias for orchestrator
     public static final double BALL_R = 0.015;
 
@@ -107,9 +118,30 @@ public class BallPhysicsEngine implements BallEngine {
                 return BallStepResult.oobHold(state.getOobPending(), state.getOobHoldTicks());
             }
             // Pickup by nearest player. A PENDING receiver that physically reaches the
-            // ball gets it first — the pass completed him (RIGID RULE: the ball is
-            // never carried to him; he comes to the ball). If he never gets there,
-            // the nearest available player picks the dead ball up as LOOSE.
+            // ball gets it first (RIGID RULE: the ball is never carried to him; he
+            // comes to the ball). If he never gets there, the nearest available
+            // player picks the dead ball up as LOOSE.
+            //
+            // RIGID RULE (user 2026-09-17, P-UI): while a restart taker is still
+            // WALKING to the ball, NO loose pickup happens at all — not for the
+            // taker (he must arrive within ON_BALL_EPS, not grab from PICKUP_R) and
+            // not for anybody else. The restart is not live play yet, and letting
+            // any player take a restart ball from 7x ON_BALL_EPS released the
+            // restart early and produced the reported "restart krece pas iako nema
+            // igraca na lopti". The orchestrator's restart-claim step (step 9) is
+            // the ONLY path that gives a player the restart ball.
+            if (state.getRestartTaker() != null) {
+                if (state.getRestartTaker().isUnavailable()) {
+                    // Taker went off/injured mid-walk: release the restart so the
+                    // ordinary loose-ball recovery can take over next tick.
+                    state.setRestartTaker(null);
+                } else {
+                    state.setPendingReceiver(null);
+                    state.setReceivePoint(null);
+                    ball.stop();
+                    return BallStepResult.stopped();
+                }
+            }
             Player pending = state.getPendingReceiver();
             if (pending != null
                     && SimUtils.distance(pending.getPosition(), ball.getPosition()) <= PICKUP_R) {
@@ -541,7 +573,7 @@ public class BallPhysicsEngine implements BallEngine {
         // defender label so each nearest-lane defender gets ONE roll per pass;
         // cache cleared at launch() (the strike boundary) so each NEW flight
         // re-decides from scratch. Matches /demo/ (98%).
-        String key = p.getLabel();
+        String key = p.getId();
         Boolean cached = passReadDecisions.get(key);
         if (cached != null) return cached;
         boolean decision = SimulationRandom.nextDouble() < prob;
@@ -549,14 +581,38 @@ public class BallPhysicsEngine implements BallEngine {
         return decision;
     }
 
+    /**
+     * Nearest available player to the ball.
+     *
+     * The tie-break matters here. It used to be {@code d <= bestD}, i.e. the LAST
+     * candidate in list order wins an exact tie — and because the two squads are
+     * exact row mirrors, an exact tie is SYSTEMATIC, not exotic (col 3.5 is both
+     * the goal-mouth centre and the column of every restart spot). HOME players
+     * are added to the state first, so every tie went to AWAY, which handed AWAY
+     * the second ball and made the ball spend twice as much time going out at the
+     * HOME end. Ties are now broken by rotating over the tied set with the tick
+     * counter, which is deterministic per seed and unbiased across a match.
+     */
     private Player nearestPlayer(MatchState state, String exceptTeam, double maxR) {
-        Player best = null; double bestD = maxR;
+        Player best = null;
+        double bestD = maxR;
+        List<Player> ties = new ArrayList<>();
         for (Player p : state.getPlayers()) {
             if (exceptTeam != null && p.getTeam().equals(exceptTeam)) continue;
             if (p.isUnavailable()) continue;
             double d = Math.hypot(p.getPosition().getRow() - state.getBall().getPosition().getRow(),
                     p.getPosition().getColumn() - state.getBall().getPosition().getColumn());
-            if (d <= bestD) { bestD = d; best = p; }
+            if (d < bestD - 1e-9) {
+                bestD = d;
+                best = p;
+                ties.clear();
+                ties.add(p);
+            } else if (d <= bestD + 1e-9 && d <= maxR) {
+                ties.add(p);
+            }
+        }
+        if (ties.size() > 1) {
+            return ties.get((int) Math.floorMod(state.getMatchTicks(), ties.size()));
         }
         return best;
     }

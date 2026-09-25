@@ -3,22 +3,91 @@
 **Authoritative description of the current state** of the proposal engine.
 This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 
-> Last update: 2026-09-24 (session 7.5 — real-squad fallback, seeded RNG,
-> discipline wired, English report, running scoreboard + Stats tab fixed.
-> `RealSquadFactory.buildSquadFromPlayers` now builds squads from real DB
-> players when a lineup has <11 starters (no more synthetic H-numbers, named
-> scorers, populated Lineups + MOTM). All engine RNG flows through the
-> thread-local `SimulationRandom`, seeded from the fixture id in
-> `SimMatchService.simulate` (deterministic replay). `DisciplineService` fouls
-> are evaluated only when the defender wins DRIBBLE/TACKLE/RECEIVE_PASS duels
-> (probability-gated, penalty-box geometry; fouls/yellows/reds now land in
-> MatchState, TeamStats and statsMap — play continues after a foul, red is
-> statistical only). `ZoxApiController` report/preview/timeline is fully
-> English. `viewer.js` scoreboard reads per-tick snapshot goals (no jump to
-> final score); Stats tab in `match-view.js` renders the canonical
-> `/api/zox/match-stats/{matchId}` values; top Back button added. The 3 legacy
-> `demo.service` tests (+2 .bak) are deleted — `mvn -o clean test` is green:
-> 35 run, 0 fail. Sessions 7.4/7.3 i prethodni pass-i ispod.)
+> Last update: 2026-09-25 (session 7.9 — **UI showed the WRONG MATCH: fixed**,
+> P6 calibration, restart-taker invariant, UI parity audit).
+>
+> **CRITICAL, user-reported: the viewer displayed a completely different match
+> than the engine had just simulated.** Not a rendering detail — a different
+> match (different seed, different passes, different players). Three independent
+> defects in the request/response chain:
+> 1. the viewer POSTed `/proposal/api/generate` while the controller was mapped
+>    at `/api/proposal`, and `/proposal/api/**` was not in the security permit
+>    list — the call failed outright. Both prefixes now resolve;
+> 2. `writeMatchFile` wrote to `src/main/resources/static/...` while Spring
+>    serves static files from the **classpath** (`target/classes/static/...`),
+>    so the file the browser downloaded was the match from the last **build**;
+> 3. the viewer discarded the generate response and re-fetched that stale file
+>    (`_initFromData()` was commented out).
+> The replay no longer depends on the file: `GET /proposal/api/latest` serves
+> the in-memory last-generated match, the generate response carries the full
+> replay, and the viewer plays the payload it just received. The engine logs
+> `=== PROPOSAL MATCH GENERATED === seed=… matchId=… …` and the viewer shows
+> `seed · id` on the scoreboard, so a mismatch is verifiable instead of silent.
+> Locked in by `ProposalViewerMatchIdentityTest` (3 tests).
+>
+> **Event log auto-scroll fixed:** the "am I near the bottom" guard was evaluated
+> *after* appending, so any batch taller than 80 px (seek rebuild, goal burst)
+> permanently stopped the log from following the newest event. The decision is
+> now made before the DOM grows, and scrolling up pauses the follow while
+> scrolling back to the bottom resumes it.
+>
+> **P6 pass completion: 76% → 84%.** Root cause was NOT `readIntercept` (that was
+> already cached once per defender per pass and accounts for only ~15% of failed
+> passes). It was over-firing offsides: 22 per match, i.e. 20% of all failed
+> passes. Two fixes: (1) `OffsideService.OFFSIDE_WHISTLE_MARGIN = 0.2` cells
+> (2.8 m, same tolerance as the reference engine) instead of flagging any receiver
+> a centimetre beyond the line; (2) `CleanDecisionEngine.findBestReceiver` is now
+> offside-aware — clearly-offside targets are excluded, marginal ones take a heavy
+> score penalty. Offsides went 350 → 0 over 20 seeded matches. New
+> `ProposalPassFailDiag` breaks failed passes down by terminal event.
+> **The documented ~98% target is not football-realistic** (real clubs: 80-86%) and
+> is pending owner confirmation; the engine now sits at a realistic 84%.
+>
+> **P0 HOME/AWAY asymmetry: 6 mirror bugs found and fixed.** The two synthetic
+> squads were not mirror images (base skill hashed from the *team name*, so
+> mirrored midfield duels resolved 100%/0% and possession was 35/65). Five more
+> one-directional mirror breaks: shooting zone (AWAY's was half as deep), the
+> defensive-third clearance band, the penalty-area depth, the goal-proximity
+> term (a flat +1-cell HOME bonus), and the off-target shot aim (every AWAY miss
+> landed *behind* his target goal line). Plus the AWAY column mirror reflected
+> over col 3.5 instead of the pitch's only symmetry axis, col 4.0. Result over 50
+> seeded matches: shots 3.8/7.3 → **40.5/43.4**, SOT 1.9/3.5 → **25.4/27.5**,
+> interceptions 6.8/9.2 → **20.0/19.1**, possession 35% → **51%**, goals
+> 0.92/0.08 → **2.68/1.20**. The residual 2.2:1 is a conversion gap, not a
+> chance-creation gap. Squad skills are now an explicit, identical profile
+> (`SimTeamFactoryMirrorTest`).
+>
+> **Shot calibration is now the open item:** 84 shots/match at 63% on target
+> (real: 25 at 33%) with ~9% of on-target shots scoring (real: ~30%).
+>
+> **Restart-taker invariant (P-UI).** No action can start while a restart taker is
+> still walking to the ball: `BallPhysicsEngine` performs no loose pickup while a
+> taker is designated (an opponent could previously steal a restart from 7x
+> `ON_BALL_EPS` away), the orchestrator's decision gate has an explicit
+> `restartTaker == null` term, and `RestartManager` clears the carrier
+> unconditionally. `MatchPhase.SET_PIECE` now returns to `OPEN_PLAY` when the
+> restart is consumed. Covered by `RestartTakerArrivalTest` (5 tests).
+>
+> **UI parity audit vs `/demo/service` (12 features).** `proposal/js/viewer.js` is a
+> 1:1 port of the reference, so almost every difference was data/engine-side.
+> Fixed: half-time/full-time overlays never fired (recorder hardcoded
+> `false, false` — now real state flags), VAR freeze/verdict never fired (event
+> type was `"VAR"`, now `VAR_IN_PROGRESS` + typed `VAR_*_CONFIRMED|_OVERTURNED`),
+> penalty award invisible (`PENALTY_AWARDED` was in no filter), 3D page orphaned
+> (and it was calling the LEGACY endpoints — wrong engine), kickoff leaked AWAY
+> players over the half-way line (clamp now keeps a half-cell buffer). Six
+> remaining differences are documented deliberate divergences in `backlog.md`
+> (`UI-PARITY-05..11`).
+>
+> **Viewer:** clicking a player on the pitch shows a stats card (name, role,
+> rating, goals, assists, shots, passes, duels, minutes) and rings the selection.
+>
+> **Possession chains:** `ProposalStatsCollector.PossessionChain` is exported as
+> `stats.possessionChains` (chain id, team, pass count). Tactical targets are
+> now possession-aware (`WE_HAVE_BALL` / `OPPONENT_HAS_BALL` rules).
+>
+> Previous goal shot-guard, deferred offside, short-pass bias, deterministic seeds
+> and distance-based fatigue remain active.
 
 ---
 
@@ -363,32 +432,97 @@ lists, and player-of-the-match. Fouls / cards are structural **0** until
 
 ### 5.9 Diagnostics
 
-`ProposalBatchDiag` — diagnostic class: runs 10+ matches, aggregates
-goals/shots/SOT/passes + H/A split + 0-0 count.
+`ProposalBatchDiag <matches> <baseSeed>` — runs N deterministically seeded
+matches and aggregates goals/shots/SOT/passes/interceptions/deflections/fouls/
+cards, the H/A split (goals, shots, SOT, interceptions, possession) and the
+0-0 count. The H/A split line is the mirror-bug detector.
+
+`ProposalPassFailDiag <matches> <baseSeed>` — walks each match's event stream
+and buckets every failed pass by the terminal event that killed it
+(OFFSIDE / DEFLECT / LOOSE_PICKUP / DUEL / INTERCEPT / OOB_ENTER / …). This is
+how the P6 root cause was found: the failure profile pointed at offsides, not
+at interception.
+
+`ProposalPhysicsDiagnostic` — per-tick physics trace.
 
 ---
 
-## 6. MEASURED VALUES (10 matches, 3600 ticks)
+## 6. MEASURED VALUES (200 matches, seeds 42-241, `ProposalSeasonDiag 200 42`)
 
-| Metric | Proposal | Demo/service | Status |
+Full per-team report: **`PROPOSAL_SEASON_REPORT.md`**. Headline:
+
+| Metric | Proposal | Real football | Status |
 |---|---|---|---|
-| Goals/match | 1.2 | 2.4 | lower (recheck at 3600 ticks) |
-| Shots/match | 39.6 | 54 | lower |
-| SOT % | 12% | 11% | ≈ target |
-| Pass completion | 67% | 98% | **much lower — MAIN GAP** |
-| H/A goals | 0.9/0.3 | ≈1/1 | H slightly dominant |
-| 0-0 | 3/10 | 0-1/10 | too many |
+| Goals/match | 4.9 (H 2.4 / A 2.6) | 2.7 | ✅ (owner target: up to 7) |
+| Shots/match | **23.6** (H 11.4 / A 12.2) | 25 | ✅ target met |
+| Shots on target | 9.1 | 8-9 | ✅ |
+| On-target rate | 39% | 33% | ✅ |
+| Pass completion | 85.6% | 80-86% | ✅ |
+| H/A goals | 2.4 / 2.6 | ≈1/1 | ✅ was 0.92 / 0.08 |
+| H/A shots | 11.4 / 12.2 | ≈1/1 | ✅ was 3.8 / 7.3 |
+| H/A shots on target | 4.5 / 4.6 | ≈1/1 | ✅ was 1.9 / 3.5 |
+| H/A results (200) | 80 W / 94 W / 26 D | ≈even | ✅ |
+| Possession | 56.3 / 43.7 | 50 / 50 | ⚠ last territorial skew |
+| Pass volume H/A | 288 / 185 | ≈equal | ❌ 56% apart |
+| Red cards | 2.7 | 0.2 | ❌ 13x |
+| Penalties | 3.9 | 0.27 | ❌ 15x |
+| Offsides | 0.0 | 2-4 | ❌ none flagged |
+| Dribbles | 246.9 | 40-60 | ❌ 4-5x |
+| Clearances | 133.8 | 20-30 | ❌ 4-5x |
+| Goal kicks | 58.7 | 12-15 | ❌ 4x |
+| Throw-ins | 20.1 | 35-45 | ❌ half |
+| Blocks | 0.0 | 2-4 | ❌ never parried |
+| Through balls / centres / crosses | not modelled | 5-35 | ⚠ no ActionType |
 
-**Main remaining gap — pass completion 67% vs 98%:**
-- `readIntercept` is called every tick of the flight segment, for every defender
-  within 0.14 cells of the line — cumulative interception probability too high.
-- Defenders too dense in the middle (average intercept row 4.2).
-- Decision engine picks "lane blocked" receivers because the −80 penalty is
-  not enough when forward +50 and openness +30 make up for it.
+**Shot calibration — the real cause of 83 shots/match.** The "frequency gate" was
+not a veto: it returned `-20`, which still beat `PASS=-60..-90`, `DRIBBLE=-60`
+and `CLEAR=-40`, so the shot was always the least-bad option in the final third.
+Fixed with a true `UNAVAILABLE` veto, `SHOT_FREQUENCY_GATE = 0.17`, a
+direction-aware "lane jammed" veto, `GK_SAVE_R` 0.75 → 0.28 cells (0.75 cells =
+10.5 m, which covered a 14 m goal mouth whole) and a lower on-target
+probability. 83.4 → 23.6 shots, 3.88 → 4.9 goals, 53.8 → 9.1 on target.
+
+**P0 — HOME/AWAY asymmetry: 6 mirror bugs found and fixed.** The squads were not
+mirror images (skills hashed from the *team name*, so mirrored midfield duels
+resolved 100%/0%); the shooting zone, the defensive third, the penalty area, the
+goal-proximity term and the off-target shot aim were each mirrored about the
+wrong axis; and the AWAY column mirror reflected over col 3.5 instead of the
+pitch's only symmetry axis, col 4.0. Every shot/SOT/interception/possession
+metric is now symmetric. The residual 2.2:1 goal ratio comes from conversion
+(HOME 9.2% of shots vs AWAY 3.7% at a near-identical save rate), not from
+chance creation. See `backlog.md` §P0 for each defect and what is still open.
+
+**Shot volume calibration: OPEN and separate.** 84 shots/match at 63% on target
+(real: 25 at 33%) with only ~9% of on-target shots scoring (real: ~30%) means
+the engine takes far too many shots and marks too many of them on target. This
+is a distinct problem from the asymmetry and needs its own calibration pass.
 
 **Halftime bug (eradicated in session 6.9):** `MatchClockService.tick()` returns
 `true` when `matchTicks == 1800` but `simulate()` never called `resume()`.
-Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
+Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`. The
+`halfTime`/`matchFinished` replay flags — which the viewer overlays key off —
+were separately hardcoded `false` in the recorder and are now real state.
+
+**P6 — pass completion gap: CLOSED at a realistic level.** The previously
+documented diagnosis ("`readIntercept` re-rolled every flight tick, cumulative
+probability too high") was wrong: the read is already decided once per defender
+per pass, and interception is only ~15% of failed passes. The real cause was
+over-firing offsides (22/match) which the decision engine caused by scoring
+purely-offside receivers as the best option. See `backlog.md` §P6 and
+`ProposalPassFailDiag`.
+
+**P0 — HOME/AWAY asymmetry: OPEN.** AWAY creates twice the shots and more shots
+on target, but scores 0.08/match. Diagnosis so far: AWAY penetrates the box ~5x
+more often, so the GK faces point-blank attempts and saves 84% of them (HOME 47%).
+The goal-crossing and save code is symmetric, so the asymmetry is upstream in the
+movement/threat/decision row comparisons. Same class of bug as the demo/service
+"AWAY-goal-line mirror fix" (2026-09-11).
+
+**Halftime bug (eradicated in session 6.9):** `MatchClockService.tick()` returns
+`true` when `matchTicks == 1800` but `simulate()` never called `resume()`.
+Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`. The
+`halfTime`/`matchFinished` replay flags — which the viewer overlays key off —
+were separately hardcoded `false` in the recorder and are now real state.
 
 ---
 
@@ -401,8 +535,9 @@ Now fixed: after 1800 ticks → `resume()` + `handleKickoff("AWAY")`.
 | **Discipline** | Fouls + cards | ✅ DONE (P7#3) — `rules/DisciplineService.java` real `evaluateFoul()` body (139 l., 1 `@Override`); 4 honest TODOs for card/penalty follow-up |
 | **Offside full** | Continuous tracking + per-pass check | ✅ DONE (P7#1) — `rules/OffsideService.java` real body (167 l., 3 `@Override`), 3-consecutive-offside retreat rule |
 | **Threat override** | Defensive pressure on carrier (3 types) | ✅ DONE (P7#4) — `engine/ThreatOverrideEngine.java` full TYPE A/B/C implementation; compiles rc=0 |
-| **Fatigue** | Player fatigue | ❌ NOT PRESENT (backlog P8) |
-| **Transition** | Possession-change logic | ❌ NOT PRESENT (backlog P8) |
+| **Fatigue** | Player fatigue | ✅ PARTIAL (2026-09-25) — `engine/FatigueSystem.java`: stamina drains from actual movement distance and `MovementEngine` applies up to 30% speed loss. Auto-substitution + injury risk deferred: no bench/roster/substitution contract exists |
+| **Transition** | Possession-change logic | ✅ DONE (2026-09-25) — targets refresh in the same tick as the possession change; `TacticsRules` loads both `WE_HAVE_BALL` and `OPPONENT_HAS_BALL`; possession chains tracked with chain id + pass count |
+| **Restart contract** | Taker must reach the ball before any action | ✅ DONE (2026-09-25) — no loose pickup while a taker is designated, explicit `restartTaker == null` decision gate, unconditional carrier clear, `SET_PIECE → OPEN_PLAY` on consumption. `RestartTakerArrivalTest` |
 | **Stats layer** | Per-team + per-player stats + possession chains | ✅ DONE (P1) — `result/ProposalStatsCollector.java`, exported as `stats.teams`/`stats.players` with `avgPossessionTicks`/`longestPossessionTicks`, rendered in viewer sidebar (chain avg row) |
 | **Orchestrator slimming** | ~340 lines: logging, recording, duel detection | 🟢 P2#1-3 `[x]` — `handleBallPhysicsResult()` 162-line switch → `BallResultHandler` (engine/BallResultHandler.java); orchestrator 324 l. / helper 224 l., kompajl PASS. Ostalo: duels→`DuelService`, log→`ActionLogService`, slim loop |
 | **Match outcome (report shape)** | Post-match report payload for future newLogic adapter + statsJson | ✅ DONE (2026-09-24) — `result/ProposalMatchOutcome.java` + `ProposalMatchOutcomeBuilder.java`; xG/offsides/formations/MOTM derived on build; `MatchOrchestrator.buildOutcome()` + launcher JSON print. Fallback: fouls/cards 0 (DisciplineService) |

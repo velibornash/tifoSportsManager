@@ -271,7 +271,7 @@ class SimMatchPersistWiringTest extends BaseTest {
     private static ProposalMatchOutcome.TeamOutcome teamOutcome(String teamName, int goals) {
         return new ProposalMatchOutcome.TeamOutcome(
                 teamName, goals, 12, 5, 330, 290, 8, 6, 4, 2, 2,
-                goals > 0 ? 2 : 3, 5, 7, 9, 2, 1, 0, 0,
+                goals > 0 ? 2 : 3, 5, 7, 9, 2, 1, 0, 0, 0,
                 goals >= 2 ? 52.0 : 40.0, 6.4);
     }
 }

@@ -36,6 +36,7 @@ public class TacticsRules {
 
     public static final String FORMATION = "4-4-2";
     private static final String WE_HAVE_BALL = FormationSlotCatalog.WE_HAVE_BALL;
+    private static final String OPPONENT_HAS_BALL = "OPPONENT_HAS_BALL";
     private static final Pattern CELL_PATTERN = Pattern.compile("CELL_(\\d)_(\\d)");
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -48,6 +49,7 @@ public class TacticsRules {
     static final long DEFAULT_TEAM_ID = Long.getLong("tactics.db.teamId", 1L);
 
     private final Map<String, Map<String, Position>> desiredByRoleByState;
+    private final Map<String, Map<String, Position>> opponentByRoleByState;
     private final Map<String, Position> anchorByRole;
     private final String source;
     private final int ruleCount;
@@ -58,21 +60,24 @@ public class TacticsRules {
 
     /** 3-tier: DB → bundled JSON → catalog anchors. DB config passed as params. */
     public TacticsRules(String dbUrl, String dbUser, String dbPassword, long teamId) {
-        Map<String, Map<String, Position>> loaded = loadFromDb(dbUrl, dbUser, dbPassword, teamId);
+        LoadedRules loaded = loadFromDb(dbUrl, dbUser, dbPassword, teamId);
         if (loaded != null) {
-            this.desiredByRoleByState = loaded;
+            this.desiredByRoleByState = loaded.haveBall();
+            this.opponentByRoleByState = loaded.opponentHasBall();
             this.anchorByRole = anchorsFromCatalog();
             this.source = "DB (team " + teamId + ", " + FORMATION + ")";
-            this.ruleCount = countRules(loaded);
+            this.ruleCount = countRules(loaded.haveBall()) + countRules(loaded.opponentHasBall());
         } else {
             loaded = loadFromBundledJson();
             if (loaded != null) {
-                this.desiredByRoleByState = loaded;
+                this.desiredByRoleByState = loaded.haveBall();
+                this.opponentByRoleByState = loaded.opponentHasBall();
                 this.anchorByRole = anchorsFromCatalog();
                 this.source = "bundled tactics_fallback.json";
-                this.ruleCount = countRules(loaded);
+                this.ruleCount = countRules(loaded.haveBall()) + countRules(loaded.opponentHasBall());
             } else {
                 this.desiredByRoleByState = new LinkedHashMap<>();
+                this.opponentByRoleByState = new LinkedHashMap<>();
                 this.anchorByRole = anchorsFromCatalog();
                 this.source = "fallback (FormationSlotCatalog anchors only)";
                 this.ruleCount = 0;
@@ -82,15 +87,27 @@ public class TacticsRules {
 
     /** Direct construction for tests. */
     public TacticsRules(Map<String, Map<String, Position>> rules, Map<String, Position> anchors) {
+        this(rules, new LinkedHashMap<>(), anchors);
+    }
+
+    public TacticsRules(Map<String, Map<String, Position>> rules,
+                        Map<String, Map<String, Position>> opponentRules,
+                        Map<String, Position> anchors) {
         this.desiredByRoleByState = rules;
+        this.opponentByRoleByState = opponentRules;
         this.anchorByRole = anchors;
         this.source = "direct";
-        this.ruleCount = countRules(rules);
+        this.ruleCount = countRules(rules) + countRules(opponentRules);
     }
 
     /** Fallback rules — only anchor cells. */
     public static TacticsRules defaults() {
         return new TacticsRules(new LinkedHashMap<>(), anchorsFromCatalog());
+    }
+
+    private record LoadedRules(
+            Map<String, Map<String, Position>> haveBall,
+            Map<String, Map<String, Position>> opponentHasBall) {
     }
 
     public String getSource() { return source; }
@@ -102,17 +119,30 @@ public class TacticsRules {
      * mirrored through TacticalPerspectiveTransformer.
      */
     public Position desiredCell(String role, Position ball, String team) {
+        return desiredCell(role, ball, team, team);
+    }
+
+    public Position desiredCell(String role, Position ball, String team, String possessionTeam) {
         Position ballInEditorPerspective =
                 TacticalPerspectiveTransformer.toHomePerspective(ball, team);
-        Position targetInEditorPerspective = desiredCell(role, ballInEditorPerspective);
+        String context = possessionTeam != null && possessionTeam.equals(team)
+                ? WE_HAVE_BALL : OPPONENT_HAS_BALL;
+        Position targetInEditorPerspective = desiredCellFromContext(role, ballInEditorPerspective, context);
         Position physical = TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
         return clampToField(physical);
     }
 
     /** Desired position for a role from HOME perspective (used for lookups). */
     public Position desiredCell(String role, Position ball) {
+        return desiredCell(role, ball, WE_HAVE_BALL);
+    }
+
+    private Position desiredCellFromContext(String role, Position ball, String context) {
         String state = ballStateKey(ball);
-        Position fromRules = lookup(role, state);
+        Position fromRules = lookup(role, state, context);
+        if (fromRules == null && OPPONENT_HAS_BALL.equals(context)) {
+            fromRules = lookup(role, state, WE_HAVE_BALL);
+        }
         Position raw = fromRules != null ? fromRules : anchor(role);
         if (raw == null) raw = new Position(1.5, 3.5);
         return clampToField(raw);
@@ -129,8 +159,10 @@ public class TacticsRules {
         return anchorByRole.get(role);
     }
 
-    private Position lookup(String role, String ballStateKey) {
-        Map<String, Position> byState = desiredByRoleByState.get(role);
+    private Position lookup(String role, String ballStateKey, String context) {
+        Map<String, Map<String, Position>> source = OPPONENT_HAS_BALL.equals(context)
+                ? opponentByRoleByState : desiredByRoleByState;
+        Map<String, Position> byState = source.get(role);
         return byState == null ? null : byState.get(ballStateKey);
     }
 
@@ -178,7 +210,7 @@ public class TacticsRules {
         return anchors;
     }
 
-    private Map<String, Map<String, Position>> loadFromDb(String dbUrl, String dbUser, String dbPassword, long teamId) {
+    private LoadedRules loadFromDb(String dbUrl, String dbUser, String dbPassword, long teamId) {
         if (dbUrl == null || dbUrl.isBlank()) return null;
         try {
             Class.forName("org.postgresql.Driver");
@@ -202,7 +234,7 @@ public class TacticsRules {
         }
     }
 
-    private Map<String, Map<String, Position>> loadFromBundledJson() {
+    private LoadedRules loadFromBundledJson() {
         try (InputStream is = getClass().getResourceAsStream("/tactics_fallback.json")) {
             if (is == null) return null;
             String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -213,19 +245,23 @@ public class TacticsRules {
         }
     }
 
-    private Map<String, Map<String, Position>> parseRulesJson(String json) throws Exception {
+    private LoadedRules parseRulesJson(String json) throws Exception {
         List<TacticsRuleDTO> allRules = MAPPER
             .readValue(json, new TypeReference<List<TacticsRuleDTO>>() {});
-        Map<String, Map<String, Position>> byRole = new LinkedHashMap<>();
+        Map<String, Map<String, Position>> haveBall = new LinkedHashMap<>();
+        Map<String, Map<String, Position>> opponentHasBall = new LinkedHashMap<>();
         for (TacticsRuleDTO rule : allRules) {
             if (rule == null || rule.getSlotKey() == null) continue;
-            if (!WE_HAVE_BALL.equals(rule.getPossessionContext())) continue;
+            boolean opponentContext = OPPONENT_HAS_BALL.equals(rule.getPossessionContext());
+            if (!WE_HAVE_BALL.equals(rule.getPossessionContext()) && !opponentContext) continue;
             Position target = parseCell(rule.getTargetCellKey());
             if (target == null) continue;
-            byRole.computeIfAbsent(rule.getSlotKey(), k -> new LinkedHashMap<>())
+            Map<String, Map<String, Position>> destination = opponentContext
+                    ? opponentHasBall : haveBall;
+            destination.computeIfAbsent(rule.getSlotKey(), k -> new LinkedHashMap<>())
                 .put(Objects.requireNonNull(rule.getBallStateKey()), target);
         }
-        return byRole;
+        return new LoadedRules(haveBall, opponentHasBall);
     }
 
     private static int countRules(Map<String, Map<String, Position>> rules) {

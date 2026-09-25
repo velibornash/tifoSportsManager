@@ -102,6 +102,21 @@ public class ExecutionQuality {
                                           int carrierStrikerSkill,
                                           double pressure,
                                           Position shotOrigin) {
+        return evaluateShot(goalPosition, carrierStrikerSkill, pressure, shotOrigin, true);
+    }
+
+    /**
+     * @param attacksTowardHigherRows true when the shooting team attacks row 8.0
+     *                                 (HOME), false when it attacks row 1.0 (AWAY).
+     *                                 Needed because a miss must fall SHORT of the
+     *                                 target goal line on BOTH sides — the shot
+     *                                 direction is not symmetric in row space.
+     */
+    public static ShotResult evaluateShot(Position goalPosition,
+                                          int carrierStrikerSkill,
+                                          double pressure,
+                                          Position shotOrigin,
+                                          boolean attacksTowardHigherRows) {
         int skill = carrierStrikerSkill;
         double dist = shotOrigin == null ? 4.0
                 : Math.hypot(shotOrigin.getRow() - goalPosition.getRow(),
@@ -112,10 +127,13 @@ public class ExecutionQuality {
         // Calibrated so a good finisher at close range puts the ball on frame the
         // majority of the time (real football), while long-range/stressed shots
         // degrade heavily. Even a sitter is never a guaranteed on-frame shot.
-        double skillBase = 0.12 + skill * 0.028;               // skill 1..20 -> 0.15..0.68
+        // Calibrated down from 0.12 + skill*0.028 with a 0.20 close-range lift:
+        // that put 57% of all shots on target (real football: ~33%) and, once the
+        // keeper's reach was corrected, turned over half of them into goals.
+        double skillBase = 0.08 + skill * 0.020;               // skill 1..20 -> 0.10..0.48
         double distFactor = Math.max(0.25, 1.0 - dist / 9.0);  // close = 1.0, 9+ cells = 0.25
         double onTargetProb = skillBase * distFactor;
-        if (dist < 2.0) onTargetProb += 0.20;                  // close-range lift (inside ~4 m)
+        if (dist < 2.0) onTargetProb += 0.12;                  // close-range lift (inside ~4 m)
         onTargetProb *= (1.0 - pressure / 200.0);
         onTargetProb = Math.min(onTargetProb, 0.85);
 
@@ -141,8 +159,13 @@ public class ExecutionQuality {
             } else {
                 actualCol = mouthRight + (0.5 + SimulationRandom.nextDouble() * 1.0);  // wide of right post
             }
-            // Always short of the line: the ball stops well before the goal.
-            actualRow = goalPosition.getRow() - (0.3 + SimulationRandom.nextDouble() * 0.9);
+            // Always short of the line: the ball stops well before the goal. The
+            // offset is DIRECTION-AWARE — subtracting unconditionally put every
+            // AWAY miss BEHIND the HOME goal line (rows -0.2..0.7), so it was dead
+            // on arrival and turned into a HOME goal kick, while a HOME miss left
+            // a live loose ball in the AWAY box. That is a one-directional bonus.
+            double shortBy = 0.3 + SimulationRandom.nextDouble() * 0.9;
+            actualRow = goalPosition.getRow() + (attacksTowardHigherRows ? -shortBy : shortBy);
         }
 
         Position actualTarget = new Position(actualRow, actualCol);

@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.sim.MatchSimulationLauncher;
 import org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
@@ -53,7 +54,8 @@ public class ProposalViewerLauncher {
                 return;
             }
             try {
-                long seed = System.nanoTime();
+                long seed = parseSeed(exchange.getRequestURI().getRawQuery());
+                SimulationRandom.seed(seed);
 
                 MatchState state = new MatchState();
                 MatchSimulationLauncher.addTeam(state, "HOME");
@@ -72,6 +74,7 @@ public class ProposalViewerLauncher {
 
                 Map<String, Object> view = new LinkedHashMap<>();
                 view.put("matchId", state.getMatchId());
+                view.put("seed", seed);
                 view.put("homeTeamName", "Home FC");
                 view.put("awayTeamName", "Away United");
                 view.put("homeGoals", state.getHomeGoals());
@@ -88,6 +91,7 @@ public class ProposalViewerLauncher {
 
                 Map<String, Object> resp = new LinkedHashMap<>();
                 resp.put("ok", true);
+                resp.put("seed", seed);
                 resp.put("score", state.getHomeGoals() + "-" + state.getAwayGoals());
                 resp.put("events", orchestrator.getEventLog().size());
                 send(exchange, 200, "application/json", OM.writeValueAsString(resp));
@@ -96,6 +100,28 @@ public class ProposalViewerLauncher {
             } catch (Exception e) {
                 e.printStackTrace();
                 send(exchange, 500, "text/plain", e.getMessage());
+            }
+        });
+
+        // ── API: the last generated match ──
+        // Mirrors the Spring controller's /proposal/api/latest so the viewer
+        // uses one code path for both servers. This launcher serves the file it
+        // just wrote, so reading match.json IS the in-memory latest match.
+        server.createContext("/proposal/api/latest", exchange -> {
+            try {
+                if (!MATCH_JSON.toFile().isFile()) {
+                    send(exchange, 404, "text/plain", "No match generated yet");
+                    return;
+                }
+                byte[] bytes = Files.readAllBytes(MATCH_JSON);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } catch (Exception e) {
+                send(exchange, 500, "text/plain", String.valueOf(e.getMessage()));
             }
         });
 
@@ -141,6 +167,22 @@ public class ProposalViewerLauncher {
         if (Desktop.isDesktopSupported()) {
             Desktop.getDesktop().browse(new java.net.URI(url));
         }
+    }
+
+    private static long parseSeed(String query) {
+        if (query != null) {
+            for (String part : query.split("&")) {
+                String[] pair = part.split("=", 2);
+                if (pair.length == 2 && "seed".equals(pair[0])) {
+                    try {
+                        return Long.parseLong(pair[1]);
+                    } catch (NumberFormatException ignored) {
+                        break;
+                    }
+                }
+            }
+        }
+        return System.nanoTime();
     }
 
     private static Map<String, Object> buildStats(MatchOrchestrator orchestrator) {

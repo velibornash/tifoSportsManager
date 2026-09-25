@@ -166,7 +166,8 @@ export function buildRepeatedLineupBadge(count, badgeClass, icon, label) {
 
 export function buildLineupEventBadges(player) {
     const goals = Number(player?.goals || 0);
-    const assists = Number(player?.assists || 0);
+    const isGoalkeeper = String(player?.position || '').toUpperCase() === 'GK';
+    const assists = isGoalkeeper ? 0 : Number(player?.assists || 0);
     const rawYellowCards = Math.max(0, Number(player?.yellowCards || 0));
     const rawRedCards = Math.max(0, Number(player?.redCards || 0));
     let yellowCards = Math.min(rawYellowCards, 1);
@@ -182,7 +183,7 @@ export function buildLineupEventBadges(player) {
 
     const badges = [
         buildRepeatedLineupBadge(goals, 'fm-badge-goal', '⚽', 'Goal'),
-        buildRepeatedLineupBadge(assists, 'fm-badge-ast', '🎯', 'Assist'),
+        buildRepeatedLineupBadge(assists, 'fm-badge-ast', '🅰️', 'Assist'),
         buildRepeatedLineupBadge(yellowCards, 'fm-badge-card-yellow', '🟨', 'Yellow card'),
         buildRepeatedLineupBadge(redCards, 'fm-badge-card-red', '🟥', 'Red card')
     ].filter(Boolean);

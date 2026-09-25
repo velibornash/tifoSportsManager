@@ -17,6 +17,8 @@ public class MatchState {
     private final String matchId;
     private int matchTicks;           // 0..10800 (90 min @ 40 TPM)
     private boolean stopped;          // true = clock paused (half time, etc.)
+    private boolean halfTime;         // half time reached (replay overlay)
+    private boolean matchFinished;    // full time reached (replay overlay)
 
     // VAR review state
     private boolean varReviewActive = false;
@@ -145,6 +147,20 @@ public class MatchState {
     public boolean isStopped() { return stopped; }
     public void setStopped(boolean stopped) { this.stopped = stopped; }
 
+    // === MATCH PHASE MARKERS (replay/report facing) ===
+    // Set by MatchClockService. The replay viewer keys its HALF TIME and
+    // FULL TIME overlays off these, so they must reflect reality — the
+    // recorder used to hardcode `false, false`, which meant the overlays
+    // could never fire in the proposal viewer.
+
+    /** True from the moment the clock reaches half time onwards. */
+    public boolean isHalfTime() { return halfTime; }
+    public void setHalfTime(boolean halfTime) { this.halfTime = halfTime; }
+
+    /** True once the full 90 minutes have been played. */
+    public boolean isMatchFinished() { return matchFinished; }
+    public void setMatchFinished(boolean matchFinished) { this.matchFinished = matchFinished; }
+
     // === VAR CONTROL ===
 
     /** Check if VAR review is currently active (pausing re-decision). */
@@ -222,6 +238,104 @@ public class MatchState {
     public List<Player> getPlayers() { return players; }
 
     public Ball getBall() { return ball; }
+
+    // === PASS / ASSIST CONTEXT ===
+    private String pendingPasserId;
+    private String pendingPasserName;
+    private String pendingPasserTeam;
+    private String pendingPassReceiverId;
+    private String lastCompletedPasserId;
+    private String lastCompletedPasserName;
+    private String lastCompletedPasserTeam;
+    private String lastCompletedPasserRole;
+
+    public void beginPass(Player passer, Player receiver) {
+        pendingPasserId = passer != null ? passer.getId() : null;
+        pendingPasserName = passer != null ? passer.getLabel() : null;
+        pendingPasserTeam = passer != null ? passer.getTeam() : null;
+        pendingPassReceiverId = receiver != null ? receiver.getId() : null;
+        lastCompletedPasserId = null;
+        lastCompletedPasserName = null;
+        lastCompletedPasserTeam = null;
+        lastCompletedPasserRole = null;
+    }
+
+    public String completePass(Player receiver) {
+        String completedPasserId = null;
+        if (pendingPasserId != null && receiver != null
+                && receiver.getId().equals(pendingPassReceiverId)
+                && receiver.getTeam().equals(pendingPasserTeam)) {
+            completedPasserId = pendingPasserId;
+            lastCompletedPasserId = pendingPasserId;
+            lastCompletedPasserName = pendingPasserName;
+            lastCompletedPasserTeam = pendingPasserTeam;
+            lastCompletedPasserRole = findRole(pendingPasserId);
+        } else {
+            clearCompletedPass();
+        }
+        clearPendingPass();
+        return completedPasserId;
+    }
+
+    public void clearPendingPass() {
+        pendingPasserId = null;
+        pendingPasserName = null;
+        pendingPasserTeam = null;
+        pendingPassReceiverId = null;
+    }
+
+    public void clearPassContext() {
+        clearPendingPass();
+        lastCompletedPasserId = null;
+        lastCompletedPasserName = null;
+        lastCompletedPasserTeam = null;
+        lastCompletedPasserRole = null;
+    }
+
+    public String assistIdFor(Player scorer) {
+        if (scorer == null || scorer.isGoalkeeper() || lastCompletedPasserId == null
+                || !scorer.getTeam().equals(lastCompletedPasserTeam)
+                || scorer.getId().equals(lastCompletedPasserId)
+                || "GK".equals(lastCompletedPasserRole)) return null;
+        return lastCompletedPasserId;
+    }
+
+    public String assistNameFor(Player scorer) {
+        return assistIdFor(scorer) == null ? null : lastCompletedPasserName;
+    }
+
+    public void clearCompletedPass() {
+        lastCompletedPasserId = null;
+        lastCompletedPasserName = null;
+        lastCompletedPasserTeam = null;
+        lastCompletedPasserRole = null;
+    }
+
+    public String getPendingPasserId() { return pendingPasserId; }
+    public String getPendingPasserName() { return pendingPasserName; }
+    public String getPendingPasserTeam() { return pendingPasserTeam; }
+    public String getPendingPassReceiverId() { return pendingPassReceiverId; }
+    public String getLastCompletedPasserId() { return lastCompletedPasserId; }
+    public String getLastCompletedPasserName() { return lastCompletedPasserName; }
+    public String getLastCompletedPasserTeam() { return lastCompletedPasserTeam; }
+
+    private String findRole(String playerId) {
+        for (Player p : players) {
+            if (p.getId().equals(playerId)) return p.getRole();
+        }
+        return null;
+    }
+
+    // === PENALTY COUNTERS ===
+    private int homePenalties;
+    private int awayPenalties;
+
+    public int getHomePenalties() { return homePenalties; }
+    public void setHomePenalties(int homePenalties) { this.homePenalties = homePenalties; }
+    public void incrementHomePenalties() { this.homePenalties++; }
+    public int getAwayPenalties() { return awayPenalties; }
+    public void setAwayPenalties(int awayPenalties) { this.awayPenalties = awayPenalties; }
+    public void incrementAwayPenalties() { this.awayPenalties++; }
 
     public Player getPendingReceiver() { return pendingReceiver; }
     public void setPendingReceiver(Player pendingReceiver) { this.pendingReceiver = pendingReceiver; }

@@ -5,7 +5,9 @@ import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -19,6 +21,29 @@ import java.util.List;
  * The execution engine is responsible for carrying out the decision.
  */
 public class CleanDecisionEngine {
+
+    /**
+     * A receiver further than this (in cells) beyond the second-to-last defender
+     * is CLEARLY offside and is never picked as a pass target. Mirrors
+     * {@code OffsideService.OFFSIDE_WHISTLE_MARGIN} (0.2 cells = 2.8 m) so the
+     * decision layer never chooses a pass the rules layer will kill.
+     */
+    private static final double OFFSIDE_WHISTLE_MARGIN = 0.2;
+
+    /**
+     * Score that makes an action strictly worse than every real alternative, so
+     * the selection can never choose it. Used as a genuine VETO (see the shot
+     * frequency gate) rather than a penalty: a "penalised" option is still chosen
+     * whenever it is the least-bad one, which is what produced 83 shots a match.
+     */
+    private static final double UNAVAILABLE = -10_000.0;
+
+    /**
+     * Share of final-third touches that become a shot attempt. Real sides take
+     * ~25 shots per match, i.e. roughly one attempt every 90 seconds, not on
+     * every touch. Tuned with `ProposalSeasonDiag 150 42`.
+     */
+    private static final double SHOT_FREQUENCY_GATE = 0.17;
 
     private static final double[] PLAYMAKING_ACCURACY_TABLE = {
         0.40, 0.42, 0.44, 0.46, 0.48, 0.50, 0.52, 0.54, 0.56, 0.58,  // 1-10
@@ -71,10 +96,11 @@ public class CleanDecisionEngine {
 
         // FINAL-2-ROW HARD RULE (mirror of demo/service): a carrier in the last
         // two rows of the attacking third must not keep dribbling — either shoot
-        // or deliver. Prevents tap-ins from the 6-yard line.
+        // or deliver. Prevents tap-ins from the 6-yard line. Mirrored about 4.5,
+        // so the AWAY bound is 3.0 (see scoreShotOptions).
         boolean home = "HOME".equals(carrier.getTeam());
         double carrierRow = carrier.getPosition().getRow();
-        boolean finalTwoRows = home ? carrierRow >= 6.0 : carrierRow <= 2.0;
+        boolean finalTwoRows = home ? carrierRow >= 6.0 : carrierRow <= 3.0;
         if (finalTwoRows && chosen.getType() == ActionType.DRIBBLE) {
             if (shotOption.getScore() >= 0) {
                 chosen = shotOption;
@@ -121,17 +147,24 @@ public class CleanDecisionEngine {
             }
 
             // Goal proximity for forward passes
-            double prox = home ? receiver.getPosition().getRow() : 8.0 - receiver.getPosition().getRow();
+            double prox = goalProximity(home, receiver.getPosition().getRow());
             if (forwardSteps > 0) {
                 score += prox * 3.5;
                 reason.append("prox +" + String.format("%.1f ", prox * 3.5));
             }
 
-            // Distance factor (prefer medium passes)
+            // Distance factor (prefer short passes, discourage long deep balls)
+            // 1 cell = 14 m → real short pass ≈ 0.8-1.5 cells (11-21 m)
             double dist = SimUtils.distance(carrier.getPosition(), receiver.getPosition());
-            if (dist > 3.0 && dist < 6.0) {
-                score += 15.0;
-                reason.append("good distance ");
+            if (dist >= 0.8 && dist <= 1.5) {
+                score += 25.0;
+                reason.append("short pass ");
+            } else if (dist > 1.5 && dist <= 2.5) {
+                score += 5.0;
+                reason.append("medium pass ");
+            } else if (dist > 2.5) {
+                score -= 35.0;
+                reason.append("long pass penalized ");
             }
 
             // Receiver openness (up to +30) and direct marking penalty
@@ -182,7 +215,7 @@ public class CleanDecisionEngine {
 
         // Carrying forward progresses play - reward it
         boolean home = "HOME".equals(carrier.getTeam());
-        double prox = home ? carrier.getPosition().getRow() : 8.0 - carrier.getPosition().getRow();
+        double prox = goalProximity(home, carrier.getPosition().getRow());
         score += prox * 2.5;
         reason.append("prox +" + String.format("%.1f ", prox * 2.5));
 
@@ -227,25 +260,34 @@ public class CleanDecisionEngine {
 
     private DecisionOption scoreShotOptions(MatchState state, Player carrier) {
         double score = 0.0;
-        StringBuilder reason = new StringBuilder("SHOT: ");
+        StringBuilder reason = new StringBuilder();
 
-        // Only shoot in shooting zone
+        // Only shoot in shooting zone. The band must be an exact mirror about the
+        // half-way line (4.5): HOME shoots from rows 6.0-8.0 (2 cells deep before
+        // the AWAY goal at 8.0), so AWAY must shoot from rows 1.0-3.0 (2 cells
+        // deep before the HOME goal at 1.0). The AWAY bound used to be 2.0, which
+        // made the zone half as deep for AWAY and is why AWAY's chances were all
+        // point-blank (the keeper's reach swallowed the whole goal mouth).
         String team = carrier.getTeam();
         double carrierRow = carrier.getPosition().getRow();
-        boolean inShootingZone = "HOME".equals(team) ? carrierRow >= 6.0 : carrierRow <= 2.0;
+        boolean inShootingZone = "HOME".equals(team) ? carrierRow >= 6.0 : carrierRow <= 3.0;
 
         if (!inShootingZone) {
-            score = -30.0;
-            reason.append("not in zone");
-            return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
+            return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
+                    "SHOT: not in zone");
         }
 
         // Frequency gate — only a fraction of final-third touches are shots
-        // (real teams recycle, hold, and probe instead of shooting every touch).
-        if (SimulationRandom.nextDouble() > 0.25) {
-            score = -20.0;
-            reason.append("freq gate");
-            return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
+        // (real teams recycle, hold and probe instead of shooting every touch).
+        //
+        // The gate has to make the shot UNAVAILABLE, not merely "less attractive".
+        // It used to return -20, which still beat every alternative whenever the
+        // pass (-60..-90) and carry (-60) options were worse — so in the final
+        // third the engine shot almost every touch, because a shot was always the
+        // least-bad option. Measured: 83 shots per match. The gate now vetoes.
+        if (SimulationRandom.nextDouble() > SHOT_FREQUENCY_GATE) {
+            return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
+                    "SHOT: freq gate");
         }
 
         // Basic shot value
@@ -277,14 +319,16 @@ public class CleanDecisionEngine {
             reason.append("too far ");
         }
 
-        // Check if goal is open
+        // Check if goal is open. A jammed lane is a real veto, not a penalty: a
+        // shot through three bodies is never the best available option, and
+        // "close" shots were being taken from inside a wall.
         double openness = calculateGoalOpenness(state, carrier, goal);
+        if (openness < 0.1) {
+            return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
+                    "SHOT: lane jammed (open " + String.format("%.2f", openness) + ")");
+        }
         score += openness * 40.0;
         reason.append(String.format("goal open %.1f ", openness));
-        if (openness < 0.1) {
-            score -= 30.0;
-            reason.append("lane jammed ");
-        }
 
         // Pressure hurts shooting
         double pressure = calculatePressure(state, carrier);
@@ -292,17 +336,34 @@ public class CleanDecisionEngine {
         reason.append(String.format("press -%.0f ", pressure * 25.0));
 
         reason.append(String.format("-> %.1f dist", distToGoal));
-        return new DecisionOption(ActionType.SHOT, null, score, reason.toString());
+        return new DecisionOption(ActionType.SHOT, null, score, "SHOT: " + reason);
+    }
+
+    /**
+     * Distance from a player to the OPPONENT's goal line, in cells
+     * (0 = standing on the goal line, ~3.5 = own half-way line).
+     *
+     * Mirrored exactly: HOME's opponent goal is row 8.0, AWAY's is row 1.0.
+     * It used to be {@code home ? row : 8.0 - row}, which measured HOME from row
+     * 0 (a constant +1.0-cell HOME bonus) instead of from its target goal. The
+     * scale is deliberately preserved, because the caller multiplies it by 3.5
+     * to reward forward passes.
+     */
+    private static double goalProximity(boolean home, double row) {
+        return home ? 8.0 - row : row - 1.0;
     }
 
     private DecisionOption scoreClearOptions(MatchState state, Player carrier) {
         double score = 0.0;
         StringBuilder reason = new StringBuilder("CLEAR: ");
 
-        // Only clear when under pressure in defensive third
+        // Only clear when under pressure in defensive third. Mirrored about 4.5:
+        // HOME defends rows 1.0-3.0 (2 cells from its own goal at 1.0), so AWAY
+        // must defend rows 5.0-7.0. The bound used to be 5.0, i.e. a THREE-cell
+        // band for AWAY, which let only AWAY clear from the middle third.
         String team = carrier.getTeam();
         double carrierRow = carrier.getPosition().getRow();
-        boolean inDefensiveThird = "HOME".equals(team) ? carrierRow <= 3.0 : carrierRow >= 5.0;
+        boolean inDefensiveThird = "HOME".equals(team) ? carrierRow <= 3.0 : carrierRow >= 6.0;
 
         if (!inDefensiveThird) {
             score = -40.0;
@@ -339,11 +400,25 @@ public class CleanDecisionEngine {
 
         for (Player teammate : state.getPlayers()) {
             if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
+
+            // A player does not pass to a teammate who is standing offside. The
+            // rules layer (OffsideService) kills such a pass at reception, so
+            // scoring it like any other target was pure self-sabotage: measured
+            // with ProposalPassFailDiag, 17.5 offsides per match (real football
+            // 1-3) and 20% of ALL failed passes. Clearly-offside targets are
+            // excluded outright; marginal ones (inside the 0.2-cell tolerance)
+            // take a heavy score penalty so an onside alternative wins unless
+            // the carrier is truly stuck.
+            double offsideMargin = offsideMargin(state, carrier, teammate);
+            if (offsideMargin > OFFSIDE_WHISTLE_MARGIN) {
+                continue;
+            }
+
             double openness = calculateOpenness(state, teammate);
             double dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
             double forward = home ? teammate.getPosition().getRow() - carrier.getPosition().getRow()
                                   : carrier.getPosition().getRow() - teammate.getPosition().getRow();
-            double prox = home ? teammate.getPosition().getRow() : 8.0 - teammate.getPosition().getRow();
+            double prox = goalProximity(home, teammate.getPosition().getRow());
             // Lane check: opponents between carrier and receiver block the pass.
             double lanePenalty = laneBlockPenalty(state, carrier, teammate) * 80.0;
             // How much space the receiver has (0-1) -> up to +30
@@ -353,18 +428,56 @@ public class CleanDecisionEngine {
             if (pressure < 0.17) openScore -= 40.0; // ~2.3m of space or less = marked
             // Forward progress modest (forward +, lateral 0, backward big minus)
             double direction = forward > 0 ? 50.0 : forward < -0.2 ? -80.0 : -10.0;
-            // Long balls through a congested midfield are how passes get
-            // intercepted — they need a genuinely clear lane to be worth it.
-            if (dist > 4.0) direction -= 25.0;
+            // Long balls are risky – bias toward short combinations
+            // 1 cell = 14 m → ideal short pass 0.8-1.5 cells
+            double distancePenalty = 0.0;
+            if (dist > 2.5) {
+                direction -= 35.0;
+                distancePenalty = (dist - 2.5) * 12.0;
+            } else if (dist < 0.7) {
+                distancePenalty = 8.0; // too close, not progressive
+            }
+            // Marginal offside = plays on with a whistle risk: heavy penalty.
+            double offsidePenalty = offsideMargin > 0 ? 120.0 : 0.0;
             double score = direction + openScore + Math.max(0, prox) * 2.0
-                    - (dist > 6.0 ? 15.0 : 0.0)
-                    - lanePenalty;
+                    - distancePenalty
+                    - lanePenalty
+                    - offsidePenalty;
             if (score > bestScore) {
                 bestScore = score;
                 best = teammate;
             }
         }
         return best;
+    }
+
+    /**
+     * How far (in cells) the receiver is beyond the second-to-last defender, or a
+     * large NEGATIVE value when he is clearly onside (own half, behind the ball,
+     * or simply not level with the line). Mirrors OffsideService's margin so the
+     * decision layer and the rules layer agree on who is offside.
+     */
+    private double offsideMargin(MatchState state, Player carrier, Player receiver) {
+        boolean home = "HOME".equals(receiver.getTeam());
+        double receiverRow = receiver.getPosition().getRow();
+        boolean inOppHalf = home ? receiverRow > 4.5 : receiverRow < 4.5;
+        boolean forwardOfBall = home
+                ? receiverRow > carrier.getPosition().getRow()
+                : receiverRow < carrier.getPosition().getRow();
+        if (!inOppHalf || !forwardOfBall) {
+            return -5.0;
+        }
+        String defendingTeam = home ? "AWAY" : "HOME";
+        List<Double> rows = new ArrayList<>();
+        for (Player opp : state.getPlayers()) {
+            if (!defendingTeam.equals(opp.getTeam())) continue;
+            if (opp.isSentOff() || opp.isInjured()) continue;
+            rows.add(opp.getPosition().getRow());
+        }
+        if (rows.size() < 2) return home ? 10.0 : -10.0;
+        rows.sort(home ? Comparator.reverseOrder() : Comparator.naturalOrder());
+        double lineRow = rows.get(1);
+        return home ? receiverRow - lineRow : lineRow - receiverRow;
     }
 
     /** Number of opponents whose body lies inside the passing corridor (0..1 normalized). */

@@ -51,6 +51,8 @@ public class MovementEngine {
         Player chaser = looseBallChaser(state);
 
         for (Player p : state.getPlayers()) {
+            p.setVelX(0.0);
+            p.setVelY(0.0);
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
 
             // RIGID RULE (user 2026-09-23): a player who just struck the ball
@@ -86,7 +88,7 @@ public class MovementEngine {
             if (target == null) continue;
 
             double pace = state.getRoundPaceSkill(p);
-            double playerSpeed = playerSpeedFor(pace);
+            double playerSpeed = playerSpeedFor(pace) * FatigueSystem.speedFactor(p);
 
             // Carrier with ball moves slightly slower
             if (isCarrier && !carrierOffBall) {
@@ -162,6 +164,8 @@ public class MovementEngine {
             );
 
             p.setPosition(newPosition);
+            p.setVelX(newPosition.getColumn() - current.getColumn());
+            p.setVelY(newPosition.getRow() - current.getRow());
 
             // If reached target, clear it
             if (SimUtils.distance(newPosition, target) < 1e-6) {

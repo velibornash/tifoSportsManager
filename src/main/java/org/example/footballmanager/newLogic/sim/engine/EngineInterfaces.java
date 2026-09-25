@@ -71,8 +71,14 @@ public interface EngineInterfaces {
                 boolean redCard,
                 boolean penalty,
                 boolean freeKick,
-                String description
-        ) {}
+                String description,
+                String varDecision
+        ) {
+            public DisciplineResult(boolean foul, boolean yellowCard, boolean redCard,
+                                    boolean penalty, boolean freeKick, String description) {
+                this(foul, yellowCard, redCard, penalty, freeKick, description, "NONE");
+            }
+        }
 
         DisciplineResult evaluateFoul(MatchState state);
     }

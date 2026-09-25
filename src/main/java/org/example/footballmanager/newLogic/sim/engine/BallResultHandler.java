@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.sim.engine;
 
+import org.example.footballmanager.newLogic.sim.model.ActionType;
 import org.example.footballmanager.newLogic.sim.model.BallStepResult;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
@@ -57,7 +58,11 @@ public class BallResultHandler {
                             log("ORC", offMsg);
                             recorder.appendEvent(state.getMatchTicks(), "OFFSIDE", offMsg, state);
                             // No pass completed / no receive stat — play is dead.
+                            // This path does not go through OffsideService, so the
+                            // offside counter has to be fed here as well.
+                            stats.onOffside(receiver.getTeam());
                             restartManager.handleOffsideFreeKick(state, spot);
+                            state.clearPassContext();
                             log("RST", "offside IFK -> taker "
                                     + (state.getRestartTaker() == null ? "none"
                                         : state.getRestartTaker().getLabel())
@@ -68,8 +73,9 @@ public class BallResultHandler {
                                 + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "RECEIVE", eventMsg, state);
+                        String completedPasserId = state.completePass(receiver);
                         state.incrementPassesCompleted();
-                        stats.onPassCompleted(receiver.getTeam(), receiver.getId());
+                        stats.onPassCompleted(receiver.getTeam(), receiver.getId(), completedPasserId);
                     }
                     case INTERCEPT -> {
                         Player interceptor = state.getCarrier();
@@ -78,6 +84,7 @@ public class BallResultHandler {
                                 + " at " + p(interceptor.getPosition()) + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "INTERCEPT", eventMsg, state);
+                        state.clearPassContext();
                         stats.onInterception(interceptor.getTeam(), interceptor.getId());
                     }
                     case SAVE -> {
@@ -90,6 +97,7 @@ public class BallResultHandler {
                                     + " | ball" + p(state.getBall().getPosition());
                             log("ORC", eventMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_SAVED", eventMsg, shooter, null);
+                            state.clearPassContext();
                             stats.onSave(gk.getTeam());
                             state.setLastShooter(null); // shot outcome consumed
                         } else {
@@ -99,6 +107,7 @@ public class BallResultHandler {
                                     + " | ball" + p(state.getBall().getPosition());
                             log("ORC", eventMsg);
                             recorder.appendEvent(state.getMatchTicks(), "GK_CATCH", eventMsg, gk, null);
+                            state.clearPassContext();
                         }
                     }
                     case BLOCK -> {
@@ -111,6 +120,7 @@ public class BallResultHandler {
                                     + " | ball" + p(state.getBall().getPosition());
                             log("ORC", eventMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_BLOCKED", eventMsg, shooter, null);
+                            state.clearPassContext();
                             if (shooter != null) {
                                 stats.onBlock("HOME".equals(shooter.getTeam()) ? "AWAY" : "HOME");
                                 state.setLastShooter(null); // shot outcome consumed
@@ -120,6 +130,7 @@ public class BallResultHandler {
                                     + " | ball" + p(state.getBall().getPosition());
                             log("ORC", eventMsg);
                             recorder.appendEvent(state.getMatchTicks(), "BLOCK", eventMsg, state);
+                            state.clearPassContext();
                         }
                     }
                     case DEFLECT -> {
@@ -127,6 +138,7 @@ public class BallResultHandler {
                         eventMsg = "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "DEFLECT", eventMsg, state);
+                        state.clearPassContext();
                         // Attribute the deflect to the team of the player whose body it
                         // struck (label is the player's short name).
                         stats.onDeflect(resolveTeamByLabel(res.getDetail()));
@@ -140,27 +152,46 @@ public class BallResultHandler {
                         recorder.appendEvent(state.getMatchTicks(),
                                 wasShot ? "SHOT_POST" : "POST_HIT", eventMsg, shooter, null);
                         if (wasShot) state.setLastShooter(null); // shot outcome consumed
+                        state.clearPassContext();
                     }
                     case GOAL -> {
                         state.setOffsideFlaggedReceiver(null);
+                        // Goal only valid from a shot – prevents goals from passes/deflections crossing the line
+                        boolean isShotGoal = wasShot && state.getLastActionType() == ActionType.SHOT;
+                        if (!isShotGoal) {
+                            // Treat accidental line crossing as OOB/goal kick, do not award
+                            String goalTeam = res.getScorerTeam();
+                            String kickoffTeam = "HOME".equals(goalTeam) ? "AWAY" : "HOME";
+                            restartManager.handleKickoff(state, kickoffTeam);
+                            log("RST", "illegal goal crossing ignored, forced kickoff -> " + kickoffTeam);
+                            return;
+                        }
                         String scorerTeam = res.getScorerTeam();
                         if ("HOME".equals(scorerTeam)) state.addHomeGoal();
                         else state.addAwayGoal();
-                        // Scorer = last touch (set at launch; survives deflections). Falls
-                        // back to the shooter for safety.
                         Player scorer = state.getLastTouchPlayer() != null ? state.getLastTouchPlayer() : shooter;
+                        String assistId = state.assistIdFor(scorer);
+                        String assistName = state.assistNameFor(scorer);
                         eventMsg = "*** GOAL " + scorerTeam
                                 + (scorer != null ? " by " + scorer.getLabel() + "(" + scorer.getRole() + ")" : "")
+                                + (assistName != null ? " assisted by " + assistName : "")
                                 + " - score " + state.getHomeGoals() + ":" + state.getAwayGoals() + " ***"
                                 + " ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
-                        recorder.appendEvent(state.getMatchTicks(), "GOAL", eventMsg, scorer, null);
-                        if (scorer != null) stats.onGoal(scorerTeam, scorer.getId());
+                        recorder.appendEvent(state.getMatchTicks(), "GOAL", eventMsg, scorer, null,
+                                assistId, assistName, state.getHomeGoals(), state.getAwayGoals(),
+                                null, null, null, null, null, null);
+                        if (scorer != null) stats.onGoal(scorerTeam, scorer.getId(), assistId);
+                        state.clearPassContext();
                         state.setLastShooter(null); // shot outcome consumed
                         // Reset for kickoff (clock keeps running)
                         String kickoffTeam = "HOME".equals(scorerTeam) ? "AWAY" : "HOME";
                         restartManager.handleKickoff(state, kickoffTeam);
-                        log("RST", "kickoff -> ball at center, taker " + state.getCarrier().getLabel());
+                        // handleKickoff leaves the carrier null when it cannot find
+                        // a kicker (all attackers unavailable) — never dereference it.
+                        Player kicker = state.getCarrier();
+                        log("RST", "kickoff -> ball at center, taker "
+                                + (kicker == null ? "none (no kicker available)" : kicker.getLabel()));
                     }
                     case OOB_ENTER -> {
                         state.setOffsideFlaggedReceiver(null);
@@ -175,6 +206,7 @@ public class BallResultHandler {
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_MISSED", missMsg, shooter, null);
                             state.setLastShooter(null); // shot outcome consumed
                         }
+                        state.clearPassContext();
                     }
                     case OOB_HOLD -> {
                         eventMsg = "OOB hold " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
@@ -188,6 +220,7 @@ public class BallResultHandler {
                         // restarted on LEFT col 1 — positions were hardcoded).
                         Position oobExit = state.getBall().getPosition();
                         restartManager.handleRestart(state, restartType, oobExit);
+                        state.clearPassContext();
                         eventMsg = "restart " + restartType + " ball" + p(state.getBall().getPosition())
                                 + " taker " + (state.getRestartTaker() == null ? "none" : state.getRestartTaker().getLabel());
                         log("RST", eventMsg);
@@ -196,6 +229,7 @@ public class BallResultHandler {
                     }
                     case OOB_CANCEL -> {
                         state.setOffsideFlaggedReceiver(null);
+                        state.clearPassContext();
                         eventMsg = "OOB cancel — ball rolled back into play | ball" + p(state.getBall().getPosition());
                         log("BAL", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "OOB_CANCEL", eventMsg, state);
@@ -207,6 +241,7 @@ public class BallResultHandler {
                                 + " | ball" + p(state.getBall().getPosition()) + " " + carrier.getLabel() + p(carrier.getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "LOOSE_PICKUP", eventMsg, state);
+                        state.clearPassContext();
                     }
                     case STOPPED -> {
                         state.setOffsideFlaggedReceiver(null); // ball died, no touch by the flagged receiver
@@ -219,6 +254,9 @@ public class BallResultHandler {
                             log("ORC", missMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_MISSED", missMsg, shooter, null);
                             state.setLastShooter(null); // shot outcome consumed
+                        }
+                        if (wasShot || state.getPendingReceiver() == null) {
+                            state.clearPassContext();
                         }
                     }
                     case FLIGHT -> {

@@ -18,7 +18,11 @@ public class MatchClockService {
      */
     public boolean tick(MatchState state) {
         if (state.isStopped()) {
-            return !isMatchFinished(state);
+            if (isMatchFinished(state)) {
+                state.setMatchFinished(true);
+                return false;
+            }
+            return true;
         }
 
         state.advanceTick();
@@ -26,10 +30,16 @@ public class MatchClockService {
         // Check for half-time stop (45 min = 1800 ticks)
         if (state.getMatchTicks() == 1800) {
             state.setStopped(true);
+            state.setHalfTime(true);
             return true; // match not finished, just paused
         }
 
-        return !isMatchFinished(state);
+        if (isMatchFinished(state)) {
+            state.setMatchFinished(true);
+            return false;
+        }
+
+        return true;
     }
 
     /**

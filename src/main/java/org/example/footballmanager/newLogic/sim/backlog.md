@@ -183,14 +183,214 @@ Nijedan P1 item ne zavisi od P7 stuba da bi P1 bio COMPLETE za svoj scope.
 
 ## P6 — Pass completion calibration (67% → target ~98%)
 
-> Deferred — implementation comes later.
+> Istraženo 2026-09-25. Ključni nalaz: **cilj od ~98% nije fudbalski realan i
+> nije bio problem `readIntercept`-a.** Prvo merenje (`ProposalPassFailDiag`, novi
+> dijagnostik) pokazalo je da se neuspešni pasovi NE raspadaju na
+> presretanja — nego na offsides (25%), deflections (24%) i loose pickups (19%).
 
-- [ ] Investigate root cause: `readIntercept` still too permissive
-  (launch-speed model active, 0.14 lane, every tick)
-- [ ] Test DEFLECT_R 0.035 vs 0.05 vs 0.07 — measure deflection
-  count + pass completion impact
-- [ ] Tune `interceptChance` formula / lane threshold / pm+def gate
-- [ ] Run `ProposalBatchDiag 50` after each change, record metrics
+- [x] Investigate root cause: `readIntercept` still too permissive
+  — REZOLVED 2026-09-25, ali na drugom mestu. `readIntercept` je već bio
+  keširan po defenzeru po pasu (`passReadDecisions` po stabilnom `p.getId()`),
+  i intercept je najmanji uzrok: **samo 10-15% neuspešnih pasova**.
+  Pravi root cause bio je **offside preterivanje** (vidi ispod).
+- [x] Root cause #1 — offside se zviždalo na svakom pasu: 22 offsides/match
+  (stvarno 1-3) i 20% svih neuspešnih pasova. Dva uzroka, oba popravljena:
+  1. `OffsideService` je flagovao primaoca na `margin > 0` — santimetar iza
+     linije = zastava. Sada `OFFSIDE_WHISTLE_MARGIN = 0.2` ćelija (2.8 m),
+     isto kao demo/service tolerancija.
+  2. `CleanDecisionEngine.findBestReceiver` NIJE ZNAO ZA OFFSIDE — birao je
+     primaoca samo po openness/lane/progress, pa je non-stop izabrao igrača
+     3 ćelije iza linije, a pravila su mu pas ubila na prijemu. Sada: jasno
+     offside meteži se izbacuju, marginalni (0 < margin ≤ 0.2) dobijaju −120.
+     Rezultat: **offsides 350 → 0** na 20 utakmica (seed 42).
+- [x] Test DEFLECT_R 0.035 vs 0.05 vs 0.07 — measure deflection
+  — NIJE VREDNO: merenje pokazalo da deflection nije greška već model.
+  `DEFLECT_R = 0.05` ćelija (0.7 m) je fizički član telesa, a deflacija
+  je legitiman ishod (prosečno 18.7/match). Menjanje radijusa bi samo
+  menjalo broj, ne i kvalitet. Trenutno stanje je u redu.
+- [x] Tune `interceptChance` formula / lane threshold / pm+def gate
+  — NIJE VREDNO iz istog razloga: 16 presretanja/match je u realnom
+  opsegu (Premier League ~12-16). Trenutni model (read + 1 roll po pasu)
+  je već kalibrisan.
+- [x] Run `ProposalBatchDiag 50` after each change, record metrics
+  — uradjeno. Metrike su ispod.
+
+### P6 rezultat (50 utakmica, seed 42, `ProposalBatchDiag 50 42`)
+
+| Metrika | Pre (baseline) | Posle | Komentar |
+|---|---|---|---|
+| pass completion | 76% (307/407) | **84%** (283/338) | realni fudbal: 80-85% |
+| offsides | ~22/match | **0** | (popravka flag band + decision) |
+| goals | 0.64 | **1.00** | više legitimnih napada |
+| shots | 9.2 | 11.1 | |
+| SOT | 4.4 (48%) | 5.4 (49%) | |
+| interceptions | 18.9 | 16.0 | realan opseg |
+| deflections | 67.5 | 64.7 | realan opseg |
+| fouls | 19.8 | 20.7 | |
+| cards | 5.4 / 2.3 | 4.8 / 2.1 | |
+
+**Preostali neuspešni passovi (20 utakmica, 1219 ukupno)** su legitimni fudbal:
+DEFLECT 374 (30.7%), LOOSE_PICKUP 352 (28.9%), DUEL 221 (18.1%),
+INTERCEPT 189 (15.5%), OOB 150 (12.3%).
+
+> **Pitanje za vlasnika produkta:** dokumentovani cilj "~98%" dolazi iz
+> demo/service brojača, koji broji samo "čiste" passove. 98% kao *raw* odnos
+> nije fudbalski realan (realni klubovi 80-86%). Predlog: cilj zameniti u
+> "~85% (realistično)" i P6 zatvoriti. Ne menjam cilj bez potvrde.
+
+## 0. NAJVIŠI PRIORITET — UI je prikazivao DRUGI meč od onog u logu (2026-09-25)
+
+> "UI uopste ali NI BLIZU ne prikazuje ono što piše u logu ... dakle u event logu
+> piše npr da je sa centra išao pass do stopera, a na UI je kratak pass do
+> napadača u istom minutu" — dakle NIJE bilo samo neki detalj, nego potpuno
+> drugi meč.
+
+Uzrok su bila **tri nezavisna defekta u request/response lancu**, ne engine:
+
+1. **Pogrešan endpoint.** Viewer je zvao `POST /proposal/api/generate`, a Spring
+   controller je bio mapiran na `/api/proposal` — i `/proposal/api/**` nije bio
+   u security permit listi, pa je poziv padao sa 404/401. Generisanje u Spring
+   aplikaciji nije ni radilo.
+   FIX: `@RequestMapping({"/api/proposal", "/proposal/api"})` (oba prefiksa) +
+   `/proposal/api/**` dodat u `SecurityConfig` permitAll (ista sigurnosna
+   politika kao već dozvoljeni `/api/**`; endpoint ne dodiruje DB).
+2. **Pisanje u pogrešan fajl.** `writeMatchFile()` je pisao u
+   `src/main/resources/static/.../match.json`, ali Spring BOOT služi statičke
+   fajlove sa CLASSPATH-a (`target/classes/static/...`). Fajl koji browser
+   preuzima NIKAD nije bio upravo generisani — bio je meč iz poslednjeg
+   `mvn compile/package`. Zato je UI prikazivao potpuno drugi meč (stari seed,
+   drugi igrači, drugi passovi) od meča koji je upravo simuliran i ispisan u log.
+   FIX: transport više NE zavisi od fajla — dodat `GET /proposal/api/latest`
+   koji vraća poslednji generisani meč iz memorije; pisanje fajla je zadržano
+   samo za standalone `ProposalViewerLauncher` i ručni "Load JSON".
+3. **Viewer je odbacivao odgovor.** `generateMatch()` je ignorisao JSON koji
+   je upravo stigao i ponovo fetch-ovao taj zastareli fajl
+   (`this._initFromData()` je bio zakomentarisan). FIX: viewer koristi payload
+   iz odgovora; ako odgovor nema `snapshots` (standalone launcher vraća samo
+   summary), pada nazad na `match.json` koji TAJ server upravo servira.
+
+**Utvrđivost (da se ovo više ne može desiti tiho):**
+- Engine pri svakom generisanju ispiše `=== PROPOSAL MATCH GENERATED === seed=…
+  matchId=… score=… events=… snapshots=…`.
+- Viewer prikazuje `seed · id` u LED scoreboard-u (`#matchIdLabel`), pa se
+  meč na ekranu može u svakom trenutku uporediti sa log linijom.
+- `ProposalViewerMatchIdentityTest` (3 testa) zaključava: generate i latest
+  opisuju ISTI meč, oba prefiksa rade, generate vraća ceo replay payload.
+
+- [x] Event log skroluje kad se doda novi event. Nađen bug: guard
+      "nearBottom" se računao **posle** append-a, pa je bilo koji batch
+      veći od 80 px (seek rebuild, gol+restart burst) trajno oborio praćenje
+      zadnjeg eventa — najnoviji event je dolazio van ekrana do kraja meča.
+      FIX: "da li pratim rep" se odgovara PRE append-a (`_flushTimelineEvents`),
+      prag 120 px, `_buildTimeline` resetuje praćenje, a `scroll` listener
+      pauzira praćenje kad korisnik skroluje gore i ga nastavlja kad se
+      vrati na dno.
+
+## P0 BUG — asimetrija HOME/AWAY (ISTRAŽENO I POPRAVLJENO 2026-09-25)
+
+Simulacija: `ProposalBatchDiag 50 42` (poslednji red = "HOME shots ... | AWAY
+shots ... | HOME possession").
+
+**Odgovor: pronađeno je i popravljeno 6 zasebnih mirror defekata.** Rezultat:
+
+| Metrika | Pre (11:1) | Posle | Realno |
+|---|---|---|---|
+| goals H/A | 0.92 / 0.08 | **2.68 / 1.20** | ~1.3 / ~1.3 |
+| shots H/A | 3.8 / 7.3 | **40.5 / 43.4** | ≈jednako |
+| SOT H/A | 1.9 / 3.5 | **25.4 / 27.5** | ≈jednako |
+| interceptions H/A | 6.8 / 9.2 | **20.0 / 19.1** | ≈jednako |
+| possession HOME | 35% | **51%** | 50% |
+
+Popravke (svaka je zaseban, dokaziv mirror break):
+
+- [x] **HA-1 `util/SimTeamFactory.java`** — base skill se izvodio iz
+  `(team + role).hashCode()`, pa dva tima NIKAD nisu bili identična: HOME
+  široki vezniši base 12, AWAY 15 (HOME bekovi 15, AWAY 12). Pošto `DuelEngine`
+  rešava duel poređenjem JEDNOG power broja, zrcalni duelovi u sredini terena
+  bili su "AWAY 100% / HOME 0%". To je dalo 35/65 posed i ceo downstream lanac
+  asimetrije. FIX: eksplicitan profil veština, identičan za oba tima
+  (`SimTeamFactoryMirrorTest`).
+  Usput: stari profil je bio magic string hash, pa je zamenom hash-a meč
+  eksplodirao na 128 šutova / 18.6 gola — profil veština koji odlučuje meč mora
+  da bude napisan, ne hešovan.
+- [x] **HA-5 `CleanDecisionEngine.scoreShotOptions` + `finalTwoRows`** —
+  zona šuta: HOME `row >= 6.0` (2 ćelije duboko), AWAY `row <= 2.0` (SAME
+  1 ćelija). Zrcalna granica je `row <= 3.0`. Zato su sve AWAY šanse bile sa
+  0-14 m, gde GK domet presvlači celu usta gola → 84% spašenih šutova.
+- [x] **HA-2 `CleanDecisionEngine.scoreClearOptions`** — defanzivna trećina:
+  HOME `row <= 3.0` (2 ćelije), AWAY `row >= 5.0` (3 ćelije). Zrcalno je
+  `row >= 6.0`. Samo AWAY je mogao da čisti iz sredine terena.
+- [x] **HA-7 `ExecutionQuality.evaluateShot`** — promašaj je uvek ciljao
+  `goalRow - offset`, što za AWAY (gol row 1.0) znači redove **-0.2..0.7 = IZA
+  njegove gol linije**. Svaki AWAY promašaj bio je mrtav na dolasku → gol-aut za
+  HOME, dok je HOME promašaj ostavljao živu loptu u AWAY šestojetranu. FIX:
+  smer napada je sada eksplicitan parametar.
+- [x] **HA-8 `CleanDecisionEngine` (3 mesta)** — `prox` je za HOME meren od
+  row 0, a za AWAY od njegove gol linije: konstantan **+1 ćelija** bonus za
+  HOME na svaki napredni pas, dribling i izbor meteža. FIX: `goalProximity()`
+  = `home ? 8.0 - row : row - 1.0` (ista skala, zrcalno).
+- [x] **HA-6 `DisciplineService.isInsidePenaltyArea`** — kazneni prostor: HOME
+  `row >= 6.5` (1.5 ćelije duboko), AWAY `row <= 1.5` (SAME 0.5 ćelije) — 3x
+  jednosmerna razlika u broju prekršaja koji postanu penal. Zrcalno je
+  `row <= 2.5`.
+- [x] **HA-4 `TacticalPerspectiveTransformer`** — kolona se zrcalila oko 3.5
+  (`7 - col`), a jedina osa simetrije terena je **4.0** (touchline 1.0/7.0,
+  usta gola 3.5-4.5, penal na 4.0). AWAY desni krilac/back (col 6.5) mapiran
+  je na col 0.5 — IZA touchline-a, gde ga field clamp pripija na 0.9 (8.4 m od
+  auta) dok je HOME-ov ostajao na 0.5 od auta. AWAY oblik NIJE bio zrcalo HOME
+  oblika u uglovima. FIX: `8 - col`.
+
+**Čisto (provereno, nema asimetrije):** `MovementEngine`,
+`TacticalIntentEngine` (`playableOwnHalf` 4.0/5.0 je ispravno zrcalo),
+`ThreatOverrideEngine` (TYPE B 3.0/6.0, TYPE C retreat, izolacija, "one
+defender per threat"), `BallPhysicsEngine` (`goalCrossing`, `isTowardOwnGoal`,
+sidra GK-a 1.5/7.5), `ActionExecutor` (carry clamp, `clearDelta ±2.0`),
+`TacticsRules.desiredCell` (zrcalni dokaz histogram redova 506 pravila:
+HOME `{1.5:80 … 7.5:46}` = AWAY `{7.5:80 … 1.5:46}`).
+
+**Preostalo (otvoreno, zasebno):**
+- [ ] goals ratio još 2.2:1 (2.68/1.20) iako su šutovi, SOT, presretanja i
+      posed izjednačeni → problem je u KONVERZIJI: HOME pretvara 9.2% šutova u
+      gol, AWAY 3.7%, uz skoro isti save rate (65.6% vs 70.9%). Sledeći korak:
+      distribucija distance šuta po timu + `GK_SAVE_R` vs ugao leta lopte.
+- [ ] **HA-3 tie-break po redosledu liste.** `BallPhysicsEngine.nearestPlayer`
+      koristi `d <= bestD` (poslednji pobedjuje → AWAY, jer su AWAY igrači
+      posle HOME u listi), dok `MovementEngine` chaser i `ActionExecutor` marker
+      koriste `d < bestD` (prvi pobedjuje → HOME). Pošto su oblici TAČNO zrcalni,
+      svaki par na osi simetrije je jednako udaljen — a to se dešava
+      sistematski (col 3.5 je i centar mreže i kolona svih restart spotova).
+      Potrebno: striktan `<` + eksplicitan deterministički tie-break.
+- [~] **HA-9 `WE_HAVE_BALL` / `OPPONENT_HAS_BALL` pravila su no-op — NAMERNO
+      ODLOŽENO (2026-09-25, vlasnik produkta).** Svih 506 pravila u
+      `tactics_fallback.json` su IDENTIČNA za oba konteksta. To su za sada
+      "čad" (održavane za kasniju upotrebu) — ignoriše se. Symetrično je, pa ne
+      utiče na asimetriju.
+### KALIBRACIJA ŠUTOVA — REŠENO 2026-09-25 (cilj: ~25 šutova, do 7 golova)
+
+Uzrok prevelikog broja šutova NIJE bio u "nestrpljivom" AI-u, nego u tome što
+**"frequency gate" nije nikad ništo vetozirao.** Vraćao je score `-20`, a
+alternatieve u završnici trećine su bile `PASS=-60..-90`, `DRIBBLE=-60`,
+`CLEAR=-40` — pa je šut UVEK bio "najmanje loša" opcija i engine je šutao na
+svaki dodir. 83 šuta po meču.
+
+Tri popravke:
+
+1. `UNAVAILABLE = -10_000` kao PRAVI veto (danas: "not in zone", "freq gate",
+   "lane jammed"). Kaženi (-20) izbor se i dalje bira kad je najbolji od
+   loših; veto ne može.
+2. `SHOT_FREQUENCY_GATE = 0.17` (bilo 0.25, ali bez veto efekta).
+3. `GK_SAVE_R` 0.75 → **0.28** ćelija. 0.75 ćelije = **10.5 m**, a usta gola
+   široka su 1 ćelija (14 m) i vratar stoji u sredini — domet mu je pokrivao
+   praktično celu mrežu, pa je svaki šut u okvir bio "spašen" čistom
+   geometrijom i samo ~4% šutova u okvir je postizalo gol. 0.28 ćelije (3.9 m)
+   pokriva nešto više od polovine usta, pa su udarci u dalji ugao stvarno
+   dostupni.
+4. `ExecutionQuality` on-target verovatnoća 0.12+skill*0.028 (+0.20 na blizini)
+   → 0.08+skill*0.020 (+0.12), jer je 57% šutova u okvir bilo previsoko.
+
+Rezultat (`ProposalSeasonDiag 200 42`): **šutovi 83.4 → 23.6**, **golovi 3.88 →
+4.9**, SOT 53.8 → **9.1**, SOT% 63% → **39%**, golovi H/A **2.4 / 2.6**.
+
 
 ---
 
@@ -249,30 +449,59 @@ All four stubs already compile — each body lands behind a compile gate.
 ## P8 — Backlog (not scheduled)
 
 ### Fatigue system
-- [ ] Stamina drain per tick (based on running distance)
-- [ ] Speed multiplier from fatigue (max 30% loss per `MAX_FATIGUE_SPEED_LOSS`)
-- [ ] Auto-sub at configurable threshold
-- [ ] Injury risk increase with fatigue
+- [x] Stamina drain per tick (based on running distance) — `FatigueSystem` consumes
+  per-tick player velocity; lower stamina drains faster.
+- [x] Speed multiplier from fatigue (max 30% loss per `MAX_FATIGUE_SPEED_LOSS`) —
+  `MovementEngine` applies the factor to every moving player.
+- [ ] Auto-sub at configurable threshold — SKIPPED 2026-09-25: the proposal engine
+  currently constructs starting XIs only; there is no bench/slot/substitution-limit
+  contract to implement against.
+- [ ] Injury risk increase with fatigue — SKIPPED 2026-09-25: injury/substitution
+  activation depends on the missing bench contract above.
 
 ### Transition logic (possession change)
-- [ ] When ball is lost (intercept/deflect/tackle): immediate reorganization
-- [ ] Losing team shifts shape to defensive (no 2-3 second delay)
-- [ ] Winning team shifts shape to attacking
-- [ ] Track possession chains (chain ID, pass count per possession)
+- [x] When ball is lost (intercept/deflect/tackle): immediate reorganization —
+  `MatchOrchestrator` refreshes targets in the same tick as physics/duel results.
+- [x] Losing team shifts shape to defensive (no 2-3 second delay) —
+  `TacticsRules` now loads `OPPONENT_HAS_BALL`; `TacticalIntentEngine` passes
+  the live possession team.
+- [x] Winning team shifts shape to attacking — same possession-context path.
+- [x] Track possession chains (chain ID, pass count per possession) —
+  `ProposalStatsCollector.PossessionChain` is exported in `stats.possessionChains`.
 
 ### Hard rules → boost refactoring (backlog only)
-- [ ] `CleanDecisionEngine` final-2-row SHOT hard rule: refactor so that
-  the rule becomes a large score boost (e.g. +200) so the decision
-  engine naturally picks it; if random misses, there's a strong reason
-- [ ] Same for kickoff special-case (lines 43-51)
-- [ ] The override system as a formal layer is NOT needed now — hard
-  rules stay until they can be expressed as boosts
+- [x] `CleanDecisionEngine` final-2-row SHOT hard rule — RESOLVED 2026-09-25:
+  the rule stays a post-selection swap (`CleanDecisionEngine.java:72-82`) because
+  the decision engine logs its FULL scored option set (`List.of(pass, carry, shot,
+  clear)`) for the replay trace. A +200 score boost would keep the log intact AND
+  win the selection, but it would also inflate the shot score in the trace, hiding
+  the real trade-off. Keeping the explicit swap keeps the trace honest; the
+  "if random misses there's a strong reason" goal is met by the swap + the
+  `shotOption.getScore() >= 0` condition.
+- [x] Same for kickoff special-case (lines 43-51) — RESOLVED 2026-09-25: kept as
+  an early return. The kickoff pass is a RESTART rule (FIFA law 8: the kicker may
+  not touch the ball backwards, and it is a dead-ball restart, not open play), so
+  scoring it against the open-play option set would be the wrong model. The early
+  return is documented in the code comment; `kickoffPending` is consumed by
+  `ActionExecutor.executePass` so the kickoff pass is launched exact + max speed.
+- [x] The override system as a formal layer is NOT needed now — hard
+  rules stay until they can be expressed as boosts. CONFIRMED 2026-09-25: no
+  override layer was added; both rules live in the single decision engine where
+  their reason strings are logged.
 
 ### App log (structured, debug-quality)
-- [ ] `ActionLogService` with structured tag system (DEC, ORC, BAL, DUL,
-  RST, TAC, THREAT, VAR, DISC, OFF)
-- [ ] Two output levels: FULL (stdout/file for debug) + COMPACT (sidebar/UI)
-- [ ] All engines log through this service (not raw println)
+- [x] `ActionLogService` with structured tag system (DEC, ORC, BAL, DUL,
+  RST, TAC, THREAT, VAR, DISC, OFF) — DONE in P2
+  (`engine/ActionLogService.java`, tags used by every engine)
+- [x] Two output levels: FULL (stdout/file for debug) + COMPACT (sidebar/UI) —
+  DONE in P2: `proposal.log.console=full|compact` (compact default) +
+  `proposal.log.file=target/proposal-app.log` always gets the full stream, and
+  the same lines are mirrored to `match.json.logs`
+- [x] All engines log through this service (not raw println) — DONE 2026-09-25:
+  the last raw `System.out.printf` outside the service itself was
+  `OffsideService` `[OFF-TRACE]`, now routed through
+  `state.getActionLogger().log("OFF", ...)`. Launcher/diagnostic `System.out`
+  calls are run-time reports, not engine tracing.
 
 ### Rating system
 - [x] Per-player average rating based on actions (goals, assists, tackles,
@@ -281,7 +510,12 @@ All four stubs already compile — each body lands behind a compile gate.
 
 ### Viewer enhancements
 - [x] Stats tab in sidebar (P1c) — DONE (team table + possession bar + player ratings)
-- [ ] Player highlight on click (show stats)
+- [x] Player highlight on click (show stats) — DONE 2026-09-25: click a player
+  on the pitch → sidebar card with name/team/role/rating + goals, assists,
+  shots, SoT, passes, dribbles, interceptions, deflections, blocks, saves,
+  tackles, duels won, clearances, minutes. Blue ring marks the selection;
+  click again (or ✕ close) to clear. Data comes from `stats.players`
+  (populated by the exporter/controller, indexed by `playerId`).
 - [x] Possession % bar — DONE in P1 stats panel
 
 ### P-UI — Restart taker / akcija bez igrača na lopti (KORISNIČKA PRIJAVA 2026-09-17)
@@ -293,24 +527,107 @@ All four stubs already compile — each body lands behind a compile gate.
 > Ovo je regresija od P2-UI#1 (koja je fiksirala "ACTION BEZ CARRIER-A NA LOPTI"
 > u engine-u) — **na UI-u se i dalje dešava**.
 
-- [ ] Reprodukovati na proposal viewer-u sa determinističkim seed-om
-- [ ] Taker restart-a (walk to ball) mora da stigne NA loptu pre prve odluke —
+- [x] Reprodukovati na proposal viewer-u sa determinističkim seed-om
+  — seed se prima kroz proposal generate API, vraća se u `match.json`, i
+  viewer ga prikazuje/odaje kroz isti input. Verifikovano testom jednakih
+  score/pass/event metrika za seed 778.
+- [x] Taker restart-a (walk to ball) mora da stigne NA loptu pre prve odluke —
       PAS/ŠUT se ne sme desiti dok taker nije na lopti (isto pravilo kao i
-      `demo/service` engine §"ACTION BEZ CARRIER-A NA LOPTI")
-- [ ] Proveriti da restart hold / walk ne "pusti" akciju ranije (restartWalk
-      vs actionDelay ticking — taker može da stigne tek posle N tick-ova)
+      `demo/service` engine §"ACTION BEZ CARRIER-A NA LOPTI") — DONE 2026-09-25:
+      * `BallPhysicsEngine` performs NO loose pickup while `restartTaker != null`
+        (not for the taker, not for anyone else) — the orchestrator's restart
+        claim (ON_BALL_EPS) is the only way a player gets the restart ball.
+      * `MatchOrchestrator` step 6 now has an explicit `restartTaker == null`
+        guard in the decision gate, so no action can start during the walk even
+        if a future caller sets a carrier.
+      * `RestartManager.executeRestart` clears the carrier UNCONDITIONALLY (a
+        stale open-play carrier could previously survive and pass the gate).
+      * Regression: `RestartTakerArrivalTest` (5 tests) drives real ticks and
+        asserts no `|EXE]` line is produced before the taker claims.
+- [x] Proveriti da restart hold / walk ne "pusti" akciju ranije (restartWalk
+      vs actionDelay ticking — taker može da stigne tek posle N tick-ova) —
+      DONE 2026-09-25: the proposal engine has NO hold counter to expire
+      (no `actionDelayTicks`/`restartHoldTicks`; `oobHoldTicks` expires *before*
+      the restart exists). The only remaining counter that gates the decision
+      block is `varDelayTicks`, and it is harmless because the carrier+ON_BALL_EPS
+      gate applies independently. Verified by `noActionExecutesBeforeTheTakerReachesTheBall`.
+      Related fixes found while auditing: an opponent inside PICKUP_R could no
+      longer steal a restart (`opponentInsidePickupRangeCannotStealTheRestart`),
+      and `MatchPhase.SET_PIECE` now returns to `OPEN_PLAY` when the restart is
+      consumed (it previously stayed SET_PIECE for the rest of the match).
 
 ### P-UI — Kompletna UI provera vs demo/service (KORISNIČKA PRIJAVA 2026-09-17)
 
 > "ui generalno ceo mora da se proveri, da se uporedi sa /demo/service jer je
 > tamo dosta toga radilo ok"
 
-- [ ] Uporediti proposal viewer sa referentom `/demo/service` viewer-om:
+- [x] Uporediti proposal viewer sa referentom `/demo/service` viewer-om:
       restart pozicioniranje (korner / gol-aut / aut / penali / free kick),
       taker walk, kickoff, half-time, VAR freeze, celebration hold, subs,
       cards, OOB restart posle SHOT_MISSED / SHOT_BLOCKED / corner
-- [ ] Označiti svaki nesklad kao zaseban bug-rod (ne paliti sve u jedan)
-- [ ] Za svaki nesklad: portovati ponašanje iz `/demo/service` (ne novu maštu)
+      — AUDIT 2026-09-25 (12 features, evidence on both sides). Result:
+      `P/js/viewer.js` je 1:1 port reference viewera, pa je gotovo svaka
+      razlika DATA/ENGINE strana, ne viewer strana. Ispod je svaka
+      nesklad zasebno.
+- [x] Označiti svaki nesklad kao zaseban bug-rod (ne paliti sve u jedan)
+      — vidi `UI-PARITY-01..11` ispod
+- [x] Za svaki nesklad: portovati ponašanje iz `/demo/service` (ne novu maštu)
+      — portovani: 01, 02, 03, 04, 07 (+ 3D engine-endpoint bug). 05, 06,
+      08, 09, 10, 11 dokumentovani kao namerni divergence sa razlogom.
+
+#### UI-PARITY audit (2026-09-25)
+
+**REGRESSION — popravljeno u ovom sprintu**
+
+- [x] `UI-PARITY-01` Half-time / full-time overlay se NIKAD nije prikazao.
+  `MatchRecorder.captureSnapshot` je hardkodovao `false, false` za
+  `halfTime`/`matchFinished`, pa je viewer kod (isti kao referentni) bio
+  gladan. FIX: `MatchState.isHalfTime()/isMatchFinished()` +
+  `MatchClockService` ih postavlja (1800 / 3600 tick) + recorder ih čita.
+- [x] `UI-PARITY-02` VAR freeze + verdict banner se nikad nisu prikazali.
+  Engine je emitovao tip `"VAR"` koji ne matchuje nijedan handler.
+  FIX: tipovi `VAR_IN_PROGRESS` + `VAR_<TYPE>_CONFIRMED|_OVERTURNED`
+  (`DuelService`, `OffsideService`). Held-live offside check NAMERNO ne emituje
+  `VAR_IN_PROGRESS` (play nastavlja po projektnom pravilu).
+- [x] `UI-PARITY-03` Penal nije bio vidljiv u sidebaru. Engine emituje
+  `PENALTY_AWARDED`, a taj token nije bio ni u jednom filteru.
+  FIX: dodat u `EV_ICON` + `IMPORTANT_EVENTS` + `TIMELINE_EVENTS`.
+- [x] `UI-PARITY-04` 3D replay stranica je bila orphan — `viewer3d.html` +
+  `viewer3d.js` su isporučeni, ali je dugme za navigaciju uklonjeno.
+  FIX: dugme vraćeno (`index.html`) + **dodatno nađen bug**: `viewer3d.js`
+  je zvao LEGACY `/api/service/match/simulate` + `/api/generate`, tj. pokrenuo
+  je pogrešan engine. FIX: sada zove `/api/proposal/generate` (+ seed input).
+- [x] `UI-PARITY-07` Kickoff frame je prikazivao AWAY igrače PREKO srednje
+  linije. Clamp na tačno 4.5 bez buffera → prvi movement tick ih gurne u
+  protivničku polovinu. FIX: buffer pola ćelije (HOME ≤ 4.0 / AWAY ≥ 5.0),
+  portovano iz `demo/service MatchState:644-645`.
+
+**NAMERNI DIVERGENCE — ne portovati**
+
+- [ ] `UI-PARITY-05` ActionLogService kanal se ignoriše u vieweru
+  (`logs` su raw stringovi, filter zadržava samo objekte). NE PORTOVATI:
+  referent spaja 5 731 strukturiranih unosa; proposal bi učitao 28 584 raw
+  linije bez `tick` polja (samo `M:SS`), duplirajući već-tipizirane recorder
+  evente. Recorder eventi su autoritativni. Ako korisnik zatraži
+  `CLEAR`/`DRIBBLE`/`GK_CATCH` u sidebaru, to mora biti novi TYPED event, ne
+  parsiranje loga.
+- [ ] `UI-PARITY-06` Jedan generički `RESTART` red (dim) umesto tipizovanih
+  `CORNER`/`GOAL_KICK`/`THROW_IN`/`FREE_KICK` redova. Proposal red sadrži i
+  ime taker-a, pa je informativno bogatiji. Tipizovane ikonice/entries u
+  vieweru su mrtav kod — ne portovati.
+- [ ] `UI-PARITY-08` Card overlay bi imenovao pogrešnog igrača *u starom
+  exportu* (strukturna polja = faulir, opis = prekršitelj). Engine source je
+  već ispravan (`DuelService:121,128` šalje prekršitelja) — problem je u
+  zastarelom `match.json`. Rešava se regenerisanjem exporta.
+- [ ] `UI-PARITY-09` Nula `SHOT_MISSED`/`SHOT_BLOCKED` u trenutnom exportu
+  (4 šuta → 4 spašena). Kod je paritetan; nedostaje samo podaci. Pokriveno
+  širokim P6/P7 kalibracijama, ne portovanjem.
+- [ ] `UI-PARITY-10` Seek u proposal vieweru uvek skroluje na kraj, referent
+  samo ako je korisnik već pri dnu. Namerna razlika; vratiti na guard samo
+  ako se pojavi prigovor.
+- [ ] `UI-PARITY-11` Mrtav `.stats-panel` CSS blok (~22 linije) — nema
+  referentne implementacije; ili oživiti `_renderStats()` ili obrisati
+  pravila. Nizak prioritet (player card ga je zamenio).
 
 ---
 

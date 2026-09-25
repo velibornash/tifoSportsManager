@@ -545,6 +545,8 @@ class Tifo3D {
   _wireControls() {
     document.getElementById('playBtn').addEventListener('click', () => this.play());
     document.getElementById('pauseBtn').addEventListener('click', () => this.pause());
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.addEventListener('click', () => { window.location.href = '/dashboard.html'; });
     const seek = document.getElementById('seek');
     seek.addEventListener('input', () => { seek._dragging = true; this.seek(Number(seek.value)); });
     seek.addEventListener('change', () => { seek._dragging = false; });
@@ -569,19 +571,50 @@ class Tifo3D {
     const playMatch = async () => {
       document.getElementById('loading').classList.remove('hidden');
       document.getElementById('loadingText').textContent = 'Simulating match...';
+      // Proposal engine only. This file was ported from /demo/service and still
+      // called the LEGACY /api/service/match/simulate + /api/generate endpoints,
+      // so pressing Generate here ran the wrong engine.
+      const seedInput = document.getElementById('seedInput');
+      const seed = seedInput && seedInput.value !== '' ? `?seed=${encodeURIComponent(seedInput.value)}` : '';
+      let data = null;
       try {
-        await fetch('/api/service/match/simulate', { method: 'POST' });
-      } catch (e) { console.error(e); }
-      try {
-        await fetch('/api/generate', { method: 'POST' });
+        const res = await fetch(`/proposal/api/generate${seed}`, { method: 'POST' });
+        if (res.ok) {
+          const payload = await res.json();
+          // Spring returns the full replay; the standalone launcher returns a
+          // summary and writes the file it serves (fall through to the file).
+          if (payload && Array.isArray(payload.snapshots)) data = payload;
+        }
       } catch (e) { console.error(e); }
       document.getElementById('loadingText').textContent = 'Loading replay...';
-      await this.loadUrl('match.json');
+      if (data) {
+        // Ingest the payload we JUST received. Loading match.json here would
+        // show the match from the last build (Spring serves static files from
+        // the classpath), i.e. a different match than the log.
+        this._ingest(data);
+      } else {
+        // Fallback: the app's in-memory last-generated match, then the file.
+        let res = await fetch('/proposal/api/latest');
+        if (!res.ok) res = await fetch('match.json');
+        if (res.ok) this._ingest(await res.json());
+        else this._showEmptyState();
+      }
+      if (seedInput && !seedInput.value && this.data?.seed != null) {
+        seedInput.value = this.data.seed;
+      }
+      document.getElementById('loading').classList.add('hidden');
+    };
+    const loadLatest = async () => {
+      document.getElementById('loading').classList.remove('hidden');
+      let res = await fetch('/proposal/api/latest');
+      if (!res.ok) res = await fetch('match.json');
+      if (res.ok) this._ingest(await res.json());
+      else this._showEmptyState();
       document.getElementById('loading').classList.add('hidden');
     };
     simBtn.addEventListener('click', playMatch);
     simBtn2.addEventListener('click', playMatch);
-    playMatchBtn.addEventListener('click', () => this.loadUrl('match.json'));
+    playMatchBtn.addEventListener('click', loadLatest);
 
     window.addEventListener('keydown', (e) => {
       const tag = e.target && e.target.tagName;
@@ -866,8 +899,15 @@ class Tifo3D {
 
 /* ───────── bootsrap ───────── */
 const viewer = new Tifo3D();
-// Attempt to load the exported match automatically.
-viewer.loadUrl('match.json');
+// Auto-load the match this app most recently generated. Falls back to the
+// static export file (standalone launcher / manual JSON), because loading
+// match.json unconditionally showed the match from the last build.
+(function autoLoad() {
+  fetch('/proposal/api/latest')
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('no latest match')))
+    .then(data => { viewer._ingest(data); })
+    .catch(() => viewer.loadUrl('match.json'));
+})();
 
 // Expose for debugging
 window.tifo3d = viewer;

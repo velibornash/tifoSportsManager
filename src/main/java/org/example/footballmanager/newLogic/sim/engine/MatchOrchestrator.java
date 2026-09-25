@@ -53,6 +53,7 @@ public class MatchOrchestrator {
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
     private final ThreatOverrideEngine threatOverrideEngine;
+    private final FatigueSystem fatigueSystem = new FatigueSystem();
 
     private final List<String> eventLog = new ArrayList<>();
     private final ActionLogService actionLog;
@@ -78,9 +79,10 @@ public class MatchOrchestrator {
         this.clockService = new MatchClockService();
         this.rules = new FootballRules();
         this.varService = new VARService(state, SimulationRandom.rng());
-        this.offsideService = new OffsideService(state, varService);
         this.restartManager = new RestartManager(tactics);
-        this.duelService = new DuelService(state, recorder, stats);
+        this.offsideService = new OffsideService(state, varService, recorder, restartManager);
+        this.offsideService.setStats(stats);
+        this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
         this.threatOverrideEngine = new ThreatOverrideEngine();
 
@@ -140,6 +142,12 @@ public class MatchOrchestrator {
             // set-piece guard in OffsideService must lift (it skips offside checks
             // only while a set piece is PENDING, not for the rest of the match).
             state.clearSetPieceType();
+            // ...and the phase returns to OPEN_PLAY. Without this, every snapshot
+            // after the first corner/goal-kick was labelled SET_PIECE for the rest
+            // of the match (replay phase field + any phase-dependent logic).
+            if (state.getPhase() == MatchPhase.SET_PIECE) {
+                state.setPhase(MatchPhase.OPEN_PLAY);
+            }
         }
 
         // === 2. UNLOCK DUEL LOSERS ===
@@ -166,7 +174,16 @@ public class MatchOrchestrator {
         // === 6. DECISION + EXECUTION ===
         // Re-decide every tick while a player is in possession (carrier != null)
         // and ball is not in flight (handled by physics result not being FLIGHT/IN_TRANSITION)
-        if (canReDecide && state.getCarrier() != null && isCarrierOnBall()) {
+        //
+        // RIGID RULE (user 2026-09-17, P-UI): while a restart taker is still
+        // WALKING to the ball, NOBODY may start an action — the restart is not
+        // live play yet. The `restartTaker == null` term is the explicit guard
+        // for that invariant: the invariant itself already holds implicitly
+        // (restart entry points null the carrier, BallPhysicsEngine now lets only
+        // the designated taker pick the restart ball up), and this term makes it
+        // structurally impossible for a future caller to break it.
+        if (canReDecide && state.getCarrier() != null
+                && state.getRestartTaker() == null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
 
             // RIGID RULE (user 2026-09-17): the carrier must be physically ON the
@@ -265,6 +282,7 @@ public class MatchOrchestrator {
         boolean carrierOnBallBeforeMove = state.getCarrier() != null && isCarrierOnBall();
         // Players move toward their tactical targets every tick
         movementEngine.moveAllTowardTargets(state);
+        fatigueSystem.update(state);
 
         // === 8b. POSSESSION GLUE ===
         // Movement moved the carrier; the ball follows him ONLY while he had
@@ -296,6 +314,10 @@ public class MatchOrchestrator {
                 state.getBall().stop();
                 state.setRestartTaker(null);
                 restartTakerAge = 0;
+                state.clearSetPieceType();
+                if (state.getPhase() == MatchPhase.SET_PIECE) {
+                    state.setPhase(MatchPhase.OPEN_PLAY);
+                }
                 if (dist > BallPhysicsEngine.ON_BALL_EPS) {
                     log("RST", "TAKER stall-claim: " + taker.getLabel()
                             + " at " + p(taker.getPosition()) + " ball" + p(state.getBall().getPosition())

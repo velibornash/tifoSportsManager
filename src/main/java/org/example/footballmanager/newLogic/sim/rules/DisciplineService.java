@@ -11,12 +11,30 @@ import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
  * a defender wins a defensive duel on a ball carrier and sets the defending
  * player as {@code lastTouchPlayer}. This implementation decides *whether* a
  * foul occurred (probability-gated by the defender's tackling skill) and what
- * sanction follows — yellow / straight-red / penalty-box penalty. Cards are
- * seeded through {@link SimulationRandom} so matches stay reproducible.
+ * sanction follows — yellow / red / penalty. Cards are seeded through
+ * {@link SimulationRandom} so matches stay reproducible.
+ *
+ * Sanctions:
+ * <ul>
+ *   <li>second yellow from the SAME player in this match auto-upgrades to red
+ *       (FIFA Law 12) — the player is sent off ({@link Player#setSentOff}),
+ *       which every engine respects (10v11: no ball/target/duel/restart for
+ *       him).</li>
+ *   <li>a red card (straight or second yellow) goes to VAR
+ *       ({@link VARService#checkRedCard}) unless this service is constructed
+ *       with {@code null}.</li>
+ *   <li>a yellow may be VAR-reviewed ({@link VARService#checkYellowCard}:
+ *       upgrade to red / downgrade to none).</li>
+ *   <li>a penalty call may be VAR-reviewed ({@link VARService#checkPenalty}
+ *       : overturn → free kick).</li>
+ * </ul>
  */
 public class DisciplineService implements EngineInterfaces.DisciplineService {
 
+    private final VARService varService;
+
     public DisciplineService(MatchState state, VARService varService) {
+        this.varService = varService;
     }
 
     @Override
@@ -40,28 +58,94 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
             return new DisciplineResult(false, false, false, false, false, "Clean tackle");
         }
 
-        // Foul confirmed — determine the sanction.
-        boolean redConfirmed = SimulationRandom.nextDouble() < 0.02;   // straight red (rare)
-        boolean yellowConfirmed = !redConfirmed && SimulationRandom.nextDouble() < 0.35;
-
-        // Penalty instead of free kick when the foul lands in the penalty area.
+        state.incrementFouls();
+        boolean homeAttacking = "HOME".equals(attacker.getTeam());
         boolean penaltyAwarded = isInsidePenaltyArea(attacker, defender);
         boolean freeKickAwarded = !penaltyAwarded;
+        String varDecision = "NONE";
 
-        state.incrementFouls();
-        if (yellowConfirmed) state.incrementYellowCards();
-        if (redConfirmed) state.incrementRedCards();
+        // Penalty call reviewed by VAR first — an overturn downgrades to free kick.
+        if (penaltyAwarded && varService != null
+                && !varService.checkPenalty(attacker.getPosition(), homeAttacking)) {
+            penaltyAwarded = false;
+            freeKickAwarded = true;
+            varDecision = reviewDecision();
+        }
 
-        String description = penaltyAwarded ? "Penalty awarded"
+        // Baseline sanction BEFORE the card's own VAR review: straight red is
+        // rare; otherwise a yellow-worthy foul (35%).
+        boolean straightRedRolled = SimulationRandom.nextDouble() < 0.02;
+        boolean yellowWorthy = !straightRedRolled && SimulationRandom.nextDouble() < 0.35;
+
+        boolean yellowConfirmed = false;
+        boolean redConfirmed = false;
+
+        if (straightRedRolled) {
+            redConfirmed = true;
+            if (varService != null) {
+                redConfirmed = varService.checkRedCard(defender, false); // true = confirmed
+                varDecision = reviewDecision();
+            }
+        } else if (yellowWorthy && varService != null) {
+            // VAR reviews the caution: may upgrade to red or downgrade to nothing.
+            String varYellow = varService.checkYellowCard(defender);
+            if ("UPGRADE_TO_RED".equals(varYellow)) {
+                redConfirmed = true;
+            } else if ("DOWNGRADE_TO_NONE".equals(varYellow)) {
+                yellowConfirmed = false;
+            } else {
+                yellowConfirmed = true;
+            }
+            varDecision = reviewDecision();
+        } else {
+            yellowConfirmed = yellowWorthy;
+        }
+
+        // FIFa Law 12: a second caution in the same match is an automatic red.
+        // VAR never overturns a second yellow (checkRedCard returns confirmed).
+        boolean secondYellow = false;
+        if (yellowConfirmed && defender.getYellowCardsInMatch() >= 1) {
+            secondYellow = true;
+            yellowConfirmed = false;
+            redConfirmed = true;
+            if (varService != null) {
+                varService.checkRedCard(defender, true);
+                varDecision = reviewDecision();
+            }
+        }
+
+        // Apply the sanction to the player + match counters.
+        if (yellowConfirmed) {
+            defender.incrementYellowCardsInMatch();
+            state.incrementYellowCards();
+        }
+        if (redConfirmed) {
+            state.incrementRedCards();
+            defender.setSentOff(true);
+            if (defender.getSentOffTick() < 0) {
+                defender.setSentOffTick(state.getMatchTicks());
+            }
+        }
+
+        String description = secondYellow ? "Second yellow -> red card"
+                : penaltyAwarded ? "Penalty awarded"
                 : redConfirmed ? "Red card"
                 : yellowConfirmed ? "Yellow card" : "Free kick";
 
         return new DisciplineResult(true, yellowConfirmed, redConfirmed,
-                penaltyAwarded, freeKickAwarded, description);
+                penaltyAwarded, freeKickAwarded, description, varDecision);
+    }
+
+    /** Surfaces a VAR verdict only for a REAL review — noise gates ("NO_REVIEW") stay "NONE". */
+    private String reviewDecision() {
+        if (varService == null) return "NONE";
+        String d = varService.getLastVARDecision();
+        if (d == null || d.equals("NONE") || d.equals("NO_REVIEW")) return "NONE";
+        return d;
     }
 
     /** Foul is a spot kick when it lands in the defensive penalty area:
-     *  HOME defends rows ≤ 1.5, AWAY defends rows ≥ 6.5, cols 2–5. */
+     *  HOME defends rows ≤ 2.5, AWAY defends rows ≥ 6.5, cols 2–5. */
     private boolean isInsidePenaltyArea(Player attacker, Player defender) {
         Position aPos = attacker.getPosition();
         Position dPos = defender.getPosition();
@@ -71,9 +155,14 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
                 ? Math.max(aPos.getRow(), dPos.getRow())
                 : Math.min(aPos.getRow(), dPos.getRow());
         double col = (aPos.getColumn() + dPos.getColumn()) / 2.0;
+        // The box band must be mirrored about 4.5. HOME attacks a box in front of
+        // the AWAY goal (row 8.0), so the band starts 1.5 cells out: row >= 6.5.
+        // AWAY therefore needs 1.0 + 1.5 = row <= 2.5, not row <= 1.5 — the old
+        // bound made HOME's penalty area 1.5 cells deep and AWAY's only 0.5, a
+        // 3x one-directional difference in how often fouls became penalties.
         boolean inBox = homeAttacking
                 ? (row >= 6.5 && col >= 2 && col <= 5)
-                : (row <= 1.5 && col >= 2 && col <= 5);
+                : (row <= 2.5 && col >= 2 && col <= 5);
         return inBox;
     }
 

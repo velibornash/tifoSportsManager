@@ -38,6 +38,37 @@ public class MatchRecorder {
         events.add(event);
     }
 
+    public void appendEvent(long tick, String type, String description,
+                            Player acting, Player target,
+                            String assistantId, String assistantName,
+                            Integer homeScoreAfter, Integer awayScoreAfter,
+                            String cardType, Boolean penaltyFoul,
+                            String takerId, String takerName,
+                            String varType, String varDecision) {
+        appendEvent(tick, type, description, acting != null ? acting.getTeam() : null,
+                acting, target, assistantId, assistantName, homeScoreAfter, awayScoreAfter,
+                cardType, penaltyFoul, takerId, takerName, varType, varDecision);
+    }
+
+    public void appendEvent(long tick, String type, String description,
+                            String team, Player acting, Player target,
+                            String assistantId, String assistantName,
+                            Integer homeScoreAfter, Integer awayScoreAfter,
+                            String cardType, Boolean penaltyFoul,
+                            String takerId, String takerName,
+                            String varType, String varDecision) {
+        String playerId = acting != null ? acting.getId() : null;
+        String playerName = acting != null ? acting.getLabel() : null;
+        String targetId = target != null ? target.getId() : null;
+        Integer skill = acting != null ? (int) acting.getSkills().technique() : null;
+        Double posRow = acting != null ? acting.getPosition().getRow() : null;
+        Double posCol = acting != null ? acting.getPosition().getColumn() : null;
+        events.add(new MatchEvent(tick, type, description, team, playerId, playerName,
+                targetId, posRow, posCol, skill, type,
+                assistantId, assistantName, homeScoreAfter, awayScoreAfter,
+                cardType, penaltyFoul, takerId, takerName, varType, varDecision));
+    }
+
     public void captureSnapshot(MatchState state) {
         List<PlayerSnapshot> playerSnapshots = state.getPlayers().stream()
                 .map(p -> new PlayerSnapshot(
@@ -54,7 +85,7 @@ public class MatchRecorder {
                 state.getCarrier() == null ? null : state.getCarrier().getId(),
                 null, null,
                 state.getPhase(), state.getHomeGoals(), state.getAwayGoals(),
-                state.getMatchTicks(), false, false,
+                state.getMatchTicks(), state.isHalfTime(), state.isMatchFinished(),
                 state.getPassAttempts(), state.getPassesCompleted(),
                 state.getShotsOnTarget()));
     }

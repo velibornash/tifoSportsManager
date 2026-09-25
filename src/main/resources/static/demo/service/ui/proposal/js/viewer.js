@@ -67,6 +67,7 @@ function matchMinute(tick) {
 const EV_ICON = {
   GOAL: '\u26BD', SHOT: '\u26BD', SHOT_SAVED: '\uD83E\uDD25', SHOT_MISSED: '\u274C',
   PENALTY_KICK: '\uD83C\uDFAF', PENALTY_MISS: '\u274C', PENALTY_SAVED: '\uD83E\uDD25',
+  PENALTY_AWARDED: '\uD83C\uDFAF',
   PASS: '\u27A1\uFE0F', PASS_COMPLETED: '\u2705', PASS_LOOSE: '\uD83D\uDCA8',
   CARRY: '\uD83C\uDFC3', CARRY_COMPLETED: '\uD83C\uDFC3',
   DUEL_START: '\u2694\uFE0F', DUEL_RESOLVED: '\u2694\uFE0F', DUEL_WON: '\uD83C\uDFC6',
@@ -88,7 +89,7 @@ const EV_ICON = {
 
 const IMPORTANT_EVENTS = new Set([
   'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED',
-  'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
+  'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED', 'PENALTY_AWARDED',
   'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN', 'KICKOFF',
   'OFFSIDE',
   'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
@@ -122,7 +123,7 @@ const TIMELINE_EVENTS = new Set([
   'PASS', 'PASS_COMPLETED', 'PASS_LOOSE',
   'CARRY', 'CARRY_COMPLETED',
   'GOAL', 'GOAL_DISALLOWED', 'SHOT', 'SHOT_SAVED', 'SHOT_MISSED', 'SHOT_BLOCKED', 'SHOT_POST',
-  'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED',
+  'PENALTY_KICK', 'PENALTY_MISS', 'PENALTY_SAVED', 'PENALTY_AWARDED',
   'CROSS', 'CORNER', 'FREE_KICK', 'GOAL_KICK', 'THROW_IN', 'KICKOFF',
   'OFFSIDE',
   'VAR_OFFSIDE_CONFIRMED', 'VAR_OFFSIDE_OVERTURNED',
@@ -353,6 +354,40 @@ class PitchRenderer {
     window.addEventListener('resize', () => this._resize());
   }
 
+  /** Convert a mouse event to grid coordinates (row, col). */
+  _toGrid(ev) {
+    const rect = this.canvas.getBoundingClientRect();
+    // Canvas is drawn under a scaled transform; map CSS pixels back to
+    // the unscaled drawing space first, then invert toCanvas().
+    const x = (ev.clientX - rect.left) / this.scale;
+    const y = (ev.clientY - rect.top) / this.scale;
+    const pitchW = (GRID_ROWS - 1) * CELL_W;
+    const pitchH = (GRID_COLS - 1) * CELL_H;
+    return {
+      row: ((x - this.margin.left) / pitchW) * (GRID_ROWS - 1),
+      col: ((y - this.margin.top) / pitchH) * (GRID_COLS - 1),
+      x,
+      y,
+    };
+  }
+
+  /** Hit test: nearest player whose circle contains the click. */
+  pickPlayer(ev, players, convergedPos) {
+    if (!players || !players.length) return null;
+    const g = this._toGrid(ev);
+    // Search radius in canvas px, converted to grid cells.
+    const tolCells = 22 / Math.min(CELL_W, CELL_H);
+    let best = null;
+    let bestDist = Infinity;
+    for (const p of players) {
+      let pos = { row: p.row, col: p.col };
+      if (convergedPos && convergedPos.has(p.id)) pos = convergedPos.get(p.id);
+      const d = Math.hypot(pos.row - g.row, pos.col - g.col);
+      if (d < tolCells && d < bestDist) { best = p; bestDist = d; }
+    }
+    return best;
+  }
+
   _resize() {
     const wrap = this.canvas.parentElement;
     const wrapW = wrap.clientWidth - 24;
@@ -542,6 +577,9 @@ class PitchRenderer {
 
   drawPlayers(players, carrierId, duelPairs) {
     const ctx = this.ctx;
+    // Remember the last drawn frame so pickPlayer() hit-tests exactly what
+    // the user sees (including duel-converged positions).
+    this._drawnPlayers = players;
 
     // Build a set of labels involved in an active duel for quick lookup
     const duelLabels = new Set();
@@ -558,6 +596,7 @@ class PitchRenderer {
     // collision, not two players standing apart). Pre-compute the
     // converged positions for dueling players.
     const convergedPos = new Map(); // id → {row, col}
+    this._convergedPos = convergedPos;
     if (duelPairs) {
       for (const pair of duelPairs) {
         const pa = players.find(p => p.label === pair[0]?.label);
@@ -612,6 +651,7 @@ class PitchRenderer {
       const isGK = p.role === 'GK';
       const isCarrier = carrierId && p.id === carrierId;
       const r = isGK ? 18 : 14;
+      const isSelected = this.selectedPlayerId && p.id === this.selectedPlayerId;
       const inDuel = duelLabels.has(p.label);
       // Cooldown highlight: faint pulsing red ring on the player who lost
       // the most recent duel. Lasts for ~6 ticks after the duel resolved.
@@ -656,12 +696,21 @@ class PitchRenderer {
         ctx.stroke();
       }
 
+      // Selection highlight — the player the user clicked in the sidebar card
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = '#58a6ff';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = isGK ? GK_COLOR : (isHome ? HOME_COLOR : AWAY_COLOR);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.4)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isSelected ? '#58a6ff' : 'rgba(0,0,0,.4)';
+      ctx.lineWidth = isSelected ? 3 : 1.5;
       ctx.stroke();
 
       ctx.fillStyle = '#fff';
@@ -815,6 +864,11 @@ class MatchViewer {
     this._snapIndex = null;  // Map<tick, snapshot>
     this._snapTicks = null;  // sorted array of ticks
 
+    // Per-player stats from stats.players — Map<playerId, statsObject>.
+    // Populated on data load; the sidebar card is rendered from it.
+    this._playerStats = new Map();
+    this.pitch.selectedPlayerId = null;
+
     // Timeline batch buffer (Firefox freeze fix — appendChild per event
     // triggers layout reflow; at 60fps with dozens of events/sec this kills
     // Firefox. We batch via DocumentFragment and flush once per RAF tick.)
@@ -828,13 +882,34 @@ class MatchViewer {
   async generateMatch() {
     this._showLoading(true, 'Simulating match...');
     try {
-      const res = await fetch('/proposal/api/generate', { method: 'POST' });
+      const seedInput = document.getElementById('seedInput');
+      const seed = seedInput?.value?.trim();
+      const query = seed ? `?seed=${encodeURIComponent(seed)}` : '';
+      const res = await fetch(`/proposal/api/generate${query}`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const mres = await fetch('match.json?' + Date.now());
-      if (!mres.ok) throw new Error('match.json not found');
-      this.data = await mres.json();
-     // this._initFromData();
-      // Do NOT auto-play — user clicks Play Match
+      const payload = await res.json();
+      // Use the payload the endpoint JUST returned. Previously the response was
+      // discarded and the viewer re-fetched the static match.json — but Spring
+      // serves static files from the classpath (target/classes), so that file
+      // was the match from the last BUILD, not the match just generated. The UI
+      // therefore showed an entirely different match than the log.
+      //
+      // The standalone ProposalViewerLauncher answers with a summary instead
+      // ({ok, seed, score, events}) and writes the file it also serves, so a
+      // response without snapshots means "load the file this server just wrote".
+      if (payload && Array.isArray(payload.snapshots)) {
+        this.data = payload;
+      } else {
+        let mres = await fetch('match.json?' + Date.now());
+        if (!mres.ok) throw new Error('generate returned no replay payload');
+        this.data = await mres.json();
+      }
+      if (seedInput && !seedInput.value && this.data.seed != null) seedInput.value = this.data.seed;
+      this._initFromData();
+      const homeName = this.data.homeTeamName || 'HOME';
+      const awayName = this.data.awayTeamName || 'AWAY';
+      this.overlays.showKickoff(homeName, awayName);
+      this.play();
     } catch (e) {
       alert('Failed: ' + e.message);
     } finally {
@@ -845,10 +920,20 @@ class MatchViewer {
   async loadMatch() {
     this._showLoading(true, 'Loading match...');
     try {
-      const res = await fetch('match.json?' + Date.now());
+      // Prefer the app's in-memory "last generated match" — it is guaranteed to
+      // be the match this app just simulated. Fall back to the static file only
+      // for the standalone launcher / manual JSON use.
+      let res = await fetch('/proposal/api/latest');
+      if (!res.ok) {
+        res = await fetch('match.json?' + Date.now());
+      }
       if (!res.ok) throw new Error('No match.json — generate first');
       this.data = await res.json();
       this._initFromData();
+      if (this.data.seed != null) {
+        const si = document.getElementById('seedInput');
+        if (si) si.value = this.data.seed;
+      }
       // Show kickoff overlay, then auto-start after 3s
       const homeName = this.data.homeTeamName || 'HOME';
       const awayName = this.data.awayTeamName || 'AWAY';
@@ -893,6 +978,14 @@ class MatchViewer {
 
   _initFromData() {
     this.snapshots = this.data.snapshots || [];
+
+    // Index per-player match stats for the click-to-inspect card. The
+    // exporter/controller put them under stats.players.
+    this._playerStats = new Map();
+    for (const p of (this.data.stats?.players || [])) {
+      if (p?.playerId) this._playerStats.set(p.playerId, p);
+    }
+    this._selectPlayerById(null);
 
     // Build O(1) lookup index for snapshots
     this._snapIndex = new Map();
@@ -972,6 +1065,16 @@ class MatchViewer {
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
+    // Show which match is on screen (seed + matchId). The engine prints
+    // "=== PROPOSAL MATCH GENERATED === seed=... matchId=..." for every match,
+    // so the replay can always be verified against the log instead of
+    // silently showing a different match.
+    const idLabel = document.getElementById('matchIdLabel');
+    if (idLabel) {
+      const seed = this.data.seed != null ? `seed ${this.data.seed}` : 'seed ?';
+      const id = this.data.matchId ? `id ${String(this.data.matchId).slice(0, 8)}` : '';
+      idLabel.textContent = [seed, id].filter(Boolean).join(' · ');
+    }
     this._updateScoreboard();
     // The events log STREAMS AS PLAYBACK REACHES each event (2026-09-23) — the
     // timeline is intentionally NOT pre-populated from match start. At load it
@@ -1491,6 +1594,13 @@ class MatchViewer {
       this._pendingTimelineEvents.length = 0;
       return;
     }
+    // "Should we follow the tail?" must be answered BEFORE the DOM grows.
+    // It used to be answered after appending, so any batch taller than the
+    // 80 px threshold (a seek rebuild, a goal+restart burst) pushed
+    // scrollHeight past the threshold and the log STOPPED following the last
+    // event for the rest of the match — the newest event would arrive off-screen.
+    const followTail = this._timelineFollowTail !== false
+      && ul.scrollHeight - ul.scrollTop - ul.clientHeight < 120;
     const fragment = document.createDocumentFragment();
     for (const ev of this._pendingTimelineEvents) {
       fragment.appendChild(this._makeTimelineItem(ev));
@@ -1504,10 +1614,10 @@ class MatchViewer {
       ul.removeChild(ul.firstChild);
     }
 
-    // Auto-scroll to bottom (only if user is already near the bottom — don't
-    // yank them away from an event they were inspecting).
-    const nearBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 80;
-    if (nearBottom) {
+    // Follow the tail: the newest event must always be visible. Scrolling up
+    // to inspect an earlier event pauses the follow; scrolling back to the
+    // bottom resumes it (listener below).
+    if (followTail) {
       ul.scrollTop = ul.scrollHeight;
     }
 
@@ -1578,6 +1688,40 @@ class MatchViewer {
     seek.value = this.currentTick;
   }
 
+  /* ─── Player selection (click on pitch) ─── */
+
+  _selectPlayerById(playerId) {
+    this.pitch.selectedPlayerId = playerId || null;
+    const stats = playerId ? this._playerStats.get(playerId) : null;
+    const card = document.getElementById('playerCard');
+    if (!stats) {
+      card.style.display = 'none';
+      return;
+    }
+    const num = document.getElementById('pcNum');
+    const role = (stats.role || '').toUpperCase();
+    num.textContent = (stats.playerName || '').split(' ').pop() || '?';
+    num.className = 'pc-num' + (role === 'GK' ? ' gk' : (stats.teamName === 'HOME' ? ' home' : ' away'));
+    document.getElementById('pcName').textContent = stats.playerName || stats.playerId;
+    document.getElementById('pcMeta').textContent =
+      `${stats.teamName || ''}${role ? ' · ' + role : ''}`;
+    document.getElementById('pcRating').innerHTML =
+      `${stats.rating}<span class="pc-rating-label">RATING</span>`;
+
+    const rows = [
+      ['G', stats.goals], ['A', stats.assists], ['SH', stats.shots],
+      ['SoT', stats.shotsonTarget ?? stats.shotsOnTarget], ['PA', stats.passesAttempted],
+      ['PC', stats.passesCompleted],
+      ['DR', stats.dribbles], ['INT', stats.interceptions], ['DEF', stats.deflections],
+      ['BLK', stats.blocks], ['SV', stats.saves], ['TKL', stats.tackles],
+      ['DUW', stats.duelsWon], ['CLR', stats.clearances], ['MIN', stats.minutesPlayed],
+    ];
+    document.getElementById('pcGrid').innerHTML = rows
+      .map(([k, v]) => `<div class="pc-stat">${k}<b>${v ?? 0}</b></div>`)
+      .join('');
+    card.style.display = '';
+  }
+
   _updateSeek() {
     const seek = document.getElementById('seek');
     if (!seek._dragging) seek.value = this.currentTick;
@@ -1637,6 +1781,9 @@ class MatchViewer {
     while (ul.children.length > this._MAX_TIMELINE_EVENTS) {
       ul.removeChild(ul.firstChild);
     }
+    // A rebuild is an explicit user action on the playhead — always show the
+    // newest event at the seeked position, and re-arm tail-following.
+    this._timelineFollowTail = true;
     ul.scrollTop = ul.scrollHeight;
   }
 
@@ -1698,6 +1845,7 @@ class MatchViewer {
     const simBtn2 = document.getElementById('simBtn2');
     const playMatchBtn = document.getElementById('playMatchBtn');
     const playMatch2dBtn = document.getElementById('playMatch2dBtn');
+    const backBtn = document.getElementById('backBtn');
     const speedSlider = document.getElementById('speedSlider');
 
     playBtn.addEventListener('click', () => this.play());
@@ -1710,18 +1858,50 @@ class MatchViewer {
     if (simBtn2) simBtn2.addEventListener('click', () => this.generateMatch());
     if (playMatchBtn) playMatchBtn.addEventListener('click', () => this.loadMatch());
     if (playMatch2dBtn) playMatch2dBtn.addEventListener('click', () => location.href = 'viewer3d.html');
+    if (backBtn) backBtn.addEventListener('click', () => { window.location.href = '/dashboard.html'; });
 
-    if (speedSlider) {
-      const speeds = [0.25, 0.5, 1, 2, 4];
-      speedSlider.max = speeds.length - 1;
-      speedSlider.value = 1;  // default = 0.5x
-      const update = () => {
-        this.speed = speeds[Number(speedSlider.value)];
-        document.getElementById('speedLabel').textContent = this.speed + 'x';
-      };
-      speedSlider.addEventListener('input', update);
-      update();
+    // Click a player on the pitch to inspect their match stats. Clicking the
+    // same player again (or empty space) clears the card.
+    const canvas = document.getElementById('pitch');
+    if (canvas) {
+      canvas.style.cursor = 'pointer';
+      canvas.addEventListener('click', (ev) => {
+        const hit = this.pitch.pickPlayer(ev, this.pitch._drawnPlayers, this.pitch._convergedPos);
+        this._selectPlayerById(hit ? hit.id : null);
+        this._renderFrame();
+      });
     }
+    const pcClose = document.getElementById('pcClose');
+    if (pcClose) {
+      pcClose.addEventListener('click', () => {
+        this._selectPlayerById(null);
+        this._renderFrame();
+      });
+    }
+
+    // Event log tail-following: the newest event must always be visible while
+    // playing. Scrolling up pauses the follow so an earlier event can be read;
+    // scrolling back to the bottom resumes it. Without this the log silently
+    // stopped following after the first large batch.
+    const timeline = document.getElementById('timeline');
+    if (timeline) {
+      timeline.addEventListener('scroll', () => {
+        const atBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
+        this._timelineFollowTail = atBottom;
+      }, { passive: true });
+    }
+
+if (speedSlider) {
+       const speeds = [0.25, 0.5, 1, 2, 5, 10];
+       speedSlider.max = speeds.length - 1;
+       speedSlider.value = 2;  // default = 1x
+       const update = () => {
+         this.speed = speeds[Number(speedSlider.value)];
+         document.getElementById('speedLabel').textContent = this.speed + 'x';
+       };
+       speedSlider.addEventListener('input', update);
+       update();
+     }
 
     // Grid overlay toggle (default off) — created dynamically since we
     // don't control the HTML from viewer.js alone.

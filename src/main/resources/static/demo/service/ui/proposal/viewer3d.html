@@ -48,9 +48,12 @@
     <div class="empty-state" id="emptyState" style="display:none">
       <h2>Match Viewer 3D</h2>
       <p>3D replay — skinned humanoid players straight from Mixamo.</p>
-      <div style="display:flex;gap:12px;margin-top:16px;">
+      <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;">
         <button id="simBtn" style="background:#2ea043;">&#9917; Generate Match</button>
         <button id="playMatchBtn" style="background:#58a6ff;">&#9654; Play Match</button>
+        <label style="font-size:12px;color:#8b949e;">Seed
+          <input id="seedInput" type="number" min="0" step="1" placeholder="random" style="width:110px;margin-left:5px;padding:5px 7px;">
+        </label>
       </div>
       <p style="margin-top:16px;font-size:12px;color:#8b949e;">
         Generate simulates a match and saves it. Play loads the last generated match.
@@ -81,6 +84,7 @@
 
       <div class="controls">
         <div class="controls-row">
+          <button id="backBtn" style="font-size:11px;padding:3px 8px;">&#8592; Back</button>
           <button id="playBtn">&#9654; Play</button>
           <button id="pauseBtn" class="active">&#9646;&#9646; Pause</button>
           <input type="range" id="speedSlider" min="0" max="4" value="1">

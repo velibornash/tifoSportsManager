@@ -425,35 +425,37 @@ public class DatabaseInitializer {
             return;
         }
 
-        Set<String> usedNamesInLeague = competitionEntryRepository.findBySeasonCompetition(sc)
+        Set<Long> usedTeamIdsInLeague = competitionEntryRepository.findBySeasonCompetition(sc)
                 .stream()
-                .map(entry -> entry.getTeam().getName())
+                .map(entry -> entry.getTeam().getId())
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
         int attempts = 0;
-        final int maxAttempts = 100;
+        final int maxAttempts = 2000;
 
         // 1. Dodaj Omladinac ako treba i ako ga nema
-        if (includeOmladinac && !usedNamesInLeague.contains("OFK Omladinac")) {
+        if (includeOmladinac) {
             Team omladinac = teamFactory.findOrCreate("OFK Omladinac");
-            addTeamToLeague(omladinac, sc);
-            usedNamesInLeague.add("OFK Omladinac");
-            toCreate--;
-            log.info("Dodat Omladinac u ligu: {}", league.getName());
+            if (omladinac.getId() != null && !usedTeamIdsInLeague.contains(omladinac.getId())) {
+                addTeamToLeague(omladinac, sc);
+                usedTeamIdsInLeague.add(omladinac.getId());
+                toCreate--;
+                log.info("Dodat Omladinac u ligu: {}", league.getName());
+            }
         }
 
         // 2. Dodaj preostale timove
         while (toCreate > 0 && attempts < maxAttempts) {
             String candidateName = getRandomTeamName();
-            if (usedNamesInLeague.contains(candidateName)) {
+            Team team = teamFactory.findOrCreate(candidateName);
+            if (team.getId() == null || usedTeamIdsInLeague.contains(team.getId())) {
                 attempts++;
                 continue;
             }
-
-            Team team = teamFactory.findOrCreate(candidateName);
             if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
                 addTeamToLeague(team, sc);
-                usedNamesInLeague.add(candidateName);
+                usedTeamIdsInLeague.add(team.getId());
                 toCreate--;
                 log.info("Dodat tim {} u ligu {}", candidateName, league.getName());
             }
@@ -461,8 +463,20 @@ public class DatabaseInitializer {
         }
 
         if (toCreate > 0) {
-            log.warn("Nisam uspeo da popunim ligu {} sa {} timova – ostalo je {} da se doda",
+            log.warn("Nisam uspeo da popunim ligu {} sa {} timova – ostalo je {} da se doda, pokušavam fallback imena",
                     league.getName(), teamCount, toCreate);
+            // fallback deterministic names to guarantee 10 teams
+            int fallbackIdx = 1;
+            while (toCreate > 0) {
+                String fallbackName = "FK Fallback " + league.getName() + " " + fallbackIdx++;
+                Team team = teamFactory.findOrCreate(fallbackName);
+                if (team.getId() != null && !usedTeamIdsInLeague.contains(team.getId())
+                        && competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
+                    addTeamToLeague(team, sc);
+                    usedTeamIdsInLeague.add(team.getId());
+                    toCreate--;
+                }
+            }
         }
     }
 

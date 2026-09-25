@@ -1,9 +1,13 @@
 package org.example.footballmanager.newLogic.sim.rules;
 
+import org.example.footballmanager.newLogic.sim.engine.ActionLogService;
 import org.example.footballmanager.newLogic.sim.engine.EngineInterfaces;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.model.Position;
+import org.example.footballmanager.newLogic.sim.recording.MatchRecorder;
+import org.example.footballmanager.newLogic.sim.restarts.RestartManager;
+import org.example.footballmanager.newLogic.sim.result.ProposalStatsCollector;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,12 +38,44 @@ public class OffsideService implements EngineInterfaces.OffsideService {
      */
     public static boolean TRACE = false;
 
+    /**
+     * How far beyond the second-to-last defender (in cells, 1 cell = 14 m) a
+     * receiver must be before he is FLAGGED and the whistle fires at the moment
+     * he touches the ball.
+     *
+     * The band used to be {@code margin > 0} — any receiver a centimetre beyond
+     * the line was flagged, and because attackers hold the line by design almost
+     * every forward pass produced a 0.0-0.4 cell margin. Measured with
+     * {@code ProposalPassFailDiag}: 22 offsides per match (real football: 1-3),
+     * which alone destroyed 25% of all pass completions. 0.2 cells = 2.8 m is the
+     * same tolerance the reference engine uses (demo/service
+     * {@code OFFSIDE_TOLERANCE}); anything inside it falls through to the
+     * VAR/onward-play band instead of a whistle.
+     */
+    public static final double OFFSIDE_WHISTLE_MARGIN = 0.2;
+
     private final MatchState state;
     private final VARService varService;
+    private final MatchRecorder recorder;
+    private final RestartManager restartManager;
+    /** Optional: when wired, every confirmed offside is counted for the team
+     *  that was caught (TeamStats.offsides used to be hardcoded 0). */
+    private ProposalStatsCollector stats;
 
     public OffsideService(MatchState state, VARService varService) {
+        this(state, varService, null, null);
+    }
+
+    public OffsideService(MatchState state, VARService varService,
+                         MatchRecorder recorder, RestartManager restartManager) {
         this.state = state;
         this.varService = varService;
+        this.recorder = recorder;
+        this.restartManager = restartManager;
+    }
+
+    public void setStats(ProposalStatsCollector stats) {
+        this.stats = stats;
     }
 
     @Override
@@ -105,20 +141,37 @@ public class OffsideService implements EngineInterfaces.OffsideService {
                     ? receiver.getPosition().getRow() > 4.5
                     : receiver.getPosition().getRow() < 4.5;
             String band = margin > 0.5 ? "CLEAR-OFF(flag@recv)"
+                    : margin > OFFSIDE_WHISTLE_MARGIN ? "FLAG-OFF(whistle@recv)"
                     : margin > 0 ? "MARG-OFF(flag@recv)"
                     : margin > -0.8 ? "TIGHT-ON(VAR hold)" : "ONSIDE";
-            System.out.printf("[OFF-TRACE] pass %s(%s) -> receiver %s at (%.2f,%.2f) | ball at strike (%.2f,%.2f) | "
-                            + "last-2-def row %.2f & 2nd-last %.2f (%.2f cells off goal line) | forward-of-ball:%b in-opp-half:%b | margin %+.3f -> %s%n",
-                    state.getCarrier() == null ? "?" : state.getCarrier().getLabel(),
-                    "HOME".equals(receiver.getTeam()) ? "H" : "A",
-                    receiver.getLabel(), receiver.getPosition().getRow(), receiver.getPosition().getColumn(),
-                    passOrigin.getRow(), passOrigin.getColumn(),
-                    defRows.isEmpty() ? Double.NaN : defRows.get(0),
-                    lineRow, goalLineDist,
-                    forwardOfBall, inOppHalf, margin, band);
+            // Route through ActionLogService (tag OFF) instead of a raw println:
+            // the trace then lands in target/proposal-app.log and match.json like
+            // every other engine line, instead of bypassing the logging service.
+            ActionLogService logger = state.getActionLogger();
+            if (logger == null) {
+                System.out.printf("[OFF-TRACE] pass %s(%s) -> receiver %s at (%.2f,%.2f) | margin %+.3f -> %s%n",
+                        state.getCarrier() == null ? "?" : state.getCarrier().getLabel(),
+                        "HOME".equals(receiver.getTeam()) ? "H" : "A",
+                        receiver.getLabel(), receiver.getPosition().getRow(),
+                        receiver.getPosition().getColumn(), margin, band);
+            } else {
+                logger.log("OFF", "OFF-TRACE pass "
+                        + (state.getCarrier() == null ? "?" : state.getCarrier().getLabel())
+                        + "(" + ("HOME".equals(receiver.getTeam()) ? "H" : "A") + ") -> receiver "
+                        + receiver.getLabel() + " at " + String.format("(%.2f,%.2f)",
+                                receiver.getPosition().getRow(), receiver.getPosition().getColumn())
+                        + " | ball at strike " + String.format("(%.2f,%.2f)",
+                                passOrigin.getRow(), passOrigin.getColumn())
+                        + " | last-2-def row "
+                        + String.format("%.2f", defRows.isEmpty() ? Double.NaN : defRows.get(0))
+                        + " & 2nd-last " + String.format("%.2f", lineRow)
+                        + " (" + String.format("%.2f", goalLineDist) + " cells off goal line)"
+                        + " | forward-of-ball:" + forwardOfBall + " in-opp-half:" + inOppHalf
+                        + " | margin " + String.format("%+.3f", margin) + " -> " + band);
+            }
         }
 
-        if (margin > 0.5 || margin > 0) {
+        if (margin > OFFSIDE_WHISTLE_MARGIN) {
             // CLEAR + MARGINAL bands (user rule 2026-09-23): the pass is NOT
             // blocked and the ball is NOT teleported to the receiver at
             // pass-moment — that is what made the ball "suddenly accelerate".
@@ -147,7 +200,11 @@ public class OffsideService implements EngineInterfaces.OffsideService {
     public void resolvePendingVAROffside(MatchState state) {
         if (!state.hasPendingVARReview()) return;
         Player receiver = state.getPendingVARReviewPlayer();
-        if (receiver == null) { state.clearPendingVARReview(); return; }
+        if (receiver == null) {
+            state.clearPendingVARReview();
+            state.setOffsideDeferred(false);
+            return;
+        }
 
         if (!state.isOffsideDeferred()) {
             state.clearPendingVARReview();
@@ -155,14 +212,19 @@ public class OffsideService implements EngineInterfaces.OffsideService {
         }
 
         if (state.isOffsideLedToGoal()) {
-            boolean offside = varService.checkOffside(receiver,
+            boolean offside = varService == null || varService.checkOffside(receiver,
                     state.getBall().getPosition(), state);
+            if (varService != null) {
+                recordVarDecision(receiver, varService.getLastVARDecision(),
+                        "goal review for " + receiver.getLabel());
+            }
             if (offside) {
                 confirmOffside(receiver, carrierTeam(receiver, state), state,
                         "VAR offside on goal - goal disallowed");
                 return;
             }
             state.clearPendingVARReview();
+            state.setOffsideDeferred(false);
             return;
         }
 
@@ -173,16 +235,41 @@ public class OffsideService implements EngineInterfaces.OffsideService {
         }
 
         state.clearPendingVARReview();
+        state.setOffsideDeferred(false);
     }
 
     private OffsideResult confirmOffside(Player receiver, String carrierTeam, MatchState state,
                                          String reason) {
-        String defendingTeam = "HOME".equals(carrierTeam) ? "AWAY" : "HOME";
+        String attackingTeam = carrierTeam != null ? carrierTeam : receiver.getTeam();
+        String defendingTeam = "HOME".equals(attackingTeam) ? "AWAY" : "HOME";
         state.setRestartTeam(defendingTeam);
+        state.clearPassContext();
+        state.setOffsideFlaggedReceiver(null);
         state.setCarrier(null);
         state.getBall().setPosition(receiver.getPosition());
+        if (recorder != null) {
+            recorder.appendEvent(state.getMatchTicks(), "OFFSIDE",
+                    reason + " by " + receiver.getLabel(), receiver, null);
+        }
+        if (stats != null) stats.onOffside(receiver.getTeam());
+        if (restartManager != null) {
+            restartManager.handleOffsideFreeKick(state, receiver.getPosition());
+        }
         state.clearPendingVARReview();
+        state.setOffsideDeferred(false);
         return new OffsideResult(true, true);
+    }
+
+    private void recordVarDecision(Player subject, String decision, String description) {
+        if (recorder == null || decision == null
+                || "NONE".equals(decision) || "NO_REVIEW".equals(decision)) return;
+        // Typed event name so the replay viewer's VAR verdict banner fires: the
+        // viewer matches VAR_OFFSIDE_CONFIRMED / VAR_OFFSIDE_OVERTURNED, not a
+        // bare "VAR" type.
+        String suffix = decision.toUpperCase().contains("OVERTURN") ? "OVERTURNED" : "CONFIRMED";
+        recorder.appendEvent(state.getMatchTicks(), "VAR_OFFSIDE_" + suffix,
+                "VAR " + decision + " — " + description, subject.getTeam(), subject, null,
+                null, null, null, null, null, null, null, null, "OFFSIDE", decision);
     }
 
     private String carrierTeam(Player receiver, MatchState state) {

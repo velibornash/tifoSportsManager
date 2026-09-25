@@ -18,6 +18,9 @@ public class Player {
     private int lockTicks; // remaining ticks the player is blocked after duel loss
     private boolean offside;
     private boolean sentOff;
+    private int sentOffTick = -1;
+    /** Yellow cards already shown to this player IN THIS MATCH (second yellow = red). */
+    private int yellowCardsInMatch;
     private boolean injured;
     private boolean substituted;
     private double velX;
@@ -91,6 +94,14 @@ public class Player {
 
     public boolean isSentOff() { return sentOff; }
     public void setSentOff(boolean sentOff) { this.sentOff = sentOff; }
+
+    /** Tick at which the player was sent off (-1 = not sent off) — drives minutes. */
+    public int getSentOffTick() { return sentOffTick; }
+    public void setSentOffTick(int sentOffTick) { this.sentOffTick = sentOffTick; }
+
+    public int getYellowCardsInMatch() { return yellowCardsInMatch; }
+    public void setYellowCardsInMatch(int yellowCardsInMatch) { this.yellowCardsInMatch = Math.max(0, yellowCardsInMatch); }
+    public void incrementYellowCardsInMatch() { this.yellowCardsInMatch++; }
 
     public boolean isInjured() { return injured; }
     public void setInjured(boolean injured) { this.injured = injured; }

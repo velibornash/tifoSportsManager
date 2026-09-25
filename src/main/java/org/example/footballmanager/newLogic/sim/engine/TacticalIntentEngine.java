@@ -51,6 +51,11 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
         Player carrier = state.getCarrier();
         Player taker = state.getRestartTaker();
         Player receiver = state.getPendingReceiver();
+        String possessionTeam = state.getCarrierTeam() != null
+                ? state.getCarrierTeam()
+                : state.getLastTouchTeam() != null
+                ? state.getLastTouchTeam()
+                : state.getRestartTeam();
 
         for (Player p : state.getPlayers()) {
             if (p == carrier || p == taker) continue;
@@ -60,7 +65,8 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
                 p.setTarget(state.getReceivePoint());
                 continue;
             }
-            Position desired = tactics.desiredCell(p.getRole(), state.getBall().getPosition(), p.getTeam());
+            Position desired = tactics.desiredCell(
+                    p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam);
             Position prev = p.getTarget();
             // RESTART-BALL CLEARANCE (user 2026-09-23): while a restart is pending
             // (taker designated), no non-taker may settle ON the ball spot. The
@@ -113,6 +119,12 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
      * exactly at the center spot by RestartManager.
      *
      * HOME half = rows [1.0, 4.5], AWAY half = rows [4.5, 8.0].
+     *
+     * The clamp keeps a HALF-CELL BUFFER off the half-way line (HOME ≤ 4.0,
+     * AWAY ≥ 5.0), not exactly 4.5. Pinning to exactly 4.5 left players standing
+     * ON the line, and the first movement tick drifted them into the opponent
+     * half — visible in the very first kickoff frame of the replay. Ported from
+     * demo/service MatchState:644-645.
      */
     public void placeOnOwnHalf(MatchState state, Position centerSpot) {
         for (Player p : state.getPlayers()) {
@@ -125,9 +137,9 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     private void playableOwnHalf(Position desired, String team, Player p) {
         double row = desired.getRow();
         if ("HOME".equals(team)) {
-            row = Math.min(row, 4.5);   // never across the half-way line
+            row = Math.min(row, 4.0);   // half-cell buffer off the half-way line
         } else {
-            row = Math.max(row, 4.5);
+            row = Math.max(row, 5.0);
         }
         Position pos = new Position(row, desired.getColumn());
         p.setPosition(pos);

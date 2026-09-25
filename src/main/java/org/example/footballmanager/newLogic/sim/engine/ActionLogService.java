@@ -54,7 +54,8 @@ public class ActionLogService {
             "VAR_OFFSIDE_CONFIRMED", "VAR_OFFSIDE_OVERTURNED",
             "VAR_GOAL_CONFIRMED", "VAR_GOAL_OVERTURNED",
             "VAR_RED_CONFIRMED", "VAR_RED_OVERTURNED",
-            "VAR_PENALTY_CONFIRMED", "VAR_PENALTY_OVERTURNED");
+            "VAR_PENALTY_CONFIRMED", "VAR_PENALTY_OVERTURNED",
+            "DEC", "EXE");
 
     private static final boolean COMPACT_CONSOLE =
             !"full".equalsIgnoreCase(System.getProperty("proposal.log.console", "compact"));

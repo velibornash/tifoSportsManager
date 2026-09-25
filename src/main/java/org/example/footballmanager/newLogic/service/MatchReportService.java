@@ -203,7 +203,7 @@ public class MatchReportService {
         }
         return switch (safe(event.getEventType())) {
             case "GoalEvent" -> minute + "' Goal: " + safe(event.getScorer()) + (event.getScoreAfterGoal() != null ? " (" + event.getScoreAfterGoal() + ")" : "");
-            case "PenaltyEvent" -> minute + "' Penalty for " + safe(resolveTeam(event)) + " - " + safe(event.getPenaltyTaker()) + (Boolean.TRUE.equals(event.getPenaltyScored()) ? " scored" : " missed/saved");
+            case "PenaltyEvent" -> minute + "' Penalty for " + safe(resolveTeam(event)) + " - " + safe(event.getPenaltyTaker()) + (Boolean.TRUE.equals(event.getPenaltyScored()) ? " scored" : Boolean.FALSE.equals(event.getPenaltyScored()) ? " missed/saved" : " awarded");
             case "RedCardEvent" -> minute + "' Red card: " + safe(event.getRedCardPlayer()) + " (" + safe(resolveTeam(event)) + ")";
             case "YellowCardEvent" -> minute + "' Yellow card: " + safe(event.getYellowCardPlayer()) + " (" + safe(resolveTeam(event)) + ")";
             case "InjuryEvent" -> minute + "' Injury concern: " + safe(event.getInjuryPlayer()) + " (" + safe(resolveTeam(event)) + ")";

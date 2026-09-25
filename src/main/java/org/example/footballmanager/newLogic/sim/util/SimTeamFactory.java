@@ -49,16 +49,39 @@ public final class SimTeamFactory {
         }
     }
 
+    /**
+     * Squad skills for a role — an EXPLICIT profile, identical for both teams.
+     *
+     * Two bugs lived here.
+     *
+     * 1. The base skill was derived from {@code (team + role).hashCode()}, so
+     *    the two squads were not mirror images: HOME's wide midfielders came out
+     *    at base 12 and AWAY's at 15 (HOME's fullbacks 15 vs AWAY's 12). Since
+     *    {@code DuelEngine} resolves a duel by comparing one power number,
+     *    mirrored midfield matchups became "AWAY wins 100% / HOME wins 0%",
+     *    which produced the measured 35%/65% possession split and the entire
+     *    downstream goals cascade (AWAY 7.3 shots but 0.08 goals/match).
+     *
+     * 2. The per-role numbers were a magic string hash, so the resulting skill
+     *    profile was accidental: swapping the hash to role-only produced strong
+     *    strikers (15) against weak centre-backs (13) and a weak keeper (14),
+     *    which blew the match up to 128 shots / 18.6 goals per match. A skill
+     *    profile that decides the match must be written down, not hashed.
+     *
+     * The profile below is a competent, unremarkable 4-4-2 side: a real keeper,
+     * real defenders, midfielders who pass, strikers who finish. Both teams get
+     * exactly the same numbers, so the engine decides the match, not the squad
+     * generator. Per-player variety inside a team comes from the match seed
+     * (skill rolls in the engine), not from a different profile per side.
+     */
     public static PlayerSkills randomSkills(String role, String team) {
-        // Deterministic-ish, varies per role.
-        int base = (team + role).hashCode() % 6 + 12; // 12..17
-        double b = base;
         return switch (role) {
-            case "GK" -> new PlayerSkills(b * 0.8, b * 0.9, b, b * 0.6, b * 0.5, b * 0.7, b * 0.5, b * 0.6);
-            case "DL", "DR", "DCL", "DCR" -> new PlayerSkills(b * 0.9, b, b * 0.4, b * 0.6, b * 0.6, b * 0.8, b * 0.5, b);
-            case "ML", "MR" -> new PlayerSkills(b, b * 0.9, b * 0.3, b * 0.8, b * 0.9, b, b * 0.6, b * 0.6);
-            case "CML", "CMR" -> new PlayerSkills(b * 0.8, b, b * 0.3, b * 0.9, b, b * 0.9, b * 0.7, b * 0.7);
-            case "STL", "STR" -> new PlayerSkills(b, b * 0.9, b * 0.2, b * 0.8, b * 0.6, b * 0.7, b, b * 0.4);
+            case "GK" -> new PlayerSkills(11, 13, 17, 9, 9, 11, 6, 8);
+            case "DL", "DR" -> new PlayerSkills(14, 15, 5, 12, 10, 12, 7, 16);
+            case "DCL", "DCR" -> new PlayerSkills(12, 15, 5, 11, 10, 13, 6, 17);
+            case "ML", "MR" -> new PlayerSkills(16, 14, 4, 14, 13, 13, 9, 11);
+            case "CML", "CMR" -> new PlayerSkills(12, 15, 4, 14, 14, 16, 10, 12);
+            case "STL", "STR" -> new PlayerSkills(15, 14, 4, 14, 12, 11, 16, 8);
             default -> PlayerSkills.neutral();
         };
     }

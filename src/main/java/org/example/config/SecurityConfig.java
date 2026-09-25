@@ -98,6 +98,7 @@ public class SecurityConfig {
                                 "/demo-match-events/**",
                                 "/match-events/**",
                                 "/demo/service/ui/**",
+                                "/proposal/api/**",
                                 "/basketballmanager/**",
                                 "/americanfootballmanager/**",
                                 "/commonmanager/**",

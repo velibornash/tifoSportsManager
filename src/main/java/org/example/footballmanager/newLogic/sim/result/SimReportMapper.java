@@ -44,6 +44,8 @@ public final class SimReportMapper {
         stats.put("awayYellowCards", val(away, TeamOutcome::yellowCards));
         stats.put("homeRedCards", val(home, TeamOutcome::redCards));
         stats.put("awayRedCards", val(away, TeamOutcome::redCards));
+        stats.put("homePenalties", val(home, TeamOutcome::penalties));
+        stats.put("awayPenalties", val(away, TeamOutcome::penalties));
         stats.put("homeFouls", val(home, TeamOutcome::fouls));
         stats.put("awayFouls", val(away, TeamOutcome::fouls));
         stats.put("homeDominance", round1(clamp(o.possessionHome())));
@@ -52,9 +54,8 @@ public final class SimReportMapper {
     }
 
     public static String eventJson(ObjectMapper om, ProposalMatchOutcome o) {
-        List<Map<String, Object>> goalEvents = new ArrayList<>();
+        List<Map<String, Object>> eventList = new ArrayList<>();
         for (EventEntry ev : o.events()) {
-            if (!"GOAL".equals(ev.type()) || ev.team() == null) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("tick", ev.tick());
             m.put("minute", (int) (ev.tick() / TICKS_PER_MINUTE));
@@ -62,11 +63,28 @@ public final class SimReportMapper {
             m.put("teamSide", ev.team());
             m.put("playerId", ev.playerId());
             m.put("playerName", ev.playerName());
-            m.put("scorerName", ev.playerName());
+            if (ev.targetPlayerId() != null) m.put("targetPlayerId", ev.targetPlayerId());
+            if ("GOAL".equals(ev.type())) {
+                m.put("scorerName", ev.playerName());
+                putIfNotNull(m, "assistantId", ev.assistantId());
+                putIfNotNull(m, "assistantName", ev.assistantName());
+                putIfNotNull(m, "homeScoreAfter", ev.homeScoreAfter());
+                putIfNotNull(m, "awayScoreAfter", ev.awayScoreAfter());
+            }
+            putIfNotNull(m, "cardType", ev.cardType());
+            putIfNotNull(m, "penaltyFoul", ev.penaltyFoul());
+            putIfNotNull(m, "takerId", ev.takerId());
+            putIfNotNull(m, "takerName", ev.takerName());
+            putIfNotNull(m, "varType", ev.varType());
+            putIfNotNull(m, "varDecision", ev.varDecision());
             m.put("description", ev.description());
-            goalEvents.add(m);
+            eventList.add(m);
         }
-        return write(om, goalEvents, "[]");
+        return write(om, eventList, "[]");
+    }
+
+    private static void putIfNotNull(Map<String, Object> map, String key, Object value) {
+        if (value != null) map.put(key, value);
     }
 
     public static String lineupJson(ObjectMapper om, ProposalMatchOutcome o) {

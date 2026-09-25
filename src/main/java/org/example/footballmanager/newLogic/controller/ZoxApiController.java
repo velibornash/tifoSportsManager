@@ -145,6 +145,7 @@ public class ZoxApiController {
         int homeYellow = 0, awayYellow = 0;
         int homeRed = 0, awayRed = 0;
         int homeFouls = 0, awayFouls = 0;
+        int homePenalties = 0, awayPenalties = 0;
         int homeGoals = match.getHomeGoals();
         int awayGoals = match.getAwayGoals();
         double homePossession = match.getPossessionHome();
@@ -194,6 +195,11 @@ public class ZoxApiController {
                     if (isHome) homeOffsides++;
                     else awayOffsides++;
                 }
+
+                if (ev.containsKey("penaltyFoul") || "PENALTY".equals(ev.get("type")) || Boolean.TRUE.equals(ev.get("penaltyAwarded"))) {
+                    if (isHome) homePenalties++;
+                    else awayPenalties++;
+                }
             }
         }
 
@@ -224,6 +230,8 @@ public class ZoxApiController {
         stats.put("awayRedCards", awayRed);
         stats.put("homeFouls", homeFouls);
         stats.put("awayFouls", awayFouls);
+        stats.put("homePenalties", homePenalties);
+        stats.put("awayPenalties", awayPenalties);
         stats.put("homeDominance", 50);
         stats.put("awayDominance", 50);
 
@@ -237,72 +245,123 @@ public class ZoxApiController {
         List<Map<String, Object>> events = parseEvents(match.getEventJson());
         if (events == null) return timeline;
 
+        int runningHome = 0;
+        int runningAway = 0;
         for (Map<String, Object> ev : events) {
-            String teamSide = (String) ev.get("teamSide");
+            String type = textOrEmpty(ev.get("type"));
+            String teamSide = text(ev.get("teamSide"));
             String teamName = "HOME".equals(teamSide) ? homeTeam : "AWAY".equals(teamSide) ? awayTeam : null;
-            Integer minute = ev.containsKey("minute") ? ((Number) ev.get("minute")).intValue() : null;
+            Integer minute = integer(ev.get("minute"));
             if (minute == null || teamName == null) continue;
 
-            if (ev.containsKey("scorerName")) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("minute", minute);
-                item.put("icon", "goal");
-                item.put("title", ev.get("scorerName") + " (" + match.getHomeGoals() + "-" + match.getAwayGoals() + ")");
-                item.put("teamName", teamName);
-                item.put("detail", "");
-                timeline.add(item);
-                continue;
-            }
-
-            if (ev.containsKey("cardType")) {
-                String cardType = (String) ev.get("cardType");
-                if (cardType != null) {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("minute", minute);
-                    item.put("icon", "YELLOW".equals(cardType) ? "yellow_card" : "red_card");
-                    item.put("title", ev.get("playerName") + " - " + ("YELLOW".equals(cardType) ? "Yellow card" : "Red card"));
-                    item.put("teamName", teamName);
-                    item.put("detail", "");
-                    timeline.add(item);
+            if ("GOAL".equals(type)) {
+                String scorer = text(ev.get("scorerName"));
+                if (scorer == null) scorer = text(ev.get("playerName"));
+                String assistant = text(ev.get("assistantName"));
+                int homeAfter = integerOr(ev.get("homeScoreAfter"),
+                        runningHome + ("HOME".equals(teamSide) ? 1 : 0));
+                int awayAfter = integerOr(ev.get("awayScoreAfter"),
+                        runningAway + ("AWAY".equals(teamSide) ? 1 : 0));
+                runningHome = homeAfter;
+                runningAway = awayAfter;
+                String title = scorer == null ? "Goal" : scorer;
+                if (assistant != null && !assistant.isBlank()) {
+                    title += " (assist: " + assistant + ")";
                 }
+                title += " (" + homeAfter + "-" + awayAfter + ")";
+                timeline.add(timelineItem(minute, "goal", title, teamName,
+                        assistant == null || assistant.isBlank() ? "" : "Assist: " + assistant));
                 continue;
             }
 
-            if (ev.containsKey("playerOutName") && ev.containsKey("playerInName")) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("minute", minute);
-                item.put("icon", "substitution");
-                item.put("title", "Out: " + ev.get("playerOutName") + ", In: " + ev.get("playerInName"));
-                item.put("teamName", teamName);
-                item.put("detail", "");
-                timeline.add(item);
+            if ("YELLOW_CARD".equals(type) || "RED_CARD".equals(type)
+                    || "CARD".equals(type)) {
+                String cardType = text(ev.get("cardType"));
+                if (cardType == null) cardType = "YELLOW".equals(type) ? "YELLOW" : "RED";
+                String player = text(ev.get("playerName"));
+                String title = (player == null ? "Player" : player) + " - "
+                        + ("YELLOW".equalsIgnoreCase(cardType) ? "Yellow card" : "Red card");
+                timeline.add(timelineItem(minute,
+                        "YELLOW".equalsIgnoreCase(cardType) ? "yellow_card" : "red_card",
+                        title, teamName, ""));
                 continue;
             }
 
-            if (ev.containsKey("penaltyFoul")) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("minute", minute);
-                item.put("icon", "penalty");
-                item.put("title", "Penalty to " + teamName + " (" + ev.getOrDefault("takerName", "") + ")");
-                item.put("teamName", teamName);
-                item.put("detail", "");
-                timeline.add(item);
+            if ("PENALTY_AWARDED".equals(type) || "PENALTY".equals(type)) {
+                String taker = text(ev.get("takerName"));
+                String title = "Penalty awarded to " + teamName;
+                String detail = taker == null || taker.isBlank() ? "" : "Taker: " + taker;
+                timeline.add(timelineItem(minute, "penalty", title, teamName, detail));
                 continue;
             }
 
-            if (ev.containsKey("playerName") && !ev.containsKey("scorerName")
-                && !ev.containsKey("cardType") && !ev.containsKey("playerOutName")) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("minute", minute);
-                item.put("icon", "injury");
-                item.put("title", ev.get("playerName") + " - Injury");
-                item.put("teamName", teamName);
-                item.put("detail", "");
-                timeline.add(item);
+            if ("VAR".equals(type) || type.startsWith("VAR_")) {
+                String varType = text(ev.get("varType"));
+                String varDecision = text(ev.get("varDecision"));
+                if (varType == null) {
+                    varType = type.startsWith("VAR_") ? type.substring(4) : "VAR";
+                }
+                String decision = varDecision == null ? "" : " — " + varDecision;
+                String player = text(ev.get("playerName"));
+                String title = "VAR: " + varType + decision
+                        + (player == null || player.isBlank() ? "" : " — " + player);
+                timeline.add(timelineItem(minute, "var", title, teamName,
+                        textOrEmpty(ev.get("description"))));
+                continue;
+            }
+
+            if ("OFFSIDE".equals(type)) {
+                String player = text(ev.get("playerName"));
+                timeline.add(timelineItem(minute, "offside",
+                        (player == null ? "Player" : player) + " - Offside", teamName, ""));
+                continue;
+            }
+
+            if ("INJURY".equals(type)) {
+                String player = text(ev.get("playerName"));
+                timeline.add(timelineItem(minute, "injury",
+                        (player == null ? "Player" : player) + " - Injury", teamName, ""));
+                continue;
+            }
+
+            if ("SUB".equals(type) || "SUBSTITUTION".equals(type)) {
+                String out = text(ev.get("playerOutName"));
+                String in = text(ev.get("playerInName"));
+                timeline.add(timelineItem(minute, "substitution",
+                        "Out: " + (out == null ? "?" : out) + ", In: " + (in == null ? "?" : in),
+                        teamName, ""));
             }
         }
-
         return timeline;
+    }
+
+    private Map<String, Object> timelineItem(int minute, String icon, String title,
+                                              String teamName, String detail) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("minute", minute);
+        item.put("icon", icon);
+        item.put("title", title);
+        item.put("teamName", teamName);
+        item.put("detail", detail);
+        return item;
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String textOrEmpty(Object value) {
+        String result = text(value);
+        return result == null ? "" : result;
+    }
+
+    private static Integer integer(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private static int integerOr(Object value, int fallback) {
+        Integer parsed = integer(value);
+        return parsed == null ? fallback : parsed;
     }
 
     // ─── MOTM ─────────────────────────────────────────────────

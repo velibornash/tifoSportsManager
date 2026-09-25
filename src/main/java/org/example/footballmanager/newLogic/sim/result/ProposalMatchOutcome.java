@@ -30,7 +30,7 @@ public record ProposalMatchOutcome(
     String playerOfTheMatchTeam
 ) {
 
-    public record TeamOutcome(
+public record TeamOutcome(
         String teamName,
         int goals,
         int shots,
@@ -50,9 +50,10 @@ public record ProposalMatchOutcome(
         int fouls,
         int yellowCards,
         int redCards,
+        int penalties,
         double possessionPercent,
         double avgRating
-    ) {
+) {
         public int passAccuracy() {
             if (passesAttempted == 0) return 0;
             return (int) Math.round(100.0 * passesCompleted / passesAttempted);
@@ -96,7 +97,18 @@ public record ProposalMatchOutcome(
         String team,
         String playerId,
         String playerName,
-        String description
+        String targetPlayerId,
+        String description,
+        String assistantId,
+        String assistantName,
+        Integer homeScoreAfter,
+        Integer awayScoreAfter,
+        String cardType,
+        Boolean penaltyFoul,
+        String takerId,
+        String takerName,
+        String varType,
+        String varDecision
     ) {}
 
     public List<PlayerOutcome> players() { return players == null ? List.of() : players; }

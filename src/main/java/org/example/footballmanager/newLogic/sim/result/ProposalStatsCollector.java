@@ -17,9 +17,12 @@ public class ProposalStatsCollector {
     private String homeName = "Home FC";
     private String awayName = "Away United";
 
-    // Assist tracking (last passer per team before goal)
-    private String lastPasserId;
-    private String lastPasserTeam;
+    // Assist tracking is supplied explicitly by MatchState at goal time.
+    // The collector must not keep an independent, stale passer context.
+    public int getPenalties(String team) {
+        TeamAcc ta = teams.get(team);
+        return ta != null ? ta.penalties : 0;
+    }
 
     // Possession ticks
     private int homePossTicks;
@@ -31,6 +34,13 @@ public class ProposalStatsCollector {
     private final int[] posChainCount = new int[2];  // [HOME, AWAY]
     private final int[] posChainTicks = new int[2];
     private final int[] posLongest = new int[2];
+    private final List<PossessionChain> possessionChains = new ArrayList<>();
+    private long nextChainId = 1L;
+    private long currentChainId;
+    private int currentChainPassCount;
+
+    public record PossessionChain(long chainId, String team, int ticks, int passCount) {
+    }
 
     public ProposalStatsCollector(String homeName, String awayName) {
         this.homeName = homeName;
@@ -63,20 +73,19 @@ public class ProposalStatsCollector {
         if (ta != null) ta.passesAttempted++;
         PlayerAcc pa = players.get(passerId);
         if (pa != null) pa.passesAttempted++;
-        lastPasserId = passerId;
-        lastPasserTeam = team;
     }
 
     /** Call from RECEIVE result (pass completed). */
-    public void onPassCompleted(String team, String receiverId) {
+    public void onPassCompleted(String team, String receiverId, String passerId) {
         TeamAcc ta = teams.get(team);
         if (ta != null) ta.passesCompleted++;
-        // Credit the passer (stored on pass attempt)
-        if (lastPasserId != null) {
-            PlayerAcc passer = players.get(lastPasserId);
+        if (passerId != null) {
+            PlayerAcc passer = players.get(passerId);
             if (passer != null) passer.passesCompleted++;
         }
-        lastPasserId = null; // consumed
+        if (currentPossTeam != null && currentPossTeam.equals(team)) {
+            currentChainPassCount++;
+        }
     }
 
     /** Call from decision block when SHOT is executed. */
@@ -109,13 +118,18 @@ public class ProposalStatsCollector {
         if (pa != null) pa.clearances++;
     }
 
+    /** Offside given away by this team (the attacking side that was caught). */
+    public void onOffside(String team) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.offsides++;
+    }
+
     /** Call from INTERCEPT result. */
     public void onInterception(String team, String interceptorId) {
         TeamAcc ta = teams.get(team);
         if (ta != null) ta.interceptions++;
         PlayerAcc pa = players.get(interceptorId);
         if (pa != null) pa.interceptions++;
-        lastPasserId = null; // pass not completed
     }
 
     /** Call from DEFLECT result. */
@@ -141,18 +155,18 @@ public class ProposalStatsCollector {
     }
 
     /** Call from GOAL result. */
-    public void onGoal(String scorerTeam, String scorerId) {
+    public void onGoal(String scorerTeam, String scorerId, String assistId) {
         TeamAcc ta = teams.get(scorerTeam);
         if (ta != null) ta.goals++;
         PlayerAcc scorer = players.get(scorerId);
         if (scorer != null) scorer.goals++;
-        // Assist: last passer on same team
-        if (lastPasserId != null && lastPasserTeam != null && lastPasserTeam.equals(scorerTeam)) {
-            PlayerAcc assist = players.get(lastPasserId);
-            if (assist != null) assist.assists++;
+        if (assistId != null && !assistId.equals(scorerId)) {
+            PlayerAcc assist = players.get(assistId);
+            if (assist != null && assist.player.getTeam().equals(scorerTeam)
+                    && !"GK".equals(assist.player.getRole())) {
+                assist.assists++;
+            }
         }
-        lastPasserId = null;
-        lastPasserTeam = null;
     }
 
     /** Call from OOB_RESTART result (restart type string). */
@@ -199,6 +213,12 @@ public class ProposalStatsCollector {
         if (pa != null) pa.redCards++;
     }
 
+    /** Call from Penalty result (penalty kick awarded). */
+    public void onPenalty(String team) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.penalties++;
+    }
+
     /** Call from possession tick tracking (carrier != null). */
     public void onPossessionTick(String carrierTeam) {
         int idx;
@@ -217,6 +237,8 @@ public class ProposalStatsCollector {
         } else {
             closeCurrentChain();
             currentPossTeam = carrierTeam;
+            currentChainId = nextChainId++;
+            currentChainPassCount = 0;
             currentChainTicks = 1;
         }
     }
@@ -232,8 +254,17 @@ public class ProposalStatsCollector {
         posChainCount[idx]++;
         posChainTicks[idx] += currentChainTicks;
         if (currentChainTicks > posLongest[idx]) posLongest[idx] = currentChainTicks;
+        possessionChains.add(new PossessionChain(
+                currentChainId, currentPossTeam, currentChainTicks, currentChainPassCount));
         currentPossTeam = null;
+        currentChainId = 0L;
+        currentChainPassCount = 0;
         currentChainTicks = 0;
+    }
+
+    public List<PossessionChain> getPossessionChains() {
+        closeCurrentChain();
+        return List.copyOf(possessionChains);
     }
 
     // ==================== BUILD METHODS ====================
@@ -258,7 +289,7 @@ public class ProposalStatsCollector {
                 ta.teamName, ta.goals, ta.shots, ta.shotsOnTarget,
                 ta.passesAttempted, ta.passesCompleted, ta.dribbles,
                 ta.clearances, ta.interceptions, ta.deflections, ta.blocks, ta.saves,
-                ta.corners, ta.goalKicks, ta.throwIns, 0, // offsides not yet wired
+                ta.corners, ta.goalKicks, ta.throwIns, ta.offsides,
                 ta.fouls, ta.yellowCards, ta.redCards,
                 Math.round(poss * 10.0) / 10.0,
                 avgDur, posLongest[idx]
@@ -277,11 +308,19 @@ public class ProposalStatsCollector {
                         p.dribbles, p.clearances, p.interceptions, p.deflections,
                         p.blocks, p.saves, p.tackles, p.duelsWon,
                         p.foulsCommitted, p.yellowCards, p.redCards,
-                        90, // minutes (full match)
+                        minutesPlayed(p.player),
                         calculateRating(p)
                 ))
                 .sorted(Comparator.comparingDouble(PlayerStats::rating).reversed())
                 .toList();
+    }
+
+    /** Full match — unless the player was sent off, then up to his red-card tick. */
+    private static int minutesPlayed(Player player) {
+        if (player.isSentOff() && player.getSentOffTick() >= 0) {
+            return Math.max(1, player.getSentOffTick() / ProposalMatchOutcomeBuilder.TICKS_PER_MINUTE);
+        }
+        return 90;
     }
 
     /** Get HOME possession percentage. */
@@ -356,6 +395,7 @@ public class ProposalStatsCollector {
         int interceptions, deflections, blocks, saves;
         int corners, goalKicks, throwIns, offsides;
         int fouls, yellowCards, redCards;
+        int penalties;
         TeamAcc(String name) { this.teamName = name; }
     }
 

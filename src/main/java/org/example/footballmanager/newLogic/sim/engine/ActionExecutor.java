@@ -137,6 +137,7 @@ public class ActionExecutor {
         state.setCarrier(null);
         state.setLastTouchTeam(carrier.getTeam());
         state.setLastTouchPlayer(carrier);
+        state.beginPass(carrier, receiver);
 
         carrier.incrementConsecutiveCarries();
         state.incrementPassAttempts();
@@ -176,9 +177,12 @@ public class ActionExecutor {
         Position goal = ActionEngine.goalPositionFor(carrier.getTeam());
         double strikerSkill = carrier.getSkills().striker();
 
-        // ExecutionQuality gives deviated aim + launch speed + spin + onTarget
+        // ExecutionQuality gives deviated aim + launch speed + spin + onTarget.
+        // The attack direction must be passed explicitly so a miss falls short
+        // of the goal line on BOTH sides (see ExecutionQuality.evaluateShot).
+        boolean attacksTowardHigherRows = "HOME".equals(carrier.getTeam());
         ExecutionQuality.ShotResult result = ExecutionQuality.evaluateShot(
-                goal, (int) strikerSkill, 0.0, carrier.getPosition());
+                goal, (int) strikerSkill, 0.0, carrier.getPosition(), attacksTowardHigherRows);
 
         // Launch the ball
         state.getBallEngine().launch(state.getBall(), carrier.getPosition(),
@@ -230,6 +234,7 @@ public class ActionExecutor {
     private void executeClear(MatchState state, DecisionOption decision) {
         Player carrier = state.getCarrier();
         if (carrier == null) return;
+        state.clearPassContext();
 
         // Clear direction — away from OWN goal (long air kick).
         // HOME defends row 1.0 so clears UP (+row, toward AWAY goal);

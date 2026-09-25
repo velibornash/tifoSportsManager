@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.result.TeamStats;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 import java.io.File;
 import java.util.LinkedHashMap;
@@ -24,6 +25,7 @@ public class ProposalMatchExporter {
 
     public static void main(String[] args) throws Exception {
         long seed = (args.length > 0) ? Long.parseLong(args[0]) : System.nanoTime();
+        SimulationRandom.seed(seed);
 
         // Build match state using the launcher's logic
         MatchState state = new MatchState();
@@ -57,6 +59,7 @@ public class ProposalMatchExporter {
 
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("matchId", state.getMatchId());
+        view.put("seed", seed);
         view.put("homeTeamName", "Home FC");
         view.put("awayTeamName", "Away United");
         view.put("homeGoals", state.getHomeGoals());
@@ -84,6 +87,7 @@ public class ProposalMatchExporter {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("teams", orchestrator.getStats().toTeamJson());
         stats.put("players", orchestrator.getStats().toPlayersJson());
+        stats.put("possessionChains", orchestrator.getStats().getPossessionChains());
         return stats;
     }
 }

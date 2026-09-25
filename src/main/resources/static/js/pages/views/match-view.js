@@ -277,6 +277,7 @@ export function createMatchView(deps) {
                                     <tr><td style="padding:8px 0;">Shots on target</td><td style="text-align:center;">${Number(stats.homeShotsOnTarget || 0)}</td><td style="text-align:center;">${Number(stats.awayShotsOnTarget || 0)}</td></tr>
                                     <tr><td style="padding:8px 0;">Pass accuracy</td><td style="text-align:center;">${Number(stats.homePassAccuracy || 0).toFixed(0)}%</td><td style="text-align:center;">${Number(stats.awayPassAccuracy || 0).toFixed(0)}%</td></tr>
                                     <tr><td style="padding:8px 0;">Corners</td><td style="text-align:center;">${Number(stats.homeCorners || 0)}</td><td style="text-align:center;">${Number(stats.awayCorners || 0)}</td></tr>
+                                    <tr><td style="padding:8px 0;">Penalties awarded</td><td style="text-align:center;">${Number(stats.homePenalties || 0)}</td><td style="text-align:center;">${Number(stats.awayPenalties || 0)}</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -342,6 +343,7 @@ export function createMatchView(deps) {
                     ['Offsides', n(payload.homeOffsides), n(payload.awayOffsides)],
                     ['Yellow cards', n(payload.homeYellowCards), n(payload.awayYellowCards)],
                     ['Red cards', n(payload.homeRedCards), n(payload.awayRedCards)],
+                    ['Penalties awarded', n(payload.homePenalties), n(payload.awayPenalties)],
                     ['Fouls', n(payload.homeFouls), n(payload.awayFouls)],
                 ];
                 const body = rows.map(([label, homeVal, awayVal], i) => {
