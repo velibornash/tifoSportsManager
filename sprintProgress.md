@@ -110,7 +110,7 @@ The league table is likewise written by `SimMatchService:246-261`. `simulateQuic
 
 ## Sprint 0 — Stop the bleeding
 
-*(in progress — 1 of 7 done)*
+*(in progress — 2 of 7 done)*
 
 ### S0.1 — Close the €1 transfer exploit ✅ DONE
 
@@ -137,7 +137,33 @@ The league table is likewise written by `SimMatchService:246-261`. `simulateQuic
 
 ---
 
-### S0.2 — Fix the transfer-list soft-lock
+### S0.2 — Fix the transfer-list soft-lock ✅ DONE
+
+**Date:** 2026-09-26 · **Duration:** ~35 min · **Commit:** `2a67162` — *"S0.2: fix the transfer-list soft-lock"*
+
+**The bug:** a bare "register interest" entry (club name, no price) set `canRemove` to false, but since it is not a priced offer `canRejectOffer` also stayed false. Once any club registered interest, the player could **never** be delisted again — no seller action, no admin path. The UI rendered a permanently disabled button.
+
+**The fix** — three escape routes where there were none:
+
+| Change | Detail |
+|---|---|
+| `hasPricedOffer()` helper | Separates a priced offer (`"X offered €Y"`) from a bare interest entry |
+| `removeFromTransferList` | Blocks only on a **priced** offer; clears stale interest on delist |
+| DTO: `hasPricedOffer`, `canClearInterest` | UI can now explain *why* removal is blocked |
+| `clearAllInterest()` | Seller wipes all interest/offers without accepting one. `rejectOffers` was unreachable in the soft-lock case because it needs a priced offer to exist |
+| `withdrawInterest()` | An interested club can back out cleanly, so it cannot hold a seller's player hostage |
+| `forceUnlist()` | Admin operator escape hatch |
+
+**Security decision:** `force-unlist` is routed through **`/admin/transfer-list/{playerId}`** in `AdminController`, not `/transfers/**`. Only `/admin/**` is role-guarded (`SecurityConfig.java:107`), so putting it under `/transfers` would have let any authenticated user delist another club's player. Caught before committing.
+
+**UI:** both transfer panels now render a **Clear interest** button, and the disabled "Remove" tooltip distinguishes a live offer from bare interest.
+
+**Tests:** `TransferListSoftLockTest` — 10 tests. Two assert no money moves on clear-interest; one asserts force-unlist beats even a live priced offer; one asserts withdrawing a priced offer entry is parsed correctly out of the legacy string format.
+
+**Verification:** `mvn test` → **104/104 green** (was 94).
+
+---
+
 ### S0.3 — Idempotency guard on weekly training
 ### S0.4 — Feed `Skills.*Exact` into the engine
 ### S0.5 — Passive fatigue recovery
