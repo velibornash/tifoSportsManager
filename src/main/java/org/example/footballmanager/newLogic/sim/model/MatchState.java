@@ -27,6 +27,26 @@ public class MatchState {
      * ball is still in the air.
      */
     private boolean kickoffHalfHold;
+
+    /**
+     * SHOT FREQUENCY GATE — rolled ONCE per possession, not once per tick.
+     *
+     * The decision engine re-decides on every tick while a player is on the ball,
+     * so a gate rolled inside the scorer was a fresh coin flip on every tick. A
+     * striker who lingered in the box rolled 5+ times and shot ~63% of the time
+     * (1-0.83^5), while a striker who got a single look shot 17% of the time —
+     * the gate rewarded hesitation. Caching the roll for the whole possession
+     * makes it one decision per attack: you get your chance when you arrive.
+     *
+     * Invalidated in {@link #setCarrier} whenever the carrier actually changes,
+     * which is the single chokepoint for every possession change (pickup, duel
+     * winner, restart taker, ball struck loose).
+     */
+    private String shotGateCarrierId;
+    private boolean shotGatePassed;
+
+    /** True when the gate blocked the shot during the current decide() call. */
+    private boolean shotGateBlocked;
     private int kickoffHalfHoldTick;
     private boolean matchFinished;    // full time reached (replay overlay)
 
@@ -165,6 +185,17 @@ public class MatchState {
 
     public boolean isKickoffHalfHold() { return kickoffHalfHold; }
     public void setKickoffHalfHold(boolean kickoffHalfHold) { this.kickoffHalfHold = kickoffHalfHold; }
+    public boolean isShotGateCachedFor(String carrierId) {
+        return shotGateCarrierId != null && shotGateCarrierId.equals(carrierId);
+    }
+    public boolean getShotGatePassed() { return shotGatePassed; }
+    public void cacheShotGate(String carrierId, boolean passed) {
+        this.shotGateCarrierId = carrierId;
+        this.shotGatePassed = passed;
+    }
+    public boolean isShotGateBlocked() { return shotGateBlocked; }
+    public void setShotGateBlocked(boolean shotGateBlocked) { this.shotGateBlocked = shotGateBlocked; }
+
     public int getKickoffHalfHoldTick() { return kickoffHalfHoldTick; }
     public void setKickoffHalfHoldTick(int t) { this.kickoffHalfHoldTick = t; }
 
@@ -360,7 +391,15 @@ public class MatchState {
     public void setReceivePoint(Position receivePoint) { this.receivePoint = receivePoint; }
 
     public Player getCarrier() { return carrier; }
-    public void setCarrier(Player carrier) { this.carrier = carrier; }
+    public void setCarrier(Player carrier) {
+        // A new carrier is a new possession, so the shot gate must be rolled again.
+        String newId = carrier != null ? carrier.getId() : null;
+        if (shotGateCarrierId != null && !shotGateCarrierId.equals(newId)) {
+            shotGateCarrierId = null;
+            shotGatePassed = false;
+        }
+        this.carrier = carrier;
+    }
 
     /** Team that last touched the ball (for goal/OOB attribution). */
     public String getLastTouchTeam() { return lastTouchTeam; }

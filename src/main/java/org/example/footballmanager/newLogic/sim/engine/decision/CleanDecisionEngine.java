@@ -51,11 +51,31 @@ public class CleanDecisionEngine {
     private static final double UNAVAILABLE = -10_000.0;
 
     /**
-     * Share of final-third touches that become a shot attempt. Real sides take
-     * ~25 shots per match, i.e. roughly one attempt every 90 seconds, not on
-     * every touch. Tuned with `ProposalSeasonDiag 150 42`.
+     * Share of arrivals in the shooting zone that become a shot attempt.
+     *
+     * Real sides take ~25 shots per match, i.e. roughly one attempt every 90
+     * seconds, not on every touch.
+     *
+     * It was 0.17, tuned while the gate was re-rolled on EVERY tick of a carry:
+     * a striker who stayed in the box rolled 5+ times and effectively shot ~63%
+     * of the time, so the constant was compensating for an exploit. With the roll
+     * cached per arrival (the honest semantics) 0.17 produced only 16.5 shots and
+     * 1.8 goals per match. Re-measured with `ProposalSeasonDiag 200 42`:
+     * 0.17 -> 16.5 shots / 1.8 goals, 0.30 -> 28.7 / 3.5, 0.42 -> 39.9 / 4.7.
+     * 0.30 lands closest to the real 25 shots and 2.7 goals.
      */
-    private static final double SHOT_FREQUENCY_GATE = 0.17;
+    private static final double SHOT_FREQUENCY_GATE = 0.30;
+
+    /**
+     * TEMPORARY MEASUREMENT SWITCH for the "a gated shot must not become a
+     * dribble" rule. Measured ON: goals 5.5 -> 1.9, but centres 38.2 -> 3.1,
+     * crosses 24.8 -> 3.4, through balls 13.9 -> 0.9. The reason is structural:
+     * THRU / CROSS / CENTER are not given to the selector at all, so the dribble
+     * in the final two rows is the ONLY path by which a delivery is ever chosen.
+     * Vetoing the dribble therefore deletes the deliveries. The rule is correct
+     * but cannot be enabled until the deliveries compete on merit (REC 3).
+     */
+    private static final boolean GATE_BLOCKS_DRIBBLE = false;
 
     /**
      * Share of eligible moments that become a through ball. Real sides play
@@ -134,6 +154,20 @@ public class CleanDecisionEngine {
         if (inOwnDefensiveThird && passOption.getScore() > UNAVAILABLE) {
             carryOption = new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
                     "DRIBBLE: not in own defensive third with a pass available");
+        }
+
+        // A GATED SHOT MUST NOT BECOME A DRIBBLE.
+        //
+        // The gate made the shot UNAVAILABLE, which left the selector with "pick
+        // the least bad option" — and for a striker in the box the least-bad
+        // option was DRIBBLE (-0.6), so a blocked shot turned into a walk down the
+        // byline. Measured before this rule: of 99 gated shots in 600 situations,
+        // 93 (94%) ended in a dribble. A player who has decided not to shoot must
+        // MOVE THE BALL — pass it on or clear it. The dribble stays available when
+        // no pass exists at all, otherwise a carrier with no options would freeze.
+        if (GATE_BLOCKS_DRIBBLE && state.isShotGateBlocked() && passOption.getScore() > UNAVAILABLE) {
+            carryOption = new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
+                    "DRIBBLE: shot gate blocked this touch - move the ball");
         }
 
         // Apply playmaking-based selection (not hard rules)
@@ -330,6 +364,7 @@ public class CleanDecisionEngine {
         boolean inShootingZone = "HOME".equals(team) ? carrierRow >= 6.0 : carrierRow <= 3.0;
 
         if (!inShootingZone) {
+            state.setShotGateBlocked(false);
             return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
                     "SHOT: not in zone");
         }
@@ -342,10 +377,25 @@ public class CleanDecisionEngine {
         // pass (-60..-90) and carry (-60) options were worse — so in the final
         // third the engine shot almost every touch, because a shot was always the
         // least-bad option. Measured: 83 shots per match. The gate now vetoes.
-        if (SimulationRandom.nextDouble() > SHOT_FREQUENCY_GATE) {
+        //
+        // Rolled ONCE per possession (cached in MatchState, invalidated when the
+        // carrier changes) instead of once per tick. The engine re-decides on
+        // every tick of a carry, so a per-tick roll meant a striker who hesitated
+        // in the box got 5+ attempts at the gate and shot ~63% of the time, while
+        // a striker who got one look shot 17%. Hesitation was being rewarded.
+        boolean gateAllowsShot;
+        if (state.isShotGateCachedFor(carrier.getId())) {
+            gateAllowsShot = state.getShotGatePassed();
+        } else {
+            gateAllowsShot = SimulationRandom.nextDouble() <= SHOT_FREQUENCY_GATE;
+            state.cacheShotGate(carrier.getId(), gateAllowsShot);
+        }
+        if (!gateAllowsShot) {
+            state.setShotGateBlocked(true);
             return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
                     "SHOT: freq gate");
         }
+        state.setShotGateBlocked(false);
 
         // Basic shot value
         score += 20.0;
@@ -381,6 +431,8 @@ public class CleanDecisionEngine {
         // "close" shots were being taken from inside a wall.
         double openness = calculateGoalOpenness(state, carrier, goal);
         if (openness < 0.1) {
+            // The gate was open and the shot is still impossible: a genuine veto,
+            // not a "recycle this touch" signal, so the blocked flag stays false.
             return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
                     "SHOT: lane jammed (open " + String.format("%.2f", openness) + ")");
         }

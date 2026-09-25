@@ -2131,3 +2131,53 @@ rezultati 68/94/38. Golove ne dira ovaj fix — krivac je frequency gate (REC 2)
 
 `mvn test` → 84 run, 0 fail. Log format `prox %+.1f` da se negativne vrednosti ne
 prikazuju kao "prox +-6.6".
+
+---
+
+## 2026-09-25 — REC 2: shot frequency gate (jedan bacaj po dolasku, ne po ticku)
+
+**Problem.** Gate se bacao UNUTAR skorea, a `MatchOrchestrator` poziva
+`decideWithOptions` **svaki tick** dok igrač ima loptu. Zato:
+- napadač koji je zadržao loptu u boxu dobio je 5+ pokušaja i efektivno šutirao
+  ~63% (`1 - 0.83^5`),
+- napadač koji je dobio jedan pogled šutirao 17%.
+**Gate je nagrađivao oklevanje.** Konstanta 0.17 je bila kalibrisana protiv te
+eksploatacije, ne proti stvarnosti.
+
+**Fix.** Cache u `MatchState` po nosiocu, poništava se u `setCarrier()` kad se
+nosilac zaista promeni (jedini chokepoint za sve promene posedа: pickup, duel
+pobednik, restart taker, izbijena lopta). Cache se upisuje tek na prvom ticku kad
+je nosilac **u zonu puštanja**, pa se čita kao "jedan bacaj po dolasku", ne "po
+posedu".
+
+**Rekalibracija** (`ProposalSeasonDiag 200 42`) — iskreni semantici su otkrili da
+je 0.17 bio podešen protiv iskorišćenog ponašanja:
+
+| gate | udarci | golovi |
+|---|---|---|
+| 0.17 | 16.5 | 1.8 |
+| **0.30** | **28.7** | **3.5** |
+| 0.42 | 39.9 | 4.7 |
+
+Realno: ~25 udarci, 2.7 golova → **0.30**.
+
+**Pravilo "zabranjen šut ne sme postati dribling".** Implementirano, ali iza
+`GATE_BLOCKS_DRIBBLE = false`. Pravilo je tačno (proba: 94% zabranjenih šutova
+je završavalo driblom po aušucu → 18%), ali ga uključivanje **briše isporuke**:
+centri 38.2 → 3.1, krsevi 24.8 → 3.4, prodorni pasovi 13.9 → 0.9. Uzrok je
+strukturni: THRU/CROSS/CENTER se **uopšte ne prosleđuju selektoru**, pa je
+dribling u poslednja dva reda jedini put kojim se isporuka ikada bira. Uključuje
+se u REC 3, kad isporuke počnu da se takmiče po meritumu.
+
+**Provera zamrzavanja (seed 777):** najduži niz duel linija **1**, najveći gap 38 s
+posle DEFLECT-a (loša lopta u pursuitu).
+
+**Stanje (200 mečeva, gate 0.30, veto OFF):** golovi 3.5, udarci 28.7, SOT 11.6,
+prolaznost 79.1/80.3, dribling 195.4, centri 38.9, krsevi 23.5, prodorni 14.7,
+posed 50.0/50.0, rezultati 70/84/46, 8 bez golova.
+
+**Ostalo otvoreno (van REC 2):**
+- **izbacivanja 127.8** (realno ~18-20) — REC 1 je termin `prox` okrenuo pa je
+  čišćenje postalo privlačno; ovo je naredni kalibracioni kandidat.
+- prekršaji 16.7 (realno ~22), žuti 2.8 (realno ~4), crveni 0.4.
+- AWAY rezultati 70/84/46.
