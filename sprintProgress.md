@@ -110,12 +110,94 @@ The league table is likewise written by `SimMatchService:246-261`. `simulateQuic
 
 ## Sprint 0 — Stop the bleeding
 
-*(in progress)*
+*(in progress — 1 of 7 done)*
 
-### S0.1 — Close the €1 transfer exploit
+### S0.1 — Close the €1 transfer exploit ✅ DONE
+
+**Date:** 2026-09-26 · **Duration:** ~25 min · **Commit:** `0a62d08` — *"S0.1: close the EUR 1 transfer exploit"*
+
+**The bug:** `normalizePrice` was `Math.max(1.0, requested)` with no lower bound against the asking price. `buyListedPlayer` passed the client-supplied price straight into `completeTransfer`, so any listed player could be bought for €1. The UI prefilled a `window.prompt` with the asking price but only validated `numeric > 0`.
+
+**The fix:**
+
+| Change | Detail |
+|---|---|
+| `normalizePrice` → `resolveAgreedPrice` | New single choke point for every agreed price. Asking price is now a hard floor → `422 PRICE_BELOW_ASKING` |
+| Invalid input rejected | `≤ 0`, `NaN`, `Infinity` → `422 INVALID_PRICE`. Prevents the old `Math.max(1.0, …)` behaviour reappearing via a numeric edge case |
+| `directBuyPlayer` routed through the guard | Closes the second hole where direct-buy on an *already-listed* player completed with **no** price check (`:209-214`) |
+| Defence in depth in `completeTransfer` | Re-checks the floor so no future caller can bypass the guard by calling it directly |
+
+**Deliberate boundary behaviour** (decided with PO, tested): exactly the asking price closes the deal, and overpaying is allowed. Rationale: a player who is on the transfer list has already agreed to be sold at that price, so the fee is the only open question. This matches the existing one-click "Buy listed" UI and avoids adding clicks to the common path. A listed-player sale therefore does **not** require a separate seller-acceptance roll.
+
+**Tests:** `TransferServicePriceGuardTest` — 10 tests, mocked repositories, no Spring context. Includes one that asserts the exploit moves **no money at all** (buyer budget, seller budget, player club, listing status all unchanged, and `verify(never())` on both repository writes).
+
+**Verification:** `mvn test` → **94/94 green** (was 84).
+
+**Note:** the UI still uses `window.prompt` for prices. That is cosmetic and tracked in Sprint 8.3; the server-side guard is what matters and it is now authoritative.
+
+---
+
 ### S0.2 — Fix the transfer-list soft-lock
 ### S0.3 — Idempotency guard on weekly training
 ### S0.4 — Feed `Skills.*Exact` into the engine
 ### S0.5 — Passive fatigue recovery
 ### S0.6 — Delete the dead offside / rules paths
 ### S0.7 — Security and endpoint hygiene
+
+---
+
+## Open design questions — transfer market
+
+**Date:** 2026-09-26 · raised by PO during S0.1
+
+### Confirmed: this is a multiplayer human economy, not an AI sandbox
+
+PO clarified the product: **AI teams do not buy and do not sell.** Only real players trade. An admin can force-list a specific player (e.g. an NT player so they do not sit in a bot club). `Team.humanControlled` already exists and the league table already surfaces it (`CountryController.java:89,130`); `RegistrationService:77` sets it on approval. The multiplayer claim flow is already built.
+
+**This corrects two more findings in `expertAudit.md`:**
+
+| Audit claim | Reality |
+|---|---|
+| §8.3 "`maybeCreateIncomingOffer:465-469` only ever targets human players — **AI↔AI transfers never happen at all**" — flagged as a bug | **Intentional design.** Not a defect. |
+| §8.3 `maybeCreateAiListing:430-458` — 42%/week chance an AI club lists a player | **This one is a real bug.** AI clubs must not create listings. Needs a `humanControlled` filter. |
+| §8.6 / Sprint 3.6 "Enable AI↔AI transfers" | **Wrong requirement.** Must be removed. |
+
+Also invalid: Sprint 2.1's "seed a real world for all 310 clubs" and Sprint 2.2's "run finances for every club" were written assuming AI economies participate. The economy only needs to be correct for human clubs; AI clubs need only be plausible *on the pitch*.
+
+**Consequence:** the transfer market is only as liquid as the human player count. With one player it is effectively a monologue. That is fine during testing, but the auction UI, notifications and rival-bidding must be built for ~10+ players across multiple countries from the start.
+
+### Blocker found: the season is a global singleton advanced by any player's click
+
+`GameClock` is a singleton row (`@Id Long id = 1L`). `POST /simulation/week/advance` (`SimulationController.java:218`) advances **the entire world** and performs **no ownership check** — any authenticated user moves the season for everyone. The only gate is "are the *clicker's* league fixtures played" (`:244-253`), and the week-consumed guard is client-side only (`demo.js:634-637`).
+
+Consequences with real players: player A advances the week, and player B loses their un-played fixture and their week jumps forward. Training also only runs for the clicking user's team (`AdvanceWeekAsyncService:80-82`).
+
+**This must be resolved before the auction**, because an auction needs a trustworthy deadline. A bid window cannot be defined in a world where the calendar moves on a click by an arbitrary player.
+
+### Clock assessment (PO asked whether the existing clock is reusable)
+
+The existing clock is `static/js/clock.js`, polling `/api/server-time` and `/api/game-clock`. It displays **real** wall-clock time and date (Europe/Belgrade) plus `Season N • Week N`.
+
+- ✅ Reusable as-is for the UI shell — it is already the manager's time source.
+- ❌ `/api/game-clock` (`APIController.java:39-47`) returns only `seasonNumber`, `weekNumber`, and a **hardcoded** `phase: "Season in progress"`. `GameClock.currentDate` (the in-game date) is **never sent to the frontend**.
+- ❌ `GameClock.currentDate` only moves in 7-day steps on week advance, so it cannot express an auction window.
+- ⚠️ `CommonGameClock.currentYear` exists and is unused.
+
+**Proposal:** keep the existing clock and extend `/api/game-clock` with the in-game date, a day counter and a real `phase`, rather than building a second clock. Granularity decision pending.
+
+### Decision taken on reserve behaviour
+
+PO chose: **auction closes unsold below reserve → player stays listed and can be re-listed.** Reserve is a real negotiating position, not a formality.
+
+### Plan of record
+
+1. ✅ S0.1 — exploit closed, minimal guard only (done, keeps the hole shut while the model is replaced)
+2. Resolve the season-advance model (global singleton vs scheduled) — **blocks the auction**
+3. Extend `/api/game-clock` with game date + phase
+4. Sprint 3 restructure: auction becomes the core, absorbing S3.2's data-model replacement
+   - `TransferListing` + `TransferBid` entities → permanently kills the `Set<String>` prose encoding
+   - Auction: proxy/max bids, anti-snipe extension (capped), resolution
+   - Direct club-to-club agreement with min/max guard → **later task in the same sprint**, per PO
+5. Add admin force-list capability
+6. Fix `maybeCreateAiListing` to skip non-human clubs
+
