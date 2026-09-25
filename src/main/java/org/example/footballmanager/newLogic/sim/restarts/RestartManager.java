@@ -107,6 +107,18 @@ public class RestartManager {
         state.setPhase(MatchPhase.SET_PIECE);
         state.setSetPieceType("KICK_OFF");
         state.setRestartTeam(kickoffTeam);
+
+        // KICKOFF in the log. handleKickoff previously wrote nothing anywhere, so
+        // a replay had no kickoff line at all — the match just started. Logged
+        // through the shared action logger (tag RST, which is already a
+        // console-notable tag) so it lands in the app log, match.json and the UI
+        // timeline.
+        if (state.getActionLogger() != null) {
+            state.getActionLogger().log("RST", "KICKOFF " + kickoffTeam
+                    + " | ball at center (4.5,4.0) | taker "
+                    + (taker == null ? "none" : taker.getLabel())
+                    + (taker == null ? "" : " (" + taker.getRole() + ")"));
+        }
     }
 
     /**

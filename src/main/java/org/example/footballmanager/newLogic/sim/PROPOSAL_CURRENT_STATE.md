@@ -79,6 +79,36 @@ This document is **always updated** when `PROPOSAL_PROGRESS.md` changes.
 > remaining differences are documented deliberate divergences in `backlog.md`
 > (`UI-PARITY-05..11`).
 >
+> **Replay fidelity (user-reported: the UI showed a different pass than the log).**
+> The dashboard replay downsampled snapshots a flat 1:10, but the ball only moves
+> fast when nobody owns it — a lofted kickoff pass covers ~8.25 cells in ten
+> ticks on a 7-cell pitch — so the viewer had to draw the ball as a straight line
+> across most of the pitch between frames, and a pass to one player rendered as a
+> pass to whoever sat on that line. The recorder also wrote `null` for
+> `targetPlayerId`/`intendedTarget`/`actualTarget`, so the replay had no idea who
+> the ball was for. Now: no in-flight tick is ever dropped (idle ticks are still
+> strided, so the payload stays small), and the recorder records the passer's
+> action type, the acting player, the intended receiver and the landing point,
+> which `SimReplayView` exposes to the viewer. `SimReplayFidelityTest` (5 tests).
+>
+> **Kickoff is logged** — `handleKickoff` previously wrote nothing, so a match
+> just began with no starting line. It now logs
+> `KICKOFF <TEAM> | ball at center (4.5,4.0) | taker X (ROLE)`.
+>
+> **Kickoff overlay is 2 seconds** and the clock does not move until it clears
+> (playback is already held while a blocking overlay is up).
+>
+> **Playback speed is a dropdown** with the values spelled out (0.25x-10x). It was
+> a range slider with an 11px dim readout, which was effectively unreadable.
+>
+> **The AI no longer passes into a spot an opponent reaches first.**
+> `nearestOpponentBeatsHimToIt` drops a receiver from the options when the
+> closest opponent can get to the ball's landing spot before he can, comparing
+> both movement speeds — the owner watched the away right attacker arrive at our
+> second row before the ball and simply win it. Aggregate pass accuracy is
+> unchanged (~79%/77%), so this removed specific lost chances rather than
+> degrading passing.
+>
 > **Viewer:** clicking a player on the pitch shows a stats card (name, role,
 > rating, goals, assists, shots, passes, duels, minutes) and rings the selection.
 >

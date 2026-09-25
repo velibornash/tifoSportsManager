@@ -471,6 +471,20 @@ All four stubs already compile — each body lands behind a compile gate.
   per-tick player velocity; lower stamina drains faster.
 - [x] Speed multiplier from fatigue (max 30% loss per `MAX_FATIGUE_SPEED_LOSS`) —
   `MovementEngine` applies the factor to every moving player.
+### UI / replay fidelity (2026-09-25, korisnička prijava)
+
+- [x] UI prikazivao pas ka DRUGOM igraču nego log — replay je uzimao snapshot
+      svakih 10 tickova, a lopta prelazi ~8 ćelija za 10 tickova u letu, pa je
+      viewer crtao pravu liniju preko terena; uz to recorder nije upisivao
+      `targetPlayerId`/metu. FIX: in-flight tikovi se nikad ne izbacuju, recorder
+      upisuje akciju/igrača/metu, replay ih izlaže vieweru.
+- [x] Kickoff u logu — `handleKickoff` nije ništa zapisivao.
+- [x] Kickoff overlay 2 s (bio 3 s) i sat ne kreće dok overlay stoji.
+- [x] Brzina snimka se vidi — range slider + 11px dim label zamenjeni
+      dropdown-om sa ispisanim vrednostima.
+- [x] AI ne igra pas u mesto gde protivnik stiže pre primaoca
+      (`nearestOpponentBeatsHimToIt`, poredi obe brzine).
+
 - [ ] Auto-sub at configurable threshold — SKIPPED 2026-09-25: the proposal engine
   currently constructs starting XIs only; there is no bench/slot/substitution-limit
   contract to implement against.

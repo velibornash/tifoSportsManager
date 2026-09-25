@@ -249,7 +249,59 @@ spremanje (veština širi domet, brzina ga sužava, lopta van dometa uvek prolaz
 
 Puni test suite: **74 testova, 0 grešaka**.
 
-## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.10)
+### 🐛 UI prikazivao drugi pas od loga + kickoff + brzina + "protivnik stiže pre"
+
+**1. UI prikazuje pas ka IGRAČU, a log ka drugom.** Uzrok je bio u replay putanji
+(dashboard, pravi igrači iz baze → `SimMatchService` → `SimReplayView`), ne u
+engine-u. Replay je uzimao snapshot svakih 10 tickova (`SNAPSHOT_STRIDE`), a
+loptu zato što je brza KADA NIKO NEMA LOPTU: visoki kickoff pas prelazi ~8.25
+ćelija za 10 tickova, a teren je duga 7 ćelija. Viewer je zato morao da
+nacrta loptu kao pravu liniju preko većine terena između dva kadra — pas ka
+jednom igraču izgledao je kao pas ka igraču koji se slučajno našao na toj
+liniji. Uz to, `MatchRecorder.captureSnapshot` je upisivao `null` u
+`targetPlayerId`, `intendedTarget` i `actualTarget`, pa replay nije imao pojma
+kome lopta ide.
+
+Popravke:
+- `SimReplayView.downsample` NIKADA ne izbacuje tick dok je lopta u letu
+  (nema vlasnika i ima `targetPlayerId`/nije POSSESSION). Idle tikovi (lopta
+  nekome kod nogu, što je većina) i dalje stride-uju 1:10, pa payload ostaje
+  mali.
+- `MatchRecorder.captureSnapshot` upisuje `actionType`, `actingPlayerId`,
+  `targetPlayerId` i `receivePoint`, a `SimReplayView` ih izlaže vieweru
+  (`targetPlayerId`, `actionType`, `receivePoint`).
+- `SimReplayFidelityTest` (5 testova): nijedan gap ne prelazi stride, snap
+  snimci nose metu, replay izlaže metu, i kickoff linija je prisutna.
+
+**2. Kickoff u logu.** `handleKickoff` nije ništa nigde zapisivao — meč je samo
+počinjao. Sada loguje `KICKOFF <TIM> | ball at center (4.5,4.0) | taker X (ROLA)`
+kroz zajednički action logger (tag `RST`), pa ide u app log, match.json i UI
+timeline. Potvrđeno: `[0:00|RST] KICKOFF HOME | ball at center (4.5,4.0) | taker
+H10 (STL)`.
+
+**3. Kickoff overlay 2 sekunde.** Bio je 3 s. Sada 2000 ms, a `_loop` već NE
+pokreće tiktove dok je blokirajući overlay aktivan (`_renderFrame()` bez
+napredovanja), tako da se sat zaista ne pomera dok kickoff stoji.
+
+**4. Brzina snimka se nije videla.** Bio je `<input type=range>` + `<span
+class="speed">` sa 11px dim tekstom i `min-width:32px` — praktično nečitljivo.
+Zamenjeno dropdown-om `speed-select` sa jasno ispisanim vrednostima
+(0.25x/0.5x/1x/2x/5x/10x) i čitljivim stilom; izabrana vrednost je uvek
+vidljiva i klikabilna.
+
+**5. Protivnik stiže na loptu pre našeg igrača.** "Na UI igrač gostiju desni att
+stigne pre do našeg drugog reda nego lopta, pas sa centra — to ne može." AI je
+igrao pas u mesto gde je protivnički krilni već stajao, i dobijao ga.
+Dodato: `nearestOpponentBeatsHimToIt()` — meta se izbacuje iz opcija ako
+najbliži protivnik do mesta na koje lopta stiže stigne pre primaoca
+(računajući obe brzine iz `MovementEngine.playerSpeedFor`, sa malom prednošću
+primaocu jer mu je već cilj lopta). Tačno provera koju pasista radi pre
+igranja pas. Ukupna tačnost pasova je ostala ~79%/77% (nije degradirana) — uklonjene
+su konkretne lose šanse, a lopta se reciklira.
+
+Puni test suite: **79 testova, 0 grešaka**.
+
+## 0.1 PRETHODNE IZMENE — 2026-09-25 (sesija 7.11 — vratar)
 
 ### P6 — kalibracija pass completion-a (76% → 84%)
 

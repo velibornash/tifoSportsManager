@@ -86,8 +86,18 @@
           <button id="backBtn" style="font-size:11px;padding:3px 8px;">← Back</button>
           <button id="playBtn">▶ Play</button>
           <button id="pauseBtn" class="active">⏸ Pause</button>
-          <input type="range" id="speedSlider" min="0" max="4" value="2">
-          <span class="speed" id="speedLabel">1x</span>
+          <label class="speed-label" for="speedSelect">Speed</label>
+          <!-- A dropdown, not a bare slider with a dim 11px readout: the owner
+               could not see WHICH speed was selected. The value is now always
+               spelled out and clickable. -->
+          <select id="speedSelect" class="speed-select">
+            <option value="0.25">0.25x</option>
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+          </select>
         </div>
         <div class="controls-row">
           <input type="range" id="seek" min="0" max="100" value="0">

@@ -250,7 +250,11 @@ class OverlayManager {
     this._subEl.textContent = `${homeName} 0 - 0 ${awayName}`;
     this._el.className = 'overlay visible kickoff';
     this._active = true;
-    this._resumeTime = performance.now() + 3000; // 3 seconds, then auto-start
+    // Owner rule 2026-09-25: the kickoff stands for TWO seconds, and only then
+    // does the match and the clock start. Playback is already held while a
+    // blocking overlay is up (_loop renders without advancing the tick), so the
+    // clock really does not move until the overlay clears.
+    this._resumeTime = performance.now() + 2000;
   }
 
   /** Show goal overlay with ball animation */
@@ -1846,7 +1850,7 @@ class MatchViewer {
     const playMatchBtn = document.getElementById('playMatchBtn');
     const playMatch2dBtn = document.getElementById('playMatch2dBtn');
     const backBtn = document.getElementById('backBtn');
-    const speedSlider = document.getElementById('speedSlider');
+    const speedSelect = document.getElementById('speedSelect');
 
     playBtn.addEventListener('click', () => this.play());
     pauseBtn.addEventListener('click', () => this.pause());
@@ -1891,15 +1895,11 @@ class MatchViewer {
       }, { passive: true });
     }
 
-if (speedSlider) {
-       const speeds = [0.25, 0.5, 1, 2, 5, 10];
-       speedSlider.max = speeds.length - 1;
-       speedSlider.value = 2;  // default = 1x
-       const update = () => {
-         this.speed = speeds[Number(speedSlider.value)];
-         document.getElementById('speedLabel').textContent = this.speed + 'x';
-       };
-       speedSlider.addEventListener('input', update);
+if (speedSelect) {
+       // The dropdown spells the value out, so the readout can never be
+       // illegible. A raw number in a 11px dim label was unreadable in practice.
+       const update = () => { this.speed = Number(speedSelect.value) || 1; };
+       speedSelect.addEventListener('change', update);
        update();
      }
 

@@ -76,14 +76,26 @@ public class MatchRecorder {
                         p.getPosition(), p.getTarget(), p.isLocked(),
                         p.getVelX(), p.getVelY()))
                 .toList();
+
+        // WHO the ball in flight is aimed at. These were all null, so a replay
+        // had no idea what a pass was for: the viewer could only interpolate
+        // between ball positions, and with the replay's 1:10 downsample the ball
+        // travels 8+ cells between snapshots — more than the length of the pitch
+        // — so a pass drawn across that gap appeared to go to a completely
+        // different player than the one in the log.
+        String targetPlayerId = state.getPendingReceiver() != null
+                ? state.getPendingReceiver().getId() : null;
+        String actionType = targetPlayerId != null ? "PASS" : null;
+        Position aim = state.getReceivePoint();
+        String actingPlayerId = state.getLastTouchPlayer() != null
+                ? state.getLastTouchPlayer().getId() : null;
+
         snapshots.add(new MatchSnapshot(
                 state.getMatchTicks(), 0, playerSnapshots,
                 state.getBall().getPosition(), null,
                 state.getBall().getBallState(state.getCarrier()),
                 state.getCarrier() == null ? null : state.getCarrier().getId(),
-                null, null, null,
-                state.getCarrier() == null ? null : state.getCarrier().getId(),
-                null, null,
+                null, actionType, actingPlayerId, targetPlayerId, aim, aim,
                 state.getPhase(), state.getHomeGoals(), state.getAwayGoals(),
                 state.getMatchTicks(), state.isHalfTime(), state.isMatchFinished(),
                 state.getPassAttempts(), state.getPassesCompleted(),

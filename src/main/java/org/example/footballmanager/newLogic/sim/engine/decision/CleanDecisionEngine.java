@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.sim.engine.decision;
 
 import org.example.footballmanager.newLogic.sim.engine.ActionEngine;
+import org.example.footballmanager.newLogic.sim.engine.MovementEngine;
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
@@ -673,6 +674,53 @@ public class CleanDecisionEngine {
             }
         }
         return best;
+    }
+
+    /**
+     * True when the closest opponent to this receiver can get to the ball's
+     * landing spot (approximated by the receiver's own position) before the
+     * receiver can. A real passer checks exactly this before playing the pass.
+     *
+     * Without it the engine played passes straight into a spot a wide player had
+     * already been standing in: the owner watched the away right attacker arrive
+     * at our second row before the ball did and simply win it. No midfielder
+     * plays that ball, and neither should the AI.
+     */
+    private boolean nearestOpponentBeatsHimToIt(MatchState state, Player receiver) {
+        Player marker = closestMarkerTo(state, receiver);
+        if (marker == null) return false;
+
+        Position landing = receiver.getPosition();
+        double receiverSpeed = speedOf(state, receiver);
+        double markerSpeed = speedOf(state, marker);
+        if (receiverSpeed <= 0) return true;
+
+        double receiverTime = SimUtils.distance(receiver.getPosition(), landing) / receiverSpeed;
+        double markerTime = SimUtils.distance(marker.getPosition(), landing) / markerSpeed;
+        // A small edge to the receiver: he is already moving to the ball, the
+        // marker may have to turn his whole body around.
+        return markerTime < receiverTime * 0.85;
+    }
+
+    private Player closestMarkerTo(MatchState state, Player player) {
+        Player best = null;
+        double bestD = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (p.getTeam().equals(player.getTeam()) || p.isUnavailable()) continue;
+            double d = SimUtils.distance(p.getPosition(), player.getPosition());
+            if (d < bestD) {
+                bestD = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    /** Movement speed of a player this tick, in cells per tick. */
+    private double speedOf(MatchState state, Player p) {
+        int pace = state.getRoundPaceSkill(p);
+        if (pace <= 0) pace = (int) Math.round(p.getSkills().pace());
+        return Math.max(0.05, MovementEngine.playerSpeedFor(pace));
     }
 
     /**
