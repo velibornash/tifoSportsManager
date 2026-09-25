@@ -63,8 +63,13 @@ public class CleanDecisionEngine {
      * 1.8 goals per match. Re-measured with `ProposalSeasonDiag 200 42`:
      * 0.17 -> 16.5 shots / 1.8 goals, 0.30 -> 28.7 / 3.5, 0.42 -> 39.9 / 4.7.
      * 0.30 lands closest to the real 25 shots and 2.7 goals.
+     *
+     * Re-measured in REC 3 after all seven options were handed to the selector
+     * (the final-third landscape changed, so a delivery can now be chosen on
+     * merit): 0.14 -> 19.3 shots, 0.20 -> 26.0, 0.30 -> 39.2. Kept at 0.30 —
+     * the owner accepts 30-40 shots a match ("ma to je ok 30-40 udaraca").
      */
-    private static final double SHOT_FREQUENCY_GATE = 0.14;
+    private static final double SHOT_FREQUENCY_GATE = 0.30;
 
     /**
      * Share of pressured touches in the defensive third that become a clearance.
@@ -76,9 +81,18 @@ public class CleanDecisionEngine {
      * backward pass properly unattractive and left CLEAR as the least-bad option.
      *
      * Rolled once per possession like the shot gate. Calibrated with
-     * `ProposalSeasonDiag 200 42`.
+     * `ProposalSeasonDiag 200 42`: 0.16 -> 19.0 clearances (a real 18-20) but it
+     * left a pressed defender with NO option at all in a large share of
+     * defensive-third situations, and the probe measured the viable-option count
+     * halving (1.76 -> 0.92) with the playmaking tie rate collapsing from 18% to
+     * 0.3%. 0.34 -> 40.6 clearances with pass accuracy 80.7/81.3 and results
+     * 86/84/30. Kept at 0.34: clearances stay well above real, but the engine
+     * keeps a genuine long-ball fallback, which is what a real defender does when
+     * he is stuck. REC 4 (weighted choice over all options) should let this gate
+     * come back down, because a weighted selector uses CLEAR as the fallback
+     * without it having to be a large share of touches.
      */
-    private static final double CLEAR_FREQUENCY_GATE = 0.16;
+    private static final double CLEAR_FREQUENCY_GATE = 0.34;
 
     /**
      * TEMPORARY MEASUREMENT SWITCH for the "a gated shot must not become a

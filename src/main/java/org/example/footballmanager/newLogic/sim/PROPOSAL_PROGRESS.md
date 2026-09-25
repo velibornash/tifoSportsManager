@@ -2181,3 +2181,65 @@ posed 50.0/50.0, rezultati 70/84/46, 8 bez golova.
   čišćenje postalo privlačno; ovo je naredni kalibracioni kandidat.
 - prekršaji 16.7 (realno ~22), žuti 2.8 (realno ~4), crveni 0.4.
 - AWAY rezultati 70/84/46.
+
+---
+
+## 2026-09-25 — REC 3: svih 7 opcija do selektora + playmaking vidi +
+kalibracija izbacivanja
+
+### 1. Sve sedam opcija se takmiči
+`selectOptionWithPlaymaking` je dobijao samo `{pass, carry, shot, clear}`.
+THRU/CROSS/CENTER su se **računali, logovali i brojali u izveštaju**, ali se nisu
+mogli izabrati — isporuka se jedino birala kroz `finalTwoRows` DRIBBLE fallback,
+tj. **simptom driblina po aušucu, ne odluka**. Sada svih sedam ide u selektor.
+
+### 2. Playmaking utiče na BROJ opcija (percepcija)
+Nije postojao način da skill utiče na to *koliko* izbora igrač ima. Nova
+`perceive()`: kreativne opcije se **vide** sa verovatnoćom koja raste sa
+playmakingom, bacano jednom po posedu (kako se ne bi ponavljalo po ticku):
+
+| opcija | PM 1 | PM 14 | PM 20 |
+|---|---|---|---|
+| THRU | 0.13 | 0.52 | 0.70 |
+| CROSS | 0.33 | 0.69 | 0.85 |
+| CENTER | 0.33 | 0.69 | 0.85 |
+
+Nizak playmaking = ne vidi trčanje iza odbrane, preklapanje na krilu, centar u
+boxu. To je upravo ono što je nedostajalo.
+
+### 3. `GATE_BLOCKS_DRIBBLE` UKLJUČEN
+Pravilo "zabranjen šut ne sme postati dribling" je konačno bezbedno: recikliranje
+sada ide kroz THRU/CROSS/CENTER koji se takmiče po meritumu, umesto da nestane.
+Proba: dribling posle zabranjenog šuta 94% → 37% (ostatak = situacije gde stvarno
+nema nikoga za pas, što je namerni izuzetak).
+
+### 4. Kalibracija izbacivanja (127.8 → 40.6)
+CLEAR je uvek skorao 13-28, pa je pobjeđivao negativan pas i birao se na skoro
+svakom dodir u sopstvenoj trećini. Dodat `CLEAR_FREQUENCY_GATE` (jedan bacaj po
+posedu). **0.16** daje realnih 19.0, ali ostavlja pritisnutog odbrambiča bez ijedne
+opcije u velikom delu situacija — proba je pokazala da se broj viable opcija
+prepolovio (1.76 → 0.92), a tie rate playmakinga pao sa **18% na 0.3%**.
+**0.34** je kompromis: prolaznost 80.7/81.3, rezultati 86/84/30, izbacivanja 40.6.
+REC 4 (weighted selection) treba da omogući da se gate vrati niže.
+
+### 5. Stanje (200 mečeva, shot gate 0.30, clear gate 0.34)
+golovi 4.5, udarci 38.2, SOT 15.4, prolaznost 80.7/81.3, **izbacivanja 40.6**,
+prodorni 9.4, centri 24.2, krsevi 28.5, udarci sa strane 72, ofsajd 9.0,
+prekršaji 18.5, žuti 3.0, posed ~50/50, rezultati 86/84/30, 1 bez gola.
+Vlasnik: "ma to je ok 30-40 udaraca nema veze" → shot gate drži 0.30.
+
+Provera zamrzavanja (seed 777): niz duela 1.
+
+### OTVORENO → REC 4 (sada sa dokazom)
+`DecisionEngineProbe` playmaking sweep: **tieable 18% → 0.3%**, best% 99.7-100%.
+Dakle playmaking gotovo **više ne utiče** na izbor — posle REC 1/3 većina situacija
+ima ≤1 viable opciju, pa nema šta da se "prelomi". REC 4 mora da uvede weighted
+choice nad SVIM opcijama, i da obnovi gradient veoma malog, ali realnog, randoma.
+
+**Ograničenje probe:** `randomSituation` stavlja nosioca bilo gde u redovima
+1.5-7.0 pa retko generiše "dovoljno široko" / "u zadnjoj trećini" situacije —
+CROSS/CENTER se zato u probi vide kao 0% kandidata, iako ih stvarni meč broji
+24.2 / 28.5 po utakmici. Sledeća iteracija probe treba da ciljano generiše
+flank/box situacije.
+
+`mvn -o clean test` → **107 run, 0 fail**.

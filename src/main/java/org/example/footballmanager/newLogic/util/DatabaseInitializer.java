@@ -59,6 +59,7 @@ public class DatabaseInitializer {
     @EventListener(ApplicationReadyEvent.class)
     public void sanitizeLegacySchemaOnStartup() {
         resetService.sanitizeLegacyLineupOrderSchema();
+        resetService.migrateTickStateMinuteColumn();
     }
 
     @EventListener(ApplicationReadyEvent.class)

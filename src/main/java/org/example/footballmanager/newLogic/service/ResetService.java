@@ -26,6 +26,18 @@ public class ResetService {
     }
 
     /**
+     * MINUTE is a reserved word in H2 2.x, so MatchTickState now persists it as
+     * {@code match_minute}. Existing dev/prod databases created with the old bare name keep
+     * the legacy column, which Hibernate (ddl-auto=update) would simply leave behind, so drop
+     * it here. The column is write-only - nothing queries by minute - so no data is lost.
+     */
+    @Transactional
+    public void migrateTickStateMinuteColumn() {
+        log.info("Checking match_tick_states minute column compatibility...");
+        dropLegacyColumnIfExists("match_tick_states", "minute");
+    }
+
+    /**
      * Full reset: clears everything and rebuilds from scratch (used by initialize-db).
      * Preserves only the owner account row during truncation.
      * Tactical editor profiles (team_tactics_profile) are handled via
@@ -215,7 +227,10 @@ public class ResetService {
     }
 
     private void dropLegacyColumnIfExists(String tableName, String columnName) {
-        entityManager.createNativeQuery("ALTER TABLE IF EXISTS " + tableName + " DROP COLUMN IF EXISTS " + columnName)
+        // The column name is double-quoted because some of the legacy names are reserved words
+        // (e.g. "minute" on H2 2.x), which cannot even be referenced unquoted in a DROP COLUMN.
+        // Quoting is standard SQL and is accepted by both H2 and PostgreSQL.
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS " + tableName + " DROP COLUMN IF EXISTS \"" + columnName + "\"")
                 .executeUpdate();
         log.info("Schema compatibility ensured for {}.{}", tableName, columnName);
     }
