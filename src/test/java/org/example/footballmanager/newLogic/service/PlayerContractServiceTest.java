@@ -241,4 +241,92 @@ class PlayerContractServiceTest {
         assertTrue(contracts.findByPlayerId(veteran.getId()).orElseThrow().getLengthMonths() <= 36,
                 "nobody signs a 34-year-old for four years");
     }
+
+    // ---------------------------------------------------------------- signing really signs
+
+    /**
+     * These three are the regression tests for a signing that accomplished nothing.
+     *
+     * <p>{@code sign} looked like it worked: it validated the terms and returned a contract. But it
+     * wrote that contract with no club on it, never moved the player, and never applied the wage —
+     * so a free agent who "signed" stayed at his old club on his old money, and the free-agent route
+     * was a no-op dressed as a feature. The old tests passed because they only ever read the
+     * contract record and never asked where the player ended up.
+     */
+    @Test
+    @DisplayName("signing a free agent puts him on the club's books, on the club's payroll")
+    void signingMovesThePlayerToTheClub() {
+        Team from = aClub("Old employer");
+        Team to = aClub("New employer");
+        Player p = aPlayer(from, "Free agent signing", 23, 1_500_000, 3_000);
+        p.setTeam(null);                      // he is a free agent: no club at all
+        players.save(p);
+
+        PlayerContractService.Outcome outcome =
+                service.sign(to.getId(), p.getId(), 24, 11_000, SquadRole.STARTER);
+
+        assertTrue(outcome.signed(), "the signing should go through: " + outcome.reason());
+
+        Player reloaded = players.findById(p.getId()).orElseThrow();
+        assertNotNull(reloaded.getTeam(), "a signed player must belong to the club he signed with");
+        assertEquals(to.getId(), reloaded.getTeam().getId());
+        assertEquals(11_000.0, reloaded.getEarnings(), 0.01,
+                "the agreed wage is what the player is actually paid");
+
+        PlayerContract contract = contracts.findByPlayerId(p.getId()).orElseThrow();
+        assertEquals(to.getId(), contract.getTeam().getId(),
+                "the contract must name the club, not be left empty");
+    }
+
+    @Test
+    @DisplayName("a signing with no club or a club that does not exist is refused")
+    void signingNeedsARealClub() {
+        Team club = aClub("Needs a club");
+        Player p = aPlayer(null, "Homeless", 24, 800_000, 2_000);
+
+        assertFalse(service.sign(null, p.getId(), 24, 5_000, SquadRole.STARTER).signed());
+        assertFalse(service.sign(999_999_999L, p.getId(), 24, 5_000, SquadRole.STARTER).signed());
+        assertTrue(club.getId() > 0);
+    }
+
+    @Test
+    @DisplayName("a full squad refuses a signing rather than over-registering")
+    void aFullSquadTurnsSigningsAway() {
+        Team club = aClub("Full");
+        Team other = aClub("Filler");
+        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD; i++) {
+            Player existing = aPlayer(other, "Filler " + i, 24, 500_000, 1_000);
+            service.assignToClub(existing, club, 2026, SquadRole.STARTER);
+        }
+        Player hopeful = aPlayer(other, "Hopeful", 22, 900_000, 1_000);
+        hopeful.setTeam(null);
+        players.save(hopeful);
+
+        PlayerContractService.Outcome outcome =
+                service.sign(club.getId(), hopeful.getId(), 24, 4_000, SquadRole.STARTER);
+
+        assertFalse(outcome.signed(), "a club at the registration limit must not sign anyone");
+        assertNotNull(outcome.reason());
+    }
+
+    @Test
+    @DisplayName("an expired player leaves his club rather than lingering in its squad")
+    void expiryReleasesThePlayerNotJustThePaperwork() {
+        Team club = aClub("Releasing");
+        Player p = aPlayer(club, "Runs out", 31, 400_000, 2_000);
+        PlayerContract c = service.assignToClub(p, club, 2026, SquadRole.ROTATION);
+        c.setExpirySeason(2026);
+        contracts.save(c);
+
+        // A contract running to 2026 is still valid during 2026; it lapses going into 2027.
+        service.expireContracts(2026);
+        assertNotNull(players.findById(p.getId()).orElseThrow().getTeam(),
+                "he is still under contract in his final season");
+        service.expireContracts(2027);
+
+        Player reloaded = players.findById(p.getId()).orElseThrow();
+        assertNull(reloaded.getTeam(),
+                "his contract ran out, so he has left the club - not merely lost his paperwork");
+        assertNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam());
+    }
 }

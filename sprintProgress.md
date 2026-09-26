@@ -1331,6 +1331,34 @@ while the eighth meets the stronger. The seventh hosts, the eighth is away, as t
 
 **328 tests.**
 
+### A signing that accomplished nothing
+
+`PlayerContractService.sign` validated its arguments, wrote a contract row and returned a signed
+outcome — and changed nothing. Three things were missing, all of them load-bearing:
+
+- the contract was written with **no club on it** (`Team club = teamId == null ? null : null`, and
+  the `teamId` argument was then never used),
+- the player was **never moved** to the new club,
+- the wage was **never applied**, so he stayed on his old money.
+
+So a free agent who "signed" for a new club remained at his old one, which made the free-agent route
+— the whole reason expiry and contracts were built in Sprint 3.1 — a no-op that looked like progress.
+The squad limit was also not consulted, so a full club would quietly over-register.
+
+Expiry had the mirror bug: it cleared the contract's club but left the player pointing at the club he
+no longer played for, so an expired player still counted in that club's squad.
+
+All four are fixed, and there are four regression tests. The old tests passed throughout because
+they only ever read the contract record and never asked where the player ended up — which is exactly
+what a test has to do here.
+
+One thing worth flagging: the fix needed the current season, and taking it from `SeasonService`
+closed the same cycle as before, since `SeasonService` depends on this service. It reads
+`GameClockRepository` directly, and deliberately uses the **same** season value `expireContracts` is
+called with, so a contract signed and a contract expired are on the same scale.
+
+**332 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

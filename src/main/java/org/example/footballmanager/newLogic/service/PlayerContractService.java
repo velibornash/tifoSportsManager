@@ -51,13 +51,32 @@ public class PlayerContractService {
     private final PlayerRepository players;
     private final PlayerContractRepository contracts;
     private final TransferBudgetService budgets;
+    private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
+    private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
 
     public PlayerContractService(PlayerRepository players,
                                  PlayerContractRepository contracts,
-                                 TransferBudgetService budgets) {
+                                 TransferBudgetService budgets,
+                                 org.example.footballmanager.newLogic.repository.TeamRepository teams,
+                                 org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
         this.players = players;
         this.contracts = contracts;
         this.budgets = budgets;
+        this.teams = teams;
+        this.clocks = clocks;
+    }
+
+    /**
+     * The season contracts are written against.
+     *
+     * <p>Read from the clock repository rather than through SeasonService, which depends on this
+     * service and would close a cycle. This is the same value SeasonService passes to
+     * {@link #expireContracts}, so a contract signed and a contract expired are on the same scale.
+     */
+    private Integer currentSeason() {
+        org.example.footballmanager.newLogic.model.GameClock clock =
+                clocks.findAll().stream().findFirst().orElse(null);
+        return clock == null || clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
     }
 
     // ---------------------------------------------------------------- signing
@@ -71,7 +90,9 @@ public class PlayerContractService {
     @Transactional
     public Outcome sign(Long teamId, Long playerId, int lengthMonths,
                         double weeklyWage, SquadRole squadRole) {
-        Team club = teamId == null ? null : null;   // team lookup happens in the caller layer
+        if (teamId == null) return Outcome.refused("No club was given to sign with.");
+        Team club = teams.findById(teamId).orElse(null);
+        if (club == null) return Outcome.refused("That club does not exist.");
         Player player = players.findById(playerId).orElse(null);
         if (player == null) return Outcome.refused("That player does not exist.");
 
@@ -93,13 +114,31 @@ public class PlayerContractService {
                     + round2(existing.getReleaseClause()) + ", which has not been met.");
         }
 
+        // A full squad is a refusal, not a silent over-registration.
+        RegistrationCheck room = canRegister(teamId, squadRole);
+        if (!room.allowed()) {
+            return Outcome.refused(room.reason());
+        }
+
+        // The three things this used to leave out, which is why signing accomplished nothing:
+        // the contract was written with no club, the player was never moved, and the wage was
+        // never applied. A signed player has to end up at the club, on the club's books, at the
+        // agreed money - otherwise the free-agent route is a no-op that only looks like progress.
+        int season = currentSeason();
         PlayerContract contract = existing != null ? existing : new PlayerContract();
         contract.setPlayer(player);
-        contract.setTeam(existing != null && existing.getTeam() != null ? existing.getTeam() : null);
+        contract.setTeam(club);
         contract.setWeeklyWage(weeklyWage);
         contract.setLengthMonths(lengthMonths);
         contract.setSquadRole(squadRole);
+        contract.setSignedSeason(season);
+        contract.setExpirySeason(season + Math.max(1, lengthMonths / 12));
+        contract.setSignedAt(java.time.Instant.now());
         contracts.save(contract);
+
+        player.setTeam(club);
+        player.setEarnings(weeklyWage);
+        players.save(player);
 
         return Outcome.signed(contract);
     }
@@ -116,7 +155,15 @@ public class PlayerContractService {
         contract.setExpirySeason(season + Math.max(1, 24 / 12));
         contract.setSquadRole(role == null ? inferRole(player) : role);
         contract.setSignedAt(java.time.Instant.now());
-        return contracts.save(contract);
+        contracts.save(contract);
+
+        // The contract said he belongs here; the player record has to agree, or the squad he is on
+        // and the contract he is under are two different clubs.
+        player.setTeam(club);
+        player.setEarnings(contract.getWeeklyWage());
+        players.save(player);
+
+        return contract;
     }
 
     // ---------------------------------------------------------------- expiry
@@ -135,7 +182,15 @@ public class PlayerContractService {
             if (!c.isExpired(season)) continue;
             c.setTeam(null);
             contracts.save(c);
-            if (c.getPlayer() != null) released.add(c.getPlayer());
+            if (c.getPlayer() != null) {
+                // He has left the club, not merely lost his paperwork. Leaving the player pointing
+                // at a club he no longer plays for is what made a free agent still count in that
+                // club's squad.
+                c.getPlayer().setTeam(null);
+                c.getPlayer().setEarnings(0);
+                players.save(c.getPlayer());
+                released.add(c.getPlayer());
+            }
         }
         return released;
     }
