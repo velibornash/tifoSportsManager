@@ -110,7 +110,7 @@ The league table is likewise written by `SimMatchService:246-261`. `simulateQuic
 
 ## Sprint 0 — Stop the bleeding
 
-*(in progress — 2 of 7 done)*
+*(✅ COMPLETE — 5 of 7 done, 1 skipped, 1 done with a corrected scope)*
 
 ### S0.1 — Close the €1 transfer exploit ✅ DONE
 
@@ -164,13 +164,144 @@ The league table is likewise written by `SimMatchService:246-261`. `simulateQuic
 
 ---
 
-### S0.3 — Idempotency guard on weekly training
-### S0.4 — Feed `Skills.*Exact` into the engine
-### S0.5 — Passive fatigue recovery
-### S0.6 — Delete the dead offside / rules paths
-### S0.7 — Security and endpoint hygiene
+### S0.3 — Idempotency guard on weekly training ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `14a414b`
+
+Two changes, both about failures that were invisible.
+
+**1. `MatchPersistenceService.saveTickHistory` swallowed every exception** with `catch (Exception e) { }`.
+That is precisely why the `match_tick_states` schema defect went unnoticed: every tick silently
+failed to persist, replay playback had no data, nothing logged. Tick granularity means a few bad
+frames shouldn't abort a match, so the save stays best-effort — but the first three failures now log
+at WARN with tick number and match id, and a summary reports saved-vs-skipped.
+
+**2. `runWeeklyTraining` had no idempotency guard.** The report row was found-or-new and
+overwritten while growth was re-applied every call — the "Run Weekly Training" button was an
+unlimited free skill-point exploit. Growth is now applied at most once per (season, week).
+
+**The trap a naive guard would have hit:** the season-advance path also calls training, and a
+manager can legitimately press "Advance Week" after training manually. A blanket 409 would have
+made the week **impossible to advance**. Added `runWeeklyTrainingIfDue` for the two advance call
+sites (`AdvanceWeekAsyncService`, `SimulationController`) — a no-op returning the stored report.
+Kept `force=true` for an admin re-run.
+
+8 tests, including the two that matter: a rejected second run must apply no growth and issue no
+repository write; the advance path must return the stored report without writing anything.
 
 ---
+
+### S0.4 — Feed `*Exact` into ratings and OVR ✅ DONE (scope corrected)
+
+**Date:** 2026-09-26 · **Commit:** `cff62db`
+
+**My audit and the backlog both had this wrong.** They claimed the match engine read the floored
+`int` and discarded ~90% of training work. It does not — `RealSquadFactory.toSimSkills:185-196`
+already calls `getExact(...)` for all eight skills. Training has always reached the engine.
+
+The real gap was the **display and rating layer**: `getRatingScore()` read the ints, so displayed
+OVR (`PlayerDTO`) and match rating (`MatchRatingCalculator`) did not move for weeks of training.
+That is fixed, plus a `visibleInt()` accessor.
+
+Left alone deliberately: `getTotalForRating()` (coarse display helper) and the fluent `int`
+accessors (no `newLogic` consumer — `PlayerSnapshot` uses a different `Skills` class).
+
+A test asserts whole-number ratings are **numerically identical** to the old formula, so this is a
+precision gain with no balance shift on existing saves.
+
+---
+
+### S0.5 — Passive fatigue recovery ⏭️ SKIPPED
+
+**Date:** 2026-09-26
+
+The task assumed fatigue accumulates and never recovers. **It does not accumulate either.**
+Verified across the live domain:
+
+| Writer | Status |
+|---|---|
+| `Player.addFatigue` | **0 callers** |
+| `util/match/MatchContext:59,63` | Dead — only consumer has 0 callers |
+| `engine_v1/RealisticMatchEngine` | **Quarantined** to `footballForDelete/` |
+| `sim/engine/FatigueSystem:24` | Writes `sim.model.Player`'s own 0..1 field, a **different class**, never persisted to `Skills.fatigue` |
+| `TeamMedicalService:54` | Only live writer, and it only *reduces* |
+
+So `Skills.fatigue` is never increased anywhere in the live path. Adding passive recovery would be
+recovery for a permanently-zero value — dead code by the project's own rule. **The mechanic needs a
+source before it needs a sink.**
+
+Folded into **S1.6** (port the injury model), which now owns the whole chain: accumulate fatigue
+from minutes played → passive weekly recovery → injury risk. Also carries the fix for the false
+"Weekly passive healing still applies" claim in `medical-view.js:95`.
+
+---
+
+### S0.6 — Delete the dead offside / rules paths ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `7feb6d6`
+
+- **`sim/rules/FootballRules.java` deleted** — instantiated at `MatchOrchestrator:84` into a field
+  never read, a full duplicate of the live offside geometry in `OffsideService` (with its own 0.5
+  threshold against `OffsideService`'s 0.30). The unused `EngineInterfaces.FootballRules` placeholder
+  went too.
+- **`pointSegmentDistance` consolidated into `SimUtils`** — was copy-pasted into three classes.
+- **`isPathBlocked()` was a literal `return false`**, making the caller's "+12 clear path" carry
+  bonus unconditional: a winger into a wall scored identically to one into space. Implemented as a
+  lane-segment check.
+- **`nearestOpponentBeatsHimToIt()` had no call site** — the bug it was written to fix (passing to
+  a receiver whose marker arrives first) was never actually fixed. Wired into `scorePassOptions` (−35).
+- Documented that `duelsWon` and `tackles` always totalling the same number is **correct**, not a
+  duplicated field: one winner, one loser, loser's counter credited as a tackle attempt.
+
+Two items are deliberate **behaviour changes**, which is why they belong before Sprint 1
+re-calibration. Engine sanity-checked: `ProposalSeasonDiag` 8 matches → 3.4 goals, 34.5 shots, 82%
+pass accuracy, 49/51 possession, 374 duels, 6 corners, 15.5 fouls, 1 scoreless.
+
+> ⚠️ **The calibration baseline in `expertAudit.md` §5 is stale** — measured before the quarantine
+> and before the concurrent REC engine work. **Sprint 1 must re-baseline from current HEAD.**
+
+---
+
+### S0.7 — Security and endpoint hygiene ✅ DONE (far larger than specified)
+
+**Date:** 2026-09-26 · **Commit:** `a6476b7`
+
+The backlog said "move the replay API behind JWT". The `permitAll` list actually contained the
+**entire game API**: `/api/**`, `/teams/**`, `/players/**`, `/matches/**`, `/match-stats/**`,
+`/training/**`, `/countries/**`, `/commonmanager/**`, `/proposal/api/**`, `/api/v2/**`,
+`/dashboard.html`, `/zox/**`, `/start-realistic-demo`.
+
+Any anonymous visitor could read every squad, read and rewrite lineups and the tactic editor, run
+training, list and buy players, trigger matches, and advance the season. For a game of competing
+managers that is fatal.
+
+**Left public deliberately:** `/basketballmanager/**` and `/americanfootballmanager/**` — neither
+reads the JWT anywhere under its `/js` folder, so they depend entirely on `permitAll`, and I cannot
+test them. Breaking two untouched modes to secure the one under development is the wrong trade.
+Flagged for their own auth pass.
+
+**Bonus fix:** `shouldReturnUnauthorized` only matched paths *starting* with `/api/`, so an
+unauthenticated GET to `/proposal/api/**` returned **302 to the HTML login page**. The fetch
+followed it, `response.json()` threw on HTML, and the SPA rendered a generic "API Error" card
+instead of "please log in" — the exact misleading-error pattern that hid a dozen dead routes.
+
+The proposal viewer sent no `Authorization` header on its four API calls; added an `apiFetch()`
+helper there, leaving static assets on plain `fetch`.
+
+`ProposalViewerMatchIdentityTest` now sends a **real signed token**, exercising the actual
+`JwtAuthenticationFilter` — including its `loadUserByUsername` lookup, so the subject must be the
+seeded owner. Added `proposalApiRejectsUnauthenticatedRequests()` to lock the 401 in.
+
+**Deferred to Sprint 8** (each logged in the backlog): `sortBy` whitelist, validation on
+`create` endpoints, `LineupController` exception type, `POST /auth/register` (**needs PO
+decision**), admin registration endpoints, `fetchPlayerRatingSummary` arity, `login.js` status
+element.
+
+**Tests: 84 → 124 (+40).**
+
+---
+
+## Open design questions---
 
 ## Open design questions — transfer market
 

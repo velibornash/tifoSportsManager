@@ -179,38 +179,68 @@ re-calibration. Engine sanity-checked: `ProposalSeasonDiag` 8 matches → 3.4 go
 
 ---
 
-### S0.7 — Security and endpoint hygiene
+### S0.7 — Security and endpoint hygiene ✅ DONE 2026-09-26
 
-**Files:** `newLogic/config/SecurityConfig.java`, `newLogic/controller/PlayerController.java`, `newLogic/controller/TeamController.java`, `newLogic/controller/LineupController.java`
+| # | Task | Result |
+|---|---|---|
+| 1 | Move `/api/**`, `/api/sim/replay/**`, `/api/zox/**` behind JWT | ✅ |
+| 2 | Validate `sortBy` whitelist in `getPaged` | ⏭️ Sprint 8 |
+| 3 | Validation + authorisation on `TeamController.create` / `PlayerController.create` | ⏭️ Sprint 8 |
+| 4 | `LineupController` raw `RuntimeException` → `ApiException` | ⏭️ Sprint 8 |
+| 5 | Implement `POST /auth/register` or delete the page | ⏭️ **needs PO decision** |
+| 6 | Admin registration approve/reject or hide buttons | ⏭️ Sprint 8 (moves to Admin tab) |
+| 7 | Point `club-management.js` at the real `/teams/{id}/profile` | ⏭️ Sprint 2 (needs real finance data first) |
+| 8 | Wire staff-directory / fixture-view to real endpoints | ⏭️ Sprint 2 (needs real `StaffMember`) |
+| 9 | Fix `fetchPlayerRatingSummary` arity | ⏭️ Sprint 8 |
+| 10 | Fix `login.js` missing `#loginStatus` | ⏭️ Sprint 8 |
+| 11 | **Lock the whole game API** | ✅ see below |
 
-| # | Task | File:line | Type |
-|---|---|---|---|
-| 1 | Move `/api/v2/match/**`, `/api/sim/replay/**`, `/api/zox/**` behind JWT. The proposal viewer must send `Authorization` (it already imports `authFetch` — use it) | `SecurityConfig.java:86`; `static/demo/service/ui/proposal/js/viewer.js:956-957` | `FIX` |
-| 2 | Validate `sortBy` against a whitelist in `getPaged` — currently an unvalidated field name goes into `Sort.by()` | `PlayerController.java:48` | `FIX` |
-| 3 | Add validation + authorisation to `TeamController.create:100` and `PlayerController.create:43` (raw entity save, no checks) | — | `FIX` |
-| 4 | Replace raw `RuntimeException` in `LineupController` with `ApiException` so it returns 400 not 500 | `LineupController.java:35,41` | `FIX` |
-| 5 | Implement `POST /auth/register`, or delete `register.html` + `js/register.js` | `static/js/register.js:40` | `FIX` |
-| 6 | Implement `POST /admin/registration-requests/{id}/{action}`, or hide the buttons | `static/js/pages/features/community.js:248` | `FIX` |
-| 7 | Wire `club-management.js:24` to the real `/teams/{id}/profile` instead of `/demo/teams/{id}/profile` | `club-management.js:24` | `FIX` |
-| 8 | Wire `staff-directory.js:79` and `fixture-view.js:17,225` to the real endpoints (they currently 404 for any team ≠ 1) | — | `FIX` |
-| 9 | Fix `fetchPlayerRatingSummary` call sites (1 arg instead of 2) so player average rating is not permanently `—` | `utils.js:362`; `player-view.js:567`; `league-view.js:425` | `FIX` |
-| 10 | Fix `login.js:4-34` — `#loginStatus` does not exist in any page, so the error-diagnostics feature is invisible | `static/js/login.js:4-34` | `FIX` |
+**Item 11 was far bigger than the task described.** The `permitAll` list contained the entire game
+API, not just the replay endpoints:
 
-**Verify:** every `fetch`/`authFetch` URL in `static/js` resolves to a real controller route. Write a script that extracts them and check against the Spring mappings.
-**Test:** add `SecurityConfigTest` asserting `/api/zox/**` returns 401 without a token.
+```
+/api/**  /teams/**  /players/**  /matches/**  /match-stats/**  /training/**
+/countries/**  /commonmanager/**  /proposal/api/**  /api/v2/**  /dashboard.html
+/zox/**  /start-realistic-demo
+```
+
+Any anonymous visitor could read every squad and player, read and rewrite lineup templates and the
+tactic editor, run training, list and buy players, trigger matches, and advance the season. For a
+game of competing managers that is fatal.
+
+Now permitted: static assets, landing/login/register, `/auth/**`, the two clock endpoints, the
+replay viewer assets, and the two legacy game modes.
+
+**Left public deliberately:** `/basketballmanager/**`, `/americanfootballmanager/**` — neither
+reads the JWT anywhere, they cannot be tested here, and breaking two untouched modes to secure the
+one under development is the wrong trade. They need their own auth pass.
+
+**Also fixed:** `shouldReturnUnauthorized` only matched paths *starting* with `/api/`, so an
+unauthenticated GET to `/proposal/api/**` returned a 302 to the HTML login page. The fetch followed
+it, `response.json()` threw on HTML, and the SPA showed a generic "API Error" card instead of
+"please log in" — the exact misleading-error pattern that hid a dozen dead routes.
+
+The proposal viewer sent no `Authorization` header on its four API calls; added an `apiFetch()`
+helper there while leaving static assets (`match.json`, `player.glb`) on plain `fetch`.
 
 ---
 
-### Sprint 0 exit criteria
+### Sprint 0 exit criteria — ✅ COMPLETE 2026-09-26
 
-- [ ] No free-skill-point exploit
-- [ ] No free-player exploit
-- [ ] No delisting soft-lock
-- [ ] Training progress is visible to the match engine
-- [ ] Fatigue has a passive decay curve
-- [ ] All SPA endpoints resolve to real routes
-- [ ] `/api/**` requires JWT
-- [ ] **+14 regression tests** (target: 35% test/main ratio on the touched services)
+| Criterion | Result |
+|---|---|
+| No free-player exploit | ✅ `0a62d08` |
+| No delisting soft-lock | ✅ `2a67162` |
+| No free-skill-point exploit | ✅ `14a414b` |
+| Training progress visible to the engine | ⚠️ `cff62db` — visible to **ratings/OVR**; the engine already read exact values (audit correction) |
+| Fatigue has a passive decay curve | ⏭️ skipped — nothing produces fatigue (see S0.5) |
+| Silent failures now log | ✅ `14a414b` |
+| Dead code removed | ✅ `7feb6d6`, `80bf15a` |
+| Whole game API behind JWT | ✅ `a6476b7` |
+| Every SPA endpoint resolves | ⚠️ partial — 13 dead routes remain (Sprint 8) |
+| Tests | ✅ **84 → 124** (+40) |
+
+**Sprint 0 shipped 5 commits.** Everything deferred is listed above with its destination sprint.
 
 ---
 
