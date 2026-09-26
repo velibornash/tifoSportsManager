@@ -895,7 +895,7 @@ are the numbers that decide whether a signing is possible, so they are worth a l
 
 ---
 
-### S3.6 — AI demand model and a live market
+### S3.6 — AI demand model and a live market — 🟡 partly built 2026-09-26
 
 Today: `maybeCreateIncomingOffer:465-469` **only ever targets human players** — AI↔AI transfers never happen. The buyer is `randomItem(candidateBuyers)` — uniform random, no needs model. Listings are 42%/week at `value × (0.88…1.12)`.
 

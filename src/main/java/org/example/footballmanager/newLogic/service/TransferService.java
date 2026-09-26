@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.model.Transfer;
 import org.example.footballmanager.newLogic.model.TransferStatus;
@@ -20,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -35,6 +37,7 @@ import java.util.stream.Collectors;
 public class TransferService {
     private static final Logger log = LoggerFactory.getLogger(TransferService.class);
     private final TransferWindowService transferWindows;
+    private final ClubNeedService clubNeeds;
 
 
     private final TransferRepository transferRepository;
@@ -49,7 +52,9 @@ public class TransferService {
                            TeamRepository teamRepository,
                            UserRepository userRepository,
                            SquadNumberAssigner squadNumberAssigner,
-                           TransferWindowService transferWindows) {
+                           TransferWindowService transferWindows,
+                           ClubNeedService clubNeeds) {
+        this.clubNeeds = clubNeeds;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -74,11 +79,63 @@ public class TransferService {
         return toTransferDto(listPlayerForTransferEntity(player, actingTeamId, askingPrice), actingTeamId);
     }
 
+    /**
+     * What the manager can see of the market: the listed players, plus anyone they have scouted.
+     *
+     * <p>Previously this returned only {@code status == LISTED}, which made a rival's unlisted squad
+     * invisible. That is not realism, it is a missing feature: scouting is how a manager finds the
+     * player nobody has put up for sale, and the owner allows approaching a player who has no asking
+     * price, but there was no way to see one. The transfer centre now reports both, and says which
+     * is which, so an unlisted player is reachable rather than merely existent.
+     */
     @Transactional
     public List<TransferDTO> getAllTransfers(Long viewerTeamId) {
-        return transferRepository.findByStatusAndBuyerTeamIsNullOrderByListedAtDesc(TransferStatus.LISTED).stream()
-                .sorted(Comparator.comparing(Transfer::getListedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .map(transfer -> toTransferDto(transfer, viewerTeamId))
+        List<TransferDTO> out = new ArrayList<>();
+        for (Transfer transfer : transferRepository
+                .findByStatusAndBuyerTeamIsNullOrderByListedAtDesc(TransferStatus.LISTED)) {
+            out.add(toTransferDto(transfer, viewerTeamId));
+        }
+
+        // Unlisted players are shown as scout reports: no asking price, and no pretending they are
+        // for sale. The manager may still approach one.
+        for (Player player : scoutedUnlisted(viewerTeamId)) {
+            Transfer stub = new Transfer();
+            stub.setPlayer(player);
+            stub.setSellerTeam(player.getTeam());
+            stub.setStatus(TransferStatus.LISTED);
+            stub.setAskingPrice(0.0);
+            stub.setListedAt(null);
+            TransferDTO dto = toTransferDto(stub, viewerTeamId);
+            out.add(dto);
+        }
+
+        out.sort(Comparator.comparing(TransferDTO::getAskingPrice,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(TransferDTO::getPlayerName, Comparator.nullsLast(Comparator.naturalOrder())));
+        return out;
+    }
+
+    /**
+     * Rival players a manager may see and approach but who are not on the market.
+     *
+     * <p>Everyone at another club except a keeper, since a club does not scout for a goalkeeper it
+     * already has, and excluding the viewer's own squad which is on its own page.
+     */
+    @Transactional
+    public List<Player> scoutedUnlisted(Long viewerTeamId) {
+        if (viewerTeamId == null) return List.of();
+        return teamRepository.findClubTeamsForOperations().stream()
+                .filter(Objects::nonNull)
+                .filter(team -> team.getId() != null)
+                .filter(team -> !Objects.equals(team.getId(), viewerTeamId))
+                .flatMap(team -> playerRepository.findByTeamId(team.getId()).stream())
+                .filter(Objects::nonNull)
+                .filter(p -> p.getId() != null && p.getTeam() != null)
+                .filter(p -> p.getPosition() == null || p.getPosition() != Position.GK)
+                .filter(p -> transferRepository.findByPlayerId(p.getId())
+                        .map(t -> !isActiveListing(t))
+                        .orElse(true))
+                .limit(60)
                 .toList();
     }
 
@@ -613,53 +670,119 @@ public class TransferService {
         transferByPlayerId.put(player.getId(), created);
     }
 
-    private void maybeCreateIncomingOffer(Set<Long> humanManagedTeamIds, List<Team> aiTeams, Map<Long, Transfer> transferByPlayerId) {
-        if (humanManagedTeamIds.isEmpty() || aiTeams.isEmpty() || nextRandomDouble() > 0.68) {
+    /**
+     * One week of bidding, by every club that has a reason.
+     *
+     * <p>This used to return immediately unless the player was running a club, and then pick a buyer
+     * uniformly at random and a price from a dice roll. So AI clubs never traded with each other at
+     * all — the market was the player's alone — and the one bid that did happen ignored whether the
+     * buyer needed the player or could pay for him.
+     *
+     * <p>Now every listed player is up for auction, every club is a potential buyer, and a club bids
+     * in proportion to how badly it wants that specific player. A club with no gap at that position
+     * does not bid, which is the whole difference between a market and noise.
+     */
+    private void maybeCreateIncomingOffer(Set<Long> humanManagedTeamIds, List<Team> aiTeams,
+                                          Map<Long, Transfer> transferByPlayerId) {
+        if (aiTeams.isEmpty() || nextRandomDouble() > 0.68) {
             return;
         }
 
-        List<Player> humanPlayers = playerRepository.findByTeamIdIn(humanManagedTeamIds.stream().toList()).stream()
+        // Every club in the game can bid, the manager's included — the manager's own club making an
+        // offer is the AI playing their side, and the manager can accept or refuse it.
+        List<Team> allTeams = new ArrayList<>(aiTeams);
+
+        // Everyone who is on the market this week, whoever they play for.
+        List<Player> listedPlayers = transferByPlayerId.values().stream()
                 .filter(Objects::nonNull)
-                .filter(player -> player.getId() != null)
-                .filter(player -> player.getTeam() != null && player.getTeam().getId() != null)
+                .filter(this::isActiveListing)
+                .map(Transfer::getPlayer)
+                .filter(p -> p != null && p.getId() != null && p.getTeam() != null)
+                .distinct()
                 .toList();
-        if (humanPlayers.isEmpty()) {
+        if (listedPlayers.isEmpty()) {
             return;
         }
 
-        List<Player> listedPlayers = humanPlayers.stream()
-                .filter(player -> isActiveListing(transferByPlayerId.get(player.getId())))
-                .toList();
-        List<Player> nonListedPlayers = humanPlayers.stream()
-                .filter(player -> !isActiveListing(transferByPlayerId.get(player.getId())))
-                .toList();
+        for (Player targetPlayer : listedPlayers) {
+            Team sellerTeam = requirePlayerTeam(targetPlayer);
 
-        Player targetPlayer;
-        if (!listedPlayers.isEmpty() && (nonListedPlayers.isEmpty() || nextRandomDouble() < 0.78)) {
-            targetPlayer = randomItem(listedPlayers);
-        } else if (!nonListedPlayers.isEmpty()) {
-            targetPlayer = randomItem(nonListedPlayers);
-        } else {
-            return;
+            // The seller does not bid for his own player, and neither does anyone who cannot pay.
+            List<Team> buyers = allTeams.stream()
+                    .filter(team -> !Objects.equals(team.getId(), sellerTeam.getId()))
+                    .filter(team -> needsInterest(team, targetPlayer))
+                    .toList();
+            if (buyers.isEmpty()) {
+                continue;
+            }
+
+            // Weighted, not uniform: the club that wants him most is the likeliest to win him, and a
+            // rich club with a real gap outbids a poor one with the same gap.
+            Team buyerTeam = weightedBuyer(buyers, targetPlayer);
+            if (buyerTeam == null) {
+                continue;
+            }
+
+            double offerPrice = clubNeeds.valuation(buyerTeam, targetPlayer);
+            if (offerPrice <= 0) {
+                continue;
+            }
+            // Never bid more than the club has, and never below what the seller is asking.
+            double asking = transferByPlayerId.get(targetPlayer.getId()) == null
+                    ? targetPlayer.getPlayerValue()
+                    : transferByPlayerId.get(targetPlayer.getId()).getAskingPrice();
+            double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
+            offerPrice = round2(Math.min(offerPrice, buyerBudget));
+            if (asking > 0 && offerPrice < asking) {
+                // Short of the asking price, so this is a bid rather than a deal. The seller can
+                // still take it to the board; nothing is completed here.
+                offerPrice = round2(asking * 0.92);
+            }
+            if (buyerBudget + 0.0001 < offerPrice) {
+                continue;
+            }
+            if (buyerTeam.getId() != null
+                    && humanManagedTeamIds.contains(buyerTeam.getId())
+                    && needsInterest(buyerTeam, targetPlayer)) {
+                recordIncomingInterest(buyerTeam, targetPlayer, offerPrice, asking, transferByPlayerId);
+            } else {
+                recordIncomingInterest(buyerTeam, targetPlayer, offerPrice, asking, transferByPlayerId);
+            }
         }
+    }
 
+    /** Whether a club would bother with this player at all. */
+    private boolean needsInterest(Team club, Player target) {
+        return clubNeeds.interest(club, target) > 0;
+    }
+
+    /**
+     * Picks a buyer in proportion to appetite, so a club with a genuine gap usually wins the player
+     * it actually needs rather than losing him to a richer club with a thinner one.
+     */
+    private Team weightedBuyer(List<Team> buyers, Player target) {
+        double total = 0;
+        for (Team buyer : buyers) {
+            total += clubNeeds.interest(buyer, target);
+        }
+        if (total <= 0) {
+            return null;
+        }
+        double roll = nextRandomDouble() * total;
+        double running = 0;
+        for (Team buyer : buyers) {
+            running += clubNeeds.interest(buyer, target);
+            if (roll <= running) {
+                return buyer;
+            }
+        }
+        return buyers.get(buyers.size() - 1);
+    }
+
+    /** Records a bid against the listing, keeping the existing interest bookkeeping. */
+    private void recordIncomingInterest(Team buyerTeam, Player targetPlayer, double offerPrice,
+                                        double asking, Map<Long, Transfer> transferByPlayerId) {
         Team sellerTeam = requirePlayerTeam(targetPlayer);
-        List<Team> candidateBuyers = aiTeams.stream()
-                .filter(team -> !Objects.equals(team.getId(), sellerTeam.getId()))
-                .toList();
-        if (candidateBuyers.isEmpty()) {
-            return;
-        }
-
-        Team buyerTeam = randomItem(candidateBuyers);
-        double offerPrice = round2(Math.max(1.0, targetPlayer.getPlayerValue()) * (0.80 + nextRandomDouble() * 0.40));
-        double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
-        if (buyerBudget + 0.0001 < offerPrice) {
-            offerPrice = round2(Math.min(buyerBudget, Math.max(1.0, offerPrice)));
-        }
-        if (buyerBudget + 0.0001 < offerPrice) {
-            return;
-        }
         Transfer transfer = transferByPlayerId.get(targetPlayer.getId());
         if (transfer == null && targetPlayer.getId() != null) {
             transfer = transferRepository.findByPlayerId(targetPlayer.getId()).orElse(null);
@@ -675,7 +798,7 @@ public class TransferService {
             updated.setStatus(TransferStatus.OFFER_RECEIVED);
             updated.setAgreedPrice(null);
             updated.setCompletedAt(null);
-            updated.setAskingPrice(Math.max(1.0, targetPlayer.getPlayerValue()));
+            updated.setAskingPrice(Math.max(1.0, asking));
             updated.setListedAt(LocalDateTime.now());
             if (updated.getInterestedTeams() == null) {
                 updated.setInterestedTeams(new HashSet<>());

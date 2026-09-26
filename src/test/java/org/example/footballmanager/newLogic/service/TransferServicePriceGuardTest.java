@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.Transfer;
 import org.example.footballmanager.newLogic.model.TransferStatus;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.TransferRepository;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.example.commonmanager.repository.UserRepository;
@@ -66,7 +67,8 @@ class TransferServicePriceGuardTest {
                 teamRepository,
                 mock(UserRepository.class),
                 mock(SquadNumberAssigner.class),
-                mock(TransferWindowService.class)
+                mock(TransferWindowService.class),
+                new ClubNeedService(playerRepository, mock(PlayerContractRepository.class))
         );
 
         seller = new Team();

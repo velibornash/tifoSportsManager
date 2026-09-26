@@ -1464,6 +1464,51 @@ with a comment saying why, so the signature survives the next field somebody add
 
 **350 tests.**
 
+### AI clubs bid, and they bid for a reason
+
+`maybeCreateIncomingOffer` opened with `if (humanManagedTeamIds.isEmpty()) return;` and then picked
+a buyer with `randomItem(candidateBuyers)`. So **AI clubs never traded with each other at all** — the
+market belonged to the player's club alone — and the one bid that could happen ignored both whether
+the buyer needed the player and whether it could pay for him.
+
+Now every listed player goes to auction, every club is a potential buyer, and a club bids in
+proportion to how badly it wants *that* player. A club with no gap at that position does not bid at
+all, which is the difference between a market and noise.
+
+`ClubNeedService` is the needs model. A club looks at its own squad, works out where the gaps are, and
+rates the player against the gap he would fill — thin positions, an upgrade on what is already there,
+and an ageing squad at that position all move the number. What it will *pay* is a view rather than
+market value: age (a curve peaking in the mid-twenties), contract length, form, and how far the club's
+standing lets it stretch for someone it really wants.
+
+#### Two flaws the tests found in my own new code
+
+- **`gaps` reported positions this game does not have.** The list was hand-written as Football
+  Manager's eleven (CB, LB, RB, AM, LW, RW, ST) while `Position` here is five (GK, DEF, MID, ATT,
+  WNG). Every report said a club had no goalkeeper, no striker and no full back — none of which exist
+  — while never reporting a real gap. It is now built from the enum.
+- **`bestTarget` let the price tag override the position.** It scored `interest × value`, so a club
+  that badly needed a centre back would chase a €20m midfielder it already had three of, because
+  0.6 × 20m beats 0.8 × 2m. Appetite now decides and value only breaks a near-tie, which is how a
+  manager actually thinks — and it is how a club ends up with eleven of the same player otherwise.
+
+#### Unlisted players are scoutable
+
+`getAllTransfers` filtered on `status == LISTED`, so a rival's unlisted squad was invisible. That is
+not realism, it is a missing feature: the owner allows approaching a player with no asking price, but
+there was no way to see one. The transfer centre now reports listed players and scout reports
+together, and an unlisted player shows with no asking price rather than pretending to be for sale.
+
+**359 tests.**
+
+#### ⚠️ Deliberately not done: the legacy `Transfer` migration
+
+`Transfer.interestedTeams` (a `Set<String>` of club *names*) and the legacy
+`TransferService.completeTransfer` still exist alongside the new `TransferOffer` engine. There are
+now two completion paths on the same entity, which is duplication and a real double-completion risk.
+It is a genuine refactor rather than a patch, so it is left in the backlog rather than half-done —
+but it should be the next thing anyone picks up in Sprint 3.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
