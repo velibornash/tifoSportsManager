@@ -130,10 +130,16 @@ public class ExecutionQuality {
         // Calibrated down from 0.12 + skill*0.028 with a 0.20 close-range lift:
         // that put 57% of all shots on target (real football: ~33%) and, once the
         // keeper's reach was corrected, turned over half of them into goals.
-        double skillBase = 0.08 + skill * 0.020;               // skill 1..20 -> 0.10..0.48
+        // Recalibrated 2026-09-26 (S1.1b) against the fresh 50-match baseline, once the keeper
+        // trajectory gate made the statistics trustworthy: 33.1 shots, 38.0% on target, 3.8 goals.
+        // Shot VOLUME is a deliberate owner decision (SHOT_FREQUENCY_GATE 0.30, "30-40 shots is
+        // fine"), so volume is left alone and conversion is tuned instead. Real football: ~33% on
+        // target. Lowering skillBase and the close-range lift pulls SOT toward that and drags
+        // goals down with it, since goals are a function of on-target shots, not of attempts.
+        double skillBase = 0.06 + skill * 0.015;               // skill 1..20 -> 0.075..0.36
         double distFactor = Math.max(0.25, 1.0 - dist / 9.0);  // close = 1.0, 9+ cells = 0.25
         double onTargetProb = skillBase * distFactor;
-        if (dist < 2.0) onTargetProb += 0.12;                  // close-range lift (inside ~4 m)
+        if (dist < 2.0) onTargetProb += 0.08;                  // close-range lift (inside ~4 m)
         onTargetProb *= (1.0 - pressure / 200.0);
         onTargetProb = Math.min(onTargetProb, 0.85);
 
