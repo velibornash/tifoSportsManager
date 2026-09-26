@@ -873,16 +873,25 @@ Today: offers are `Set<String>` of `"Partizan offered €450000"` (`Transfer.jav
 
 ---
 
-### S3.5 — Work permits and foreign-player limits
+### S3.5 — Work permits and foreign-player limits — ✅ built 2026-09-26
 
 A strong Serbia-specific constraint: the domestic league has a **non-EU player quota** (Serbia's rule is 4 in the top flight, fewer below). Each foreign player needs a work permit.
 
-| # | Task |
-|---|---|
-| 1 | `WorkPermit` per foreign player (granted, refused, or pending based on reputation and league level) |
-| 2 | Non-EU quota per competition (`Competition.foreignPlayerLimit`) |
-| 3 | A signing is blocked (or the permit is pending) when the quota is full |
-| 4 | Buying from a weaker league grants a permit more easily — a real strategic axis |
+| # | Task | State |
+|---|---|---|
+| 1 | `WorkPermit` per foreign player (granted, refused, or pending based on reputation and league level) | ✅ `WorkPermit` + `WorkPermitService` |
+| 2 | Non-EU quota per competition (`Competition.foreignPlayerLimit`) | ✅ on `Competition`, with a per-tier default |
+| 3 | A signing is blocked when the quota is full | ✅ consulted by `PlayerContractService.sign` |
+| 4 | Buying from a weaker league grants a permit more easily | ✅ falls out of the reputation/pedigree rule |
+
+**⚠️ Open question for the owner — the exact per-tier quotas.** The working default is
+4 / 3 / 2 / 1 / 0 for tiers 1-5, and tier 5 takes no foreign players at all. Those numbers were
+inferred from "four in the top flight, fewer below" and are **not** confirmed. Because the quota lives
+on `Competition.foreignPlayerLimit`, correcting a tier is a data change and not a code change.
+
+**Also unconfirmed:** the reputation thresholds (a club needs 40 + 6 per tier below the top, and a
+club under 70 reputation outside the top two tiers needs an €8m player to justify the permit). These
+are the numbers that decide whether a signing is possible, so they are worth a look.
 
 ---
 

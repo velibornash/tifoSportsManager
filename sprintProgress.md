@@ -1425,6 +1425,45 @@ wired into the weekly tick so squads do not accumulate players who left weeks ag
 
 **342 tests.**
 
+### Work permits and the non-EU quota
+
+The constraint that shapes a Serbian transfer window: four non-EU players in the top flight and fewer
+below, each needing a permit. So the interesting question is not "can I afford him" but "can I
+register him" — and a club at its quota has to **sell before it can buy**, which is an awkward thing
+to plan a season around and exactly the tension the rule exists to create.
+
+`Player` gained a `nationality` and `Competition` a `foreignPlayerLimit`, so the rule lives on the
+competition rather than in a hardcoded tier table — correcting a league's quota is a data change.
+Signing now consults it, and a refusal always says which of the three limits stopped it: the quota is
+full, the club's standing is too low, or the player has no pedigree to justify the paperwork. The
+full-quota message tells the manager that selling is the only way, because no amount of money changes
+it.
+
+The strategic axis the backlog asked for — buying from a weaker league grants a permit more easily —
+falls out of the arithmetic rather than being written in: below the top two tiers a club under 70
+reputation needs a player worth €8m to justify the paperwork, so a club that cannot outspend its
+quota rivals can still outscout them.
+
+#### 🐛 Serbia is not in the EU
+
+The first version asked "is this player a non-EU national?" and counted **every Serbian player at a
+Serbian club as a foreigner** — which would have filled the quota with homegrown talent and quietly
+broken every transfer in the game. The test caught it immediately.
+
+Foreign has to mean two things: from *another country*, **and** from outside the EU. A Spaniard at a
+Serbian club is foreign but free; a Brazilian is foreign and counts; a Serbian at home is simply
+domestic. A player with no nationality on record, and a competition with no country, are both treated
+as domestic — the safe direction, since the alternative would block every signing in a database that
+predates the column.
+
+#### One more constructor trap
+
+Adding `nationality` to `Player` recompiled Lombok's all-args constructor and broke two tests that
+construct a player with all 24 arguments spelled out positionally. The field is now declared **last**,
+with a comment saying why, so the signature survives the next field somebody adds.
+
+**350 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

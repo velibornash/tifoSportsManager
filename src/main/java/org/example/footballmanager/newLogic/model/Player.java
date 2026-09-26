@@ -53,6 +53,20 @@ public class Player {
     @JsonBackReference
     private Team team;
 
+    /**
+     * ISO country code of the player's nationality, e.g. {@code SRB}, {@code BRA}, {@code ESP}.
+     *
+     * <p>Used only by the registration rules: whether a player counts against a competition's
+     * non-EU quota, and whether he needs a work permit at all. Null is treated as domestic, which
+     * is the safe default for a database that predates the column.
+     *
+     * <p>Declared <b>last</b> on purpose. Lombok builds the all-args constructor in field order, and
+     * two tests construct a Player with every argument spelled out positionally; adding a field in
+     * the middle recompiled them into a call to a constructor that no longer exists.
+     */
+    @Column(name = "nationality", length = 3)
+    private String nationality;
+
     public Position getPositionEnum() {
         return position;
     }
