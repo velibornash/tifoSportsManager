@@ -510,7 +510,13 @@ to the best finisher on the pitch and a small sample runs high. The 400k-sample 
 
 ---
 
-### S1.7c — Box fouls are under-produced ⚠️ OPENED 2026-09-26
+### S1.7c — Box fouls are under-produced [DEFERRED 2026-09-26]
+
+> Deferred by owner decision: connect the system first, statistics later. Kept so the finding is
+> not lost. Partly self-correcting now - the stoppage work means the match genuinely plays 90+
+> minutes, which raised box fouls and the penalty rate with it.
+
+### S1.7c ORIGINAL — Box fouls are under-produced ⚠️ OPENED 2026-09-26
 
 Surfaced by S1.7b. The engine commits **1.655 box fouls per match**; real football is nearer
 2.5–3.5. S1.7b compensated by raising `PENALTY_FROM_BOX_FOUL` to 0.165, so 1 in 6 box fouls now
@@ -546,7 +552,17 @@ Consequences today: the same 11 play 90 minutes regardless of fatigue, injuries 
 
 ---
 
-### S1.9 — Fix the remaining calibration outliers
+### S1.9 — Fix the remaining calibration outliers [DEFERRED 2026-09-26]
+
+> Deferred by owner decision (2026-09-26): fix what is clearly broken, but connect the system
+> first and do the statistics afterwards. Only the clearly-broken were fixed (goal kicks
+> 35.9 -> 21.9 in S1.2). The rest is recorded in `sprintProgress.md` as a position, not a
+> scorecard, and is **no longer benchmarked against Premier League figures.**
+>
+> Worth an eye: **no 0-0 in 100 matches.** At ~4 goals/match a goalless draw is genuinely rare
+> (~1.4%), so this may be nothing, but it is a behavioural signal rather than a calibration one.
+
+### S1.9 ORIGINAL — Fix the remaining calibration outliers
 
 | Metric | Now | Target | Approach |
 |---|---:|---:|---|
@@ -561,7 +577,7 @@ Consequences today: the same 11 play 90 minutes regardless of fatigue, injuries 
 
 ---
 
-### S1.10 — Persist replays
+### S1.10 — Persist replays [DONE 2026-09-26]
 
 `SimReplayStore` is an unbounded in-memory `ConcurrentHashMap` (`SimReplayStore.java:17-29`). A restart loses every replay; `Match.replayId` survives in the DB as a dangling id.
 
@@ -574,7 +590,17 @@ Consequences today: the same 11 play 90 minutes regardless of fatigue, injuries 
 
 ---
 
-### S1.11 — Wire THRU / CROSS / CENTER into the decision engine
+### S1.11 — Wire THRU / CROSS / CENTER [ALREADY IMPLEMENTED 2026-09-26]
+
+> **This entry was stale when picked up.** The claim was that deliveries entered only via the
+> final-two-row hard rule. They are first-class options - `CleanDecisionEngine:1075` says so
+> explicitly ("ALL options compete. THRU / CROSS / CENTER are included on purpose") - and over
+> 3 matches they fire at CROSS 23/match, CENTER 23/match, THRU 8.7/match, which is the real
+> 20-30 band for crosses. Nothing to build; the entry needed correcting.
+
+---
+
+### S1.10 — Persist replays
 
 Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:126-127`). Deliveries enter **only** via the final-2-row hard rule (`:141`). So the tactical variety in the design docs does not exist in play.
 
@@ -1429,10 +1455,23 @@ Scope, to be built as its own task:
 | 5 | Added time at the end of each half, driven by actual stoppage minutes |
 | 6 | Substitutions only inside a stoppage — this then makes the window rule honest instead of heuristic |
 
-### Placeholder in the plan
+### Status 2026-09-26 - prerequisites done, engine + API done, UI outstanding
 
-Build **after** the stoppage work above, and after S1.7 (penalties), since both create the stoppages
-the rules depend on. Sprint to be confirmed.
+All three prerequisites are complete: **S1.7** (a penalty creates a stoppage), **stoppage time**
+(`StoppageClock`, which also made the window rule honest instead of heuristic), and **S1.8**
+(bench, budget, windows, role-aware selection).
+
+**Built:**
+- `ConditionalSubstitutionRules` - live evaluation, `PENDING` / `WAITING_FOR_STOPPAGE` / `FIRED` /
+  `VOID`, with a **reason** on every void rule.
+- Precedence chain seated correctly: `onTickInjuriesOnly()` then the conditional rules then
+  `onTickFatigueOnly()`. `SubstitutionService.onTick()` was split to make that possible.
+- `SubstitutionPlan` entity + `SubstitutionPlanController` - server-side, keyed by match, `PUT`
+  replaces rather than merges.
+
+**Outstanding: the UI only** - the rules builder (minute, condition, player on, player off) and the
+live view of which rules fired, which are spent and which are void. That is the part the manager
+touches and, per the assessment above, the bulk of the work.
 
 ---
 
