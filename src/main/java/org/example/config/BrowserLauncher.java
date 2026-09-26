@@ -1,4 +1,4 @@
-package org.example;
+package org.example.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
@@ -42,6 +42,13 @@ import java.util.Arrays;
  * </ul>
  *
  * <p>To turn it off: {@code --app.open-browser=false}.
+ *
+ * <h2>It lives in {@code org.example.config} on purpose</h2>
+ * {@code SportsManagerApplication} declares an explicit {@code scanBasePackages} list, and
+ * {@code org.example} itself is <b>not</b> on it - a {@code @Component} in the root package is never
+ * scanned, and no value of {@code app.open-browser} will make it appear. It sat there looking
+ * correct, and starting the app from the IDE did nothing at all. {@code ComponentScanCoverageTest}
+ * now fails the build if a bean lands outside the scanned packages again.
  */
 @Slf4j
 @Component
@@ -86,18 +93,30 @@ public class BrowserLauncher implements ApplicationRunner {
         }
     }
 
-    /** Whether there is a desktop to open a browser on. */
+    /**
+     * Whether there is a desktop to open a browser on.
+     *
+     * <p><b>Deliberately does not consult {@code java.awt.headless}.</b> That property means "do not
+     * initialise AWT", and Spring Boot sets it to true by default for server applications — so
+     * reading it here meant the launcher always decided there was no desktop and never opened
+     * anything, while the log cheerfully reported a headless machine. It is not a signal about a
+     * display.
+     *
+     * <p>macOS and Windows are assumed to have one, because that is true for anyone running the game
+     * locally. Only Linux is reliably detectable, and there the absence of both {@code DISPLAY} and
+     * {@code WAYLAND_DISPLAY} is the honest test — which is also what a CI agent or a remote shell
+     * looks like.
+     */
     private boolean isHeadless() {
-        if (Boolean.getBoolean("java.awt.headless")) {
-            return true;
-        }
         String os = System.getProperty("os.name", "").toLowerCase();
-        if (!os.contains("mac") && !os.contains("win")) {
-            // Only the Linux case is reliably detectable, and DISPLAY absence is the honest signal.
-            String display = System.getenv("DISPLAY");
-            return display == null || display.isBlank();
+        if (os.contains("mac") || os.contains("win")) {
+            return false;
         }
-        return false;
+        return isBlank(System.getenv("DISPLAY")) && isBlank(System.getenv("WAYLAND_DISPLAY"));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /** Honours server.port / server.servlet.port so a non-default port is not ignored. */

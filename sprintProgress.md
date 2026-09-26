@@ -1674,6 +1674,35 @@ after:   GET /training/weekly/team/1/reports/1/9  →  404 REPORT_NOT_FOUND
 
 **365 tests.** Verified negatively too: removing the handler puts all three back to 500.
 
+### 🐛 The browser launcher was never a bean at all
+
+The owner was right and I was wrong to call this fixed. Two separate faults, stacked, and the second
+one was hiding the first.
+
+**1. The bean did not exist.** `SportsManagerApplication` declares an explicit `scanBasePackages`
+list, and **`org.example` — the application's own package — is not on it.** `BrowserLauncher` was a
+`@Component` in that root package, so Spring never scanned it. No value of `app.open-browser` could
+change that, because there was no bean. It looked entirely correct in the source and was invisible at
+runtime. It has moved to `org.example.config`, which is scanned.
+
+**2. My headless guard then blocked it anyway.** I checked `java.awt.headless` — which means "do not
+initialise AWT", and which **Spring Boot sets to true by default for server applications.** So the
+launcher always concluded there was no desktop, and the log cheerfully reported "no desktop
+available" on a Mac with a browser sitting right there. It now checks the environment instead
+(`DISPLAY`/`WAYLAND_DISPLAY` on Linux only), because that is the only thing that actually indicates a
+display.
+
+Verified by running `main` exactly the way the owner does:
+
+```
+INFO  o.e.config.BrowserLauncher : Opened http://localhost:9081/login.html in your browser.
+```
+
+`ComponentScanCoverageTest` now fails the build if an infrastructure bean lands outside the scanned
+packages, because the failure mode is silence — no compile error, no warning, just a feature that
+quietly does nothing. Verified negatively: moving the class back fails it with a message naming the
+package and the scanned list.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
