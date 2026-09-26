@@ -20,30 +20,56 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TransferWindowServiceTest {
 
     @Test
-    @DisplayName("the summer window is weeks 1-6 and the winter window is 10-12")
+    @DisplayName("a season is 11 weeks: 9 of league, 1 of playoffs, 1 of mid-season")
+    void seasonShape() {
+        assertEquals(11, TransferWindowService.SEASON_WEEKS);
+        assertEquals(9, TransferWindowService.LEAGUE_END);
+        assertEquals(10, TransferWindowService.PLAYOFF_WEEK);
+        assertEquals(11, TransferWindowService.MID_SEASON_WEEK);
+    }
+
+    @Test
+    @DisplayName("windows are weeks 5-6 and weeks 9-11")
     void windowsAreWhereTheyShouldBe() {
-        for (int w = 1; w <= 6; w++) {
-            assertEquals(Window.SUMMER, TransferWindowService.windowForWeek(w), "week " + w);
-        }
-        for (int w = 7; w <= 9; w++) {
+        for (int w = 1; w <= 4; w++) {
             assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
         }
-        for (int w = 10; w <= 12; w++) {
+        for (int w = 5; w <= 6; w++) {
+            assertEquals(Window.SUMMER, TransferWindowService.windowForWeek(w), "week " + w);
+        }
+        for (int w = 7; w <= 8; w++) {
+            assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
+        }
+        for (int w = 9; w <= 11; w++) {
             assertEquals(Window.WINTER, TransferWindowService.windowForWeek(w), "week " + w);
         }
-        for (int w = 13; w <= 45; w++) {
+        for (int w = 12; w <= 45; w++) {
             assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
         }
     }
 
     @Test
+    @DisplayName("the second window covers the playoffs and the mid-season break")
+    void secondWindowCoversPlayoffsAndBreak() {
+        assertTrue(TransferWindowService.windowForWeek(TransferWindowService.PLAYOFF_WEEK)
+                        == Window.WINTER,
+                "a club must be able to sign during the playoffs - that is how a season is won");
+        assertTrue(TransferWindowService.windowForWeek(TransferWindowService.MID_SEASON_WEEK)
+                        == Window.WINTER,
+                "the mid-season break is the January window");
+        assertTrue(TransferWindowService.WINTER_OPEN <= TransferWindowService.LEAGUE_END,
+                "the window opens as the league finishes, not after it");
+    }
+
+    @Test
     @DisplayName("a registered player cannot move while the window is shut")
     void closedWindowRefusesPermanentMoves() {
-        for (int week = 7; week <= 9; week++) {
+        // Weeks 1-4, 7-8 and everything after 11 are shut.
+        for (int week : new int[] { 1, 2, 3, 4, 7, 8, 12, 20 }) {
             TransferWindowService.Decision d =
                     TransferWindowService.decide(TransferWindowService.windowForWeek(week), Kind.PERMANENT);
             assertFalse(d.permitted(), "week " + week + " is shut");
-            assertTrue(d.reason().contains("week " + TransferWindowService.WINTER_OPEN),
+            assertTrue(d.reason().contains("week " + TransferWindowService.SUMMER_OPEN),
                     "the refusal must say when it reopens: " + d.reason());
         }
     }
@@ -69,9 +95,31 @@ class TransferWindowServiceTest {
     }
 
     @Test
+    @DisplayName("a released player can be signed at any time")
+    void releasedPlayersIgnoreTheWindow() {
+        for (int week = 1; week <= 45; week++) {
+            assertTrue(TransferWindowService.decide(
+                            TransferWindowService.windowForWeek(week), Kind.RELEASED).permitted(),
+                    "week " + week + ": a released man must be able to find a club");
+        }
+    }
+
+    @Test
+    @DisplayName("a player with no asking price can be approached, but not bid on")
+    void unlistedPlayersCanBeApproached() {
+        for (int week = 1; week <= 45; week++) {
+            TransferWindowService.Decision d = TransferWindowService.decide(
+                    TransferWindowService.windowForWeek(week), Kind.UNLISTED);
+            assertTrue(d.permitted(), "week " + week + ": no asking price means he is not for sale");
+            assertTrue(d.reason().toLowerCase().contains("no asking price"),
+                    "and the manager must be told that he cannot be bid on: " + d.reason());
+        }
+    }
+
+    @Test
     @DisplayName("a loan IN is not exempt - taking a player in April is a decision, not a right")
     void loanInIsNotExempt() {
-        for (int week = 13; week <= 45; week++) {
+        for (int week = 7; week <= 8; week++) {
             assertFalse(TransferWindowService.decide(
                             TransferWindowService.windowForWeek(week), Kind.LOAN_IN).permitted(),
                     "week " + week + ": no league lets a club take a player on loan in April");
@@ -81,10 +129,23 @@ class TransferWindowServiceTest {
     @Test
     @DisplayName("permanent moves are allowed while a window is open")
     void openWindowPermitsPermanentMoves() {
-        for (int week : new int[] { 1, 3, 6, 10, 11, 12 }) {
+        for (int week : new int[] { 5, 6, 9, 10, 11 }) {
             assertTrue(TransferWindowService.decide(
                             TransferWindowService.windowForWeek(week), Kind.PERMANENT).permitted(),
                     "week " + week + " is open");
+        }
+    }
+
+    @Test
+    @DisplayName("every kind of move is either allowed or has a reason")
+    void everyKindIsAnswered() {
+        for (Kind kind : Kind.values()) {
+            for (int week = 1; week <= TransferWindowService.SEASON_WEEKS; week++) {
+                TransferWindowService.Decision d = TransferWindowService.decide(
+                        TransferWindowService.windowForWeek(week), kind, week);
+                assertFalse(d.reason() == null || d.reason().isBlank(),
+                        kind + " at week " + week + " has no explanation");
+            }
         }
     }
 

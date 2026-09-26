@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.GameClock;
+import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -31,33 +32,81 @@ import java.util.Map;
 public class TransferWindowService {
 
     public enum Window {
-        SUMMER, WINTER, CLOSED
+        SUMMER, WINTER, CLOSED;
+
+        /** Whether ordinary business happens in this window. */
+        public boolean permitsBusiness() {
+            return this != CLOSED;
+        }
     }
 
-    /** Summer registration: the first weeks of a season. */
-    public static final int SUMMER_OPEN = 1;
+    // Season shape (owner-defined, 2026-09-26):
+    //   weeks 1-9  league, 10 teams playing each other twice = 18 matches, 2 a week
+    //   week  10   playoffs
+    //   week  11   mid-season break ("medjusezona")
+    // so a season is 11 weeks, not the 19-20 the rest of the codebase still assumes.
+    public static final int SEASON_WEEKS = 11;
+    public static final int LEAGUE_END = 9;
+    public static final int PLAYOFF_WEEK = 10;
+    public static final int MID_SEASON_WEEK = 11;
+
+    /** First window: the mid-season registration, weeks 5 and 6. */
+    public static final int SUMMER_OPEN = 5;
     public static final int SUMMER_CLOSE = 6;
 
-    /** Winter registration: the mid-season window. */
-    public static final int WINTER_OPEN = 10;
-    public static final int WINTER_CLOSE = 12;
+    /**
+     * Second window: weeks 9, 10 and 11.
+     *
+     * <p>Starts as the league finishes rather than after it, so a club can do its business while the
+     * table is still settling; covers the playoffs and the mid-season break. Being able to sign
+     * during the playoffs is how a season is actually won.
+     */
+    public static final int WINTER_OPEN = 9;
+    public static final int WINTER_CLOSE = 11;
 
     /** What a transfer would be. Decides which exception, if any, applies. */
     public enum Kind {
-        /** A registered player moving between clubs. */
+        /** A registered, listed player moving between clubs. */
         PERMANENT,
-        /** Signing a player with no club. */
+        /** Signing a player whose contract has expired. */
         FREE_AGENT,
+        /**
+         * Signing a player his club has released. Available at any time, same reasoning as a free
+         * agent: the club has already given him away, so refusing the move would be refusing to let
+         * a released man find a club.
+         */
+        RELEASED,
+        /**
+         * Signing a player the club has not listed and set no asking price on.
+         *
+         * <p>The owner's third category, and explicitly one to tune later. A club that has not put a
+         * price on a player has not put him out of reach, so a club may still approach him directly
+         * — but he is not for sale and cannot be bid on. What happens if that approach is refused is
+         * the part flagged for later tuning.
+         */
+        UNLISTED,
         /** A club taking a player on loan. */
         LOAN_IN,
         /** A parent club pulling a loaned player back. */
-        LOAN_RECALL
+        LOAN_RECALL;
+
+        /** Whether this kind of move bypasses a closed window. */
+        public boolean bypassesWindow() {
+            return this == FREE_AGENT || this == RELEASED || this == UNLISTED || this == LOAN_RECALL;
+        }
     }
 
-    private final SeasonService seasons;
+    /**
+     * The clock is read straight from its repository rather than through {@code SeasonService}.
+     *
+     * <p>{@code SeasonService} depends on {@code TransferService}, which needs this service to know
+     * whether the market may run — so depending on {@code SeasonService} here closes a cycle and the
+     * application context refuses to start. This service only ever wanted the current week.
+     */
+    private final GameClockRepository clocks;
 
-    public TransferWindowService(SeasonService seasons) {
-        this.seasons = seasons;
+    public TransferWindowService(GameClockRepository clocks) {
+        this.clocks = clocks;
     }
 
     public Window currentWindow() {
@@ -72,24 +121,33 @@ public class TransferWindowService {
     }
 
     public static boolean isOpenFor(Window window, Kind kind) {
-        if (kind == Kind.FREE_AGENT || kind == Kind.LOAN_RECALL) return true;
+        if (kind != null && kind.bypassesWindow()) return true;
         return window != Window.CLOSED;
     }
 
     /** Whether this kind of move is permitted right now, and if not, why not. */
     public Decision decide(Kind kind) {
-        return decide(currentWindow(), kind);
+        return decide(windowForWeek(weekOf()), kind, weekOf());
     }
 
     public static Decision decide(Window window, Kind kind) {
-        boolean open = isOpenFor(window, kind);
-        return new Decision(open, window, kind, describe(window, kind, open));
+        return decide(window, kind, null);
     }
 
-    private static String describe(Window window, Kind kind, boolean open) {
-        if (open && (kind == Kind.FREE_AGENT || kind == Kind.LOAN_RECALL)) {
+    /**
+     * @param currentWeek used only to say when the window reopens; null says "not until next season"
+     */
+    public static Decision decide(Window window, Kind kind, Integer currentWeek) {
+        boolean open = isOpenFor(window, kind);
+        return new Decision(open, window, kind, describe(window, kind, open, currentWeek));
+    }
+
+    private static String describe(Window window, Kind kind, boolean open, Integer currentWeek) {
+        if (open && kind != null && kind.bypassesWindow()) {
             return switch (kind) {
-                case FREE_AGENT -> "He is a free agent, so there is nobody to disappoint. He can sign at any time.";
+                case FREE_AGENT -> "His contract has run out, so there is nobody to disappoint. He can sign at any time.";
+                case RELEASED -> "He has been released by his club, so he is available at any time.";
+                case UNLISTED -> "No asking price has been set, so he is not for sale and cannot be bid on - but a club may still approach him directly.";
                 case LOAN_RECALL -> "A recall is the parent club's right and is exercised against the player's will, so it is never blocked by the window.";
                 default -> "";
             };
@@ -97,12 +155,16 @@ public class TransferWindowService {
         if (open) {
             return (window == Window.SUMMER ? "Summer" : "Winter") + " registration is open.";
         }
+        Integer next = nextOpenWeek(currentWeek);
+        String reopens = next == null
+                ? "the window does not reopen until next season."
+                : "the window reopens at week " + next + ".";
         return switch (kind) {
-            case PERMANENT -> "The transfer window is shut. A registered player cannot move between clubs now; "
-                    + "the window reopens at week " + WINTER_OPEN + ".";
-            case LOAN_IN -> "The transfer window is shut. A club cannot take a player on loan now; "
-                    + "the window reopens at week " + WINTER_OPEN + ".";
+            case PERMANENT -> "The transfer window is shut. A listed player cannot move between clubs now; " + reopens;
+            case LOAN_IN -> "The transfer window is shut. A club cannot take a player on loan now; " + reopens;
             case FREE_AGENT -> "He is a free agent and can sign at any time.";
+            case RELEASED -> "He has been released and can sign at any time.";
+            case UNLISTED -> "No asking price has been set, so he cannot be bid on, but a club may still approach him directly.";
             case LOAN_RECALL -> "A recall is the parent club's right and is not blocked by the window.";
         };
     }
@@ -116,7 +178,7 @@ public class TransferWindowService {
      * @return a map for the transfer centre, including the countdown and what stays allowed
      */
     public Map<String, Object> status() {
-        GameClock clock = seasons.getOrCreateClock();
+        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
         Integer week = clock == null ? null : clock.getCurrentWeek();
         Window window = windowForWeek(week);
 
@@ -153,11 +215,16 @@ public class TransferWindowService {
                 : null);
         // Stated explicitly, because "the window is shut" without saying these still work is
         // exactly the kind of thing a manager works around wrongly.
-        out.put("alwaysAllowed", List.of("Signing a free agent", "Recalling a loan"));
+        out.put("alwaysAllowed", List.of(
+                "Signing a free agent whose contract has expired",
+                "Signing a released player",
+                "Approaching a player who has no asking price set",
+                "Recalling a loan"));
+        out.put("seasonWeeks", SEASON_WEEKS);
         return out;
     }
 
-    private Integer nextOpenWeek(Integer week) {
+    private static Integer nextOpenWeek(Integer week) {
         if (week == null) return SUMMER_OPEN;
         if (week < SUMMER_OPEN) return SUMMER_OPEN;
         if (week < WINTER_OPEN) return WINTER_OPEN;
@@ -165,7 +232,7 @@ public class TransferWindowService {
     }
 
     private Integer weekOf() {
-        GameClock clock = seasons.getOrCreateClock();
+        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
         return clock == null ? null : clock.getCurrentWeek();
     }
 

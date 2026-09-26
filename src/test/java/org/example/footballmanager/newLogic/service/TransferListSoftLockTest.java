@@ -66,7 +66,8 @@ class TransferListSoftLockTest {
                 playerRepository,
                 teamRepository,
                 mock(UserRepository.class),
-                mock(SquadNumberAssigner.class)
+                mock(SquadNumberAssigner.class),
+                mock(TransferWindowService.class)
         );
 
         seller = new Team();

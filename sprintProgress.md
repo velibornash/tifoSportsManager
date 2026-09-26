@@ -1160,6 +1160,87 @@ first agreed terms stand and only a fully settled deal may be re-agreed.
 
 **15 tests. 292 total.**
 
+### S3.3b — Transfer window weeks, per the owner's season shape ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+The window weeks were guessed. They are now the owner's definition (2026-09-26):
+
+| weeks | what |
+|---|---|
+| 1–4 | league, no transfers |
+| **5–6** | **first window** |
+| 7–8 | league, no transfers |
+| **9–11** | **second window** — league finishes, playoffs, mid-season break |
+| 12+ | closed |
+
+`SEASON_WEEKS`, `LEAGUE_END`, `PLAYOFF_WEEK` and `MID_SEASON_WEEK` are named constants rather than
+bare numbers, because the season shape is a rule the rest of the code has to agree with.
+
+**The second window opens as the league finishes, not after it.** A club can do its business while
+the table is still settling, and being able to sign **during the playoffs** is how a season is
+actually won.
+
+#### The three kinds of off-window availability, named separately
+
+The owner distinguished three, and they were collapsed into one:
+
+- **Free agent** — contract expired. Nobody is being disappointed, so it is always available.
+- **Released** — his club gave him away. Refusing the move would be refusing to let a released man
+  find a club.
+- **No asking price** — the club has not listed him or set a price, so he is **not for sale and
+  cannot be bid on**, but a club may still approach him directly. Flagged by the owner as one to tune
+  later; what happens when that approach is refused is the open part.
+
+Each has its own explanation, because "the window is shut" alone is the kind of thing a manager works
+around wrongly. A **loan IN** is still not exempt.
+
+13 window tests, 294 total.
+
+#### Enforcing the window, and the cycle that enforcing it exposed
+
+Adding the window check to `NegotiationService.openOffer` immediately broke ten negotiation tests —
+**correctly**. A club cannot negotiate in April, whoever it is. The tests were exercising a path that
+cannot happen in the game, so they now set the calendar into a window first.
+
+The same reasoning applied to the **AI market**: `simulateWeeklyMarketActivity` runs from the season
+advance every week, so with the check in place it would have attempted transfers for six weeks out of
+eleven. It is now guarded and simply does not run while the window is shut — a club does not make
+offers in April, and neither does the AI.
+
+Wiring the window service in surfaced a **circular dependency** the codebase had been quietly
+avoiding: `TransferService → TransferWindowService → SeasonService → … → TransferService`. Spring
+refuses to start the context. `TransferWindowService` only ever wanted the current week, so it now
+reads `GameClockRepository` directly and the cycle is gone. Two existing tests that construct
+`TransferService` by hand needed the new argument.
+
+**297 tests.**
+
+#### ⚠️ Open question for the PO — the season is not 11 weeks yet
+
+The window weeks are implemented and tested against the owner's season shape, but **the rest of the
+codebase still generates a 19–20 week season**, so the windows only describe part of it.
+
+`SeasonService.generateFixtures` builds a standard double round-robin: `rounds = n − 1` per half, with
+every match in a round played in the **same week**. For 10 teams that is 9 rounds + 9 reverse rounds
+= **18 weeks, 5 matches a week**.
+
+The owner's shape is **18 matches over 9 weeks at 2 matches a week** — which only works if a
+5-match round is spread over ~2.5 weeks rather than played in one. That is a different fixture
+scheduler, and it changes what "week 9" and "week 10" mean for the table, the playoffs and promotion.
+
+Not changed unilaterally: it is a large, cross-cutting change and there is more than one way to
+schedule it. **Three questions:**
+
+1. **2 matches per week** — is that 2 league matches *in total* across the league each week (so a
+   5-match round takes 2.5 weeks), or 2 per *team*? 10 teams × 2 per team would be 10 matches a week
+   and 18 matches would take under 2 weeks, which contradicts the 9.
+2. **Mid-season week 11** — is that a played round, or a genuine break where nothing is simulated?
+3. **Playoffs in week 10** — how many teams, and do they play more than one match that week?
+
+Until that is settled, `SEASON_WEEKS = 11` is a stated intention that the fixture generator does not
+yet implement, and the two disagree.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

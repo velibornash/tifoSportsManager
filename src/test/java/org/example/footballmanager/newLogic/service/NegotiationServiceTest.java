@@ -42,6 +42,22 @@ class NegotiationServiceTest {
     @Autowired TransferRepository transfers;
     @Autowired NegotiationService negotiation;
     @Autowired PlayerContractService contracts;
+    @Autowired org.example.footballmanager.newLogic.repository.GameClockRepository clockRepository;
+
+    /**
+     * Puts the calendar inside a registration window.
+     *
+     * <p>Necessary, not cosmetic: {@code NegotiationService.openOffer} refuses an out-of-window
+     * attempt, and a club cannot negotiate in April whoever it is. The AI market is guarded the same
+     * way and simply does not run outside a window. A test that opened offers without setting the
+     * clock was testing a path that cannot happen in the game.
+     */
+    private void inWindow() {
+        var clock = clockRepository.findAll().stream().findFirst().orElseThrow();
+        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
+        // GameClock has no service-level save, so go through the repository.
+        clockRepository.save(clock);
+    }
 
     private Team aClub(String name, double budget) {
         Team t = new Team();
@@ -85,6 +101,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("fee, wage and contract length are three separate things")
     void threeTermsAreSeparate() {
+        inWindow();
         Team seller = aClub("Seller", 1_000_000);
         Team buyer = aClub("Buyer", 20_000_000);
         Player star = aPlayer(seller, "Star", 12_000_000, 40_000);
@@ -120,6 +137,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("a deal can be agreed on the fee and still fail because the player refuses the wage")
     void thePlayerIsAThirdParty() {
+        inWindow();
         Team seller = aClub("PWeller", 1_000_000);
         Team buyer = aClub("PBuyer", 30_000_000);
         Player greedy = aPlayer(seller, "Greedy", 9_000_000, 20_000);
@@ -147,6 +165,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("a negotiation is a thread, not a replacement")
     void negotiationIsAThread() {
+        inWindow();
         Team seller = aClub("ThreadSeller", 1_000_000);
         Team buyer = aClub("ThreadBuyer", 30_000_000);
         Player p = aPlayer(seller, "Threaded", 6_000_000, 18_000);
@@ -167,6 +186,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("a negotiation ends rather than continuing forever")
     void negotiationsTerminate() {
+        inWindow();
         Team seller = aClub("EndlessSeller", 1_000_000);
         Team buyer = aClub("EndlessBuyer", 30_000_000);
         Player p = aPlayer(seller, "Endless", 4_000_000, 12_000);
@@ -186,6 +206,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("a club cannot open two live offers for the same player")
     void oneLiveOfferPerClub() {
+        inWindow();
         Team seller = aClub("SingleSeller", 1_000_000);
         Team buyer = aClub("SingleBuyer", 30_000_000);
         Player p = aPlayer(seller, "Once", 3_000_000, 9_000);
@@ -201,6 +222,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("the seller chooses which offer to accept, and the rest survive as a record")
     void sellerChoosesAndOtherOffersSurvive() {
+        inWindow();
         Team seller = aClub("ChoosingSeller", 1_000_000);
         Team buyerA = aClub("BidderA", 30_000_000);
         Team buyerB = aClub("BidderB", 30_000_000);
@@ -226,6 +248,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("one offer can be rejected without clearing the rest")
     void rejectOneOfferOnly() {
+        inWindow();
         Team seller = aClub("PickySeller", 1_000_000);
         Team buyerA = aClub("PickyA", 30_000_000);
         Team buyerB = aClub("PickyB", 30_000_000);
@@ -247,6 +270,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("two clubs bidding produce two separate offers, not one merged string")
     void twoBiddersDoNotCollide() {
+        inWindow();
         Team seller = aClub("SharedSeller", 1_000_000);
         // Deliberately a name-prefix pair: the old string model could not tell these apart.
         Team buyerOne = aClub("Partizan", 30_000_000);
@@ -269,6 +293,7 @@ class NegotiationServiceTest {
     @Test
     @DisplayName("offers expire rather than sitting open forever")
     void offersExpire() {
+        inWindow();
         Team seller = aClub("StaleSeller", 1_000_000);
         Team buyer = aClub("StaleBuyer", 30_000_000);
         Player p = aPlayer(seller, "Stale", 2_000_000, 7_000);

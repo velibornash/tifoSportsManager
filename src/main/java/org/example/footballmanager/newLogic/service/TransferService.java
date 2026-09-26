@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 @Service
 public class TransferService {
     private static final Logger log = LoggerFactory.getLogger(TransferService.class);
+    private final TransferWindowService transferWindows;
 
 
     private final TransferRepository transferRepository;
@@ -47,12 +48,14 @@ public class TransferService {
                            PlayerRepository playerRepository,
                            TeamRepository teamRepository,
                            UserRepository userRepository,
-                           SquadNumberAssigner squadNumberAssigner) {
+                           SquadNumberAssigner squadNumberAssigner,
+                           TransferWindowService transferWindows) {
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
         this.userRepository = userRepository;
         this.squadNumberAssigner = squadNumberAssigner;
+        this.transferWindows = transferWindows;
     }
 
     @Transactional
@@ -364,6 +367,15 @@ public class TransferService {
 
     @Transactional
     public void simulateWeeklyMarketActivity() {
+        // The market only runs during a registration window. This is called every week from the
+        // season advance, so without the guard it would attempt transfers for most of the season and
+        // be refused six weeks out of eleven. A club does not make offers in April, and neither does
+        // the AI.
+        if (transferWindows != null && !transferWindows.currentWindow().permitsBusiness()) {
+            log.debug("Transfer market idle: window is shut.");
+            return;
+        }
+
         List<Team> allTeams = teamRepository.findClubTeamsForOperations().stream()
                 .filter(Objects::nonNull)
                 .filter(team -> team.getId() != null)
