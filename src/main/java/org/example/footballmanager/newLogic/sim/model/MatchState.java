@@ -56,6 +56,17 @@ public class MatchState {
 
     // Pending VAR review (deferred decision — offside check held until the
     // next action boundary resolves it).
+    /**
+     * A penalty has been awarded and still has to be taken.
+     *
+     * <p>This has to be an explicit flag rather than something re-derived from
+     * {@code setPieceType}. A foul can be both a penalty and an offside in the same incident, and
+     * the offside free kick overwrites the set-piece type on the very next tick. The penalty was
+     * then silently downgraded to a free kick and never taken — found on seed 123, where a penalty
+     * awarded at 66:19 became a throw-in at 66:22 with no kick event at all.
+     */
+    private boolean penaltyPending;
+
     private String pendingVARReviewType;   // OFFSIDE / ONSIDE_CHECK / GOAL / RED_CARD / PENALTY / YELLOW_CARD
     private Player pendingVARReviewPlayer; // receiver subject to the review
     private String pendingVARReviewTeam;   // team of the player under review (carrier team)
@@ -227,6 +238,8 @@ public class MatchState {
     // === VAR CONTROL ===
 
     /** Check if VAR review is currently active (pausing re-decision). */
+    public boolean isPenaltyPending() { return penaltyPending; }
+    public void setPenaltyPending(boolean penaltyPending) { this.penaltyPending = penaltyPending; }
     public boolean isVARReviewActive() {
         return varReviewActive && varDelayTicks > 0;
     }

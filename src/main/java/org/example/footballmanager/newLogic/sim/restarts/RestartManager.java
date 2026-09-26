@@ -171,6 +171,9 @@ public class RestartManager {
      * @param takingTeam team that was fouled and takes the kick
      */
     public void handlePenalty(MatchState state, String takingTeam) {
+        // Latched here, on the award, because by the time the taker reaches the spot the
+        // set-piece type may already have been overwritten by a free kick for the same incident.
+        state.setPenaltyPending(true);
         if ("HOME".equals(takingTeam)) {
             state.incrementHomePenalties();
         } else if ("AWAY".equals(takingTeam)) {
@@ -188,6 +191,13 @@ public class RestartManager {
      * away, nearest (attacker for penalty) available teammate walks to the ball.
      */
     private void startSetPiece(MatchState state, Position spot, String takingTeam, boolean penalty) {
+        // A penalty is the more serious offence. If the same incident also produced an offside or
+        // any other restart, the penalty wins and the ball stays on the spot — restarting with a
+        // free kick instead would let the fouled team take a lesser restart and quietly erase the
+        // penalty the referee awarded.
+        if (!penalty && state.isPenaltyPending()) {
+            return;
+        }
         state.clearPassContext();
         state.getBall().setPosition(spot);
         state.getBall().stop();

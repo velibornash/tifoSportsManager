@@ -77,7 +77,67 @@ public class MatchOrchestrator {
      * on the very tick the taker reaches the ball, so by the time the decision hook runs there is
      * nothing left to read and a penalty silently degraded into an ordinary 11 m shot.
      */
-    private boolean penaltyPending;
+    /**
+     * Ticks a penalty restart has been waiting for its taker.
+     *
+     * <p>A penalty restart can wedge: the ball sits on the spot, the taker is designated, but he
+     * never closes the last fraction of a cell — wall-ringed, or drifting because his tactical
+     * target keeps moving. The match then spends ~100 ticks (2.5 match-minutes) churning tactical
+     * targets with no decisions at all, and when play eventually resumes the penalty is simply
+     * gone. Observed on seed 123: awarded at 66:19, never taken, match recovered at 69'.
+     *
+     * <p>A penalty cannot be allowed to evaporate, so past {@link #PENALTY_FORCE_TICKS} the taker
+     * is put on the spot and the kick is taken. This is deliberately the same "a restart must
+     * NEVER freeze the match" rule that widens the claim radius after 40 ticks — extended to the
+     * one restart whose whole result depends on it actually happening.
+     */
+    private int penaltyRestartAge;
+    private static final int PENALTY_FORCE_TICKS = 40;
+
+    /**
+     * Forces a stalled penalty to be taken. Runs every tick, and covers both ways a penalty
+     * restart can wedge: the taker is designated but never arrives, or the taker is lost entirely
+     * and the ball just sits on the spot with nobody to take it.
+     */
+    private void checkPenaltyStall() {
+        if (!state.isPenaltyPending() || state.getCarrier() != null) {
+            penaltyRestartAge = 0;
+            return;
+        }
+        if (++penaltyRestartAge <= PENALTY_FORCE_TICKS) return;
+
+        // The side that was fouled takes it; the spot only tells us which end to use.
+        String type = state.getSetPieceType();
+        boolean home = type == null || "PENALTY_HOME".equals(type);
+        String team = home ? "HOME" : "AWAY";
+
+        // Prefer the designated taker; if the restart lost him, hand it to the best man available.
+        Player taker = state.getRestartTaker();
+        if (taker == null || taker.isUnavailable() || !team.equals(taker.getTeam())) {
+            taker = penaltyEngine.selectTaker(team);
+        }
+        if (taker == null) {
+            // Nobody left who can take it (a full-strength side cannot reach this, but a red card
+            // plus a sending-off injury can). Fail loudly rather than looping forever.
+            log("PEN", "penalty cannot be taken — no available taker for " + team);
+            penaltyRestartAge = 0;
+            state.clearSetPieceType();
+            return;
+        }
+
+        org.example.footballmanager.newLogic.sim.model.Position spot = home
+                ? RestartManager.PENALTY_SPOT_HOME
+                : RestartManager.PENALTY_SPOT_AWAY;
+        log("PEN", "penalty stalled " + penaltyRestartAge + " ticks — forcing the kick by "
+                + taker.getLabel());
+        taker.setPosition(spot);
+        state.getBall().setPosition(spot);
+        state.getBall().stop();
+        state.setCarrier(taker);
+        state.setRestartTaker(null);
+        penaltyRestartAge = 0;
+        takePenalty(taker);
+    }
 
     /**
      * Runs a penalty once the taker is on the ball: he commits, the keeper dives, and the
@@ -85,6 +145,7 @@ public class MatchOrchestrator {
      * {@code RestartManager.handlePenalty}, so this only resolves the execution.
      */
     private void takePenalty(Player taker) {
+        penaltyRestartAge = 0;
         Player keeper = null;
         for (Player p : state.getPlayers()) {
             if (!taker.getTeam().equals(p.getTeam()) && !p.isUnavailable()
@@ -139,6 +200,7 @@ public class MatchOrchestrator {
     public ProposalStatsCollector getStats() { return stats; }
     public MatchState getState() { return state; }
 
+
     private void log(String tag, String msg) {
         actionLog.log(tag, msg);
     }
@@ -187,6 +249,12 @@ public class MatchOrchestrator {
             }
         }
 
+        // A penalty that is neither taken nor progressing must not be allowed to evaporate.
+        // Checked here, unconditionally, because inside the claim block it never ran: by then
+        // the restart had already lost its taker, so the block's entry condition was false and
+        // the penalty sat unclaimed until open play happened to reclaim the spot.
+        checkPenaltyStall();
+
         // === 2. UNLOCK DUEL LOSERS ===
         for (Player p : state.getPlayers()) {
             if (p.isLocked() && p.getLockTicks() > 0) {
@@ -227,8 +295,8 @@ public class MatchOrchestrator {
             // decision engine, otherwise the final-rows hard-SHOT rule fires and the taker
             // simply blasts it from the spot with no run-up, no dive and no nerve - which
             // is exactly the bug S1.7 was raised to fix.
-            if (penaltyPending) {
-                penaltyPending = false;
+                if (state.isPenaltyPending()) {
+                state.setPenaltyPending(false);
                 takePenalty(carrier);
                 return;
             }
@@ -378,8 +446,6 @@ public class MatchOrchestrator {
                 // Read the type BEFORE it is cleared - this is the only moment it is still
                 // available, and it is what tells the decision hook to run a penalty rather
                 // than letting the final-rows hard-SHOT rule handle it.
-                String claimed = state.getSetPieceType();
-                penaltyPending = "PENALTY_HOME".equals(claimed) || "PENALTY_AWAY".equals(claimed);
                 state.clearSetPieceType();
                 if (state.getPhase() == MatchPhase.SET_PIECE) {
                     state.setPhase(MatchPhase.OPEN_PLAY);

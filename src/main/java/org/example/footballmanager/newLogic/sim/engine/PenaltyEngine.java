@@ -141,6 +141,7 @@ public class PenaltyEngine {
     }
 
     private Outcome apply(Player taker, Player keeper, Resolution r) {
+        state.setPenaltyPending(false);
         double takerSkill = penaltySkill(taker);
         Side takerSide = r.takerSide();
         Side keeperGuess = r.keeperSide();

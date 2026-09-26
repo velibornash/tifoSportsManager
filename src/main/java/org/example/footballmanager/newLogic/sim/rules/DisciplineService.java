@@ -36,7 +36,29 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
      * Real football: a penalty is a rare, denied-chance offence, not the default
      * for contact in the box — roughly 1% of all fouls end up as penalties.
      */
-    public static final double PENALTY_FROM_BOX_FOUL = 0.06;
+    /**
+     * Share of fouls committed inside the penalty area that become penalties.
+     *
+     * <p>Real football: ~0.27 penalties per match. That is the figure this is calibrated to, and
+     * it is reached through two measured quantities rather than assumed:
+     *
+     * <ul>
+     *   <li>the engine commits <b>1.655</b> box fouls per match (over 200 matches, seed 42). Real
+     *       football is nearer 2.5-3.5, so box-foul volume is itself on the low side.</li>
+     *   <li>VAR confirms <b>99.1%</b> of penalty calls (3 overturns in 331). The review gate and
+     *       overturn rate in {@code VARService.checkPenalty} therefore barely touch the total.</li>
+     * </ul>
+     *
+     * <p>So {@code 1.655 x rate x 0.991 = 0.27} gives ~0.165. This was 0.06, which produced
+     * 0.07 penalties per match - about a quarter of the real rate - and went unnoticed for the
+     * whole life of the engine because an un-taken penalty is indistinguishable in the aggregate
+     * from a rare one.
+     *
+     * <p>1-in-6 box fouls converting sounds high next to a real 1-in-11, and it is: the honest
+     * reading is that the engine under-produces box fouls and this constant is compensating. The
+     * cleaner fix is more box contact; that is a separate calibration and is logged as S1.7c.
+     */
+    public static final double PENALTY_FROM_BOX_FOUL = 0.165;
 
     /** Straight red (violent tackle / DOGSO) as a share of all fouls. */
     public static final double STRAIGHT_RED_RATE = 0.004;

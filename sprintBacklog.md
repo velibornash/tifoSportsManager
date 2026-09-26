@@ -415,7 +415,7 @@ penalty is not followed by a kick. It earned its keep immediately: it caught bug
 
 ---
 
-### S1.7b — Penalties are awarded 3x too rarely ⚠️ OPENED 2026-09-26
+### S1.7b — Penalties are awarded 3x too rarely ✅ DONE 2026-09-26
 
 Found while completing S1.7. Once penalties could actually be taken, the award rate became
 measurable for the first time, and it is **0.07/match against a real ~0.27** (roughly one every
@@ -428,8 +428,69 @@ a rare one — the award counter looked plausible and nothing followed it.
 Raised as its own task because it is a single calibration constant and the project rule is one
 calibration per commit.
 
-**Verify:** over 200 matches, penalties/match lands in 0.20–0.30 with the S1.7 conversion holding
-at ~76%.
+**Result:** `PENALTY_FROM_BOX_FOUL` 0.06 → **0.165**. Over 200 matches: **0.24 penalties/match**
+(target band 0.20–0.30). Everything else held — goals 3.55, shots 35.7, pass 85% — so this is an
+isolated change.
+
+The constant was derived from two measured quantities rather than guessed:
+
+| quantity | measured (200 matches, seed 42) | real football |
+|---|---|---|
+| box fouls per match | 1.655 | ~2.5–3.5 |
+| VAR confirmation of a penalty | 99.1% (3 overturns in 331) | — |
+| penalties per match (before) | 0.07 | ~0.27 |
+
+`1.655 × rate × 0.991 = 0.27` → `rate ≈ 0.165`.
+
+**Read this honestly:** 1-in-6 box fouls converting is high next to a real 1-in-11. The engine
+under-produces box contact and this constant is compensating for that. The cleaner fix is more box
+fouls, which is a separate calibration — logged as **S1.7c**. VAR was measured and is *not* a
+useful lever: the review gate in `VARService.checkPenalty` overturns so rarely that it barely moves
+the total.
+
+#### A second, worse bug found while calibrating: a penalty could be erased mid-flight
+
+`ProposalBatchDiag`'s chain invariant flagged `48 awarded but 47 taken`. Bisected to seed 123:
+
+```
+tick 2653  award  spt=PENALTY_HOME  carrier=null rtaker=H10
+tick 2654          spt=FREE_KICK    carrier=null rtaker=H10   <-- displaced
+tick 2655          spt=null         carrier=H10                 <-- played as a free kick
+tick 2658  ball has left the pitch; a throw-in follows. No PENALTY_KICK, ever.
+```
+
+A foul that is both a penalty **and** an offside in the same incident fires both. The offside path
+called `handleFreeKick`, which overwrote `setPieceType`. The penalty was re-derived from the
+set-piece type at the moment the taker reached the ball, read `FREE_KICK`, and downgraded itself.
+
+**Fix — the penalty is now an explicit flag on `MatchState`, latched at the award:**
+- `MatchState.penaltyPending`, set by `RestartManager.handlePenalty`, cleared by `PenaltyEngine`.
+- `startSetPiece` **refuses any non-penalty restart while a penalty is pending.** A penalty is the
+  more serious offence; restarting with a free kick would let the fouled side take a lesser restart
+  and quietly erase what the referee awarded.
+- The orchestrator's per-tick stall watchdog now keys off the flag, and forces the kick after 40
+  ticks so a penalty can never evaporate even if the taker loses his way to the spot.
+
+4 tests in `PenaltyChainTest`, including the exact overlap that caused it. 171 total.
+
+**Converted at 83% over 48 kicks** — above the 76% model rate, because `selectTaker` hands the ball
+to the best finisher on the pitch and a small sample runs high. The 400k-sample model figure
+(76.6% for average skills) is the reliable one.
+
+---
+
+### S1.7c — Box fouls are under-produced ⚠️ OPENED 2026-09-26
+
+Surfaced by S1.7b. The engine commits **1.655 box fouls per match**; real football is nearer
+2.5–3.5. S1.7b compensated by raising `PENALTY_FROM_BOX_FOUL` to 0.165, so 1 in 6 box fouls now
+converts to a penalty against a real 1 in 11. The penalty *rate* is right; the *box contact* that
+feeds it is not.
+
+Better to fix the cause than keep the compensation. `DisciplineService` decides `foulProb` before
+it knows where the foul is, so a tackle in the box is no more likely than one on the halfway line.
+
+**Verify:** box fouls/match lands in 2.0–3.5 over 200 matches, penalties/match stays in 0.20–0.30
+with `PENALTY_FROM_BOX_FOUL` able to come back down toward 0.09.
 
 ---
 
