@@ -1742,6 +1742,66 @@ What the owner specified:
 
 ---
 
+---
+
+# PLAYER VIEW — the tabs are placeholders (owner, 2026-09-27)
+
+Seen on **Ljupče Ožegović** (Omladinac, ATT, 20, OVR 79, value 33.7m — the star of the squad, so
+this is the page a manager will look at most). The page shell is right; the content is not there.
+
+Right now the page says, in plain text, in the place where data should be:
+
+> *This tab UI is ready: player-by-player match log can be wired later*
+> *This tab UI is ready: career timeline UI is ready for later API expansion*
+
+**That sentence must not ship.** It is a note to a developer sitting where a manager is supposed to
+be reading his player's season. Either the tab shows data or it does not exist.
+
+## What each tab needs
+
+| Tab | Already available | To do |
+|---|---|---|
+| **Overview** | condition, form, value, OVR, position, role | Career totals, current contract and wage, squad role, and the **training percentage** once Sprint 4 lands |
+| **Matches** | nothing | Per-match log from `MatchPlayerStats`, which already holds minutes, goals, assists, rating, shots, interceptions and cards — it is written by both match engines, so this is a query and a table, not new data |
+| **Transfer** | nothing | Asking price, live offers as real `TransferOffer` rows, contract, release clause, previous clubs, and sell-on clauses from `FeeStructure` |
+| **History** | nothing | A career timeline: every club he has been registered with, the contract terms, and the fee paid for each move |
+
+## Why it is not just a wiring job
+
+- **Transfer and History overlap**, and the owner is right to be suspicious of building both blindly.
+  A transfer *is* the history entry. The honest design is one timeline, with the transfer tab being a
+  filtered view of it.
+- `MatchPlayerStats` has no week/season of its own — it hangs off `Match`, which has `seasonYear`,
+  `weekNumber` and `competition`. So the match log is a join, and it can answer "how did he do in the
+  league versus the cup" for free.
+- Ratings exist per match but there is no season aggregate for a player, so the season numbers a
+  manager expects (goals, assists, average rating) have to be derived rather than read.
+
+**Suggested order: Matches first** — the data is already there, it is the tab a manager checks
+before every match, and it proves the pattern for the other three.
+
+
+---
+
+# NATIONAL TEAM PAGE — redesign (owner, 2026-09-27)
+
+The owner's words: *"dodaj da se sredi NT stranica, trenutno je ruzna"* — the national team page is
+ugly and needs tidying.
+
+Worth doing **with** the national-teams feature rather than before it. A page that only ever showed
+placeholder content should not be polished and then rebuilt; the layout decisions depend on what the
+page is for. The one thing settled already: a country picks a **human manager** at the start of the
+season, who chooses the squad, the lineup and the tactics — so the page is a selection screen first
+and a results screen second, which is the opposite emphasis from a club page.
+
+- [ ] Decide what the page is for: pick a squad, or follow one, or both
+- [ ] Squad list with positions and roles, the same POSITION/ROLE split as the club squad screen
+- [ ] Minutes in the week, since a call-up is worth about 90 of the 120 minutes that drive training
+- [ ] Results and table for the national team
+- [ ] Design it alongside the national-teams feature (see the placeholder at the end of the last sprint)
+
+---
+
 # Cross-cutting definitions of done
 
 For any task in this backlog:
