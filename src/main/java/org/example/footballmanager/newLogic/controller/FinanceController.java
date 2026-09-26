@@ -45,10 +45,12 @@ public class FinanceController {
 
     /** The full picture: balance, wage bill, budget health, and the ledger itself. */
     @GetMapping
-    public ResponseEntity<Map<String, Object>> summary(@PathVariable Long teamId) {
+    public ResponseEntity<Map<String, Object>> summary(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) Integer seasonYear) {
         Team team = teams.findById(teamId).orElse(null);
         if (team == null) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(ledgerService.summarise(team));
+        return ResponseEntity.ok(ledgerService.summarise(team, seasonYear));
     }
 
     /** Ledger lines for one season, newest week first. */

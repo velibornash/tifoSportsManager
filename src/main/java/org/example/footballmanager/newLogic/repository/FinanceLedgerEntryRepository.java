@@ -17,5 +17,9 @@ public interface FinanceLedgerEntryRepository extends JpaRepository<FinanceLedge
     List<FinanceLedgerEntry> findBySeasonAndWeek(@Param("seasonYear") Integer seasonYear,
                                                 @Param("week") Integer week);
 
+    @Query("select distinct e.seasonYear from FinanceLedgerEntry e where e.team.id = :teamId "
+            + "and e.seasonYear is not null order by e.seasonYear desc")
+    List<Integer> findDistinctSeasonsByTeamIdOrderBySeasonYearDesc(@Param("teamId") Long teamId);
+
     void deleteBySeasonYear(Integer seasonYear);
 }

@@ -35,10 +35,22 @@ public class FinanceLedgerService {
         this.players = players;
     }
 
+    /** Every season this club has a ledger for, newest first. */
+    @Transactional(readOnly = true)
+    public List<Integer> seasonsWithLedger(Long teamId) {
+        return ledger.findDistinctSeasonsByTeamIdOrderBySeasonYearDesc(teamId);
+    }
+
     /** Everything the Finances page needs, in one call. */
     @Transactional(readOnly = true)
     public Map<String, Object> summarise(Team team) {
-        Integer season = activeSeason(team);
+        return summarise(team, activeSeason(team));
+    }
+
+    /** Summary for a specific season, so the page can show a whole season rather than only this one. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> summarise(Team team, Integer season) {
+        if (season == null) season = activeSeason(team);
         List<FinanceLedgerEntry> entries = ledger.findByTeamIdAndSeasonYearOrderByWeekNumberAsc(
                 team.getId(), season);
 
@@ -77,6 +89,7 @@ public class FinanceLedgerService {
         out.put("ledgerLines", entries.size());
         out.put("byCategory", byCategory);
         out.put("settled", !entries.isEmpty());
+        out.put("seasons", seasonsWithLedger(team.getId()));
         out.put("categories", categoryLabels());
 
         // A club with no ledger yet must say so rather than render zeroes that look like a

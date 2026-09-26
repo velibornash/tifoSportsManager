@@ -12,7 +12,7 @@ export function createClubManagementFeature(deps) {
         loadPlayer,
         loadLeagueTeamPlayer
     } = deps;
-    const staffDirectoryFeature = createStaffDirectoryFeature({ authFetch, getTeamId, escapeHtml, buildClubActionsHtml });
+    const staffDirectoryFeature = createStaffDirectoryFeature({ authFetch, getTeamId, escapeHtml, buildClubActionsHtml, formatBudget });
 
     async function loadStaff() {
         return staffDirectoryFeature.loadStaff();
@@ -30,10 +30,20 @@ export function createClubManagementFeature(deps) {
         const teamId = getTeamId();
         const mainContent = document.getElementById('main-content');
 
+        // Season is a real selector, not a fixed "this year": a manager reviewing last season is
+        // the main thing the page exists for, and the ledger is kept per season.
+        const requestedSeason = (() => {
+            const fromUrl = new URLSearchParams(window.location.search).get('financesSeason');
+            if (fromUrl) return Number(fromUrl);
+            const stored = sessionStorage.getItem('financesSeason');
+            return stored ? Number(stored) : null;
+        })();
+        const seasonQuery = requestedSeason ? `?seasonYear=${requestedSeason}` : '';
+
         const [profileRes, financesRes, historyRes, boardRes, playersRes] = await Promise.all([
             authFetch(`/demo/teams/${teamId}/profile`),
-            authFetch(`/api/teams/${teamId}/finances`),
-            authFetch(`/api/teams/${teamId}/finances/history`),
+            authFetch(`/api/teams/${teamId}/finances${seasonQuery}`),
+            authFetch(`/api/teams/${teamId}/finances/history${seasonQuery}`),
             authFetch(`/api/teams/${teamId}/finances/board`),
             authFetch(`/teams/${teamId}/players`)
         ]);
@@ -74,6 +84,7 @@ export function createClubManagementFeature(deps) {
             [Math.abs(Number(h.balance || 0)), Number(h.income || 0), Number(h.expenses || 0)]));
 
         const unsettled = finances.settled === false;
+        const seasons = finances.seasons || [];
         const ffp = board && board.ffpRatio != null ? Number(board.ffpRatio) : null;
 
         mainContent.innerHTML = `
@@ -95,6 +106,13 @@ export function createClubManagementFeature(deps) {
                         <div><strong>${escapeHtml(formatBudget(wageBill))}</strong><span>Weekly wage bill</span></div>
                         <div><strong>${escapeHtml(topAsset?.name || '—')}</strong><span>Top asset</span></div>
                     </div>
+                    ${seasons.length > 1 ? `
+                        <div class="fm-panel-action" style="margin-top:12px;">
+                            <label for="finances-season" class="fm-subtle">Season</label>
+                            <select id="finances-season" data-finances-season>
+                                ${seasons.map(y => `<option value="${y}" ${Number(finances.seasonYear) === Number(y) ? 'selected' : ''}>${y}</option>`).join('')}
+                            </select>
+                        </div>` : ''}
                     ${unsettled ? `<p class="fm-subtle">${escapeHtml(finances.notice || '')}</p>` : ''}
                 </section>
 
@@ -161,6 +179,17 @@ export function createClubManagementFeature(deps) {
                 </section>
             </div>`;
 
+        // The season picker reloads in place. Stored so the choice survives navigating away and
+        // back, which is what a manager comparing two seasons will do repeatedly.
+        const seasonPicker = mainContent.querySelector('[data-finances-season]');
+        if (seasonPicker) {
+            seasonPicker.addEventListener('change', event => {
+                const chosen = event.target.value;
+                if (chosen) sessionStorage.setItem('financesSeason', chosen);
+                else sessionStorage.removeItem('financesSeason');
+                loadFinances();
+            });
+        }
     }
 
 

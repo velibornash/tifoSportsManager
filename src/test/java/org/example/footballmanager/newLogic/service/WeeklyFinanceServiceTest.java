@@ -15,9 +15,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -35,6 +37,7 @@ class WeeklyFinanceServiceTest {
     @Autowired WeeklyFinanceService finances;
     @Autowired AdmissionService admission;
     @Autowired PitchMaintenanceService pitch;
+    @Autowired FinanceLedgerService ledgerService;
 
     private Team aClub(String name, int capacity, double ticketPrice, double startingBudget) {
         Team t = new Team();
@@ -131,6 +134,34 @@ class WeeklyFinanceServiceTest {
         double bigGate = admission.projectHomeFixture(big).gateRevenue;
         assertTrue(bigGate > smallGate * 5,
                 "a 45k ground must be worth far more than a 5k one: " + bigGate + " vs " + smallGate);
+    }
+
+    @Test
+    @DisplayName("each season keeps its own ledger")
+    void seasonsAreSeparate() {
+        Team club = aClub("Seasons", 20_000, 18.0, 1_000_000);
+        finances.applyWeeklyFinances(club, 2024, 1);
+        finances.applyWeeklyFinances(club, 2025, 1);
+
+        assertEquals(1, ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2024, 1).size());
+        assertEquals(1, ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2025, 1).size());
+
+        List<Integer> seasons = ledgerService.seasonsWithLedger(club.getId());
+        assertTrue(seasons.contains(2024) && seasons.contains(2025),
+                "a manager reviewing last season needs both to be listed: " + seasons);
+    }
+
+    @Test
+    @DisplayName("a season with no ledger says so rather than showing zeroes")
+    void emptySeasonIsHonest() {
+        Team club = aClub("EmptySeason", 20_000, 18.0, 1_000_000);
+        finances.applyWeeklyFinances(club, 2025, 1);
+
+        Map<String, Object> for2024 = ledgerService.summarise(club, 2024);
+        assertTrue(Boolean.FALSE.equals(for2024.get("settled")),
+                "2024 has no weeks, so it must read as unsettled");
+        assertNotNull(for2024.get("notice"),
+                "and must carry the notice, so the page can explain itself");
     }
 
     @Test

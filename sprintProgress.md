@@ -967,11 +967,49 @@ the first time a third field is added.
 
 **11 tests. 254 total.**
 
+### S2 UI — the Finances and Staff pages, on real data ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+The last of Sprint 2: the two screens that were still reading hardcoded arrays after the API
+existed.
+
+#### Staff directory — fully fabricated, now real
+
+`staff-directory.js` built four coaches and five support staff out of **literal strings** and read
+them from `/demo/teams/{id}/coaches`, which returned a constant. The header reported
+`Departments 3 · Filled slots 9 · Owner Velja` — all constants. Every club in the country had the
+same staff, the same ages, the same contracts, and **the wages on screen were the wages of nobody**.
+
+Rewritten against `/api/teams/{id}/staff` and `/api/teams/{id}/sponsors`. Two things worth noting:
+
+- **The tabs are derived from the data, not a hardcoded list of three.** An unmapped role falls into
+  an "other" department that always renders, so adding a role later cannot make staff silently
+  vanish. `YOUTH_COACH` therefore became a visible Academy tab rather than being hidden.
+- **The "focus" line is built from the attributes actually stored** — the two strongest of the six —
+  instead of a per-index string. A scout's row now says *Recruitment (18) · Scouting (16)* because
+  those are his numbers, not because he is the second scout in a literal.
+
+The profile page shows the real contract season, the real wage, and all six attributes. Vacancies
+are surfaced: a club with no head coach says so.
+
+#### Finances — a season selector, and honest empties
+
+The ledger was already per season on the server but the page was hard-wired to the current one, so
+**a manager reviewing last season — the main thing the page exists for — could not**. The summary
+endpoint is now season-aware, `seasonsWithLedger` lists the seasons that exist, and the page offers a
+picker that survives navigating away and back.
+
+A season with no weeks reads as unsettled and carries a notice. It does not render zeros, because
+zeros and "nothing has happened yet" look identical and only one of them is true.
+
+**9 ledger tests after the change. 256 total.**
+
 ### Sprint 2 test count
 
 221 before the ledger, 228 after, **235** after the board, **243** after staff and sponsors, **254**
-after morale and the transfer budget. 7 ledger, 7 board, 8 admission, 9 pitch-maintenance,
-8 staff/sponsor and 11 morale/budget tests this sprint.
+after morale and the transfer budget, **256** after the UI. 9 ledger, 7 board, 8 admission,
+9 pitch-maintenance, 8 staff/sponsor and 11 morale/budget tests this sprint.
 
 ## Where Sprint 1 stands
 
