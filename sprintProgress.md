@@ -1797,6 +1797,48 @@ The **talent and percentage visibility** is still not wired, and so are the rest
 candidates. The owner asked to agree precisely what plus users see once everything is in place, and
 that is a conversation, not a guess.
 
+### Paid information, own squad only
+
+The owner's rule, precisely: **talent is visible only for players in your own squad, and the training
+percentage likewise** — not for a player you can see but do not manage. "Plus" is a `UserRole` in
+this codebase, not a separate flag, so it is read from there. `OWNER`, `DEV` and `ADMIN` skip the plus
+check, because a developer chasing a bug needs the real number, but they still only see their own
+club.
+
+**The free half of the rule is the reason it is a rule and not a restriction.** Knowing a rival's
+19-year-old is special is a scouting secret, and seeing it would let a manager bid a price that only
+makes sense if you know what he is. Stripping it is what keeps the transfer market a market.
+
+Hidden values come back as **null, never zero** — zero is a real talent value, and returning it
+would make an invisible prospect look like a hopeless one rather than a hidden one.
+
+#### 🐛 The report endpoint leaked the feature it had just added
+
+`GET /training/weekly/team/{teamId}/reports` takes a `teamId` with **no ownership check**. So the
+moment the training percentage went on that DTO, any manager could read any club's percentages by
+passing its id — handing over the thing being paid for, and telling a rival exactly how well its
+youth development is working. The rows are now stripped to null unless the caller is plus *and* the
+club is theirs; the rest of the report stays, since a 403 would take away a page they may legitimately
+open. Ownership resolves by club name because that is how the rest of the app links a user to a club,
+so the check cannot disagree with what the dashboard thinks their club is.
+
+`isOwnTeam` **fails closed** — an unknown user, no club, or a name matching nothing is not their team.
+
+#### Two more time-boxed ticker items
+
+Both agreed as first priority, both because they expire with no sound:
+
+- **A friendly request awaiting an answer** — a club has asked, and it lapses at the end of that week.
+- **Weekly training not run** — a once-a-week action that silently does not happen on a busy week,
+  detected by comparing the game clock's season and week against the reports that exist.
+
+**393 tests.**
+
+#### Left for the owner
+
+Academy junior talent is **not** gated. Juniors are the manager's own, but they are not the first-team
+squad, and the owner's wording was "own team". It needs one word of confirmation rather than a guess.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

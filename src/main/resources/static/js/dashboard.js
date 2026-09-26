@@ -230,8 +230,52 @@ function buildWindowUpdates(windowState) {
     return updates;
 }
 
-function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState) {
+/**
+ * Time-boxed items that currently expire without a sound (owner, 2026-09-27).
+ *
+ * <p>Both were picked first because they share the same failure: nothing happens, no error, and the
+ * opportunity is simply gone by the time anyone noticed. A friendly request lapses after its week; a
+ * week's training is a once-a-week action that simply does not happen on a busy week.
+ */
+function buildTimeboxedUpdates(friendlyWeek, clock, trainingReports) {
     const updates = [];
+
+    // A club has asked us to play a friendly and is waiting for an answer.
+    const incoming = Array.isArray(friendlyWeek?.incoming) ? friendlyWeek.incoming : [];
+    if (incoming.length > 0) {
+        const request = incoming[0];
+        const extra = incoming.length > 1 ? ` (and ${incoming.length - 1} more)` : '';
+        updates.push({
+            severity: 'alert',
+            title: `Friendly request awaiting your answer${extra}`,
+            meta: `A club has asked for week ${request?.week} slot ${request?.slot}. It lapses at the end of that week.`
+        });
+    }
+
+    // Training is once a week and produces nothing visible when skipped.
+    if (clock && Array.isArray(trainingReports)) {
+        const season = Number(clock.currentSeason ?? clock.seasonNumber);
+        const week = Number(clock.currentWeek ?? clock.weekNumber);
+        const done = trainingReports.some(r =>
+            Number(r?.seasonNumber) === season && Number(r?.weekNumber) === week);
+        if (Number.isFinite(season) && Number.isFinite(week) && !done) {
+            updates.push({
+                severity: 'warning',
+                title: 'Weekly training not run yet',
+                meta: `Season ${season}, week ${week}. Training is once a week and will not run itself.`
+            });
+        }
+    }
+
+    return updates;
+}
+
+function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState,
+                               friendlyWeek, clock, trainingReports) {
+    const updates = [];
+
+    // The time-boxed ones go in first: they are the only entries that stop being true.
+    updates.push(...buildTimeboxedUpdates(friendlyWeek, clock, trainingReports));
     const recoveryQueue = Array.isArray(medical?.recoveryQueue) ? medical.recoveryQueue.filter(Boolean) : [];
     const starterIds = Array.isArray(lineupTemplate?.starterIds) ? lineupTemplate.starterIds.filter(Boolean) : [];
     const benchIds = Array.isArray(lineupTemplate?.benchIds) ? lineupTemplate.benchIds.filter(Boolean) : [];
@@ -318,15 +362,21 @@ async function loadImportantUpdates() {
     const ticker = host.closest('.fm-dashboard-ticker');
 
     try {
-        const [medical, lineupTemplate, transferOverview, communitySummary, windowState] = await Promise.all([
+        const [medical, lineupTemplate, transferOverview, communitySummary, windowState,
+               friendlyWeek, clock, trainingReports] = await Promise.all([
             authFetch(`/teams/${currentUserTeamId}/medical`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/teams/${currentUserTeamId}/lineup-template`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch('/community/summary').then(response => response.ok ? response.json() : null).catch(() => null),
-            authFetch('/transfers/window').then(response => response.ok ? response.json() : null).catch(() => null)
+            authFetch('/transfers/window').then(response => response.ok ? response.json() : null).catch(() => null),
+            // The two time-boxed items the owner ranked first, because both expire silently.
+            authFetch(`/api/season/friendlies/${currentUserTeamId}/week`).then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch('/api/game-clock').then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch(`/training/weekly/team/${currentUserTeamId}/reports`).then(response => response.ok ? response.json() : null).catch(() => null)
         ]);
 
-        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState);
+        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview,
+            communitySummary, windowState, friendlyWeek, clock, trainingReports);
         ticker?.classList.toggle('is-community-alert', Boolean(communitySummary?.hasNewMessages));
         if (!updates.length) {
             host.innerHTML = buildImportantTickerMarkup('No urgent club updates right now.');
