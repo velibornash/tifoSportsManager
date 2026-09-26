@@ -1011,6 +1011,48 @@ zeros and "nothing has happened yet" look identical and only one of them is true
 after morale and the transfer budget, **256** after the UI. 9 ledger, 7 board, 8 admission,
 9 pitch-maintenance, 8 staff/sponsor and 11 morale/budget tests this sprint.
 
+## Sprint 3 — Contracts and transfers v2
+
+**Started:** 2026-09-26
+
+### S3.1 — Contracts ✅ DONE · `ae725b8`
+
+There was **no contract entity at all**. A player's wage was a field on the player and nothing tracked
+when it ended. That is the whole reason the free-agent market was *impossible by construction*: a
+transfer required a selling team, and a player could never stop having one.
+
+- **`PlayerContract`** — player, club, weekly wage, length, signed/expiry season, release clause,
+  squad role, squad number, and `onLoanFrom` for loans. Expiry is the mechanism that lets a club be
+  **rebuilt rather than only bought from**.
+- **`SquadRole`** — `STAR` / `STARTER` / `ROTATION` / `PROSPECT` / `YOUTH`, and it is not decoration:
+  a squad's wage structure is a *shape*, and a model that paid every role the same per unit of value
+  made every squad cost the same.
+- **Expiry runs in the week advance** (`SeasonService.expirePlayerContracts`). A contract expires at
+  the *end* of its season, not during it, and the record is kept with no club rather than deleted —
+  the wage history and squad role stay meaningful, and a released player is still a player.
+- **Renewal with a wage demand derived from four things**, all of which a real agent would use: what
+  he is worth, his squad role, his **age** (a 19-year-old accepts less, because the next contract is
+  where the money is), and his **form** (he asks for what he is doing now, not what he did last
+  season) plus a small morale term. Refusing is not a null result — the player **asks for a
+  transfer**, and that is recorded.
+- **Squad registration is checked before signing**: 25 senior + 8 academy, with the reason returned.
+  A club cannot quietly build a 40-man squad.
+- **Backfill gives every existing player a plausible contract** — long deals for the young, short
+  ones for veterans, release clauses on roughly a third of the senior squad, all derived from the
+  player id so a redeploy does not reshuffle the world. Safe to run repeatedly.
+
+#### An 18× performance bug in the week advance
+
+The backfill's first version looped **every player in the database** and ran a contract lookup for
+each one — an N+1 over the whole table, on a path that runs on every week advance. The test that
+exposed it took **358 seconds**.
+
+Replaced with a single query returning the players who need a contract. Same test: **19.6 seconds**.
+This was a production defect, not a test annoyance, and it was only visible because the test
+database had grown to a few thousand players.
+
+**11 tests. 267 total.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
