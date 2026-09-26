@@ -28,18 +28,6 @@ public class Competition {
     private Boolean hasPlayout;
     private Integer promotionSpots;
 
-    /**
-     * How many non-EU players this competition lets a club register.
-     *
-     * <p>Serbia's rule is four in the top flight and fewer below, and it is the constraint that
-     * shapes a season's transfer planning: a club with four foreign players cannot sign a fifth
-     * however badly it wants him, so the quota has to be part of the decision rather than a
-     * post-hoc validation error.
-     *
-     * <p>Null means "not set", in which case {@code WorkPermitService} falls back to the tier
-     * default. See the open question in sprintBacklog about the exact per-tier figures.
-     */
-    private Integer foreignPlayerLimit;
     private Integer relegationSpots;
     private Integer reputationWeight;
     private Boolean hasSeeding;

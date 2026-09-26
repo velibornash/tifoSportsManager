@@ -1538,6 +1538,20 @@ Every role has a readable label, because "SHOOTER" is not a job and the squad sc
 
 **369 tests.**
 
+### No foreigner limit — removed at the owner's direction
+
+S3.5 built the non-EU quota and work permits on the strength of "Serbia's rule is four in the top
+flight, fewer below". The owner has since decided there is **no foreigner limit for now**, so the
+whole thing is gone: `WorkPermit`, `WorkPermitService`, `WorkPermitRepository`, the tests, the
+`Competition.foreignPlayerLimit` column and the gate in `PlayerContractService.sign`.
+
+`Player.nationality` **stays**, deliberately. The owner may later want a minimum number of players
+from the club's own country, and a nationality column is what that needs; keeping it now costs
+nothing and saves a migration later. Nothing reads it today except the club-need model, which does
+not use it.
+
+**361 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

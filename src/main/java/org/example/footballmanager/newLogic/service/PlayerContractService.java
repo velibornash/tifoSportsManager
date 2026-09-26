@@ -4,7 +4,6 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerContract;
 import org.example.footballmanager.newLogic.model.SquadRole;
 import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
@@ -17,9 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.example.footballmanager.newLogic.model.Competition;
-import org.example.footballmanager.newLogic.model.CompetitionEntry;
-import org.example.footballmanager.newLogic.model.SeasonCompetition;
 
 /**
  * Contracts: signing, expiry, renewal and registration (Sprint 3.1).
@@ -59,48 +55,23 @@ public class PlayerContractService {
     private final TransferBudgetService budgets;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
-    private final WorkPermitService permitService;
     private final CompetitionRepository competitions;
-    private final CompetitionEntryRepository entryRepository;
 
     public PlayerContractService(PlayerRepository players,
                                  PlayerContractRepository contracts,
                                  TransferBudgetService budgets,
                                  org.example.footballmanager.newLogic.repository.TeamRepository teams,
                                  org.example.footballmanager.newLogic.repository.GameClockRepository clocks,
-                                 WorkPermitService permitService,
-                                 CompetitionRepository competitions,
-                                 CompetitionEntryRepository entryRepository) {
+                                 CompetitionRepository competitions) {
         this.players = players;
         this.contracts = contracts;
         this.budgets = budgets;
         this.teams = teams;
         this.clocks = clocks;
-        this.permitService = permitService;
         this.competitions = competitions;
-        this.entryRepository = entryRepository;
     }
 
-    /**
-     * The competition a club plays in, so the quota that applies to a signing is the right one.
-     *
-     * <p>The club's highest-tier entry, because that is the league whose rules bind its squad. Null
-     * when the club is in nothing, which the permit service treats as no quota rather than as an
-     * unlimited one - an unplaced club cannot be handed foreign places.
-     */
-    private Competition competitionFor(Long teamId) {
-        Team theClub = teams.findById(teamId).orElse(null);
-        if (theClub == null) return null;
-        List<CompetitionEntry> entries = entryRepository.findByTeam(theClub);
-        if (entries == null || entries.isEmpty()) return null;
-        return entries.stream()
-                .map(CompetitionEntry::getSeasonCompetition)
-                .filter(Objects::nonNull)
-                .map(SeasonCompetition::getCompetition)
-                .filter(Objects::nonNull)
-                .min(Comparator.comparingInt(c -> c.getTier() == null ? 99 : c.getTier()))
-                .orElse(null);
-    }
+
 
     /**
      * The season contracts are written against.
@@ -156,13 +127,6 @@ public class PlayerContractService {
             return Outcome.refused(room.reason());
         }
 
-        // And a foreign player needs a place against the non-EU quota. This is a squad limit no
-        // amount of money fixes: a club at four has to sell one before it can sign another.
-        WorkPermitService.RegistrationCheck permitCheck =
-                permitService.canRegister(teamId, playerId, competitionFor(teamId));
-        if (!permitCheck.allowed()) {
-            return Outcome.refused(permitCheck.reason());
-        }
 
         // The three things this used to leave out, which is why signing accomplished nothing:
         // the contract was written with no club, the player was never moved, and the wage was
