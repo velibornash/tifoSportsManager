@@ -911,7 +911,37 @@ Today: `maybeCreateIncomingOffer:465-469` **only ever targets human players** �
 | 8 | Transfer history per player | |
 | 9 | Squad-size limits on purchasing | |
 
+| # | Task | State |
+|---|---|---|
+| 1 | `ClubNeed` model: each AI club evaluates squad gaps by position and quality tier | ✅ `ClubNeedService` |
+| 2 | Buyer selection weighted by need × budget tier × ambition | ✅ weighted by need; budget respected |
+| 3 | **Enable AI↔AI transfers** | ✅ every listed player is auctioned to every club |
+| 4 | Price realism: age, contract length, form, squad depth | ✅ `ClubNeedService.valuation` |
+| 5 | Negotiated AI offers (fee + wage + length) using the S3.2 engine | ❌ still one number, not a thread |
+| 6 | AI clubs renew expiring contracts and reject players | ❌ **not done — supply pressure is still missing** |
+| 7 | Unlisted players must be **scoutable** | ✅ `TransferService.scoutedUnlisted` |
+| 8 | Transfer history per player | ❌ **not done** |
+| 9 | Squad-size limits on purchasing | ❌ **not done** — loans are exempt, purchases are not capped |
+
 **Verify:** over 20 simulated weeks, AI clubs trade players with each other, squads improve, and academy graduates get bought.
+
+**⚠️ The verification above has not been run.** It asks for 20 simulated weeks showing AI clubs
+trading with each other, squads improving and academy graduates being bought. That is a batch
+diagnostic and it has not been written. Items 5, 6, 8 and 9 are the honest remainder.
+
+### S3.7 — ⚠️ Legacy `Transfer` migration (added 2026-09-26)
+
+`Transfer.interestedTeams` is a `Set<String>` of club **names**, and the legacy
+`TransferService.completeTransfer` still moves the player and the money. Both sit alongside the new
+`TransferOffer` engine, so there are now **two completion paths on the same `Transfer` entity** —
+duplication, and a double-completion risk if both ever run.
+
+- [ ] Migrate `interestedTeams` to real club ids backed by `TransferOffer` rows
+- [ ] Remove the legacy `completeTransfer`, leaving `NegotiationService.completeTransfer` as the only path
+- [ ] Re-point the controllers that still read the legacy shape
+
+A refactor rather than a patch, so it was left undone rather than half-finished. It should be the
+next thing anyone picks up in Sprint 3.
 
 ---
 
