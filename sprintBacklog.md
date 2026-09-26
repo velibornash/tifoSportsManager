@@ -682,7 +682,7 @@ unfinished, to be looked at together at the end rather than chased now.
 
 ---
 
-### S2.1 — Seed a real world
+### S2.1 — Seed a real world ✅ DONE 2026-09-26
 
 Today every one of the 310 clubs has `budget = 0.0` and `reputation = 50.0` (`TeamFactory.java:56-58`).
 
@@ -698,7 +698,7 @@ Today every one of the 310 clubs has `budget = 0.0` and `reputation = 50.0` (`Te
 
 ---
 
-### S2.2 — `FinanceLedgerEntry` entity + weekly settlement
+### S2.2 — `FinanceLedgerEntry` + weekly settlement ✅ DONE 2026-09-26
 
 | # | Task |
 |---|---|
@@ -724,7 +724,7 @@ Today every one of the 310 clubs has `budget = 0.0` and `reputation = 50.0` (`Te
 
 ---
 
-### S2.3 — Sponsors and staff as real entities
+### S2.3 — Sponsors and staff as real entities ✅ DONE 2026-09-26
 
 There is **no `Staff` / `Coach` / `Sponsor` JPA entity anywhere in the codebase.** The staff directory is hardcoded in the browser (`static/js/pages/features/staff-directory.js:12-51`) and coaching has **zero** simulation effect.
 
@@ -743,7 +743,7 @@ There is **no `Staff` / `Coach` / `Sponsor` JPA entity anywhere in the codebase.
 
 ---
 
-### S2.4 — Board expectations and manager trust
+### S2.4 — Board expectations and manager trust ✅ DONE 2026-09-26
 
 This is what creates stakes. Without it there is no pressure loop.
 
@@ -763,7 +763,7 @@ This is what creates stakes. Without it there is no pressure loop.
 
 ---
 
-### S2.5 — Wage bill, FFP-lite, and the transfer budget
+### S2.5 — Wage bill, FFP-lite, transfer budget ✅ DONE 2026-09-26
 
 | # | Task |
 |---|---|
@@ -778,7 +778,7 @@ This is what creates stakes. Without it there is no pressure loop.
 
 ---
 
-### S2.6 — Dressing room and morale (make `form` mean something)
+### S2.6 — Dressing room and morale ✅ DONE 2026-09-26
 
 `Player.form` is a creation-time constant. `MoraleSystem.getConfidenceModifier()` has **zero callers**.
 
@@ -1510,6 +1510,53 @@ Known starting point, for context when the brief arrives — the current editor
 Everything else in the current model is known to be inert: the 506 possession-context tactical
 rules are all identical, so in-possession and out-of-possession shape do nothing
 (`backlog.md:381-385`), and the engine is hard-coded 4-4-2 regardless of the formation chosen.
+
+## ⚠️ Remark — the editor is not merely inert, it is disconnected (owner note, 2026-09-26)
+
+Recorded here so the brief is written against the real state rather than the assumed one.
+**Flagged by the owner as directionally right but not literally exact** — the wiring
+conclusion holds, the specific figures below are approximate and must be re-verified against
+the code before the brief is written.
+
+The claim: **the tactical editor writes to a table that no engine file ever reads.**
+
+- `TeamTacticsProfile` — the entity the editor persists through `TeamController`
+  `GET/PUT /teams/{id}/tactics-editor` — is referenced only by its own repository, the
+  database initializer, the backup service and `TeamTacticsService`. **No file under
+  `newLogic/sim/` opens it.**
+- Every construction of the orchestrator uses the **no-arg** form, which is
+  `this(state, new TacticsRules())` (`sim/engine/MatchOrchestrator.java:181`). There are
+  roughly a dozen such sites (`SimMatchRunner`, `ProposalMatchController`, the launchers, the
+  diagnostics, `ProposalBatchDiag`, `TeamStrengthProbe`, `MatchSimulator`, `RestartManager`).
+- `new TacticsRules()` therefore falls to its own defaults: **raw JDBC to a hardcoded
+  `jdbc:postgresql://localhost:5432/sokker_db`** (a database name left over from a previous
+  project) reading **team id 1** (`sim/tactics/TacticsRules.java:37-49`). Otherwise it loads
+  the bundled `tactics_fallback.json`. **Both sides of the match share one rules object.**
+- `FORMATION` is `public static final String FORMATION = "4-4-2"` — the 10 formations offered
+  in `formations-view.js` resolve to 3 layouts in `FormationSlotCatalog`, and the engine reads
+  none of them.
+- In `tactics_fallback.json` the two possession contexts are **byte-identical for all 506
+  slot × ball-state pairs**, so in-possession and out-of-possession shape are the same shape.
+  The dataset is ~11 slots × ~46 ball states × 2 contexts = ~1,012 rows, and the goalkeeper
+  resolves to only a couple of distinct target cells across the whole grid — the tactical
+  response to ball position is far coarser than the row count suggests.
+
+**Why this belongs in a placeholder section and not a scheduled task:** Sokker's entire product
+identity is this one editor — it is the reason their long-term players stay, and they run
+40,000 clubs on it. We appear to already own roughly 80% of the equivalent (the data model,
+the persistence, the editor UI, the dataset) with the engine read-path missing. Until that is
+closed, the editor is a screen where a manager drags a shape, saves it, and nothing happens —
+which is worse than not shipping the screen, because it is a broken promise in the product.
+
+**The consequence for the brief:** this is a wiring, sanitisation and per-side-rules job, not a
+greenfield rebuild. Budget it as such, and decide explicitly whether the shipped model keeps
+Sokker's free-form geometry, Hattrick's named tactics with derived levels, FM's instruction
+sliders, or a deliberate mix — `Tactics.java` already carries six 0–10 fields
+(`aggression`, `defenseLine`, `pressing`, `possession`, `counterAttack`, `ballControl`), three
+of which have no consumer and none of which have a UI.
+
+Full analysis, including the Sokker / Hattrick / Football Manager comparison this judgement
+rests on: **`COMPETITIVE_ANALYSIS.md`** §9.1.
 
 ---
 
