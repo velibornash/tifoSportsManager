@@ -1181,6 +1181,89 @@ rest of the system produces actually land.
 
 ---
 
+# Conditional substitutions — match settings
+
+**Added 2026-09-26 at owner request.** Placeholder brief; detail to be confirmed before build.
+
+## The idea
+
+Per-match substitution rules, evaluated live: *"at minute 60, if we are losing, bring on X for
+Y"* / *"if leading, protect the lead"*. Capped naturally at five rules, one per available sub.
+
+## Effort assessment — the honest version
+
+**The engine is roughly 20% of this. The UX and the rules interpretation are the other 80%.**
+
+### Genuinely easy, because S1.8 just built the prerequisites
+
+| Piece | Why it's cheap now |
+|---|---|
+| Trigger by minute | `state.getMatchTicks()` already exists and is polled every tick |
+| Condition "if losing / drawing / leading" | `state.getHomeGoals()` / `getAwayGoals()` |
+| "Player X on for position Y" | `SubstitutionService.pickReplacement(team, off)` already does role-aware selection, and a named player is simpler still |
+| The bench | Just built — `MatchState.getBench(side)` |
+| Sub budget and windows | Just built — `getSubsUsed`, `getSubWindowsUsed` |
+| Emergency subs | Just built, and they take priority over rules, which is the correct precedence |
+
+The hard parts of substitutions are done. Conditional subs are a *layer on top*, not a
+rebuild.
+
+### The real work, in order of difficulty
+
+1. **Plan persistence (the biggest item).** A plan set at minute 0 must survive a page reload at
+   minute 55. That means the plan lives **server-side, keyed by match**, not in JS memory. Needs an
+   entity, a controller, and a decision on when it is discarded. Everything else is UI on top of
+   this.
+2. **The window rule is genuinely ambiguous.** A rule that fires at minute 60 needs play stopped
+   before a sub is legal. The engine has no explicit stoppage clock — `insideOpenWindow()` currently
+   sniffs `getRestartTaker()`. A conditional sub that triggers mid-flow therefore either has to
+   wait for the next natural stoppage, or force one. **Needs a product decision:** does the engine
+   force a stoppage, or do rules only fire at natural dead-ball moments?
+3. **Rule cancellation and stale rules.** A rule whose named player has already come on, or whose
+   window has passed, must be visibly disabled rather than silently ignored. The manager has to be
+   able to see "3 of 5 subs still available, 1 rule no longer possible — why".
+4. **Interaction with fatigue/injury auto-subs.** If the auto-sub already used the slot a rule
+   needed, the rule dies. Precedence is: emergency (red/injury) > manager rule > fatigue auto-sub.
+   The UI has to explain that rather than look broken.
+5. **UI.** A rules builder — minute, condition, player, position — plus a live view of which rules
+   fired, which are spent, and which are void. This is the bulk of the work and the part worth
+   doing well, because it is the whole feature from the manager's point of view.
+
+### Open questions for the owner
+
+- Force a stoppage when a rule fires, or only allow it at natural dead balls?
+- Can a manager cancel a pending rule mid-match?
+- Do rules apply in the last 10 minutes of stoppage time, or only in regulation?
+- Is the condition set (always / losing / drawing / leading / by x goals) enough for v1?
+
+### Placeholder in the plan
+
+Build **after** S1.6 (injuries and fatigue) so the rules have real substitutions to compete with,
+and after S1.7 (penalties), since a penalty can also force a change. Sprint to be confirmed.
+
+---
+
+# TACTICAL EDITOR REDESIGN
+
+**Added 2026-09-26 at owner request — PLACEHOLDER ONLY.**
+
+No scope defined yet. Owner will supply the brief when the time comes. Not estimated, not
+scheduled, and deliberately not designed here.
+
+Known starting point, for context when the brief arrives — the current editor
+(`static/js/pages/views/tactic-editor-view.js`, 311 lines) supports:
+
+- drag the ball onto a pitch zone to set the tactical state
+- drag slot circles to define that state's shape
+- localStorage drafts, version counter, discard/save
+- five set-piece taker selectors
+
+Everything else in the current model is known to be inert: the 506 possession-context tactical
+rules are all identical, so in-possession and out-of-possession shape do nothing
+(`backlog.md:381-385`), and the engine is hard-coded 4-4-2 regardless of the formation chosen.
+
+---
+
 # Effort summary
 
 | Sprint | Scope | Effort | Type |
