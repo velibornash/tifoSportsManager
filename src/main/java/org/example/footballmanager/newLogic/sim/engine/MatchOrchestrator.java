@@ -54,6 +54,7 @@ public class MatchOrchestrator {
     private final DuelService duelService;
     private final SubstitutionService substitutions;
     private final InjuryService injuries;
+    private final PenaltyEngine penaltyEngine;
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
     private final ThreatOverrideEngine threatOverrideEngine;
@@ -68,6 +69,36 @@ public class MatchOrchestrator {
     private String lastLoggedCarrier;
     private boolean tacticsSourceLogged;
     private int restartTakerAge; // ticks the current restart taker has been designated
+
+    /**
+     * Set when a penalty taker picks the ball up, consumed by the decision hook on the next tick.
+     *
+     * <p>It has to be carried in a field like this: the claim block below clears the set-piece type
+     * on the very tick the taker reaches the ball, so by the time the decision hook runs there is
+     * nothing left to read and a penalty silently degraded into an ordinary 11 m shot.
+     */
+    private boolean penaltyPending;
+
+    /**
+     * Runs a penalty once the taker is on the ball: he commits, the keeper dives, and the
+     * outcome resets play. The awarded counter was already incremented by
+     * {@code RestartManager.handlePenalty}, so this only resolves the execution.
+     */
+    private void takePenalty(Player taker) {
+        Player keeper = null;
+        for (Player p : state.getPlayers()) {
+            if (!taker.getTeam().equals(p.getTeam()) && !p.isUnavailable()
+                    && p.getRole() != null && p.getRole().startsWith("GK")) {
+                keeper = p;
+                break;
+            }
+        }
+        state.setCarrier(null);
+        state.setRestartTaker(null);
+        PenaltyEngine.Outcome outcome = penaltyEngine.execute(taker, keeper);
+        state.setLastTouchPlayer(taker);
+        log("PEN", "penalty outcome: " + outcome);
+    }
 
     public MatchOrchestrator(MatchState state) {
         this(state, new TacticsRules());
@@ -88,6 +119,7 @@ public class MatchOrchestrator {
         this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
         this.substitutions = new SubstitutionService(state, recorder, stats);
         this.injuries = new InjuryService(state, recorder, stats);
+        this.penaltyEngine = new PenaltyEngine(state, recorder, stats, actionLog, restartManager);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
         this.threatOverrideEngine = new ThreatOverrideEngine();
 
@@ -190,6 +222,16 @@ public class MatchOrchestrator {
         if (canReDecide && state.getCarrier() != null
                 && state.getRestartTaker() == null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
+
+            // A penalty is its own mechanic, not an 11 m shot. This must run BEFORE the
+            // decision engine, otherwise the final-rows hard-SHOT rule fires and the taker
+            // simply blasts it from the spot with no run-up, no dive and no nerve - which
+            // is exactly the bug S1.7 was raised to fix.
+            if (penaltyPending) {
+                penaltyPending = false;
+                takePenalty(carrier);
+                return;
+            }
 
             // RIGID RULE (user 2026-09-17): the carrier must be physically ON the
             // ball before deciding/executing ANY action. An off-ball carrier leaves
@@ -333,6 +375,11 @@ public class MatchOrchestrator {
                 state.getBall().stop();
                 state.setRestartTaker(null);
                 restartTakerAge = 0;
+                // Read the type BEFORE it is cleared - this is the only moment it is still
+                // available, and it is what tells the decision hook to run a penalty rather
+                // than letting the final-rows hard-SHOT rule handle it.
+                String claimed = state.getSetPieceType();
+                penaltyPending = "PENALTY_HOME".equals(claimed) || "PENALTY_AWAY".equals(claimed);
                 state.clearSetPieceType();
                 if (state.getPhase() == MatchPhase.SET_PIECE) {
                     state.setPhase(MatchPhase.OPEN_PLAY);

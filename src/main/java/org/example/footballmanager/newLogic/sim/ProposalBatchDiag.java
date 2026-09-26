@@ -11,6 +11,8 @@ public class ProposalBatchDiag {
         long baseSeed = args.length > 1 ? Long.parseLong(args[1]) : 42L;
         int goals = 0, shots = 0, sot = 0, passes = 0, comp = 0;
         int homeGoals = 0, awayGoals = 0, zeroZero = 0;
+        int penaltiesAwarded = 0, penaltyKicks = 0;
+        int penaltyGoals = 0, penaltySaved = 0, penaltyMissed = 0;
         int interceptions = 0, deflections = 0, fouls = 0, yellowCards = 0, redCards = 0;
         int homeShots = 0, awayShots = 0, homeSot = 0, awaySot = 0, homeInter = 0, awayInter = 0;
         double homePoss = 0;
@@ -45,6 +47,18 @@ public class ProposalBatchDiag {
             homeSot += home.shotsOnTarget(); awaySot += away.shotsOnTarget();
             homeInter += home.interceptions(); awayInter += away.interceptions();
             homePoss += home.possessionPercent();
+            // Penalty chain (S1.7). Before penalties were implemented a penalty was awarded
+            // and never taken, which no aggregate would have revealed — the award counter looked
+            // plausible. Invariant: every PENALTY_AWARDED is followed by a PENALTY_KICK, and
+            // every kick ends in exactly one of scored / saved / missed.
+            for (var ev : o.getRecorder().getEvents()) {
+                String t = ev.getType();
+                if ("PENALTY_AWARDED".equals(t)) penaltiesAwarded++;
+                if ("PENALTY_KICK".equals(t)) penaltyKicks++;
+                if ("PENALTY_SCORED".equals(t)) penaltyGoals++;
+                if ("PENALTY_SAVED".equals(t)) penaltySaved++;
+                if ("PENALTY_MISS".equals(t)) penaltyMissed++;
+            }
             if (state.getHomeGoals() == 0 && state.getAwayGoals() == 0) zeroZero++;
             System.out.printf("m%d seed=%d H%d:%d shots=%d sot=%d pass=%d/%d int=%d def=%d%n",
                     i, seed, state.getHomeGoals(), state.getAwayGoals(), state.getShots(),
@@ -65,6 +79,16 @@ public class ProposalBatchDiag {
         // Side split — a mirror bug in any row comparison shows up here first
         // (the demo/service engine needed exactly this check to find its 75/25
         // possession skew).
+        System.out.printf("avg penalties %.2f/match  kicks %.2f  scored %d  saved %d  missed %d  conversion %.0f%%%n",
+                penaltiesAwarded / (double) n, penaltyKicks / (double) n,
+                penaltyGoals, penaltySaved, penaltyMissed,
+                penaltyKicks == 0 ? 0.0
+                        : 100.0 * penaltyGoals / (penaltyGoals + penaltySaved + penaltyMissed));
+        // The invariant, stated as a hard failure rather than a number to eyeball.
+        if (penaltiesAwarded != penaltyKicks) {
+            System.out.printf("*** PENALTY CHAIN BROKEN: %d awarded but %d taken ***%n",
+                    penaltiesAwarded, penaltyKicks);
+        }
         System.out.printf("HOME shots %.1f (sot %.1f) int %.1f | AWAY shots %.1f (sot %.1f) int %.1f | HOME possession %.0f%%%n",
                 homeShots / (double) n, homeSot / (double) n, homeInter / (double) n,
                 awayShots / (double) n, awaySot / (double) n, awayInter / (double) n,

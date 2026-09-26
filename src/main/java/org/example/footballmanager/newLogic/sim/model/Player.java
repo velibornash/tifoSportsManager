@@ -23,6 +23,9 @@ public class Player {
      */
     private int lastDuelTick = -9999; // remaining ticks the player is blocked after duel loss
     private boolean offside;
+    /** Which way the keeper committed on a penalty: -1 left, 0 centre, +1 right. Replay only. */
+    private int diveSide;
+
     private boolean sentOff;
     private int sentOffTick = -1;
     /** Yellow cards already shown to this player IN THIS MATCH (second yellow = red). */
@@ -111,6 +114,10 @@ public class Player {
 
     public int getLockTicks() { return lockTicks; }
     public void setLockTicks(int lockTicks) { this.lockTicks = Math.max(0, lockTicks); }
+
+    public int getDiveSide() { return diveSide; }
+
+    public void setDiveSide(int diveSide) { this.diveSide = diveSide; }
 
     public boolean isSentOff() { return sentOff; }
     public void setSentOff(boolean sentOff) { this.sentOff = sentOff; }

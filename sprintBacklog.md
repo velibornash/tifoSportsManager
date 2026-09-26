@@ -353,7 +353,9 @@ This is the best mechanic found in the whole audit. Port it:
 
 ### S1.7 — Implement penalties (they are awarded but never taken)
 
-> ⚠️ **Added 2026-09-26.** `DuelService.java:101-105` awards the penalty and increments a stat. `ActionLogService.java:50` declares the channels `PENALTY_KICK` / `PENALTY_SAVED` / `PENALTY_MISS` — and **no code in the repo produces them.** The award rate is already correct (`PENALTY_FROM_BOX_FOUL = 0.06` → 0.2/match vs a real 0.27). Only the execution is missing.
+> ⚠️ **Added 2026-09-26.** `DuelService.java:101-105` awards the penalty and increments a stat. `ActionLogService.java:50` declares the channels `PENALTY_KICK` / `PENALTY_SAVED` / `PENALTY_MISS` — and **no code in the repo produces them.**
+>
+> ✅ **DONE 2026-09-26** (execution). ✅ The "award rate is already correct" premise below was **wrong** — measured 0.07/match, not 0.2. See the note at the end of this task.
 
 | # | Task |
 |---|---|
@@ -367,7 +369,67 @@ This is the best mechanic found in the whole audit. Port it:
 
 **Verify:** over 50 matches, ~0.2 penalties/match and ~76% conversion. No penalty awarded without a kick event following it.
 
-> Sokker's famous bug is 80% missed penalties. This engine's bug is 100% un-taken penalties. Strictly worse, and much cheaper to fix.
+> Sokker's famous bug is 80% missed penalties. This engine's bug was 100% un-taken penalties. Strictly worse, and much cheaper to fix.
+
+**Implementation (2026-09-26):** `PenaltyEngine`, split into a pure `resolve()` (conversion model, no side
+effects) and `apply()` (events, stats, restart).
+
+Conversion is modelled as *the keeper commits before the kick*, not as a geometric proximity test:
+
+| taker (striker/tech) | keeper | scored | saved | missed |
+|---|---|---|---|---|
+| 12 / 12 | 12 | **76.6%** | 19.4% | 4.0% |
+| 12 / 12 | 20 | 67.9% | 28.0% | 4.0% |
+| 12 / 12 | 2 | 86.1% | 9.9% | 4.0% |
+| 4 / 4 | 12 | 71.5% | 20.5% | 8.0% |
+| 20 / 20 | 12 | 80.7% | 18.3% | 1.0% |
+
+Real penalties convert ~76% (75–78%), so the average row is on target and the spread across the
+keeper range (~10% poor → ~28% elite) matches the real spread.
+
+**Two bugs found while building it, both of which the unit tests caught:**
+
+1. *"Guessed wrong" was silently right one time in three.* When the keeper failed the read test the
+   code rolled a **fresh uniform side**, which coincided with the taker's actual side ~33% of the
+   time. That turned a 37% read into an effective 58% and pushed saves to 27% — a keeper being
+   beaten far less often than in real football. `wrongSide()` now excludes the taker's side.
+2. **The taker could be handed the ball.** `selectTaker` filtered on row > 6.0 to mean "not an
+   defender", so a keeper standing in the opposition half won the selection on his shooting skill.
+   Now filtered on role.
+
+**Also fixed:** the claim block in `MatchOrchestrator` clears the set-piece type on the same tick the
+taker reaches the ball, so a penalty degraded into an ordinary 11 m shot and the log went silent. The
+orchestrator now latches `penaltyPending` at the claim, before the clear.
+
+**Corrected from the task text:** a penalty is **not** an assisted goal. `onGoal` is called with a
+null assist; crediting one would invent a completed pass that never happened.
+
+**Invariant added to `ProposalBatchDiag`** — it prints `*** PENALTY CHAIN BROKEN ***` if any awarded
+penalty is not followed by a kick. It earned its keep immediately: it caught bug 1's symptom
+(5 awarded / 0 taken) before any test did. Over 200 matches: 0.07 awarded = 0.07 taken.
+
+> **Follow-up, deliberately NOT done here:** the award rate is **0.07/match against a real ~0.27**.
+> The premise that `PENALTY_FROM_BOX_FOUL = 0.06` already gave 0.2/match was never verified and is
+> ~3x off. Per the one-calibration-per-commit rule this is a separate change, not to be bundled with
+> the execution work.
+
+---
+
+### S1.7b — Penalties are awarded 3x too rarely ⚠️ OPENED 2026-09-26
+
+Found while completing S1.7. Once penalties could actually be taken, the award rate became
+measurable for the first time, and it is **0.07/match against a real ~0.27** (roughly one every
+four matches). The S1.7 task text asserted the rate was already correct on the strength of
+`PENALTY_FROM_BOX_FOUL = 0.06`; that was never measured and is ~3x off.
+
+This was not visible before because an un-taken penalty is indistinguishable in the aggregate from
+a rare one — the award counter looked plausible and nothing followed it.
+
+Raised as its own task because it is a single calibration constant and the project rule is one
+calibration per commit.
+
+**Verify:** over 200 matches, penalties/match lands in 0.20–0.30 with the S1.7 conversion holding
+at ~76%.
 
 ---
 
