@@ -929,20 +929,17 @@ Today: `maybeCreateIncomingOffer:465-469` **only ever targets human players** �
 trading with each other, squads improving and academy graduates being bought. That is a batch
 diagnostic and it has not been written. Items 5, 6, 8 and 9 are the honest remainder.
 
-### S3.7 — ⚠️ Legacy `Transfer` migration (added 2026-09-26)
+### S3.7 — Legacy `Transfer` migration — ✅ done 2026-09-26
 
-`Transfer.interestedTeams` is a `Set<String>` of club **names**, and the legacy
-`TransferService.completeTransfer` still moves the player and the money. Both sit alongside the new
-`TransferOffer` engine, so there are now **two completion paths on the same `Transfer` entity** —
-duplication, and a double-completion risk if both ever run.
+`Transfer.interestedTeams` stored interest as prose strings (`"Rival FC offered €900000"`) and the
+seller parsed the sentence back to identify the buyer, while `TransferService.completeTransfer` held a
+second copy of the settlement next to `NegotiationService`'s. Both are gone.
 
-- [ ] Migrate `interestedTeams` to real club ids backed by `TransferOffer` rows
-- [ ] Remove the legacy `completeTransfer`, leaving `NegotiationService.completeTransfer` as the only path
-- [ ] Re-point the controllers that still read the legacy shape
-
-A refactor rather than a patch, so it was left undone rather than half-finished. It should be the
-next thing anyone picks up in Sprint 3.
-
+- [x] `interestedTeams` removed from the entity, the DTOs and every call site
+- [x] The parser, resolver, purge and their two records deleted
+- [x] `NegotiationService.settle` is the only settlement path; the purchase endpoints delegate to it
+- [x] Interest, withdrawal and AI bids are all real `TransferOffer` records keyed by club id
+- [x] Controllers re-pointed; the `club` name parameter is gone
 ---
 
 ### Sprint 3 exit criteria

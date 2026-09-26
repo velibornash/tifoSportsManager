@@ -1552,6 +1552,51 @@ not use it.
 
 **361 tests.**
 
+### S3.7 — the prose offer layer is gone
+
+`Transfer.interestedTeams` was a `Set<String>` of **sentences**. A rival's bid was stored as
+`"Rival FC offered €900000"`, and the seller accepting that offer meant parsing the sentence back to
+work out who the buyer was — a string comparison, on a club name, to identify a club.
+
+That was never going to hold together:
+
+- a club's identity cannot be recovered from a label;
+- **two clubs may share a name in this game** — explicitly — so the lookup was ambiguous by design;
+- it had grown a parser, a resolver, a purge and two records to support it;
+- and it sat alongside `NegotiationService`, which had a second copy of the settlement, reachable
+  from the purchase endpoints. **Two settlement paths on one entity**, with the budget guard written
+  twice and the "already completed" check in only one of them.
+
+The owner said to remove it, so it is removed. Interest is a `TransferOffer` row with a foreign key,
+and the whole prose layer went with it: `replaceInterestFromClub`, `extractBestOffer`,
+`resolveBestAcceptableOffer`, `resolveOffer`, `parseOfferDetails`, `isOfferEntry`, `purgeInvalidOffers`,
+`sortedInterests`, `resolveClubByName`, and the two private records.
+
+What replaced it:
+
+- **One settlement.** `NegotiationService.settle(transferId, buyer, fee, wage, years)` is the only
+  place a player changes clubs and money moves. The legacy purchase path now validates what it owns
+  (the asking price is a floor, the club has the cash) and then delegates. The double-completion risk
+  is gone because there is only one completion.
+- **Interest is an offer.** `addInterest` opens a real offer; the AI bids with a real one; rejecting
+  or clearing rejects the offer records rather than emptying a set, so the thread still shows what was
+  on the table.
+- **Withdrawal is by club id, not name.** `withdrawInterest` takes the id, which is the only way to
+  tell two same-named clubs apart. The controller's `club` parameter is gone.
+- **The AI offer carries three numbers.** A deal is a fee, a wage and a length, and the seller decides
+  on the player's terms too, not just on the transfer fee.
+
+`TransferListSoftLockTest` (224 lines) existed to test the prose behaviour — that a bare interest
+entry must not soft-lock a seller on the list. That failure mode is now structurally impossible,
+because a bare interest entry cannot exist. It is deleted rather than rewritten.
+
+The price-guard tests were asserting the settlement inline; they now assert that the guard hands the
+right price to the settlement, and `TransferCompletionTest` covers the settlement against a real
+database. A price guard is only worth testing if what stands behind it is a collaborator rather than
+a second copy of the same logic.
+
+**351 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

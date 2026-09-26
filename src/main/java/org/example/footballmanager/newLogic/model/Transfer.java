@@ -4,8 +4,6 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 @Data
 @Entity(name = "Transfer")
@@ -30,7 +28,4 @@ public class Transfer {
     private Double agreedPrice;
     private LocalDateTime listedAt;
     private LocalDateTime completedAt;
-
-    @ElementCollection
-    private Set<String> interestedTeams = new HashSet<>();
 }

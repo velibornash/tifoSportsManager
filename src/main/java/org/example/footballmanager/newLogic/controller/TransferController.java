@@ -50,9 +50,8 @@ public class TransferController {
 
     @PostMapping("/interest/{playerId}/withdraw")
     public TransferDTO withdrawInterest(@PathVariable Long playerId,
-                                        @RequestParam(required = false) String club,
-                                        @RequestParam(required = false) Long teamId) {
-        return transferService.withdrawInterest(playerId, teamId, club);
+                                        @RequestParam Long teamId) {
+        return transferService.withdrawInterest(playerId, teamId);
     }
 
     @PostMapping("/interest/{playerId}/clear")

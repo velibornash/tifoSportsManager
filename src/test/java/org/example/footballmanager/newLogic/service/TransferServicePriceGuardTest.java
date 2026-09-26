@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +46,13 @@ class TransferServicePriceGuardTest {
     private static final long SELLER_ID = 10L;
     private static final long BUYER_ID = 20L;
     private static final double ASKING = 1_000_000.0;
+
+    /**
+     * The single settlement path. Stubbed to succeed, because what these tests are about is the
+     * price guard in front of it - and a price guard is only worth testing if the thing behind it
+     * is a collaborator, not a second implementation of the same logic.
+     */
+    private final NegotiationService negotiation = mock(NegotiationService.class);
 
     private TransferRepository transferRepository;
     private PlayerRepository playerRepository;
@@ -68,7 +77,8 @@ class TransferServicePriceGuardTest {
                 mock(UserRepository.class),
                 mock(SquadNumberAssigner.class),
                 mock(TransferWindowService.class),
-                new ClubNeedService(playerRepository, mock(PlayerContractRepository.class))
+                new ClubNeedService(playerRepository, mock(PlayerContractRepository.class)),
+                negotiation
         );
 
         seller = new Team();
@@ -94,6 +104,10 @@ class TransferServicePriceGuardTest {
         listing.setAskingPrice(ASKING);
         listing.setStatus(TransferStatus.LISTED);
 
+        when(negotiation.settle(any(), any(), any(Double.class), any(Double.class), any()))
+                .thenReturn(true);
+
+        when(transferRepository.findById(90L)).thenReturn(Optional.of(listing));
         when(transferRepository.findByPlayerId(PLAYER_ID)).thenReturn(Optional.of(listing));
         when(playerRepository.findById(PLAYER_ID)).thenReturn(Optional.of(player));
         when(teamRepository.findById(BUYER_ID)).thenReturn(Optional.of(buyer));
@@ -149,10 +163,9 @@ class TransferServicePriceGuardTest {
     void buyListedPlayerAcceptsExactAskingPrice() {
         service.buyListedPlayer(PLAYER_ID, BUYER_ID, ASKING);
 
-        assertEquals(buyer, player.getTeam());
-        assertEquals(ASKING, listing.getAgreedPrice(), 0.01);
-        assertEquals(50_000_000.0 - ASKING, buyer.getBudget(), 0.01);
-        assertEquals(ASKING, seller.getBudget(), 0.01);
+        // The guard's job is to hand the right price to the settlement, not to perform it: there is
+        // one settlement path now, and TransferCompletionTest exercises it against a real database.
+        verify(negotiation).settle(eq(90L), eq(buyer), eq(ASKING), any(Double.class), any());
     }
 
     @Test
@@ -162,9 +175,8 @@ class TransferServicePriceGuardTest {
 
         service.buyListedPlayer(PLAYER_ID, BUYER_ID, over);
 
-        assertEquals(buyer, player.getTeam());
-        assertEquals(over, listing.getAgreedPrice(), 0.01);
-        assertEquals(50_000_000.0 - over, buyer.getBudget(), 0.01);
+        // Overpaying is allowed - it is the seller's gain - so the guard must not clamp it down.
+        verify(negotiation).settle(eq(90L), eq(buyer), eq(over), any(Double.class), any());
     }
 
     @Test
@@ -172,8 +184,8 @@ class TransferServicePriceGuardTest {
     void buyListedPlayerWithNullPriceUsesAskingPrice() {
         service.buyListedPlayer(PLAYER_ID, BUYER_ID, null);
 
-        assertEquals(ASKING, listing.getAgreedPrice(), 0.01);
-        assertEquals(ASKING, seller.getBudget(), 0.01);
+        // Omitting the price means "I accept the asking price", so that is what gets settled.
+        verify(negotiation).settle(eq(90L), eq(buyer), eq(ASKING), any(Double.class), any());
     }
 
     // ------------------------------------------------------------ invalid input

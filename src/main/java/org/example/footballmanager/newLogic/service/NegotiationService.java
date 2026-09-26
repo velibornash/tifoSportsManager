@@ -227,8 +227,33 @@ public class NegotiationService {
      * club that cannot pay never ends up holding the asset. The seller's budget and the ledger are
      * the evidence the money moved.
      */
+    /**
+     * Settles a transfer from the terms on an accepted offer.
+     *
+     * <p>A thin wrapper over {@link #settle} — the single place a player actually changes clubs.
+     */
     @Transactional
     public boolean completeTransfer(Long transferId, TransferOffer accepted) {
+        return settle(transferId,
+                accepted == null ? null : accepted.getBuyerTeam(),
+                accepted == null || accepted.getFee() == null ? 0 : accepted.getFee(),
+                accepted == null || accepted.getWage() == null ? 0 : accepted.getWage(),
+                accepted == null ? null : accepted.getContractYears());
+    }
+
+    /**
+     * The one place a player changes clubs and money changes hands.
+     *
+     * <p>There used to be a second implementation of this in {@code TransferService}, reachable
+     * from the purchase endpoints, with its own copy of the budget guard and its own idea of what
+     * "completed" means. Two settlement paths on one entity is a double-completion waiting to
+     * happen, so both entry points now come through here and the {@code COMPLETED} guard exists once.
+     *
+     * <p>Order is deliberate: the buyer is charged <b>before</b> the player moves, so a club that
+     * cannot pay never ends up holding the asset.
+     */
+    @Transactional
+    public boolean settle(Long transferId, Team buyer, double fee, double wage, Integer years) {
         Transfer transfer = transfers.findById(transferId).orElse(null);
         if (transfer == null) {
             log.warn("Transfer {} cannot be completed: it does not exist", transferId);
@@ -238,15 +263,11 @@ public class NegotiationService {
             return false;
         }
         Player player = transfer.getPlayer();
-        Team buyer = accepted.getBuyerTeam();
         if (player == null || buyer == null) {
             log.warn("Transfer {} cannot be completed: player={} buyer={}", transferId, player, buyer);
             return false;
         }
 
-        double fee = accepted.getFee() == null ? 0 : accepted.getFee();
-        double wage = accepted.getWage() == null ? 0 : accepted.getWage();
-        Integer years = accepted.getContractYears();
         int season = currentSeason();
         int week = currentWeek();
 

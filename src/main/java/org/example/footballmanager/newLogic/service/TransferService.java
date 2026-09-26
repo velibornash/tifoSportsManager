@@ -11,6 +11,7 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.model.Transfer;
+import org.example.footballmanager.newLogic.model.TransferOffer;
 import org.example.footballmanager.newLogic.model.TransferStatus;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -38,6 +39,7 @@ public class TransferService {
     private static final Logger log = LoggerFactory.getLogger(TransferService.class);
     private final TransferWindowService transferWindows;
     private final ClubNeedService clubNeeds;
+    private final NegotiationService negotiation;
 
 
     private final TransferRepository transferRepository;
@@ -53,8 +55,10 @@ public class TransferService {
                            UserRepository userRepository,
                            SquadNumberAssigner squadNumberAssigner,
                            TransferWindowService transferWindows,
-                           ClubNeedService clubNeeds) {
+                           ClubNeedService clubNeeds,
+                           NegotiationService negotiation) {
         this.clubNeeds = clubNeeds;
+        this.negotiation = negotiation;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -189,7 +193,7 @@ public class TransferService {
         dto.setSellerTeamName(transfer != null && transfer.getSellerTeam() != null ? transfer.getSellerTeam().getName() : dto.getCurrentTeamName());
         dto.setBuyerTeamId(transfer != null && transfer.getBuyerTeam() != null ? transfer.getBuyerTeam().getId() : null);
         dto.setBuyerTeamName(transfer != null && transfer.getBuyerTeam() != null ? transfer.getBuyerTeam().getName() : null);
-        dto.setInterestedTeams(sortedInterests(transfer));
+        dto.setInterestedTeams(offerSummaries(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setCanList(ownedByViewer && !listed);
         dto.setCanRemove(ownedByViewer && listed && !hasPricedOffer(transfer));
@@ -198,7 +202,7 @@ public class TransferService {
         dto.setCanAcceptOffer(ownedByViewer && openOffer);
         dto.setCanRejectOffer(ownedByViewer && openOffer);
         // Bare interest entries must not be able to trap a seller on the list (Sprint 0.2).
-        dto.setCanClearInterest(ownedByViewer && listed && !sortedInterests(transfer).isEmpty());
+        dto.setCanClearInterest(ownedByViewer && listed && !offerSummaries(transfer).isEmpty());
         dto.setHasPricedOffer(hasPricedOffer(transfer));
         dto.setSummary(buildPlayerSummary(dto));
         return dto;
@@ -213,18 +217,20 @@ public class TransferService {
                     "Your club cannot register interest in its own player.");
         }
 
-        String resolvedClubName = clubName;
-        if ((resolvedClubName == null || resolvedClubName.isBlank()) && viewerTeamId != null) {
-            resolvedClubName = loadTeam(viewerTeamId).getName();
-        }
-
-        if (resolvedClubName == null || resolvedClubName.isBlank()) {
+        if (viewerTeamId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CLUB_REQUIRED",
-                    "Club name is required to register interest.");
+                    "The interested club's id is required.");
         }
+        Team buyer = loadTeam(viewerTeamId);
 
-        transfer.getInterestedTeams().add(resolvedClubName.trim());
-        return toTransferDto(transferRepository.save(transfer), viewerTeamId);
+        // Interest is a real offer now, with a buyer, a fee, a wage and a length. It used to be a
+        // club NAME pushed into a Set<String>, which meant the buyer's identity had to be recovered
+        // by parsing prose and two clubs sharing a name were indistinguishable.
+        Player target = transfer.getPlayer();
+        TransferOffer offer = negotiation.openOffer(transfer, buyer,
+                transfer.getAskingPrice() > 0 ? transfer.getAskingPrice() : target.getPlayerValue(),
+                target.getEarnings(), 3);
+        return toTransferDto(transfer, viewerTeamId);
     }
 
     @Transactional
@@ -245,48 +251,42 @@ public class TransferService {
         }
         transfer.setStatus(TransferStatus.CANCELLED);
         transfer.setCompletedAt(LocalDateTime.now());
-        transfer.getInterestedTeams().clear();
         transferRepository.save(transfer);
     }
 
     /**
-     * Withdraw this club's own interest in a listed player.
+     * Withdraws this club's own offer on a listed player.
      *
-     * <p>Gives an interested club a clean exit so it cannot hold a seller's player hostage, and lets
-     * AI clubs back out without a seller having to clear the whole list.
+     * <p>Identified by club <b>id</b>, not name. The previous version matched a name against prose
+     * strings, which could not tell two clubs apart if they shared one — and duplicate names are
+     * explicitly allowed in this game.
+     *
+     * <p>A clean exit matters: without it an interested club can sit on a seller's list and block
+     * the delisting, and an AI club has no way to back out of a bid it no longer wants.
      */
     @Transactional
-    public TransferDTO withdrawInterest(Long playerId, Long withdrawingTeamId, String clubName) {
+    public TransferDTO withdrawInterest(Long playerId, Long withdrawingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
-        String resolvedClub = clubName;
-        if ((resolvedClub == null || resolvedClub.isBlank()) && withdrawingTeamId != null) {
-            resolvedClub = loadTeam(withdrawingTeamId).getName();
-        }
-        if (resolvedClub == null || resolvedClub.isBlank()) {
+        if (withdrawingTeamId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CLUB_REQUIRED",
-                    "Club name or team id is required to withdraw interest.");
+                    "The withdrawing club's id is required.");
         }
+        Team withdrawing = loadTeam(withdrawingTeamId);
 
-        String normalized = resolvedClub.trim();
-        boolean removed = transfer.getInterestedTeams().removeIf(existing -> {
-            String value = existing == null ? "" : existing.trim();
-            return value.equalsIgnoreCase(normalized) || parseOfferDetails(value) != null
-                    && parseOfferDetails(value).clubName().equalsIgnoreCase(normalized);
-        });
-
-        if (!removed) {
+        List<TransferOffer> mine = liveOffers(transfer).stream()
+                .filter(o -> o.getBuyerTeam() != null)
+                .filter(o -> Objects.equals(o.getBuyerTeam().getId(), withdrawing.getId()))
+                .toList();
+        if (mine.isEmpty()) {
             throw new ApiException(HttpStatus.CONFLICT, "NO_INTEREST_FOUND",
-                    resolvedClub + " has no registered interest in this player.");
+                    withdrawing.getName() + " has no live offer on this player.");
         }
-        return toTransferDto(transferRepository.save(transfer), withdrawingTeamId);
+        for (TransferOffer offer : mine) {
+            negotiation.withdraw(offer);
+        }
+        return toTransferDto(transfer, withdrawingTeamId);
     }
 
-    /**
-     * Clear every interest and offer on a listing without accepting any of them.
-     *
-     * <p>{@link #rejectOffers} could only be reached when a priced offer existed, so a listing held
-     * hostage by bare interest entries had no seller-side exit at all. This is that exit.
-     */
     @Transactional
     public TransferDTO clearAllInterest(Long playerId, Long actingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
@@ -296,15 +296,20 @@ public class TransferService {
                     "Only the owning club can clear interest on this player.");
         }
 
-        int cleared = transfer.getInterestedTeams().size();
-        transfer.getInterestedTeams().clear();
+        // Reject the live offers rather than clear a set of strings: an offer is a record with a
+        // buyer, a fee and a wage, and pretending it never happened would leave the two disagreeing.
+        List<TransferOffer> live = liveOffers(transfer);
+        for (TransferOffer offer : live) {
+            negotiation.reject(offer);
+        }
+        int cleared = live.size();
         transfer.setBuyerTeam(null);
         transfer.setStatus(TransferStatus.LISTED);
         transfer.setCompletedAt(null);
         TransferDTO dto = toTransferDto(transferRepository.save(transfer), actingTeamId);
         dto.setOfferAccepted(false);
-        dto.setActionMessage("Cleared " + cleared + " interest/offer entr" + (cleared == 1 ? "y" : "ies")
-                + ". The player remains on the transfer list.");
+        dto.setActionMessage("Rejected " + cleared + (cleared == 1 ? " offer." : " offers.")
+                + " The player remains on the transfer list.");
         return dto;
     }
 
@@ -317,8 +322,13 @@ public class TransferService {
         Transfer transfer = transferRepository.findByPlayerId(playerId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND",
                         "Transfer listing not found."));
-        int cleared = transfer.getInterestedTeams().size();
-        transfer.getInterestedTeams().clear();
+        // Reject the live offers rather than clear a set of strings: an offer is a record with a
+        // buyer, a fee and a wage, and pretending it never happened would leave the two disagreeing.
+        List<TransferOffer> live = liveOffers(transfer);
+        for (TransferOffer offer : live) {
+            negotiation.reject(offer);
+        }
+        int cleared = live.size();
         transfer.setBuyerTeam(null);
         transfer.setStatus(TransferStatus.CANCELLED);
         transfer.setCompletedAt(LocalDateTime.now());
@@ -388,13 +398,24 @@ public class TransferService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can accept incoming offers.");
         }
 
-        OfferResolution bestOffer = resolveBestAcceptableOffer(transfer);
-        Team buyerTeam = bestOffer.buyerTeam();
+        // The highest live offer the buyer can still honour. Real offer records, so the buyer is a
+        // foreign key rather than a name parsed back out of a sentence.
+        TransferOffer best = liveOffers(transfer).stream()
+                .filter(o -> o.getBuyerTeam() != null)
+                .filter(o -> o.getFee() != null && o.getFee() > 0)
+                .filter(o -> canBuyerAfford(o.getBuyerTeam(), o.getFee()))
+                .max(Comparator.comparingDouble(TransferOffer::getFee))
+                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_VALID_OFFERS",
+                        "There are no valid incoming offers to accept."));
 
-        TransferDTO dto = toTransferDto(completeTransfer(transfer.getPlayer(), buyerTeam, bestOffer.offer().price(), transfer), actingTeamId);
+        negotiation.acceptOffer(transfer.getId(), best.getId());
+        Team buyerTeam = best.getBuyerTeam();
+
+        TransferDTO dto = toTransferDto(
+                completeTransfer(transfer.getPlayer(), buyerTeam, best.getFee(), transfer), actingTeamId);
         dto.setOfferAccepted(true);
         dto.setActionMessage("Offer accepted. " + transfer.getPlayer().getName()
-                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(bestOffer.offer().price()) + ".");
+                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(best.getFee()) + ".");
         return dto;
     }
 
@@ -406,7 +427,11 @@ public class TransferService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can reject incoming offers.");
         }
 
-        transfer.getInterestedTeams().clear();
+        // Rejecting means rejecting: the offers become REJECTED records rather than a cleared set,
+        // so the thread still shows what was on the table.
+        for (TransferOffer offer : liveOffers(transfer)) {
+            negotiation.reject(offer);
+        }
         transfer.setBuyerTeam(null);
         if (isActiveListing(transfer)) {
             transfer.setStatus(TransferStatus.LISTED);
@@ -474,12 +499,20 @@ public class TransferService {
         transfer.setAgreedPrice(null);
         transfer.setListedAt(LocalDateTime.now());
         transfer.setCompletedAt(null);
-        if (!alreadyListed) {
-            transfer.getInterestedTeams().clear();
-        }
         return transferRepository.save(transfer);
     }
 
+    /**
+     * Settles a purchase.
+     *
+     * <p>This used to contain its own copy of the money and the player move, reachable from four
+     * public entry points while {@code NegotiationService} had a second implementation. Two
+     * settlement paths on one {@link Transfer} entity is a double-completion waiting to happen.
+     *
+     * <p>What is left here is the validation this entry point owns — the asking price is a floor,
+     * and the club must have the cash — and then the settlement itself, which
+     * {@link NegotiationService#settle} performs once for every path.
+     */
     private Transfer completeTransfer(Player player, Team buyerTeam, double price, Transfer transfer) {
         Team sellerTeam = requirePlayerTeam(player);
         if (Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
@@ -491,7 +524,7 @@ public class TransferService {
         double floor = transfer == null ? 0.0 : transfer.getAskingPrice();
         if (floor > 0 && price + 0.0001 < floor) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICE_BELOW_ASKING",
-                    "Agreed price must be at least the asking price of €" + Math.round(floor) + ".");
+                    "Agreed price must be at least the asking price of EUR " + Math.round(floor) + ".");
         }
 
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
@@ -500,30 +533,22 @@ public class TransferService {
                     "Your club does not have enough budget for this transfer.");
         }
 
-        buyerTeam.setBudget(round2(buyerBudget - price));
-        double sellerBudget = sellerTeam.getBudget() == null ? 0.0 : sellerTeam.getBudget();
-        sellerTeam.setBudget(round2(sellerBudget + price));
-        teamRepository.saveAll(List.of(sellerTeam, buyerTeam));
+        if (transfer == null || transfer.getId() == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND", "This transfer no longer exists.");
+        }
 
-        player.setTeam(buyerTeam);
+        if (!negotiation.settle(transfer.getId(), buyerTeam, price, player.getEarnings(), null)) {
+            throw new ApiException(HttpStatus.CONFLICT, "TRANSFER_NOT_COMPLETED",
+                    "The transfer could not be completed. The seller may have withdrawn it, "
+                            + "or your club may no longer be able to afford it.");
+        }
+
+        Transfer completed = transferRepository.findById(transfer.getId()).orElseThrow();
         player.setSquadNumber(squadNumberAssigner.nextNumberForTeam(buyerTeam, player.getPosition()));
         playerRepository.save(player);
         squadNumberAssigner.assignMissingNumbers(sellerTeam);
         squadNumberAssigner.assignMissingNumbers(buyerTeam);
-
-        transfer.setPlayer(player);
-        transfer.setSellerTeam(sellerTeam);
-        transfer.setBuyerTeam(buyerTeam);
-        transfer.setStatus(TransferStatus.COMPLETED);
-        transfer.setAgreedPrice(price);
-        transfer.setCompletedAt(LocalDateTime.now());
-        if (transfer.getListedAt() == null) {
-            transfer.setListedAt(LocalDateTime.now());
-        }
-        if (transfer.getAskingPrice() <= 0) {
-            transfer.setAskingPrice(price);
-        }
-        return transferRepository.save(transfer);
+        return completed;
     }
 
     private Transfer getActiveTransfer(Long playerId) {
@@ -570,10 +595,34 @@ public class TransferService {
      * from delisting, otherwise the listing becomes permanently stuck.
      */
     private boolean hasPricedOffer(Transfer transfer) {
-        if (transfer == null || transfer.getPlayer() == null) {
-            return false;
+        return liveOffers(transfer).stream().anyMatch(o -> o.getFee() != null && o.getFee() > 0);
+    }
+
+    /**
+     * The live offers on a transfer, from the real offer records.
+     *
+     * <p>This replaces a layer that stored interest as prose strings in
+     * {@code Transfer.interestedTeams} — {@code "Rival FC offered EUR 900000"} — and then parsed
+     * them back to work out who the buyer was. A club's identity cannot be recovered from a label,
+     * two clubs may share a name, and the buyer had to be resolved by string comparison on every
+     * read. Interest is now a {@code TransferOffer} row with a foreign key, and this returns it.
+     */
+    private List<TransferOffer> liveOffers(Transfer transfer) {
+        if (transfer == null || transfer.getId() == null) {
+            return List.of();
         }
-        return sortedInterests(transfer).stream().anyMatch(this::isOfferEntry);
+        return negotiation.liveOffers(transfer.getId());
+    }
+
+    /** Human-readable one-liners for the offers on a transfer, for the transfer screen. */
+    private List<String> offerSummaries(Transfer transfer) {
+        return liveOffers(transfer).stream()
+                .map(offer -> {
+                    String club = offer.getBuyerTeam() == null ? "A club" : offer.getBuyerTeam().getName();
+                    long fee = offer.getFee() == null ? 0 : Math.round(offer.getFee());
+                    return club + " offered EUR " + fee;
+                })
+                .toList();
     }
 
     private Team loadTeam(Long teamId) {
@@ -589,18 +638,6 @@ public class TransferService {
             throw new ApiException(HttpStatus.CONFLICT, "PLAYER_UNASSIGNED", "Player is not assigned to a club.");
         }
         return player.getTeam();
-    }
-
-    private List<String> sortedInterests(Transfer transfer) {
-        if (transfer == null || transfer.getInterestedTeams() == null) {
-            return List.of();
-        }
-        return transfer.getInterestedTeams().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .sorted(String.CASE_INSENSITIVE_ORDER)
-                .toList();
     }
 
     /**
@@ -800,14 +837,15 @@ public class TransferService {
             updated.setCompletedAt(null);
             updated.setAskingPrice(Math.max(1.0, asking));
             updated.setListedAt(LocalDateTime.now());
-            if (updated.getInterestedTeams() == null) {
-                updated.setInterestedTeams(new HashSet<>());
-            } else {
-                updated.getInterestedTeams().clear();
-            }
         }
 
-        replaceInterestFromClub(updated, buyerTeam.getName(), offerPrice);
+        // A real offer, not a sentence about one. This is what the seller accepts, so the buyer is
+        // a foreign key from the moment the bid is made.
+        if (updated.getId() != null) {
+            // The offer carries a wage as well as a fee, because a deal is three numbers and the
+            // seller is deciding on the player's terms too, not just the transfer fee.
+            negotiation.openOffer(updated, buyerTeam, offerPrice, targetPlayer.getEarnings() * 1.1, 3);
+        }
         Transfer saved = transferRepository.save(updated);
         transferByPlayerId.put(targetPlayer.getId(), saved);
     }
@@ -833,144 +871,9 @@ public class TransferService {
         return transfer.getStatus() == TransferStatus.LISTED || transfer.getStatus() == TransferStatus.OFFER_RECEIVED;
     }
 
-    private void replaceInterestFromClub(Transfer transfer, String clubName, double price) {
-        if (transfer.getInterestedTeams() == null) {
-            transfer.setInterestedTeams(new HashSet<>());
-        }
-        String normalizedClub = String.valueOf(clubName == null ? "" : clubName).trim();
-        transfer.getInterestedTeams().removeIf(existing -> {
-            String value = existing == null ? "" : existing.trim();
-            return !normalizedClub.isBlank() && value.regionMatches(true, 0, normalizedClub, 0, normalizedClub.length());
-        });
-        transfer.getInterestedTeams().add(normalizedClub + " offered €" + Math.round(price));
-    }
-
-    private OfferDetails extractBestOffer(Transfer transfer) {
-        return sortedInterests(transfer).stream()
-                .filter(this::isOfferEntry)
-                .map(this::parseOfferDetails)
-                .filter(Objects::nonNull)
-                .max(Comparator.comparingDouble(OfferDetails::price))
-                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_VALID_OFFERS",
-                        "There are no valid incoming offers to accept."));
-    }
-
-    private OfferResolution resolveBestAcceptableOffer(Transfer transfer) {
-        List<OfferResolution> validOffers = sortedInterests(transfer).stream()
-                .filter(this::isOfferEntry)
-                .map(this::parseOfferDetails)
-                .filter(Objects::nonNull)
-                .map(offer -> resolveOffer(transfer, offer))
-                .filter(Objects::nonNull)
-                .filter(offer -> canBuyerAfford(offer.buyerTeam(), offer.offer().price()))
-                .sorted(Comparator.comparingDouble((OfferResolution value) -> value.offer().price()).reversed())
-                .toList();
-
-        if (!validOffers.isEmpty()) {
-            return validOffers.getFirst();
-        }
-
-        purgeInvalidOffers(transfer);
-        throw new ApiException(HttpStatus.CONFLICT, "BUYER_BUDGET_CHANGED",
-                "None of the current offers can be completed because the buying club no longer has enough budget.");
-    }
-
-    private OfferResolution resolveOffer(Transfer transfer, OfferDetails offer) {
-        // LEGACY OFFER PATH. The offers being read here are prose strings from
-        // Transfer.interestedTeams, which carry a club NAME and nothing else - so resolving the
-        // buyer by name is all this path can do. findByName returns Optional<Team> and would THROW
-        // on a duplicate name, and two clubs sharing a name is explicitly allowed, so the safe
-        // list-based lookup is used and the ambiguity is logged rather than fatal.
-        //
-        // The real fix is NegotiationService, which holds the buying club as a foreign key and
-        // never resolves identity from a label. New code should use it; migrating these legacy
-        // strings is tracked in sprintBacklog.md.
-        Team buyerTeam = resolveClubByName(offer.clubName());
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (buyerTeam == null || Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
-            return null;
-        }
-        return new OfferResolution(offer, buyerTeam);
-    }
-
-    /**
-     * Resolves a club by name without crashing on a duplicate.
-     *
-     * <p>Returns the lowest id on ambiguity, which is deterministic, and says so in the log rather
-     * than pretending the lookup was unambiguous.
-     */
-    private Team resolveClubByName(String clubName) {
-        if (clubName == null || clubName.isBlank()) return null;
-        java.util.List<Team> matches = teamRepository.findAllByNameIgnoreCase(clubName.trim());
-        if (matches.isEmpty()) return null;
-        if (matches.size() > 1) {
-            matches.stream().min(Comparator.comparing(t -> t.getId() == null ? Long.MAX_VALUE : t.getId()))
-                    .ifPresent(t -> log.warn("Club name '{}' matches {} clubs; using id {}. "
-                            + "Identities must be carried as ids, not names.",
-                            clubName, matches.size(), t.getId()));
-            return matches.stream()
-                    .min(Comparator.comparing(t -> t.getId() == null ? Long.MAX_VALUE : t.getId()))
-                    .orElse(null);
-        }
-        return matches.getFirst();
-    }
-
     private boolean canBuyerAfford(Team buyerTeam, double price) {
         double buyerBudget = buyerTeam.getBudget() == null ? 0.0 : buyerTeam.getBudget();
         return buyerBudget + 0.0001 >= price;
-    }
-
-    private void purgeInvalidOffers(Transfer transfer) {
-        if (transfer.getInterestedTeams() == null || transfer.getInterestedTeams().isEmpty()) {
-            return;
-        }
-
-        Set<String> validEntries = transfer.getInterestedTeams().stream()
-                .filter(Objects::nonNull)
-                .filter(raw -> {
-                    if (!isOfferEntry(raw)) {
-                        return true;
-                    }
-                    OfferDetails offer = parseOfferDetails(raw);
-                    if (offer == null) {
-                        return false;
-                    }
-                    OfferResolution resolution = resolveOffer(transfer, offer);
-                    return resolution != null && canBuyerAfford(resolution.buyerTeam(), resolution.offer().price());
-                })
-                .collect(Collectors.toCollection(HashSet::new));
-
-        transfer.setInterestedTeams(validEntries);
-        if (!hasOpenOffer(transfer) && transfer.getStatus() == TransferStatus.OFFER_RECEIVED) {
-            transfer.setStatus(TransferStatus.CANCELLED);
-            transfer.setCompletedAt(LocalDateTime.now());
-        }
-        transferRepository.save(transfer);
-    }
-
-    private OfferDetails parseOfferDetails(String rawValue) {
-        if (rawValue == null || rawValue.isBlank()) {
-            return null;
-        }
-        String marker = " offered €";
-        int splitIndex = rawValue.toLowerCase().indexOf(marker);
-        if (splitIndex < 0) {
-            return null;
-        }
-        String clubName = rawValue.substring(0, splitIndex).trim();
-        String priceText = rawValue.substring(splitIndex + marker.length()).replaceAll("[^0-9.]", "").trim();
-        if (clubName.isBlank() || priceText.isBlank()) {
-            return null;
-        }
-        try {
-            return new OfferDetails(clubName, Math.max(1.0, Double.parseDouble(priceText)));
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-    }
-
-    private boolean isOfferEntry(String rawValue) {
-        return rawValue != null && rawValue.toLowerCase().contains(" offered ");
     }
 
     private boolean isOfferAccepted(Player player, Team sellerTeam, Team buyerTeam, double price) {
@@ -1080,18 +983,12 @@ public class TransferService {
         dto.setStatus(transfer.getStatus() != null ? transfer.getStatus().name() : TransferStatus.LISTED.name());
         dto.setListedAt(transfer.getListedAt());
         dto.setCompletedAt(transfer.getCompletedAt());
-        dto.setInterestedTeams(sortedInterests(transfer));
+        dto.setInterestedTeams(offerSummaries(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setBuyableByViewer(viewerTeamId != null && !ownedByViewer && isActiveListing(transfer));
-        dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer) && sortedInterests(transfer).isEmpty());
+        dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer) && liveOffers(transfer).isEmpty());
         dto.setCanAcceptOffer(ownedByViewer && hasOpenOffer);
         dto.setCanRejectOffer(ownedByViewer && hasOpenOffer);
         return dto;
-    }
-
-    private record OfferDetails(String clubName, double price) {
-    }
-
-    private record OfferResolution(OfferDetails offer, Team buyerTeam) {
     }
 }
