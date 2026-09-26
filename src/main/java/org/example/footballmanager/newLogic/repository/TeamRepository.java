@@ -23,6 +23,16 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     Optional<Team> findByName(String name);
 
+    /**
+     * Every club with this name, for code that must survive a duplicate.
+     *
+     * <p>{@link #findByName} returns {@code Optional<Team>} and therefore <b>throws</b> when two
+     * clubs share a name — and two clubs sharing a name is explicitly allowed. Anything that
+     * resolves a club from a user-supplied or stored string must use this instead and decide
+     * explicitly what to do about the ambiguity, rather than crashing or silently picking one.
+     */
+    List<Team> findAllByNameIgnoreCase(String name);
+
     long countByCompetition(Competition league);
 
     List<Team> findAllByTypeOrderByIdAsc(CompetitionTeamType type);

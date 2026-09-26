@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.transaction.Transactional;
 import org.example.footballmanager.newLogic.dto.transfer.PlayerTransferStatusDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO;
@@ -31,6 +33,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class TransferService {
+    private static final Logger log = LoggerFactory.getLogger(TransferService.class);
+
 
     private final TransferRepository transferRepository;
     private final PlayerRepository playerRepository;
@@ -737,12 +741,43 @@ public class TransferService {
     }
 
     private OfferResolution resolveOffer(Transfer transfer, OfferDetails offer) {
-        Team buyerTeam = teamRepository.findByName(offer.clubName()).orElse(null);
+        // LEGACY OFFER PATH. The offers being read here are prose strings from
+        // Transfer.interestedTeams, which carry a club NAME and nothing else - so resolving the
+        // buyer by name is all this path can do. findByName returns Optional<Team> and would THROW
+        // on a duplicate name, and two clubs sharing a name is explicitly allowed, so the safe
+        // list-based lookup is used and the ambiguity is logged rather than fatal.
+        //
+        // The real fix is NegotiationService, which holds the buying club as a foreign key and
+        // never resolves identity from a label. New code should use it; migrating these legacy
+        // strings is tracked in sprintBacklog.md.
+        Team buyerTeam = resolveClubByName(offer.clubName());
         Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
         if (buyerTeam == null || Objects.equals(sellerTeam.getId(), buyerTeam.getId())) {
             return null;
         }
         return new OfferResolution(offer, buyerTeam);
+    }
+
+    /**
+     * Resolves a club by name without crashing on a duplicate.
+     *
+     * <p>Returns the lowest id on ambiguity, which is deterministic, and says so in the log rather
+     * than pretending the lookup was unambiguous.
+     */
+    private Team resolveClubByName(String clubName) {
+        if (clubName == null || clubName.isBlank()) return null;
+        java.util.List<Team> matches = teamRepository.findAllByNameIgnoreCase(clubName.trim());
+        if (matches.isEmpty()) return null;
+        if (matches.size() > 1) {
+            matches.stream().min(Comparator.comparing(t -> t.getId() == null ? Long.MAX_VALUE : t.getId()))
+                    .ifPresent(t -> log.warn("Club name '{}' matches {} clubs; using id {}. "
+                            + "Identities must be carried as ids, not names.",
+                            clubName, matches.size(), t.getId()));
+            return matches.stream()
+                    .min(Comparator.comparing(t -> t.getId() == null ? Long.MAX_VALUE : t.getId()))
+                    .orElse(null);
+        }
+        return matches.getFirst();
     }
 
     private boolean canBuyerAfford(Team buyerTeam, double price) {

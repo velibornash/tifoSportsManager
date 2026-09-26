@@ -1053,6 +1053,61 @@ database had grown to a few thousand players.
 
 **11 tests. 267 total.**
 
+### S3.2 — Real negotiation ✅ DONE · entity + service, legacy path made safe
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+`Transfer.interestedTeams` was a `Set<String>` of `"Partizan offered €450000"`, parsed back with
+`indexOf(" offered €")` and `replaceAll`. Two real defects, both now pinned by tests:
+
+- **Offers were deduplicated by a prefix match on the club name.** A club named `Partizan` wiped the
+  offers of `Partizan United Youth` — the strings are indistinguishable by prefix.
+- **The buyer was resolved with `findByName`.** That returns `Optional<Team>` and therefore
+  **throws** on a duplicate name, and two clubs sharing a name is explicitly allowed. It was a
+  guaranteed crash, not a theoretical one.
+
+**`TransferOffer`** replaces the string set. The buyer is a foreign key, so identity is never
+inferred from a label. Fee, wage and contract length are three separate columns because they are
+three separate things to negotiate — the fee is where the seller has leverage, the wage is where they
+do not, and a single number cannot express a deal where the two sides have agreed the fee and are
+still stuck on the wage.
+
+**`NegotiationService`**: multi-round threads (max 5 — football does not have infinite haggling),
+seller counters, buyer counters back, and per-offer accept / reject / withdraw.
+
+- **The seller chooses which offer to accept**, and rejecting one bid does not clear the rest. The
+  old `acceptBestOffer` wiped every offer on acceptance, so a seller could not pick a lower bid from a
+  better-fitting club without destroying the whole auction.
+- **The player is a third party.** A move can be agreed between two clubs and still fail, because the
+  player refuses the personal terms. An offer that meets the fee but misses the wage is recorded as
+  *agreed between the clubs, refused by the player* — with the reason — rather than silently
+  completing.
+- **Agent fee** 2–5% of the fee, scaling with deal size, and the seller receives the fee less it.
+- **Offers expire** after a week rather than sitting open forever.
+
+#### The legacy path is made safe, not just documented
+
+`TransferService.resolveOffer` still reads the old prose strings, so it is still resolving a buyer by
+name. It now uses a list-based lookup that **cannot throw** on a duplicate, picks deterministically by
+id, and **logs the ambiguity** rather than pretending the lookup was clean. Migrating the legacy
+strings onto the new entity is tracked in `sprintBacklog.md` rather than being half-done and claimed
+as complete.
+
+#### A calibration the tests caught
+
+`SquadRole.wageExpectationFactor()` for a star was 0.55 of value **per year**, which made a €12m
+player demand **€105,000 a week**. The real relationship is roughly 30% of the fee per year — a club
+signing for €50m on four years pays about €15m a year in wages, so the total outlay is the fee plus
+roughly 120% of it. The factor is now 0.32, and the chain of other roles came down with it.
+
+The number was not merely high: at 0.55 such a player was **unaffordable for every club in the
+game**, so S2.5's wage ceiling was never actually being tested — it was just always refusing. The
+test that caught it asserted a €60k offer would be accepted for a player demanding more, which the
+model correctly refused; the fix was to recalibrate the model *and* make the test offer what the
+player actually wanted.
+
+**10 tests. 277 total.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

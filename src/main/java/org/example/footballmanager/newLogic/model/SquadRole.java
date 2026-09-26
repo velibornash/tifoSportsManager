@@ -32,12 +32,20 @@ public enum SquadRole {
      * made every squad cost the same.
      */
     public double wageExpectationFactor() {
+        // Calibrated against the real relationship between a fee and the wages that follow it: a
+        // club signing for 50m on a four-year deal typically pays around 30% of the fee per YEAR in
+        // wages, so the total outlay is the fee plus roughly 120% of it over the contract.
+        //
+        // The first pass used 0.55 for a star, which is ~1.8x that and produced a 12m player
+        // demanding EUR 105,000 a week. Not impossible at the very top, but high enough that such a
+        // player was unaffordable for every club in the game, which silently broke S2.5's wage
+        // ceiling rather than testing it.
         return switch (this) {
-            case STAR -> 0.55;
-            case STARTER -> 0.34;
-            case ROTATION -> 0.20;
-            case PROSPECT -> 0.11;
-            case YOUTH -> 0.06;
+            case STAR -> 0.32;
+            case STARTER -> 0.20;
+            case ROTATION -> 0.12;
+            case PROSPECT -> 0.07;
+            case YOUTH -> 0.04;
         };
     }
 
