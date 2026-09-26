@@ -17,6 +17,7 @@ import org.example.footballmanager.newLogic.service.TacticsProfileBackupService;
 import org.example.footballmanager.newLogic.service.YouthAcademyService;
 import org.example.footballmanager.newLogic.util.players.PlayerFactory;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
+import org.example.footballmanager.newLogic.util.teams.EconomyProfileService;
 import org.example.footballmanager.newLogic.util.teams.TeamFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -47,6 +48,7 @@ public class DatabaseInitializer {
     private final TeamTacticsProfileRepository teamTacticsProfileRepository;
     private final PlayerFactory playerFactory;
     private final TeamFactory teamFactory;
+    private final EconomyProfileService economyProfile;
     private final PasswordEncoder encoder;  // Spring Security BCrypt encoder
     private final Random random = new Random();
     private final ResetService resetService;
@@ -414,6 +416,17 @@ public class DatabaseInitializer {
         return seasonCompetitionRepository.save(sc);
     }
 
+    /**
+     * Team ids already placed in ANY league during this seeding run.
+     *
+     * <p>This is deliberately global, not per-league. It used to be rebuilt for every league, which
+     * combined with name-based team creation to put one club in two leagues: League A took a random
+     * name, League B drew the same name, {@code findOrCreate} returned the <em>same</em> Team, and
+     * {@code addTeamToLeague} then reassigned its competition. A club has exactly one division, and
+     * two clubs are allowed to share a name, so identity here has to be the id.
+     */
+    private final Set<Long> teamIdsAssignedToALeague = new HashSet<>();
+
     private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac, Season season) {
         SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear())
                 .orElseThrow(() -> new RuntimeException("Sezona za ligu nije pronađena"));
@@ -438,9 +451,13 @@ public class DatabaseInitializer {
         // 1. Dodaj Omladinac ako treba i ako ga nema
         if (includeOmladinac) {
             Team omladinac = teamFactory.findOrCreate("OFK Omladinac");
-            if (omladinac.getId() != null && !usedTeamIdsInLeague.contains(omladinac.getId())) {
+            if (omladinac.getId() != null
+                    && !usedTeamIdsInLeague.contains(omladinac.getId())
+                    && !teamIdsAssignedToALeague.contains(omladinac.getId())) {
                 addTeamToLeague(omladinac, sc);
                 usedTeamIdsInLeague.add(omladinac.getId());
+                teamIdsAssignedToALeague.add(omladinac.getId());
+                economyProfile.apply(omladinac, league);
                 toCreate--;
                 log.info("Dodat Omladinac u ligu: {}", league.getName());
             }
@@ -450,13 +467,19 @@ public class DatabaseInitializer {
         while (toCreate > 0 && attempts < maxAttempts) {
             String candidateName = getRandomTeamName();
             Team team = teamFactory.findOrCreate(candidateName);
-            if (team.getId() == null || usedTeamIdsInLeague.contains(team.getId())) {
+            if (team.getId() == null
+                    || usedTeamIdsInLeague.contains(team.getId())
+                    // The real fix for the two-leagues bug: a name collision in this league must
+                    // skip, not re-add, the club another league already owns.
+                    || teamIdsAssignedToALeague.contains(team.getId())) {
                 attempts++;
                 continue;
             }
             if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
                 addTeamToLeague(team, sc);
                 usedTeamIdsInLeague.add(team.getId());
+                teamIdsAssignedToALeague.add(team.getId());
+                economyProfile.apply(team, league);
                 toCreate--;
                 log.info("Dodat tim {} u ligu {}", candidateName, league.getName());
             }
@@ -482,6 +505,14 @@ public class DatabaseInitializer {
     }
 
     private void addTeamToLeague(Team team, SeasonCompetition sc) {
+        // Defensive: a club belongs to one division. If it is somehow already in another, leave it
+        // there rather than silently moving it - moving it is what used to corrupt the league table.
+        Competition current = team.getCompetition();
+        if (current != null && !current.getId().equals(sc.getCompetition().getId())) {
+            log.warn("Preskakujem {}: vec je u ligi {}, ne {}", team.getName(), current.getName(),
+                    sc.getCompetition().getName());
+            return;
+        }
         team.setCompetition(sc.getCompetition());
         if (team.getCountry() == null) {
             team.setCountry(sc.getCompetition().getCountry());

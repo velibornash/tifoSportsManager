@@ -656,6 +656,23 @@ fixed the save statistics were a broken denominator and no shot-model calibratio
 
 ---
 
+## Open items carried out of Sprint 1 (review at the end, not now)
+
+Owner decision 2026-09-26: Sprint 1 is closed as **mechanics**. These are the numbers that were left
+unfinished, to be looked at together at the end rather than chased now.
+
+| Item | What is outstanding |
+|---|---|
+| **S1.1c** | Shot volume and goals are high; not being chased |
+| **S1.3** | Corner skew (ratio ~0.75-0.85, i.e. mildly asymmetric) |
+| **S1.7c** | Box fouls under-produced; the penalty constant compensates for it |
+| **S1.9** | Remaining calibration outliers |
+| **0-0 draws** | None in 100 matches. At ~4 goals/match that is ~1.4% expected, so possibly nothing - but it is a behavioural signal, not a calibration knob |
+| **Conditional subs UI** | The rules builder and live fired/spent/void view. Engine + API are done and tested |
+| **Tactical editor** | Redesign placeholder, scheduled last |
+
+---
+
 # Sprint 2 — The economy
 
 **Effort:** 15–18 days · **Type:** `FEATURE` · **Depends on:** S1 (for honest broadcast/prize income)
