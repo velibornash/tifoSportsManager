@@ -438,22 +438,41 @@ Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:
 
 ### Sprint 1 exit criteria
 
-| Metric | Baseline | Target |
-|---|---:|---:|
-| Goals | 5.4 | **2.6 – 3.1** |
-| Shots on target | 12.9 | **8 – 10** |
-| On-target % | 43.9% | **30 – 36%** |
-| Saves | 9.8 | **3 – 6** |
-| Duels won | 598.5 | **100 – 150** |
-| Interceptions | 36.1 | **12 – 18** |
-| Goal kicks | 40.7 | **10 – 18** |
-| Throw-ins | 18.7 | **26 – 40** |
-| Corners | 5.0 (7:1 skew) | **8 – 12, within 20% symmetric** |
-| Fouls | 29.6 | **19 – 26** |
-| Red cards | 1.0 | **0.1 – 0.4** |
-| Pass accuracy | 77.9% | **75 – 82%** (keep — do not chase 85%) |
-| Possession | 49.4 / 50.6 | **keep symmetric** |
-| Nil-draws | 0 / 200 | **≥ 2% of matches** |
+> ⚠️ **Rewritten 2026-09-26 against the fresh baseline.** The targets below were measured before
+> the quarantine and before the REC engine work. S1.1a/S1.1b have already moved several of them
+> into range, so the "now" column is authoritative.
+
+| Metric | Old target | **Now** | Real PL | Status |
+|---|---:|---:|---:|---|
+| **Goals** | 2.6 – 3.1 | **2.8** | 2.7 | ✅ **done (S1.1b)** |
+| **Shots on target** | 8 – 10 | **8.9** | 8–9 | ✅ **done (S1.1b)** |
+| **Saves** | 3 – 6 | **5.1** | ~5.8 | ✅ **done (S1.1a)** |
+| **Shot conversion** | — | **34%** | ~32% | ✅ **done (S1.1b)** |
+| Shots | — | 32.3 | 25 | ✅ owner accepts 30–40, see below |
+| On-target % | 30 – 36% | 28% | 33% | ⚠️ accepted trade-off, see below |
+| Pass accuracy | 75 – 82% | 81.5% | 80–86% | ✅ |
+| Possession | symmetric | 48.7 / 51.3 | 50 / 50 | ✅ |
+| Duels won | 100 – 150 | **373** | ~100 | ❌ next task (S1.4) |
+| Interceptions | 12 – 18 | **27.7** | 12–16 | ❌ S1.4 |
+| Corners | 8 – 12, symmetric | **5.6** (2.2/3.3) | ~10 | ❌ S1.3 |
+| Goal kicks | 10 – 18 | 19.8 | 12–15 | ⚠️ S1.2 |
+| Fouls | 19 – 26 | 16.6 | 22 | ⚠️ low |
+| Yellow cards | — | 2.3 | 4–5 | ⚠️ low |
+| Red cards | 0.1 – 0.4 | 0.15 | 0.2 | ✅ |
+| Nil-draws | ≥ 2% | 1/50 = 2% | ~6% | ⚠️ low |
+
+**Two deliberate non-changes, both recorded in the source:**
+
+1. **Shot volume is not a defect.** `SHOT_FREQUENCY_GATE = 0.30` carries a note that the owner
+   accepts "30-40 shots a match". Chasing a real 25 would contradict an explicit decision.
+2. **On-target % sits at 28% against a real 33%, and that is the coherent trade.** 32 attempts with
+   the same accuracy and the same goals as a real 25-shot match: more chances, no more scoring. The
+   extra volume surfaces as misses (16.8 vs ~14), not as goals. Raising SOT to 33% would put goals
+   back near 3.3 and break the metric that matters most.
+
+**Root cause of the whole mess, for the record:** `GoalkeeperEngine.trySave` never checked whether
+the ball was going between the posts, so 26% of off-target attempts were "saved". Until that was
+fixed the save statistics were a broken denominator and no shot-model calibration could be trusted.
 
 ---
 
