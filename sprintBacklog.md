@@ -448,6 +448,37 @@ fouls, which is a separate calibration — logged as **S1.7c**. VAR was measured
 useful lever: the review gate in `VARService.checkPenalty` overturns so rarely that it barely moves
 the total.
 
+#### Root cause of the erasure: offside has priority over a penalty (user rule 2026-09-26)
+
+The collision was not a random race — it was a **rules** question. When the ball is played to an
+attacker who is in an offside position, the whole phase is a prohibited action: a defender cannot
+concede a penalty for a foul on a player who had no right to be contesting the ball. So offside
+wins and **the penalty is never created.**
+
+Fixed at the root, in `DuelService.evaluateDiscipline`: if the fouled player is the
+`offsideFlaggedReceiver`, the penalty is suppressed, an `OFFSIDE` event is recorded, the offside
+counter is fed, and `handleOffsideFreeKick` restarts play. `handleOffsideFreeKick` also clears
+`penaltyPending` explicitly, since it is reached from three call sites that must all agree.
+
+`startSetPiece` still refuses an *ordinary* free kick while a penalty is pending — that stays
+correct, and is the opposite rule on purpose.
+
+> ⚠️ **This is a deliberate divergence from Law 11, and it is worth knowing which case it changes.**
+> The Laws penalise *"whichever offence occurs first"*. IFAB's own FAQ is explicit on the case we
+> hit: an attacker who **plays the ball** and is then fouled in the box — *"the offside offence
+> occurred before the foul, so the referee awards an indirect free kick … not a penalty kick."* That
+> is exactly the user's rule and exactly the seed-123 case.
+>
+> The divergence is the **reverse** order: an attacker in an offside position who is fouled
+> **before playing the ball**. Law 11 says that is still a penalty — *"the foul is penalised as it
+> has occurred before the offside offence."* Under the rule implemented here it is not.
+>
+> The implementation keys off `offsideFlaggedReceiver`, which is set at pass-moment, so it covers
+> both orders and resolves both in offside's favour. That is coherent as a game rule — "you cannot
+> win a penalty from an attack that was never on" — but it is stricter than the Laws. If the intent
+> was only the IFAB case, the guard should additionally require that the ball has reached the
+> attacker. **Open question for the PO; not changed unilaterally.**
+
 #### A second, worse bug found while calibrating: a penalty could be erased mid-flight
 
 `ProposalBatchDiag`'s chain invariant flagged `48 awarded but 47 taken`. Bisected to seed 123:

@@ -99,6 +99,39 @@ public class DuelService {
         state.clearPassContext();
 
         if (res.penalty()) {
+            // OFFSIDE HAS PRIORITY OVER A PENALTY (user rule 2026-09-26).
+            //
+            // If the ball was played to this attacker while he was in an offside position, the
+            // whole phase is a prohibited action: the defender cannot concede a penalty for a foul
+            // on a player who had no right to be contesting the ball. The offside stands and the
+            // penalty is never created.
+            //
+            // This is the cause of the seed-123 defect: a pass was played to a flagged receiver,
+            // a foul was called in the box on the very next tick, and the offside indirect free kick
+            // then landed on top of the penalty one tick later and silently erased it. Suppressing
+            // the penalty here fixes the root rather than papering over the collision.
+            //
+            // NOTE: this is a deliberate divergence from Law 11, which penalises "whichever offence
+            // occurs first" - under the Laws, an attacker fouled BEFORE playing the ball still gets
+            // a penalty. Flagged here because it is a game-design choice, not a reading of the Law.
+            Player flagged = state.getOffsideFlaggedReceiver();
+            if (flagged != null && flagged == fouled) {
+                state.setOffsideFlaggedReceiver(null);
+                state.setCarrier(null);
+                state.getBall().stop();
+                String defending = "HOME".equals(fouled.getTeam()) ? "AWAY" : "HOME";
+                state.setRestartTeam(defending);
+                String offMsg = "*** OFFSIDE by " + fouled.getLabel()
+                        + " - no penalty, indirect free kick " + defending
+                        + " (offside is a prohibited action, so it takes precedence)";
+                log("ORC", offMsg);
+                appendDisciplineEvent("OFFSIDE", offMsg, fouled.getTeam(), fouled, offender,
+                        null, null, null, null, null, null);
+                stats.onOffside(fouled.getTeam());
+                restartManager.handleOffsideFreeKick(state, fouled.getPosition());
+                return true;
+            }
+
             restartManager.handlePenalty(state, fouled.getTeam());
             Player taker = state.getRestartTaker();
             String msg = "Penalty awarded to " + fouled.getTeam()

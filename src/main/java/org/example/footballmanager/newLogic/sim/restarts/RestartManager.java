@@ -134,6 +134,10 @@ public class RestartManager {
      * to the defending team before calling.
      */
     public void handleOffsideFreeKick(MatchState state, Position spot) {
+        // Offside supersedes a penalty awarded for the same incident: the attacker's involvement
+        // was a prohibited action, so there is no penalty to take. Cleared here rather than blocked
+        // upstream because this method is reached from three call sites and they must all agree.
+        state.setPenaltyPending(false);
         state.getBall().setPosition(spot);
         state.getBall().stop();
         state.setPendingReceiver(null);
@@ -191,10 +195,12 @@ public class RestartManager {
      * away, nearest (attacker for penalty) available teammate walks to the ball.
      */
     private void startSetPiece(MatchState state, Position spot, String takingTeam, boolean penalty) {
-        // A penalty is the more serious offence. If the same incident also produced an offside or
-        // any other restart, the penalty wins and the ball stays on the spot — restarting with a
-        // free kick instead would let the fouled team take a lesser restart and quietly erase the
-        // penalty the referee awarded.
+        // An ordinary free kick must not quietly erase a penalty the referee awarded.
+        //
+        // An offside free kick is the deliberate opposite: offside is a prohibited action and takes
+        // precedence over the penalty (user rule 2026-09-26), so it supersedes one rather than being
+        // blocked by it. It does not route through here - handleOffsideFreeKick sets the restart up
+        // itself and clears the pending penalty explicitly, which is where that rule lives.
         if (!penalty && state.isPenaltyPending()) {
             return;
         }
