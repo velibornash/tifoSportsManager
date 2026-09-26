@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.model;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
 
 @Data
 @NoArgsConstructor
@@ -19,13 +20,20 @@ public class Player {
     @Embedded
     private Skills skills;
 
+    @ColumnDefault("6.0")
     private double talent;
 
+    @ColumnDefault("24")
     private int age;
+    @ColumnDefault("0")
     private double playerValue;
+    @ColumnDefault("0")
     private double earnings;
+    @ColumnDefault("1.8")
     private double height;
+    @ColumnDefault("75")
     private double weight;
+    @ColumnDefault("6.0")
     private double form;
 
     /**
@@ -34,15 +42,20 @@ public class Player {
      * {@code MoraleService} on minutes played, what the player did, how the team did, and whether he
      * is paid what he is worth.
      */
+    @ColumnDefault("60.0")
     private double morale = 60.0;
+    @ColumnDefault("6")
     private int rating;
 
     @Enumerated(EnumType.STRING)
     private Position position;
 
+    @ColumnDefault("0")
     private int totalGoals;
+    @ColumnDefault("0")
     private int totalAssists;
     private Integer squadNumber;
+    @ColumnDefault("false")
     private boolean injured;
     private Integer injuryDaysRemaining;
     private Integer injurySeasonNumber;

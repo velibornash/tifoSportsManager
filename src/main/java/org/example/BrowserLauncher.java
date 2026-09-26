@@ -20,21 +20,30 @@ import java.util.Arrays;
  * {@code http://localhost:8080/home.html} while the test server was on a different (or mock) port,
  * so a dead tab popped up on every test run and looked like a stray UI test that could never pass.
  *
- * <p>It is now a separate, opt-in component:
+ * <p>It is a separate component with these rules:
  * <ul>
- *   <li><b>Off by default.</b> Nothing opens unless you ask for it.</li>
- *   <li><b>Never in tests.</b> The {@code test} profile disables it explicitly, so a context start
- *       in a test can never spawn a browser regardless of how the property is set.</li>
+ *   <li><b>On by default</b>, because starting the game and having nothing happen is the surprising
+ *       outcome. It was briefly opt-in, which cured the test popups and quietly broke normal use —
+ *       the owner starting the app from the IDE got no browser and no explanation.</li>
+ *   <li><b>Never in tests.</b> Three independent guards, because the failure they prevent (a dead
+ *       tab on every test run) is noisy enough to be worth the belt and braces:
+ *       <ol>
+ *         <li>the {@code test} profile short-circuits it,</li>
+ *         <li>{@code application-test.properties} sets {@code app.open-browser=false},</li>
+ *         <li>and the property is only honoured when explicitly set to true, otherwise the default
+ *             path applies — so a test that somehow ran without the profile still gets the
+ *             property-based block.</li>
+ *       </ol>
+ *   <li><b>Off on a headless machine</b>, where there is no desktop to open a window on.</li>
  *   <li><b>It respects {@code server.port}</b> instead of hardcoding 8080.</li>
  *   <li><b>It opens the login page</b>, not the game-mode picker — an unauthenticated visitor has no
  *       token, so opening {@code /home.html} just bounced them to login anyway, one hop later.</li>
  * </ul>
  *
- * <p>To enable: {@code mvn spring-boot:run -Dspring-boot.run.arguments=--app.open-browser=true}
- * or set {@code app.open-browser=true} in the active profile.
+ * <p>To turn it off: {@code --app.open-browser=false}.
  */
 @Component
-@ConditionalOnProperty(name = "app.open-browser", havingValue = "true")
+@ConditionalOnProperty(name = "app.open-browser", havingValue = "true", matchIfMissing = true)
 public class BrowserLauncher implements ApplicationRunner {
 
     private final Environment env;
@@ -53,12 +62,31 @@ public class BrowserLauncher implements ApplicationRunner {
         if (skipOnTestProfile) {
             return;
         }
+        if (isHeadless()) {
+            // No desktop to open a window on. A CI agent or a remote shell would otherwise log a
+            // failure it cannot act on.
+            return;
+        }
         try {
             openBrowser(baseUrl() + "/login.html");
         } catch (Exception e) {
             // Never fail startup over this - it is a convenience, not a requirement.
             System.err.println("[BrowserLauncher] could not open a browser: " + e.getMessage());
         }
+    }
+
+    /** Whether there is a desktop to open a browser on. */
+    private boolean isHeadless() {
+        if (Boolean.getBoolean("java.awt.headless")) {
+            return true;
+        }
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (!os.contains("mac") && !os.contains("win")) {
+            // Only the Linux case is reliably detectable, and DISPLAY absence is the honest signal.
+            String display = System.getenv("DISPLAY");
+            return display == null || display.isBlank();
+        }
+        return false;
     }
 
     /** Honours server.port / server.servlet.port so a non-default port is not ignored. */

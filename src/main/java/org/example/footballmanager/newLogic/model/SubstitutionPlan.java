@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import lombok.Data;
 
 import java.time.Instant;
@@ -45,9 +44,14 @@ public class SubstitutionPlan {
     /**
      * The rules as a JSON array: trigger minute, condition, player on, player off. Kept as text so
      * the schema does not have to move every time a condition is added.
+     *
+     * <p>Mapped as {@code TEXT} and deliberately <b>not</b> {@code @Lob}. {@code @Lob} on a String
+     * makes Hibernate emit {@code CLOB}, which H2 accepts and <b>PostgreSQL does not have</b> — so
+     * the table was never created in production and conditional substitutions failed at runtime,
+     * while every H2 test passed. The American-football entities already use {@code TEXT}; this is
+     * now the same convention.
      */
-    @Lob
-    @Column(columnDefinition = "CLOB")
+    @Column(columnDefinition = "text")
     private String rulesJson;
 
     /** Minute the plan was last edited, for the live view. */
