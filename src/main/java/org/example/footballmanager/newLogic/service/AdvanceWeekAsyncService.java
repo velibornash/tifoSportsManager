@@ -78,7 +78,9 @@ public class AdvanceWeekAsyncService {
             boolean trainingRan = currentWeek != SeasonService.PLAYOFF_WEEK && userTeam.getId() != null;
             if (trainingRan) {
                 job.updateMessage("Running weekly training...");
-                trainingProgressionService.runWeeklyTraining(userTeam.getId());
+                // If the manager already trained this week manually, keep the stored report
+                // instead of re-applying growth or failing the week advance.
+                trainingProgressionService.runWeeklyTrainingIfDue(userTeam.getId());
             }
 
             job.updateMessage("Advancing calendar and processing seasonal updates...");

@@ -315,6 +315,8 @@ public class MatchPersistenceService {
     private void saveTickHistory(MatchResult result, Match match) {
         if (result.tickHistory().isEmpty()) return;
         matchTickStateRepository.deleteByMatch(match);
+        int saved = 0;
+        int skipped = 0;
         for (TickSnapshot tick : result.tickHistory()) {
             try {
                 String playersJson = objectMapper.writeValueAsString(
@@ -326,7 +328,26 @@ public class MatchPersistenceService {
                 Integer carrierId = tick.carrierId() != null ? tick.carrierId().intValue() : null;
                 Integer receiverId = tick.pendingReceiverId() != null ? tick.pendingReceiverId().intValue() : null;
                 matchTickStateRepository.save(new MatchTickState(match, tick.tick(), playersJson, ballJson, carrierId, tick.ballInTransit(), receiverId));
-            } catch (Exception e) { /* skip */ }
+                saved++;
+            } catch (Exception ex) {
+                // Previously swallowed with `catch (Exception e) { }`. That hid a real defect: the
+                // match_tick_states table did not exist on H2 (two incompatible column mappings),
+                // so every tick silently failed to persist and replay playback had no data - with
+                // no error anywhere. Tick granularity means a few bad frames are not worth
+                // failing the whole match over, so the save is still best-effort, but the count
+                // is now logged so a systemic failure is impossible to miss.
+                skipped++;
+                if (skipped <= 3) {
+                    log.warn("Tick {} of match {} could not be persisted: {}",
+                            tick.tick(), match.getId(), ex.toString());
+                }
+            }
+        }
+        if (skipped > 0) {
+            log.warn("Tick history for match {} partially persisted: {} saved, {} skipped. "
+                    + "Replay playback for this match will be incomplete.", match.getId(), saved, skipped);
+        } else {
+            log.debug("Tick history for match {} persisted: {} ticks.", match.getId(), saved);
         }
     }
 

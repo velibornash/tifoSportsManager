@@ -261,7 +261,7 @@ public class SimulationController {
             if (teamName != null) {
                 Team team = teamRepository.findByName(teamName).orElse(null);
                 if (team != null) {
-                    trainingProgressionService.runWeeklyTraining(team.getId());
+                    trainingProgressionService.runWeeklyTrainingIfDue(team.getId());
                 }
             }
 

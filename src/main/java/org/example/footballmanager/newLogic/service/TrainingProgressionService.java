@@ -3,12 +3,15 @@ package org.example.footballmanager.newLogic.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.dto.training.*;
 import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.repository.TeamTrainingSetupRepository;
 import org.example.footballmanager.newLogic.repository.TrainingWeekReportRepository;
+import org.example.footballmanager.newLogic.exception.ApiException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TrainingProgressionService {
@@ -64,11 +68,71 @@ public class TrainingProgressionService {
         return toSetupDto(setup);
     }
 
+    /**
+     * Applies one week of training growth to every player in the squad and writes the weekly report.
+     *
+     * <p>Idempotency: a team gets exactly one training run per (season, week). Calling this twice
+     * used to apply the growth twice and silently overwrite the report, which made the free
+     * "Run Weekly Training" button in the UI an unlimited skill-point exploit. The existing report
+     * row is the natural lock - it is keyed on (team, season, week) and is only written at the end
+     * of a successful run.
+     *
+     * @param force re-run and overwrite. Intended for an admin correcting a misconfigured week.
+     * @throws ApiException {@code TRAINING_ALREADY_RUN} when the week has already been trained
+     */
     @Transactional
     public TrainingWeekReportDTO runWeeklyTraining(Long teamId) {
+        return runWeeklyTraining(teamId, false);
+    }
+
+    /**
+     * Week-advance entry point. Unlike {@link #runWeeklyTraining(Long)} this never throws when the
+     * week has already been trained - it returns the stored report instead.
+     *
+     * <p>This matters because the season flow can legitimately reach the advance step after a
+     * manager has already pressed "Run Weekly Training" for the same week. Treating that as an
+     * error would make the week impossible to advance. Growth must be applied at most once per
+     * week, and the existing report is the record of that.
+     */
+    @Transactional
+    public Optional<TrainingWeekReportDTO> runWeeklyTrainingIfDue(Long teamId) {
         GameClock clock = seasonService.getOrCreateClock();
         int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
         int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+
+        return trainingWeekReportRepository
+                .findByTeamIdAndSeasonNumberAndWeekNumber(teamId, season, week)
+                .map(TrainingWeekReport::getReportJson)
+                .map(json -> {
+                    try {
+                        return objectMapper.readValue(json, TrainingWeekReportDTO.class);
+                    } catch (Exception ex) {
+                        log.warn("Stored training report for team {} (season {}, week {}) is unreadable: {}",
+                                teamId, season, week, ex.toString());
+                        return null;
+                    }
+                })
+                .map(Optional::of)
+                .orElseGet(() -> Optional.of(runWeeklyTraining(teamId, false)));
+    }
+
+    @Transactional
+    public TrainingWeekReportDTO runWeeklyTraining(Long teamId, boolean force) {
+        GameClock clock = seasonService.getOrCreateClock();
+        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+
+        Optional<TrainingWeekReport> existing = trainingWeekReportRepository
+                .findByTeamIdAndSeasonNumberAndWeekNumber(teamId, season, week);
+        if (existing.isPresent() && !force) {
+            throw new ApiException(HttpStatus.CONFLICT, "TRAINING_ALREADY_RUN",
+                    "Training has already been run for week " + week + " of season " + season
+                            + ". Each week can only be trained once.");
+        }
+        if (existing.isPresent()) {
+            log.warn("Forced re-run of weekly training for team {} (season {}, week {}), overwriting report {}",
+                    teamId, season, week, existing.get().getId());
+        }
 
         TeamTrainingSetup setup = teamTrainingSetupRepository
                 .findByTeamIdAndSeasonNumberAndWeekNumber(teamId, season, week)
@@ -113,9 +177,7 @@ public class TrainingProgressionService {
             playerRepository.saveAll(updatedPlayers);
         }
 
-        TrainingWeekReport dbReport = trainingWeekReportRepository
-                .findByTeamIdAndSeasonNumberAndWeekNumber(teamId, season, week)
-                .orElseGet(TrainingWeekReport::new);
+        TrainingWeekReport dbReport = existing.orElseGet(TrainingWeekReport::new);
         dbReport.setTeam(teamRepository.findById(teamId).orElseThrow());
         dbReport.setSeasonNumber(season);
         dbReport.setWeekNumber(week);
@@ -126,6 +188,8 @@ public class TrainingProgressionService {
             throw new RuntimeException("Failed to serialize training report", e);
         }
         trainingWeekReportRepository.save(dbReport);
+        log.info("Weekly training applied to {} players for team {} (season {}, week {}), report {}",
+                updatedPlayers.size(), teamId, season, week, dbReport.getId());
         return report;
     }
 

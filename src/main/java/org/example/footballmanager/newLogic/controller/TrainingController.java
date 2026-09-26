@@ -126,6 +126,11 @@ public class TrainingController {
         return trainingProgressionService.saveCurrentSetup(teamId, setup);
     }
 
+    /**
+     * Trains the squad for the current week. Idempotent per (season, week): a second call in the
+     * same week is rejected with 409 TRAINING_ALREADY_RUN, which is what stops the UI button from
+     * being a free infinite-skill-point exploit.
+     */
     @PostMapping("/weekly/team/{teamId}/run")
     public TrainingWeekReportDTO runWeeklyTraining(@PathVariable Long teamId) {
         return trainingProgressionService.runWeeklyTraining(teamId);
