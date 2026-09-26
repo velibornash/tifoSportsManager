@@ -115,7 +115,24 @@ public class Skills implements SkillSet {
         striker = (int) Math.floor(Math.max(0.0, strikerExact != null ? strikerExact : striker));
     }
 
+    /**
+     * Position-weighted ability score, in the same 0-40 range as before.
+     *
+     * <p>Reads the {@code *Exact} doubles rather than the floored ints. Weekly training growth is
+     * 0.05-0.6 points, so for most of a season a player's only progress lives in the fraction. This
+     * is the value behind displayed OVR ({@code PlayerDTO}) and match rating
+     * ({@code MatchRatingCalculator}), so flooring it here made weeks of training invisible to the
+     * manager even though the match engine itself was already reading exact values via
+     * {@code RealSquadFactory.toSimSkills}.
+     */
     public double getRatingScore(Position position) {
+        double pace = getExact(SkillName.PACE);
+        double defender = getExact(SkillName.DEFENDER);
+        double technique = getExact(SkillName.TECHNIQUE);
+        double playmaker = getExact(SkillName.PLAYMAKER);
+        double passing = getExact(SkillName.PASSING);
+        double striker = getExact(SkillName.STRIKER);
+        double goalkeeper = getExact(SkillName.GOALKEEPER);
         return switch (position) {
             case GK -> goalkeeper * 2.0 + pace * 1.0 + passing * 1.0 + defender * 0.5;
             case DEF -> pace * 1.5 + defender * 1.5 + playmaker * 1.0 + passing * 1.0 + technique * 0.8;
@@ -125,11 +142,20 @@ public class Skills implements SkillSet {
         };
     }
 
+    /** Sum of the visible (floored) skills, used for coarse display. Prefer getRatingScore. */
     public int getTotalForRating(String position) {
         return switch (position.toUpperCase()) {
             case "GK", "GOALKEEPER" -> goalkeeper;
             default -> defender + pace + technique + playmaker + passing + striker;
         };
+    }
+
+    /**
+     * The floored integer a given skill is currently displayed as. Provided for UI code and tests
+     * that need the rounded view after reading an exact value.
+     */
+    public int visibleInt(SkillName name) {
+        return (int) Math.floor(Math.max(0.0, getExact(name)));
     }
 
     // --- Fluent accessors matching PlayerSkills naming (used by engine) ---

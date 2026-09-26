@@ -116,15 +116,21 @@ There is **no check that `price >= askingPrice`**, in `normalizePrice` or in `co
 
 The "Run Weekly Training" button (`training-view.js:331,405-420`) calls it directly. **Spam it for unlimited skill points** — and because the report is overwritten, the output still looks like a single clean week.
 
-### 3.4 ~90% of all training work has zero effect on matches
+### 3.4 Sub-integer training progress was invisible to ratings and OVR — ✅ FIXED (S0.4)
 
-The dual `int` + `Double *Exact` representation in `model/Skills.java:17-34` exists **precisely because weekly growth is fractional** (0.05–0.6 points/week, see §6). But:
+> **CORRECTION.** The first draft of this audit said the match engine read the floored `int` and therefore discarded ~90% of all training work. **That was wrong.** `RealSquadFactory.toSimSkills:185-196` already reads `getExact(...)` for all eight skills, so the engine has always seen sub-integer values and training has always affected matches.
 
-- `getRatingScore():118-126` and `getTotalForRating():128-133` read the **`int`**
-- Every fluent accessor — `pace()`, `shooting()`, `passing()`, `technique()`, `defending()`, `playmaking()`, `goalkeeping()`, `stamina()` (`:137-144`) — returns the **floor'd `int`**
-- `syncVisibleFromExact():107-116` does `Math.floor` into the display ints
+The dual `int` + `Double *Exact` representation in `model/Skills.java:17-34` exists because weekly growth is fractional (0.05–0.6 points). The real gap was narrower and confined to the **display and rating layer**:
 
-A player at 13.9 technique is **byte-identical** to one at 13.0 as far as the match engine is concerned. The entire `*Exact` layer — the reason the dual representation exists — is display-only. Only the Training Reports UI reads the doubles (`training-view.js:613`).
+| Consumer | Effect of the fix |
+|---|---|
+| `PlayerDTO:88` (`calculateOverall`) | Displayed OVR now moves with fractional progress instead of only at integer boundaries |
+| `MatchRatingCalculator:48` | Match rating now reflects sub-integer development |
+| `Team.getAverageSkill/attackRating/midfieldRating/defenseRating` | Also fixed — but these have **0 callers**, i.e. already dead, useful for Sprint 8 team-strength display |
+
+`getRatingScore` now reads the `*Exact` doubles (`Skills.java:118-141`). `visibleInt(SkillName)` was added for UI code that needs the floored view. `getTotalForRating` intentionally still sums the visible ints — it is a coarse display helper.
+
+8 tests in `SkillsExactRatingTest`, including one that proves whole-number ratings are **numerically identical** to the previous integer formula, so this is a pure precision gain with no balance shift on existing save data.
 
 ### 3.5 Fatigue never recovers on its own
 
