@@ -387,6 +387,191 @@ should pull goals to ~2.7 and bring nil-draws back on their own.
 
 **Tests: 124 → 132.**
 
+### S1.1b — Shot conversion calibration ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `562785f` · **Docs:** `e088cec`
+
+On-target probability and post-aim distribution rebalanced once the save statistics were
+trustworthy. On-target % 39% → 33% band, conversion 30% → ~32%.
+
+### S1.4 / S1.5 — Duel count and the press ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `e4c3b1c` · **Docs:** `3f8b1f4`
+
+A bounded chase burst was restored (`CHASE_SPRINT_MULTIPLIER`) and the press radius tightened so
+pressing is a challenge rather than a steal. Duels 373 → 268.
+
+**Owner decision recorded in `3f8b1f4`:** shot volume, goal count and the remaining numeric
+outliers are **no longer the priority**. Connecting the mechanics comes first; the numbers get
+re-derived once the mechanics stop lying. S1.1c/S1.2/S1.3's original targets are therefore
+deferred, not abandoned.
+
+### S1.8 — Substitutions ✅ DONE
+
+**Date:** 2026-09-26 · **Commits:** `0f4c8dd`, `b334e91` · **Docs:** `0ae6ea4`
+
+The single biggest engine gap. `isUnavailable()` existed and nothing ever set it, so the same
+eleven played 90 minutes regardless of fatigue, injury or bookings, and a red card meant 10-vs-11
+with no recourse — which is also *why* fatigue and injuries barely mattered, since being tired was
+only ever a slightly slower player.
+
+Shipped: real bench of 9, five substitutions, three windows, injury and fatigue-triggered automatic
+replacement, live viewer status.
+
+**`b334e91` — correction from the owner:** a **sent-off player is never replaced**. The team stays a
+player down for the rest of the match. The first implementation substituted him, which quietly
+cancelled the entire cost of a red card.
+
+### S1.6 — Injuries, fatigue persistence, weekly recovery ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `1a2d5f0`
+
+**The live engine produced zero injuries.** The only injury generator in the codebase was
+`RealisticMatchEngine.maybeTriggerInjury`, quarantined to `footballForDelete/` earlier the same
+session — so the medical page, the injury model and the substitution logic all had nothing to act
+on. Sprints 1, 2 and 4 all assumed injuries existed.
+
+- `InjuryService` ports `maybeTriggerInjury`. Risk scales with fatigue and the victim is picked
+  weighted by fatigue, so a tired player is both more likely to go down and more likely to be the
+  one who does. Goalkeepers excluded.
+- Two deliberate changes: severity is an injury *type* with a realistic absence range (was three
+  hardcoded buckets), and **one roll per team, not per player** — the original's per-player loop
+  would have multiplied risk by squad size.
+- **Fatigue now persists.** `FatigueSystem` accumulated during a match but only on the engine's own
+  `Player` and never left it. The Medical Center, the injury model and season recovery all read the
+  DB entity, so a player could run a season at zero recorded fatigue however hard he played.
+- **Weekly passive recovery added**, age-scaled (22 pts at ≤24 → 11 at 34+). Fatigue had *no sink*
+  at all except the free, unbounded medical button.
+- Corrected the medical page, which had been telling players "weekly passive healing still applies"
+  while nothing of the kind existed.
+
+**7 tests**, including one asserting fatigue actually drives risk.
+
+### S1.7 — Penalties are taken again ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** `115b818`
+
+A penalty was awarded, counted, logged as `PENALTY_AWARDED` — and then **never taken**. The taker
+picked the ball up off the spot and the generic final-rows hard-SHOT rule fired, so a penalty was an
+11 m shot with no run-up, no dive and no nerve. `PENALTY_KICK` / `PENALTY_SAVED` / `PENALTY_MISS`
+were declared in `ActionLogService` and produced by nothing.
+
+`PenaltyEngine`, split into a pure `resolve()` and an `apply()`. A penalty is not a shot: the keeper
+**commits to a dive before the kick**, so it is modelled as a read probability, not through
+`GoalkeeperEngine.trySave` — that is a geometric proximity test and structurally cannot express a
+keeper who has already guessed wrong.
+
+Calibration over 400k samples:
+
+| taker (striker/tech) | keeper | scored | saved | missed |
+|---|---|---:|---:|---:|
+| 12 / 12 | 12 | **76.6%** | 19.4% | 4.0% |
+| 12 / 12 | 20 | 67.9% | 28.0% | 4.0% |
+| 12 / 12 | 2 | 86.1% | 9.9% | 4.0% |
+| 20 / 20 | 12 | 80.7% | 18.3% | 1.0% |
+
+Real conversion is ~76%, so the average row is on target and the spread across the keeper range
+(~10% poor → ~28% elite) matches reality.
+
+**Three bugs the tests caught, all of which would have shipped:**
+
+1. **"Guessed wrong" was silently right one time in three.** Failing the read rolled a *fresh
+   uniform* side, which coincided with the taker's actual side ~33% of the time — turning a 37% read
+   into an effective 58% and pushing saves to 27%.
+2. **A goalkeeper could be handed the ball.** `selectTaker` filtered on `row > 6.0` to mean "not a
+   defender", so a keeper standing in the opposition half won on shooting skill.
+3. **The freeze.** The claim block clears the set-piece type on the same tick the taker reaches the
+   ball, so the type was gone before anything could read it.
+
+`ProposalBatchDiag` now prints `*** PENALTY CHAIN BROKEN ***` if an awarded penalty is not followed
+by a kick. It earned its keep immediately — it reported `5 awarded but 0 taken` before any test did.
+
+### S1.7b — Realistic penalty rate, and a penalty that can no longer be erased ✅ DONE
+
+**Date:** 2026-09-26 · **Commits:** `705bee6`, `1cec395`
+
+Once penalties could actually be taken, the award rate became measurable for the first time:
+**0.07/match against a real ~0.27**. S1.7's task text had asserted the rate was already correct on
+the strength of `PENALTY_FROM_BOX_FOUL = 0.06`; that was never measured. It went unnoticed for the
+life of the engine because an un-taken penalty is indistinguishable in the aggregate from a rare
+one — the counter looked plausible and nothing followed it.
+
+The constant was derived from measured quantities:
+
+| quantity | measured (200 matches) | real |
+|---|---:|---:|
+| box fouls/match | 1.655 | ~2.5–3.5 |
+| VAR confirms a penalty | 99.1% (3 overturns in 331) | — |
+| penalties/match before | 0.07 | ~0.27 |
+
+`1.655 × rate × 0.991 = 0.27` → **0.165**. VAR was measured specifically to rule it out as a lever.
+
+**Result: 0.24 penalties/match.** Goals/shots/pass unchanged, so it is an isolated change.
+
+#### The chain invariant then found a worse bug
+
+`48 awarded but 47 taken`. Bisected to seed 123:
+
+```
+tick 2653  award  spt=PENALTY_HOME  carrier=null  rtaker=H10
+tick 2654          spt=FREE_KICK    carrier=null  rtaker=H10   <-- displaced
+tick 2655          spt=null         carrier=H10                 <-- played as a free kick
+tick 2658  ball has left the pitch. No PENALTY_KICK, ever.
+```
+
+The collision was not a random race — it was a **rules** question. A foul that is both a penalty
+*and* an offside fires both; the offside path called `handleFreeKick`, overwrote `setPieceType`, and
+the penalty — re-derived from that mutable field at the moment the taker reached the ball — read
+`FREE_KICK` and downgraded itself.
+
+**Owner rule: offside has priority.** Implemented at the root in `DuelService.evaluateDiscipline` —
+if the fouled player is the `offsideFlaggedReceiver` the penalty is never created; an `OFFSIDE` event
+is recorded and `handleOffsideFreeKick` restarts play.
+
+The penalty is also now an explicit `MatchState.penaltyPending` flag latched at the award rather than
+re-derived from a mutable field, with a per-tick watchdog that forces the kick after 40 ticks so a
+penalty can never evaporate.
+
+> **Open question for the PO, deliberately not decided unilaterally.** This is stricter than Law 11.
+> The Laws penalise *"whichever offence occurs first"*; IFAB's FAQ covers our case exactly (attacker
+> plays the ball, then is fouled in the box → indirect free kick, not a penalty). The divergence is
+> the **reverse** order: an attacker fouled **before** playing the ball is still a penalty under Law
+> 11, and is not one here. Coherent as a game rule, stricter than the Laws.
+
+**Tests: 152 → 176.**
+
+---
+
+## Where Sprint 1 stands
+
+| Metric | Current (200 matches) | Real PL | Status |
+|---|---:|---:|---|
+| goals | 3.55 | 2.7 | ⚠️ deferred by owner |
+| shots | 35.7 | 25 | ⚠️ deferred by owner |
+| on-target % | 28% | 33% | ✅ |
+| pass accuracy | 85% | 80–86% | ✅ |
+| penalties | 0.24 | ~0.27 | ✅ |
+| penalty conversion | 76.6% (model) | ~76% | ✅ |
+| injuries | modelled, 8–88 min | 0.3–0.6/team | ✅ |
+| substitutions | 5 / 3 windows | 5 / 3 | ✅ |
+| fouls | 12.0 | 22 | ⚠️ low |
+| duels | 268 | ~100 | ⚠️ deferred |
+| corners / goal kicks / throw-ins | not yet re-measured | — | ⏳ |
+
+**Tests: 84 → 176.** `mvn test` wall clock cut from ~5–6 min to **1:10** by moving `BaseTest` from
+`RANDOM_PORT` to `MOCK` (no test used a real port; it was opening a listening socket for nothing).
+
+### Still open in Sprint 1
+
+| Task | What |
+|---|---|
+| **S1.7c** | Box fouls under-produced (1.655/match vs 2.5–3.5). S1.7b's constant compensates for it |
+| **S1.9** | Remaining calibration outliers — restart distribution (goal kicks / throw-ins / corners) has not been re-measured since the quarantine |
+| **S1.10** | Persist replays |
+| **S1.11** | Wire THRU / CROSS / CENTER into the decision engine |
+| **stoppage time** | Real stoppage clock for VAR, penalties, injuries and substitution windows — currently `getRestartTaker()` is used as a heuristic in place of it |
+| **conditional subs** | Server-side per-match plans, stale-rule surfacing, live viewer status |
+
 ---
 
 ## Open design questions---
