@@ -324,6 +324,7 @@ public class SeasonService {
             clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
             gameClockRepository.save(clock);
             decrementInjuriesByWeek();
+            recoverFatigueForWeek();
             int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
             int newWeek = clock.getCurrentWeek();
             if (newWeek == 2) {
@@ -354,6 +355,42 @@ public class SeasonService {
         }
         if (changed) {
             playerRepository.saveAll(players);
+        }
+    }
+
+    /**
+     * Passive weekly recovery (Sprint 1.6).
+     *
+     * <p>Fatigue used to have no sink at all: the only thing that reduced it was the medical
+     * button, which is free and unbounded. So fatigue was a monotonic ratchet, and because it feeds
+     * both injury risk and {@code Team.getAvailablePlayers()} it would have pinned a squad at
+     * maximum condition permanently.
+     *
+     * <p>Recovery scales with age and with how much condition the week actually cost, so a starter
+     * who played every week ends a season meaningfully tired, a fringe player recovers fully, and
+     * an older player recovers less. The medical page had been claiming "weekly passive healing
+     * still applies" while nothing of the kind existed.
+     */
+    @Transactional
+    protected void recoverFatigueForWeek() {
+        List<Player> squad = playerRepository.findAll();
+        boolean changed = false;
+        for (Player player : squad) {
+            if (player == null || player.getSkills() == null) continue;
+            int current = player.getSkills().getFatigue();
+            if (current <= 0) continue;
+
+            // Base weekly recovery, reduced by age: a 34-year-old does not bounce back like a 22-year-old.
+            int baseRecovery = 22;
+            int age = player.getAge();
+            double ageFactor = age <= 24 ? 1.0 : age <= 29 ? 0.85 : age <= 33 ? 0.65 : 0.5;
+            int recovered = (int) Math.round(baseRecovery * ageFactor);
+
+            player.getSkills().setFatigue(Math.max(0, current - recovered));
+            changed = true;
+        }
+        if (changed) {
+            playerRepository.saveAll(squad);
         }
     }
 

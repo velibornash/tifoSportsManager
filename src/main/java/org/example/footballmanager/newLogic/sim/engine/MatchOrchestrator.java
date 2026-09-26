@@ -53,6 +53,7 @@ public class MatchOrchestrator {
     private final RestartManager restartManager;
     private final DuelService duelService;
     private final SubstitutionService substitutions;
+    private final InjuryService injuries;
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
     private final ThreatOverrideEngine threatOverrideEngine;
@@ -86,6 +87,7 @@ public class MatchOrchestrator {
         this.offsideService.setStats(stats);
         this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
         this.substitutions = new SubstitutionService(state, recorder, stats);
+        this.injuries = new InjuryService(state, recorder, stats);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
         this.threatOverrideEngine = new ThreatOverrideEngine();
 
@@ -408,6 +410,11 @@ public class MatchOrchestrator {
         // someone is exhausted. Runs after duels so a player sent off this tick is replaced on
         // the next one rather than in the same tick as the tackle.
         substitutions.onTick();
+
+        // === INJURIES (Sprint 1.6) ===
+        // After substitutions, so a player who has just come off injured is not immediately
+        // re-selected as a victim on the same tick.
+        injuries.onTick();
     }
 
     private String formatDecision(Player carrier, DecisionResult result) {

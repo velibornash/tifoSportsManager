@@ -28,6 +28,10 @@ public class Player {
     /** Yellow cards already shown to this player IN THIS MATCH (second yellow = red). */
     private int yellowCardsInMatch;
     private boolean injured;
+    /** Injury classification, e.g. ANKLE. Sprint 1.6 - severity drives the absence length. */
+    private String injuryType;
+    /** Days out, decremented by the season loop. Sprint 1.6. */
+    private int injuryDaysRemaining;
     private boolean substituted;
     /**
      * On the bench: in the matchday squad but not on the pitch. A benched player exists so he can
@@ -124,6 +128,11 @@ public class Player {
 
     public boolean isOnBench() { return onBench; }
     public void setOnBench(boolean onBench) { this.onBench = onBench; }
+    public String getInjuryType() { return injuryType; }
+    public void setInjuryType(String injuryType) { this.injuryType = injuryType; }
+    public int getInjuryDaysRemaining() { return injuryDaysRemaining; }
+    public void setInjuryDaysRemaining(int d) { this.injuryDaysRemaining = d; }
+
     public boolean isSubstituted() { return substituted; }
     public void setSubstituted(boolean substituted) { this.substituted = substituted; }
 

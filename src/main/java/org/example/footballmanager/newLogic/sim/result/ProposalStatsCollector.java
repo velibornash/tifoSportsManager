@@ -213,6 +213,14 @@ public class ProposalStatsCollector {
         if (l != null) l.tackles++; // defensive action by loser = tackle attempt
     }
 
+    /** Call from InjuryService. */
+    public void onInjury(String team, String playerId, String type, int days) {
+        TeamAcc ta = teams.get(team);
+        if (ta != null) ta.injuries++;
+        PlayerAcc pa = players.get(playerId);
+        if (pa != null) { pa.injuries++; pa.injuryDays = days; }
+    }
+
     /** Call from SubstitutionService. */
     public void onSubstitution(String team, String playerOffId, String playerOnId, boolean forced) {
         TeamAcc ta = teams.get(team);
@@ -437,6 +445,7 @@ public class ProposalStatsCollector {
         int fouls, yellowCards, redCards;
         int penalties;
         int substitutions;   // Sprint 1.8
+        int injuries;        // Sprint 1.6
         TeamAcc(String name) { this.teamName = name; }
     }
 
@@ -449,6 +458,7 @@ public class ProposalStatsCollector {
         int throughBalls, crosses, centers;
         int foulsCommitted, yellowCards, redCards;
         boolean subbedOff, subbedOn;   // Sprint 1.8
+        int injuries, injuryDays;      // Sprint 1.6
         PlayerAcc(Player p) { this.player = p; }
     }
 }

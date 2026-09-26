@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
@@ -78,6 +79,7 @@ public class SimMatchService {
         var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
                 homeSquad, awaySquad, homeBench, awayBench);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
+        persistMatchCondition(orchestrator.getState());
 
         long replayId = -1L;
         if (storeReplay) {
@@ -230,6 +232,45 @@ public class SimMatchService {
             if (updated.add(dbPlayer)) {
                 playerRepository.save(dbPlayer);
             }
+        }
+    }
+
+    /**
+     * Carries in-match condition back onto the persisted players (Sprint 1.6).
+     *
+     * <p>Until now the engine's fatigue lived only on {@code sim.model.Player} and never left the
+     * match. The Medical Center, the injury model and the season's recovery all read
+     * {@code Player.skills.fatigue} on the DB entity, so a player could run a whole season at zero
+     * recorded fatigue however hard he played, and the weekly recovery had nothing to recover.
+     *
+     * <p>The engine's fatigue is 0..1; the DB column is 0..100. Injury days and type are copied so
+     * the medical page and the injury countdown finally have a source.
+     */
+    private void persistMatchCondition(org.example.footballmanager.newLogic.sim.model.MatchState state) {
+        if (state == null) return;
+        GameClock clock = seasonService.getOrCreateClock();
+        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+
+        for (Player p : state.getPlayers()) {
+            Long dbId = parsePlayerId(p.getId());
+            if (dbId == null) continue;
+            org.example.footballmanager.newLogic.model.Player dbPlayer =
+                    playerRepository.findById(dbId).orElse(null);
+            if (dbPlayer == null || dbPlayer.getSkills() == null) continue;
+
+            if (p.getFatigue() > 0) {
+                int carried = (int) Math.round(Math.min(1.0, p.getFatigue()) * 100.0);
+                dbPlayer.getSkills().setFatigue(Math.min(100,
+                        dbPlayer.getSkills().getFatigue() + carried));
+            }
+            if (p.isInjured() && p.getInjuryDaysRemaining() > 0) {
+                dbPlayer.setInjured(true);
+                dbPlayer.setInjuryDaysRemaining(p.getInjuryDaysRemaining());
+                dbPlayer.setInjurySeasonNumber(season);
+                dbPlayer.setInjuryWeekNumber(week);
+            }
+            playerRepository.save(dbPlayer);
         }
     }
 

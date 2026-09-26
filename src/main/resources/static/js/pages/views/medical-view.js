@@ -92,7 +92,7 @@ export function createMedicalView(deps) {
                                 <div><strong>${overview?.rehabCount ?? 0}</strong><span>Managed cases</span></div>
                                 <div><strong>${overview?.totalPlayers ?? 0}</strong><span>Total squad size</span></div>
                             </div>
-                            <div class="fm-panel-action">Weekly passive healing still applies; this page adds active intervention.</div>
+                            <div class="fm-panel-action">Squad condition recovers on its own each week; this page adds active treatment to speed it up.</div>
                         </aside>
                     </div>
                 </div>`;
