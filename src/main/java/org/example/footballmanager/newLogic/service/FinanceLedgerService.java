@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +31,11 @@ public class FinanceLedgerService {
     private final FinanceLedgerEntryRepository ledger;
     private final PlayerRepository players;
 
-    public FinanceLedgerService(FinanceLedgerEntryRepository ledger, PlayerRepository players) {
+    private final GameClockRepository clocks;
+
+    public FinanceLedgerService(FinanceLedgerEntryRepository ledger, PlayerRepository players,
+                                GameClockRepository clocks) {
+        this.clocks = clocks;
         this.ledger = ledger;
         this.players = players;
     }
@@ -145,7 +150,24 @@ public class FinanceLedgerService {
         return out;
     }
 
+    /**
+     * Which season the ledger is being read for.
+     *
+     * <p>This used to be {@code Year.now().getValue()} - the wall-clock year. The settlement writes
+     * a <i>game</i> season, so the two never matched: income came back as zero, every club was told
+     * it had no settled income, and therefore no transfer budget, and the board had no ledger to form
+     * an opinion from. A manager's season is twelve real weeks, so the calendar year is not a season
+     * at all.
+     *
+     * <p>Read from the clock repository rather than through SeasonService, which depends on the
+     * weekly settlement that writes these lines - the same cycle the window and contract services hit.
+     */
     private Integer activeSeason(Team team) {
+        org.example.footballmanager.newLogic.model.GameClock clock =
+                clocks.findAll().stream().findFirst().orElse(null);
+        if (clock != null && clock.getCurrentSeason() != null) {
+            return clock.getCurrentSeason();
+        }
         return Year.now().getValue();
     }
 

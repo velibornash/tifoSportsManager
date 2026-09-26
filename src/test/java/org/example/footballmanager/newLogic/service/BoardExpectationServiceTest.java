@@ -35,6 +35,12 @@ class BoardExpectationServiceTest {
     @Autowired FinanceLedgerService ledgerService;
     @Autowired BoardExpectationService board;
     @Autowired WeeklyFinanceService finances;
+    @Autowired org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+
+    /** The season the ledger is keyed by - see MoraleAndBudgetServiceTest for why. */
+    private int gameSeason() {
+        return clocks.findAll().stream().findFirst().orElseThrow().getCurrentSeason();
+    }
 
     private Team aClub(String name, double budget) {
         Team t = new Team();
@@ -117,9 +123,9 @@ class BoardExpectationServiceTest {
     void settlingWeeksProducesARatio() {
         Team club = aClub("Settled", 2_000_000);
         for (int i = 0; i < 5; i++) {
-            finances.applyWeeklyFinances(club, 2026, 100 + i);
+            finances.applyWeeklyFinances(club, gameSeason(), 100 + i);
         }
-        Map<String, Object> summary = ledgerService.summarise(club);
+        Map<String, Object> summary = ledgerService.summarise(club, gameSeason());
         assertTrue((Integer) summary.get("ledgerLines") > 0, "the ledger must have lines");
 
         BoardExpectationService.BoardMood mood = board.evaluate(club, null);
@@ -130,7 +136,7 @@ class BoardExpectationServiceTest {
     @DisplayName("a club with no ledger says so rather than showing zeros that look like poverty")
     void noLedgerSaysSo() {
         Team club = aClub("Fresh", 500_000);
-        Map<String, Object> summary = ledgerService.summarise(club);
+        Map<String, Object> summary = ledgerService.summarise(club, gameSeason());
         assertTrue(Boolean.FALSE.equals(summary.get("settled")), "a fresh club is unsettled");
         assertNotNull(summary.get("notice"), "the page must be told to say so");
     }

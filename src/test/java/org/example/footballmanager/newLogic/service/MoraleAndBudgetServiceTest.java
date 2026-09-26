@@ -32,6 +32,18 @@ class MoraleAndBudgetServiceTest {
     @Autowired MoraleService morale;
     @Autowired TransferBudgetService budgets;
     @Autowired WeeklyFinanceService finances;
+    @Autowired org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+
+    /**
+     * The season the ledger is keyed by, taken from the clock rather than a literal year.
+     *
+     * <p>The reader used to guess the wall-clock year while the writers used the game season, so the
+     * two never met and every club read as having no income. Settling the season the clock is in is
+     * the invariant that fix restored.
+     */
+    private int gameSeason() {
+        return clocks.findAll().stream().findFirst().orElseThrow().getCurrentSeason();
+    }
 
     private Team aClub(String name, double budget) {
         Team t = new Team();
@@ -153,7 +165,7 @@ class MoraleAndBudgetServiceTest {
     @DisplayName("a club with income and manageable wages gets a real budget")
     void settledClubGetsABudget() {
         Team club = aClub("Settled", 5_000_000);
-        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, 2026, 200 + i);
+        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, gameSeason(), 200 + i);
 
         TransferBudgetService.Budget b = budgets.budgetFor(club.getId());
         assertTrue(b.granted() > 0, "a club with income and no players must be granted something");
@@ -166,9 +178,11 @@ class MoraleAndBudgetServiceTest {
     @DisplayName("a club whose wages exceed its income is told the wage bill is the problem")
     void wageBillIsTheConstraint() {
         Team club = aClub("Broke", 1_000_000);
-        // A wage bill far beyond anything the ground can generate.
-        aPlayer(club, "Overpaid", 250_000, 100_000_000);
-        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, 2026, 300 + i);
+        // A wage bill far beyond anything the ground can generate. It has to be genuinely
+        // absurd: once gate receipts were counted as income rather than dropped for having no
+        // season, a 30,000-seat ground earns enough that 250k a week no longer bankrupts anyone.
+        aPlayer(club, "Overpaid", 2_000_000, 100_000_000);
+        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, gameSeason(), 300 + i);
 
         TransferBudgetService.Budget b = budgets.budgetFor(club.getId());
         assertTrue(b.notGranted(), "a club spending more than it earns gets no transfer budget");
@@ -180,7 +194,7 @@ class MoraleAndBudgetServiceTest {
     @DisplayName("affordability says WHICH limit stopped a signing, not just no")
     void affordabilityExplainsItself() {
         Team club = aClub("Signing", 10_000_000);
-        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, 2026, 400 + i);
+        for (int i = 0; i < 6; i++) finances.applyWeeklyFinances(club, gameSeason(), 400 + i);
         Player target = aPlayer(club, "Target", 1_000, 50_000_000);
 
         TransferBudgetService.Affordability a = budgets.canAfford(club.getId(), target.getId());

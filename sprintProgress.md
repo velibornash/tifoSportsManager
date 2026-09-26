@@ -1359,6 +1359,47 @@ called with, so a contract signed and a contract expired are on the same scale.
 
 **332 tests.**
 
+### An accepted offer has to actually transfer somebody
+
+The negotiation service was a very careful conversation about a thing that never happened. Offers
+opened, countered, were objected to by the player, and were accepted; the winning offer's status
+flipped — and then the player stayed with the selling club, the buyer was never charged, no contract
+existed and no ledger line was written. A market where every deal is agreed and no deal ever
+completes is worse than no market, because it looks finished.
+
+`completeTransfer` now settles it, in a deliberate order:
+
+1. **Charge the buyer first.** A club that cannot pay must never end up holding the asset, so the
+   affordability check happens before anything moves. A refusal is now logged with the reason rather
+   than swallowed — a deal that quietly fails is indistinguishable from one never agreed.
+2. **Record the instalment schedule** if the fee is too big to pay at once.
+3. **Move the player**, on the agreed wage, and write the contract for the agreed term.
+4. **Close the transfer** and set the completed timestamp.
+
+#### 🐛 The ledger had two different ideas of what a season is
+
+Chasing this uncovered something much larger than the missing completion. `FinanceLedgerService`
+decided which season to read with `Year.now().getValue()` — the **wall-clock year** — while the weekly
+settlement wrote the **game season**. The two never matched. On top of that, gate receipts,
+merchandising, wages, pitch maintenance and facility upkeep were written with a **null** season
+because those helpers were never passed one.
+
+So the consequence was: every club's income read back as zero → `budgetFor` answered "no settled
+income yet" → `canAfford` refused everything → **no transfer could ever complete, for any club, at
+any budget.** The transfer budget built in Sprint 2 had never once worked; it was reading an empty
+ledger. The board's FFP assessment had the same problem, and the finances page had nothing to show.
+
+Both sides are fixed. Every settlement line now carries its season and week, and the reader resolves
+the season from the game clock. Three existing tests encoded the old convention and were reading
+through the bug, so they now settle the season the clock is actually in — which is the invariant the
+fix restored.
+
+One test premise needed strengthening rather than repairing: a club paying 250,000 a week was
+assumed to be bankrupted, but once gate receipts counted as income a 30,000-seat ground earns enough
+that it no longer is. The wage is now genuinely absurd rather than comfortably unaffordable.
+
+**335 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

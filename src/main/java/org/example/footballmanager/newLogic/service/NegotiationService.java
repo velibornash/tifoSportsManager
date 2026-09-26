@@ -4,9 +4,19 @@ import org.example.footballmanager.newLogic.model.OfferStatus;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.SquadRole;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.model.FinanceCategory;
+import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.Transfer;
+import org.example.footballmanager.newLogic.model.TransferStatus;
 import org.example.footballmanager.newLogic.model.TransferOffer;
+import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
+import org.example.footballmanager.newLogic.repository.GameClockRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.repository.TransferOfferRepository;
+import org.example.footballmanager.newLogic.repository.TransferRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +44,7 @@ import java.util.Optional;
  * terms. {@link PlayerContractService#wageDemand} supplies the number, and an offer that meets the
  * fee but misses the wage is recorded as agreed-but-refused rather than silently completed.
  */
+@Slf4j
 @Service
 public class NegotiationService {
 
@@ -48,15 +59,33 @@ public class NegotiationService {
     private final PlayerContractService contracts;
     private final TransferBudgetService budgets;
     private final TransferWindowService windows;
+    private final TransferRepository transfers;
+    private final TransferFeeService transferFees;
+    private final FinanceLedgerEntryRepository ledgerEntries;
+    private final PlayerRepository players;
+    private final TeamRepository teams;
+    private final GameClockRepository clocks;
 
     public NegotiationService(TransferOfferRepository offers,
                               PlayerContractService contracts,
                               TransferBudgetService budgets,
-                              TransferWindowService windows) {
+                              TransferWindowService windows,
+                              TransferRepository transfers,
+                              TransferFeeService transferFees,
+                              FinanceLedgerEntryRepository ledgerEntries,
+                              PlayerRepository players,
+                              TeamRepository teams,
+                              GameClockRepository clocks) {
         this.offers = offers;
         this.contracts = contracts;
         this.budgets = budgets;
         this.windows = windows;
+        this.transfers = transfers;
+        this.transferFees = transferFees;
+        this.ledgerEntries = ledgerEntries;
+        this.players = players;
+        this.teams = teams;
+        this.clocks = clocks;
     }
 
     /**
@@ -181,7 +210,106 @@ public class NegotiationService {
                 offers.save(other);
             }
         }
+
+        completeTransfer(transferId, chosen);
         return offers.findByTransferIdOrderByRoundAsc(transferId);
+    }
+
+    /**
+     * Settles a transfer that both sides have agreed.
+     *
+     * <p>This is the part that was missing, and it is the whole point of the negotiation: accepting
+     * an offer used to flip a status and nothing else. The player stayed at the selling club, the
+     * buyer was never charged, no contract was written and no ledger line existed — so a transfer
+     * market where every deal is agreed and no deal ever happens.
+     *
+     * <p>Order matters and is deliberate: charge the buyer <i>before</i> moving the player, so a
+     * club that cannot pay never ends up holding the asset. The seller's budget and the ledger are
+     * the evidence the money moved.
+     */
+    @Transactional
+    public boolean completeTransfer(Long transferId, TransferOffer accepted) {
+        Transfer transfer = transfers.findById(transferId).orElse(null);
+        if (transfer == null) {
+            log.warn("Transfer {} cannot be completed: it does not exist", transferId);
+            return false;
+        }
+        if (transfer.getStatus() == TransferStatus.COMPLETED) {
+            return false;
+        }
+        Player player = transfer.getPlayer();
+        Team buyer = accepted.getBuyerTeam();
+        if (player == null || buyer == null) {
+            log.warn("Transfer {} cannot be completed: player={} buyer={}", transferId, player, buyer);
+            return false;
+        }
+
+        double fee = accepted.getFee() == null ? 0 : accepted.getFee();
+        double wage = accepted.getWage() == null ? 0 : accepted.getWage();
+        Integer years = accepted.getContractYears();
+        int season = currentSeason();
+        int week = currentWeek();
+
+        // 1. The money first. A club that cannot pay must not end up holding the player, so the
+        //    affordability check happens before anything moves.
+        boolean instalments = transferFees.wouldBeInstalments(fee);
+        if (!instalments && fee > 0) {
+            TransferBudgetService.Affordability check =
+                    budgets.canAfford(buyer.getId(), player.getId());
+            if (!check.affordable()) {
+                // Said out loud rather than swallowed: a deal that quietly fails to complete is
+                // indistinguishable from one that was never agreed.
+                log.warn("{} cannot complete the signing of {}: {}", buyer.getName(),
+                        player.getName(), check.reason());
+                return false;
+            }
+        }
+        double upfront = instalments ? 0 : fee;
+        if (upfront > 0) {
+            buyer.setBudget(round2((buyer.getBudget() == null ? 0 : buyer.getBudget()) - upfront));
+            teams.save(buyer);
+            ledgerEntries.save(FinanceLedgerEntry.of(buyer, season, week,
+                    FinanceCategory.TRANSFER_FEE_OUT, upfront, "Transfer: " + player.getName()));
+        }
+        Team seller = transfer.getSellerTeam();
+        if (seller != null && upfront > 0) {
+            seller.setBudget(round2((seller.getBudget() == null ? 0 : seller.getBudget()) + upfront));
+            teams.save(seller);
+            ledgerEntries.save(FinanceLedgerEntry.of(seller, season, week,
+                    FinanceCategory.TRANSFER_FEE_IN, upfront, "Transfer: " + player.getName()));
+        }
+
+        // 2. The instalment schedule, if the fee is too big to pay at once. This records what is
+        //    owed; TransferFeeService.collectInstalment pays it down later. The sell-on is zero
+        //    because nothing in an offer carries one - see the open question in sprintBacklog.
+        transferFees.agree(transfer, fee, 0.0);
+
+        // 3. The player moves, on the agreed money, for the agreed term.
+        player.setTeam(buyer);
+        player.setEarnings(wage);
+        players.save(player);
+        if (years != null && years > 0) {
+            contracts.assignToClub(player, buyer, season, SquadRole.ROTATION);
+        }
+
+        // 4. And the transfer itself is closed out.
+        transfer.setBuyerTeam(buyer);
+        transfer.setAgreedPrice(fee);
+        transfer.setStatus(TransferStatus.COMPLETED);
+        transfer.setCompletedAt(java.time.LocalDateTime.now());
+        transfers.save(transfer);
+        return true;
+    }
+
+    /** The season and week ledger lines and contracts are written against. */
+    private int currentSeason() {
+        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
+        return clock == null || clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+    }
+
+    private int currentWeek() {
+        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
+        return clock == null || clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
     }
 
     /** Rejects one bid without touching the others. */

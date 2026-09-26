@@ -143,8 +143,11 @@ class WeeklyFinanceServiceTest {
         finances.applyWeeklyFinances(club, 2024, 1);
         finances.applyWeeklyFinances(club, 2025, 1);
 
-        assertEquals(1, ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2024, 1).size());
-        assertEquals(1, ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2025, 1).size());
+        // A week now writes every one of its lines against that season, not just the broadcast
+        // money: gate receipts, wages and upkeep used to be written with a null season, so a
+        // season's ledger was missing most of what happened in it.
+        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2024, 1).isEmpty());
+        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2025, 1).isEmpty());
 
         List<Integer> seasons = ledgerService.seasonsWithLedger(club.getId());
         assertTrue(seasons.contains(2024) && seasons.contains(2025),

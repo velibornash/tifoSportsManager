@@ -104,14 +104,18 @@ public class WeeklyFinanceService {
         List<FinanceLedgerEntry> lines = new ArrayList<>();
         double opening = budget(team);
 
-        lines.add(gate(team));
+        // Every line carries the season and week it belongs to. Half of these used to pass null,
+        // which meant gate receipts, wages, upkeep and merchandising were written with no season
+        // and could never be read back - so a club's income looked like zero and it was granted no
+        // transfer budget at all.
+        lines.add(gate(team, seasonYear, week));
         lines.add(broadcast(team, seasonYear, week));
-        lines.add(merchandising(team));
+        lines.add(merchandising(team, seasonYear, week));
         lines.add(prizeMoney(team, seasonYear));
-        lines.add(wages(team));
+        lines.add(wages(team, seasonYear, week));
         lines.add(staffWages(team, seasonYear, week));
         lines.add(sponsorship(team, seasonYear, week));
-        lines.add(facilityUpkeep(team));
+        lines.add(facilityUpkeep(team, seasonYear, week));
 
         // Only real lines are written, so the ledger does not fill with 0.00 rows.
         List<FinanceLedgerEntry> written = lines.stream()
@@ -134,10 +138,10 @@ public class WeeklyFinanceService {
      * Gate receipts. Uses the realised per-tier price, so a ground full of cheap seats is worth
      * less than a full ground with premium sold — the same rule the projection shows the manager.
      */
-    private FinanceLedgerEntry gate(Team team) {
+    private FinanceLedgerEntry gate(Team team, Integer seasonYear, Integer week) {
         Stadium s = team.getStadium();
         AdmissionService.Projection p = admission.projectHomeFixture(team);
-        return FinanceLedgerEntry.of(team, null, null, FinanceCategory.GATE_REVENUE,
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.GATE_REVENUE,
                 p.gateRevenue,
                 "Home fixture, " + p.totalAttendance + " of " + p.capacity
                         + " at an average EUR " + p.averageRealisedPrice);
@@ -158,11 +162,11 @@ public class WeeklyFinanceService {
                 "League broadcast share, reputation weight " + weight);
     }
 
-    private FinanceLedgerEntry merchandising(Team team) {
+    private FinanceLedgerEntry merchandising(Team team, Integer seasonYear, Integer week) {
         double reputation = team.getReputation() == null ? 50 : team.getReputation();
         long squad = playerRepository.findByTeamId(team.getId()).size();
         double value = MERCHANDISING_BASE * (reputation / 50.0) * Math.max(0.5, squad / 18.0);
-        return FinanceLedgerEntry.of(team, null, null, FinanceCategory.MERCHANDISING, value,
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.MERCHANDISING, value,
                 squad + " players, reputation " + Math.round(reputation));
     }
 
@@ -179,10 +183,10 @@ public class WeeklyFinanceService {
      * <p>{@code Player.earnings} was seeded with realistic values and read by nothing, which made
      * the most important cost in football free.
      */
-    private FinanceLedgerEntry wages(Team team) {
+    private FinanceLedgerEntry wages(Team team, Integer seasonYear, Integer week) {
         List<Player> squad = playerRepository.findByTeamId(team.getId());
         double bill = squad.stream().mapToDouble(p -> Math.max(0, p.getEarnings())).sum();
-        return FinanceLedgerEntry.of(team, null, null, FinanceCategory.WAGES, bill,
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.WAGES, bill,
                 squad.size() + " players under contract");
     }
 
@@ -224,7 +228,7 @@ public class WeeklyFinanceService {
      * that stops paying for its pitch is spending less here — and is getting a worse pitch, which
      * is the trade the manager is making.
      */
-    private FinanceLedgerEntry facilityUpkeep(Team team) {
+    private FinanceLedgerEntry facilityUpkeep(Team team, Integer seasonYear, Integer week) {
         Stadium s = team.getStadium();
         if (s == null) return null;
         int capacity = s.getCapacity() == null ? 0 : s.getCapacity();
@@ -235,13 +239,13 @@ public class WeeklyFinanceService {
             PitchMaintenanceService.MaintenanceResult r =
                     pitch.applyWeeklyMaintenance(s, maintenanceSpent);
             if (r.restored() > 0) {
-                return FinanceLedgerEntry.of(team, null, null, FinanceCategory.PITCH_MAINTENANCE,
+                return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.PITCH_MAINTENANCE,
                         r.spent(), "Pitch work: condition " + r.before() + " -> " + r.after());
             }
-            return FinanceLedgerEntry.of(team, null, null, FinanceCategory.FACILITY_UPKEEP,
+            return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
                     upkeep, capacity + " seats");
         }
-        return FinanceLedgerEntry.of(team, null, null, FinanceCategory.FACILITY_UPKEEP,
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
                 upkeep, capacity + " seats, no pitch programme funded");
     }
 
