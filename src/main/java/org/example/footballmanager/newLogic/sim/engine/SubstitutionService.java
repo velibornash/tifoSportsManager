@@ -43,8 +43,8 @@ public class SubstitutionService {
     /**
      * Brings {@code on} on for {@code off}, if the laws allow it.
      *
-     * @param forced true for a red card or an injury - these bypass the window and the count,
-     *               because the player has no choice and refusing would leave a team short.
+     * @param forced true for an injury - the game is already stopped for the injury, so the change
+     *               costs no time and consumes no window. It still counts toward the five.
      * @return true if the change was made
      */
     public boolean substitute(Player off, Player on, boolean forced) {
@@ -54,6 +54,8 @@ public class SubstitutionService {
         // substitution exists, so that check must not apply to a forced change. It did, and the
         // red-card replacement was rejected: a team was left with ten for the rest of the match.
         if (off.isOnBench()) return false;
+        // A sent-off player can never be replaced. Only an injured player can be brought off.
+        if (off.isSentOff()) return false;
         if (!forced && off.isUnavailable()) return false;
         if (state.getBench(on.getTeam()).stream().noneMatch(p -> p.getId().equals(on.getId()))) {
             return false;   // not actually on the bench any more
@@ -119,11 +121,15 @@ public class SubstitutionService {
      */
     public void onTick() {
         for (String team : List.of("HOME", "AWAY")) {
-            // Emergency: a team down to ten, or missing a player to injury.
+            // Emergency: a player who cannot continue because he is injured. NOT a red card -
+            // a dismissal leaves the team a man down for the rest of the match.
             List<Player> out = new ArrayList<>();
             for (Player p : state.getPlayers()) {
                 if (!p.getTeam().equals(team) || p.isOnBench()) continue;
-                if (p.isSentOff() || p.isInjured()) out.add(p);
+                // INJURY ONLY. A sent-off player is never replaced - the team plays the rest of
+                // the match a man down. This previously also replaced sent-off players, which
+                // is simply not football, and it defeated the point of the red card entirely.
+                if (p.isInjured()) out.add(p);
             }
             for (Player gone : out) {
                 Player replacement = pickReplacement(team, gone);

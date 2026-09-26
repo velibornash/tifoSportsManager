@@ -103,17 +103,49 @@ class SubstitutionServiceTest {
     }
 
     @Test
-    @DisplayName("a red card forces a replacement and costs no substitution")
-    void redCardReplacementIsForcedAndFree() {
+    @DisplayName("a sent-off player is NEVER replaced - the team plays on with ten")
+    void sentOffPlayerIsNotReplaced() {
         Player sent = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
         Player spare = benched("H7", "HOME", "DCL");
         state.getPlayers().add(sent);
         state.getBench("HOME").add(spare);
         sent.setSentOff(true);
 
-        assertTrue(service.substitute(sent, spare, true), "a forced change must always be allowed");
+        assertFalse(service.substitute(sent, spare, true),
+                "a dismissal cannot be replaced, not even as a forced change");
+        assertFalse(service.substitute(sent, spare, false));
 
-        assertEquals(0, state.getSubsUsed("HOME"), "a red card does not consume one of the five");
+        assertFalse(state.getPlayers().contains(spare), "the substitute stays on the bench");
+        assertTrue(sent.isUnavailable(), "the dismissed player is out");
+    }
+
+    @Test
+    @DisplayName("onTick does not paper over a red card either")
+    void onTickLeavesRedCardAlone() {
+        Player sent = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
+        Player spare = benched("H7", "HOME", "DCL");
+        state.getPlayers().add(sent);
+        state.getBench("HOME").add(spare);
+        sent.setSentOff(true);
+
+        service.onTick();
+
+        assertFalse(state.getPlayers().contains(spare), "still ten men, as it must be");
+    }
+
+    @Test
+    @DisplayName("an injury IS replaced, and costs no window because play is already stopped")
+    void injuryIsReplacedForFree() {
+        Player hurt = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
+        Player spare = benched("H7", "HOME", "DCL");
+        state.getPlayers().add(hurt);
+        state.getBench("HOME").add(spare);
+        hurt.setInjured(true);
+
+        assertTrue(service.substitute(hurt, spare, true), "an injured player must be replaceable");
+
+        assertEquals(0, state.getSubWindowsUsed("HOME"),
+                "the game is already stopped for the injury, so no window is spent");
         assertTrue(state.getPlayers().contains(spare));
     }
 
@@ -169,7 +201,7 @@ class SubstitutionServiceTest {
         state.getPlayers().add(cb);
         state.getBench("HOME").add(striker);
         state.getBench("HOME").add(winger);
-        cb.setSentOff(true);
+        cb.setInjured(true);
 
         service.onTick();
 
@@ -178,26 +210,26 @@ class SubstitutionServiceTest {
     }
 
     @Test
-    @DisplayName("onTick replaces a sent-off player automatically")
-    void onTickHandlesRedCard() {
-        Player sent = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
+    @DisplayName("onTick replaces an injured player automatically")
+    void onTickHandlesInjury() {
+        Player hurt = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
         Player spare = benched("H7", "HOME", "DCL");
-        state.getPlayers().add(sent);
+        state.getPlayers().add(hurt);
         state.getBench("HOME").add(spare);
-        sent.setSentOff(true);
+        hurt.setInjured(true);
 
         service.onTick();
 
-        assertTrue(state.getPlayers().contains(spare), "the team must not be left with ten");
-        assertTrue(sent.isSubstituted());
+        assertTrue(state.getPlayers().contains(spare));
+        assertTrue(hurt.isSubstituted());
     }
 
     @Test
     @DisplayName("a full bench means nothing happens rather than a crash")
     void emptyBenchIsSafe() {
-        Player sent = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
-        state.getPlayers().add(sent);
-        sent.setSentOff(true);
+        Player hurt = onPitch("H1", "HOME", "DCL", 5.0, 2.5);
+        state.getPlayers().add(hurt);
+        hurt.setInjured(true);
 
         service.onTick();   // must not throw
 

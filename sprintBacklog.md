@@ -1229,17 +1229,56 @@ rebuild.
    fired, which are spent, and which are void. This is the bulk of the work and the part worth
    doing well, because it is the whole feature from the manager's point of view.
 
-### Open questions for the owner
+### Decisions from the owner (2026-09-26)
 
-- Force a stoppage when a rule fires, or only allow it at natural dead balls?
-- Can a manager cancel a pending rule mid-match?
-- Do rules apply in the last 10 minutes of stoppage time, or only in regulation?
-- Is the condition set (always / losing / drawing / leading / by x goals) enough for v1?
+| Question | Answer |
+|---|---|
+| Force a stoppage when a rule fires, or only at natural dead balls? | **Introduce real stoppage time.** There are already moments that need it — waiting for a VAR decision, a penalty, and so on. |
+| Plan persistence | Server-side, keyed by match. Confirmed. |
+| Stale rules must show a reason | Confirmed. |
+| Precedence | Confirmed, but **red cards are not in it.** Emergency is **injury** or **very tired** only — see below. |
+| UI | Confirmed, build it properly. |
+
+### 🚨 Correction — a sent-off player is never replaced
+
+The owner caught a genuine football error in S1.8 that I had shipped: I was replacing a dismissed
+player, and wrote a comment defending it. **That is not football.** A red card means the team plays
+the rest of the match a man down. There is no replacement.
+
+Corrected in the follow-up commit: `SubstitutionService` now refuses any substitution where the
+outgoing player is sent off, and `onTick` only reacts to **injury**. Two tests that encoded the wrong
+assumption were rewritten, and two new ones assert the correct behaviour.
+
+This also matters for the precedence chain, which is therefore:
+
+1. **Injury** — the game is already stopped, so the change is free of time and of a window
+2. **Manager's conditional rule**
+3. **Fatigue auto-sub** — "very tired"
+
+...and a red card sits outside the chain entirely, because it changes nothing about the bench.
+
+### New prerequisite: real stoppage time (owner-directed)
+
+S1.8's `insideOpenWindow()` sniffs `getRestartTaker()`, which is a placeholder, not a stoppage
+clock. The owner has directed that proper stoppage time be introduced, since the engine needs it
+for VAR waits and penalties as well. That is now a **hard prerequisite** for conditional
+substitutions, and it improves the engine in its own right.
+
+Scope, to be built as its own task:
+
+| # | Task |
+|---|---|
+| 1 | An explicit stoppage on the state — reason, tick entered, duration — rather than inferring it |
+| 2 | **VAR review** stops play (the `VARService` gates already exist; nothing halts the clock) |
+| 3 | **Penalty** awarded stops play until it is taken (S1.7) |
+| 4 | Injury stops play until the replacement is made (ties S1.6 to S1.8 cleanly) |
+| 5 | Added time at the end of each half, driven by actual stoppage minutes |
+| 6 | Substitutions only inside a stoppage — this then makes the window rule honest instead of heuristic |
 
 ### Placeholder in the plan
 
-Build **after** S1.6 (injuries and fatigue) so the rules have real substitutions to compete with,
-and after S1.7 (penalties), since a penalty can also force a change. Sprint to be confirmed.
+Build **after** the stoppage work above, and after S1.7 (penalties), since both create the stoppages
+the rules depend on. Sprint to be confirmed.
 
 ---
 
