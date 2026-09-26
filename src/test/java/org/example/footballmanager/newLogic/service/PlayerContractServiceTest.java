@@ -1,0 +1,244 @@
+package org.example.footballmanager.newLogic.service;
+
+import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.PlayerContract;
+import org.example.footballmanager.newLogic.model.SquadRole;
+import org.example.footballmanager.newLogic.model.Stadium;
+import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Sprint 3.1 — contracts.
+ *
+ * <p>Nothing here existed before: a player's wage was a field on the player and nothing tracked when
+ * it ended, which is why the free-agent market was impossible by construction. The property that
+ * matters most is that **expiry produces a free agent**, because that is the mechanism that lets a
+ * club be rebuilt rather than only bought from.
+ */
+@SpringBootTest
+@ActiveProfiles("test")
+class PlayerContractServiceTest {
+
+    @Autowired TeamRepository teams;
+    @Autowired PlayerRepository players;
+    @Autowired PlayerContractRepository contracts;
+    @Autowired PlayerContractService service;
+    @Autowired ContractBackfillService backfill;
+
+    private Team aClub(String name) {
+        Team t = new Team();
+        t.setName(name + "-" + System.nanoTime());
+        t.setBudget(5_000_000.0);
+        t.setReputation(60.0);
+        Stadium s = new Stadium();
+        s.setName(name + " Ground");
+        s.setCapacity(20_000);
+        s.setTicketPrice(18.0);
+        s.setPitchQuality(85.0);
+        s.setPitchCondition(85);
+        s.setMaintenanceRemaining(0);
+        t.setStadium(s);
+        return teams.save(t);
+    }
+
+    private Player aPlayer(Team team, String name, int age, double value, double wage) {
+        Player p = new Player();
+        p.setName(name);
+        p.setTeam(team);
+        p.setAge(age);
+        p.setPlayerValue(value);
+        p.setEarnings(wage);
+        p.setMorale(60.0);
+        p.setForm(6.0);
+        return players.save(p);
+    }
+
+    @Test
+    @DisplayName("a signed contract records who, what, and until when")
+    void signingRecordsTheTerms() {
+        Team club = aClub("Signers");
+        Player p = aPlayer(club, "Signer", 24, 2_000_000, 8_000);
+
+        PlayerContract c = service.assignToClub(p, club, 2026, SquadRole.STARTER);
+        assertNotNull(c.getId());
+        assertEquals(club.getId(), c.getTeam().getId());
+        assertEquals(8_000.0, c.getWeeklyWage(), 0.01);
+        assertEquals(SquadRole.STARTER, c.getSquadRole());
+        assertTrue(c.getExpirySeason() > 2026, "a contract must expire at some point");
+        assertFalse(c.hasReleaseClause(), "no clause was agreed, which is not the same as free");
+    }
+
+    @Test
+    @DisplayName("an expired contract turns the player into a free agent")
+    void expiryProducesAFreeAgent() {
+        Team club = aClub("Expiring");
+        Player p = aPlayer(club, "Expiring", 30, 1_000_000, 4_000);
+        PlayerContract c = service.assignToClub(p, club, 2026, SquadRole.ROTATION);
+        c.setExpirySeason(2027);
+        contracts.save(c);
+
+        // Season 2027: still under contract.
+        assertTrue(service.expireContracts(2027).isEmpty(), "a contract expires AT THE END of its season");
+        assertNotNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam());
+
+        // Season 2028: now a free agent.
+        List<Player> released = service.expireContracts(2028);
+        assertTrue(released.stream().anyMatch(x -> x.getId().equals(p.getId())),
+                "the player must be released once the contract has run out");
+        assertNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam(),
+                "a free agent has no club behind the contract");
+    }
+
+    @Test
+    @DisplayName("a free agent can be signed by anyone - the market is no longer impossible")
+    void freeAgentsCanBeSigned() {
+        Team oldClub = aClub("Old");
+        Team newClub = aClub("New");
+        Player p = aPlayer(oldClub, "Freebie", 27, 1_500_000, 5_000);
+        PlayerContract c = service.assignToClub(p, oldClub, 2024, SquadRole.ROTATION);
+        c.setExpirySeason(2025);
+        contracts.save(c);
+        service.expireContracts(2026);
+
+        assertNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam());
+        service.assignToClub(p, newClub, 2026, SquadRole.STARTER);
+        assertEquals(newClub.getId(),
+                contracts.findByPlayerId(p.getId()).orElseThrow().getTeam().getId(),
+                "a released player must be signable by a new club");
+    }
+
+    @Test
+    @DisplayName("a player demands more in the form of his life")
+    void formRaisesTheDemand() {
+        Team club = aClub("Form");
+        Player p = aPlayer(club, "InForm", 25, 2_000_000, 6_000);
+        service.assignToClub(p, club, 2026, SquadRole.STARTER);
+        double before = service.wageDemand(p.getId()).demandedWeeklyWage();
+
+        p.setForm(9.5);
+        players.save(p);
+        double after = service.wageDemand(p.getId()).demandedWeeklyWage();
+
+        assertTrue(after > before,
+                "a player asks for what he is doing now, not what he did last season: "
+                        + after + " vs " + before);
+    }
+
+    @Test
+    @DisplayName("a young player's wage demand is below his value - the next contract is the payday")
+    void youngPlayersAskForLess() {
+        Team club = aClub("Young");
+        Player young = aPlayer(club, "Young", 19, 900_000, 3_000);
+        Player old = aPlayer(club, "Old", 30, 900_000, 3_000);
+        service.assignToClub(young, club, 2026, SquadRole.PROSPECT);
+        service.assignToClub(old, club, 2026, SquadRole.ROTATION);
+
+        assertTrue(service.wageDemand(young.getId()).demandedWeeklyWage()
+                        < service.wageDemand(old.getId()).demandedWeeklyWage(),
+                "identical value, different age, different demand");
+    }
+
+    @Test
+    @DisplayName("a star demands more per unit of value than a squad player")
+    void roleChangesTheExpectation() {
+        Team club = aClub("Roles");
+        Player star = aPlayer(club, "Star", 27, 8_000_000, 30_000);
+        Player squad = aPlayer(club, "Squad", 27, 8_000_000, 30_000);
+        service.assignToClub(star, club, 2026, SquadRole.STAR);
+        service.assignToClub(squad, club, 2026, SquadRole.ROTATION);
+
+        assertTrue(service.wageDemand(star.getId()).demandedWeeklyWage()
+                        > service.wageDemand(squad.getId()).demandedWeeklyWage(),
+                "a model that pays everyone the same makes every squad cost the same");
+    }
+
+    @Test
+    @DisplayName("refusing a player's demand makes him look elsewhere")
+    void refusingRenewalHasConsequences() {
+        Team club = aClub("Refusers");
+        Player p = aPlayer(club, "Greedy", 27, 5_000_000, 10_000);
+        service.assignToClub(p, club, 2026, SquadRole.STAR);
+
+        PlayerContractService.RenewalOutcome low = service.renew(p.getId(), 2027, 1);
+        assertFalse(low.renewed());
+        assertTrue(low.playerWillSeekTransfer(),
+                "refusing is not a null result, it is a decision with a consequence");
+
+        PlayerContractService.RenewalOutcome fair =
+                service.renew(p.getId(), 2027, service.wageDemand(p.getId()).demandedWeeklyWage());
+        assertTrue(fair.renewed(), "meeting the demand must renew");
+    }
+
+    @Test
+    @DisplayName("a club cannot register an unlimited squad")
+    void squadLimitsAreEnforced() {
+        Team club = aClub("Full");
+        assertTrue(service.canRegister(club.getId(), SquadRole.STARTER).allowed());
+
+        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD; i++) {
+            Player p = aPlayer(club, "Filler" + i, 24, 500_000, 2_000);
+            service.assignToClub(p, club, 2026, SquadRole.ROTATION);
+        }
+        PlayerContractService.RegistrationCheck blocked =
+                service.canRegister(club.getId(), SquadRole.STARTER);
+        assertFalse(blocked.allowed(), "a 40-man squad must not be possible");
+        assertEquals("SQUAD_FULL", blocked.code());
+        assertNotNull(blocked.reason());
+    }
+
+    @Test
+    @DisplayName("academy players have their own limit")
+    void youthLimitIsSeparate() {
+        Team club = aClub("Youth");
+        for (int i = 0; i < PlayerContractService.MAX_YOUTH_SQUAD; i++) {
+            Player p = aPlayer(club, "Young" + i, 18, 50_000, 500);
+            service.assignToClub(p, club, 2026, SquadRole.YOUTH);
+        }
+        assertFalse(service.canRegister(club.getId(), SquadRole.YOUTH).allowed());
+        assertTrue(service.canRegister(club.getId(), SquadRole.STARTER).allowed(),
+                "a full academy must not block a senior signing");
+    }
+
+    @Test
+    @DisplayName("backfill gives every player a plausible contract, and is safe to run twice")
+    void backfillIsPlausibleAndIdempotent() {
+        Team club = aClub("Backfilled");
+        Player p = aPlayer(club, "Needs a deal", 19, 300_000, 1_200);
+        assertTrue(contracts.findByPlayerId(p.getId()).isEmpty());
+
+        int first = backfill.backfill(2026);
+        assertTrue(first >= 1, "the player must have been given a contract");
+        int second = backfill.backfill(2026);
+        assertEquals(0, second, "running it twice must not create a second contract");
+
+        PlayerContract c = contracts.findByPlayerId(p.getId()).orElseThrow();
+        assertNotNull(c.getTeam());
+        assertTrue(c.getLengthMonths() >= 12, "a 19-year-old should be on a long deal, got "
+                + c.getLengthMonths() + " months");
+    }
+
+    @Test
+    @DisplayName("an older player is not given a five-year deal")
+    void olderPlayersGetShorterDeals() {
+        Team club = aClub("Ages");
+        Player veteran = aPlayer(club, "Veteran", 34, 800_000, 4_000);
+        backfill.backfill(2026);
+        assertTrue(contracts.findByPlayerId(veteran.getId()).orElseThrow().getLengthMonths() <= 36,
+                "nobody signs a 34-year-old for four years");
+    }
+}

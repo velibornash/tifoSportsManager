@@ -30,6 +30,8 @@ public class SeasonService {
     private final MatchFixtureRepository matchFixtureRepository;
     private final TeamRepository teamRepository;
     private final WeeklyFinanceService weeklyFinances;
+    private final PlayerContractService contracts;
+    private final ContractBackfillService contractBackfill;
     private final PlayerRepository playerRepository;
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
@@ -326,6 +328,7 @@ public class SeasonService {
             gameClockRepository.save(clock);
             decrementInjuriesByWeek();
             recoverFatigueForWeek();
+            expirePlayerContracts();
             settleWeeklyFinancesForAllClubs();
             int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
             int newWeek = clock.getCurrentWeek();
@@ -352,6 +355,29 @@ public class SeasonService {
      * <p>Each club settles in its own transaction (REQUIRES_NEW inside the finance service), and a
      * failure for one club is logged and stepped over rather than rolling back the other 309.
      */
+    /**
+     * Expires contracts that have run out, turning those players into free agents (Sprint 3.1).
+     *
+     * <p>This is what makes the market move. Without it a player can never stop having a club, which
+     * is why the free-agent route was impossible by construction.
+     */
+    @Transactional
+    public int expirePlayerContracts() {
+        GameClock clock = getOrCreateClock();
+        Integer season = clock.getCurrentSeason();
+        if (season == null) return 0;
+
+        // A new season needs contracts before anything else, or every player would expire at once.
+        int backfilled = contractBackfill.backfill(season);
+
+        List<Player> released = contracts.expireContracts(season);
+        if (!released.isEmpty()) {
+            log.info("Season {}: {} contracts expired, {} players became free agents "
+                    + "(backfilled {})", season, released.size(), released.size(), backfilled);
+        }
+        return released.size();
+    }
+
     @Transactional
     public int settleWeeklyFinancesForAllClubs() {
         GameClock clock = getOrCreateClock();

@@ -816,7 +816,7 @@ Target: Sokker-parity on the transfer market. Currently at ~15%.
 
 ---
 
-### S3.1 — `PlayerContract` entity
+### S3.1 — `PlayerContract` entity ✅ DONE 2026-09-26
 
 | # | Task | Notes |
 |---|---|---|
@@ -1535,11 +1535,22 @@ The claim: **the tactical editor writes to a table that no engine file ever read
 - `FORMATION` is `public static final String FORMATION = "4-4-2"` — the 10 formations offered
   in `formations-view.js` resolve to 3 layouts in `FormationSlotCatalog`, and the engine reads
   none of them.
-- In `tactics_fallback.json` the two possession contexts are **byte-identical for all 506
-  slot × ball-state pairs**, so in-possession and out-of-possession shape are the same shape.
-  The dataset is ~11 slots × ~46 ball states × 2 contexts = ~1,012 rows, and the goalkeeper
-  resolves to only a couple of distinct target cells across the whole grid — the tactical
-  response to ball position is far coarser than the row count suggests.
+
+> **Owner ruling 2026-09-26: the identical possession contexts are INTENTIONAL, not a defect.**
+> `TeamTacticsService.mirrorWeHaveBallRules()` clones each `WE_HAVE_BALL` target onto the
+> matching `OPPONENT_HAS_BALL` rule on every save and every load, so all 506 slot × ball-state
+> pairs resolve to the same cell by design. **Do not "fix" this without a new owner decision.**
+> What follows from the decision, and is worth knowing rather than correcting:
+>
+> - The tactical model is **one shape, not two** — positioning does not change when possession
+>   changes. The editor gives the manager a *shape*, not a *tactic*.
+> - **46 "ball states" = 42 reachable cells + 4 dead ones.** `TacticsRules.ballStateKey()` only
+>   ever emits `CELL_r_c` on a 7×6 grid, so `ATTACK_LEFT_CORNER` and its three siblings are
+>   unreachable.
+> - **Not yet ruled on:** the generated defaults map *every* ball state to the slot's formation
+>   anchor (`FormationSlotCatalog.buildDefaultRules`), so with default rules the shape does not
+>   react to the ball either. That is a separate question from the possession context and is
+>   still open.
 
 **Why this belongs in a placeholder section and not a scheduled task:** Sokker's entire product
 identity is this one editor — it is the reason their long-term players stay, and they run
