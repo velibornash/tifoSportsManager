@@ -54,6 +54,13 @@ public class InjuryService {
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
 
+    /** Set by the orchestrator so an injury stops the referee's clock. */
+    private Runnable onInjury;
+
+    void setOnInjury(Runnable onInjury) {
+        this.onInjury = onInjury;
+    }
+
     public InjuryService(MatchState state, MatchRecorder recorder, ProposalStatsCollector stats) {
         this.state = state;
         this.recorder = recorder;

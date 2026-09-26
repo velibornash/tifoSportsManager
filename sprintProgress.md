@@ -628,11 +628,67 @@ the box-foul under-production already logged as **S1.7c**, not a new defect.
 **Throw-ins at 75.5 against a real 35–45 are now the largest restart outlier** and are the next
 thing to trace — they come from passes leaving the pitch sideways, not from clearances.
 
+### Stoppage time — the real clock ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+`SubstitutionService.insideOpenWindow()` answered "is a substitution window open?" with
+`state.getRestartTaker() != null` — *"is anybody walking to a dead ball"*. Its own comment admitted
+*"the engine has no explicit stoppage clock"*. That is not a rule, it is a coincidence: roughly right
+when a substitution followed a restart, wrong for a window opened by a stoppage the restart system
+never sees.
+
+`StoppageClock` is the real thing, and it has two halves that are easy to conflate:
+
+1. **Play stopped** — the clock does not run, so a VAR check or a treatment does not quietly consume
+   match time.
+2. **Added time announced** — time lost to goals, injuries, substitutions and cards is announced at
+   45 and 90 and then played out. This was missing entirely: the half simply ended on schedule, so
+   every one of those events silently ate playing time.
+
+Booked per half, from measured Premier League behaviour: goal 40s, injury 50s, VAR 60s, red 35s,
+penalty 30s, substitution 25s, yellow 20s, and 4–8s for the ordinary restarts. Capped at 6 minutes
+a half so a flurry of injuries cannot produce an absurd announcement, and floored at one tick because
+every half of every real match has some.
+
+#### Three bugs, each found by the batch going wrong
+
+- **A stoppage that only stopped the clock was not a stoppage.** The first version set
+  `state.setStopped(true)` and left the rest of the pipeline running — players moved, duels resolved,
+  the ball travelled with nobody playing. A "paused" match produced ~50% more events and every
+  statistic inflated. A stoppage now halts the whole tick, not just the clock.
+- **`state.stopped` was doing double duty.** It already meant *half-time*. Sharing it deadlocked any
+  match where a goal fell near half-time: both flags were set, and a stoppage could never clear the
+  one it did not own, so the clock stayed stopped for the rest of the game. The stoppage now keeps
+  its own state and the clock consults both.
+- **The added-time logic was circular, then backwards.** The clock needed an announcement that only
+  happened because the clock had stopped; the first fix then applied the *first* half's added time to
+  the *second* half and every match finished at 47 minutes. Each half now runs in two explicit phases
+  — the scheduled 45, then the announced added time — and `isMatchFinished` follows the current half
+  end instead of a hardcoded 3600, which had been discarding the added time anyway.
+
+A measured run announces 90–270 seconds a half, which is the real range.
+
+**Deliberately not chased** (owner: mechanics first, statistics later): with the match now genuinely
+playing 90+ minutes, goals 4.26, shots 40, throw-ins 77, goal kicks 22, corners 6.7, penalties 0.41,
+and no 0-0 in 100. All of these were previously measured against Premier League figures; that
+comparison is retired for now. The one worth keeping an eye on is the absence of goalless draws —
+with ~4 goals/match a 0-0 is genuinely rare, so it may be nothing.
+
+**`RealSquadSimulationSmokeTest` asserted `getMatchTicks() == 3600` exactly.** It was pinning the
+bug: the whistle at 90:00 regardless of the time booked. Corrected to assert the match finishes and
+runs at least 90 minutes, with the six-minute cap as the upper bound.
+
+**9 tests in `StoppageClockTest`. 190 total.**
+
 ---
 
 ## Where Sprint 1 stands
 
-| Metric | Current (200 matches) | Real PL | Status |
+Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
+The table below is a record of where the engine sits, not a scorecard.
+
+| Metric | Current (100 matches) | Real PL | Status |
 |---|---:|---:|---|
 | goals | 3.55 | 2.7 | ⚠️ deferred by owner |
 | shots | 35.7 | 25 | ⚠️ deferred by owner |
@@ -646,7 +702,7 @@ thing to trace — they come from passes leaving the pitch sideways, not from cl
 | duels | 268 | ~100 | ⚠️ deferred |
 | goal kicks | 21.9 | 12–15 | ⚠️ improved, still high |
 | corners | 6.4 | ~10 | ⚠️ low |
-| throw-ins | 75.5 | 35–45 | ❌ **2x high — next to trace** |
+| throw-ins | 77.0 | 35–45 | ℹ️ not being chased |
 
 **Tests: 84 → 176.** `mvn test` wall clock cut from ~5–6 min to **1:10** by moving `BaseTest` from
 `RANDOM_PORT` to `MOCK` (no test used a real port; it was opening a listening socket for nothing).
@@ -655,12 +711,12 @@ thing to trace — they come from passes leaving the pitch sideways, not from cl
 
 | Task | What |
 |---|---|
-| **throw-ins** | 75.5/match against a real 35–45. Largest restart outlier; comes from passes leaving sideways |
 | **S1.7c** | Box fouls under-produced (1.655/match vs 2.5–3.5). S1.7b's constant compensates for it. Calibration — deferred |
 | **S1.9** | Remaining calibration outliers. Calibration — deferred |
 | **S1.1c / S1.3** | Shot volume and corner skew. Calibration — deferred |
 | **stoppage time** | Real stoppage clock for VAR, penalties, injuries and substitution windows — currently `getRestartTaker()` is used as a heuristic in place of it |
-| **conditional subs** | Server-side per-match plans, stale-rule surfacing, live viewer status |
+| **conditional subs** | Server-side per-match plans, stale-rule surfacing, live viewer status — **the last real mechanic gap in Sprint 1** |
+| **tactical editor** | Redesign placeholder, scheduled last |
 
 ---
 

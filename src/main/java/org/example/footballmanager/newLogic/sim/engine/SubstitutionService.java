@@ -98,11 +98,24 @@ public class SubstitutionService {
     }
 
     /**
-     * The window is open while play is stopped. The engine has no explicit stoppage clock, so this
-     * uses the same signal the restart logic uses: a restart taker is present, or the ball is dead.
+     * The window is open while play is stopped.
+     *
+     * <p>Now answered by the real {@link StoppageClock} rather than by "is a restart taker walking
+     * to the ball". That heuristic was a coincidence, not a rule: it read roughly right for a
+     * substitution straight after a restart and wrong for a window opened by a stoppage the restart
+     * system never sees. A window is a property of the referee's stoppage, so that is what it now
+     * asks.
      */
     private boolean insideOpenWindow(String team) {
+        if (stoppage != null) return stoppage.isStopped();
         return state.getRestartTaker() != null;
+    }
+
+    /** Injected by the orchestrator; null keeps this service usable standalone. */
+    private StoppageClock stoppage;
+
+    void setStoppage(StoppageClock stoppage) {
+        this.stoppage = stoppage;
     }
 
     /**
@@ -119,7 +132,15 @@ public class SubstitutionService {
      * Reacts to the match: an emergency replacement after a red card or an injury, and a routine
      * change once someone is genuinely exhausted. Called once per tick by the orchestrator.
      */
+    /** True when the most recent onTick() actually put a substitute on the pitch. */
+    private boolean lastTickSubstituted;
+
+    public boolean didSubstituteLastTick() {
+        return lastTickSubstituted;
+    }
+
     public void onTick() {
+        lastTickSubstituted = false;
         for (String team : List.of("HOME", "AWAY")) {
             // Emergency: a player who cannot continue because he is injured. NOT a red card -
             // a dismissal leaves the team a man down for the rest of the match.
@@ -134,7 +155,7 @@ public class SubstitutionService {
             for (Player gone : out) {
                 Player replacement = pickReplacement(team, gone);
                 if (replacement != null) {
-                    substitute(gone, replacement, true);
+                    lastTickSubstituted |= substitute(gone, replacement, true);
                 }
             }
 
@@ -148,7 +169,7 @@ public class SubstitutionService {
             if (exhausted.isPresent()) {
                 Player replacement = pickReplacement(team, exhausted.get());
                 if (replacement != null) {
-                    substitute(exhausted.get(), replacement, false);
+                    lastTickSubstituted |= substitute(exhausted.get(), replacement, false);
                 }
             }
         }

@@ -6,6 +6,9 @@ import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.model.Position;
 import org.example.footballmanager.newLogic.sim.recording.MatchRecorder;
+import org.example.footballmanager.newLogic.sim.engine.StoppageClock;
+
+import java.util.function.Consumer;
 import org.example.footballmanager.newLogic.sim.result.ProposalStatsCollector;
 import org.example.footballmanager.newLogic.sim.restarts.RestartManager;
 import org.example.footballmanager.newLogic.sim.rules.VARService;
@@ -24,10 +27,18 @@ public class BallResultHandler {
     private final RestartManager restartManager;
     private final VARService varService;
 
+    /** Set by the orchestrator so a goal stops the referee's clock. */
+    private Consumer<StoppageClock.Reason> onStoppage;
+
+    public void setOnStoppage(Consumer<StoppageClock.Reason> onStoppage) {
+        this.onStoppage = onStoppage;
+    }
+
     public BallResultHandler(MatchState state, MatchRecorder recorder,
                              ProposalStatsCollector stats, RestartManager restartManager) {
         this(state, recorder, stats, restartManager, null);
     }
+
 
     public BallResultHandler(MatchState state, MatchRecorder recorder,
                              ProposalStatsCollector stats, RestartManager restartManager,
@@ -261,6 +272,7 @@ public class BallResultHandler {
                                 assistId, assistName, state.getHomeGoals(), state.getAwayGoals(),
                                 null, null, null, null, null, null);
                         if (scorer != null) stats.onGoal(scorerTeam, scorer.getId(), assistId);
+                        if (onStoppage != null) onStoppage.accept(StoppageClock.Reason.GOAL);
                         state.clearPassContext();
                         state.setLastShooter(null); // shot outcome consumed
                         // Reset for kickoff (clock keeps running)

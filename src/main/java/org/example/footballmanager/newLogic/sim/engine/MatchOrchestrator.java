@@ -59,6 +59,7 @@ public class MatchOrchestrator {
     private final BallResultHandler ballResultHandler;
     private final ThreatOverrideEngine threatOverrideEngine;
     private final FatigueSystem fatigueSystem = new FatigueSystem();
+    private final StoppageClock stoppage = new StoppageClock();
 
     private final List<String> eventLog = new ArrayList<>();
     private final ActionLogService actionLog;
@@ -91,6 +92,7 @@ public class MatchOrchestrator {
      * NEVER freeze the match" rule that widens the claim radius after 40 ticks — extended to the
      * one restart whose whole result depends on it actually happening.
      */
+    private boolean fullTimeReached;
     private int penaltyRestartAge;
     private static final int PENALTY_FORCE_TICKS = 40;
 
@@ -144,6 +146,17 @@ public class MatchOrchestrator {
      * outcome resets play. The awarded counter was already incremented by
      * {@code RestartManager.handlePenalty}, so this only resolves the execution.
      */
+    /**
+     * Stops the match clock for a reason and books the time against the half it happened in.
+     *
+     * <p>Call this where an event already happened; the restart system deliberately does not stop
+     * the clock, because it cannot tell a goal celebration from a throw-in.
+     */
+    public void stoppage(StoppageClock.Reason reason) {
+        if (state.isMatchFinished()) return;
+        stoppage.stop(state, reason);
+    }
+
     private void takePenalty(Player taker) {
         penaltyRestartAge = 0;
         Player keeper = null;
@@ -179,6 +192,7 @@ public class MatchOrchestrator {
         this.offsideService.setStats(stats);
         this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
         this.substitutions = new SubstitutionService(state, recorder, stats);
+        this.substitutions.setStoppage(stoppage);
         this.injuries = new InjuryService(state, recorder, stats);
         this.penaltyEngine = new PenaltyEngine(state, recorder, stats, actionLog, restartManager);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
@@ -192,6 +206,10 @@ public class MatchOrchestrator {
         state.setActionLogger(actionLog);
         stats.registerPlayers(state.getPlayers());
         ballResultHandler = new BallResultHandler(state, recorder, stats, restartManager, varService);
+        // A goal is the largest single source of lost time in a real match.
+        ballResultHandler.setOnStoppage(this::stoppage);
+        // So is an injury, and unlike a goal the engine has to be told it happened at all.
+        injuries.setOnInjury(() -> stoppage(StoppageClock.Reason.INJURY));
     }
 
     public List<String> getEventLog() { return eventLog; }
@@ -211,6 +229,23 @@ public class MatchOrchestrator {
 
     /** Execute one simulation tick. Called 40 times per minute. */
     public void tick() {
+        // A referee's stoppage halts the MATCH, not just the clock.
+        //
+        // The first version of this only stopped the clock, which is not a stoppage at all: the
+        // rest of the pipeline kept running with a dead ball - players moved, duels resolved, the
+        // ball travelled - so a "paused" match produced hundreds of events and the statistics
+        // inflated by ~50%. Only the stoppage clock runs until the referee releases play.
+        if (stoppage.isStopped()) {
+            stoppage.tick(state);
+            return;
+        }
+
+        // Half-time is a pause of the same kind, owned by the clock service and released by
+        // simulate() once the added time has been announced.
+        if (state.isStopped() && state.isHalfTime()) {
+            return;
+        }
+
         // === 1. ADVANCE CLOCK ===
         boolean running = clockService.tick(state);
         if (!running) return;
@@ -523,6 +558,10 @@ public class MatchOrchestrator {
         // someone is exhausted. Runs after duels so a player sent off this tick is replaced on
         // the next one rather than in the same tick as the tackle.
         substitutions.onTick();
+        // A substitution that actually changed the team is a stoppage in its own right.
+        if (substitutions.didSubstituteLastTick()) {
+            stoppage(StoppageClock.Reason.SUBSTITUTION);
+        }
 
         // === INJURIES (Sprint 1.6) ===
         // After substitutions, so a player who has just come off injured is not immediately
@@ -559,18 +598,103 @@ public class MatchOrchestrator {
     }
 
     /** Run the simulation for a number of ticks. */
+    /**
+     * Runs the match to full time.
+     *
+     * <p>{@code ticks} is the scheduled 90 minutes; the loop runs past it because the referee adds
+     * time for everything lost to goals, injuries, substitutions and cards. It stops on
+     * {@code isMatchFinished()} rather than on a tick count, and carries a guard purely so a bug in
+     * the clock cannot spin forever.
+     */
+    /**
+     * Runs the match to full time.
+     *
+     * <p>A half is not 45 minutes. It is 45 minutes <em>plus</em> the time the referee announces
+     * for everything lost to goals, injuries, substitutions and cards — and that figure is only
+     * known once the 45 minutes have been played, because it is a sum of what happened during them.
+     * So each half runs in two phases, which is exactly how it works in a real stadium:
+     *
+     * <ol>
+     *   <li>the scheduled 45 minutes run;</li>
+     *   <li>at 45:00 the referee announces the added time and it is played out;</li>
+     *   <li>then half-time, and the second half begins.</li>
+     * </ol>
+     *
+     * <p>Modelling this as a single "half ends at 1800 + added" was circular — the clock needed an
+     * announcement that only happened because the clock had stopped — and the first attempt got it
+     * backwards, applying the first half's added time to the second half. Every match was finishing
+     * at 47 minutes.
+     *
+     * <p>{@code ticks} is the scheduled 90 minutes; the loop runs past it because of the added
+     * time, and stops on {@code isMatchFinished()} rather than on a count.
+     */
     public void simulate(int ticks) {
-        for (int i = 0; i < ticks; i++) {
+        clockService.setHalfEndTick(ScheduledEnd.FIRST_HALF);
+        int phase = Phase.FIRST_SCHEDULED;
+
+        for (int i = 0; i < ticks * 2; i++) {
+            if (state.isMatchFinished()) return;
             tick();
-            // Half-time: the clock pauses at 1800 ticks (45'). Resume and start
-            // the second half with the AWAY team kicking off (teams keep the
-            // same attacking direction in this simplified model — HOME attacks
-            // row 8, AWAY attacks row 1 — so no end swap is needed).
-            if (state.isStopped() && state.getMatchTicks() == 1800) {
-                clockService.resume(state);
-                restartManager.handleKickoff(state, "AWAY");
+
+            if (!(state.isStopped() && state.isHalfTime()) || fullTimeReached) continue;
+
+            switch (phase) {
+                case Phase.FIRST_SCHEDULED -> {
+                    // 45:00 — announce what the first half lost and play it out.
+                    int added = stoppage.addedTimeForHalfEnding(false);
+                    log("CLK", "half time — " + stoppage.announcedSeconds(added)
+                            + " seconds added for the first half");
+                    clockService.setHalfEndTick(ScheduledEnd.FIRST_HALF + added);
+                    resumePlay();
+                    phase = Phase.FIRST_ADDED;
+                }
+                case Phase.FIRST_ADDED -> {
+                    // The added time is played out. Now it is genuinely half-time.
+                    log("CLK", "half time interval");
+                    stoppage.startSecondHalf();
+                    clockService.setHalfEndTick(ScheduledEnd.SECOND_HALF);
+                    resumePlay();
+                    restartManager.handleKickoff(state, "AWAY");
+                    phase = Phase.SECOND_SCHEDULED;
+                }
+                case Phase.SECOND_SCHEDULED -> {
+                    int added = stoppage.addedTimeForHalfEnding(true);
+                    log("CLK", "full time — " + stoppage.announcedSeconds(added)
+                            + " seconds of added time for the second half");
+                    clockService.setHalfEndTick(ScheduledEnd.SECOND_HALF + added);
+                    resumePlay();
+                    phase = Phase.SECOND_ADDED;
+                }
+                case Phase.SECOND_ADDED -> {
+                    log("CLK", "full time");
+                    fullTimeReached = true;
+                    state.setMatchFinished(true);
+                }
+                default -> { }
             }
         }
+    }
+
+    /** Clears the half-time pause and lets the clock run again. */
+    private void resumePlay() {
+        state.setHalfTime(false);
+        clockService.resume(state);
+    }
+
+    /** Scheduled (pre-added-time) end of each half, in ticks. */
+    private static final class ScheduledEnd {
+        static final int FIRST_HALF = MatchClockService.TOTAL_MATCH_TICKS / 2;
+        static final int SECOND_HALF = MatchClockService.TOTAL_MATCH_TICKS;
+        private ScheduledEnd() { }
+    }
+
+    /** Which part of the match the clock is currently in. */
+    private static final class Phase {
+        static final int FIRST_SCHEDULED = 0;
+        static final int FIRST_ADDED = 1;
+        static final int SECOND_SCHEDULED = 2;
+        static final int SECOND_ADDED = 3;
+        private Phase() { }
     }
 
     /** Build the complete post-match outcome (report-ready). */

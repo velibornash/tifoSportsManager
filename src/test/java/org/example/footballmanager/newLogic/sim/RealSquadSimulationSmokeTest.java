@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Skills;
 import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator;
+import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -39,7 +40,17 @@ class RealSquadSimulationSmokeTest {
         assertNotNull(orchestrator.buildOutcome());
         assertTrue(orchestrator.getState().getHomeGoals() >= 0);
         assertTrue(orchestrator.getState().getAwayGoals() >= 0);
-        assertTrue(orchestrator.getState().getMatchTicks() == 3600L);
+
+        // The match must play the full 90 minutes AND the referee's added time on top. This used to
+        // assert `getMatchTicks() == 3600` exactly, which pinned the bug that the whistle went at
+        // 90:00 no matter how many goals, injuries and substitutions had been played out - the
+        // stoppage clock silently discarded the time it had just booked.
+        MatchState finished = orchestrator.getState();
+        assertTrue(finished.isMatchFinished(), "the match must reach full time");
+        assertTrue(finished.getMatchTicks() >= 3600L,
+                "a full match runs at least the scheduled 90 minutes, was " + finished.getMatchTicks());
+        assertTrue(finished.getMatchTicks() < 3600L + 40L * 6,
+                "added time is capped at six minutes a half, was " + finished.getMatchTicks());
     }
 
     @Test
