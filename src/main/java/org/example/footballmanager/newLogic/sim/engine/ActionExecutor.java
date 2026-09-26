@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.sim.engine;
 
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
+import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
 
 /**
  * Execution engine — ONLY executes the chosen action.
@@ -337,28 +338,56 @@ public class ActionExecutor {
     }
 
     /** Execute a CLEAR action — launch the ball away from danger. */
+    /**
+     * How far a clearance is intended to travel, in cells. 3.5 cells is ~52 m, which is what a
+     * real clearance covers.
+     */
+    private static final double CLEARANCE_RANGE = 3.5;
+
     private void executeClear(MatchState state, DecisionOption decision) {
         Player carrier = state.getCarrier();
         if (carrier == null) return;
         state.clearPassContext();
 
-        // Clear direction — away from OWN goal (long air kick).
+        // Clear direction — away from OWN goal.
         // HOME defends row 1.0 so clears UP (+row, toward AWAY goal);
         // AWAY defends row 8.0 so clears DOWN (-row, toward HOME goal).
-        // (This sign was inverted: HOME cleared to row 1.0 = into his own net.)
         Position current = carrier.getPosition();
         boolean home = "HOME".equals(carrier.getTeam());
-        double clearDelta = home ? +2.0 : -2.0; // deeper kick
+        double clearDelta = home ? +1.0 : -1.0;
+
+        // Hooked toward a flank. Previously the aim was pure +/-row with no lateral component at
+        // all, so a clearance could only ever leave through an end line — which is part of why the
+        // restart mix was 36 goal kicks and 7 corners with the ball never reaching a touchline off
+        // a clearance. Real clearances are hooked away from pressure, and that is where throw-ins
+        // and corners come from.
+        double hook = SimulationRandom.nextDouble() < 0.5 ? -1.0 : 1.0;
+        double lateral = hook * (0.6 + SimulationRandom.nextDouble() * 1.2);
 
         Position clearTarget = new Position(
-                SimUtils.clamp(current.getRow() + clearDelta, 1.0, 7.0),
-                current.getColumn()
+                SimUtils.clamp(current.getRow() + clearDelta * CLEARANCE_RANGE, 1.0, 7.0),
+                SimUtils.clamp(current.getColumn() + lateral, 0.6, 6.4)
         );
 
-        // Launch as an air ball (clearance) at high speed
+        // Power derived from the intended range rather than launched flat out.
+        //
+        // This was the restart inversion. A clearance was launched at MAX_BALL_SPEED (1.5 c/t)
+        // airborne, and the ball flies until it decelerates below STOP_SPEED — there is no flight
+        // target. With AIR_DECEL 0.03 that is 1.5^2 / (2 x 0.03) = 37.5 cells of travel on a pitch
+        // that is 7 rows long. Every single clearance left the pitch through an end line, which is
+        // why the batch showed 36 goal kicks and 7 corners against a real 12-15 and ~10.
+        //
+        // The range is solved against the ground deceleration the ball will actually experience:
+        // v = sqrt(2 x GROUND_DECEL x range). At 3.5 cells that lands on MIN_LAUNCH_SPEED, so the
+        // clearance is a driven ball upfield that a teammate can run onto. Launched airborne the
+        // model cannot represent a short flight at all, which is the underlying limitation.
+        double range = SimUtils.distance(current, clearTarget);
+        double power = Math.sqrt(2.0 * BallPhysicsEngine.GROUND_DECEL * Math.max(0.5, range));
+        power = SimUtils.clamp(power, BallPhysicsEngine.MIN_LAUNCH_SPEED,
+                BallPhysicsEngine.MAX_BALL_SPEED);
+
         Ball ball = state.getBall();
-        state.getBallEngine().launch(ball, current, clearTarget,
-                BallPhysicsEngine.MAX_BALL_SPEED, true, 0.2);
+        state.getBallEngine().launch(ball, current, clearTarget, power, false, 0.0);
 
         carrier.setTarget(null);
         // RIGID RULE (user 2026-09-23): the clearer stays rooted the tick he
