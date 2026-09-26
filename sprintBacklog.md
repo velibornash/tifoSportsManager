@@ -1045,14 +1045,24 @@ Today only a global `STRIKER × 0.76` / `PACE × 0.86` penalty (`TrainingProgres
 
 ---
 
-### S4.7 — AI clubs train
+### S4.7 — AI clubs train — 🟡 partly built 2026-09-27
 
-| # | Task | File:line |
+The owner's ruling: AI clubs do nothing **except that their players still improve**. A league where
+three hundred clubs never train is a league where a manager's own training means nothing.
+
+| # | Task | State |
 |---|---|---|
-| 1 | Run `runWeeklyTraining` for **every** club in `advanceWeekAndHandleSeasonTransition`, not just `userTeam` | `AdvanceWeekAsyncService.java:81`; `SimulationController.java:264` |
-| 2 | AI clubs pick training priorities from their `ClubNeed` model (S3.6) | |
-| 3 | AI clubs assign Advanced slots by quality and age | |
-| 4 | This also makes **aging decay** apply to AI squads, so the pyramid actually evolves | |
+| 1 | Every club trains each week, not just the manager's | ✅ `SquadTrainingService.trainEveryClub`, wired into the weekly tick |
+| 2 | The default week goes through the **same** percentage as a manager's programme | ✅ no second growth formula |
+| 3 | AI clubs pick training priorities from their `ClubNeed` model (S3.6) | ❌ **not done** — the default is the role's primary skill, not a need |
+| 4 | AI clubs assign Advanced slots by quality and age | ❌ **not done** |
+| 5 | Aging decay applies to AI squads, so the pyramid evolves | ❌ **not done** — players stop improving past 34, but do not decline |
+
+**The duplication that was removed matters more than the feature.** The first version of the default
+pass had its own age curve and its own constants, so the same player grew differently under a default
+week than under a manager's programme — talent, coach and minutes ignored entirely. Two growth
+formulas is the same mistake as two settlement paths on a transfer, which cost this project four
+"finished" systems that had never worked. There is now one.
 
 **Verify:** after 2 simulated seasons, AI squads have measurably changed, weak clubs have either improved or collapsed, and the league table is less predictable.
 

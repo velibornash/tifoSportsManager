@@ -44,6 +44,7 @@ public class SeasonService {
     private final TransferService transferService;
     private final FriendlyRequestService friendlyRequests;
     private final LoanService loans;
+    private final SquadTrainingService squadTraining;
     private final Random random = new Random();
 
     @Transactional
@@ -347,6 +348,16 @@ public class SeasonService {
             int newWeek = clock.getCurrentWeek();
             // A friendly request nobody answered simply lapses once its week has gone. Without
             // this, a club that asked in week 5 still had a live request in week 11.
+            // Everyone trains. The owner's rule is that AI clubs do nothing except that their
+            // players still improve - a league where three hundred clubs never train is a league
+            // where a manager's own training means nothing. This is the floor under a club's chosen
+            // programme, not a replacement for it, and it goes through the same percentage maths.
+            int defaultTrained = squadTraining.trainEveryClub(seasonNumber, newWeek);
+            if (defaultTrained > 0) {
+                log.info("Week {} season {}: default training applied to {} players",
+                        newWeek, seasonNumber, defaultTrained);
+            }
+
             // Loans that have run their course. A loan is temporary by definition, so somebody has
             // to close them out or a squad accumulates players who left weeks ago.
             int loansClosed = loans.closeFinishedLoans();

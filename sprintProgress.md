@@ -1839,6 +1839,35 @@ Both agreed as first priority, both because they expire with no sound:
 Academy junior talent is **not** gated. Juniors are the manager's own, but they are not the first-team
 squad, and the owner's wording was "own team". It needs one word of confirmation rather than a guess.
 
+### Every squad trains — and through the same maths
+
+The owner's instruction that AI clubs do nothing **except that their players still improve** was
+written three days ago and never wired to the weekly tick. So three hundred clubs were not training
+at all, and the version that was written had its own age curve and its own constants.
+
+**The duplication mattered more than the feature.** That version ignored talent, coach and minutes
+entirely, so the same player grew differently under a default week than under a manager's programme.
+Two growth formulas is the same mistake as two settlement paths on a transfer — which is what cost
+this project four systems that looked finished and had never worked. There is now one, and the
+default pass is the same maths with a different input.
+
+`trainEveryClub` runs in the weekly tick, after contracts expire and before loans close out. Each
+club's coach is resolved once per week rather than per player, and minutes are read from the shared
+per-week cache.
+
+Three floors, all deliberate and all tested:
+
+- **A club with no staff still trains.** `coachRating` falls back rather than throwing, so an
+  unstaffed club is a mediocre one rather than a frozen one.
+- **A veteran stops.** Past 34 a player gains nothing from a default week. That is what makes
+  hoarding veterans a cost rather than a free strategy.
+- **The week is small.** Twelve weeks of nothing but default training is worth about a point and a
+  half — enough to matter, nowhere near enough to turn journeymen into a title-winning side.
+
+**399 tests.** The tests assert the three things the duplication used to break: that talent reaches
+the default path, that age separates a 20-year-old from a 35-year-old, and that a full season stays
+gentle.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
