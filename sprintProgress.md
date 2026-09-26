@@ -1400,6 +1400,31 @@ that it no longer is. The wage is now genuinely absurd rather than comfortably u
 
 **335 tests.**
 
+### Loans
+
+A loan is the answer to a youth cap: a club with fifteen teenagers cannot register them all, so it
+sends some out. That only means anything if the move is genuinely temporary — the player keeps his
+contract, the wage stays with the club that owns him, and he comes back. Modelled as a transfer it
+would have been simpler and permanently wrong.
+
+Two rules the owner was explicit about, and both are enforced:
+
+- **A loan in is not exempt from the window.** It goes through the same `TransferWindowService` gate
+  as a permanent move, so a club cannot sign in April by calling it a loan. The gate is on
+  `start`, not on `offer`: offering costs nothing and a club may line a player up months ahead,
+  while *signing* him is what needs the window.
+- **A loanee is squad depth, not a registration.** `isRegisteredByNobody` is the whole point — a
+  player on loan is registered by nobody, which is the only reason a cap can be worked around
+  honestly rather than by breaking it.
+
+Also modelled: a wage contribution so the borrowing club carries only its share (usually zero for a
+youngster sent out for minutes), a buy clause that only exists if both a clause was agreed *and* the
+loan is running, mid-loan recall by the parent club (not window-gated — pulling back your own player
+is not a transfer), early return by the borrower, and automatic closure when the weeks run out,
+wired into the weekly tick so squads do not accumulate players who left weeks ago.
+
+**342 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

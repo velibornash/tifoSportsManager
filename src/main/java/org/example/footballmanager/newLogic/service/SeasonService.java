@@ -43,6 +43,7 @@ public class SeasonService {
     private final YouthAcademyService youthAcademyService;
     private final TransferService transferService;
     private final FriendlyRequestService friendlyRequests;
+    private final LoanService loans;
     private final Random random = new Random();
 
     @Transactional
@@ -346,6 +347,12 @@ public class SeasonService {
             int newWeek = clock.getCurrentWeek();
             // A friendly request nobody answered simply lapses once its week has gone. Without
             // this, a club that asked in week 5 still had a live request in week 11.
+            // Loans that have run their course. A loan is temporary by definition, so somebody has
+            // to close them out or a squad accumulates players who left weeks ago.
+            int loansClosed = loans.closeFinishedLoans();
+            if (loansClosed > 0) {
+                log.info("Week {}: {} loans finished", newWeek, loansClosed);
+            }
             int lapsed = friendlyRequests.expireStaleRequests();
             if (lapsed > 0) {
                 log.info("Week {}: {} friendly requests lapsed unanswered", newWeek, lapsed);
