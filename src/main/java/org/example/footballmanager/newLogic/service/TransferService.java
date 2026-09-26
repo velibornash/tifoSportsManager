@@ -67,6 +67,21 @@ public class TransferService {
         this.transferWindows = transferWindows;
     }
 
+    /**
+     * The current transfer record for a player, whatever state it is in.
+     *
+     * <p>A read rather than a private helper, because "where has this player got to" is a question
+     * the transfer screen, the settlement and a test all need to ask, and answering it three
+     * different ways is how they drift apart.
+     */
+    @Transactional
+    public Transfer findTransferForPlayer(Long playerId) {
+        if (playerId == null) {
+            return null;
+        }
+        return transferRepository.findByPlayerId(playerId).orElse(null);
+    }
+
     @Transactional
     public Transfer listPlayerForTransfer(Long playerId, double askingPrice) {
         Player player = playerRepository.findById(playerId)

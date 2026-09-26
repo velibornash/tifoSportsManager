@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.model.FinanceCategory;
+import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerContract;
 import org.example.footballmanager.newLogic.model.SquadRole;
@@ -39,11 +41,16 @@ class PlayerContractServiceTest {
     @Autowired PlayerContractRepository contracts;
     @Autowired PlayerContractService service;
     @Autowired ContractBackfillService backfill;
+    @Autowired org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository ledger;
 
     private Team aClub(String name) {
+        return aClub(name, 5_000_000.0);
+    }
+
+    private Team aClub(String name, double budget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
-        t.setBudget(5_000_000.0);
+        t.setBudget(budget);
         t.setReputation(60.0);
         Stadium s = new Stadium();
         s.setName(name + " Ground");
@@ -54,6 +61,19 @@ class PlayerContractServiceTest {
         s.setMaintenanceRemaining(0);
         t.setStadium(s);
         return teams.save(t);
+    }
+
+    /**
+     * Gives a club a trading history, because the wage ceiling is income-based: a club with no
+     * settled weeks has an income of zero, a ceiling of zero, and canAfford correctly refuses any
+     * wage at all. Right behaviour, useless as a fixture.
+     */
+    private void settleIncome(Team club) {
+        int season = contracts.findAll().isEmpty() ? 1 : 1;
+        for (int week = 1; week <= 8; week++) {
+            ledger.save(FinanceLedgerEntry.of(club, season, week,
+                    FinanceCategory.BROADCAST, 120_000, "Broadcast income"));
+        }
     }
 
     private Player aPlayer(Team team, String name, int age, double value, double wage) {
@@ -258,6 +278,7 @@ class PlayerContractServiceTest {
     void signingMovesThePlayerToTheClub() {
         Team from = aClub("Old employer");
         Team to = aClub("New employer");
+        settleIncome(to);
         Player p = aPlayer(from, "Free agent signing", 23, 1_500_000, 3_000);
         p.setTeam(null);                      // he is a free agent: no club at all
         players.save(p);
@@ -276,6 +297,57 @@ class PlayerContractServiceTest {
         PlayerContract contract = contracts.findByPlayerId(p.getId()).orElseThrow();
         assertEquals(to.getId(), contract.getTeam().getId(),
                 "the contract must name the club, not be left empty");
+    }
+
+    @Test
+    @DisplayName("a club that cannot meet the wage is told no, not signed anyway")
+    void anUnaffordableWageIsRefused() {
+        Team broke = aClub("Broke", 40_000);
+        settleIncome(broke);
+        Player p = aPlayer(null, "Too expensive", 24, 500_000, 1_000);
+        p.setTeam(null);
+        players.save(p);
+
+        // A wage far above anything the club earns.
+        PlayerContractService.Outcome outcome =
+                service.sign(broke.getId(), p.getId(), 24, 900_000, SquadRole.STARTER);
+
+        assertFalse(outcome.signed(),
+                "a club that cannot pay the wage must not end up with the player");
+        assertNotNull(outcome.reason());
+    }
+
+    @Test
+    @DisplayName("a registered player cannot be signed out from under his club")
+    void aContractedPlayerIsNotPoachable() {
+        Team seller = aClub("His club");
+        Team buyer = aClub("Poacher");
+        settleIncome(buyer);
+        Player p = aPlayer(seller, "Under contract", 25, 3_000_000, 6_000);
+        PlayerContract contract = service.assignToClub(p, seller, 2026, SquadRole.STARTER);
+        contract.setReleaseClause(null);
+        contracts.save(contract);
+
+        PlayerContractService.Outcome outcome =
+                service.sign(buyer.getId(), p.getId(), 24, 12_000, SquadRole.STARTER);
+
+        assertFalse(outcome.signed(),
+                "overwriting a contract is not a transfer route, it is a purchase button");
+        assertTrue(outcome.reason().toLowerCase().contains("negotiated"),
+                "and the manager is told to negotiate instead: " + outcome.reason());
+        assertEquals(seller.getId(), players.findById(p.getId()).orElseThrow().getTeam().getId(),
+                "he is still where he was");
+    }
+
+    @Test
+    @DisplayName("a contract lasts as long as it says, in this game's twelve-week seasons")
+    void contractLengthIsInSeasonsNotYears() {
+        // A season is twelve weeks, so about three months. A 24-month deal is roughly eight seasons.
+        // Dividing by 12 treated a season as a year and expired every contract four times too soon.
+        assertEquals(2, PlayerContractService.seasonsFor(6));
+        assertEquals(4, PlayerContractService.seasonsFor(12));
+        assertEquals(8, PlayerContractService.seasonsFor(24));
+        assertEquals(20, PlayerContractService.seasonsFor(60));
     }
 
     @Test

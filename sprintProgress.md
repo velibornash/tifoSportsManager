@@ -1597,6 +1597,54 @@ a second copy of the same logic.
 
 **351 tests.**
 
+### Finishing the signing, and proving it end to end
+
+The owner asked me to check what signing still needs to do. Two things it did not do, one of them
+serious.
+
+**It never checked the wage.** The method has always claimed it refuses a signing the club cannot
+afford, and it never did — the only affordability call it made compared a *fee estimate* against a
+*release clause*, which says nothing about a weekly wage. A board that cannot meet the wage bill was
+told yes. That is now checked, and the answer names the ceiling.
+
+**Contracts were four times too short.** Expiry was `season + lengthMonths / 12`, which treats a
+season as a year. A season is **twelve weeks** — the owner defined it that way — so it is about three
+months. A 24-month deal was expiring after two seasons, twenty-four weeks, roughly five and a half
+months after signing. Nobody would be bound to anybody, and the free-agent market that depends on
+expiry would churn the whole league every half year. It is now `seasonsFor(lengthMonths)` against
+`MONTHS_PER_SEASON = 3`, so a 24-month deal runs eight seasons and a 6-month deal still outlasts the
+season it was signed in.
+
+**And it could poach.** `sign` overwrote any player's contract regardless of who owned him, so any
+registered player could be signed out from under his club for nothing — not a transfer route, a
+purchase button. It now refuses a contracted player who has no release clause and says he has to be
+negotiated for. A signing is for free agents and renewals; everything else goes through the offer
+thread.
+
+#### 🧪 The owner's club, from a real start, through a real transfer
+
+`OmladinacTransferJourneyTest` is the test I should have written months ago. **No mocks anywhere.**
+Real clubs, real economies, a real ledger, a real window, a real offer thread, and assertions only on
+the three things a manager would notice: the player is at the new club, the money moved, the paper
+trail exists.
+
+Six journeys, all named for the club the owner actually manages (`OFK Omladinac`):
+
+1. buys a player, and he arrives with the paperwork
+2. signs a released player directly — the free-agent route, which was a no-op until this morning
+3. a big fee becomes instalments, and the first one actually pays the seller
+4. nothing happens outside the window
+5. Omladinac cannot sign a player away from the club that owns him
+6. Omladinac has a transfer budget once it has income, and can spend it
+
+Every one of the four broken systems from the last report would have been caught by journey 1. Each
+of them had passing unit tests, and **that was the actual bug** — the unit tests asserted on a single
+collaborator, and none of them asserted the thing a manager would notice. Journey 2 builds its expiring
+contract through `sign` rather than poking the database, which is how the flush problem it hit taught
+me the expiry is only real when the service wrote it.
+
+**360 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

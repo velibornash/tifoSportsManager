@@ -50,6 +50,27 @@ public class PlayerContractService {
     private static final int MIN_CONTRACT_MONTHS = 6;
     private static final int MAX_CONTRACT_MONTHS = 60;
 
+    /**
+     * Roughly how many months a season lasts, in the manager's own time.
+     *
+     * <p>A season is twelve weeks — the owner defined it that way — so it is about three months, not
+     * twelve. Dividing a contract's length by 12 treated a season as a year, which made every
+     * contract about four times too short: a 24-month deal expired after two seasons, twenty-four
+     * weeks, roughly five and a half months after signing. Nobody would be bound to anybody, and the
+     * free-agent market that depends on expiry would churn the whole league every half year.
+     */
+    private static final int MONTHS_PER_SEASON = 3;
+
+    /**
+     * How many seasons a contract of this length runs for.
+     *
+     * <p>Rounded up, and never less than one: a six-month contract still has to outlast the season
+     * it was signed in, or it would expire on the day it was signed.
+     */
+    static int seasonsFor(int lengthMonths) {
+        return Math.max(1, (int) Math.ceil(lengthMonths / (double) MONTHS_PER_SEASON));
+    }
+
     private final PlayerRepository players;
     private final PlayerContractRepository contracts;
     private final TransferBudgetService budgets;
@@ -113,18 +134,45 @@ public class PlayerContractService {
 
         if (squadRole == null) squadRole = inferRole(player);
 
-        // A free agent takes a new club; a contracted player only moves if his current club lets him.
+        // A free agent takes a new club. A contracted player does not: he either has a release
+        // clause the buyer has met, or he has to be negotiated for. Silently overwriting his
+        // contract let a caller take any registered player for nothing, which is not a transfer
+        // route, it is a bug with a purchase button on it.
         PlayerContract existing = contracts.findByPlayerId(playerId).orElse(null);
-        if (existing != null && existing.getTeam() != null && existing.hasReleaseClause()
-                && budgets.canAfford(teamId, playerId).fee() < existing.getReleaseClause()) {
-            return Outcome.refused("He is under contract with a release clause of "
-                    + round2(existing.getReleaseClause()) + ", which has not been met.");
+        boolean contractedElsewhere = existing != null
+                && existing.getTeam() != null
+                && !Objects.equals(existing.getTeam().getId(), teamId);
+        if (contractedElsewhere) {
+            if (!existing.hasReleaseClause()) {
+                return Outcome.refused("He is under contract at "
+                        + existing.getTeam().getName() + " until season "
+                        + existing.getExpirySeason() + " and has no release clause, so he has to be "
+                        + "negotiated for.");
+            }
+            if (budgets.canAfford(teamId, playerId).fee() < existing.getReleaseClause()) {
+                return Outcome.refused("He is under contract with a release clause of "
+                        + round2(existing.getReleaseClause()) + ", which has not been met.");
+            }
         }
 
         // A full squad is a refusal, not a silent over-registration.
         RegistrationCheck room = canRegister(teamId, squadRole);
         if (!room.allowed()) {
             return Outcome.refused(room.reason());
+        }
+
+        // And the wage has to be affordable. The method has always claimed it refuses a signing the
+        // club cannot pay for, and it never did: the only affordability call it made compared a fee
+        // estimate against a release clause, which says nothing about a weekly wage. A board that
+        // cannot meet the wage bill should be told no before the player is on the books, not after.
+        TransferBudgetService.Affordability affordability = budgets.canAfford(teamId, playerId);
+        if (!affordability.affordable()) {
+            return Outcome.refused(affordability.reason());
+        }
+        if (weeklyWage > affordability.wageCeiling()) {
+            return Outcome.refused("That wage of " + round2(weeklyWage) + " a week is above what "
+                    + club.getName() + " can pay; the ceiling is " + round2(affordability.wageCeiling())
+                    + " a week.");
         }
 
 
@@ -140,7 +188,7 @@ public class PlayerContractService {
         contract.setLengthMonths(lengthMonths);
         contract.setSquadRole(squadRole);
         contract.setSignedSeason(season);
-        contract.setExpirySeason(season + Math.max(1, lengthMonths / 12));
+        contract.setExpirySeason(season + seasonsFor(lengthMonths));
         contract.setSignedAt(java.time.Instant.now());
         contracts.save(contract);
 
@@ -160,7 +208,7 @@ public class PlayerContractService {
         contract.setWeeklyWage(player.getEarnings());
         contract.setLengthMonths(24);
         contract.setSignedSeason(season);
-        contract.setExpirySeason(season + Math.max(1, 24 / 12));
+        contract.setExpirySeason(season + seasonsFor(24));
         contract.setSquadRole(role == null ? inferRole(player) : role);
         contract.setSignedAt(java.time.Instant.now());
         contracts.save(contract);
@@ -172,6 +220,13 @@ public class PlayerContractService {
         players.save(player);
 
         return contract;
+    }
+
+    /** The current contract for a player, or null if he has none. */
+    @Transactional(readOnly = true)
+    public PlayerContract findByPlayerId(Long playerId) {
+        if (playerId == null) return null;
+        return contracts.findByPlayerId(playerId).orElse(null);
     }
 
     // ---------------------------------------------------------------- expiry

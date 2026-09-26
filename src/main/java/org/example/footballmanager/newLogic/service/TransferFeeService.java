@@ -89,6 +89,13 @@ public class TransferFeeService {
         return fees.save(f);
     }
 
+    /** The agreed fee schedule for a transfer, or null if there is none. */
+    @Transactional(readOnly = true)
+    public FeeStructure findStructureFor(Long transferId) {
+        if (transferId == null) return null;
+        return fees.findByTransferId(transferId).orElse(null);
+    }
+
     /** Collects one month's instalment into the selling club's budget. */
     @Transactional
     public double collectInstalment(Long transferId) {
