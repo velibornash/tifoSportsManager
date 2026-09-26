@@ -107,7 +107,6 @@ public class StaffSponsorService {
             m.setRole(role);
             m.setName(nameFor(club.getId(), i));
             m.setAge(ageFor(club.getId(), i, role));
-            m.setWeeklyWage(wageFor(role, tier, quality));
             // Math.abs again: without it a signed hash could produce a contract that expired in the past.
             m.setContractEndSeason(season + 1
                     + (int) Math.abs(stableUnit(club.getId(), i + 40) % 3));
@@ -124,10 +123,57 @@ public class StaffSponsorService {
             m.setGoalkeeping(attr(base, spread, i));
             m.setFitness(attr(base, spread, i));
             m.setScouting(attr(base, spread, i));
+
+            // The eight coaching skills (owner, 2026-09-27). Assigned before specialise() so the
+            // role's speciality lands on the coaching skills as well, and the wage is derived from
+            // what the coach can actually do rather than from a single development number.
+            m.setSkillStamina(attr(base, spread, i));
+            m.setSkillGoalkeeper(attr(base, spread, i));
+            m.setSkillDefender(attr(base, spread, i));
+            m.setSkillPace(attr(base, spread, i));
+            m.setSkillTechnique(attr(base, spread, i));
+            m.setSkillPlaymaker(attr(base, spread, i));
+            m.setSkillPassing(attr(base, spread, i));
+            m.setSkillStriker(attr(base, spread, i));
+
             specialise(m, role, spread);
+            applyCoachSpeciality(m, role, spread);
+
+            // Wage last, because it is a function of the skills the coach ended up with.
+            m.setWeeklyWage(CoachWage.weeklyWageFor(m, tier, club.getReputation() == null ? 50 : club.getReputation()));
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Nudges the <i>coaching</i> skills a role is for, and gives one or two of them a genuine peak.
+     *
+     * <p>The peak is what makes hiring a real decision: a head coach can be bought to be a passing
+     * guru, and a club that trains passing every week gets more out of him than a club with an
+     * all-round coach of the same total. Deliberately not a 20 for most staff — maxed skills are
+     * priced heavily, so a squad-wide 20 on everything would be unaffordable for anyone.
+     */
+    private void applyCoachSpeciality(StaffMember m, StaffRole role, int spread) {
+        int base = m.getSkillDefender() == null ? 10 : m.getSkillDefender();
+        int peak = Math.min(20, base + spread + 2);
+        switch (role) {
+            case HEAD_COACH -> {
+                m.setSkillPassing(peak);
+                m.setSkillPlaymaker(Math.min(20, peak - 1));
+            }
+            case ASSISTANT -> {
+                m.setSkillTechnique(peak);
+                m.setSkillPace(Math.min(20, peak - 1));
+            }
+            case GK_COACH -> m.setSkillGoalkeeper(peak);
+            case PHYSIO -> m.setSkillStamina(peak);
+            case SCOUT -> m.setSkillPlaymaker(Math.max(1, peak - 3));
+            case YOUTH_COACH -> {
+                m.setSkillTechnique(peak);
+                m.setSkillPlaymaker(peak);
+            }
+        }
     }
 
     /** Nudges the attribute a role is actually for, so a scout is a good scout. */
@@ -253,24 +299,6 @@ public class StaffSponsorService {
         return base + (int) Math.abs(stableUnit(teamId, index + 30) % 14);
     }
 
-    private double wageFor(StaffRole role, int tier, double reputation) {
-        double roleBase = switch (role) {
-            case HEAD_COACH -> 4_200;
-            case ASSISTANT -> 1_900;
-            case GK_COACH -> 1_300;
-            case PHYSIO -> 1_500;
-            case SCOUT -> 1_100;
-            case YOUTH_COACH -> 1_200;
-        };
-        double tierFactor = switch (tier) {
-            case 1 -> 3.0;
-            case 2 -> 1.4;
-            case 3 -> 0.7;
-            default -> 0.35;
-        };
-        double qualityFactor = 0.7 + reputation / 100.0;
-        return Math.round(roleBase * tierFactor * qualityFactor);
-    }
 
     /**
      * A stable hash of two longs. Not a random draw: the same club must get the same staff on every

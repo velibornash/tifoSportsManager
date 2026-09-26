@@ -105,6 +105,33 @@ public class StaffMember {
         };
     }
 
+    /**
+     * Sets one coaching skill by name, mirroring the eight fields.
+     *
+     * <p>There are eight stored columns rather than a map, so they behave like any other entity
+     * attribute and can be queried and indexed. That makes a name-based setter worth having: hiring
+     * and seeding both want to say "this coach is good at passing" rather than
+     * "setSkillPassing", and they should not have to switch on the skill themselves.
+     *
+     * <p>An unknown skill is ignored rather than throwing, so adding one to {@code SkillName} later
+     * cannot break staff seeding.
+     */
+    public void setSkill(SkillName skill, int value) {
+        if (skill == null) return;
+        int clamped = Math.max(1, Math.min(20, value));
+        switch (skill) {
+            case STAMINA -> skillStamina = clamped;
+            case GOALKEEPER -> skillGoalkeeper = clamped;
+            case DEFENDER -> skillDefender = clamped;
+            case PACE -> skillPace = clamped;
+            case TECHNIQUE -> skillTechnique = clamped;
+            case PLAYMAKER -> skillPlaymaker = clamped;
+            case PASSING -> skillPassing = clamped;
+            case STRIKER -> skillStriker = clamped;
+            case FATIGUE -> { /* fatigue is a condition, not something a coach teaches */ }
+        }
+    }
+
     /** The first value actually recorded, clamped into range. */
     private int first(Integer... candidates) {
         for (Integer candidate : candidates) {

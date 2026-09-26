@@ -1703,6 +1703,57 @@ packages, because the failure mode is silence — no compile error, no warning, 
 quietly does nothing. Verified negatively: moving the class back fails it with a message naming the
 package and the scanned list.
 
+### Training: talent, coach and minutes
+
+The owner's rule, implemented as one number: **a player gets 100% of a week's training only when
+talent, the coach's rating for the skill being trained, and minutes played are all maximal** —
+talent maxed, coach maxed *at that skill*, and 120+ minutes in the week. Everything short of
+maximal reduces it proportionally, and the instruction on the shape of that reduction was *not
+dramatic, a lazy curve*.
+
+**The implementation choice that matters is a weighted mean, not a product.** Multiplying the three
+factors is the obvious way to write "all three must be maximal", and it is badly wrong for the brief:
+three factors at 80% multiply to **51%**, which is exactly the dramatic collapse that was ruled out.
+Sharing a budget of 100% means three at 80% give **80%** — lazy — and 100% still requires all three
+to be maximal. The test asserts exactly that, because it is the one property that separates the two
+implementations.
+
+```
+pct = 0.40·talent^0.75 + 0.35·coach^0.50 + 0.25·(0.30 + 0.70·(min(1, m/120))^0.70)
+```
+
+The agreed grid is pinned as assertions — talent 20/15/10 × coach 20/15/10 × minutes 60/90/120 — so a
+later tune cannot quietly move numbers the owner signed off. The floor (talent 1, a 1/20 coach, no
+minutes → **22.4%**) is pinned too, because "a forgotten squad still moves" is a design decision and
+not an accident.
+
+**The coach curve is deliberately the flattest.** A coach rated 10/20 still delivers 71% of his
+curve, so a mediocre coach holds a squad together instead of freezing it. The owner's rule is that
+nothing below maximum *reduces* training; it does not remove it.
+
+#### What the percentage is not
+
+Not affected by how good the player already is, or how old. Those change the **fragment** gained — the
+actual skill points. A 34-year-old at 20/20 and a 19-year-old at 2/20 can both be at 100% of the
+training, and the difference shows up as what those points are worth. Keeping the two apart is what
+lets the number mean one thing.
+
+#### 🐛 A national-team call-up is just minutes
+
+The minutes query goes through `Match.competition` and deliberately **does not filter on it**, so
+league, cup, European, national team and friendly all count toward the 120 for free — which is
+exactly what the owner specified. There is no national-team staff, so `coachFor` returns the club head
+coach (falling back to the assistant, never null, because null would read as a rating of 1). That
+answers the "whose coach for the NT" question for good rather than as a special case.
+
+**384 tests.**
+
+#### Still open, deliberately
+
+The **talent and percentage visibility** is not wired. The owner said to agree exactly what plus users
+see once everything is in place, and that talent and the percentage will be plus options for their
+own team only. Implementing a guess now would be building the wrong rule twice.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
