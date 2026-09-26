@@ -18,54 +18,63 @@ export function createClubManagementFeature(deps) {
         return staffDirectoryFeature.loadStaff();
     }
 
+    /**
+     * Club finances, from the server.
+     *
+     * This used to invent the entire page in the browser: three fictional sponsors, a monthly
+     * income of `budget * 0.055`, a wage budget of `squadSize * 1850`, and six months of history
+     * that had never been played. None of it existed in the database, so the screen looked
+     * identical for a solvent club and a bankrupt one. Everything now comes from the ledger.
+     */
     async function loadFinances() {
         const teamId = getTeamId();
-        console.log(`Loading finances for ${teamId}`);
-        const [profileRes, playersRes] = await Promise.all([
-            authFetch(`/demo/teams/${teamId}/profile`),
-            authFetch(`/teams/${teamId}/players`)
-        ]);
-        const profile = profileRes.ok ? await profileRes.json() : {};
-        const players = playersRes.ok ? await playersRes.json() : [];
         const mainContent = document.getElementById('main-content');
 
-        const squadValue = players.reduce((sum, player) => sum + Number(player.value || 0), 0);
-        const squadSize = players.length;
+        const [profileRes, financesRes, historyRes, boardRes, playersRes] = await Promise.all([
+            authFetch(`/demo/teams/${teamId}/profile`),
+            authFetch(`/api/teams/${teamId}/finances`),
+            authFetch(`/api/teams/${teamId}/finances/history`),
+            authFetch(`/api/teams/${teamId}/finances/board`),
+            authFetch(`/teams/${teamId}/players`)
+        ]);
+
+        const profile = profileRes.ok ? await profileRes.json() : {};
+        const finances = financesRes.ok ? await financesRes.json() : null;
+        const history = historyRes.ok ? await historyRes.json() : [];
+        const board = boardRes.ok ? await boardRes.json() : null;
+        const players = playersRes.ok ? await playersRes.json() : [];
+
+        // The API is the source of truth. If it is unavailable we say so rather than inventing
+        // plausible numbers, because a wrong number here is worse than no number.
+        if (!finances) {
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-eyebrow">Club finances</div>
+                        <h2>${escapeHtml(profile.name || 'Finances')}</h2>
+                        <p class="fm-subtle">The club ledger is not available right now. Figures are
+                        never estimated — when the accounts cannot be read, this screen says so.</p>
+                    </section>
+                </div>`;
+            return;
+        }
+
+        const squadValue = Number(finances.squadValue || 0);
+        const squadSize = Number(finances.squadSize || players.length);
+        const budget = Number(finances.budget || 0);
+        const wageBill = Number(finances.squadWageBill || 0);
+        const incomeToDate = Number(finances.incomeToDate || 0);
+        const costsToDate = Number(finances.costsToDate || 0);
+        const netToDate = Number(finances.netToDate || 0);
+        const topAsset = [...players].sort((a, b) => Number(b.value || 0) - Number(a.value || 0))[0] || null;
         const averageValue = squadSize ? squadValue / squadSize : 0;
-        const topAssets = [...players].sort((a, b) => Number(b.value || 0) - Number(a.value || 0)).slice(0, 5);
-        const topAsset = topAssets[0] || null;
-        const injuredCount = players.filter(player => player.injured).length;
-        const budget = Number(profile.budget || 0);
-        const transferBudget = Math.round(Math.max(budget * 0.38, squadValue * 0.04, 50000));
-        const weeklyWageBudget = Math.round(Math.max(squadSize * 1850, averageValue * 0.0015, 12000));
-        const annualWages = weeklyWageBudget * 52;
-        const monthlyIncome = Math.round(Math.max(budget * 0.055, squadValue * 0.018) + squadSize * 4500);
-        const monthlyExpenses = Math.round((annualWages / 12) + injuredCount * 18000 + squadSize * 3200);
-        const netMonthly = monthlyIncome - monthlyExpenses;
-        const sponsors = [
-            { name: `${profile.name || 'Club'} Main Partner`, annualIncome: Math.round(monthlyIncome * 3.4) },
-            { name: 'Regional Media Deal', annualIncome: Math.round(monthlyIncome * 2.1) },
-            { name: 'Matchday Hospitality', annualIncome: Math.round(monthlyIncome * 1.35) }
-        ];
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const draftHistory = Array.from({ length: 6 }, (_, idx) => {
-            const date = new Date();
-            date.setMonth(date.getMonth() - (5 - idx));
-            const income = Math.round(monthlyIncome * (0.9 + idx * 0.035));
-            const expenses = Math.round(monthlyExpenses * (1.05 - idx * 0.02 + (injuredCount > 0 ? 0.015 : 0)));
-            return {
-                month: `${monthNames[date.getMonth()]} ${date.getFullYear()}`,
-                income,
-                expenses,
-                net: income - expenses
-            };
-        });
-        let rollingBalance = budget - draftHistory.reduce((sum, entry) => sum + entry.net, 0);
-        const historyEntries = draftHistory.map(entry => {
-            rollingBalance += entry.net;
-            return { ...entry, balance: rollingBalance };
-        });
-        const maxHistoryValue = Math.max(1, ...historyEntries.flatMap(entry => [Math.abs(entry.balance), entry.income, entry.expenses]));
+
+        const maxHistoryValue = Math.max(1, ...history.flatMap(h =>
+            [Math.abs(Number(h.balance || 0)), Number(h.income || 0), Number(h.expenses || 0)]));
+
+        const unsettled = finances.settled === false;
+        const ffp = board && board.ffpRatio != null ? Number(board.ffpRatio) : null;
 
         mainContent.innerHTML = `
             <div class="fm-page fm-page--club">
@@ -74,99 +83,86 @@ export function createClubManagementFeature(deps) {
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Club finances</div>
-                            <h2>${escapeHtml(profile.name || 'Finances')}</h2>
-                            <p class="fm-subtle">Budget and squad asset view are now presented in the same wide club shell, using the data already available in the app.</p>
+                            <h2>${escapeHtml(finances.teamName || profile.name || 'Finances')}</h2>
+                            <p class="fm-subtle">Season ${escapeHtml(String(finances.seasonYear))} ·
+                            ${escapeHtml(String(finances.ledgerLines))} settled ledger lines.</p>
                         </div>
                         ${buildClubActionsHtml('finances')}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${escapeHtml(formatBudget(profile.budget))}</strong><span>Budget</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(squadValue)))}</strong><span>Squad value</span></div>
-                        <div><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong><span>Avg asset</span></div>
+                        <div><strong>${escapeHtml(formatBudget(budget))}</strong><span>Budget</span></div>
+                        <div><strong>${escapeHtml(formatBudget(squadValue))}</strong><span>Squad value</span></div>
+                        <div><strong>${escapeHtml(formatBudget(wageBill))}</strong><span>Weekly wage bill</span></div>
                         <div><strong>${escapeHtml(topAsset?.name || '—')}</strong><span>Top asset</span></div>
                     </div>
+                    ${unsettled ? `<p class="fm-subtle">${escapeHtml(finances.notice || '')}</p>` : ''}
                 </section>
+
                 <section class="finance-flow-grid">
-                    <div class="finance-flow-card is-income"><div class="finance-flow-title">Transfer budget</div><strong>${escapeHtml(formatBudget(transferBudget))}</strong><span>Available for incoming business</span></div>
-                    <div class="finance-flow-card is-expense"><div class="finance-flow-title">Wage budget</div><strong>${escapeHtml(formatBudget(weeklyWageBudget))}</strong><span>Estimated weekly payroll room</span></div>
-                    <div class="finance-flow-card is-balance"><div class="finance-flow-title">Annual wages</div><strong>${escapeHtml(formatBudget(annualWages))}</strong><span>Projected full-season cost</span></div>
-                    <div class="finance-flow-card ${netMonthly >= 0 ? 'is-income' : 'is-expense'}"><div class="finance-flow-title">Net monthly</div><strong>${escapeHtml(formatBudget(netMonthly))}</strong><span>${netMonthly >= 0 ? 'Positive trend' : 'Negative trend'}</span></div>
+                    <div class="finance-flow-card is-income">
+                        <div class="finance-flow-title">Income to date</div>
+                        <strong>${escapeHtml(formatBudget(incomeToDate))}</strong>
+                        <span>All settled weeks, this season</span>
+                    </div>
+                    <div class="finance-flow-card is-expense">
+                        <div class="finance-flow-title">Costs to date</div>
+                        <strong>${escapeHtml(formatBudget(costsToDate))}</strong>
+                        <span>All settled weeks, this season</span>
+                    </div>
+                    <div class="finance-flow-card ${netToDate >= 0 ? 'is-balance' : 'is-expense'}">
+                        <div class="finance-flow-title">Net to date</div>
+                        <strong>${escapeHtml(formatBudget(netToDate))}</strong>
+                        <span>${netToDate >= 0 ? 'In the black' : 'Spending more than it earns'}</span>
+                    </div>
+                    <div class="finance-flow-card ${ffp != null && ffp > 1.15 ? 'is-expense' : 'is-balance'}">
+                        <div class="finance-flow-title">Wages vs income</div>
+                        <strong>${ffp != null ? escapeHtml(ffp.toFixed(2)) + '×' : '—'}</strong>
+                        <span>${ffp == null ? 'No settled income yet'
+                            : ffp > 1.35 ? 'The board will not fund this'
+                            : ffp > 1.15 ? 'Wages close to income'
+                            : 'Sustainable'}</span>
+                    </div>
                 </section>
+
+                ${board ? `
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
-                            <h3>Balance history</h3>
-                            <p class="fm-subtle">Safer local version of the open-football finance screen: same structure, but driven by current club budget plus derived monthly projections.</p>
+                            <h3>The board</h3>
+                            <p class="fm-subtle">${escapeHtml(board.headline || '')}</p>
                         </div>
-                        <span class="fm-panel-action">6 months</span>
+                        <span class="fm-panel-action">Trust ${escapeHtml(String(Math.round(Number(board.trust || 0))))}/100</span>
                     </div>
+                    ${(board.concerns || []).length ? `<ul class="fm-subtle">${board.concerns.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>` : ''}
+                    ${(board.plaudits || []).length ? `<ul class="fm-subtle">${board.plaudits.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>` : ''}
+                </section>` : ''}
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Weekly ledger</h3>
+                            <p class="fm-subtle">Real settled weeks, read from the club accounts.</p>
+                        </div>
+                        <span class="fm-panel-action">${escapeHtml(String(history.length))} weeks</span>
+                    </div>
+                    ${history.length ? `
                     <div class="finance-legend"><span><i class="finance-dot is-balance"></i>Balance</span><span><i class="finance-dot is-income"></i>Income</span><span><i class="finance-dot is-expense"></i>Expenses</span></div>
                     <div class="finance-chart-list">
-                        ${historyEntries.map(entry => `
+                        ${history.map(entry => `
                             <div class="finance-chart-row">
-                                <div class="finance-chart-label">${escapeHtml(entry.month)}</div>
+                                <div class="finance-chart-label">Week ${escapeHtml(String(entry.week))}</div>
                                 <div class="finance-chart-bars">
-                                    <div class="finance-chart-track"><span class="finance-chart-fill is-balance" style="width:${(Math.abs(entry.balance) / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.balance))}</strong></div>
-                                    <div class="finance-chart-track"><span class="finance-chart-fill is-income" style="width:${(entry.income / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.income))}</strong></div>
-                                    <div class="finance-chart-track"><span class="finance-chart-fill is-expense" style="width:${(entry.expenses / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.expenses))}</strong></div>
+                                    <div class="finance-chart-track"><span class="finance-chart-fill is-balance" style="width:${(Math.abs(Number(entry.balance)) / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.balance))}</strong></div>
+                                    <div class="finance-chart-track"><span class="finance-chart-fill is-income" style="width:${(Number(entry.income) / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.income))}</strong></div>
+                                    <div class="finance-chart-track"><span class="finance-chart-fill is-expense" style="width:${(Number(entry.expenses) / maxHistoryValue) * 100}%;"></span><strong>${escapeHtml(formatBudget(entry.expenses))}</strong></div>
                                 </div>
                             </div>`).join('')}
-                    </div>
+                    </div>` : `<p class="fm-subtle">No weeks settled yet. The ledger fills in as the season is played.</p>`}
                 </section>
-                <div class="finance-bottom-grid">
-                    <section class="fm-panel">
-                        <div class="fm-panel-head">
-                            <div>
-                                <h3>Income & expenses</h3>
-                                <p class="fm-subtle">Monthly summary table inspired by the reference finance page.</p>
-                            </div>
-                            <span class="fm-panel-action">Ledger</span>
-                        </div>
-                        <div class="fm-squad-wrap">
-                            <table class="fm-squad finance-table">
-                                <thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Net</th><th>Balance</th></tr></thead>
-                                <tbody>
-                                    ${historyEntries.map(entry => `
-                                        <tr class="fm-squad-row">
-                                            <td>${escapeHtml(entry.month)}</td>
-                                            <td class="finance-income-text">${escapeHtml(formatBudget(entry.income))}</td>
-                                            <td class="finance-expense-text">${escapeHtml(formatBudget(entry.expenses))}</td>
-                                            <td class="${entry.net >= 0 ? 'finance-income-text' : 'finance-expense-text'}">${escapeHtml(formatBudget(entry.net))}</td>
-                                            <td>${escapeHtml(formatBudget(entry.balance))}</td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                    <section class="fm-panel">
-                        <div class="fm-panel-head">
-                            <div>
-                                <h3>Sponsorship</h3>
-                                <p class="fm-subtle">Mock sponsorship block added to match the reference structure without touching backend finance models.</p>
-                            </div>
-                            <span class="fm-panel-action">Partners</span>
-                        </div>
-                        <div class="finance-sponsor-list">
-                            ${sponsors.map(sponsor => `
-                                <div class="finance-sponsor-item">
-                                    <div>
-                                        <strong>${escapeHtml(sponsor.name)}</strong>
-                                        <span>Annual commitment</span>
-                                    </div>
-                                    <strong class="finance-income-text">${escapeHtml(formatBudget(sponsor.annualIncome))}</strong>
-                                </div>`).join('')}
-                        </div>
-                        <div class="club-profile-detail-list" style="margin-top:14px;">
-                            <div class="club-profile-detail-row"><span>Squad size</span><strong>${squadSize}</strong></div>
-                            <div class="club-profile-detail-row"><span>Unavailable players</span><strong>${injuredCount}</strong></div>
-                            <div class="club-profile-detail-row"><span>Highest-value player</span><strong>${escapeHtml(topAsset ? `${topAsset.name} (${formatBudget(Math.round(topAsset.value || 0))})` : 'N/A')}</strong></div>
-                            <div class="club-profile-detail-row"><span>Average player value</span><strong>${escapeHtml(formatBudget(Math.round(averageValue)))}</strong></div>
-                            <div class="club-profile-detail-row"><span>Top assets tracked</span><strong>${topAssets.length}</strong></div>
-                        </div>
-                    </section>
-                </div>
             </div>`;
+
     }
+
 
     function getInterestedTeams(transfer) {
         if (!transfer) return [];
