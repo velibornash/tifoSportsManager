@@ -301,6 +301,76 @@ element.
 
 ---
 
+## Sprint 1 — Engine calibration
+
+### S1.0a — Re-baseline + pending-shot classification ✅ PARTIAL
+
+**Date:** 2026-09-26 · **Commit:** `e5b739c`
+
+**Re-baselined from current HEAD** (50 matches, seed 42). The old §5 numbers in `expertAudit.md`
+were measured before the quarantine and before the concurrent REC engine work, so every Sprint 1
+target had to be re-derived. All Sprint 1 targets are now stale and must be rewritten against this
+table before tuning begins.
+
+| Metric | Fresh baseline | Real PL | Old (stale) audit |
+|---|---:|---:|---:|
+| goals | 3.4 | 2.7 | 5.4 |
+| shots | 32.4 | 25 | 29.4 |
+| shots on target | 12.4 | 8–9 | 12.9 |
+| on-target % | 37.9% | 33% | 43.9% |
+| **saves** | **14.1** | **~5.8** | 9.8 |
+| pass accuracy | 81.5% | 80–86% | 77.9% |
+| passes | 740 | 450–500 | 582 |
+| duels won | 373 | ~100 | 598 |
+| interceptions | 27.7 | 12–16 | 36.1 |
+| corners | 5.6 | ~10 | 5.0 |
+| goal kicks | 19.8 | 12–15 | 40.7 |
+| throw-ins | 73.4 | 35–45 | 18.7 |
+| fouls | 16.6 | 22 | 29.6 |
+| yellow cards | 2.3 | 4–5 | 5.0 |
+| offsides | 4.25 | 2–4 | 3.6 |
+| red cards | 0.15 | 0.2 | 1.0 |
+| possession | 48.7 / 51.3 | 50 / 50 | 49.4 / 50.6 |
+| scoreless | 6% | ~6% | 0% |
+
+Several things already improved on their own (goal kicks 40.7 → 19.8, throw-ins into range,
+red cards 1.0 → 0.15, scoreless 0% → 6%). The remaining outlier is **saves**.
+
+### 🔴 OPEN DEFECT — saves exceed shots on target
+
+`BallResultHandler` uses `lastShooter != null` as "a shot is in flight awaiting its outcome".
+**14.1 saves against 12.4 shots on target is arithmetically impossible**, so one counter is wrong.
+
+**Fixed so far:** the pending-shot flag was only cleared by the explicit shot outcomes.
+`RECEIVE`, `INTERCEPT`, `DEFLECT`, `LOOSE_PICKUP`, `STOPPED`, `OOB_RESTART` and `OOB_CANCEL` all
+resolved the ball while leaving it set. `clearsPendingShot()` now makes terminal vs non-terminal
+explicit, with 8 tests in `BallResultHandlerPendingShotTest`.
+
+**Not fixed — and I want to be explicit about this.** Preserving `FLIGHT` (correct, since a shot
+emits many FLIGHT steps before its outcome) leaves the anomaly unchanged at **14.4 saves**. The
+opposite classification produced self-consistent, realistic numbers — saves 7.4, conversion 32.0%
+against a real ~32% — but *only because it discarded the shooter mid-flight*, breaking attribution.
+That is a coincidence, not a fix, so it was not kept.
+
+**Ruled out:** RECEIVE, INTERCEPT, DEFLECT, LOOSE_PICKUP, STOPPED, OOB_RESTART, OOB_CANCEL.
+
+**Next hypotheses to test, in order:**
+1. A shot whose outcome is never reached — slows to a stop short of any terminal event, or is
+   swallowed by the OOB hold path — leaves the flag set forever.
+2. The `SAVE` case assumes `state.getCarrier()` is the keeper. A gather that is not typed `SAVE`
+   never enters that branch and so never clears the flag.
+3. `stats.onSave` is attributed to `gk.getTeam()` while the shot is attributed to
+   `carrier.getTeam()` at strike time. If the carrier changes between strike and save, the two can
+   disagree.
+
+**Consequence for the backlog:** ⚠️ **any calibration of the goalkeeper or shot model is unsafe
+until this is resolved.** `GoalkeeperEngine` is the most correct and best-tested component in the
+repo and must not be "fixed" to compensate for a statistics bug. S1.1 is blocked on this.
+
+**Tests: 124 → 132.**
+
+---
+
 ## Open design questions---
 
 ## Open design questions — transfer market
