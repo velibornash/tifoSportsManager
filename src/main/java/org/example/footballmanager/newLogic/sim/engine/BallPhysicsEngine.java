@@ -445,7 +445,8 @@ public class BallPhysicsEngine implements BallEngine {
             if (p.isGoalkeeper() && isTowardOwnGoal(state, p)) {
                 double d = goalkeeperEngine.distanceToSegment(p.getPosition(), prev, curr);
                 double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
-                if (t < bestT && goalkeeperEngine.trySave(p, d, spd)) {
+                if (t < bestT && goalkeeperEngine.trySave(p, d, spd)
+                        && onTrajectoryForGoal(state, p, prev, curr)) {
                     bestT = t; ev = "SAVE"; hit = p;
                 }
                 continue;
@@ -570,6 +571,53 @@ public class BallPhysicsEngine implements BallEngine {
             }
         }
         return null;
+    }
+
+
+    /**
+     * Margin, in cells, by which a shot may miss the frame and still be saveable.
+     *
+     * <p>A ball a metre outside the post can be pushed round by a keeper's fingertips, so a
+     * save is physically possible slightly wide. A metre and a half is not. 0.35 cells is
+     * ~3.5 m on a 10 m-wide cell.
+     */
+    private static final double SAVE_MOUTH_MARGIN = 0.35;
+
+    /**
+     * Is the ball actually heading between the posts?
+     *
+     * <p>{@code GoalkeeperEngine.trySave} only measures how close the flight segment passes to the
+     * keeper's body. Without this gate a shot aimed metres wide of the post could still be
+     * "saved" purely by passing near his arms, which produced 5.3 phantom saves per match and a
+     * saves-to-shots-on-target ratio of 1.16 against a real figure of ~0.68. A keeper cannot
+     * save a ball that is never going to be a goal, so extend the flight to the goal line and
+     * require the crossing point to be within the frame plus a fingertip margin.
+     *
+     * <p>This is a geometry gate only - it does not make saves easier, it stops the keeper
+     * fishing at balls that were already missing.
+     */
+    private boolean onTrajectoryForGoal(MatchState state, Player gk, Position from, Position to) {
+        GoalPhysical goal = state.getEnvironment().goalDefendedBy(gk.getTeam());
+        double lineRow = goal.getGoalLineRow();
+
+        double fromRow = from.getRow(), toRow = to.getRow();
+        double dRow = toRow - fromRow;
+        if (Math.abs(dRow) < 1e-9) {
+            // Travelling along the goal line: judge by the current column.
+            return withinMouth(to.getColumn(), goal);
+        }
+        double t = (lineRow - fromRow) / dRow;
+        if (t < 0) {
+            // The ball is already past the line at the start of this segment.
+            return withinMouth(to.getColumn(), goal);
+        }
+        double col = from.getColumn() + (to.getColumn() - from.getColumn()) * t;
+        return withinMouth(col, goal);
+    }
+
+    private static boolean withinMouth(double col, GoalPhysical goal) {
+        return col >= goal.getMouthLeft() - SAVE_MOUTH_MARGIN
+                && col <= goal.getMouthRight() + SAVE_MOUTH_MARGIN;
     }
 
     private boolean isTowardOwnGoal(MatchState state, Player gk) {
