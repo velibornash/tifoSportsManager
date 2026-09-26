@@ -28,6 +28,7 @@ public class TrainingProgressionService {
     private final PlayerRepository playerRepository;
     private final TeamTrainingSetupRepository teamTrainingSetupRepository;
     private final TrainingWeekReportRepository trainingWeekReportRepository;
+    private final TrainingPercentService trainingPercentService;
     private final SeasonService seasonService;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
@@ -157,13 +158,16 @@ public class TrainingProgressionService {
             SkillName directSkill = dtSkillForRole(setup, role);
 
             Map<SkillName, Double> before = snapshotSkills(skills);
-            applyWeeklyGrowth(player, skills, directSkill, advanced, season, week);
+            double trainingPercent = trainingPercentService.percentForWeek(
+                    player, season, week, directSkill);
+            applyWeeklyGrowth(player, skills, directSkill, advanced, season, week, trainingPercent);
             skills.syncVisibleFromExact();
             player.setSkills(skills);
             updatedPlayers.add(player);
             Map<SkillName, Double> after = snapshotSkills(skills);
 
             PlayerTrainingReportDTO playerRow = new PlayerTrainingReportDTO();
+            playerRow.setTrainingPercent(Math.round(trainingPercent * 10.0) / 10.0);
             playerRow.setPlayerId(player.getId());
             playerRow.setPlayerName(player.getName());
             playerRow.setRole(role);
@@ -346,9 +350,11 @@ public class TrainingProgressionService {
         return list;
     }
 
-    private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill, boolean advanced, int season, int week) {
+    private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill,
+                                     boolean advanced, int season, int week, double trainingPercent) {
         double injuryFactor = injuryTrainingFactor(player, season, week);
-        double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill, advanced);
+        double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill,
+                advanced, trainingPercent);
         dt *= injuryFactor;
         dt *= slowSkillModifier(directSkill);
         // Rare jackpot is allowed only for low-skill players, to avoid unrealistic fast growth on 14+.
@@ -374,7 +380,11 @@ public class TrainingProgressionService {
         }
 
         if (week % 4 == 0) {
-            double staminaGain = 0.14 * ageTrainingFactor(player.getAge(), SkillName.STAMINA) * talentFactor(effectiveTalent(player.getTalent()));
+            // Stamina follows the same rule as everything else: the percentage decides how much of
+            // the week's work happens, and the old talent factor is gone rather than left to be
+            // applied a second time in a different place.
+            double staminaGain = 0.14 * ageTrainingFactor(player.getAge(), SkillName.STAMINA)
+                    * (trainingPercent / 100.0);
             staminaGain *= injuryFactor;
             skills.setExact(SkillName.STAMINA, skills.getExact(SkillName.STAMINA) + Math.max(0.03, staminaGain));
         }
@@ -406,15 +416,35 @@ public class TrainingProgressionService {
         }
     }
 
-    private double computeDirectFragment(Player player, double currentExact, SkillName skill, boolean advanced) {
-        // Calibrated so average <=18 player at low skill (3->4) needs around ~2 weeks on Advanced DT.
+    /**
+     * The skill points a player actually gains this week.
+     *
+     * <p>Built from two things the owner asked to be kept apart:
+     * <ul>
+     *   <li>the <b>training percentage</b> — talent, the coach's rating for this skill, and minutes
+     *       played. One source of truth, {@link TrainingPercent}.</li>
+     *   <li>the <b>fragment</b> — how good a point is worth, which is skill height and age. These
+     *       belong here and nowhere else, so a veteran and a prospect at the same percentage still
+     *       gain different amounts.</li>
+     * </ul>
+     *
+     * <p>The old version multiplied in its own talent factor, 0.55 to 1.55, <i>as well as</i> the
+     * new percentage — talent was counted twice, and a 9/10 prospect with a good coach and a full
+     * week of minutes got 1.4x1.4 the growth of the formula says he should. Removed at the owner's
+     * instruction: one factor, applied once.
+     *
+     * <p>Base stays at 0.52, which is the existing calibration (an average under-18 improving 3->4
+     * in about two weeks on advanced direct training) and is not part of what the owner changed.
+     */
+    private double computeDirectFragment(Player player, double currentExact, SkillName skill,
+                                          boolean advanced, double trainingPercent) {
         double base = 0.52;
-        double talent = talentFactor(effectiveTalent(player.getTalent()));
         double ageFactor = ageTrainingFactor(player.getAge(), skill);
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
         double randomFactor = 0.85 + random.nextDouble() * 0.35;
-        return Math.max(0.01, base * talent * ageFactor * levelFactor * advancedFactor * randomFactor);
+        double share = trainingPercent / 100.0;
+        return Math.max(0.01, base * share * ageFactor * levelFactor * advancedFactor * randomFactor);
     }
 
     private double levelResistance(double exact) {

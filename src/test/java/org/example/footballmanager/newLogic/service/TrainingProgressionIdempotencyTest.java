@@ -69,7 +69,13 @@ class TrainingProgressionIdempotencyTest {
         ObjectMapper mapper = new ObjectMapper();
         service = new TrainingProgressionService(
                 teamRepository, playerRepository, setupRepository,
-                reportRepository, seasonService, mapper);
+                reportRepository,
+                // Real service, mocked inputs: the training percentage is not stubbed here, because
+                // the point of this test is that growth still happens and is still idempotent.
+                new TrainingPercentService(
+                        mock(org.example.footballmanager.newLogic.repository.StaffMemberRepository.class),
+                        mock(org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository.class)),
+                seasonService, mapper);
 
         GameClock clock = new GameClock();
         clock.setId(1L);

@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO
 import org.example.footballmanager.newLogic.dto.transfer.TransferActionRequest;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.service.TransferService;
+import org.example.footballmanager.newLogic.service.TransferWindowService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,9 +15,24 @@ import java.util.List;
 public class TransferController {
 
     private final TransferService transferService;
+    private final TransferWindowService transferWindows;
 
-    public TransferController(TransferService transferService) {
+    public TransferController(TransferService transferService,
+                              TransferWindowService transferWindows) {
         this.transferService = transferService;
+        this.transferWindows = transferWindows;
+    }
+
+    /**
+     * Is the window open, and when does it shut.
+     *
+     * <p>The dashboard ticker reads this. It used to have no way to: a manager had to open the
+     * transfer centre to find out whether he could do business, and the news that the window was
+     * closing reached him at the moment it had already shut.
+     */
+    @GetMapping("/window")
+    public java.util.Map<String, Object> windowStatus() {
+        return transferWindows.status();
     }
 
     @PostMapping("/list/{playerId}")

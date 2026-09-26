@@ -1754,6 +1754,49 @@ The **talent and percentage visibility** is not wired. The owner said to agree e
 see once everything is in place, and that talent and the percentage will be plus options for their
 own team only. Implementing a guess now would be building the wrong rule twice.
 
+### The transfer window, and the ticker that says so
+
+Windows confirmed by the owner at **weeks 5–6 and 11–12**, which is what was already built — so no
+change was needed, and the calendar is now pinned by test to that reading.
+
+**The manager had no way of knowing when the window was open.** It had to be inferred by trying a
+deal. `TransferWindowService` already computed the whole thing — which window, how many weeks left,
+whether it is deadline day — for the transfer centre, and nothing else could read it. There is now a
+`GET /transfers/window`, verified against the live calendar:
+
+```
+week 1  ->  CLOSED, reopens week 5
+week 6  ->  SUMMER, open, weeksLeft 0, deadlineDay true
+```
+
+**Three ticker states, because they are three urgencies.** "Open — 2 weeks left" is an opportunity
+and must not shout. Deadline day is `alert`. "Closed" is worth saying once, with what stays possible
+named in the same breath, or a manager will assume everything is frozen and stop pursuing free agents
+and released players for a month.
+
+The cap also went from 4 to 6, because a cap that drops a transfer deadline in favour of a chat
+notification is worse than a longer bar.
+
+#### 🐛 Talent was being counted twice
+
+`TrainingProgressionService` multiplied in its own talent factor — 0.55 to 1.55 — *and* the new
+percentage was on top of it. A 9/10 prospect with a good coach and a full week of minutes was
+training at 1.4 × 1.4 what the owner's formula says. Removed at the owner's instruction: one factor,
+applied once. Stamina had the same double-count and the same fix.
+
+The growth path is now `percentage × base × age × level-resistance × advanced × random`, and
+`trainingPercent` is on the report per player. `TrainingPercentService` resolves the coach, the skill
+and the minutes, and caches minutes per week so a squad of twenty-five costs one query rather than
+twenty-five.
+
+**384 tests.**
+
+#### Still open, deliberately
+
+The **talent and percentage visibility** is still not wired, and so are the rest of the ticker's
+candidates. The owner asked to agree precisely what plus users see once everything is in place, and
+that is a conversation, not a guess.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

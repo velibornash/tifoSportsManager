@@ -179,7 +179,58 @@ function buildImportantTickerLine(updates) {
     }).join(' ✦ ');
 }
 
-function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary) {
+/**
+ * The transfer window, in the manager's language (owner, 2026-09-27).
+ *
+ * <p>Three states, because they are three different urgencies. "Opened" is an opportunity and must
+ * not shout. "Closes soon" is the one that matters, because the manager has no other way of finding
+ * out. "Closed" is worth saying once, loudly, so nobody spends a week trying to make a deal that
+ * cannot happen - while still naming what stays possible, or they will assume everything is
+ * frozen.
+ */
+function buildWindowUpdates(windowState) {
+    if (!windowState || typeof windowState.week !== 'number') return [];
+    const updates = [];
+    const name = windowState.window === 'SUMMER' ? 'Mid-season' : 'End-of-season';
+
+    if (windowState.open) {
+        const weeksLeft = Number(windowState.weeksLeft ?? 0);
+        if (windowState.deadlineDay) {
+            updates.push({
+                severity: 'alert',
+                title: 'Transfer deadline today',
+                meta: `The ${name.toLowerCase()} window shuts at the end of week ${windowState.closesOnWeek}. Free agents, released players and unlisted players can still be approached.`
+            });
+        } else if (weeksLeft <= 1) {
+            updates.push({
+                severity: 'alert',
+                title: 'Transfer window closes tomorrow',
+                meta: `One week left on the ${name.toLowerCase()} window (closes week ${windowState.closesOnWeek}).`
+            });
+        } else {
+            updates.push({
+                severity: 'warning',
+                title: `Transfer window open - ${weeksLeft} week${weeksLeft === 1 ? '' : 's'} left`,
+                meta: `The ${name.toLowerCase()} window closes at the end of week ${windowState.closesOnWeek}.`
+            });
+        }
+        return updates;
+    }
+
+    // Closed. Only worth saying if the window is about to reopen, or has just shut - otherwise it
+    // is a permanent fact and belongs on the transfer centre, not in a news bar.
+    const next = windowState.nextOpensOnWeek;
+    if (next != null && Number(windowState.week) >= (next - 1)) {
+        updates.push({
+            severity: 'info',
+            title: 'Transfer window closed',
+            meta: `It reopens in week ${next}. Free agents, released players and players with no asking price can still be signed.`
+        });
+    }
+    return updates;
+}
+
+function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState) {
     const updates = [];
     const recoveryQueue = Array.isArray(medical?.recoveryQueue) ? medical.recoveryQueue.filter(Boolean) : [];
     const starterIds = Array.isArray(lineupTemplate?.starterIds) ? lineupTemplate.starterIds.filter(Boolean) : [];
@@ -237,6 +288,10 @@ function buildImportantUpdates(medical, lineupTemplate, transferOverview, commun
             meta: recoverySample || 'Medical Center has active injury cases and recovery work pending.'
         });
     }
+    // Window news goes first: it is the only entry here with a deadline attached.
+    const windowUpdates = buildWindowUpdates(windowState);
+    updates.push(...windowUpdates);
+
     if (interestedListings.length > 0) {
         const topListing = interestedListings[0];
         updates.push({
@@ -252,7 +307,9 @@ function buildImportantUpdates(medical, lineupTemplate, transferOverview, commun
         });
     }
 
-    return updates.slice(0, 4);
+    // Six, not four. A capped bar that drops a transfer deadline in favour of a chat notification
+    // is worse than a longer bar, and the cap exists only to stop the line running off the screen.
+    return updates.slice(0, 6);
 }
 
 async function loadImportantUpdates() {
@@ -261,14 +318,15 @@ async function loadImportantUpdates() {
     const ticker = host.closest('.fm-dashboard-ticker');
 
     try {
-        const [medical, lineupTemplate, transferOverview, communitySummary] = await Promise.all([
+        const [medical, lineupTemplate, transferOverview, communitySummary, windowState] = await Promise.all([
             authFetch(`/teams/${currentUserTeamId}/medical`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/teams/${currentUserTeamId}/lineup-template`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null),
-            authFetch('/community/summary').then(response => response.ok ? response.json() : null).catch(() => null)
+            authFetch('/community/summary').then(response => response.ok ? response.json() : null).catch(() => null),
+            authFetch('/transfers/window').then(response => response.ok ? response.json() : null).catch(() => null)
         ]);
 
-        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary);
+        const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState);
         ticker?.classList.toggle('is-community-alert', Boolean(communitySummary?.hasNewMessages));
         if (!updates.length) {
             host.innerHTML = buildImportantTickerMarkup('No urgent club updates right now.');
