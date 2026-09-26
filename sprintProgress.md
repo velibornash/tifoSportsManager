@@ -540,6 +540,94 @@ penalty can never evaporate.
 
 **Tests: 152 → 176.**
 
+### S1.10 — Replays survive a restart, and the store is bounded ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+`SimReplayStore` was an unbounded in-memory `ConcurrentHashMap`. Two problems, both of which only
+appear once you play a season rather than a single match:
+
+- **Replays died with the process.** `Match.replayId` is persisted, so after a restart *every* past
+  match pointed at a blob that no longer existed — and the viewer got a bare 404, indistinguishable
+  from a match that never had a replay. A restart turned "your replay expired" into "the replay
+  feature is broken".
+- **It was unbounded.** A season of simulations accumulated every replay view — each a downsampled
+  tick snapshot of a whole match — in the heap, with nothing ever evicting them.
+
+Now file-backed under `app.replay-dir` (default `./replay-data`), one JSON per replay, written
+atomically. The in-memory map is only a read cache and is capped to the same retention as the files,
+so the heap is bounded regardless of process lifetime. Retention: `app.replay.max-entries`
+(default 200) and `app.replay.max-age-days` (default 14); eviction deletes the file, so disk is
+bounded too. Ids resume past the highest on disk after a restart, so a new replay cannot collide
+with a file from the previous process.
+
+`SimReplayController` now answers **410 GONE** with a `replay_expired` body instead of 404, and
+`by-match` clears the dangling `replayId` from the database on first read, so it is a one-way
+transition rather than a repeated failure. `replay-data/` is gitignored.
+
+**5 tests**, including that a fresh store instance over the same directory still serves the replay.
+
+### S1.11 — Already implemented ⚠️ BACKLOG ENTRY WAS STALE
+
+The backlog claimed THRU / CROSS / CENTER were unreachable and entered only via the final-two-row
+hard rule. **They are first-class options** (`CleanDecisionEngine:1075` — "ALL options compete.
+THRU / CROSS / CENTER are included on purpose"), and over 3 matches they fire at:
+
+| action | per match |
+|---|---:|
+| PASS | 641 |
+| SHOT | 41 |
+| CLEAR | 33 |
+| CROSS | 23 |
+| CENTER | 23 |
+| THRU | 8.7 |
+
+Crosses at ~23/match sit in the real 20–30 band. No work needed; the entry needs correcting rather
+than implementing.
+
+### Browser popup — root-caused and fixed
+
+Not a UI test at all. `SportsManagerApplication` implemented `CommandLineRunner` and opened a browser
+at `http://localhost:8080/home.html` on **every context start — including the ones inside
+`@SpringBootTest`**. The two `BaseTest` integration classes were each launching a browser at a port
+nothing was listening on, which is why a dead tab appeared on every test run.
+
+Replaced by `BrowserLauncher`: opt-in via `app.open-browser=true` (default **off**), refuses to run
+on the `test` profile regardless of the property, honours `server.port` instead of hardcoding 8080,
+and opens `/login.html` rather than `/home.html` — an unauthenticated visitor has no token, so
+`home.html` only bounced them to login one hop later. Verified no browser process spawns during a
+Spring context test.
+
+### S1.2 — Restart inversion ✅ DONE (goal kicks only)
+
+**Commit:** `744dc71` · **Docs:** this section
+
+A clearance was launched at `MAX_BALL_SPEED` (1.5 c/t) airborne, and a ball in flight only ends by
+decelerating below `STOP_SPEED` or leaving the pitch — **there is no flight target**. With
+`AIR_DECEL` 0.03 that is `1.5² / (2 × 0.03)` = **37.5 cells of travel on a pitch 7 rows long.**
+Every clearance left through an end line.
+
+Power is now solved from the intended range against the deceleration the ball will actually
+experience, `v = sqrt(2 × GROUND_DECEL × range)`, and the aim is hooked toward a flank — previously it
+was pure ±row with no lateral component, so a clearance could never reach a touchline.
+
+| | before | after | real PL |
+|---|---:|---:|---:|
+| goal kicks | 35.9 | **21.9** | 12–15 |
+| corners | 7.4 | 6.4 | ~10 |
+| throw-ins | 76.7 | 75.5 | 35–45 |
+
+The backlog's root-cause note assumed `AIR_DECEL` 0.15; it is 0.03, so the real overshoot was **5×
+worse** than estimated.
+
+**Coupled effects, deliberately not tuned** (owner: mechanics first, stats later): clearances that
+stay on the pitch create second balls, so goals 3.6 → 4.3, shots 35 → 40, interceptions 53 → 72, and
+box fouls rise with it, taking penalties to 0.47/match. That is the deferred shot-volume problem plus
+the box-foul under-production already logged as **S1.7c**, not a new defect.
+
+**Throw-ins at 75.5 against a real 35–45 are now the largest restart outlier** and are the next
+thing to trace — they come from passes leaving the pitch sideways, not from clearances.
+
 ---
 
 ## Where Sprint 1 stands
@@ -556,7 +644,9 @@ penalty can never evaporate.
 | substitutions | 5 / 3 windows | 5 / 3 | ✅ |
 | fouls | 12.0 | 22 | ⚠️ low |
 | duels | 268 | ~100 | ⚠️ deferred |
-| corners / goal kicks / throw-ins | not yet re-measured | — | ⏳ |
+| goal kicks | 21.9 | 12–15 | ⚠️ improved, still high |
+| corners | 6.4 | ~10 | ⚠️ low |
+| throw-ins | 75.5 | 35–45 | ❌ **2x high — next to trace** |
 
 **Tests: 84 → 176.** `mvn test` wall clock cut from ~5–6 min to **1:10** by moving `BaseTest` from
 `RANDOM_PORT` to `MOCK` (no test used a real port; it was opening a listening socket for nothing).
@@ -565,10 +655,10 @@ penalty can never evaporate.
 
 | Task | What |
 |---|---|
-| **S1.7c** | Box fouls under-produced (1.655/match vs 2.5–3.5). S1.7b's constant compensates for it |
-| **S1.9** | Remaining calibration outliers — restart distribution (goal kicks / throw-ins / corners) has not been re-measured since the quarantine |
-| **S1.10** | Persist replays |
-| **S1.11** | Wire THRU / CROSS / CENTER into the decision engine |
+| **throw-ins** | 75.5/match against a real 35–45. Largest restart outlier; comes from passes leaving sideways |
+| **S1.7c** | Box fouls under-produced (1.655/match vs 2.5–3.5). S1.7b's constant compensates for it. Calibration — deferred |
+| **S1.9** | Remaining calibration outliers. Calibration — deferred |
+| **S1.1c / S1.3** | Shot volume and corner skew. Calibration — deferred |
 | **stoppage time** | Real stoppage clock for VAR, penalties, injuries and substitution windows — currently `getRestartTaker()` is used as a heuristic in place of it |
 | **conditional subs** | Server-side per-match plans, stale-rule surfacing, live viewer status |
 
