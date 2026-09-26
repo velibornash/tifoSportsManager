@@ -37,11 +37,6 @@ public interface EngineInterfaces {
         boolean resolve(MatchState state);
     }
 
-    /** Football rules — checks offside, fouls, cards, VAR review. */
-    interface FootballRules {
-        boolean isOffside(Player passer, Player receiver, MatchState state);
-    }
-
     /** Restart engine — handles match restarts (kickoff, corner, throw-in, etc.). */
     interface RestartManager {
         void executeRestart(MatchState state, String restartType);

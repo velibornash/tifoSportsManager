@@ -180,6 +180,12 @@ public class ProposalSeasonDiag {
      * Reads {@code buildPlayerStats(team)} directly — the flattened JSON carries
      * the DISPLAY team name ("Home FC"), so filtering that by "HOME" silently
      * returns nothing.
+     *
+     * <p>Note these two always total the same number for a team and that is correct, not a bug:
+     * every duel produces exactly one winner ({@code duelsWon}) and exactly one loser, and
+     * {@code ProposalStatsCollector.onDuelWon} credits the loser's counter as a tackle attempt.
+     * They are complementary views of the same duels, not independent statistics. The pairing was
+     * previously mistaken for a duplicated field in calibration reports.
      */
     private static Map<String, Double> playerSum(MatchOrchestrator o, String team) {
         double duelsWon = 0, tackles = 0;

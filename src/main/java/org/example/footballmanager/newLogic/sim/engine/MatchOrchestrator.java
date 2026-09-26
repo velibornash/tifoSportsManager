@@ -7,7 +7,6 @@ import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcomeBuilder;
 import org.example.footballmanager.newLogic.sim.result.ProposalStatsCollector;
 import org.example.footballmanager.newLogic.sim.restarts.RestartManager;
-import org.example.footballmanager.newLogic.sim.rules.FootballRules;
 import org.example.footballmanager.newLogic.sim.rules.OffsideService;
 import org.example.footballmanager.newLogic.sim.engine.EngineInterfaces.OffsideService.OffsideResult;
 import org.example.footballmanager.newLogic.sim.rules.VARService;
@@ -49,7 +48,6 @@ public class MatchOrchestrator {
     /** Safety cap on the kickoff half-line hold (a kickoff pass that is never
      *  received must not freeze both teams in their own halves). */
     private static final int KICKOFF_HOLD_MAX_TICKS = 20;
-    private final FootballRules rules;
     private final OffsideService offsideService;
     private final VARService varService;
     private final RestartManager restartManager;
@@ -81,7 +79,6 @@ public class MatchOrchestrator {
         this.movementEngine = new MovementEngine();
         this.ballEngine = new BallPhysicsEngine();
         this.clockService = new MatchClockService();
-        this.rules = new FootballRules();
         this.varService = new VARService(state, SimulationRandom.rng());
         this.restartManager = new RestartManager(tactics);
         this.offsideService = new OffsideService(state, varService, recorder, restartManager);

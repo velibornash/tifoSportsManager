@@ -280,6 +280,18 @@ public class CleanDecisionEngine {
             // Basic pass value
             score += 10.0;
 
+            // Can the nearest defender actually get to the landing spot first?
+            // This was written to fix a real reported bug - the AI kept passing to a receiver
+            // whose marker arrived before the ball did, so the pass simply never completed - but
+            // it was never called from anywhere, so the fix was inert. Wired in here, where the
+            // receiver is chosen. A heavily marked receiver is a bad passing option even when the
+            // geometry looks forward, which is what stops the engine feeding a ball into a
+            // standing trap.
+            if (nearestOpponentBeatsHimToIt(state, receiver)) {
+                score -= 35.0;
+                reason.append("heavily marked-35 ");
+            }
+
             // Forward / lateral / backward weights - the ball must move toward goal
             boolean home = "HOME".equals(carrier.getTeam());
             double forwardSteps = home ? receiver.getPosition().getRow() - carrier.getPosition().getRow()
@@ -297,8 +309,7 @@ public class CleanDecisionEngine {
 
             // Goal proximity for forward passes
             double prox = goalProximity(home, receiver.getPosition().getRow());
-            if (forwardSteps > 0) {
-                score += prox * 3.5;
+            if (forwardSteps > 0) {                score += prox * 3.5;
                 reason.append(String.format("prox %+.1f ", prox * 3.5));
             }
 
@@ -1000,8 +1011,25 @@ public class CleanDecisionEngine {
         return SimUtils.distance(p, new Position(projRow, projCol));
     }
 
+    /**
+     * Is the lane from {@code from} to {@code to} contested?
+     *
+     * <p>Previously a literal {@code return false}, which made the caller's "+12 clear path"
+     * carry bonus unconditional - a winger dribbling into a wall of defenders scored exactly the
+     * same as one carrying into space. Now it measures the minimum distance from each opponent to
+     * the carry lane segment and treats anything inside {@code #BLOCKED_LANE_CELLS} as blocked.
+     * A cell is 14 m x 10 m, so 0.5 cells is roughly a 5-7 m corridor: tight enough to matter,
+     * loose enough that a single nearby defender does not shut the lane entirely.
+     */
     private boolean isPathBlocked(MatchState state, Player from, Position to) {
-        // Simplified path check
+        if (from == null || to == null) return false;
+        double laneWidth = Math.max(0.5, 0.02 + SimUtils.distance(from.getPosition(), to) * 0.12);
+        for (Player opponent : state.getPlayers()) {
+            if (opponent.getTeam().equals(from.getTeam()) || opponent.isUnavailable()) continue;
+            if (SimUtils.pointSegmentDistance(from.getPosition(), to, opponent.getPosition()) < laneWidth) {
+                return true;
+            }
+        }
         return false;
     }
 

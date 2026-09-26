@@ -36,4 +36,22 @@ public final class SimUtils {
     public static String formatPos(Position pos) {
         return pos == null ? "?" : "(%.1f,%.1f)".formatted(pos.getRow(), pos.getColumn());
     }
+
+    /**
+     * Shortest distance from a point to the line segment {@code a-b}.
+     *
+     * <p>Consolidated here because the same private helper had been copy-pasted into three places
+     * ({@code GoalPhysical}, {@code BallPhysicsEngine}, {@code BallPhysicsProbe}). Degenerate
+     * segments fall back to point distance.
+     */
+    public static double pointSegmentDistance(Position a, Position b, Position point) {
+        if (a == null || b == null || point == null) return Double.MAX_VALUE;
+        double dr = b.getRow() - a.getRow();
+        double dc = b.getColumn() - a.getColumn();
+        double lenSq = dr * dr + dc * dc;
+        if (lenSq < 1e-9) return distance(point, a);
+        double t = ((point.getRow() - a.getRow()) * dr + (point.getColumn() - a.getColumn()) * dc) / lenSq;
+        t = Math.max(0.0, Math.min(1.0, t));
+        return distance(point, new Position(a.getRow() + dr * t, a.getColumn() + dc * t));
+    }
 }
