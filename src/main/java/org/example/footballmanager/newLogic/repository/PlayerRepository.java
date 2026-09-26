@@ -19,6 +19,9 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     Optional<Player> findByIdAndTeamId(Long id, Long teamId);
     Optional<Player> findByNameAndTeam(String name, Team team);
     int countByTeam(Team team);
+
+    /** Clubs short of fit players are more willing to accept a friendly - see FriendlyRequestService. */
+    int countByTeamIdAndInjuredTrue(Long teamId);
     List<Player> findByTeam(Team homeTeam);
     Collection<Player> findByTeamIdIn(List<Long> teamIds);
     List<Player> findByInjuryDaysRemainingGreaterThan(int days);

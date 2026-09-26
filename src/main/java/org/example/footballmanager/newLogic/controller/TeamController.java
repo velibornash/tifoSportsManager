@@ -227,9 +227,6 @@ public class TeamController {
         if (competition != null) {
             seasonService.ensureEntriesForSeasonCompetition(competition, activeSeasonYear);
             seasonService.ensureDoubleRoundRobinSchedule(competition, activeSeasonYear);
-            if (activeSeasonYear == currentActiveSeasonYear) {
-                seasonService.ensureFriendlyFixturesForCurrentWeek(competition, activeSeasonYear);
-            }
             fixtures = matchFixtureRepository
                     .findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(competition.getId(), activeSeasonYear, teamId);
         } else {

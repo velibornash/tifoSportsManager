@@ -84,7 +84,8 @@ public class AdvanceWeekAsyncService {
             }
 
             job.updateMessage("Advancing calendar and processing seasonal updates...");
-            seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
+            seasonService.advanceWeekAndHandleSeasonTransition(superLiga,
+                    userTeam.getId());
 
             int nextWeek = seasonService.getCurrentWeek();
             int nextSeasonYear = seasonService.getActiveSeasonYear();
@@ -116,8 +117,6 @@ public class AdvanceWeekAsyncService {
             if (currentWeek == SeasonService.PLAYOFF_WEEK && java.util.Objects.equals(league.getTier(), 1)) {
                 seasonService.ensurePlayoffWeekFixtures(league, seasonYear);
             }
-            // Safe to call every week: it returns early unless this week has friendlies.
-            seasonService.ensureFriendlyFixturesForCurrentWeek(league, seasonYear);
             remaining += seasonService.countRemainingFixturesForWeek(league.getId(), seasonYear, currentWeek);
         }
         return remaining;

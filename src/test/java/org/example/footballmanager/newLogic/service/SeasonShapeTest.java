@@ -68,8 +68,11 @@ class SeasonShapeTest {
     @DisplayName("a club fits in two match slots a week - league plus friendly")
     void clubFitsInTheWeek() {
         for (int week = 1; week <= 12; week++) {
-            assertTrue(SeasonCalendar.matchesIn(week) + SeasonCalendar.friendliesIn(week) <= 2,
-                    "week " + week + " overbooks a club");
+            for (boolean inPlayoff : new boolean[] { false, true }) {
+                assertTrue(SeasonCalendar.matchesIn(week)
+                                + SeasonCalendar.friendlySlots(week, inPlayoff) <= 2,
+                        "week " + week + " overbooks a club");
+            }
         }
     }
 
@@ -83,14 +86,14 @@ class SeasonShapeTest {
     }
 
     @Test
-    @DisplayName("a club plays a friendly in every week the schedule gives it one")
+    @DisplayName("a club can ask for a friendly in weeks 5, 6, 11 and 12 only")
     void friendlyWeeks() {
         Set<Integer> friendlyWeeks = new HashSet<>();
         for (int week = 1; week <= 12; week++) {
-            if (SeasonCalendar.friendliesIn(week) > 0) friendlyWeeks.add(week);
+            if (SeasonCalendar.friendlySlots(week) > 0) friendlyWeeks.add(week);
         }
         assertEquals(Set.of(5, 6, 11, 12), friendlyWeeks);
-        assertEquals(2, SeasonCalendar.friendliesIn(12), "the break has two friendlies");
+        assertEquals(2, SeasonCalendar.friendlySlots(12), "the break has two friendly slots");
     }
 
     @Test
@@ -98,7 +101,7 @@ class SeasonShapeTest {
     void friendlyRoundNumbersAreDistinct() {
         Set<Integer> used = SeasonCalendar.roundsIn(1).stream().collect(Collectors.toSet());
         for (int week = 1; week <= 12; week++) {
-            for (int slot = 1; slot <= SeasonCalendar.friendliesIn(week); slot++) {
+            for (int slot = 1; slot <= 2; slot++) {
                 int n = SeasonCalendar.friendlyRoundNumber(week, slot);
                 assertTrue(n > SeasonCalendar.LEAGUE_ROUNDS,
                         "friendly round " + n + " would be read as a league round");

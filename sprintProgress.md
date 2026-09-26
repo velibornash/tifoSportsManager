@@ -1286,6 +1286,51 @@ strength**, so on a normal table that is the wrong draw. Left in the backlog rat
 The European places are genuinely undecided ("videcemo ko sve ide u evropska takmicenja") and cup and
 European competitions are explicitly later, so nothing was invented for either.
 
+### Friendlies are requested, not scheduled
+
+The owner corrected two things here, and both were mine to get wrong.
+
+**A friendly is an ask, not an appointment.** The previous version quietly generated a full round of
+friendlies in weeks 5, 6, 11 and 12 — a manager was handed matches they had never agreed to, and a
+club had no way to trade one for training time. That is now a request with a state machine: a club
+asks, the other club accepts or refuses, and a refusal carries a reason so it is not silent. The
+manager's own club is deliberately left out of the AI's weekly negotiation, so whether to take a
+friendly stays their call.
+
+**Every week has two named slots**, Thursday and Sunday, and each is filled by a league round, a
+playoff, or an open friendly slot. This is the owner's model and it explains something the previous
+version could not: weeks 5 and 6 run in *opposite* directions. Week 5 is round 9 on Thursday and the
+friendly on Sunday; week 6 is the friendly on Thursday and round 10 on Sunday. So a round number no
+longer says which day a match is on, and `slotOfRound` exists for that.
+
+**Week 11 works out as the owner described.** The playoff takes Thursday, so a club in it keeps only
+the Sunday slot, while everyone else may play in both. `FRIENDLY_IF_NOT_IN_PLAYOFF` encodes exactly
+that, and the service never asks a playoff club to give up its one remaining slot.
+
+**The cost of playing is derived, not stored.** One friendly costs one training session
+(`BASE_TRAINING_SESSIONS_PER_WEEK` 3, `TRAINING_SESSIONS_PER_FRIENDLY` 1). It is computed from the
+agreed friendlies rather than kept in a counter, because a counter can drift away from the fixtures
+and Sprint 4 owns real training — this gives it something to read instead of a number to invent.
+
+#### 🐛 A table that silently shifted every season
+
+Worth recording because it was invisible: the season table is a nested array literal, and written as
+`{a, b}, {c, d}` on one line Java reads that as **two rows**, not one row of two. The table came out
+with 22 rows instead of 12, so week 10 read a one-column row and threw on the tenth week of every
+season. The unit tests had passed earlier only because that version of the table was built with a
+loop instead. It is now an explicit `SlotSpec[][]` with one row per week, a length check, and a test
+that walks all twelve weeks.
+
+#### The playoff draw is fixed
+
+`ensurePlayoffWeekFixtures` paired the seventh with the second of tier-2 league A and the eighth with
+league B's second **by league order, not by strength**. On a normal table — where league B's second
+is the better side — the seventh got the harder tie and the eighth the easier one. The two
+second-placed clubs are now ranked on points then goal difference, and the seventh meets the weaker
+while the eighth meets the stronger. The seventh hosts, the eighth is away, as the owner specified.
+
+**328 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

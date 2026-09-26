@@ -111,22 +111,28 @@ class SeasonCalendarTest {
     }
 
     @Test
-    @DisplayName("friendlies fill the gaps - one in weeks 5, 6 and 11, two in the break")
-    void friendlies() {
-        assertEquals(0, SeasonCalendar.friendliesIn(1));
-        assertEquals(1, SeasonCalendar.friendliesIn(5));
-        assertEquals(1, SeasonCalendar.friendliesIn(6));
-        assertEquals(1, SeasonCalendar.friendliesIn(11));
-        assertEquals(2, SeasonCalendar.friendliesIn(12));
+    @DisplayName("friendly slots appear in weeks 5, 6, 11 and 12 and nowhere else")
+    void friendlySlots() {
+        assertEquals(0, SeasonCalendar.friendlySlots(1));
+        assertEquals(1, SeasonCalendar.friendlySlots(5));
+        assertEquals(1, SeasonCalendar.friendlySlots(6));
+        assertEquals(0, SeasonCalendar.friendlySlots(7));
+        // Week 11 offers two, but a club in the playoff only keeps one of them.
+        assertEquals(2, SeasonCalendar.friendlySlots(11, false));
+        assertEquals(1, SeasonCalendar.friendlySlots(11, true));
+        assertEquals(2, SeasonCalendar.friendlySlots(12));
     }
 
     @Test
-    @DisplayName("a club's fixtures fit inside its week - two matches and a friendly is not a crash")
+    @DisplayName("a club's fixtures fit inside its two weekly slots")
     void fixturesFitTheWeek() {
         for (int week = 1; week <= SeasonCalendar.WEEKS_PER_SEASON; week++) {
-            int total = SeasonCalendar.matchesIn(week) + SeasonCalendar.friendliesIn(week);
-            assertTrue(total <= 2,
-                    "week " + week + " would need " + total + " matches; only two slots exist");
+            for (boolean inPlayoff : new boolean[] { false, true }) {
+                int total = SeasonCalendar.matchesIn(week)
+                        + SeasonCalendar.friendlySlots(week, inPlayoff);
+                assertTrue(total <= 2,
+                        "week " + week + " would need " + total + " matches; only two slots exist");
+            }
         }
     }
 

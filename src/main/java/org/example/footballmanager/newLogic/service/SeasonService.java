@@ -42,6 +42,7 @@ public class SeasonService {
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
     private final TransferService transferService;
+    private final FriendlyRequestService friendlyRequests;
     private final Random random = new Random();
 
     @Transactional
@@ -268,19 +269,35 @@ public class SeasonService {
                 .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE, 2);
         if (tier2Leagues.size() < 2) return;
 
-        List<Team> lowerRunners = new ArrayList<>();
+        // The two second-placed clubs, each with the table it finished on, so they can be ranked
+        // against each other rather than by which league they happened to be in.
+        List<CompetitionEntry> lowerRunners = new ArrayList<>();
         for (Competition lowerLeague : tier2Leagues.subList(0, 2)) {
             SeasonCompetition lowerSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(lowerLeague, seasonYear).orElse(null);
             if (lowerSc == null) continue;
             List<CompetitionEntry> lowerTable = sortTable(competitionEntryRepository.findBySeasonCompetition(lowerSc));
-            if (lowerTable.size() > 1) lowerRunners.add(lowerTable.get(1).getTeam());
+            if (lowerTable.size() > 1) lowerRunners.add(lowerTable.get(1));
         }
         if (lowerRunners.size() < 2) return;
+
+        // The owner is explicit: the seventh plays the weaker of the two, the eighth the stronger.
+        // Pairing by league order instead gave the seventh whichever happened to be listed first,
+        // so on a normal table - where the second of league B is the better side - the draw was
+        // the wrong way round and the stronger club got the easier tie.
+        List<CompetitionEntry> ranked = new ArrayList<>(lowerRunners);
+        ranked.sort(Comparator.comparingInt(
+                (CompetitionEntry e) -> e.getPoints() == null ? 0 : e.getPoints()).reversed()
+                .thenComparing(Comparator.comparingInt(
+                        (CompetitionEntry e) -> (e.getGoalsScored() == null ? 0 : e.getGoalsScored())
+                                - (e.getGoalsConceded() == null ? 0 : e.getGoalsConceded()))
+                        .reversed()));
+        CompetitionEntry weaker = ranked.get(1);
+        CompetitionEntry stronger = ranked.get(0);
 
         GameClock clock = getOrCreateClock();
         MatchFixture m1 = new MatchFixture();
         m1.setHomeTeam(top.get(6).getTeam());
-        m1.setAwayTeam(lowerRunners.get(0));
+        m1.setAwayTeam(weaker.getTeam());
         m1.setCompetition(superLiga);
         m1.setSeasonYear(seasonYear);
         m1.setRoundNumber(PLAYOFF_WEEK);
@@ -290,7 +307,7 @@ public class SeasonService {
 
         MatchFixture m2 = new MatchFixture();
         m2.setHomeTeam(top.get(7).getTeam());
-        m2.setAwayTeam(lowerRunners.get(1));
+        m2.setAwayTeam(stronger.getTeam());
         m2.setCompetition(superLiga);
         m2.setSeasonYear(seasonYear);
         m2.setRoundNumber(PLAYOFF_WEEK);
@@ -300,112 +317,21 @@ public class SeasonService {
         matchFixtureRepository.saveAll(List.of(m1, m2));
     }
 
-    /**
-     * Pairs the clubs that are free that week into a friendly round, and saves it if it is not there
-     * already.
-     *
-     * <p>A friendly "round" means one match per club, so ten clubs make five matches - the same
-     * shape as a league round. The owner puts one in the spare slot of weeks 5, 6 and 11, and two
-     * in the week 12 break, so a club plays a friendly in every one of those weeks.
-     *
-     * <p>Week 11 is the awkward one: the playoff clubs are busy, so whoever did not qualify plays a
-     * friendly instead. The excluded clubs are passed in rather than worked out here, because who
-     * they are depends on a final table that does not exist yet when the season is generated.
-     */
-    private void ensureFriendlyRounds(Competition competition, int seasonYear, int week,
-                                      Set<Long> excludedTeamIds) {
-        SeasonCompetition sc =
-                seasonCompetitionRepository.findByCompetitionAndSeasonYear(competition, seasonYear).orElse(null);
-        if (sc == null) return;
-
-        List<Team> teams = competitionEntryRepository.findBySeasonCompetition(sc).stream()
-                .map(CompetitionEntry::getTeam)
-                .filter(Objects::nonNull)
-                .filter(t -> !excludedTeamIds.contains(t.getId()))
-                .collect(Collectors.toList());
-
-        int slots = SeasonCalendar.friendliesIn(week);
-        if (slots == 0 || teams.size() < 2) return;
-
-        GameClock clock = getOrCreateClock();
-        for (int slot = 1; slot <= slots; slot++) {
-            int roundNumber = SeasonCalendar.friendlyRoundNumber(week, slot);
-            List<MatchFixture> existing = matchFixtureRepository
-                    .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
-                            competition.getId(), seasonYear, roundNumber);
-            if (!existing.isEmpty()) continue;
-
-            // Pair the clubs, then rotate so a club is not left over when the count is odd.
-            List<Team> rotating = new ArrayList<>(teams);
-            Collections.rotate(rotating, (slot - 1) % rotating.size());
-            if (rotating.size() % 2 != 0) rotating.remove(rotating.size() - 1);
-
-            List<MatchFixture> fixtures = new ArrayList<>();
-            for (int i = 0; i + 1 < rotating.size(); i += 2) {
-                MatchFixture m = new MatchFixture();
-                m.setHomeTeam(rotating.get(i));
-                m.setAwayTeam(rotating.get(i + 1));
-                m.setCompetition(competition);
-                m.setSeasonYear(seasonYear);
-                m.setRoundNumber(roundNumber);
-                m.setWeekNumber(week);
-                m.setMatchDate(clock.getCurrentDate().plusWeeks(week - clock.getCurrentWeek()));
-                m.setPlayed(false);
-                fixtures.add(m);
-            }
-            if (!fixtures.isEmpty()) matchFixtureRepository.saveAll(fixtures);
-        }
-    }
-
-    /**
-     * The friendlies that can be scheduled before the season is played: weeks 5, 6 and the week 12
-     * break. Week 11 is left out on purpose because it depends on who qualifies for the playoff.
-     */
-    @Transactional
-    public void ensureFriendlyFixtures(Competition competition, int seasonYear) {
-        for (int week : new int[] { SeasonCalendar.MID_WINDOW_OPEN, SeasonCalendar.MID_WINDOW_CLOSE,
-                SeasonCalendar.BREAK_WEEK }) {
-            ensureFriendlyRounds(competition, seasonYear, week, Set.of());
-        }
-    }
-
-    /**
-     * Week 11: the playoff clubs play the playoff, and everyone else plays a friendly.
-     */
-    @Transactional
-    public void ensureBreakWeekFriendlyFixtures(Competition competition, int seasonYear,
-                                                Set<Long> playoffTeamIds) {
-        ensureFriendlyRounds(competition, seasonYear, SeasonCalendar.PLAYOFF_WEEK, playoffTeamIds);
-    }
-
-    /**
-     * Ensures the friendlies for whichever week the calendar is currently in.
-     *
-     * <p>Callers should use this rather than picking a week themselves. In the playoff week it
-     * works out who is busy from the playoff fixtures already saved, so a caller never has to know
-     * that the seventh and eighth clubs are the ones playing.
-     */
-    @Transactional
-    public void ensureFriendlyFixturesForCurrentWeek(Competition competition, int seasonYear) {
-        int week = getCurrentWeek();
-        if (SeasonCalendar.friendliesIn(week) == 0) return;
-
-        if (week == SeasonCalendar.PLAYOFF_WEEK) {
-            Set<Long> busy = new HashSet<>();
-            for (MatchFixture f : matchFixtureRepository
-                    .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
-                            competition.getId(), seasonYear, PLAYOFF_WEEK)) {
-                if (f.getHomeTeam() != null) busy.add(f.getHomeTeam().getId());
-                if (f.getAwayTeam() != null) busy.add(f.getAwayTeam().getId());
-            }
-            ensureFriendlyRounds(competition, seasonYear, week, busy);
-            return;
-        }
-        ensureFriendlyRounds(competition, seasonYear, week, Set.of());
-    }
+    // Friendlies are no longer generated here. A club asks for one and the other club may
+    // refuse; see FriendlyRequestService. Nothing is scheduled until both sides agree.
 
     @Transactional
     public void advanceWeekAndHandleSeasonTransition(Competition superLiga) {
+        advanceWeekAndHandleSeasonTransition(superLiga, null);
+    }
+
+    /**
+     * Advances the week, leaving the manager's own club out of the AI friendly negotiations.
+     *
+     * @param humanTeamId the club the player manages, or null when nobody is managing one
+     */
+    @Transactional
+    public void advanceWeekAndHandleSeasonTransition(Competition superLiga, Long humanTeamId) {
         GameClock clock = getOrCreateClock();
         int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
         if (week < FRIENDLY_WEEK) {
@@ -418,6 +344,19 @@ public class SeasonService {
             settleWeeklyFinancesForAllClubs();
             int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
             int newWeek = clock.getCurrentWeek();
+            // A friendly request nobody answered simply lapses once its week has gone. Without
+            // this, a club that asked in week 5 still had a live request in week 11.
+            int lapsed = friendlyRequests.expireStaleRequests();
+            if (lapsed > 0) {
+                log.info("Week {}: {} friendly requests lapsed unanswered", newWeek, lapsed);
+            }
+            // The rest of the league negotiates its own friendlies for the coming week. The
+            // manager's club is left out, so whether to take a friendly - and so whether to trade
+            // a training session for ninety minutes - stays their decision.
+            int arranged = friendlyRequests.runAiFriendlyWeek(seasonNumber, newWeek, humanTeamId);
+            if (arranged > 0) {
+                log.info("Week {}: {} AI friendlies arranged", newWeek, arranged);
+            }
             if (newWeek == 2) {
                 youthAcademyService.generateSeasonIntakeForWeek2(seasonNumber, newWeek);
             } else {
