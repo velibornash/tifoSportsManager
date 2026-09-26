@@ -38,13 +38,70 @@ public final class RealSquadFactory {
      * starters.
      */
     public static List<Player> buildSquad(Lineup lineup, String team) {
+        return buildSquad(lineup, team, null);
+    }
+
+    /**
+     * Builds the starting eleven plus a bench (Sprint 1.8).
+     *
+     * <p>The bench is returned separately rather than appended to the starting XI, because the
+     * engine keeps benched players out of the live player list entirely. Until now a squad was
+     * exactly eleven and the rest of the squad list was thrown away, so a red card left a team
+     * with ten for the rest of the match and fatigue had no consequence.
+     *
+     * @param benchOut if non-null, receives the reserve players (positioned off the pitch)
+     */
+    public static List<Player> buildSquad(Lineup lineup, String team, List<Player> benchOut) {
         if (lineup == null) return null;
         List<org.example.footballmanager.newLogic.model.Player> ordered =
                 lineup.getOrderedStartingPlayers();
         if (ordered == null || ordered.size() < 11) return null;
         List<org.example.footballmanager.newLogic.model.Player> starters =
                 new ArrayList<>(ordered.subList(0, 11));
-        return buildFromStarters(starters, team);
+        List<Player> xi = buildFromStarters(starters, team);
+        if (benchOut != null && ordered.size() > 11) {
+            benchOut.addAll(buildBench(ordered.subList(11, ordered.size()), team));
+        }
+        return xi;
+    }
+
+    /**
+     * Builds reserve players. They carry their real name and skills so a substitute is a real
+     * player with a real MOTM chance, but they are marked on-bench and never enter the live list.
+     */
+    private static List<Player> buildBench(
+            List<org.example.footballmanager.newLogic.model.Player> reserves, String team) {
+        List<Player> bench = new ArrayList<>();
+        // A matchday squad is 18 in the league game: seven reserves is a usable bench.
+        int limit = Math.min(reserves.size(), 7);
+        for (int i = 0; i < limit; i++) {
+            org.example.footballmanager.newLogic.model.Player db = reserves.get(i);
+            if (db == null || db.getId() == null) continue;
+            String role = simRoleFor(db.getPosition());
+            Player p = new Player(
+                    String.valueOf(db.getId()),
+                    db.getName(),
+                    team,
+                    role,
+                    new Position(0, 0),
+                    new Position(0, 0),
+                    toSimSkills(db.getSkills()),
+                    heightCm(db.getHeight()));
+            p.setOnBench(true);
+            bench.add(p);
+        }
+        return bench;
+    }
+
+    /** DB position -> the engine's role vocabulary. */
+    private static String simRoleFor(org.example.footballmanager.newLogic.model.Position p) {
+        return switch (p == null ? org.example.footballmanager.newLogic.model.Position.MID : p) {
+            case GK -> "GK";
+            case DEF -> "DCL";
+            case WNG -> "ML";
+            case ATT -> "STL";
+            case MID -> "CMR";
+        };
     }
 
     /**

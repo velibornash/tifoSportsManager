@@ -52,6 +52,7 @@ public class MatchOrchestrator {
     private final VARService varService;
     private final RestartManager restartManager;
     private final DuelService duelService;
+    private final SubstitutionService substitutions;
     private final TacticalIntentEngine tacticalEngine;
     private final BallResultHandler ballResultHandler;
     private final ThreatOverrideEngine threatOverrideEngine;
@@ -84,6 +85,7 @@ public class MatchOrchestrator {
         this.offsideService = new OffsideService(state, varService, recorder, restartManager);
         this.offsideService.setStats(stats);
         this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
+        this.substitutions = new SubstitutionService(state, recorder, stats);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
         this.threatOverrideEngine = new ThreatOverrideEngine();
 
@@ -400,6 +402,12 @@ public class MatchOrchestrator {
         Player carrier = state.getCarrier();
 
         duelService.detectAndResolveDuels();
+
+        // === SUBSTITUTIONS (Sprint 1.8) ===
+        // Emergency replacements for a red card or an injury, plus a routine change once
+        // someone is exhausted. Runs after duels so a player sent off this tick is replaced on
+        // the next one rather than in the same tick as the tackle.
+        substitutions.onTick();
     }
 
     private String formatDecision(Player carrier, DecisionResult result) {

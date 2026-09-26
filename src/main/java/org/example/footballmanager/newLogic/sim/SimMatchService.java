@@ -28,6 +28,7 @@ import org.example.footballmanager.newLogic.service.AttendanceService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -69,11 +70,13 @@ public class SimMatchService {
         String homeName = homeTeam != null ? homeTeam.getName() : "Home FC";
         String awayName = awayTeam != null ? awayTeam.getName() : "Away FC";
 
-        List<Player> homeSquad = loadRealSquad(homeTeam, "HOME");
-        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY");
+        List<Player> homeBench = new ArrayList<>();
+        List<Player> awayBench = new ArrayList<>();
+        List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench);
+        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench);
 
         var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
-                homeSquad, awaySquad);
+                homeSquad, awaySquad, homeBench, awayBench);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
 
         long replayId = -1L;
@@ -84,13 +87,17 @@ public class SimMatchService {
     }
 
     private List<Player> loadRealSquad(Team team, String side) {
+        return loadRealSquad(team, side, new ArrayList<>());
+    }
+
+    private List<Player> loadRealSquad(Team team, String side, List<Player> benchOut) {
         if (team == null || team.getId() == null) return null;
         Lineup lineup = loadLineup(team);
         if (lineup != null) {
             List<org.example.footballmanager.newLogic.model.Player> ordered =
                     lineup.getOrderedStartingPlayers();
             if (ordered != null && ordered.size() >= 11) {
-                return RealSquadFactory.buildSquad(lineup, side);
+                return RealSquadFactory.buildSquad(lineup, side, benchOut);
             }
         }
         // No usable lineup template → build the XI from the team's real DB

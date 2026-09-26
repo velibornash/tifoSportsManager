@@ -81,8 +81,23 @@ public class MatchState {
 
     // Players (22 outfield + 2 GK)
     private final List<Player> players;
+    /**
+     * Matchday bench per team. Deliberately NOT part of {@link #players}: a benched player is not
+     * on the pitch, so the running simulation must not be able to see him at all. A substitution
+     * moves the player across from here into the live list. See Sprint 1.8.
+     */
+    private final Map<String, List<Player>> bench = new HashMap<>();
     private final Map<String, Position> roundStartPositions = new HashMap<>();
     private final Map<String, Integer> roundPaceSkills = new HashMap<>();
+    // --- Substitution state, per team (Sprint 1.8) ---
+    /** Players used, per team. Laws of the game cap this at 5. */
+    private final Map<String, Integer> subsUsed = new HashMap<>();
+    /** Stoppage windows used, per team. Three windows, so five subs is reachable. */
+    private final Map<String, Integer> subWindowsUsed = new HashMap<>();
+    /** Tick each player came on, for minutes played. Absent = a starter. */
+    private final Map<String, Integer> cameOnTick = new HashMap<>();
+    /** Tick each player went off, for minutes played. */
+    private final Map<String, Integer> wentOffTick = new HashMap<>();
 
     // Ball
     private final Ball ball;
@@ -277,6 +292,50 @@ public class MatchState {
     public void setOffsideFlaggedReceiver(Player offsideFlaggedReceiver) { this.offsideFlaggedReceiver = offsideFlaggedReceiver; }
 
     // === GOALS ===
+    // --- Substitution accessors (Sprint 1.8) ---
+
+    public static final int MAX_SUBSTITUTIONS = 5;
+    public static final int MAX_SUB_WINDOWS = 3;
+
+    public int getSubsUsed(String team) { return subsUsed.getOrDefault(team, 0); }
+    public void addSubUsed(String team) { subsUsed.merge(team, 1, Integer::sum); }
+
+    public int getSubWindowsUsed(String team) { return subWindowsUsed.getOrDefault(team, 0); }
+    public void addSubWindowUsed(String team) { subWindowsUsed.merge(team, 1, Integer::sum); }
+
+    public Integer getCameOnTick(String playerId) { return cameOnTick.get(playerId); }
+    public void setCameOnTick(String playerId, int tick) { cameOnTick.put(playerId, tick); }
+    public Integer getWentOffTick(String playerId) { return wentOffTick.get(playerId); }
+    public void setWentOffTick(String playerId, int tick) { wentOffTick.put(playerId, tick); }
+
+    /** Minutes a player was on the pitch, given the match length in ticks. */
+    public int minutesOnPitch(Player p, int totalTicks) {
+        Integer on = cameOnTick.get(p.getId());
+        Integer off = wentOffTick.get(p.getId());
+        int from = on == null ? 0 : on;
+        int to = off == null ? totalTicks : off;
+        if (to <= from) return 0;
+        // 40 ticks per match minute in this engine (3600 ticks = 90 minutes).
+        return (int) Math.round((to - from) / 40.0);
+    }
+
+    // --- Bench access (Sprint 1.8) ---
+
+    public List<Player> getBench(String team) {
+        return bench.computeIfAbsent(team, t -> new ArrayList<>());
+    }
+
+    /** Moves a benched player onto the pitch, in place of {@code off}. */
+    public void bringOn(Player off, Player on) {
+        List<Player> b = getBench(on.getTeam());
+        b.remove(on);
+        if (!players.contains(on)) players.add(on);
+        on.setPosition(off.getPosition());
+        on.setOnBench(false);
+        off.setSubstituted(true);
+        off.setTarget(null);
+    }
+
     public int getHomeGoals() { return homeGoals; }
     public int getAwayGoals() { return awayGoals; }
     public void addHomeGoal() { this.homeGoals++; }

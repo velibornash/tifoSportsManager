@@ -29,11 +29,26 @@ public final class SimMatchRunner {
      */
     public static MatchOrchestrator run(String homeName, String awayName, int ticks,
                                         List<Player> homeSquad, List<Player> awaySquad) {
+        return run(homeName, awayName, ticks, homeSquad, awaySquad, null, null);
+    }
+
+    /**
+     * Runs a full match with explicit squads and benches (Sprint 1.8).
+     *
+     * <p>Benched players go into {@code MatchState.getBench(side)} and never into the live player
+     * list, so the running simulation cannot see them until a substitution actually happens.
+     */
+    public static MatchOrchestrator run(String homeName, String awayName, int ticks,
+                                        List<Player> homeSquad, List<Player> awaySquad,
+                                        List<Player> homeBench, List<Player> awayBench) {
         MatchState state = new MatchState();
         boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
         boolean awayReal = awaySquad != null && awaySquad.size() >= 11;
         if (homeReal) state.getPlayers().addAll(homeSquad); else SimTeamFactory.addTeam(state, "HOME");
         if (awayReal) state.getPlayers().addAll(awaySquad); else SimTeamFactory.addTeam(state, "AWAY");
+
+        if (homeBench != null) state.getBench("HOME").addAll(homeBench);
+        if (awayBench != null) state.getBench("AWAY").addAll(awayBench);
 
         MatchOrchestrator orchestrator = new MatchOrchestrator(state);
         orchestrator.getStats().setDisplayNames(homeName, awayName);

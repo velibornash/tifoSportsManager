@@ -29,6 +29,13 @@ public class Player {
     private int yellowCardsInMatch;
     private boolean injured;
     private boolean substituted;
+    /**
+     * On the bench: in the matchday squad but not on the pitch. A benched player exists so he can
+     * be brought on, but takes no part in play - no movement, no duels, no ball contact. Added in
+     * Sprint 1.8; until now a squad was exactly 11 and the rest of the squad list was discarded,
+     * which is why a red card left a team with ten for the rest of the match.
+     */
+    private boolean onBench;
     private double velX;
     private double velY;
     private double fatigue;
@@ -115,6 +122,8 @@ public class Player {
     public boolean isInjured() { return injured; }
     public void setInjured(boolean injured) { this.injured = injured; }
 
+    public boolean isOnBench() { return onBench; }
+    public void setOnBench(boolean onBench) { this.onBench = onBench; }
     public boolean isSubstituted() { return substituted; }
     public void setSubstituted(boolean substituted) { this.substituted = substituted; }
 
