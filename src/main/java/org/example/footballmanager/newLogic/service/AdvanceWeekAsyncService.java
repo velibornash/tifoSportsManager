@@ -115,9 +115,9 @@ public class AdvanceWeekAsyncService {
             seasonService.ensureDoubleRoundRobinSchedule(league, seasonYear);
             if (currentWeek == SeasonService.PLAYOFF_WEEK && java.util.Objects.equals(league.getTier(), 1)) {
                 seasonService.ensurePlayoffWeekFixtures(league, seasonYear);
-            } else if (currentWeek == SeasonService.FRIENDLY_WEEK) {
-                seasonService.ensureFriendlyWeekFixtures(league, seasonYear);
             }
+            // Safe to call every week: it returns early unless this week has friendlies.
+            seasonService.ensureFriendlyFixturesForCurrentWeek(league, seasonYear);
             remaining += seasonService.countRemainingFixturesForWeek(league.getId(), seasonYear, currentWeek);
         }
         return remaining;

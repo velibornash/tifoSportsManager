@@ -18,9 +18,15 @@ import java.util.stream.Collectors;
 public class SeasonService {
 
     public static final int BASE_SEASON_YEAR = 2025;
-    public static final int LEAGUE_ROUNDS = 18;
-    public static final int PLAYOFF_WEEK = 19;
-    public static final int FRIENDLY_WEEK = 20;
+    // Re-exported from SeasonCalendar, which is the single definition of the season shape. These
+    // used to be 18 / 19 / 20, which described a twenty-week season with a round per week. The
+    // playoff and friendly generators below hang off them, so repointing them here moves that
+    // machinery onto the owner's twelve-week calendar without rewriting it.
+    public static final int WEEKS_PER_SEASON = SeasonCalendar.WEEKS_PER_SEASON;
+    public static final int LEAGUE_END = SeasonCalendar.LEAGUE_END_WEEK;
+    public static final int LEAGUE_ROUNDS = SeasonCalendar.LEAGUE_ROUNDS;
+    public static final int PLAYOFF_WEEK = SeasonCalendar.PLAYOFF_WEEK;
+    public static final int FRIENDLY_WEEK = SeasonCalendar.BREAK_WEEK;
 
     private final GameClockRepository gameClockRepository;
     private final SeasonRepository seasonRepository;
@@ -212,8 +218,15 @@ public class SeasonService {
                 fixture.setCompetition(competition);
                 fixture.setSeasonYear(seasonYear);
                 fixture.setRoundNumber(round + 1);
-                fixture.setWeekNumber(round + 1);
-                fixture.setMatchDate(startDate.plusWeeks(round));
+                // The week comes from the season calendar, not from the round number. Previously
+                // each round was its own week, which made an 18-round season 18 weeks long and
+                // put the mid-season window in the wrong place entirely. Two rounds share a week
+                // now, except in weeks 5 and 6 where a friendly takes the second slot.
+                int week = SeasonCalendar.weekOfRound(round + 1);
+                fixture.setWeekNumber(week > 0 ? week : round + 1);
+                // Only a relative offset is kept: the season is twelve weeks and has no months in
+                // it, so this is used for ordering only and never shown to a manager.
+                fixture.setMatchDate(startDate.plusWeeks(fixture.getWeekNumber() - 1L));
                 fixture.setPlayed(false);
                 fixtures.add(fixture);
             }
@@ -229,8 +242,8 @@ public class SeasonService {
             reverse.setCompetition(competition);
             reverse.setSeasonYear(seasonYear);
             reverse.setRoundNumber(base.getRoundNumber() + rounds);
-            reverse.setWeekNumber(base.getWeekNumber() + rounds);
-            reverse.setMatchDate(base.getMatchDate().plusWeeks(rounds));
+            reverse.setWeekNumber(base.getWeekNumber());
+            reverse.setMatchDate(base.getMatchDate());
             reverse.setPlayed(false);
             fixtures.add(reverse);
         }
@@ -287,35 +300,108 @@ public class SeasonService {
         matchFixtureRepository.saveAll(List.of(m1, m2));
     }
 
-    @Transactional
-    public void ensureFriendlyWeekFixtures(Competition superLiga, int seasonYear) {
-        List<MatchFixture> existing = matchFixtureRepository.findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
-                superLiga.getId(), seasonYear, FRIENDLY_WEEK
-        );
-        if (!existing.isEmpty()) return;
-
-        SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(superLiga, seasonYear).orElse(null);
+    /**
+     * Pairs the clubs that are free that week into a friendly round, and saves it if it is not there
+     * already.
+     *
+     * <p>A friendly "round" means one match per club, so ten clubs make five matches - the same
+     * shape as a league round. The owner puts one in the spare slot of weeks 5, 6 and 11, and two
+     * in the week 12 break, so a club plays a friendly in every one of those weeks.
+     *
+     * <p>Week 11 is the awkward one: the playoff clubs are busy, so whoever did not qualify plays a
+     * friendly instead. The excluded clubs are passed in rather than worked out here, because who
+     * they are depends on a final table that does not exist yet when the season is generated.
+     */
+    private void ensureFriendlyRounds(Competition competition, int seasonYear, int week,
+                                      Set<Long> excludedTeamIds) {
+        SeasonCompetition sc =
+                seasonCompetitionRepository.findByCompetitionAndSeasonYear(competition, seasonYear).orElse(null);
         if (sc == null) return;
+
         List<Team> teams = competitionEntryRepository.findBySeasonCompetition(sc).stream()
                 .map(CompetitionEntry::getTeam)
                 .filter(Objects::nonNull)
+                .filter(t -> !excludedTeamIds.contains(t.getId()))
                 .collect(Collectors.toList());
-        Collections.shuffle(teams);
+
+        int slots = SeasonCalendar.friendliesIn(week);
+        if (slots == 0 || teams.size() < 2) return;
+
         GameClock clock = getOrCreateClock();
-        List<MatchFixture> fixtures = new ArrayList<>();
-        for (int i = 0; i + 1 < teams.size(); i += 2) {
-            MatchFixture m = new MatchFixture();
-            m.setHomeTeam(teams.get(i));
-            m.setAwayTeam(teams.get(i + 1));
-            m.setCompetition(superLiga);
-            m.setSeasonYear(seasonYear);
-            m.setRoundNumber(FRIENDLY_WEEK);
-            m.setWeekNumber(FRIENDLY_WEEK);
-            m.setMatchDate(clock.getCurrentDate().plusWeeks(FRIENDLY_WEEK - clock.getCurrentWeek()));
-            m.setPlayed(false);
-            fixtures.add(m);
+        for (int slot = 1; slot <= slots; slot++) {
+            int roundNumber = SeasonCalendar.friendlyRoundNumber(week, slot);
+            List<MatchFixture> existing = matchFixtureRepository
+                    .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
+                            competition.getId(), seasonYear, roundNumber);
+            if (!existing.isEmpty()) continue;
+
+            // Pair the clubs, then rotate so a club is not left over when the count is odd.
+            List<Team> rotating = new ArrayList<>(teams);
+            Collections.rotate(rotating, (slot - 1) % rotating.size());
+            if (rotating.size() % 2 != 0) rotating.remove(rotating.size() - 1);
+
+            List<MatchFixture> fixtures = new ArrayList<>();
+            for (int i = 0; i + 1 < rotating.size(); i += 2) {
+                MatchFixture m = new MatchFixture();
+                m.setHomeTeam(rotating.get(i));
+                m.setAwayTeam(rotating.get(i + 1));
+                m.setCompetition(competition);
+                m.setSeasonYear(seasonYear);
+                m.setRoundNumber(roundNumber);
+                m.setWeekNumber(week);
+                m.setMatchDate(clock.getCurrentDate().plusWeeks(week - clock.getCurrentWeek()));
+                m.setPlayed(false);
+                fixtures.add(m);
+            }
+            if (!fixtures.isEmpty()) matchFixtureRepository.saveAll(fixtures);
         }
-        matchFixtureRepository.saveAll(fixtures);
+    }
+
+    /**
+     * The friendlies that can be scheduled before the season is played: weeks 5, 6 and the week 12
+     * break. Week 11 is left out on purpose because it depends on who qualifies for the playoff.
+     */
+    @Transactional
+    public void ensureFriendlyFixtures(Competition competition, int seasonYear) {
+        for (int week : new int[] { SeasonCalendar.MID_WINDOW_OPEN, SeasonCalendar.MID_WINDOW_CLOSE,
+                SeasonCalendar.BREAK_WEEK }) {
+            ensureFriendlyRounds(competition, seasonYear, week, Set.of());
+        }
+    }
+
+    /**
+     * Week 11: the playoff clubs play the playoff, and everyone else plays a friendly.
+     */
+    @Transactional
+    public void ensureBreakWeekFriendlyFixtures(Competition competition, int seasonYear,
+                                                Set<Long> playoffTeamIds) {
+        ensureFriendlyRounds(competition, seasonYear, SeasonCalendar.PLAYOFF_WEEK, playoffTeamIds);
+    }
+
+    /**
+     * Ensures the friendlies for whichever week the calendar is currently in.
+     *
+     * <p>Callers should use this rather than picking a week themselves. In the playoff week it
+     * works out who is busy from the playoff fixtures already saved, so a caller never has to know
+     * that the seventh and eighth clubs are the ones playing.
+     */
+    @Transactional
+    public void ensureFriendlyFixturesForCurrentWeek(Competition competition, int seasonYear) {
+        int week = getCurrentWeek();
+        if (SeasonCalendar.friendliesIn(week) == 0) return;
+
+        if (week == SeasonCalendar.PLAYOFF_WEEK) {
+            Set<Long> busy = new HashSet<>();
+            for (MatchFixture f : matchFixtureRepository
+                    .findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(
+                            competition.getId(), seasonYear, PLAYOFF_WEEK)) {
+                if (f.getHomeTeam() != null) busy.add(f.getHomeTeam().getId());
+                if (f.getAwayTeam() != null) busy.add(f.getAwayTeam().getId());
+            }
+            ensureFriendlyRounds(competition, seasonYear, week, busy);
+            return;
+        }
+        ensureFriendlyRounds(competition, seasonYear, week, Set.of());
     }
 
     @Transactional

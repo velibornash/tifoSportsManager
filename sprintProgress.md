@@ -1241,6 +1241,51 @@ schedule it. **Three questions:**
 Until that is settled, `SEASON_WEEKS = 11` is a stated intention that the fixture generator does not
 yet implement, and the two disagree.
 
+### The season is twelve weeks, and it has no months in it
+
+The fixture generator and the calendar disagreed, and the calendar was right. `generateFixtures` gave
+every round its own week, so eighteen rounds took eighteen weeks — which put the transfer windows in
+weeks that could never happen and stretched a season out to nearly six months. The whole thing was
+wrong because the season shape was never written down anywhere; it had been guessed in three
+different places and each guess was different.
+
+So it is now written down once, in `SeasonCalendar`, and the fixture generator, the transfer windows
+and the playoff/friendly generators all read it. `SeasonService`, which held the old `PLAYOFF_WEEK =
+19` and `FRIENDLY_WEEK = 20`, now re-exports the calendar's values rather than keeping its own
+opinion — which moved the existing playoff and friendly machinery onto week 11 and week 12 without
+rewriting it. The test for that is in `SeasonShapeTest`, and the first assertion it makes is that the
+old behaviour is gone, because a calendar nothing reads is a comment.
+
+**No months anywhere.** A manager's season lasts twelve real weeks, so about four run in a year. That
+is the whole reason the game does not use a January-to-May calendar: showing "March" would imply a
+season lasts five months of the player's life, which it does not. The clock keeps a `LocalDateTime`
+because the column is not null and something orders fixtures by it, but it is only ever used to
+compare two fixtures, never shown to a manager.
+
+The friendlies in the schedule are new. A friendly "round" is one match per club — ten clubs make
+five — the same shape as a league round, so a club still fits inside its two weekly slots. Week 11 is
+the awkward one: the playoff clubs are busy, so whoever did not qualify plays a friendly instead.
+Rather than make the caller work out who is busy, `ensureFriendlyFixturesForCurrentWeek` reads it off
+the playoff fixtures already saved. Both existing call sites were pointed at it and neither now needs
+to know the rules.
+
+**316 tests.**
+
+#### ⚠️ The promotion and relegation ladder is backlogged, not built
+
+The owner asked for it to be designed properly rather than guessed at, so it is written out in
+`sprintBacklog.md` and left alone. What it says, briefly: 1, 2, 4, 8 and 16 leagues across five
+tiers; first goes up, second into a playoff, seventh and eighth play out, ninth and tenth go down,
+and tier 5 has no drop at all. The playoff is paired by strength — the seventh plays the weaker
+second, the eighth plays the stronger.
+
+One real bug fell out of writing it down: `ensurePlayoffWeekFixtures` pairs the seventh with the
+second of tier-2 league A and the eighth with league B's second **by league order, not by
+strength**, so on a normal table that is the wrong draw. Left in the backlog rather than half-fixed.
+
+The European places are genuinely undecided ("videcemo ko sve ide u evropska takmicenja") and cup and
+European competitions are explicitly later, so nothing was invented for either.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

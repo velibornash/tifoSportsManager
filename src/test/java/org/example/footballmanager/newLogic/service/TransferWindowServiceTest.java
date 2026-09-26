@@ -20,16 +20,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TransferWindowServiceTest {
 
     @Test
-    @DisplayName("a season is 11 weeks: 9 of league, 1 of playoffs, 1 of mid-season")
+    @DisplayName("a season is 12 weeks, and the service agrees with the calendar")
     void seasonShape() {
-        assertEquals(11, TransferWindowService.SEASON_WEEKS);
-        assertEquals(9, TransferWindowService.LEAGUE_END);
-        assertEquals(10, TransferWindowService.PLAYOFF_WEEK);
-        assertEquals(11, TransferWindowService.MID_SEASON_WEEK);
+        assertEquals(12, TransferWindowService.SEASON_WEEKS);
+        assertEquals(10, TransferWindowService.LEAGUE_END);
+        assertEquals(11, TransferWindowService.PLAYOFF_WEEK);
     }
 
     @Test
-    @DisplayName("windows are weeks 5-6 and weeks 9-11")
+    @DisplayName("windows are weeks 5-6 and weeks 11-12, exactly as the calendar says")
     void windowsAreWhereTheyShouldBe() {
         for (int w = 1; w <= 4; w++) {
             assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
@@ -37,35 +36,31 @@ class TransferWindowServiceTest {
         for (int w = 5; w <= 6; w++) {
             assertEquals(Window.SUMMER, TransferWindowService.windowForWeek(w), "week " + w);
         }
-        for (int w = 7; w <= 8; w++) {
+        for (int w = 7; w <= 10; w++) {
             assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
         }
-        for (int w = 9; w <= 11; w++) {
+        for (int w = 11; w <= 12; w++) {
             assertEquals(Window.WINTER, TransferWindowService.windowForWeek(w), "week " + w);
         }
-        for (int w = 12; w <= 45; w++) {
+        for (int w = 13; w <= 45; w++) {
             assertEquals(Window.CLOSED, TransferWindowService.windowForWeek(w), "week " + w);
         }
     }
 
     @Test
-    @DisplayName("the second window covers the playoffs and the mid-season break")
-    void secondWindowCoversPlayoffsAndBreak() {
-        assertTrue(TransferWindowService.windowForWeek(TransferWindowService.PLAYOFF_WEEK)
-                        == Window.WINTER,
+    @DisplayName("the end-of-season window covers the playoffs and the break")
+    void endWindowCoversPlayoffsAndBreak() {
+        assertEquals(Window.WINTER, TransferWindowService.windowForWeek(TransferWindowService.PLAYOFF_WEEK),
                 "a club must be able to sign during the playoffs - that is how a season is won");
-        assertTrue(TransferWindowService.windowForWeek(TransferWindowService.MID_SEASON_WEEK)
-                        == Window.WINTER,
-                "the mid-season break is the January window");
-        assertTrue(TransferWindowService.WINTER_OPEN <= TransferWindowService.LEAGUE_END,
-                "the window opens as the league finishes, not after it");
+        assertTrue(TransferWindowService.WINTER_OPEN > TransferWindowService.LEAGUE_END,
+                "the end-of-season window opens once the league is over");
     }
 
     @Test
     @DisplayName("a registered player cannot move while the window is shut")
     void closedWindowRefusesPermanentMoves() {
         // Weeks 1-4, 7-8 and everything after 11 are shut.
-        for (int week : new int[] { 1, 2, 3, 4, 7, 8, 12, 20 }) {
+        for (int week : new int[] { 1, 2, 3, 4, 7, 8, 9, 10, 20 }) {
             TransferWindowService.Decision d =
                     TransferWindowService.decide(TransferWindowService.windowForWeek(week), Kind.PERMANENT);
             assertFalse(d.permitted(), "week " + week + " is shut");
@@ -119,7 +114,7 @@ class TransferWindowServiceTest {
     @Test
     @DisplayName("a loan IN is not exempt - taking a player in April is a decision, not a right")
     void loanInIsNotExempt() {
-        for (int week = 7; week <= 8; week++) {
+        for (int week = 7; week <= 10; week++) {
             assertFalse(TransferWindowService.decide(
                             TransferWindowService.windowForWeek(week), Kind.LOAN_IN).permitted(),
                     "week " + week + ": no league lets a club take a player on loan in April");
@@ -129,7 +124,7 @@ class TransferWindowServiceTest {
     @Test
     @DisplayName("permanent moves are allowed while a window is open")
     void openWindowPermitsPermanentMoves() {
-        for (int week : new int[] { 5, 6, 9, 10, 11 }) {
+        for (int week : new int[] { 5, 6, 11, 12 }) {
             assertTrue(TransferWindowService.decide(
                             TransferWindowService.windowForWeek(week), Kind.PERMANENT).permitted(),
                     "week " + week + " is open");

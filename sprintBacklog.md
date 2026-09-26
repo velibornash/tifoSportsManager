@@ -1607,6 +1607,72 @@ After ~5 weeks the project goes from *"a beautiful match sim with 30 menu pages"
 
 ---
 
+---
+
+# PROMOTION, RELEGATION AND THE PLAYOFF LADDER — owner spec, 2026-09-26
+
+Backlogged at the owner's request to design it properly rather than guess at it. **The week it plays
+in is already built and tested** (week 11); the ladder below is not.
+
+## The structure the owner described
+
+One league in tier 1, then 2, 4, 8 and 16 leagues in tiers 2 to 5. Each league has ten clubs.
+
+| Tier | Leagues | First | Second | 7th | 8th | 9th, 10th |
+|---|---|---|---|---|---|---|
+| 1 | 1 | — | — | playoff | playoff | **relegated** |
+| 2 | 2 | promoted up | playoff | playoff | playoff | **relegated** |
+| 3 | 4 | promoted up | playoff | playoff | playoff | **relegated** |
+| 4 | 8 | promoted up | playoff | playoff | playoff | **relegated** |
+| 5 | 16 | promoted up | playoff | playoff | playoff | **nothing — tier 5 has no drop** |
+
+## The two-legged playoff
+
+Four clubs are involved and they are paired by strength, not by luck:
+
+- **7th of the league above** plays the **weaker** of the two second-placed clubs.
+- **8th of the league above** plays the **stronger** of the two second-placed clubs.
+
+The winner of each pair is safe. The loser is relegated. The ninth and tenth go down automatically,
+with no playoff.
+
+So a club's worst case is 9th — automatic relegation — and its best case is 7th, which is one win
+from safety. That is a better spread than a flat bottom two, and it gives mid-table clubs something
+to play for in the last two rounds.
+
+## What exists today
+
+- `SeasonService.ensurePlayoffWeekFixtures` already builds the two tier-1 pairs, but it pairs the
+  seventh with the second of tier-2 league A and the eighth with the second of league B **by league
+  order, not by strength**. On a table where the second of league B is clearly the better side, that
+  is the wrong draw. Fixing the pairing is part of this task.
+- The playoff week is now correctly week 11, and the clubs not involved in a playoff play a friendly
+  that week instead (`ensureFriendlyFixturesForCurrentWeek` works the exclusion out from the saved
+  fixtures).
+
+## What is not built
+
+- [ ] **Pair the playoff sides by strength**, not by league order
+- [ ] **Promote the first-placed club of every tier below 1** into the league above
+- [ ] **Tiers 2-5 playoffs**, which need the same seventh/eighth logic across 30 leagues rather than one
+- [ ] **Tie-breaks** — points, goal difference, goals scored, and a final ordering when all three are level
+- [ ] **European places.** The owner said it is undecided: "videcemo ko sve ide u evropska takmicenja". Not modelled. Do not guess.
+- [ ] **Tier 5 has no relegation** — currently nothing implements the floor
+- [ ] **The pyramid's entry points**: how a club joins tier 5, and what happens to a newly promoted club's first season
+- [ ] **Cup and European competitions** — the owner's schedule says "kasnije cemo se baviti", so these are deliberately out of the season shape
+
+## Open questions for the owner
+
+1. **Do both legs of a playoff get played?** One match in week 11 is the current assumption. A
+   home-and-away would need a second slot, and week 11 has exactly one.
+2. **What happens to the fixtures if a playoff is drawn?** There is no extra time or penalties model
+   in the season layer yet.
+3. **Does a promoted club keep its tier-1 status on winning the tier-2 title next season**, or is
+   promotion decided purely by finishing first?
+4. **Where do European places sit** — is it a finish position, or a separate qualifying round after
+   the league?
+
+
 # Cross-cutting definitions of done
 
 For any task in this backlog:

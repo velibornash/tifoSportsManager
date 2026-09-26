@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.GameClock;
+import org.example.footballmanager.newLogic.model.SeasonCalendar;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 
@@ -40,29 +41,25 @@ public class TransferWindowService {
         }
     }
 
-    // Season shape (owner-defined, 2026-09-26):
-    //   weeks 1-9  league, 10 teams playing each other twice = 18 matches, 2 a week
-    //   week  10   playoffs
-    //   week  11   mid-season break ("medjusezona")
-    // so a season is 11 weeks, not the 19-20 the rest of the codebase still assumes.
-    public static final int SEASON_WEEKS = 11;
-    public static final int LEAGUE_END = 9;
-    public static final int PLAYOFF_WEEK = 10;
-    public static final int MID_SEASON_WEEK = 11;
+    // The season shape lives in SeasonCalendar, which is the single definition. These are
+    // re-exported rather than redefined so the window service and the fixture generator cannot
+    // drift apart - which is exactly what happened when each held its own numbers.
+    public static final int SEASON_WEEKS = SeasonCalendar.WEEKS_PER_SEASON;
+    public static final int LEAGUE_END = SeasonCalendar.LEAGUE_END_WEEK;
+    public static final int PLAYOFF_WEEK = SeasonCalendar.PLAYOFF_WEEK;
 
-    /** First window: the mid-season registration, weeks 5 and 6. */
-    public static final int SUMMER_OPEN = 5;
-    public static final int SUMMER_CLOSE = 6;
+    /** Mid-season window: weeks 5 and 6. */
+    public static final int SUMMER_OPEN = SeasonCalendar.MID_WINDOW_OPEN;
+    public static final int SUMMER_CLOSE = SeasonCalendar.MID_WINDOW_CLOSE;
 
     /**
-     * Second window: weeks 9, 10 and 11.
+     * End-of-season window: weeks 11 and 12.
      *
-     * <p>Starts as the league finishes rather than after it, so a club can do its business while the
-     * table is still settling; covers the playoffs and the mid-season break. Being able to sign
-     * during the playoffs is how a season is actually won.
+     * <p>Opens at the start of the playoff week and closes at the end of the mid-season break, so a
+     * club can rebuild during the off-season and the window is not shut until the break is over.
      */
-    public static final int WINTER_OPEN = 9;
-    public static final int WINTER_CLOSE = 11;
+    public static final int WINTER_OPEN = SeasonCalendar.END_WINDOW_OPEN;
+    public static final int WINTER_CLOSE = SeasonCalendar.END_WINDOW_CLOSE;
 
     /** What a transfer would be. Decides which exception, if any, applies. */
     public enum Kind {
@@ -115,8 +112,8 @@ public class TransferWindowService {
 
     public static Window windowForWeek(Integer week) {
         if (week == null) return Window.CLOSED;
-        if (week >= SUMMER_OPEN && week <= SUMMER_CLOSE) return Window.SUMMER;
-        if (week >= WINTER_OPEN && week <= WINTER_CLOSE) return Window.WINTER;
+        if (SeasonCalendar.isMidSeasonWindow(week)) return Window.SUMMER;
+        if (SeasonCalendar.isEndOfSeasonWindow(week)) return Window.WINTER;
         return Window.CLOSED;
     }
 
@@ -187,15 +184,17 @@ public class TransferWindowService {
         String nextLabel = null;
 
         if (window == Window.SUMMER) {
-            closesOn = SUMMER_CLOSE;
-            nextLabel = "the summer window closes after week " + SUMMER_CLOSE;
-            opensOn = WINTER_OPEN;
+            closesOn = SeasonCalendar.MID_WINDOW_CLOSE;
+            nextLabel = "the mid-season window closes at the end of week " + closesOn;
+            opensOn = SeasonCalendar.END_WINDOW_OPEN;
         } else if (window == Window.WINTER) {
-            closesOn = WINTER_CLOSE;
-            nextLabel = "the winter window closes after week " + WINTER_CLOSE;
+            closesOn = SeasonCalendar.END_WINDOW_CLOSE;
+            nextLabel = "the end-of-season window closes at the end of week " + closesOn;
         } else {
             opensOn = nextOpenWeek(week);
-            nextLabel = opensOn == null ? null : "the window reopens at week " + opensOn;
+            nextLabel = opensOn == null
+                    ? "the window does not reopen until next season."
+                    : "the window reopens at week " + opensOn + " of next season.";
         }
 
         Integer weeksLeft = closesOn == null || week == null ? null : Math.max(0, closesOn - week);
