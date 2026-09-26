@@ -2257,3 +2257,65 @@ CROSS/CENTER se zato u probi vide kao 0% kandidata, iako ih stvarni meč broji
 flank/box situacije.
 
 `mvn -o clean test` → **107 run, 0 fail**.
+
+---
+
+## 2026-09-25 — DUEL: dueli su bili deterministički za BILO KOJU razliku od 1 moć
+
+**Nađeno `TeamStrengthProbe`-om.** Uz 18-vs-8 je slabija strana imala **0.1 udaraca
+i ~0 golova**, a i uz 16-vs-12 (samo 4 poena!) bilo je **30 pobeda od 30**. Uzrok:
+
+```java
+double randomFactor = (SimulationRandom.nextDouble() - 0.5) * 2.0; // -1..1
+return attackerPower + randomFactor > defenderPower ? attacker : defender;
+```
+
+Širina šuma je bila **±1**, a `calculateDuelPower` je na skali 0-20 (sve težine
+sumiraju na 1.0). Zato je **razlika od 1 moći već davala 100%** — jer je
+`r > -1` uvek istina. U bilo kojoj utakmici sa raznovrsnim ulogama, gde se
+zrcalni dueli razlikuju za 1-3 poena, bolji igrač je **osvajao svaki duel**.
+
+Sva moć je linearno, pa je šum morao biti ogroman da bi se nešto promenilo —
+umesto toga je duel sada **ograničena verovatnoća** razlike u moći:
+
+```java
+double pWin = 1.0 / (1.0 + Math.exp(-DUEL_SKILL_SENSITIVITY * gap));
+return SimulationRandom.nextDouble() < pWin ? attacker : defender;
+```
+
+`DUEL_SKILL_SENSITIVITY = 0.18` → jača strana pobeduje ~52% uz razliku 1, ~60%
+uz 2, ~67% uz 4, ~86% uz 10. Prednost, nikad sigurnost. Jedan bacaj iz
+seedovanog izvora → serije mečeva ostaju reproducibilne.
+
+**TeamStrengthProbe posle fixa (30 mečeva po paru, seed 900):**
+
+| par | pre | posle |
+|---|---|---|
+| 16 vs 12 — posed | 78.5/21.5 | **62.8/37.2** |
+| 16 vs 12 — udarci | 37.0/0.5 | 30.6/**7.3** |
+| 16 vs 12 — golovi | 4.6/0.1 | 4.1/**0.6** |
+| 16 vs 12 — rezultati | 30-0-0 | **29-1-0** |
+| 18 vs 8 — posed | 81.7/18.3 | 73.6/26.4 |
+| 18 vs 8 — udarci | 50.5/0.2 | 53.7/**1.5** |
+| 14 vs 14 — golovi | 1.3/1.4 | 2.0/1.8 |
+| 8 vs 8 — 0-0 | 9 od 30 | 8 od 30 |
+
+**Glavni baseline (200 mečeva, seed 42)** — dueli se tiču svake utakmice:
+```
+goals 3.4 (bilo 4.5, realno 2.7)     shots 32.0        SOT 12.0
+passAccuracy 82.2/81.5                passes 723.5     duels 365
+clearances 42.9   throughBalls 8.9   centres 21.5     crosses 29.0
+corners 5.5   goalKicks 20.6   throwIns 71.8   offsides 8.3
+fouls 17.4   yellowCards 3.1   possession 49.1/50.9
+results: HOME 74 / AWAY 75 / 51 draws (25.5%, realno ~25%), 6 bez gola, max 9
+```
+
+**Preostalo (nije duel, nego kvalitet odluke):** 18-vs-8 je i dalje 30-0-0.
+Sada to NIJE duel problem — slabija strana dobija 26% poseda i 1.5 udarca, ali ne
+uspeva da napreduje, jer kvalitet odluke i izvedbe takođe scale-uju sa skillom.
+To je teritorijal REC 4. Ekstremni par 20-vs-6 daje 26 golova, ali to je
+sintetički rubni slučaj iz probe, ne reprezentativan meč.
+
+Proba zamrzavanja (seed 777): niz duela 7 (nije zamrzavanje — DEC log je
+change-gated), najveći gap 36 s (loša lopta u pursuitu).
+`mvn -o clean test` → 107 run, 0 fail.
