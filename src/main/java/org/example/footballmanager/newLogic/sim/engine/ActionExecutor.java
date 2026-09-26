@@ -289,7 +289,7 @@ public class ActionExecutor {
         // of the goal line on BOTH sides (see ExecutionQuality.evaluateShot).
         boolean attacksTowardHigherRows = "HOME".equals(carrier.getTeam());
         ExecutionQuality.ShotResult result = ExecutionQuality.evaluateShot(
-                goal, (int) strikerSkill, 0.0, carrier.getPosition(), attacksTowardHigherRows);
+                goal, (int) strikerSkill, 0.0, carrier.getPosition(), attacksTowardHigherRows, carrier);
 
         // Launch the ball
         state.getBallEngine().launch(state.getBall(), carrier.getPosition(),

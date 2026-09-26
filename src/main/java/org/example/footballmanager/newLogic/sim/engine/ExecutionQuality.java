@@ -117,6 +117,26 @@ public class ExecutionQuality {
                                           double pressure,
                                           Position shotOrigin,
                                           boolean attacksTowardHigherRows) {
+        return evaluateShot(goalPosition, carrierStrikerSkill, pressure, shotOrigin,
+                attacksTowardHigherRows, null);
+    }
+
+    /**
+     * The same evaluation, but aware of the shooter's confidence.
+     *
+     * <p>Confidence scales the striker's finishing rather than the chance of attempting the shot: a
+     * player who cannot believe in himself does not hit the target less often so much as he hits it
+     * worse. That is why it is folded into the skill term and not added to the on-target
+     * probability, which would have turned morale into a shot-volume knob.
+     *
+     * @param shooter the player taking the shot, or null for a confidence-free evaluation
+     */
+    public static ShotResult evaluateShot(Position goalPosition,
+                                          int carrierStrikerSkill,
+                                          double pressure,
+                                          Position shotOrigin,
+                                          boolean attacksTowardHigherRows,
+                                          org.example.footballmanager.newLogic.sim.model.Player shooter) {
         int skill = carrierStrikerSkill;
         double dist = shotOrigin == null ? 4.0
                 : Math.hypot(shotOrigin.getRow() - goalPosition.getRow(),
@@ -136,6 +156,12 @@ public class ExecutionQuality {
         // fine"), so volume is left alone and conversion is tuned instead. Real football: ~33% on
         // target. Lowering skillBase and the close-range lift pulls SOT toward that and drags
         // goals down with it, since goals are a function of on-target shots, not of attempts.
+        // Confidence scales the striker's finishing, not the shot's distance or chance of being
+        // struck. A player who cannot believe in himself does not hit the target less often so much
+        // as he hits it worse, so the effect is applied to the quality of the attempt.
+        double confidence = shooter != null ? shooter.confidenceModifier() : 1.0;
+        skill = Math.max(1, Math.min(20, (int) Math.round(skill * confidence)));
+
         double skillBase = 0.06 + skill * 0.015;               // skill 1..20 -> 0.075..0.36
         double distFactor = Math.max(0.25, 1.0 - dist / 9.0);  // close = 1.0, 9+ cells = 0.25
         double onTargetProb = skillBase * distFactor;

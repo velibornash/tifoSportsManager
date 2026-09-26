@@ -50,6 +50,7 @@ public class SimMatchService {
     private final MatchFixtureRepository matchFixtureRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final SeasonService seasonService;
+    private final org.example.footballmanager.newLogic.service.MoraleService moraleService;
     private final SimReplayStore replayStore;
     private final LineupRepository lineupRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
@@ -229,6 +230,25 @@ public class SimMatchService {
             dbPlayer.setTotalAssists(dbPlayer.getTotalAssists() + po.assists());
             int rating = rating100(po.rating());
             if (rating > 0) dbPlayer.setRating(rating);
+
+            // Morale and form finally move on what happened (Sprint 2.6). This is the one place
+            // where every player's line for the match is already in hand, so it is the only place
+            // that can be wired without re-reading the whole recording.
+            // The result is derived from the scoreline rather than carried on the player's line:
+            // a team result is a property of the match, and storing it per player would mean 22
+            // copies of the same fact that can disagree with each other.
+            String teamName = po.teamName();
+            boolean isHome = teamName != null && teamName.equals(outcome.homeTeam());
+            int mine = isHome ? outcome.homeGoals() : outcome.awayGoals();
+            int theirs = isHome ? outcome.awayGoals() : outcome.homeGoals();
+            moraleService.applyMatch(dbPlayer,
+                    po.minutesPlayed(),
+                    po.goals(),
+                    po.assists(),
+                    po.rating(),
+                    mine > theirs,
+                    mine == theirs);
+
             if (updated.add(dbPlayer)) {
                 playerRepository.save(dbPlayer);
             }

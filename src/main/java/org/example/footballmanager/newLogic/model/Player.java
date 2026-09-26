@@ -27,6 +27,14 @@ public class Player {
     private double height;
     private double weight;
     private double form;
+
+    /**
+     * Dressing-room morale, 0-100. Distinct from {@link #form}: form is a week-to-week swing, morale
+     * is the season-long state that decides whether the swing happens at all. Moved by
+     * {@code MoraleService} on minutes played, what the player did, how the team did, and whether he
+     * is paid what he is worth.
+     */
+    private double morale = 60.0;
     private int rating;
 
     @Enumerated(EnumType.STRING)

@@ -122,8 +122,10 @@ class RealSquadFactoryTest {
             skills.setExact(SkillName.PACE, 17.0);
         }
         return new Player(
+                // form, morale, rating - morale was added between form and rating in Sprint 2.6,
+                // so the positional all-args constructor grew by one.
                 id, "Player " + id, skills, 0.5, 21, 0, 0,
-                1.80, 78.0, 8.0, 7, position,
+                1.80, 78.0, 8.0, 60.0, 7, position,
                 0, 0, null, false, 0, null, null, null);
     }
 

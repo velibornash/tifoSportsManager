@@ -46,6 +46,20 @@ public class Player {
     private double velX;
     private double velY;
     private double fatigue;
+
+    /**
+     * Confidence in this match, 0.5 to 1.5. Starts at 1.0 and moves with morale, which moves
+     * with what actually happens to the player: minutes, goals, results, whether he is being paid
+     * what he is worth, and whether he has been dumped from the XI.
+     *
+     * <p>This is the number that finally makes {@code form} mean something. It exists as a field
+     * rather than being derived from the database player's {@code form} because the match engine
+     * needs it per-tick and cannot afford a repository call.
+     */
+    private double confidence = 1.0;
+
+    /** Signed, -1 (desperate) to +1 (flying). Drives confidence. */
+    private double mood;
     private double form;   // 0.5..1.2 multiplier, default 1.0 (documented, not yet used)
     private int consecutiveOffsideCount;
     private int consecutiveCarries;
@@ -153,6 +167,24 @@ public class Player {
 
     public double getVelY() { return velY; }
     public void setVelY(double velY) { this.velY = velY; }
+
+    public double getConfidence() { return confidence; }
+
+    public void setConfidence(double confidence) {
+        this.confidence = Math.max(0.5, Math.min(1.5, confidence));
+    }
+
+    /** A confidence multiplier that feeds shot and pass execution. */
+    public double confidenceModifier() {
+        // A player who cannot believe in himself misses by more than a metre.
+        return 0.85 + 0.15 * ((confidence - 0.5) / 1.0);
+    }
+
+    public double getMood() { return mood; }
+
+    public void setMood(double mood) {
+        this.mood = Math.max(-1.0, Math.min(1.0, mood));
+    }
 
     public double getFatigue() { return fatigue; }
     public void setFatigue(double fatigue) { this.fatigue = Math.max(0, Math.min(1.0, fatigue)); }

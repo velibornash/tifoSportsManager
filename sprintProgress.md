@@ -903,10 +903,75 @@ account with nothing to show for it.
 
 **8 tests. 243 total.**
 
+### S2.5 — The transfer budget, and the wage bill as the real constraint ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+The transfer budget was `max(budget * 0.38, squadValue * 0.04, 50000)` — a formula in the browser
+that the player could see and nobody could act on. It is now a **board-granted** allowance, and the
+reasoning is attached to it so the manager is told *why* the number is what it is.
+
+Graded from **annual income left after wages, less a 15% reserve**, then capped at half the cash on
+hand. The cash cap is the important half: a club with €20m in the bank has not got €20m to spend,
+and a club that spends it all on one striker is how you go bust the season after winning the league.
+
+**The wage bill is the primary constraint, not the fee.** A transfer fee is a one-off; the wages are
+forever. So `canAfford` tests the wage bill *after* signing against a ceiling of 1.15× weekly income,
+and when it refuses it says which limit stopped it — "the fee is affordable; the wage is not" — rather
+than a bare no. That is the constraint that makes this a management game rather than a shopping list.
+
+A club with no settled income has been granted **nothing**, and says so, rather than inventing a
+figure from its cash balance.
+
+### S2.6 — Morale, and form finally meaning something ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+`Player.form` was a creation-time constant, read by the rating maths as `(form − 6) × 1.2` and by the
+DTO as a flat boost. A player who had scored four in five was exactly as likely to be good on Saturday
+as one who had not played, and nothing the manager did could change it.
+
+- **Morale 0-100 and form 0-10 are separate on purpose.** Form is a week-to-week swing; morale is the
+  season-long state that decides whether the swing happens at all. Form **decays to 6 at the end of a
+  season** — without that, a great run is permanent and every player eventually sits at 10.
+- **Morale moves on what actually happens:** minutes played (a token appearance is nearly as bad as
+  none; not being picked is the worst thing there is), goals and assists, the result, his own rating,
+  whether he is being paid what he is worth, and whether he has been listed.
+- **It reaches the match engine.** `Player.confidence` on the sim model, 0.5–1.5, folds into
+  `ExecutionQuality.evaluateShot` **through a new player-aware overload**, and the shooter is passed
+  in. It scales the striker's *finishing*, not the chance of attempting the shot — a player who
+  cannot believe in himself does not hit the target less often so much as he hits it worse. Making it
+  an on-target bonus would have turned morale into a shot-volume knob.
+- **The morale effect is deliberately narrow**, 0.90–1.10. A wide band turns a bad run into a
+  feedback loop: a player who misses once stops scoring, stops being picked, and misses more. There
+  is a test asserting the band stays under 0.25 wide.
+- Wired in `SimMatchService.bumpCareerStats`, the one place where every player's line for the match is
+  already in hand. The team result is derived from the scoreline rather than stored per player — it
+  is a property of the match, and 22 copies of it can disagree with each other.
+
+**`PlayerConditionService` deleted** — 40 lines, zero callers.
+
+#### Note on a stale backlog entry
+
+S2.6 task 1 said *"wire `MoraleSystem.getConfidenceModifier()` into the engine — it has zero
+callers"*. **`MoraleSystem` does not exist.** There is no such class in the codebase. The task was
+describing a plan as though it were a defect in existing code. The morale→performance link is built
+here from scratch.
+
+#### One ripple worth recording
+
+Adding `morale` to the JPA entity grew Lombok's positional `@AllArgsConstructor` by one argument, and
+two test factories construct `Player` positionally. Both were updated. A 21-argument all-args
+constructor on an entity is a liability that will keep paying this tax; worth replacing with a builder
+the first time a third field is added.
+
+**11 tests. 254 total.**
+
 ### Sprint 2 test count
 
-221 before the ledger, 228 after, **235** after the board, **243** after staff and sponsors. 7 ledger,
-7 board, 8 admission, 9 pitch-maintenance and 8 staff/sponsor tests this sprint.
+221 before the ledger, 228 after, **235** after the board, **243** after staff and sponsors, **254**
+after morale and the transfer budget. 7 ledger, 7 board, 8 admission, 9 pitch-maintenance,
+8 staff/sponsor and 11 morale/budget tests this sprint.
 
 ## Where Sprint 1 stands
 
