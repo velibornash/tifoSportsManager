@@ -54,6 +54,34 @@ public class GlobalApiExceptionHandler {
         }
     }
 
+    /**
+     * A deliberate refusal from the game, reported with the status it was thrown with.
+     *
+     * <p>There was no handler for {@code ApiException} at all, so every one of them fell through to
+     * the catch-all below and reached the browser as a 500. That is not a cosmetic problem: the game
+     * signals ordinary, expected outcomes with this exception — the transfer window is shut, the
+     * club cannot afford the fee, the squad is full, the price is below the asking price, the report
+     * does not exist — and all of them were indistinguishable from a genuine server fault. The
+     * frontend reacts by logging the user out or replacing a whole page with "API Error".
+     */
+    @ExceptionHandler(org.example.footballmanager.newLogic.exception.ApiException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleApiException(
+            org.example.footballmanager.newLogic.exception.ApiException ex,
+            HttpServletRequest request) {
+
+        // Logged at warn, not error: these are decisions the game made, not faults.
+        log.warn("{} {} refused: [{}] {}", request.getMethod(), request.getRequestURI(),
+                ex.getCode(), ex.getMessage());
+
+        ApiErrorResponseDTO body = new ApiErrorResponseDTO(
+                ex.getStatus().value(),
+                ex.getCode(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                LocalDateTime.now());
+        return ResponseEntity.status(ex.getStatus()).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponseDTO> handleUnhandledException(Exception ex, HttpServletRequest request, HttpServletResponse response) {
         if (response.isCommitted()) {

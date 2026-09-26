@@ -202,10 +202,21 @@ public class TrainingProgressionService {
         return new ArrayList<>(unique.values());
     }
 
+    /**
+     * @return the report for that week, or {@code null} if training has not been run for it
+     * @throws org.example.footballmanager.exception.ApiException if a report exists but cannot be
+     *         read back - that genuinely is a server fault, unlike the missing case
+     */
     public TrainingWeekReportDTO getTeamReport(Long teamId, Integer season, Integer week) {
         TrainingWeekReport report = trainingWeekReportRepository
                 .findByTeamIdAndSeasonNumberAndWeekNumber(teamId, season, week)
-                .orElseThrow(() -> new RuntimeException("Training report not found"));
+                // Not an exception. "You have not trained this week yet" is a normal state, and
+                // throwing turned it into a 500, which the training page renders as a hard API
+                // error rather than as an empty week.
+                .orElse(null);
+        if (report == null) {
+            return null;
+        }
         try {
             return objectMapper.readValue(report.getReportJson(), TrainingWeekReportDTO.class);
         } catch (Exception e) {
@@ -213,12 +224,16 @@ public class TrainingProgressionService {
         }
     }
 
+    /** @return the player's row in that week's report, or null if there is no report or no row */
     public PlayerTrainingReportDTO getPlayerReport(Long teamId, Long playerId, Integer season, Integer week) {
         TrainingWeekReportDTO report = getTeamReport(teamId, season, week);
+        if (report == null || report.getPlayers() == null) {
+            return null;
+        }
         return report.getPlayers().stream()
                 .filter(p -> Objects.equals(p.getPlayerId(), playerId))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Player report not found"));
+                .orElse(null);
     }
 
     public List<PlayerTrainingGraphPointDTO> getPlayerGraph(Long teamId, Long playerId) {

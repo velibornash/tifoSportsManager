@@ -92,7 +92,20 @@ public class SecurityConfig {
                                 "/login.html",
                                 "/register.html",
                                 "/tifo.html",
-                                "/simulateAllResults.html"
+                                "/simulateAllResults.html",
+                                // Every page shell, so a new page is public by default.
+                                //
+                                // A browser navigating to a page cannot send a Bearer token - there
+                                // is no Authorization header on a plain GET of a document. So any
+                                // page missing from the permit list is redirected to /login.html by
+                                // the server before a single line of its JavaScript runs, which
+                                // looks exactly like broken auth on the client. /dashboard.html and
+                                // /zox-match-preview.html were both missing and both bounced.
+                                //
+                                // This is safe: the shells hold no data. Everything they display
+                                // comes from /api/** and /auth/** calls, which stay authenticated -
+                                // the wildcard is a single segment, so it cannot reach them.
+                                "/*.html"
                         ).permitAll()
 
                         // ── Admin only ──

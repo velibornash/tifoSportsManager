@@ -1645,6 +1645,35 @@ me the expiry is only real when the service wrote it.
 
 **360 tests.**
 
+### A refusal the game decided on was arriving as a server fault
+
+Three bugs, one cause, all found from one screenshot of the Training page.
+
+**1. A missing training report answered 500.** `getTeamReport` threw a bare `RuntimeException`, so
+"you have not trained this week yet" — an entirely normal state — came back as a server error.
+
+**2. `authFetch` throws on any non-2xx, so the frontend's own guards were dead code.** Every
+`if (!res.ok) return` in `training-view.js` was unreachable; the throw escaped to the page router,
+which replaced the **whole Training page** with "API Error" because one week had no report. That is
+the screenshot. The view now catches a 404 and renders an empty week, and rethrows anything else.
+
+**3. 🐛 There was no `@ExceptionHandler` for `ApiException` at all.** This is the real one. The
+entire `newLogic` package signals ordinary, expected outcomes with that exception — the transfer
+window is shut, the club cannot afford the fee, the squad is full, the price is below the asking
+price — and **every single one fell through to the catch-all and reached the browser as a 500.** So
+the frontend could not tell a decision the game made from a fault, and reacted by logging the
+manager out or blanking a page. There is now a handler that reports the status and code the game
+chose, logged at `warn` because a refusal is not an error.
+
+The difference is stark and is why it was worth the detour:
+
+```
+before:  GET /training/weekly/team/1/reports/1/9  →  500
+after:   GET /training/weekly/team/1/reports/1/9  →  404 REPORT_NOT_FOUND
+```
+
+**365 tests.** Verified negatively too: removing the handler puts all three back to 500.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

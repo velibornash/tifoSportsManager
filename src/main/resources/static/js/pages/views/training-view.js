@@ -117,13 +117,31 @@ export function createTrainingView(deps) {
             return await res.json();
         }
 
+        /**
+         * Whether an error means "there is nothing here" rather than "something broke".
+         *
+         * <p>authFetch throws on any non-2xx, so the old "if (!res.ok) return" guards were
+         * unreachable and the throw escaped to the page router, which replaced the entire Training
+         * page with "API Error" because one week had no report. A 404 is an empty week.
+         */
+        function isMissing(err) {
+            return err && (err.status === 404
+                || err.code === "REPORT_NOT_FOUND"
+                || err.code === "PLAYER_REPORT_NOT_FOUND");
+        }
+
         async function openWeekReport(season, week) {
             state.loadingReport = true;
             await render();
-            const res = await authFetch(`/training/weekly/team/${teamId}/reports/${season}/${week}`);
-            state.loadingReport = false;
-            if (!res.ok) return;
-            state.selectedReport = await res.json();
+            try {
+                const res = await authFetch(`/training/weekly/team/${teamId}/reports/${season}/${week}`);
+                state.selectedReport = await res.json();
+            } catch (err) {
+                if (!isMissing(err)) throw err;
+                state.selectedReport = null;
+            } finally {
+                state.loadingReport = false;
+            }
             state.selectedPlayerGraph = null;
             await render();
         }
@@ -558,9 +576,14 @@ export function createTrainingView(deps) {
         }
 
         async function fetchReport(season, week) {
-            const res = await authFetch(`/training/weekly/team/${teamId}/reports/${season}/${week}`);
-            if (!res.ok) return null;
-            return await res.json();
+            try {
+                const res = await authFetch(`/training/weekly/team/${teamId}/reports/${season}/${week}`);
+                return await res.json();
+            } catch (err) {
+                // No report for that week yet - an empty state, not a broken page.
+                if (isMissing(err)) return null;
+                throw err;
+            }
         }
 
         async function openPlayerGraph(playerId) {

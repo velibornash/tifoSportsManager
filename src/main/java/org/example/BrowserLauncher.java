@@ -5,6 +5,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -42,6 +43,7 @@ import java.util.Arrays;
  *
  * <p>To turn it off: {@code --app.open-browser=false}.
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "app.open-browser", havingValue = "true", matchIfMissing = true)
 public class BrowserLauncher implements ApplicationRunner {
@@ -59,19 +61,28 @@ public class BrowserLauncher implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        String url = baseUrl() + "/login.html";
+
         if (skipOnTestProfile) {
+            log.debug("BrowserLauncher: not opening {} - this is the test profile", url);
             return;
         }
         if (isHeadless()) {
             // No desktop to open a window on. A CI agent or a remote shell would otherwise log a
             // failure it cannot act on.
+            log.info("BrowserLauncher: not opening {} - no desktop available", url);
             return;
         }
         try {
-            openBrowser(baseUrl() + "/login.html");
+            openBrowser(url);
+            // Said out loud on success too. "It works but says nothing" is indistinguishable from
+            // "it never ran", which is exactly the confusion this launcher caused: the owner was
+            // told nothing happened and could not tell whether the bean was even present.
+            log.info("Opened {} in your browser. Pass --app.open-browser=false to stop this.", url);
         } catch (Exception e) {
             // Never fail startup over this - it is a convenience, not a requirement.
-            System.err.println("[BrowserLauncher] could not open a browser: " + e.getMessage());
+            log.warn("Could not open a browser for {}. Open it manually, or pass "
+                    + "--app.open-browser=false to stop asking. Cause: {}", url, e.toString());
         }
     }
 
@@ -101,7 +112,9 @@ public class BrowserLauncher implements ApplicationRunner {
         if (os.contains("win")) {
             new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
         } else if (os.contains("mac")) {
-            new ProcessBuilder("open", url).start();
+            // The "open" binary is looked up on PATH. If it is missing, ProcessBuilder throws and
+            // the reason is reported, instead of the browser silently never appearing.
+            new ProcessBuilder("/usr/bin/open", url).start();
         } else if (os.contains("nix") || os.contains("nux")) {
             String[] browsers = { "xdg-open", "google-chrome", "firefox" };
             String browser = Arrays.stream(browsers)

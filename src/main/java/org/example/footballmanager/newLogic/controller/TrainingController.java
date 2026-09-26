@@ -11,7 +11,10 @@ import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TrainingRepository;
 import org.example.footballmanager.newLogic.service.PlayerSkillProgressionService;
 import org.example.footballmanager.newLogic.service.TrainingProgressionService;
+import org.example.footballmanager.newLogic.exception.ApiException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
@@ -142,14 +145,32 @@ public class TrainingController {
     }
 
     @GetMapping("/weekly/team/{teamId}/reports/{season}/{week}")
-    public TrainingWeekReportDTO getReport(@PathVariable Long teamId, @PathVariable Integer season, @PathVariable Integer week) {
-        return trainingProgressionService.getTeamReport(teamId, season, week);
+    public ResponseEntity<TrainingWeekReportDTO> getReport(@PathVariable Long teamId,
+                                                          @PathVariable Integer season,
+                                                          @PathVariable Integer week) {
+        TrainingWeekReportDTO report = trainingProgressionService.getTeamReport(teamId, season, week);
+        // 404, not 500. A week with no training run yet is a normal state the page has to render,
+        // and a 500 made it look like the whole Training page was broken.
+        if (report == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "REPORT_NOT_FOUND",
+                    "No training report for season " + season + ", week " + week
+                            + ". Run training for that week first.");
+        }
+        return ResponseEntity.ok(report);
     }
 
     @GetMapping("/weekly/team/{teamId}/player/{playerId}/reports/{season}/{week}")
-    public PlayerTrainingReportDTO getPlayerReport(@PathVariable Long teamId, @PathVariable Long playerId,
-                                                   @PathVariable Integer season, @PathVariable Integer week) {
-        return trainingProgressionService.getPlayerReport(teamId, playerId, season, week);
+    public ResponseEntity<PlayerTrainingReportDTO> getPlayerReport(@PathVariable Long teamId,
+                                                                   @PathVariable Long playerId,
+                                                                   @PathVariable Integer season,
+                                                                   @PathVariable Integer week) {
+        PlayerTrainingReportDTO report =
+                trainingProgressionService.getPlayerReport(teamId, playerId, season, week);
+        if (report == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "PLAYER_REPORT_NOT_FOUND",
+                    "No training report for that player in season " + season + ", week " + week + ".");
+        }
+        return ResponseEntity.ok(report);
     }
 
     @GetMapping("/weekly/team/{teamId}/player/{playerId}/graph")
