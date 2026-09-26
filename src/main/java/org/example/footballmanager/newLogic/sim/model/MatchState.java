@@ -200,6 +200,18 @@ public class MatchState {
     }
 
     public int getMatchTicks() { return matchTicks; }
+
+    /**
+     * Jumps the match clock. For diagnostics and tests only - the simulation advances the clock
+     * through {@link #advanceTick()} and nothing else should move it.
+     */
+    public void setMatchTicks(int matchTicks) { this.matchTicks = matchTicks; }
+
+    /** Test/diagnostic helper: sets the score directly. */
+    public void setScore(int homeGoals, int awayGoals) {
+        this.homeGoals = homeGoals;
+        this.awayGoals = awayGoals;
+    }
     public boolean isStopped() { return stopped; }
     public void setStopped(boolean stopped) { this.stopped = stopped; }
 

@@ -60,6 +60,9 @@ public class MatchOrchestrator {
     private final ThreatOverrideEngine threatOverrideEngine;
     private final FatigueSystem fatigueSystem = new FatigueSystem();
     private final StoppageClock stoppage = new StoppageClock();
+    // Built in the constructor, not here: it needs `state` and `substitutions`, and a field
+    // initialiser runs before the constructor body has assigned either.
+    private final ConditionalSubstitutionRules conditionalSubs;
 
     private final List<String> eventLog = new ArrayList<>();
     private final ActionLogService actionLog;
@@ -193,6 +196,7 @@ public class MatchOrchestrator {
         this.duelService = new DuelService(state, recorder, stats, restartManager, varService);
         this.substitutions = new SubstitutionService(state, recorder, stats);
         this.substitutions.setStoppage(stoppage);
+        this.conditionalSubs = new ConditionalSubstitutionRules(state, substitutions);
         this.injuries = new InjuryService(state, recorder, stats);
         this.penaltyEngine = new PenaltyEngine(state, recorder, stats, actionLog, restartManager);
         this.tacticalEngine = new TacticalIntentEngine(tactics);
@@ -557,7 +561,13 @@ public class MatchOrchestrator {
         // Emergency replacements for a red card or an injury, plus a routine change once
         // someone is exhausted. Runs after duels so a player sent off this tick is replaced on
         // the next one rather than in the same tick as the tackle.
-        substitutions.onTick();
+        // Order is the owner's precedence chain: an injury replacement is not a decision anybody
+        // made, a manager's rule is a deliberate act, and the fatigue change is the fallback when
+        // nobody asked. substitutions.onTick() does injury first, then fatigue; the manager's rules
+        // sit between them, so they run after the injury pass and before the fatigue one.
+        substitutions.onTickInjuriesOnly();
+        conditionalSubs.onTick();
+        substitutions.onTickFatigueOnly();
         // A substitution that actually changed the team is a stoppage in its own right.
         if (substitutions.didSubstituteLastTick()) {
             stoppage(StoppageClock.Reason.SUBSTITUTION);

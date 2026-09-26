@@ -681,6 +681,58 @@ runs at least 90 minutes, with the six-minute cap as the upper bound.
 
 **9 tests in `StoppageClockTest`. 190 total.**
 
+### Conditional substitutions — the last mechanic gap in Sprint 1 ✅ DONE (engine + persistence)
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+Manager's live rules: *"at minute 60, if we are losing, bring on X for Y"*. The backlog's own
+assessment was right that this is a layer on top of S1.8 rather than a rebuild — the bench, the
+five-sub budget, the three windows and role-aware replacement selection all already existed.
+
+**`ConditionalSubstitutionRules`** evaluates every rule each tick. Status is one of
+`PENDING` / `WAITING_FOR_STOPPAGE` / `FIRED` / `VOID`, and a void rule carries a **reason** —
+`PLAYER_ALREADY_ON`, `PLAYER_UNAVAILABLE`, `NO_SUBS_LEFT`, `NO_WINDOWS_LEFT`,
+`PLAYER_ALREADY_ON_PITCH`, `EMPTY_BENCH` — so the manager can see *"1 rule no longer possible —
+why"* rather than watching a rule silently do nothing.
+
+**The window rule is now honest.** A substitution is only legal while play is stopped, so a rule that
+comes true mid-flow reports itself `WAITING_FOR_STOPPAGE` rather than changing players illegally. It
+completes at the next real stoppage — which now exists, courtesy of the stoppage clock.
+
+**Precedence chain**, exactly as the owner specified — `onTick()` was split so the orchestrator can
+seat the rules between the two passes:
+
+1. **Injury** — `onTickInjuriesOnly()`. Not a decision anybody made; free of time and of a window.
+2. **Manager's rule** — `conditionalSubs.onTick()`.
+3. **Fatigue auto-sub** — `onTickFatigueOnly()`. The fallback when nobody asked.
+
+A red card sits outside the chain entirely: a sent-off player is never replaced, so it cannot
+consume a slot a rule was counting on.
+
+**Persistence** is server-side and keyed by match (`SubstitutionPlan` + `SubstitutionPlanController`).
+Holding the plan in the browser means a reload at minute 55 silently loses every rule set at minute 0.
+`PUT` replaces the whole plan rather than merging, because a merge leaves rules the manager believes
+they deleted still queued to fire.
+
+#### Two bugs the tests caught, both of which made the feature look broken
+
+- **A rule silently died reporting "empty bench" with five players on it.** `pickReplacement` is
+  role-aware and returns `null` when the bench has nobody for that role. The report was a lie, and
+  the fix is a fallback to any available player plus an honest reason.
+- **The rule tried to take the goalkeeper off.** With a squad where every outfielder is equally tired,
+  "most tired player" returned the keeper — who is normally first in the list — and then failed,
+  because no keeper was on the bench. An automatic swap of the goalkeeper is not a decision a rule
+  should ever make; the fatigue pass already refuses it, and now so does this.
+
+#### Not done
+
+The **UI** — the rules builder and the live view of which rules fired, which are spent and which are
+void. That is the part the manager actually touches and the backlog correctly identifies as the bulk
+of the work. The engine and the API it needs are in place.
+
+**14 tests** (10 rule semantics, 4 controller). The controller tests mint a real JWT against a real
+user row rather than mocking the filter away, so they also prove the endpoint is genuinely protected.
+
 ---
 
 ## Where Sprint 1 stands
@@ -715,7 +767,7 @@ The table below is a record of where the engine sits, not a scorecard.
 | **S1.9** | Remaining calibration outliers. Calibration — deferred |
 | **S1.1c / S1.3** | Shot volume and corner skew. Calibration — deferred |
 | **stoppage time** | Real stoppage clock for VAR, penalties, injuries and substitution windows — currently `getRestartTaker()` is used as a heuristic in place of it |
-| **conditional subs** | Server-side per-match plans, stale-rule surfacing, live viewer status — **the last real mechanic gap in Sprint 1** |
+| **conditional subs — UI** | Rules builder + live fired/spent/void view. Engine and API are done |
 | **tactical editor** | Redesign placeholder, scheduled last |
 
 ---

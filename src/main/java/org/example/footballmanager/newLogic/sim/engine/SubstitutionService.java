@@ -139,6 +139,48 @@ public class SubstitutionService {
         return lastTickSubstituted;
     }
 
+    /**
+     * Injury replacements only.
+     *
+     * <p>Split out from the fatigue pass so the orchestrator can seat the manager's conditional
+     * rules between them: injury is not a decision, a rule is, and fatigue is the fallback. Running
+     * them in one pass meant a rule could find its slot already spent by a fatigue change.
+     */
+    public void onTickInjuriesOnly() {
+        lastTickSubstituted = false;
+        for (String team : List.of("HOME", "AWAY")) {
+            List<Player> out = new ArrayList<>();
+            for (Player p : state.getPlayers()) {
+                if (!p.getTeam().equals(team) || p.isOnBench()) continue;
+                if (p.isInjured()) out.add(p);
+            }
+            for (Player gone : out) {
+                Player replacement = pickReplacement(team, gone);
+                if (replacement != null) {
+                    lastTickSubstituted |= substitute(gone, replacement, true);
+                }
+            }
+        }
+    }
+
+    /** The fatigue fallback. See {@link #onTickInjuriesOnly()}. */
+    public void onTickFatigueOnly() {
+        for (String team : List.of("HOME", "AWAY")) {
+            if (state.getSubsUsed(team) >= MatchState.MAX_SUBSTITUTIONS) continue;
+            Optional<Player> exhausted = state.getPlayers().stream()
+                    .filter(p -> p.getTeam().equals(team) && !p.isOnBench() && !p.isUnavailable())
+                    .filter(p -> !p.isGoalkeeper())
+                    .filter(p -> p.getFatigue() >= FATIGUE_SUB_THRESHOLD)
+                    .max(Comparator.comparingDouble(Player::getFatigue));
+            if (exhausted.isPresent()) {
+                Player replacement = pickReplacement(team, exhausted.get());
+                if (replacement != null) {
+                    lastTickSubstituted |= substitute(exhausted.get(), replacement, false);
+                }
+            }
+        }
+    }
+
     public void onTick() {
         lastTickSubstituted = false;
         for (String team : List.of("HOME", "AWAY")) {
@@ -181,7 +223,7 @@ public class SubstitutionService {
      * <p>Matching on role rather than raw rating matters: swapping a centre-back for a winger
      * because the winger has a higher number is how you lose matches.
      */
-    private Player pickReplacement(String team, Player off) {
+    Player pickReplacement(String team, Player off) {
         String role = off.getRole();
         List<Player> bench = state.getBench(team).stream()
                 .filter(p -> !p.isSentOff())
