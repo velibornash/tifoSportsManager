@@ -29,6 +29,7 @@ public class SeasonService {
     private final CompetitionRepository competitionRepository;
     private final MatchFixtureRepository matchFixtureRepository;
     private final TeamRepository teamRepository;
+    private final WeeklyFinanceService weeklyFinances;
     private final PlayerRepository playerRepository;
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
@@ -325,6 +326,7 @@ public class SeasonService {
             gameClockRepository.save(clock);
             decrementInjuriesByWeek();
             recoverFatigueForWeek();
+            settleWeeklyFinancesForAllClubs();
             int seasonNumber = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
             int newWeek = clock.getCurrentWeek();
             if (newWeek == 2) {
@@ -336,6 +338,40 @@ public class SeasonService {
             return;
         }
         performPromotionRelegationAndNewSeason(superLiga);
+    }
+
+    /**
+     * Settles the week for <b>every</b> club, not just the one the player manages.
+     *
+     * <p>This is the difference between a game and a spreadsheet. Before it, gate income, broadcast
+     * money and prize money existed as formulas nothing called and {@code Player.earnings} was
+     * seeded and read by nothing — so the wage bill was free and the transfer budget had nothing to
+     * be limited by. An AI club with no economy is an AI club that can never be bought, sold, or
+     * promoted out of trouble, which quietly breaks promotion and relegation.
+     *
+     * <p>Each club settles in its own transaction (REQUIRES_NEW inside the finance service), and a
+     * failure for one club is logged and stepped over rather than rolling back the other 309.
+     */
+    @Transactional
+    public int settleWeeklyFinancesForAllClubs() {
+        GameClock clock = getOrCreateClock();
+        Integer season = clock.getCurrentSeason();
+        Integer week = clock.getCurrentWeek();
+        List<Team> clubs = teamRepository.findAll();
+        int settled = 0;
+        for (Team club : clubs) {
+            try {
+                WeeklyFinanceService.WeekResult r =
+                        weeklyFinances.applyWeeklyFinances(club, season, week);
+                if (!r.notApplied()) settled++;
+            } catch (RuntimeException e) {
+                log.warn("Finance settlement failed for club {} ({}): {}", club.getId(),
+                        club.getName(), e.getMessage());
+            }
+        }
+        log.info("Settled weekly finances for {} of {} clubs (season {} week {})",
+                settled, clubs.size(), season, week);
+        return settled;
     }
 
     @Transactional
