@@ -13,6 +13,7 @@
 
 import { authFetch, isAdminSession, getSessionRole } from '../../auth.js';
 import { buildEmptyState } from './utils.js';
+import { backButtonHtml } from '../../ui/components.js';
 
 export function createAdminView({ getTeamId, getTeamName, getUsername }) {
     function guard() {
@@ -91,6 +92,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
 
         mainContent.innerHTML = `
             <div class="page-container">
+                ${backButtonHtml('Back to dashboard', 'dashboard')}
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>

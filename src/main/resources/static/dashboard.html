@@ -24,14 +24,20 @@
         <small id="clock-date"></small>
         <small id="clock-phase"></small>
     </div>
-    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo"></div>
+    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
     <div class="menu-button mobile-only" onclick="toggleMobileMenu()">&#9776;</div>
-    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo"></div>
+    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
 </div>
 
 <div id="mobileSidebar" class="sidebar mobile-only">
     <div class="sidebar-content">
         <h3 onclick="closeMobileMenu()">Menu</h3>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="closeMobileMenu(); loadDashboard()">
+                🏠 Dashboard
+            </div>
+        </div>
 
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="toggleMobileAccordion(this)">
@@ -101,6 +107,7 @@
 
 <div id="clubSidebar" class="sidebar">
     <div class="sidebar-content">
+        <div onclick="loadDashboard()" style="font-weight:bold;">🏠 Dashboard</div>
         <h3>Club</h3>
 
         <div class="accordion">
