@@ -47,13 +47,27 @@ public class NegotiationService {
     private final TransferOfferRepository offers;
     private final PlayerContractService contracts;
     private final TransferBudgetService budgets;
+    private final TransferWindowService windows;
 
     public NegotiationService(TransferOfferRepository offers,
                               PlayerContractService contracts,
-                              TransferBudgetService budgets) {
+                              TransferBudgetService budgets,
+                              TransferWindowService windows) {
         this.offers = offers;
         this.contracts = contracts;
         this.budgets = budgets;
+        this.windows = windows;
+    }
+
+    /**
+     * Why an offer may not be made right now, or null if it may.
+     *
+     * <p>Registration days are the point of the feature: a manager needs to know how long they have
+     * and what is about to shut, and an out-of-window attempt has to be refused with a reason rather
+     * than a 500.
+     */
+    public TransferWindowService.Decision windowCheck(TransferWindowService.Kind kind) {
+        return windows.decide(kind);
     }
 
     // ------------------------------------------------------------------ opening
@@ -63,6 +77,13 @@ public class NegotiationService {
     public TransferOffer openOffer(Transfer transfer, Team buyer,
                                    double fee, double wage, int contractYears) {
         if (transfer == null || buyer == null) return null;
+
+        // A permanent move needs the window open. Refused here, with the reason, so the caller gets
+        // an explanation rather than a failed write.
+        TransferWindowService.Decision window = windowCheck(TransferWindowService.Kind.PERMANENT);
+        if (!window.permitted()) {
+            throw new TransferWindowClosedException(window.reason());
+        }
 
         // A club cannot bid twice for the same player in the same transfer.
         offers.findByTransferIdAndBuyerTeamIdAndStatusIn(transfer.getId(), buyer.getId(),
@@ -257,5 +278,17 @@ public class NegotiationService {
 
     private double round2(double v) {
         return Math.round(v * 100.0) / 100.0;
+    }
+
+    /**
+     * A transfer attempted outside the window.
+     *
+     * <p>A distinct exception rather than a boolean return, because "the window is shut" is not the
+     * same failure as "that player does not exist", and the caller has to be able to say which.
+     */
+    public static class TransferWindowClosedException extends IllegalStateException {
+        public TransferWindowClosedException(String reason) {
+            super(reason);
+        }
     }
 }

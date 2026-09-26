@@ -1108,6 +1108,58 @@ player actually wanted.
 
 **10 tests. 277 total.**
 
+### S3.3 — Transfer windows ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+There was **no window enforcement anywhere**. A club could sign a striker in week 15 of the season,
+mid-run-in, with no rule and no reason given — which removed the largest single piece of scheduling
+tension in a football management game. Registration days and the January window are when a season
+is actually decided.
+
+- **Summer** weeks 1–6, **winter** weeks 10–12, closed otherwise. Tested exhaustively across weeks
+  1–45 rather than sampled, because these are pure rules and there is no reason to be vague about
+  them.
+- **Two exemptions, and they are the interesting part:**
+  - **Signing a free agent** works at any time. His contract has already expired, nobody is being
+    deprived of anything, and refusing it would be absurd — a player cannot be forbidden from joining
+    a club because it is March.
+  - **A loan recall** is never blocked. The recall is the *parent club's* right, exercised against the
+    player's will.
+- **A loan IN is not exempt.** A club taking a player on loan in April is doing something a manager
+  should have to think about, and no league lets it. There is a test asserting exactly that.
+- Out-of-window attempts are **refused with a reason**, via a distinct `TransferWindowClosedException`
+  rather than a boolean — "the window is shut" is not the same failure as "that player does not
+  exist" and the caller has to say which.
+- `status()` gives the transfer centre a **countdown** and, importantly, states explicitly what is
+  *still* allowed while shut. "The window is shut" without that is exactly the kind of thing a
+  manager works around wrongly.
+
+### S3.2 (cont.) — Instalments and sell-on clauses ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+Two things the transfer market actually does, and the game had neither.
+
+**Instalments.** Nobody pays €40m on the day. A small fee is paid outright; above €2m it is spread
+over the contract, and the *bigger* the fee the *less* changes hands on the day. Until it is paid the
+selling club still carries the risk — a club that sold a player on instalments is exposed if he is
+injured in year two, which is a different risk from having taken the money and moved on. There is now
+a real outstanding balance that feeds the finance screen.
+
+**Sell-on clauses.** The club that sold a player keeps a share of the next fee, **capped at 50%** —
+above that a club can never sell anyone and the market dies. This is how a club funds itself after a
+sale, and it is why selling a teenager can be worth more in total than keeping him. A zero clause and
+no clause are different, and both are represented.
+
+#### A hazard the test found
+
+`agree()` **overwrote** an existing fee structure, which silently wiped any outstanding balance — a
+club owed a year of instalments would find the debt gone because something re-saved the deal. Now the
+first agreed terms stand and only a fully settled deal may be re-agreed.
+
+**15 tests. 292 total.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

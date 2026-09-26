@@ -830,7 +830,7 @@ Target: Sokker-parity on the transfer market. Currently at ~15%.
 
 ---
 
-### S3.2 — Real negotiation, replacing the prose-string model
+### S3.2 — Real negotiation ✅ DONE 2026-09-26
 
 Today: offers are `Set<String>` of `"Partizan offered €450000"` (`Transfer.java:34`, `TransferService.java:566`), parsed with `indexOf(" offered €")` + `replaceAll`. A prefix-match dedupe at `:562-565` means a club named `Partizan` wipes offers from `Partizan United Youth`.
 
@@ -851,7 +851,7 @@ Today: offers are `Set<String>` of `"Partizan offered €450000"` (`Transfer.jav
 
 ---
 
-### S3.3 — Transfer windows
+### S3.3 — Transfer windows ✅ DONE 2026-09-26
 
 | # | Task |
 |---|---|
