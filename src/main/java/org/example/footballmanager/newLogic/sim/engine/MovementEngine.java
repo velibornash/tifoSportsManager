@@ -39,6 +39,18 @@ public class MovementEngine {
      * side-to-side movement in a set position, which the generic pace cap
      * (pace 11 -> 0.41 cells/tick) could not express.
      */
+    /**
+     * Speed burst for a player actively chasing a loose ball, applied on top of the pace cap.
+     *
+     * <p>Never applied to a goalkeeper: his GOALKEEPER_MOVEMENT_FACTOR is already 1.9 and stacking
+     * the two produced a 2.24x keeper who vacuumed up loose balls and broke the sides apart.
+     *
+     * <p>Held to 1.18 deliberately. Fast enough that a defender can close on a carrier of similar
+     * pace, small enough that pace still decides most footraces, and scaled by fatigue so a tiring
+     * presser stops being able to close - which is the trade-off the missing multiplier had removed.
+     */
+    public static final double CHASE_SPRINT_MULTIPLIER = 1.18;
+
     public static final double GOALKEEPER_MOVEMENT_FACTOR = 1.9;
     public static final double IDLE_DRIFT_SPEED = 0.04; // idle drift toward ball
 
@@ -119,8 +131,16 @@ public class MovementEngine {
                 playerSpeed *= carrierSpeedFactor(p, state);
             }
 
-            // Chaser moves at the same pace-capped speed as any other player
-            // (user rule 2026-09-14: only target overrides, never speed boosts).
+            // Active chasers get a bounded burst. The original rule (2026-09-14) was "only target
+            // overrides, never speed boosts", adopted because a sprint multiplier let a fast player
+            // simply outrun everyone. The cost was that a presser could NEVER close on a carrier
+            // of similar pace, and the engine compensated by inflating PRESS_DRIB_DUEL_RADIUS to
+            // 0.50 cells - 7 m, a steal rather than a press. Measured consequence: 358 duel
+            // resolutions per match against a realistic ~100. Restoring a small, fatigue-scaled
+            // burst lets the press be a real footrace and the radius drop back to a tackle.
+            if (isChaser && !isCarrier && !p.isGoalkeeper()) {
+                playerSpeed *= CHASE_SPRINT_MULTIPLIER * FatigueSystem.speedFactor(p);
+            }
 
             // Calculate movement vector toward target
             double dx = target.getColumn() - current.getColumn();

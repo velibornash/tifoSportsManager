@@ -18,8 +18,20 @@ public class DuelEngine {
 
     // Duel radii (1 cell = 14m x 10m)
     public static final double DRIBBLE_DUEL_RADIUS = 0.15; // ~2m - very tight
-    public static final double PRESS_DRIB_DUEL_RADIUS = 0.50; // ~7m - TYPE A presser engages here
+    /**
+     * A TYPE A presser engages from slightly further out than a standing challenge, because he is
+     * moving and arriving with momentum. Was 0.50 (~7 m), which was not a press at all but a steal
+     * at distance, and was the single reason duels ran at 358/match against a realistic ~100.
+     * MovementEngine.CHASE_SPRINT_MULTIPLIER now lets him actually close, so this can be a
+     * challenge (~3.5 m) instead.
+     */
+    public static final double PRESS_DRIB_DUEL_RADIUS = 0.38; // ~5m, just past the 0.35 separation wall
     public static final double RECEIVE_PASS_RADIUS = 0.2;
+    /**
+     * A defender level with or behind the carrier must get a toe in to win the ball, so only
+     * this tight radius counts as a contest from that side (~1 m, half a cell of 14 m x 10 m).
+     */
+    public static final double SIDE_ON_TIE_RADIUS = 0.08;
     public static final double AERIAL_DUEL_RADIUS = 0.5;
     public static final double SHOT_BLOCK_RADIUS = 0.3;
     public static final int DUEL_COOLDOWN_TICKS = 10;
@@ -43,6 +55,34 @@ public class DuelEngine {
      * Check if a duel should be triggered between attacker and defender.
      * Returns duel type if duel fires, null otherwise.
      */
+
+    /**
+     * Is the defender actually challenging for the ball, or merely standing nearby?
+     *
+     * <p>Duels used to fire on distance alone, so any opponent within the radius counted as a
+     * contest even when he was level with the carrier or trailing him. A 50-match sample recorded
+     * 373 duel resolutions per match against a realistic ~100.
+     *
+     * <p>A real challenge comes from in front: a defender level with or behind the carrier has to
+     * get a toe in, which is a much smaller radius. So a goal-side defender may contest at the
+     * normal radius, and anyone else only at {@link #SIDE_ON_TIE_RADIUS}.
+     *
+     * <p>This is a contest test, not a difficulty change - the duel power maths is untouched.
+     */
+    private boolean contestsTheBall(Player carrier, Player defender, double distance, MatchState state) {
+        // A presser has closed deliberately to his press point, so let him contest at range.
+        if (defender.isThreatOverrideActive()) return true;
+
+        double carrierRow = carrier.getPosition().getRow();
+        double defenderRow = defender.getPosition().getRow();
+        // HOME attacks the AWAY goal at row 8.0, so "in front" means a higher row.
+        boolean carrierIsHome = "HOME".equals(carrier.getTeam());
+        boolean goalSide = carrierIsHome ? defenderRow > carrierRow : defenderRow < carrierRow;
+
+        if (goalSide) return true;
+        return distance <= SIDE_ON_TIE_RADIUS;
+    }
+
     public DuelType checkDuel(Player attacker, Player defender,
                                 MatchState state) {
         if (attacker == null || defender == null) return null;
@@ -60,7 +100,7 @@ public class DuelEngine {
         double dribbleRadius = defender.isThreatOverrideActive()
                 ? PRESS_DRIB_DUEL_RADIUS
                 : DRIBBLE_DUEL_RADIUS;
-        if (distance <= dribbleRadius) {
+        if (distance <= dribbleRadius && contestsTheBall(attacker, defender, distance, state)) {
             if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS, state)) {
                 markDuel(attacker, defender, state);
                 return DuelType.DRIBBLE;
