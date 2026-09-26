@@ -16,6 +16,21 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
+/**
+ * Authenticated fetch for the API calls in this viewer.
+ *
+ * The replay endpoints and /proposal/api/** are behind JWT (SecurityConfig no longer puts
+ * them in permitAll). Static assets - match.json, models/player.glb - must keep using plain
+ * fetch. The token lives in sessionStorage, written by login.js.
+ */
+function apiFetch(url, options = {}) {
+  const token = sessionStorage.getItem('token');
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
+
+
 /* ═══════════════════════════════════════════════════════════════
    CONSTANTS (match engine)
    ═══════════════════════════════════════════════════════════════ */
@@ -578,7 +593,7 @@ class Tifo3D {
       const seed = seedInput && seedInput.value !== '' ? `?seed=${encodeURIComponent(seedInput.value)}` : '';
       let data = null;
       try {
-        const res = await fetch(`/proposal/api/generate${seed}`, { method: 'POST' });
+        const res = await apiFetch(`/proposal/api/generate${seed}`, { method: 'POST' });
         if (res.ok) {
           const payload = await res.json();
           // Spring returns the full replay; the standalone launcher returns a
@@ -594,7 +609,7 @@ class Tifo3D {
         this._ingest(data);
       } else {
         // Fallback: the app's in-memory last-generated match, then the file.
-        let res = await fetch('/proposal/api/latest');
+        let res = await apiFetch('/proposal/api/latest');
         if (!res.ok) res = await fetch('match.json');
         if (res.ok) this._ingest(await res.json());
         else this._showEmptyState();
@@ -606,7 +621,7 @@ class Tifo3D {
     };
     const loadLatest = async () => {
       document.getElementById('loading').classList.remove('hidden');
-      let res = await fetch('/proposal/api/latest');
+      let res = await apiFetch('/proposal/api/latest');
       if (!res.ok) res = await fetch('match.json');
       if (res.ok) this._ingest(await res.json());
       else this._showEmptyState();
@@ -903,7 +918,7 @@ const viewer = new Tifo3D();
 // static export file (standalone launcher / manual JSON), because loading
 // match.json unconditionally showed the match from the last build.
 (function autoLoad() {
-  fetch('/proposal/api/latest')
+  apiFetch('/proposal/api/latest')
     .then(r => r.ok ? r.json() : Promise.reject(new Error('no latest match')))
     .then(data => { viewer._ingest(data); })
     .catch(() => viewer.loadUrl('match.json'));

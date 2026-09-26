@@ -1,3 +1,18 @@
+
+/**
+ * Authenticated fetch for the API calls in this viewer.
+ *
+ * The replay endpoints and /proposal/api/** are behind JWT (SecurityConfig no longer puts
+ * them in permitAll). Static assets - match.json, models/player.glb - must keep using plain
+ * fetch. The token lives in sessionStorage, written by login.js.
+ */
+function apiFetch(url, options = {}) {
+  const token = sessionStorage.getItem('token');
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
+
 /**
  * TIFO Demo Service — Match Viewer
  *
@@ -896,7 +911,7 @@ class MatchViewer {
       const seedInput = document.getElementById('seedInput');
       const seed = seedInput?.value?.trim();
       const query = seed ? `?seed=${encodeURIComponent(seed)}` : '';
-      const res = await fetch(`/proposal/api/generate${query}`, { method: 'POST' });
+      const res = await apiFetch(`/proposal/api/generate${query}`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
       // Use the payload the endpoint JUST returned. Previously the response was
@@ -934,7 +949,7 @@ class MatchViewer {
       // Prefer the app's in-memory "last generated match" — it is guaranteed to
       // be the match this app just simulated. Fall back to the static file only
       // for the standalone launcher / manual JSON use.
-      let res = await fetch('/proposal/api/latest');
+      let res = await apiFetch('/proposal/api/latest');
       if (!res.ok) {
         res = await fetch('match.json?' + Date.now());
       }
@@ -960,8 +975,8 @@ class MatchViewer {
   async loadMatchById(id) {
     this._showLoading(true, 'Loading match...');
     try {
-      let res = await fetch(`/api/sim/replay/${id}`);
-      if (!res.ok) res = await fetch(`/api/sim/replay/by-match/${id}`);
+      let res = await apiFetch(`/api/sim/replay/${id}`);
+      if (!res.ok) res = await apiFetch(`/api/sim/replay/by-match/${id}`);
       if (!res.ok) throw new Error('Replay not found (HTTP ' + res.status + ')');
       this.data = await res.json();
       this._initFromData();

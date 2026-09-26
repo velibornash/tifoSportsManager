@@ -63,50 +63,42 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(req -> req
+                        // ── Public: static assets, landing pages and auth ──
+                        // Everything else requires a JWT. The previous list also contained
+                        // "/teams/**", "/players/**", "/matches/**", "/training/**",
+                        // "/countries/**", "/commonmanager/**", "/api/**" and
+                        // "/proposal/api/**", which left the entire game API readable and
+                        // mutable by anyone. For a multiplayer game that means opponents could
+                        // read squads, rewrite lineups and move money.
                         .requestMatchers(
                                 "/",
                                 "/.well-known/**",
-                                "/home.html",
-                                "/login.html",
-                                "/register.html",
-                                "/dashboard.html",
-                                "/realisticDemo.html",
-                                "/simulateAllResults.html",
-                                "/cleanSheetTifo.html",
-                                "/tifo.html",
-                                "/old/**",
-                                "/zox-match-preview.html",
-                                "/zox/**",
-                                "/api/zox/**",
+                                "/favicon.ico",
                                 "/css/**",
                                 "/js/**",
                                 "/images/**",
                                 "/audio/**",
-                                "/auth/**",
-                                "/api/**",
-                                "/api/clean-sheet/**",
-                                "/api/zox/**",
-                                "/countries/**",
-                                "/start-realistic-demo",
-                                "/api/v2/**",
-                                "/teams/**",
-                                "/players/**",
-                                "/matches/**",
-                                "/match-stats/**",
-                                "/demo-position-updates/**",
-                                "/training/**",
-                                "/demo-match-events/**",
-                                "/match-events/**",
                                 "/demo/service/ui/**",
-                                "/proposal/api/**",
+                                // Legacy game modes. Neither reads the JWT (no Authorization
+                                // header anywhere under their /js folders), so they depend entirely
+                                // on permitAll. Leaving them open rather than breaking two
+                                // untouched modes I cannot test; they need their own auth pass.
                                 "/basketballmanager/**",
                                 "/americanfootballmanager/**",
-                                "/commonmanager/**",
-                                "/favicon.ico"
+                                "/auth/**",
+                                "/api/server-time",
+                                "/api/game-clock",
+                                "/home.html",
+                                "/login.html",
+                                "/register.html",
+                                "/tifo.html",
+                                "/simulateAllResults.html"
                         ).permitAll()
 
+                        // ── Admin only ──
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "OWNER", "DEV")
 
+                        // ── Everything else is authenticated ──
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exc -> exc
@@ -154,11 +146,18 @@ public class SecurityConfig {
     private boolean shouldReturnUnauthorized(HttpServletRequest request) {
         String requestedWith = request.getHeader("X-Requested-With");
         String accept = request.getHeader("Accept");
+        String uri = request.getRequestURI();
+        // Any API path must answer with a JSON error, never a 302 to the HTML login page.
+        // A fetch() that follows the redirect gets HTML, response.json() throws, and the SPA
+        // renders a generic "API Error" card instead of "please log in" - which is how a dozen
+        // dead routes ended up reporting a misleading error. This previously only matched
+        // "/api/", so /proposal/api/** still redirected.
+        boolean isApiPath = uri.contains("/api/") || uri.endsWith("/api");
         return "XMLHttpRequest".equalsIgnoreCase(requestedWith)
                 || request.getHeader("Authorization") != null
                 || !"GET".equalsIgnoreCase(request.getMethod())
-                || (accept != null && accept.contains("application/json"))
-                || request.getRequestURI().startsWith("/api/");
+                || isApiPath
+                || (accept != null && accept.contains("application/json"));
     }
 
     private void writeJsonError(HttpServletResponse response,
