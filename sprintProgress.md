@@ -1509,6 +1509,35 @@ now two completion paths on the same entity, which is duplication and a real dou
 It is a genuine refactor rather than a patch, so it is left in the backlog rather than half-done —
 but it should be the next thing anyone picks up in Sprint 3.
 
+### Position and role are two different questions
+
+The owner's correction, and it is a real modelling bug rather than a naming preference.
+
+**Position** is the broad unit — the five: GK, DEF, MID, ATT, WNG — and answers *which part of the
+pitch*. **Role** is the specific job — fifteen of them, GK, CB, LB, LWB, RB, RWB, DM, CM, DM, AM,
+W, IF, LW, RW, ST — and answers *what is he actually for*.
+
+They were being mixed, and the symptom was the squad report naming positions this game does not have
+while never reporting a real gap. A club that counts its defenders as one group can have three centre
+backs and no left back and believe it is fine. "No left back" is actionable; "no defenders" is not.
+
+So:
+
+- `PlayerRole` is a real enum, every role mapping to exactly one position, with a test that asserts
+  no position is left without a role — otherwise nobody could ever play there.
+- `Player` stores a role (as a name, so the column survives an enum insertion) and
+  `effectiveRole()` derives one from the position when it is unset, so nothing anywhere reads null.
+- **Setting a role sets the position too.** Leaving the two to drift is exactly how a striker ends
+  up training as a full back.
+- `ClubNeedService` counts gaps in **roles**, and a club with no cover at a role does not bid at all.
+  `gapsByPosition` still exists for squad-balance questions — the two are no longer interchangeable
+  by accident.
+
+Every role has a readable label, because "SHOOTER" is not a job and the squad screen has to say
+"Striker".
+
+**369 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

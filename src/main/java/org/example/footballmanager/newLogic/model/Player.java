@@ -67,6 +67,38 @@ public class Player {
     @Column(name = "nationality", length = 3)
     private String nationality;
 
+    /**
+     * His detailed job, as distinct from his broad {@link Position}.
+     *
+     * <p>Stored as a name rather than an ordinal so the column survives a role being inserted in the
+     * middle of the enum, and left nullable: a player created before this column existed has no role,
+     * and {@link #effectiveRole()} derives one from his position rather than making every caller
+     * cope with null.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", length = 40)
+    private PlayerRole role;
+
+    /** The role to actually use: the stored one, or a sensible default for his position. */
+    @Transient
+    public PlayerRole effectiveRole() {
+        return role != null ? role : PlayerRole.defaultFor(position);
+    }
+
+    /**
+     * Sets the role, and the position with it.
+     *
+     * <p>Assigning a role is what a manager means, and it implies the position — a centre back
+     * <i>is</i> a defender. Leaving the two to drift apart is how a squad screen shows a striker who
+     * trains as a full back.
+     */
+    public void setRole(PlayerRole role) {
+        this.role = role;
+        if (role != null) {
+            this.position = role.position();
+        }
+    }
+
     public Position getPositionEnum() {
         return position;
     }

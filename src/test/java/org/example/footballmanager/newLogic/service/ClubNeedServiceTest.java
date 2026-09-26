@@ -201,10 +201,17 @@ class ClubNeedServiceTest {
         aPlayer(club, Position.GK, 30, 3_000_000, 6);
         for (int i = 0; i < 3; i++) aPlayer(club, Position.MID, 28, 5_000_000, 6);
 
-        List<String> thin = new ArrayList<>(needs.gaps(club));
-        assertFalse(thin.contains("MID"), "three midfielders is not a gap");
-        assertTrue(thin.contains("ATT"), "no striker at all is");
-        assertFalse(thin.contains("CB") || thin.contains("LB") || thin.contains("ST"),
-                "and the report must not mention positions this game does not have");
+        // Gaps are reported by role now, because "no left back" is actionable and "no defenders" is
+        // not: a club with three centre backs and no full backs is not short of defenders.
+        List<String> thin = new ArrayList<>(needs.gapsByRole(club));
+        assertTrue(thin.contains("STRIKER"), "no striker at all is a gap");
+        assertTrue(thin.contains("LEFT_BACK"), "and no left back");
+        assertFalse(thin.contains("MID") || thin.contains("DEF") || thin.contains("ATT"),
+                "positions are not roles, and this report must not mix them");
+
+        // And the position view is still available, for squad-balance questions.
+        List<String> byPosition = new ArrayList<>(needs.gapsByPosition(club));
+        assertFalse(byPosition.contains("MID"), "three midfielders is not a positional gap");
+        assertTrue(byPosition.contains("ATT"), "but no striker is");
     }
 }

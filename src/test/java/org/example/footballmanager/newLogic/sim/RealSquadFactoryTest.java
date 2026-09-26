@@ -127,8 +127,9 @@ class RealSquadFactoryTest {
                 id, "Player " + id, skills, 0.5, 21, 0, 0,
                 1.80, 78.0, 8.0, 60.0, 7, position,
                 0, 0, null, false, 0, null, null, null,
-                // nationality, added last so this positional constructor kept its signature
-                null);
+                // nationality and role, both added last so this positional constructor kept
+                // its signature for everything before them
+                null, null);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

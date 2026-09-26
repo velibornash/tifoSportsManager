@@ -2,6 +2,9 @@ package org.example.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.Position;
+import org.example.footballmanager.newLogic.model.PlayerRole;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.PlayerContract;
 import org.example.footballmanager.newLogic.model.SquadRole;
 import org.example.footballmanager.newLogic.model.Team;
@@ -44,6 +47,15 @@ public class ClubNeedService {
     /** A position is considered thin at all if it has fewer than this many. */
     private static final int MIN_USEFUL_DEPTH = 3;
 
+    /**
+     * How many players a club wants in a given <b>role</b> before it stops needing another.
+     *
+     * <p>Two, not three: fifteen roles at two each is a thirty-player squad, which is roughly a
+     * realistic first-team squad, and it means a club with two centre backs does not immediately
+     * want a third one.
+     */
+    private static final int ROLE_DEPTH = 2;
+
     private final PlayerRepository players;
     private final PlayerContractRepository contracts;
 
@@ -57,6 +69,13 @@ public class ClubNeedService {
     public double interest(Team club, Player target) {
         if (club == null || target == null) return 0;
         if (target.getPosition() == null) return 0;
+
+        // Roles are the specific job; positions are the broad unit. A club that needs a left back has
+        // a different problem from one that needs a centre back, so the gap is counted in roles and
+        // the position is only used for the coarse "is this the right end of the pitch" question.
+        PlayerRole targetRole = target.effectiveRole();
+        String role = targetRole.name();
+        String position = target.getPosition().name();
         // A club has no interest in its own player.
         if (target.getTeam() != null && club.getId() != null
                 && java.util.Objects.equals(target.getTeam().getId(), club.getId())) {
@@ -64,25 +83,35 @@ public class ClubNeedService {
         }
 
         List<Player> squad = clubSquad(club);
-        String position = target.getPosition().name();
 
-        long inPosition = squad.stream()
-                .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
-                .count();
+        long inPosition = countInPosition(squad, position);
+        long inRole = countInRole(squad, role);
+
+        if (inRole >= ROLE_DEPTH && !isBetterThanSquadInRole(squad, role, target)) {
+            // Covered at his actual job, and nobody there is worse than him: no interest at all.
+            return 0;
+        }
         if (inPosition >= MIN_USEFUL_DEPTH && !isBetterThanSquadInPosition(squad, position, target)) {
-            // Covered, and nobody there is worse than him: no interest.
+            // Covered even at the broad level and nobody to improve on.
             return 0;
         }
 
-        double score = 0.35;                              // some interest by default
+        double score = 0.30;                              // some interest by default
+        if (inRole == 0) {
+            score += 0.40;                                // nobody in the squad does his job
+        } else if (inRole <= THIN_POSITION) {
+            score += 0.30 - 0.10 * inRole;               // thin at his actual job
+        }
         if (inPosition <= THIN_POSITION) {
-            score += 0.35 - 0.12 * inPosition;            // the gap is the main reason
+            score += 0.20 - 0.08 * inPosition;           // and thin in his part of the pitch
         }
-        if (isBetterThanSquadInPosition(squad, position, target)) {
-            score += 0.25;                                // an upgrade on what he has
+        if (isBetterThanSquadInRole(squad, role, target)) {
+            score += 0.25;                                // an upgrade on what he does
+        } else if (isBetterThanSquadInPosition(squad, position, target)) {
+            score += 0.12;
         }
-        if (isGettingOld(club, position)) {
-            score += 0.15;                                // the position needs replacing
+        if (isGettingOld(squad, role)) {
+            score += 0.15;                                // his job needs replacing
         }
         if (isYouth(squad)) {
             score += 0.05;                                // a young squad wants young players
@@ -178,20 +207,35 @@ public class ClubNeedService {
      */
     @Transactional(readOnly = true)
     public List<String> gaps(Team club) {
+        return gapsByRole(club);
+    }
+
+    /**
+     * The roles a club is thin in, emptiest first.
+     *
+     * <p>Roles, not positions. "No left back" is actionable; "no defenders" is not, because a club
+     * with three centre backs and no full backs is not short of defenders.
+     */
+    @Transactional(readOnly = true)
+    public List<String> gapsByRole(Team club) {
         List<Player> squad = clubSquad(club);
         List<String> thin = new ArrayList<>();
-        for (String position : Arrays.stream(
-                org.example.footballmanager.newLogic.model.Position.values())
-                .map(Enum::name)
-                .toList()) {
-            long count = squad.stream()
-                    .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
-                    .count();
-            if (count < MIN_USEFUL_DEPTH) thin.add(position);
+        for (PlayerRole role : PlayerRole.values()) {
+            if (countInRole(squad, role.name()) < ROLE_DEPTH) thin.add(role.name());
         }
-        thin.sort(Comparator.comparingLong(position -> squad.stream()
-                .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
-                .count()));
+        thin.sort(Comparator.comparingLong(role -> countInRole(squad, role)));
+        return thin;
+    }
+
+    /** The positions a club is thin in, emptiest first. For squad-balance checks. */
+    @Transactional(readOnly = true)
+    public List<String> gapsByPosition(Team club) {
+        List<Player> squad = clubSquad(club);
+        List<String> thin = new ArrayList<>();
+        for (Position position : org.example.footballmanager.newLogic.model.Position.values()) {
+            if (countInPosition(squad, position.name()) < MIN_USEFUL_DEPTH) thin.add(position.name());
+        }
+        thin.sort(Comparator.comparingLong(name -> countInPosition(squad, name)));
         return thin;
     }
 
@@ -202,15 +246,33 @@ public class ClubNeedService {
                 .toList();
     }
 
+    private long countInPosition(List<Player> squad, String position) {
+        return squad.stream()
+                .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
+                .count();
+    }
+
+    private long countInRole(List<Player> squad, String role) {
+        return squad.stream()
+                .filter(p -> p.effectiveRole().name().equals(role))
+                .count();
+    }
+
     private boolean isBetterThanSquadInPosition(List<Player> squad, String position, Player target) {
         return squad.stream()
                 .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
                 .anyMatch(p -> value(p) < value(target));
     }
 
-    private boolean isGettingOld(Team club, String position) {
-        double averageAge = clubSquad(club).stream()
-                .filter(p -> p.getPosition() != null && p.getPosition().name().equals(position))
+    private boolean isBetterThanSquadInRole(List<Player> squad, String role, Player target) {
+        return squad.stream()
+                .filter(p -> p.effectiveRole().name().equals(role))
+                .anyMatch(p -> value(p) < value(target));
+    }
+
+    private boolean isGettingOld(List<Player> squad, String role) {
+        double averageAge = squad.stream()
+                .filter(p -> p.effectiveRole().name().equals(role))
                 .mapToInt(Player::getAge)
                 .average()
                 .orElse(0);
