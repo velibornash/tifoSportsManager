@@ -53,7 +53,7 @@ export function createClubView(deps) {
                              onerror="this.src='/images/logoside.jpg'">
                     </div>
                     <h3>${htmlEscape(profile.name || 'Club')}</h3>
-                    <p class="fm-subtle">Serbian club profile with open-football-inspired presentation and our existing app data.</p>
+                    <p class="fm-subtle">Serbian club profile with our existing app data.</p>
                     <button type="button" class="fm-action-btn secondary club-profile-stadium-btn" data-stadium-image="${htmlEscape(stadiumImage)}" data-stadium-name="${htmlEscape(profile.stadium || 'Stadium')}">Open Stadium View</button>
                 </section>
                 <section class="fm-panel club-profile-detail-card">

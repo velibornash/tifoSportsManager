@@ -898,7 +898,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         <div class="fm-page-toolbar">
             ${backButtonHtml('Back', backTarget)}
             <div class="fm-page-title-block">
-                <div class="fm-eyebrow">Open-football inspired league view</div>
+                <div class="fm-eyebrow">League view</div>
                 <h2 class="league-table-title">${leagueTitle}${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
             </div>
             ${seasons.length ? `

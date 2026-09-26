@@ -360,7 +360,7 @@ export function createPlayerView(deps) {
                         <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">
                             <div class="fm-panel-head">
                                 <h3>Attributes</h3>
-                                <span class="fm-panel-action">Open-football inspired overview with our current skills</span>
+                                <span class="fm-panel-action">Overview with our current skills</span>
                             </div>
                             <div class="fm-skills-grid">
                                 ${skillSections.map(section => `

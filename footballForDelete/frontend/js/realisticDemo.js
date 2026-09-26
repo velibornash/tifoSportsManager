@@ -311,7 +311,7 @@ function configureReplayModeUi() {
     }
 
     if (kicker) {
-        kicker.textContent = isReplayMode() ? 'Open-football style replay' : 'Live match view';
+        kicker.textContent = isReplayMode() ? 'Match replay' : 'Live match view';
     }
 }
 

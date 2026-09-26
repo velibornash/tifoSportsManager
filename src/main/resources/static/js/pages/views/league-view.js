@@ -329,7 +329,7 @@ export function createLeagueView(deps) {
                         <div>
                             <div class="fm-eyebrow">Team overview</div>
                             <h2>${htmlEscape(teamName)}</h2>
-                            <p class="fm-subtle">Open-football inspired squad screen. Click any row to open the player profile.</p>
+                            <p class="fm-subtle">Squad screen. Click any row to open the player profile.</p>
                         </div>
                         ${isUserTeam ? buildClubActionsHtml('firstTeam') : ''}
                     </div>
@@ -370,7 +370,7 @@ export function createLeagueView(deps) {
                             <span class="fm-panel-action">Club area</span>
                         </div>
                         <div class="fm-medical-icon">&#10010; &#129658;</div>
-                        <p class="fm-subtle">Keep the open-football squad view, but retain our app-specific medical workflow for injuries and recovery.</p>
+                        <p class="fm-subtle">Keep the squad view, but retain our app-specific medical workflow for injuries and recovery.</p>
                         <div class="fm-medical-stat-grid">
                             <div><strong>${injuryCount}</strong><span>Injuries</span></div>
                             <div><strong>${poorFormCount}</strong><span>Low morale</span></div>
