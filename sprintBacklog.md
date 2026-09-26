@@ -1149,6 +1149,38 @@ Also: `ensureEntriesForSeasonCompetition:126-134` deletes and rebuilds all entri
 
 ---
 
+## ⚠️ PRIORITY CHANGE — 2026-09-26 (owner decision)
+
+**Owner direction: statistical targets are deferred. What matters now is that the systems work and
+that the decisions they produce are good — not that the numbers match a Premier League season.**
+
+This supersedes the tuning half of Sprint 1. Two consequences:
+
+1. **Numerical calibration is now polish.** The exit table in Sprint 1 stays as a record but stops
+   being a gate. Goals at 3.1 instead of 2.7, duels at 268 instead of 100, SOT at 28% instead of
+   33% — all accepted for now. S1.1b and S1.4/S1.5 are kept because they fixed *broken behaviour*
+   (a keeper fishing at balls that were never going in; a 7 m steal radius), not because the numbers
+   moved.
+2. **Missing and broken mechanics are now the priority.** Those are not numbers, they are holes in
+   the product:
+
+| Gap | State today | Sprint |
+|---|---|---|
+| **Injuries** | **No generator at all.** The ported `maybeTriggerInjury` was quarantined; the live engine produces zero injuries | S1.6 |
+| **Fatigue** | Never accumulated — `Player.addFatigue` has 0 callers | S1.6 |
+| **Passive recovery** | Does not exist | S1.6 |
+| **Penalties** | Awarded and counted, then **never taken** — no run-up, no dive, no conversion | S1.7 |
+| **Substitutions** | **Impossible.** No bench contract exists; `substituted` is never set | S1.8 |
+
+That last one is the single biggest gap in the engine. A red card today means playing the rest of
+the match with ten and no recourse; a tired player cannot be replaced; fatigue has no consequence
+because there is nothing to substitute into. S1.6–S1.8 are the work that makes the decisions the
+rest of the system produces actually land.
+
+**Statistical targets will be revisited after the system is connected.**
+
+---
+
 # Effort summary
 
 | Sprint | Scope | Effort | Type |
