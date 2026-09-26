@@ -106,62 +106,76 @@ The bug: no guard. `TrainingWeekReport` is found-or-new and overwritten (`:116-1
 
 ---
 
-### S0.4 — Feed `*Exact` into the engine (make training matter)
+### S0.4 — Feed `*Exact` into ratings and OVR ✅ DONE 2026-09-26
 
-**File:** `newLogic/model/Skills.java:118-126,137-144`
+**File:** `newLogic/model/Skills.java:118-141`
 
-The bug: the `*Exact` doubles exist because weekly growth is fractional (0.05–0.6 pts). But `getRatingScore()`, `getTotalForRating()` and **every** fluent accessor return the floor'd `int`. A player at 13.9 technique is identical to one at 13.0 in the match engine, so ~90% of all training work has zero effect.
+> **Scope corrected during implementation.** The backlog assumed the match engine read the floored `int`. It does not — `RealSquadFactory.toSimSkills:185-196` already calls `getExact(...)` for all eight skills, so training has always reached the engine. The real gap was the **display and rating layer** only.
 
-| # | Task | File:line |
-|---|---|---|
-| 1 | Convert the fluent accessors to return the `*Exact` value | `Skills.java:137-144` |
-| 2 | `getRatingScore()` / `getTotalForRating()` to use `*Exact` | `Skills.java:118-133` |
-| 3 | Re-measure engine calibration. This **will** shift every number in `expertAudit.md` §5 — the delta is the size of the discarded fraction (~0.4 skill points average) | — |
-| 4 | Add a `visibleInt()` accessor for the UI so the frontend keeps rendering integers | new |
+| # | Task | File:line | Status |
+|---|---|---|---|
+| 1 | `getRatingScore()` to read `*Exact` | `Skills.java:118-141` | ✅ |
+| 2 | Add `visibleInt(SkillName)` for UI/tests needing the floored view | `Skills.java` | ✅ |
+| 3 | `getTotalForRating()` left on visible ints — coarse display helper | — | ✅ deliberate |
+| 4 | Fluent accessors left as `int` | `Skills.java:135-144` | ✅ no `newLogic` consumer |
+| 5 | Re-measure engine calibration | — | ✅ unnecessary, engine untouched |
 
-> ⚠️ **This is the single highest value-per-line change in the whole backlog.** It is one edit that makes the entire training system start working. But it perturbs the engine, so do it *before* Sprint 1 calibration and re-baseline.
+**Consumers fixed:** `PlayerDTO.calculateOverall` (displayed OVR), `MatchRatingCalculator` (match rating), and the four `Team` strength methods (all have 0 callers — dead, useful for Sprint 8).
 
-**Verify:** train a player for 4 weeks → their `*Exact` rises monotonically and their `*Exact`-derived rating rises with it; `int` display value rises at the expected floor boundaries.
-**Test:** `SkillsTest#accessorsReturnExactNotFloored`, `#ratingRespondsToSubIntegerProgress`
-
----
-
-### S0.5 — Passive fatigue recovery
-
-**File:** `newLogic/service/SeasonService.java:341-358` + `newLogic/service/TeamMedicalService.java:39-72`
-
-The bug: fatigue is written in 4 places and recovered in exactly 1 (the manual button). No weekly passive decay anywhere. The UI at `medical-view.js:95` claims "Weekly passive healing still applies" — **false**.
-
-| # | Task | File:line |
-|---|---|---|
-| 1 | Add weekly passive fatigue decay in `decrementInjuriesByWeek` (or a sibling `recoverFatigueWeekly`) | `SeasonService.java:341-358` |
-| 2 | Tune so a starter who plays every week ends the season meaningfully fatigued, a fringe player recovers fully, and a 35-year-old recovers slower than a 22-year-old | — |
-| 3 | Add a medical-staff quality factor to `applyRecovery` (use `Team.juniorCoachSkill` as a placeholder until Sprint 4 ships real staff) | `TeamMedicalService.java:39-72` |
-| 4 | Cooldown / daily limit on the recovery button | `TeamMedicalService.java:39` |
-| 5 | **Fix the false claim in `medical-view.js:95`** | `static/js/pages/views/medical-view.js:95` |
-| 6 | Also apply decay to `Player.injured` desync — `setInjured(false)` on day 0 | `SeasonService.java:341-358` |
-
-**Verify:** play a full season without touching the medical button → end-of-season squad fatigue in a realistic band (target: starters 45–70, fringe players 0–20), and injury frequency stays near the 0.2–0.4/match band.
-**Test:** `FatigueRecoveryTest#passiveDecayScalesWithAgeAndMinutes`, `#medicalButtonRespectsCooldown`
+**Verify:** 8 tests in `SkillsExactRatingTest`, including that whole-number ratings are numerically identical to the old formula, so this is a precision gain with no balance shift on existing saves. `mvn test` 123/123.
 
 ---
 
-### S0.6 — Delete the dead offside / rules paths
+### S0.5 — Passive fatigue recovery ⏭️ SKIPPED, folded into S1.6
 
-**Files:** `newLogic/sim/rules/OffsideService.java`, `newLogic/sim/engine/MatchOrchestrator.java`, `newLogic/sim/engine/decision/CleanDecisionEngine.java`
+**Why skipped (2026-09-26):** the task assumed fatigue accumulates and simply never recovers.
+**It does not accumulate either.** Verified across the whole live domain:
 
-Three documented-but-inert code paths. Small cleanup, but each one is a trap for the next person.
+| Writer | Status |
+|---|---|
+| `Player.addFatigue` (`model/Player.java:76-78`) | **0 callers** |
+| `util/match/MatchContext:59,63` (`+1` per minute) | Dead — only consumer is `PlayerActionProbabilityModel`, which itself has 0 callers |
+| `engine_v1/RealisticMatchEngine:1353,1374,1456` | **Quarantined** to `footballForDelete/` on 2026-09-26 |
+| `sim/engine/FatigueSystem:24` | Writes `sim.model.Player.setFatigue` — the engine's own 0..1 field on a **different class**, never persisted back to `newLogic.model.Skills.fatigue` |
+| `TeamMedicalService:54` (`-12`) | Only live writer, and it only *reduces* |
+| `YouthAcademyService:259` (`setFatigue(0)`) | Resets on promotion |
 
-| # | Task | File:line |
+So `Skills.fatigue` (int 0–100) is never increased anywhere in the live path. It is read by
+`Team.getAvailablePlayers()` (`fatigue < 8`), `Player.getCurrentFatigue()` and `PlayerDTO`, but
+always sits at 0.
+
+**Adding passive recovery now would be recovery for a permanently-zero value** — dead code by the
+"no new dead code" rule in this document. The mechanic needs a *source* before it needs a *sink*.
+
+**Action taken:** folded into **S1.6** (port the injury model), which is where fatigue gets a real
+input — the ported `maybeTriggerInjury` reads fatigue to scale injury probability, so fatigue must
+be produced during the match for that port to mean anything. S1.6 now owns the whole chain:
+accumulate fatigue from minutes played → passive weekly recovery → injury risk.
+
+**Also logged for Sprint 4:** the false claim in `medical-view.js:95` ("Weekly passive healing still
+applies") must be corrected whenever recovery actually lands.
+
+---
+
+### S0.6 — Delete the dead offside / rules paths ✅ DONE 2026-09-26
+
+| # | Task | Result |
 |---|---|---|
-| 1 | The pass-moment offside block is unreachable — `checkOffside` never returns `confirmed=true`. Either make `confirmOffside()`'s return value flow to the caller, or delete the block | `OffsideService.java:121,186,196,199`; `MatchOrchestrator.java:204-216` |
-| 2 | `FootballRules` is instantiated and never read. **Delete the field and the class** — offside lives entirely in `OffsideService` | `MatchOrchestrator.java:48,80`; `sim/rules/FootballRules.java` |
-| 3 | `nearestOpponentBeatsHimToIt` is written but never called, yet documented as an active fix in 3 MD files. Wire it in or delete it — and fix the docs | `CleanDecisionEngine.java:689-703` |
-| 4 | `isPathBlocked()` always returns `false`, making the carry "+12 clear path" bonus unconditional. Implement or remove the bonus | `CleanDecisionEngine.java:862-865` |
-| 5 | `tackles` stat is a mirrored copy of `duelsWon` (`598.5 = 598.5` in diagnostics). Label it honestly or compute it properly | `ProposalStatsCollector.java:209-214` |
+| 1 | `sim/rules/FootballRules.java` — instantiated, never read | ✅ deleted |
+| 2 | Unused `EngineInterfaces.FootballRules` placeholder | ✅ deleted |
+| 3 | `isPathBlocked()` returned literal `false`, making the +12 carry bonus unconditional | ✅ implemented (lane segment vs opponents) |
+| 4 | `nearestOpponentBeatsHimToIt()` had no call site — the bug it documents was never fixed | ✅ wired into `scorePassOptions` (−35) |
+| 5 | `pointSegmentDistance` copy-pasted in 3 places | ✅ consolidated into `SimUtils` |
+| 6 | `tackles` looked like a duplicated `duelsWon` field | ✅ documented as complementary, not a bug |
+| 7 | Unreachable pass-moment offside block | ⏭️ deferred — needs a decision on whether `confirmOffside()`'s discarded return should drive it. **Left for PO** |
 
-**Verify:** `ProposalBatchDiag` output has no field that equals another field. Grep for the deleted symbols returns nothing.
-**Test:** extend `ProposalStatsCollectorTest` to assert `tackles != duelsWon`.
+Items 3 and 4 are deliberate behaviour changes, which is why they belong before Sprint 1
+re-calibration. Engine sanity-checked: `ProposalSeasonDiag` 8 matches → 3.4 goals, 34.5 shots,
+82% pass accuracy, 49/51 possession, 374 duels, 6 corners, 15.5 fouls, 1 scoreless.
+
+> ⚠️ **The calibration baseline in `expertAudit.md` §5 is stale.** It was measured before the
+> quarantine and before the concurrent REC engine work on this branch. **Sprint 1 must re-baseline
+> from current HEAD**, not tune against those numbers.
 
 ---
 
