@@ -39,6 +39,29 @@ public class BallResultHandler {
         this.varService = varService;
     }
 
+
+    /**
+     * Does this ball event TERMINALLY resolve the pending shot?
+     *
+     * <p>True for the explicit shot outcomes (each already clears the flag itself) and, critically,
+     * for every other event that ends the ball's journey - RECEIVE, INTERCEPT, DEFLECT,
+     * LOOSE_PICKUP, STOPPED and the out-of-play resolutions. Those used to leave {@code lastShooter}
+     * set, so a resolved shot stayed pending forever and the next goalkeeper touch of any ball was
+     * recorded as a save against it. A 50-match sample showed 14.1 saves against 12.4 shots on
+     * target, which is impossible.
+     *
+     * <p>False for events that leave the ball in play: FLIGHT (a shot produces many of these before
+     * its outcome) and the OOB hold countdown. Clearing on FLIGHT would discard the shooter before
+     * the outcome and turn every shot into a miss.
+     */
+    private static boolean clearsPendingShot(BallStepResult.Type type) {
+        return switch (type) {
+            case RECEIVE, INTERCEPT, DEFLECT, LOOSE_PICKUP, STOPPED,
+                 OOB_RESTART, OOB_CANCEL -> true;
+            default -> false;
+        };
+    }
+
     public void handle(BallStepResult res) {
                 String eventMsg = "";
                 // "wasShot" = a shot is in flight awaiting its outcome. Uses lastShooter
@@ -46,6 +69,16 @@ public class BallResultHandler {
                 // single shot never emits multiple SHOT_MISSED/SHOT_SAVED etc.).
                 boolean wasShot = state.getLastShooter() != null;
                 Player shooter = state.getLastShooter(); // attribution for shot epilogue
+                // The pending-shot flag must be cleared by EVERY terminal ball event, not only by
+                // the explicit shot outcomes. It previously leaked: RECEIVE, INTERCEPT, DEFLECT,
+                // LOOSE_PICKUP and STOPPED all resolved the ball without clearing lastShooter, so
+                // the shot stayed "pending" indefinitely and the next time the goalkeeper touched
+                // any ball it was recorded as a save for a long-resolved shot. That is why a 50
+                // match sample reported 14.1 saves against 12.4 shots on target - arithmetically
+                // impossible, since a save cannot exceed the shots it saved.
+                if (wasShot && clearsPendingShot(res.getType())) {
+                    state.setLastShooter(null);
+                }
                 switch (res.getType()) {
                     case RECEIVE -> {
                         // The kickoff half-line hold ends when the kickoff pass is
