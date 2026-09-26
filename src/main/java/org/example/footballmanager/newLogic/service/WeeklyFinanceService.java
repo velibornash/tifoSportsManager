@@ -66,19 +66,22 @@ public class WeeklyFinanceService {
     private final FinanceLedgerEntryRepository ledger;
     private final AdmissionService admission;
     private final PitchMaintenanceService pitch;
+    private final StaffSponsorService staffSponsors;
 
     public WeeklyFinanceService(TeamRepository teamRepository,
                                 PlayerRepository playerRepository,
                                 CompetitionEntryRepository entryRepository,
                                 FinanceLedgerEntryRepository ledger,
                                 AdmissionService admission,
-                                PitchMaintenanceService pitch) {
+                                PitchMaintenanceService pitch,
+                                StaffSponsorService staffSponsors) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.entryRepository = entryRepository;
         this.ledger = ledger;
         this.admission = admission;
         this.pitch = pitch;
+        this.staffSponsors = staffSponsors;
     }
 
     /**
@@ -106,6 +109,8 @@ public class WeeklyFinanceService {
         lines.add(merchandising(team));
         lines.add(prizeMoney(team, seasonYear));
         lines.add(wages(team));
+        lines.add(staffWages(team, seasonYear, week));
+        lines.add(sponsorship(team, seasonYear, week));
         lines.add(facilityUpkeep(team));
 
         // Only real lines are written, so the ledger does not fill with 0.00 rows.
@@ -179,6 +184,37 @@ public class WeeklyFinanceService {
         double bill = squad.stream().mapToDouble(p -> Math.max(0, p.getEarnings())).sum();
         return FinanceLedgerEntry.of(team, null, null, FinanceCategory.WAGES, bill,
                 squad.size() + " players under contract");
+    }
+
+    /**
+     * Staff wages. The head coach and the rest of the backroom are a real weekly cost, which is what
+     * makes a coaching appointment a budget decision.
+     */
+    /**
+     * The week number matters: a weekly ledger line with a null week is invisible to the weekly
+     * view and to the idempotency check, so it would be paid for but never displayed.
+     */
+    private FinanceLedgerEntry staffWages(Team team, Integer seasonYear, Integer week) {
+        double bill = staffSponsors.weeklyStaffWage(team.getId());
+        int n = staffSponsors.staffCount(team.getId());
+        if (bill <= 0) return null;
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.STAFF_WAGES, bill,
+                n + " staff on the books");
+    }
+
+    /**
+     * Sponsorship income, from contracts that are actually live this season.
+     *
+     * <p>Previously the Finances page displayed three sponsors whose annual values were derived
+     * from the club's own budget. The money existed only in the browser and was never paid to
+     * anyone, so the wage bill was measured against income that was not real.
+     */
+    private FinanceLedgerEntry sponsorship(Team team, Integer seasonYear, Integer week) {
+        int season = seasonYear == null ? java.time.Year.now().getValue() : seasonYear;
+        double income = staffSponsors.weeklySponsorshipIncome(team.getId(), season);
+        if (income <= 0) return null;
+        return FinanceLedgerEntry.of(team, season, week, FinanceCategory.SPONSORSHIP, income,
+                "Sponsorship contracts, season " + season);
     }
 
     /**

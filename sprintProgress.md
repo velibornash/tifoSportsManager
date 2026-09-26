@@ -735,6 +735,179 @@ user row rather than mocking the filter away, so they also prove the endpoint is
 
 ---
 
+## Sprint 2 — The economy
+
+**Started:** 2026-09-26 · **Owner direction:** connect the system; statistics are not the target.
+**Owner rules honoured throughout:** teams are identified by `teamId` and never by name; the away
+sector is always 20% of the ground.
+
+### S2.1 — Seed a real world ✅ DONE · `305e5b1`
+
+Every one of the 310 clubs was created with `budget = 0.0` and `reputation = 50.0`, so the whole
+economy was inert — gate income, sponsorship, prize money and transfer budgets all scale off those
+two numbers, which made them all zero and all flat.
+
+`EconomyProfileService` derives them from the division tier with per-club variance. The variance
+matters as much as the tier: a reputation that is a pure function of tier makes attendance, playoff
+odds and offer acceptance flatlines. It is derived from the **team id** rather than drawn at random,
+so a re-seed does not reshuffle the country's strength order and invalidate a saved league table.
+
+Stadium scale follows the tier too — a 5,000-seat ground for a Superliga club makes gate income
+meaningless.
+
+#### The team-name collision: not a style issue, a correctness bug
+
+> Owner, 2026-09-26: *"apsolutno se mogu dva tima zvati isto zato je potrebno da se uvek gledaju po
+> teamId"*
+
+`Team.name` has **no unique constraint** and `TeamRepository.findByName` returns `Optional<Team>`, so
+two clubs sharing a name break it outright. What it was actually doing:
+
+`populateLeagueWithTeams` rebuilt its "already used" set **per league**. League A took a random name,
+League B drew the same one, `findOrCreate` returned the **same** `Team` by name, and
+`addTeamToLeague` then called `team.setCompetition(...)` — moving a club that was already in another
+division. One club, two leagues, league table pointing at the wrong one.
+
+- The used-ids set is now **global per seeding run**.
+- `addTeamToLeague` refuses to reassign a club that already has a division, and says so in the log.
+- `AttendanceService`'s rivalry bonus compared `homeTeam.getName().charAt(0)` to
+  `awayTeam.getName().charAt(0)` — so any two clubs starting with the same letter were a "derby",
+  and a club was a rival with itself. Now keyed on ids.
+- The derby check compares **country ids**, not country names, for the same reason.
+
+### S2.2 — The gate, ticket tiers, and pitch maintenance ✅ DONE · `305e5b1`
+
+`AdmissionService` owns three rules so there is exactly one definition of each:
+
+1. **Ticket tiers.** A club does not sell one price — it sells economy / standard / premium, and the
+   spread is a real lever. Cheap seats fill the ground, premium seats buy cash. Each tier has a floor
+   and a ceiling so the settings screen cannot set a €0 or €500 ticket.
+2. **The away sector is always 20% of the ground**, and the home club can never sell it. A sold-out
+   away end is what makes a big club's away trip worth taking.
+3. **Gate revenue weights each tier by how full it is**, so an empty premium block is worth nothing.
+
+`AttendanceService` responds to what the owner asked: home **reputation, success and recent form**,
+plus the away club at a much lower weight — a big club travelling still brings a crowd, but never
+past the cap. **Ticket price affects demand**, and hits the walk-up home crowd harder than the
+travelling end. Recent form is what makes a turnaround feel like one: reputation does not move for a
+week, form does.
+
+**Pitch wear is real.** Every match costs condition; the club sets a weekly maintenance budget;
+condition only recovers out of it, **capped by the long-term quality of the surface**, so a
+neglected pitch recovers to a poor ceiling rather than to 100. Condition and quality are separate
+numbers because the old single `pitchQuality` could not express *"this club stopped investing"*.
+Unspent budget carries forward, so a club can save up for a resurfacing.
+
+#### Three calibrations the tests caught
+
+- `RESTORE_PER_EUR` was €50 **per condition point**, so the whole €50,000 weekly cap was worth more
+  than the pitch's entire 0–100 range. Now €2,000/point, calibrated against the wear figure.
+- `realisedGateRevenue` filled the **premium block first** while its own comment said "fill premium
+  last" — so a 30% crowd was worth *more* per head than a full one. Real crowds fill the cheap end
+  first. The comment and the code disagreed; the test caught the pair.
+- `setStandardPrice` saved through the repository, so a pricing rule could not be unit tested without
+  one. The stadium is cascaded from the team anyway.
+
+### S2.2b — The ledger, and an economy for every club ✅ DONE · `4d09e40`
+
+`FinanceLedgerEntry` + `FinanceCategory` (12 categories, income and cost) and
+`WeeklyFinanceService.applyWeeklyFinances(team, seasonYear, week)`.
+
+**Append-only, not a running balance.** A manager who cannot see *why* the money moved cannot fix
+it, and a single number on `Team.budget` cannot answer "which week did the wage bill double, and
+what happened that week". Amounts are stored signed — income positive, cost negative — so a category
+sums to the net without re-reading the enum.
+
+**Income:** gate (realised per-tier price), broadcast (`Competition.reputationWeight × base` — that
+field has been seeded as `tier × 20` since the beginning and **read by nothing**, so a second-tier and
+a first-tier club were on the same money), merchandising. **Costs:** the wage bill
+(`Player.earnings`, seeded realistically and read by nothing until now), facility upkeep, and pitch
+maintenance charged from the programme the club actually funded.
+
+**Every club settles, not just the user's.** This is the difference between a game and a spreadsheet.
+An AI club with no economy can never be bought, sold, or promoted out of trouble, which quietly breaks
+promotion and relegation. Per-club `REQUIRES_NEW` transaction, and a failure for one club is logged
+and stepped over rather than rolling back the other 309.
+
+**Idempotent per club and week** — `advanceWeek` is reachable from more than one path, and a double
+settlement is a silent double wage bill.
+
+### S2.4 — Board expectations and manager trust ✅ DONE · `fc558a2`
+
+A manager game needs a manager. Without a board there is no consequence for a bad season, no
+tension in a transfer window, and no reason to care about the wage bill beyond it being a number on
+a screen.
+
+**FFP-lite is the headline rule:** `weekly wage bill ÷ weekly income`. Shown to the player rather
+than applied behind their back — a trust penalty the manager cannot see is a gotcha, not a rule.
+Bands: under 0.90 prudent, under 1.15 healthy, under 1.35 strained, above that critical. Under 0.9
+the board notices too, because a manager who never spends anything is also not winning anything.
+
+**An unplayed season is `UNKNOWN`, not insolvent.** With no settled weeks there is no income to
+divide by, so the ratio is `null` and health is `UNKNOWN`. Treating "no data" as "bankrupt" would
+have shown every new club as a crisis in its first week.
+
+**Trust** starts at 60 and moves on the three things a board actually reacts to: solvency, league
+position, and whether the players are happy — the last feeding straight into S2.6's morale. Below 20
+a sacking review is flagged. Concerns and plaudits come back as sentences, because "trust 43" on its
+own is not actionable.
+
+**The whole client-side finance fiction is deleted.** `club-management.js` was inventing three
+sponsors, a monthly income of `budget * 0.055`, a wage budget of `squadSize * 1850`, and six months
+of history that had never been played. None of it was in the database, so the screen looked identical
+for a solvent club and a bankrupt one. It now reads the ledger, and if the API is unavailable it
+**says so** rather than inventing plausible numbers — a wrong number on this screen is worse than no
+number.
+
+### S2.3 — Staff and sponsors as real entities ✅ DONE
+
+**Date:** 2026-09-26 · **Commit:** this section
+
+There was **no `StaffMember` or `Sponsor` entity anywhere in the codebase.** The staff directory was
+a hardcoded array of literal strings in the browser (`staff-directory.js:12-51`) reading from an
+endpoint that returned a constant, so every club in the country had the same four coaches with the
+same ages, contracts and wages — and the wages shown were the wages of nobody. Coaching had **zero**
+simulation effect.
+
+- **`StaffMember`** — role, name, age, contract end, weekly wage, and six 1-20 attributes
+  (`development`, `tactical`, `motivation`, `goalkeeping`, `fitness`, `scouting`) consumed by
+  Sprint 4 and Sprint 5. Staff are **specialised**: a scout's scouting attribute is genuinely high, a
+  physio's fitness is.
+- **`Sponsor`** — name, tier (`TITLE` only for a top-flight club), annual value, term, and a
+  **performance bonus clause**, so winning a cup is worth more than a mid-table finish. An expired
+  contract pays nothing, which is what makes losing a sponsor an event.
+- **Size and quality scale** with the division tier and the club's reputation: 3–6 staff, wages from
+  €355/week at the bottom to over €12,000 for a top-flight head coach.
+- **The specific people are derived from the team id, not drawn at random.** A random draw reshuffles
+  every club's staff on each reseed, which makes a saved league meaningless and evaporates any
+  relationship the manager had built with their head coach. There is a test that reseeds and asserts
+  the head coach is the same person.
+- **Both now reach the ledger** as `STAFF_WAGES` (a real weekly cost) and `SPONSORSHIP` (real weekly
+  income). Before this, the wage bill was being measured against income that existed only in the
+  browser.
+
+`StaffDirectoryController` replaces `/demo/teams/{id}/coaches` and reports vacancies — a club with no
+head coach is visibly broken rather than quietly employing three of them.
+
+#### Three bugs, all from one habit
+
+`stableUnit` returns a **signed** long. Three places took `% N` without `Math.abs`:
+
+1. `spread` could go to −2, so `attr()` **divided by zero** and the seeder threw for every club.
+2. Contract end could land in the **past**, so a freshly seeded club had already-expired staff.
+3. (Same class of error, caught in review rather than by a test.)
+
+And one design bug the tests caught: **staff and sponsorship lines were written with a `null` week**,
+so they were paid but invisible to the weekly view and to the idempotency check — money leaving the
+account with nothing to show for it.
+
+**8 tests. 243 total.**
+
+### Sprint 2 test count
+
+221 before the ledger, 228 after, **235** after the board, **243** after staff and sponsors. 7 ledger,
+7 board, 8 admission, 9 pitch-maintenance and 8 staff/sponsor tests this sprint.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
