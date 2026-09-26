@@ -1709,6 +1709,39 @@ to play for in the last two rounds.
    the league?
 
 
+---
+
+# NATIONAL TEAMS — placeholder (owner, 2026-09-27)
+
+**Not built. Deliberately parked at the end of the last sprint, as instructed.**
+
+What the owner specified:
+
+- At the **start of each season**, every country picks a **human user** as its national-team
+  manager. That user chooses the **squad**, the **lineup** and the **tactics**.
+- A player selected for his country **earns minutes like any other match** — league, cup, European,
+  national team, friendly all count together toward the 120-minute weekly maximum in the training
+  formula. So national-team selection is a *development* decision, not a prestige one: a call-up
+  is worth about 90 minutes of a week's training.
+- The training percentage therefore does **not** care who the national-team coach is. There is no
+  national-team staff in the game yet, so a player's club coach supplies the coach factor. This is
+  the same answer as the "coach for minutes <= 0" question, and it holds for call-ups too.
+
+## What this needs, when it gets built
+
+- [ ] A country → selected manager mapping, chosen once per season
+- [ ] Squad selection, lineup and tactics for the national team
+- [ ] National-team fixtures in the season calendar — **and a decision on which weeks they occupy**,
+      because every week already has exactly two slots filled. A call-up is worth less if it costs a
+      league match.
+- [ ] Minutes must be written to `MatchPlayerStats` the same way club minutes are, so the training
+      aggregation picks them up with no special-casing. `Match.competition` already distinguishes
+      them, so this is mostly wiring rather than new structure.
+- [ ] Competition type for national football, distinct from club competitions, so a national match
+      cannot be mistaken for a club fixture in the transfer or fixture logic
+
+---
+
 # Cross-cutting definitions of done
 
 For any task in this backlog:

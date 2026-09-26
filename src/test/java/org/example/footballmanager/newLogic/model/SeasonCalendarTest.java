@@ -80,6 +80,53 @@ class SeasonCalendarTest {
     }
 
     @Test
+    @DisplayName("the whole twelve weeks match the owner's table, slot by slot")
+    void theOwnersTableVerbatim() {
+        // Written out longhand rather than derived, on purpose: a test that recomputes the table
+        // from the same constant it is checking proves nothing. This is the owner's instruction
+        // transcribed, and it is the thing a change has to keep matching.
+        assertEquals("r1", slotLabel(1, 1));
+        assertEquals("r2", slotLabel(1, 2));
+        assertEquals("r3", slotLabel(2, 1));
+        assertEquals("r4", slotLabel(2, 2));
+        assertEquals("r5", slotLabel(3, 1));
+        assertEquals("r6", slotLabel(3, 2));
+        assertEquals("r7", slotLabel(4, 1));
+        assertEquals("r8", slotLabel(4, 2));
+
+        // Week 5 is league-then-friendly and week 6 is friendly-then-league. That asymmetry is the
+        // owner's, and it is why a round number no longer implies a day.
+        assertEquals("r9", slotLabel(5, 1));
+        assertEquals("FRIENDLY", slotLabel(5, 2));
+        assertEquals("FRIENDLY", slotLabel(6, 1));
+        assertEquals("r10", slotLabel(6, 2));
+
+        assertEquals("r11", slotLabel(7, 1));
+        assertEquals("r12", slotLabel(7, 2));
+        assertEquals("r13", slotLabel(8, 1));
+        assertEquals("r14", slotLabel(8, 2));
+        assertEquals("r15", slotLabel(9, 1));
+        assertEquals("r16", slotLabel(9, 2));
+        assertEquals("r17", slotLabel(10, 1));
+        assertEquals("r18", slotLabel(10, 2));
+
+        // Week 11: the playoff takes Thursday, so only the clubs not in it may play then.
+        assertEquals("FRIENDLY_IF_NOT_IN_PLAYOFF", slotLabel(11, 1));
+        assertEquals("FRIENDLY", slotLabel(11, 2));
+        // The break is two friendlies and nothing else.
+        assertEquals("FRIENDLY", slotLabel(12, 1));
+        assertEquals("FRIENDLY", slotLabel(12, 2));
+    }
+
+    /** A short, readable label for a slot, for the assertions above. */
+    private String slotLabel(int week, int slot) {
+        SeasonCalendar.WeekSlot s = SeasonCalendar.slot(week, slot);
+        return s.kind() == SeasonCalendar.SlotKind.LEAGUE
+                ? "r" + s.leagueRound()
+                : s.kind().name();
+    }
+
+    @Test
     @DisplayName("the mid-season window is weeks 5 and 6")
     void midSeasonWindow() {
         assertFalse(SeasonCalendar.isWindowOpen(4));
