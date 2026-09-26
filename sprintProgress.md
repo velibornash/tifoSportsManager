@@ -336,36 +336,54 @@ table before tuning begins.
 Several things already improved on their own (goal kicks 40.7 → 19.8, throw-ins into range,
 red cards 1.0 → 0.15, scoreless 0% → 6%). The remaining outlier is **saves**.
 
-### 🔴 OPEN DEFECT — saves exceed shots on target
+### 🔴 RESOLVED — the saves anomaly was a physics bug, not a counter bug
 
-`BallResultHandler` uses `lastShooter != null` as "a shot is in flight awaiting its outcome".
-**14.1 saves against 12.4 shots on target is arithmetically impossible**, so one counter is wrong.
+**I got this wrong twice and am recording both mistakes.**
 
-**Fixed so far:** the pending-shot flag was only cleared by the explicit shot outcomes.
-`RECEIVE`, `INTERCEPT`, `DEFLECT`, `LOOSE_PICKUP`, `STOPPED`, `OOB_RESTART` and `OOB_CANCEL` all
-resolved the ball while leaving it set. `clearsPendingShot()` now makes terminal vs non-terminal
-explicit, with 8 tests in `BallResultHandlerPendingShotTest`.
+**Mistake 1 (e5b739c):** I called "14.1 saves against 12.4 shots on target" arithmetically
+impossible and built an investigation on it. **It is not impossible** — a keeper legitimately
+saves off-target attempts, and `BallPhysicsEngine` never checked on-targetness before recording a
+save. My diagnosis was wrong even though the numbers looked wrong.
 
-**Not fixed — and I want to be explicit about this.** Preserving `FLIGHT` (correct, since a shot
-emits many FLIGHT steps before its outcome) leaves the anomaly unchanged at **14.4 saves**. The
-opposite classification produced self-consistent, realistic numbers — saves 7.4, conversion 32.0%
-against a real ~32% — but *only because it discarded the shooter mid-flight*, breaking attribution.
-That is a coincidence, not a fix, so it was not kept.
+**Mistake 2 (749fd21, the real fix):** the actual defect, found by splitting the counter rather than
+arguing about it — **26% of off-target attempts were being "saved"**, ~5.3 phantom saves per match,
+purely because the flight segment passed near the keeper's arms. `saves/SOT` was 1.16 against a real
+0.68. The pending-shot classification work in `e5b739c` was correct in itself and was kept, but it
+was never the cause.
 
-**Ruled out:** RECEIVE, INTERCEPT, DEFLECT, LOOSE_PICKUP, STOPPED, OOB_RESTART, OOB_CANCEL.
+**The fix:** `onTrajectoryForGoal()` extends the flight to the goal line and requires the crossing
+point to be inside the frame plus a 0.35-cell (~3.5 m) fingertip margin. Geometry gate only — it does
+not make any save easier, it stops the keeper fishing at balls that were already missing.
+**`GoalkeeperEngine` is untouched.**
 
-**Next hypotheses to test, in order:**
-1. A shot whose outcome is never reached — slows to a stop short of any terminal event, or is
-   swallowed by the OOB hold path — leaves the flag set forever.
-2. The `SAVE` case assumes `state.getCarrier()` is the keeper. A gather that is not typed `SAVE`
-   never enters that branch and so never clears the flag.
-3. `stats.onSave` is attributed to `gk.getTeam()` while the shot is attributed to
-   `carrier.getTeam()` at strike time. If the carrier changes between strike and save, the two can
-   disagree.
+| Metric | Before | After | Real PL |
+|---|---:|---:|---:|
+| saves | 14.4 | **7.1** | ~5.8 |
+| saves / SOT | 1.16 | **0.56** | 0.68 |
+| shots missed | 9.3 | **14.9** | ~14 |
+| shot conversion | 51.5% | **30%** | ~32% |
+| on-target save rate | 73.4% | **70%** | ~68% |
 
-**Consequence for the backlog:** ⚠️ **any calibration of the goalkeeper or shot model is unsafe
-until this is resolved.** `GoalkeeperEngine` is the most correct and best-tested component in the
-repo and must not be "fixed" to compensate for a statistics bug. S1.1 is blocked on this.
+**The keeper was never the problem.** His on-target save rate was always realistic; he was simply
+also catching shots that sailed wide.
+
+### Where the calibration actually stands now
+
+| Metric | Current | Real PL | Status |
+|---|---:|---:|---|
+| saves | 7.1 | ~5.8 | ✅ |
+| saves / SOT | 0.56 | 0.68 | ✅ |
+| shots missed | 14.9 | ~14 | ✅ |
+| shot conversion | 30% | ~32% | ✅ |
+| on-target % | 39% | 33% | ⚠️ high |
+| **shots** | **33.1** | **25** | ❌ **32% high** |
+| **shots on target** | **12.6** | **8.5** | ❌ **48% high** |
+| **goals** | **3.8** | **2.7** | ❌ **41% high** |
+| scoreless | 0/50 | ~6% | ❌ none |
+
+**Shot VOLUME is now the single dominant outlier, and goals follow from it.** With the statistics
+finally trustworthy, S1.1 continues: reduce shot volume toward 25/match and SOT% toward 33%, which
+should pull goals to ~2.7 and bring nil-draws back on their own.
 
 **Tests: 124 → 132.**
 
