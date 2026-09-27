@@ -2,7 +2,7 @@
 import { htmlEscape, formatBudget, buildMilestoneBoardHtml } from './utils.js';
 
 export function createClubView(deps) {
-    const { authFetch, getTeamId, buildClubActionsHtml } = deps;
+    const { authFetch, getTeamId, buildClubActionsHtml, openLeagueById, loadPage } = deps;
 
     async function loadClubProfile() {
         const teamId = getTeamId();
@@ -69,6 +69,14 @@ export function createClubView(deps) {
                         <div class="club-profile-detail-row"><span>Stadium</span><strong>${htmlEscape(profile.stadium || 'N/A')}</strong></div>
                         <div class="club-profile-detail-row"><span>Budget</span><strong>${htmlEscape(formatBudget(profile.budget))}</strong></div>
                         <div class="club-profile-detail-row"><span>Reputation</span><strong>${htmlEscape(profile.reputation || 'N/A')}</strong></div>
+                        <!-- The league, as a link. It was missing entirely: a club profile that
+                             does not say which division it is in, and cannot take you there. -->
+                        <div class="club-profile-detail-row"><span>League</span><strong>${
+                            profile.leagueId
+                                ? `<a class="fm-CTeam-link" href="#" data-open-league="${htmlEscape(String(profile.leagueId))}"
+                                      data-league-name="${htmlEscape(profile.leagueName || '')}">${htmlEscape(profile.leagueName || 'League')}</a>`
+                                : htmlEscape('No league')
+                        }</strong></div>
                     </div>
                 </section>
             </div>
@@ -84,10 +92,22 @@ export function createClubView(deps) {
             </section>
         </div>`;
 
+        // League link. One delegated listener because the profile is re-rendered on every visit and
+        // a listener bound to a node that gets replaced stops working silently.
+        mainContent.querySelectorAll('[data-open-league]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                openLeagueById(link.dataset.openLeague, link.dataset.leagueName || '');
+            });
+        });
+
         const stadiumButton = mainContent.querySelector('.club-profile-stadium-btn');
         if (stadiumButton) {
+            // Goes to the stadium page, which is the real one. This used to open a hard-coded
+            // picture of somebody else's ground in a new tab, so a manager could not see their own
+            // capacity, prices, colours or pitch.
             stadiumButton.addEventListener('click', () => {
-                showStadiumModal(stadiumButton.dataset.stadiumImage, stadiumButton.dataset.stadiumName);
+                loadPage('stadium');
             });
         }
     }

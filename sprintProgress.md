@@ -2470,3 +2470,55 @@ PO chose: **auction closes unsold below reserve → player stays listed and can 
 5. Add admin force-list capability
 6. Fix `maybeCreateAiListing` to skip non-human clubs
 
+
+### The account corner, the manager's own league, and the stadium (owner request 2026-09-27)
+
+**Sign-out existed only on the lobby page.** Once you were inside the SPA there was no way to end a
+session — least of all on a phone, where the lobby is a page you have to navigate back to. The
+account is now in the top bar on both layouts: avatar initial, username, and a `club · league ·
+country · role` line, with the profile page and sign-out behind it. The mobile drawer carries the same
+identity block, because a menu that only exists above 768px is not a menu on a phone.
+
+**The league was hardcoded, and so was the missing country.** The manager's own competition now comes
+from `/auth/me` (`competitionId`, `competitionName`, `competitionTier`), which is the same payload the
+rest of the session uses, so the top bar and the club page cannot disagree. `getCurrentLeagueId()` and
+`ensureCurrentLeagueId()` both **lost their `|| 1` fallback** — that fallback silently put another
+club's table in front of a manager whose club had no competition, which is worse than an empty page.
+The league views now render an explicit "No league yet" state. Existing text-manager `CTeam`s are
+backfilled to Serbia and `ensureSidLeague()` is idempotent, because "the country field was empty" is
+not something a manager can fix from the UI.
+
+**Four bugs, and every one of them looked like a styling problem.** This is the part worth keeping.
+
+1. **The whole SPA module graph was dead.** `stadium-view.js` imported `htmlEscape` from
+   `'../auth.js'`, which from `js/pages/views/` resolves to `/js/pages/auth.js` — a 404. One bad
+   specifier in one leaf file took down `pages.js` and therefore every `window.*` handler the page
+   depends on. `window.loadPage` being `undefined` was the tell.
+2. **`htmlEscape` is not in `auth.js` at all** — it lives in `pages/views/utils.js`. So even with the
+   path fixed, the named import would have failed at link time for the same reason. Correct source,
+   wrong module, twice.
+3. **`pages.js` used six functions it never imported.** `logout`, `paintAccountMenu`, `toggleUserMenu`,
+   `closeUserMenu`, `initAccountMenu` and `renderUserProfile` were called and exported but had no
+   `import` statement. Because the `window.*` assignments run in order, `window.loadPage` was defined
+   and the very next line threw — which is why the failure looked like "some globals are missing"
+   rather than a syntax error. `initAccountMenu()` never ran, so the dropdown had no click handler.
+4. **The mobile menu was genuinely broken, and not by my change.**
+   `components.css` is imported *after* `layout.css`, so any component rule that sets `display` beats
+   the `.desktop-only { display: none }` utility. At 390px the desktop menu rendered, overflowed, and
+   the hamburger never appeared. The responsive utilities are now enforced with `!important` in
+   `overrides.css`, the last file in the import order.
+
+**The session is bootstrapped twice, and only one of the two paints.** `dashboard.js` fetches
+`/auth/me` on `window.load`; `pages.js` has its own `loadUserTeamId()` that never runs on a direct page
+load. Rather than a third fetch, the painter is exposed on `window` and `dashboard.js` hands over the
+payload it already has — the same pattern as `updateCountryMenuLabels()`.
+
+**Stadium.** Capacity and expansion, four side and four corner colours, seat quality, roof, ticket
+prices, pitch upkeep and the ground's own picture, with costs that scale with the tier instead of being
+flat. `backfillStadiumCeilings` lifts existing grounds' ceilings so an old save is not locked out of
+growth it should have had.
+
+**Verified in the browser, not just in tests.** Desktop 1280×900 and mobile 390×844: account corner
+painted on both, drawer opens, dropdown opens with profile and sign-out, profile page shows the real
+club/league/country, league table headed `Opštinska liga Šid · Season 1` with Sremac in it, no
+horizontal overflow. **549 tests.**

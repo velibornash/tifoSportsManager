@@ -19,6 +19,33 @@
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
 	    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
 	    <div id="admin-menu-button" class="menu-button desktop-only" data-admin-only hidden onclick="loadPage('admin')">&#128295; Admin</div>
+    <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
+         no way out of a session at all on a phone. This is the account corner: who you are, your
+         profile, and the way out. -->
+    <div class="user-menu desktop-only">
+        <button type="button" class="menu-button user-menu-trigger" id="user-menu-trigger"
+                aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
+            <span class="user-menu-avatar" id="user-menu-avatar" aria-hidden="true">?</span>
+            <span class="user-menu-name" id="user-menu-name">Signed in</span>
+            <span class="user-menu-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="user-menu-panel" id="user-menu-panel" role="menu" hidden>
+            <div class="user-menu-identity">
+                <div class="user-menu-identity-name" id="user-menu-panel-name">&mdash;</div>
+                <div class="user-menu-identity-meta" id="user-menu-panel-meta"></div>
+            </div>
+            <button type="button" class="user-menu-item" role="menuitem" onclick="loadUserProfile()">
+                <span class="user-menu-item-icon" aria-hidden="true">&#128100;</span> My profile
+            </button>
+            <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('clubProfileSettings')">
+                <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Club settings
+            </button>
+            <div class="user-menu-sep" role="separator"></div>
+            <button type="button" class="user-menu-item user-menu-item--danger" role="menuitem" onclick="logout()">
+                <span class="user-menu-item-icon" aria-hidden="true">&#128682;</span> Sign out
+            </button>
+        </div>
+    </div>
     <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>
@@ -93,6 +120,25 @@
         <div class="mobile-accordion">
             <div class="accordion-header" onclick="window.location.href='/home.html'">
                 ⚽🏀🏈 Sports Lobby
+            </div>
+        </div>
+
+        <!-- The same account block as the desktop top bar, as a full-width row at the foot of the
+             drawer. On a phone this is the only signout there is, so it is deliberately at the
+             bottom of the menu rather than hidden behind the logo. -->
+        <div class="mobile-accordion mobile-user-block">
+            <div class="mobile-user-identity">
+                <span class="user-menu-avatar user-menu-avatar--lg" id="user-menu-avatar-mobile" aria-hidden="true">?</span>
+                <span>
+                    <strong id="user-menu-name-mobile">Signed in</strong>
+                    <small id="user-menu-meta-mobile"></small>
+                </span>
+            </div>
+            <div class="accordion-header" onclick="closeMobileMenu(); loadUserProfile()">
+                &#128100; My profile
+            </div>
+            <div class="accordion-header" onclick="closeMobileMenu(); logout()">
+                &#128682; Sign out
             </div>
         </div>
 

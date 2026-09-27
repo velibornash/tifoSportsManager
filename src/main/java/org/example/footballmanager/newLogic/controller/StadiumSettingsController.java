@@ -39,6 +39,7 @@ public class StadiumSettingsController {
     private final TeamRepository teamRepository;
     private final AdmissionService admission;
     private final TrainingFacilityService facilities;
+    private final org.example.footballmanager.newLogic.service.StadiumBuildService build;
     private final PitchMaintenanceService pitch;
 
     @GetMapping
@@ -93,6 +94,58 @@ public class StadiumSettingsController {
      * What the current settings would produce on a home fixture — so a manager can see the effect
      * of a price change before committing to it, instead of discovering it a week later.
      */
+    /**
+     * Builds the ground out: more seats, better seats, or a roof.
+     *
+     * <p>One endpoint with an {@code action} rather than three, because they are the same decision
+     * from the manager's side — "spend on the ground" — and they all cost money and all have a
+     * ceiling. Each refuses with a reason the page can show, rather than a 500.
+     */
+    @PostMapping("/build")
+    public ResponseEntity<?> buildGround(@PathVariable Long teamId,
+                                         @RequestBody(required = false) Map<String, Object> body) {
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        Map<String, Object> in = body == null ? Map.of() : body;
+        String action = String.valueOf(in.getOrDefault("action", "")).toLowerCase(Locale.ROOT);
+
+        Object result = switch (action) {
+            case "expand" -> build.expand(team, intOf(in.get("seats"), 1000));
+            case "seats" -> build.improveSeats(team);
+            case "roof" -> build.buildRoof(team);
+            default -> Map.of("refused", true,
+                    "error", "Unknown action '" + action + "'. Use expand, seats or roof.");
+        };
+        if (result instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get("refused"))) {
+            // A refusal is a normal answer to a question the manager asked, not a server fault.
+            return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+        }
+        return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+    }
+
+    /** Repaints the ground. Free, and validated. */
+    @PostMapping("/paint")
+    public ResponseEntity<?> paint(@PathVariable Long teamId,
+                                   @RequestBody(required = false) Map<String, String> colours) {
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        var result = build.paint(team, colours);
+        return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+    }
+
+    private static int intOf(Object value, int fallback) {
+        if (value instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
     @GetMapping("/projection")
     public ResponseEntity<Map<String, Object>> project(@PathVariable Long teamId) {
         Team team = teamRepository.findById(teamId).orElse(null);
@@ -132,6 +185,22 @@ public class StadiumSettingsController {
         // Training facilities ride along with the stadium they belong to rather than getting their own
         // screen: a manager does not think of "my gym" as separate from "my ground", and splitting
         // them across two pages is how a feature ends up built and never looked at.
+        stadium.put("northColour", s.getNorthColour());
+        stadium.put("southColour", s.getSouthColour());
+        stadium.put("eastColour", s.getEastColour());
+        stadium.put("westColour", s.getWestColour());
+        stadium.put("northEastCornerColour", s.getNorthEastCornerColour());
+        stadium.put("northWestCornerColour", s.getNorthWestCornerColour());
+        stadium.put("southEastCornerColour", s.getSouthEastCornerColour());
+        stadium.put("southWestCornerColour", s.getSouthWestCornerColour());
+        stadium.put("seatQuality", s.getSeatQuality() == null ? 10 : s.getSeatQuality());
+        stadium.put("roof", s.isRoof());
+        stadium.put("expandableTo", s.getExpandableTo());
+        // What the next step costs, so the page can show a price instead of only failing on click.
+        stadium.put("expansionQuote", build.expansionQuote(team, 1000));
+        stadium.put("seatQuote", build.seatQuote(team));
+        stadium.put("roofCost", s.isRoof() ? 0 : build.roofCost(s));
+        stadium.put("budget", team.getBudget());
         out.put("trainingFacilities", facilities.levels(team));
         out.put("weeklyTrainingUpkeep", facilities.weeklyUpkeep(team));
         out.put("upkeepCategory", FinanceCategory.FACILITY_UPKEEP.label());

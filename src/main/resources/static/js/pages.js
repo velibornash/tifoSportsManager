@@ -27,7 +27,11 @@ import { createFixtureView } from './pages/views/fixture-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createClubView } from './pages/views/club-view.js';
+import { createStadiumView } from './pages/views/stadium-view.js';
 import { createAdminView } from './pages/views/admin-view.js';
+import {
+    logout, paintAccountMenu, toggleUserMenu, closeUserMenu, initAccountMenu, renderUserProfile
+} from './ui/account-menu.js';
     let currentUserTeamId = null;
     let currentUserTeamName = '';
 	    let currentUsername = '';
@@ -197,6 +201,9 @@ import { createAdminView } from './pages/views/admin-view.js';
             currentSeasonYear = user.seasonYear ?? null;
             currentUserCountryName = user.countryName || '';
             currentUserCountryIsoCode = user.countryIsoCode || '';
+            // Paint the account corner from the same payload everything else uses, so the name in
+            // the top bar cannot disagree with the club the rest of the page is showing.
+            paintAccountMenu(user, currentUserCompetitionName || '');
             currentLeagueSeasonYear = currentSeasonYear || currentLeagueSeasonYear;
             if (!normalizeLeagueId(activeLeagueId)) {
                 syncUserLeagueContext();
@@ -216,8 +223,15 @@ import { createAdminView } from './pages/views/admin-view.js';
 
 	async function ensureCurrentLeagueId() {
 	    if (!await ensureUserTeamId()) return null;
-		    return normalizeLeagueId(activeLeagueId) || normalizeLeagueId(currentUserCompetitionId) || 1;
-	}
+		    const resolved = normalizeLeagueId(activeLeagueId) || normalizeLeagueId(currentUserCompetitionId);
+		    if (!resolved) {
+		        // No fallback. Defaulting to league 1 silently showed one manager another club's
+		        // table; a club with no competition is a data problem, and the views render an
+		        // explicit empty state rather than somebody else's league.
+		        console.warn('[league] this manager has no competition; showing the no-league state.');
+		    }
+		    return resolved;
+		}
 
 	function getCurrentLeagueName() {
 		    return activeLeagueName || currentUserCompetitionName || 'League';
@@ -341,8 +355,14 @@ import { createAdminView } from './pages/views/admin-view.js';
         pushNavState, getActiveLeagueNavState, goBackSmart,
         buildClubActionsHtml,
         loadMatch: (...args) => loadMatch(...args),
+        // The fixture detail links its venue to the club that plays there, which is the same
+        // club-loading routine the league view uses.
+        loadLeagueTeam: (...args) => leagueView.loadLeagueTeam(...args),
         matchesFeature,
         renderFixturesView, renderMatches: (...args) => renderMatches(...args)
+    });
+    const stadiumView = createStadiumView({
+        authFetch, getTeamId: () => currentUserTeamId, formatBudget
     });
     const countryView = createCountryView({
         authFetch,
@@ -365,7 +385,11 @@ import { createAdminView } from './pages/views/admin-view.js';
         loadLeagueTeamPlayer: (...args) => leagueView.loadLeagueTeamPlayer(...args)
     });
     const clubView = createClubView({
-        authFetch, getTeamId: () => currentUserTeamId, buildClubActionsHtml
+        authFetch, getTeamId: () => currentUserTeamId, buildClubActionsHtml,
+        // Takes you to a named league and remembers that you came from the club profile, so Back
+        // returns there instead of the dashboard.
+        openLeagueById: (leagueId, leagueName) => openLeagueById(leagueId, leagueName, 'profile'),
+        loadPage: (...args) => loadPage(...args),
     });
     const adminView = createAdminView({
         getTeamId: () => currentUserTeamId,
@@ -530,6 +554,12 @@ import { createAdminView } from './pages/views/admin-view.js';
                 case "analytics":
                     window.location.href = '/zox-match-preview.html';
                     return;
+
+                case "userProfile":
+                    return loadUserProfile();
+
+                case "stadium":
+                    return stadiumView.loadStadium();
 
                 default:
                     mainContent.innerHTML = buildEmptyState("Page not found");
@@ -733,7 +763,55 @@ import { createAdminView } from './pages/views/admin-view.js';
     async function loadTransfers() {
         return clubManagementFeature.loadTransfers();
     }
+    /**
+     * The signed-in user's own page, off the /auth/me payload that is already loaded.
+     *
+     * <p>Re-fetched rather than read from a module variable, because a page you are looking at should
+     * never be showing a stale copy of who you are, and the request is one small call.
+     */
+    async function loadUserProfile() {
+        await ensureUserTeamId();
+        try {
+            const res = await authFetch('/auth/me');
+            if (!res.ok) throw new Error('could not load the account');
+            renderUserProfile(await res.json(), htmlEscape, formatBudget);
+        } catch (err) {
+            document.getElementById('main-content').innerHTML =
+                buildEmptyState('Your account could not be loaded. ' + (err && err.message ? err.message : ''));
+        }
+    }
+
+    /**
+     * Open a named league from anywhere, remembering where the user came from.
+     *
+     * <p>On window because it is used by the schedule screen, which is a set of shared renderers and
+     * has no other way to reach the router's league context. The back target is what makes the club
+     * profile's league link land on the league and then come back to the profile.
+     */
+    function openLeagueById(leagueId, leagueName, backTarget) {
+        setActiveLeagueContext({
+            leagueId,
+            leagueName: leagueName || 'League',
+            countryIsoCode: currentUserCountryIsoCode || '',
+            backTarget: backTarget || 'dashboard'
+        });
+        return loadPage('leagueTable', { preserveLeagueContext: true });
+    }
+
+    window.openLeagueById = openLeagueById;
     window.loadPage = loadPage;
+    window.logout = logout;
+    window.loadUserProfile = loadUserProfile;
+    window.toggleUserMenu = toggleUserMenu;
+    // dashboard.js bootstraps the session on window.load and pages.js never sees that payload, so it
+    // cannot paint the account corner on its own. Exposing the painter lets dashboard.js hand over
+    // the /auth/me response it already has instead of either duplicating the fetch or leaving the
+    // top bar stuck on "Signed in".
+    window.paintAccountMenu = paintAccountMenu;
+    initAccountMenu();
+    // Signing out from anywhere must also close the account panel, or the next person at this
+    // machine opens it and still sees the previous user's name in it.
+    window.addEventListener('pagehide', closeUserMenu);
     window.parseMatchDate = parseMatchDate;
     window.getImageFilename = getImageFilename;
     window.loadPlayer = loadPlayer;
@@ -751,6 +829,7 @@ import { createAdminView } from './pages/views/admin-view.js';
     window.loadTrainingReports = loadTrainingReports;
     window.loadTrainingReportsPage = loadTrainingReportsPage;
     window.loadClubProfile = loadClubProfile;
+    window.loadStadium = (...args) => stadiumView.loadStadium(...args);
     window.loadUpcomingMatches = loadUpcomingMatches;
     window.loadFixtures = loadFixtures;
     window.renderFixtures = renderFixtures;

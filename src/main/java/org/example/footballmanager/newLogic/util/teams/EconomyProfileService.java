@@ -114,6 +114,18 @@ public class EconomyProfileService {
         stadium.setPitchQuality(rng.nextDouble(62, 92));
         if (stadium.getPitchCondition() == null) stadium.setPitchCondition(100);
         if (stadium.getCondition() == null) stadium.setCondition(100);
+
+        // How far this ground can be built out, so "expand" has a finish line (stadium page).
+        //
+        // A ceiling per tier rather than one global number: a municipal ground expandable to fifty
+        // thousand is not a municipal ground, and a ground that can grow forever means nobody ever
+        // has to think about it. Roughly 1.6x the way it was built, so a club's ambition is
+        // bounded by the size of the place it is in.
+        if (stadium.getExpandableTo() == null) {
+            stadium.setExpandableTo((int) Math.round(capacity * 1.6));
+        }
+        if (stadium.getSeatQuality() == null) stadium.setSeatQuality(10);
+        stadium.setRoof(false);
     }
 
     private int tierOf(Competition league) {

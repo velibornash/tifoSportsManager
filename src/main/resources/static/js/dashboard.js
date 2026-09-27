@@ -52,7 +52,9 @@ function getCurrentTeamImagePath() {
 
 function getCurrentLeagueId() {
     const leagueId = Number(currentUserCompetitionId);
-    return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : 1;
+    // No default: a club without a competition has no league, and guessing league 1 would put
+    // another club's table in front of this manager.
+    return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : null;
 }
 
 function getCurrentLeagueName() {
@@ -456,6 +458,12 @@ window.addEventListener('load', async () => {
         setSessionRole(currentUserRole);
         applyAdminVisibility(document);
         updateCountryMenuLabels();
+        // Same payload, same moment as the top-bar country label above: whoever is signed in, their
+        // club and their league. Guarded because pages.js is a module and a failure there must not
+        // take the dashboard down with it.
+        if (typeof window.paintAccountMenu === 'function') {
+            window.paintAccountMenu(user, currentUserCompetitionName || '');
+        }
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
         loadDashboard();

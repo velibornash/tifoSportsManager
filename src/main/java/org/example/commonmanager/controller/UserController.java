@@ -94,6 +94,17 @@ public class UserController {
                         dto.setFootballTeamId(team.getId());
                         dto.setFootballTeamName(team.getName());
                         dto.setFootballTeamLogoUrl(team.getLogoUrl());
+                        // Which league he is in, and what it is called.
+                        //
+                        // The SPA reads these to decide which league to open. They were missing
+                        // here, so the league view always fell back to league 1 and titled itself
+                        // "League" — which is how a second manager ends up looking at the wrong
+                        // club's table, and how a Šid manager ends up staring at the Superliga.
+                        if (team.getCompetition() != null) {
+                            dto.setCompetitionId(team.getCompetition().getId());
+                            dto.setCompetitionName(team.getCompetition().getName());
+                            dto.setCompetitionTier(team.getCompetition().getTier());
+                        }
                     });
         }
         if (resolvedUser.getTifoCTeam() != null) {
@@ -133,5 +144,10 @@ public class UserController {
         private String americanFootballTeamName;
         private String countryName;
         private String countryIsoCode;
+
+        /** The league the manager's club is in, so the SPA never has to guess. */
+        private Long competitionId;
+        private String competitionName;
+        private Integer competitionTier;
     }
 }

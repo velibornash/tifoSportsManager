@@ -97,6 +97,8 @@ public class DatabaseInitializer {
     private final SquadNumberAssigner squadNumberAssigner;
     private final TacticsProfileBackupService tacticsProfileBackupService;
     private final org.example.footballtextmanager.repository.CSTeamRepository csTeamRepository;
+    private final org.example.footballtextmanager.repository.CSCountryRepository csCountryRepository;
+    private final StadiumRepository stadiumRepository;
 
     @EventListener(ApplicationReadyEvent.class)
     public void sanitizeLegacySchemaOnStartup() {
@@ -128,14 +130,20 @@ public class DatabaseInitializer {
             // manager still has to be, though: this runs on every boot and is idempotent, which is
             // what makes it safe to call from the "everything already exists" path as well as the
             // bootstrap one.
+            ensureSidLeague();
             createSecondUserIfNotExists();
             refreshClubIdentities();
+            backfillClubCountries();
+            backfillStadiumCeilings();
             return;
         }
 
         log.warn("Core football data missing on startup. Bootstrapping baseline Serbian pyramid.");
         try {
             initSerbianFootballStructure();
+            ensureSidLeague();
+            backfillClubCountries();
+            backfillStadiumCeilings();
             Team ownerTeam = createOwnerUserIfNotExists();
             createSecondUserIfNotExists();
             seedInitialJuniorsForOwnerIfMissing(ownerTeam);
@@ -293,6 +301,97 @@ public class DatabaseInitializer {
      *
      * <p>Idempotent and cheap — two lookups and a field write each.
      */
+    /**
+     * Makes sure the Šid municipal league exists and is full, on a database that already has data.
+     *
+     * <p>This is the same "only works if you reset" problem as the country backfill, one level up. A
+     * database seeded before the Šid league existed takes the early-return branch on every boot, so
+     * the second manager's club was created <b>in no league at all</b> — the club existed, the
+     * account worked, and the league view had nothing to show. Everything here is find-or-create, so
+     * running it on an already-correct database changes nothing.
+     */
+    @Transactional
+    public void ensureSidLeague() {
+        Optional<Competition> existing =
+                competitionRepository.findByNameAndCountryIsoCode(MUNICIPAL_SID_LEAGUE, "SRB");
+        if (existing.isPresent() && entriesFor(existing.get()) >= 10) {
+            return;
+        }
+        Country serbia = countryRepository.findByIsoCode("SRB").orElse(null);
+        Season season = seasonRepository.findAll().stream().findFirst().orElse(null);
+        if (serbia == null || season == null) {
+            log.warn("Opštinska liga Šid cannot be created yet: no Serbia or no season");
+            return;
+        }
+        Competition league = existing.orElseGet(() ->
+                createLeagueIfNotExists(serbia, 5, MUNICIPAL_SID_LEAGUE, 16, 10, season));
+        int filled = populateLeagueWithTeams(league, 10, false, season, MUNICIPAL_SID_CLUBS);
+        log.info("Opštinska liga Šid ensured: {} club(s) in the division", filled);
+    }
+
+    private int entriesFor(Competition league) {
+        return seasonCompetitionRepository
+                .findByCompetitionAndSeasonYear(league, seasonRepository.findAll().stream()
+                        .findFirst().map(Season::getSeasonYear).orElse(0))
+                .map(sc -> (int) competitionEntryRepository.countBySeasonCompetition(sc))
+                .orElse(0);
+    }
+
+    /**
+     * Gives every club in the text-manager a country if it has none.
+     *
+     * <p>A backfill, not a fix-on-create, because the clubs that exist today were created before
+     * the country was set and would keep their empty country forever otherwise — the manager sees
+     * "Country data is not available for this manager yet" and there is no way for them to fix it.
+     * That is the same "only works if you reset the database" shape this file keeps producing.
+     *
+     * <p>All of them are Serbian: the pyramid this seeds is the Serbian one, and a club with no
+     * country is a club whose manager cannot see their own country, so defaulting is the correct
+     * answer rather than leaving the field null.
+     *
+     * @return how many clubs were given a country
+     */
+    @Transactional
+    public int backfillClubCountries() {
+        var serbia = serbiaForTextManager();
+        List<org.example.footballtextmanager.model.CTeam> orphans =
+                csTeamRepository.findAll().stream()
+                        .filter(ct -> ct != null && ct.getCsCountry() == null)
+                        .toList();
+        orphans.forEach(ct -> ct.setCsCountry(serbia));
+        if (!orphans.isEmpty()) {
+            csTeamRepository.saveAll(orphans);
+            log.info("Gave {} club(s) a country — they had none, so their manager had no country page",
+                    orphans.size());
+        }
+        return orphans.size();
+    }
+
+    /**
+     * Gives every ground an expansion ceiling, if it has none.
+     *
+     * <p>The tier seeding sets this for new clubs, but it deliberately skips any club whose budget
+     * has already been set, so every existing ground in the database would keep no ceiling and could
+     * be expanded forever. 1.6x its current size, which is roughly the ratio the seeder uses.
+     */
+    @Transactional
+    public int backfillStadiumCeilings() {
+        List<Stadium> grounds = stadiumRepository.findAll();
+        List<Stadium> changed = grounds.stream()
+                .filter(st -> st != null && st.getExpandableTo() == null
+                        && st.getCapacity() != null && st.getCapacity() > 0)
+                .toList();
+        for (Stadium st : changed) {
+            st.setExpandableTo((int) Math.round(st.getCapacity() * 1.6));
+        }
+        if (!changed.isEmpty()) {
+            stadiumRepository.saveAll(changed);
+            log.info("Gave {} ground(s) an expansion ceiling — they could otherwise grow forever",
+                    changed.size());
+        }
+        return changed.size();
+    }
+
     @Transactional
     private void refreshClubIdentities() {
         for (String name : List.of("OFK Omladinac", SREMAC_TEAM_NAME)) {
@@ -341,7 +440,38 @@ public class DatabaseInitializer {
                 .orElseGet(() -> {
                     org.example.footballtextmanager.model.CTeam cs = new org.example.footballtextmanager.model.CTeam();
                     cs.setName(teamName);
+                    // The country is not optional. A manager without one has no country page, no
+                    // flag in the menu, and no competitions to look at — the club exists and the
+                    // world around it does not. Set here rather than by a separate backfill so a
+                    // club is never briefly in that state.
+                    cs.setCsCountry(serbiaForTextManager());
                     return csTeamRepository.save(cs);
+                });
+    }
+
+    /**
+     * The Serbian record in the text-manager's own country table.
+     *
+     * <p>There are <b>two</b> country tables in this project — {@code newLogic.model.Country} and
+     * {@code footballtextmanager.model.CSCountry} — and the user-facing country page reads the
+     * second one while the league endpoints read the first. A club belongs to both, and the two are
+     * not kept in step by anything except this kind of explicit call.
+     *
+     * <p>Found or created, because the text-manager seeder early-returns on an existing database and
+     * so may never have created Serbia at all on an install that was already seeded.
+     */
+    private org.example.footballtextmanager.model.CSCountry serbiaForTextManager() {
+        return csCountryRepository.findByIsoCodeIgnoreCase("SRB")
+                .orElseGet(() -> {
+                    org.example.footballtextmanager.model.CSCountry c =
+                            new org.example.footballtextmanager.model.CSCountry();
+                    c.setName("Serbia");
+                    c.setIsoCode("SRB");
+                    c.setFlagImagePath("/images/serbiaflag.png");
+                    c.setCurrencyCode("RSD");
+                    c.setReputation(55);
+                    c.setYouthRating(65);
+                    return csCountryRepository.save(c);
                 });
     }
 
@@ -352,6 +482,7 @@ public class DatabaseInitializer {
                 .orElseGet(() -> {
                     org.example.footballtextmanager.model.CTeam ct = new org.example.footballtextmanager.model.CTeam();
                     ct.setName("OFK Omladinac");
+                    ct.setCsCountry(serbiaForTextManager());
                     return csTeamRepository.save(ct);
                 });
         owner.setCTeam(csTeam);
@@ -584,9 +715,9 @@ public class DatabaseInitializer {
      */
     private final Set<Long> teamIdsAssignedToALeague = new HashSet<>();
 
-    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
-                                         Season season) {
-        populateLeagueWithTeams(league, teamCount, includeOmladinac, season, null);
+    private int populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
+                                        Season season) {
+        return populateLeagueWithTeams(league, teamCount, includeOmladinac, season, null);
     }
 
     /**
@@ -597,8 +728,8 @@ public class DatabaseInitializer {
      *                       is already half full is topped up with generated clubs rather than
      *                       double-seeding the real ones.
      */
-    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
-                                         Season season, List<String> preferredNames) {
+    private int populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
+                                        Season season, List<String> preferredNames) {
         SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear())
                 .orElseThrow(() -> new RuntimeException("Sezona za ligu nije pronađena"));
 
@@ -607,7 +738,7 @@ public class DatabaseInitializer {
 
         if (toCreate <= 0) {
             log.info("Liga {} već ima {} timova → preskačem", league.getName(), currentTeams);
-            return;
+            return (int) currentTeams;
         }
 
         Set<Long> usedTeamIdsInLeague = competitionEntryRepository.findBySeasonCompetition(sc)
@@ -617,6 +748,7 @@ public class DatabaseInitializer {
                 .collect(Collectors.toSet());
 
         int attempts = 0;
+        int added = 0;
         final int maxAttempts = 2000;
 
         // 1. Dodaj Omladinac ako treba i ako ga nema
@@ -673,6 +805,7 @@ public class DatabaseInitializer {
                 usedTeamIdsInLeague.add(team.getId());
                 teamIdsAssignedToALeague.add(team.getId());
                 economyProfile.apply(team, league);
+                added++;
                 toCreate--;
                 log.info("Dodat tim {} u ligu {}", candidateName, league.getName());
             }
@@ -691,10 +824,12 @@ public class DatabaseInitializer {
                         && competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
                     addTeamToLeague(team, sc);
                     usedTeamIdsInLeague.add(team.getId());
+                    added++;
                     toCreate--;
                 }
             }
         }
+        return added;
     }
 
     private void addTeamToLeague(Team team, SeasonCompetition sc) {

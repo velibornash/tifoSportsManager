@@ -19,6 +19,25 @@ export function createLeagueView(deps) {
         renderTableView, renderLeagueScheduleView, renderLeagueMatchesView
     } = deps;
 
+    // A club with no competition used to be silently pointed at league 1, which showed another
+    // club's table. There is no correct table to draw here, so say what is missing instead.
+    function renderNoLeagueState() {
+        const mainContent = document.getElementById('main-content');
+        if (!mainContent) return;
+        mainContent.innerHTML = `
+            <div class="fm-page">
+                <section class="fm-panel">
+                    <div class="fm-panel-head">${htmlEscape(getCurrentLeagueName())}</div>
+                    <div class="fm-empty-state">
+                        <h2>No league yet</h2>
+                        <p>Your club is not entered in a competition, so there is no table to show.
+                           Until it is, the league, fixtures and results pages stay empty rather
+                           than showing you another club's league.</p>
+                    </div>
+                </section>
+            </div>`;
+    }
+
     async function openTeamByName(teamName) {
         try {
             const leagueId = await ensureCurrentLeagueId();
@@ -40,7 +59,10 @@ export function createLeagueView(deps) {
     async function loadLeagueTable(seasonYear = null) {
         try {
             const leagueId = await ensureCurrentLeagueId();
-            if (!leagueId) return;
+            if (!leagueId) {
+                renderNoLeagueState();
+                return;
+            }
             const backTarget = getCurrentLeagueBackTarget();
             const leagueName = getCurrentLeagueName();
             const seasonsResponse = await authFetch(`/countries/leagues/${leagueId}/seasons`);
@@ -178,7 +200,10 @@ export function createLeagueView(deps) {
     async function loadLeagueMatches(seasonYear = null) {
         try {
             const leagueId = await ensureCurrentLeagueId();
-            if (!leagueId) return;
+            if (!leagueId) {
+                renderNoLeagueState();
+                return;
+            }
             const backTarget = getCurrentLeagueBackTarget();
             console.log(`Loading league matches...`);
             const selectedSeason = seasonYear || getLeagueSeasonYear() || getSeasonYear() || null;

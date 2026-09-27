@@ -434,3 +434,183 @@ recent-match:hover .result-badge {
     user-select: none;
     color: #eee;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCOUNT CORNER — who is signed in, and the way out
+   Signout used to exist only on the lobby page, so inside the SPA there
+   was no way to end a session at all, and none at all on a phone.
+   ══════════════════════════════════════════════════════════════════ */
+.user-menu{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+    margin-left:auto;
+}
+
+.user-menu-trigger{
+    gap:8px;
+    padding:6px 12px 6px 6px;
+    white-space:nowrap;
+}
+
+.user-menu-avatar{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;height:26px;
+    flex:0 0 26px;
+    border-radius:50%;
+    background:linear-gradient(180deg,#8fd3ff,#4f9fd0);
+    color:#07121f;
+    font-weight:700;
+    font-size:.82rem;
+    line-height:1;
+    text-transform:uppercase;
+}
+.user-menu-avatar--lg{ width:38px;height:38px;flex:0 0 38px;font-size:1.1rem; }
+
+.user-menu-name{
+    max-width:130px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:.9rem;
+}
+.user-menu-caret{ font-size:.7rem; opacity:.7; }
+
+/* The panel is a real popup: right-aligned so it never runs off the edge
+   of a wide screen, and with a max-height + scroll so a very long club or
+   league name cannot make it taller than the viewport on a laptop. */
+.user-menu-panel{
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    z-index:260;
+    min-width:250px;
+    max-width:min(320px,88vw);
+    max-height:min(70vh,420px);
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    padding:8px;
+    border-radius:12px;
+    background:linear-gradient(180deg,rgba(20,27,43,.98),rgba(12,18,30,.98));
+    border:1px solid rgba(143,211,255,.22);
+    box-shadow:0 16px 38px rgba(0,0,0,.4);
+}
+.user-menu-panel[hidden]{ display:none; }
+
+.user-menu-identity{ padding:8px 10px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
+.user-menu-identity-name{ font-weight:700; color:#eef4ff; }
+.user-menu-identity-meta{
+    margin-top:3px;
+    font-size:.78rem;
+    color:#99a6bb;
+    /* Club · League · Country · Role can be long on a small club. Wrap rather than
+       overflow, so nothing is silently cut off. */
+    overflow-wrap:anywhere;
+}
+
+.user-menu-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    width:100%;
+    margin-top:4px;
+    padding:10px 12px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:#eef4ff;
+    font:inherit;
+    font-size:.9rem;
+    text-align:left;
+    cursor:pointer;
+    transition:background .18s;
+}
+.user-menu-item:hover,.user-menu-item:focus-visible{ background:rgba(143,211,255,.14); outline:none; }
+.user-menu-item--danger{ color:#ff9d9d; }
+.user-menu-item--danger:hover,.user-menu-item--danger:focus-visible{ background:rgba(255,120,120,.16); }
+.user-menu-item-icon{ font-size:1rem; line-height:1; }
+
+.user-menu-sep{ height:1px; margin:6px 4px; background:rgba(255,255,255,.08); }
+
+/* ══════════════════════════════════════════════════════════════════
+   STADIUM PAGE
+   A plan of the ground drawn from the eight colours the manager set,
+   so what you choose is what you see. Same idea as a tactics board.
+   ══════════════════════════════════════════════════════════════════ */
+.stadium-plan{ margin-bottom:14px; }
+
+.stadium-plan-pitch{
+    display:grid;
+    grid-template-columns:22px 1fr 22px;
+    grid-template-rows:22px 1fr 22px;
+    grid-template-areas:
+        "north north north"
+        "west middle east"
+        "south south south";
+    gap:4px;
+    aspect-ratio:3/4;
+    max-height:320px;
+    margin:0 auto;
+}
+.stadium-plan-strip--north{ grid-area:north; }
+.stadium-plan-strip--south{ grid-area:south; }
+.stadium-plan-strip--west{ grid-area:west; }
+.stadium-plan-strip--east{ grid-area:east; }
+.stadium-plan-strip{ border-radius:5px; min-width:0; }
+
+.stadium-plan-middle{
+    grid-area:middle;
+    display:grid;
+    grid-template-columns:18px 1fr 18px;
+    grid-template-rows:18px 1fr 18px;
+    gap:3px;
+    min-width:0;
+}
+.stadium-plan-corner{ border-radius:4px; }
+.stadium-plan-corner--nw{ grid-area:1/1; }
+.stadium-plan-corner--ne{ grid-area:1/3; }
+.stadium-plan-corner--sw{ grid-area:3/1; }
+.stadium-plan-corner--se{ grid-area:3/3; }
+
+/* The turf: mown stripes, because a plan view of a bare rectangle reads as a table. */
+.stadium-plan-turf{
+    grid-area:2/2;
+    border-radius:4px;
+    background:repeating-linear-gradient(
+        180deg,
+        #2f7d46 0 8%,
+        #2a7240 8% 16%
+    );
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+}
+
+.stadium-plan-legend{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:4px 12px;
+    margin-top:12px;
+    font-size:.75rem;
+    color:#99a6bb;
+}
+.stadium-legend-item{ display:flex; align-items:center; gap:6px; }
+.stadium-legend-item i{ width:11px; height:11px; flex:0 0 11px; border-radius:3px; }
+
+.stadium-picture{ margin-top:14px; border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,.08); }
+.stadium-picture img{ display:block; width:100%; height:170px; object-fit:cover; }
+
+.stadium-colour-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px 14px;
+}
+.stadium-colour{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.85rem; color:#c7d2e4; }
+.stadium-colour input[type="color"]{
+    width:38px;height:26px;padding:0;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px;
+    background:transparent;
+    cursor:pointer;
+}

@@ -439,6 +439,22 @@
         overflow-x: hidden;
     }
 
+    /* Responsive utilities must win over component display rules.
+       components.css is imported after layout.css, so any component that
+       sets `display` (e.g. .user-menu) would otherwise defeat
+       .desktop-only { display: none } declared in layout.css. */
+    .desktop-only {
+        display: none !important;
+    }
+
+    .mobile-only {
+        display: block !important;
+    }
+
+    .top-menu > .mobile-only {
+        display: inline-flex !important;
+    }
+
     .top-menu {
         gap: 4px;
         padding: 6px 8px;
@@ -562,3 +578,52 @@
     }
 }
 
+
+/* ── Account corner on small screens ───────────────────────────────
+   The panel becomes a full-width sheet pinned under the top bar
+   rather than a right-aligned popup. A popup anchored to the right
+   edge is the first thing to fall off a 360px-wide phone, and the
+   signout is the one control on this menu that must never be
+   unreachable. */
+@media (max-width:768px){
+    .user-menu-panel{
+        position:fixed;
+        top:auto;
+        left:8px;
+        right:8px;
+        min-width:0;
+        max-width:none;
+        max-height:60vh;
+    }
+    /* The desktop account corner is hidden on mobile, but the identity is
+       still worth one line: it is the answer to "which account am I in?"
+       without opening a menu. */
+    .user-menu-trigger .user-menu-name{ max-width:96px; }
+}
+
+/* Identity block at the foot of the mobile drawer. */
+.mobile-user-block{ margin-top:14px; }
+.mobile-user-identity{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    margin-bottom:6px;
+    border-radius:9px;
+    background:rgba(255,255,255,.05);
+}
+.mobile-user-identity strong{ display:block; font-size:.95rem; color:#eef4ff; }
+.mobile-user-identity small{ display:block; margin-top:2px; font-size:.75rem; color:#99a6bb; overflow-wrap:anywhere; }
+
+/* ── Stadium page on small screens ────────────────────────────────
+   The plan is 3:4 and fixed at 320px tall, which is taller than a
+   phone viewport once the toolbar and legend are on screen. It is
+   allowed to shrink rather than scroll, and the colour grid drops
+   to one column because eight colour inputs in two columns are
+   each about 90px wide and stop being tappable. */
+@media (max-width:768px){
+    .stadium-plan-pitch{ max-height:52vh; aspect-ratio:auto; height:52vh; }
+    .stadium-colour-grid{ grid-template-columns:1fr; }
+    .stadium-picture img{ height:140px; }
+    .stadium-plan-legend{ grid-template-columns:1fr 1fr; }
+}

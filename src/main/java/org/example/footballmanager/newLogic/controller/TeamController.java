@@ -132,6 +132,14 @@ public class TeamController {
         profile.put("stadium", team.getStadium() != null ? team.getStadium().getName() : "N/A");
         profile.put("budget", team.getBudget());
         profile.put("reputation", team.getReputation() > 70 ? "High" : team.getReputation() > 40 ? "Medium" : "Low");
+
+        // Which league this club is in, and under what name, so the profile can show it and link to
+        // it. The club already had the competition; the profile simply never told anybody.
+        if (team.getCompetition() != null) {
+            profile.put("leagueId", team.getCompetition().getId());
+            profile.put("leagueName", team.getCompetition().getName());
+            profile.put("leagueTier", team.getCompetition().getTier());
+        }
         
         // The badge is a column on the club now. It used to be a name.contains("Omladinac") check,
         // which had no room for a second badge and is one of the defects expertAudit.md flags. The
@@ -439,8 +447,15 @@ public class TeamController {
         row.put("week", fixture.getWeekNumber() != null ? fixture.getWeekNumber() : fixture.getRoundNumber());
         row.put("seasonYear", fixture.getSeasonYear());
         row.put("competitionName", fixture.getCompetition() != null ? fixture.getCompetition().getName() : "Competition");
+        // The id as well as the name: the schedule screen needs it to send you to the right league,
+        // and a name alone cannot be clicked safely when two divisions can share one.
+        row.put("competitionId", fixture.getCompetition() != null ? fixture.getCompetition().getId() : null);
         row.put("matchDate", formatDateTime(fixture.getMatchDate()));
         row.put("stadium", resolveStadiumName(fixture));
+        // Which club's ground this is, so the venue can be a link to that club rather than a
+        // dead piece of text.
+        row.put("stadiumOwnerTeamId", fixture.getHomeTeam() != null ? fixture.getHomeTeam().getId() : null);
+        row.put("stadiumOwnerTeamName", fixture.getHomeTeam() != null ? fixture.getHomeTeam().getName() : null);
         row.put("homeTeamStrength", insights.homeTeamStrength());
         row.put("awayTeamStrength", insights.awayTeamStrength());
         row.put("homeTeamForm", insights.homeTeamForm());

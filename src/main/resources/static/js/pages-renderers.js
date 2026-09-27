@@ -164,7 +164,12 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
              data-fixture-id="${!match?.played && allowFixtureClick ? fixtureId : ''}">
             <div class="fx-topline">
                 <span class="fx-date">${safe(match?.matchDate || 'TBD')}</span>
-                <span class="fx-venue">${safe(venue)}</span>
+                <!-- The ground, linked to the club that plays there. It was a plain span, so the
+                     only way to get from a fixture to a stadium was to already know the club. -->
+                <span class="fx-venue">${match?.stadiumOwnerTeamId
+                    ? `<a class="fm-CTeam-link" href="#" data-open-team="${safe(String(match.stadiumOwnerTeamId))}"
+                           data-open-team-name="${safe(match.stadiumOwnerTeamName || '')}">${safe(venue)}</a>`
+                    : safe(venue)}</span>
             </div>
             <div class="fx-main">
                 <span class="fx-home ${match?.homeTeamId ? 'js-load-CTeam' : ''}" data-CTeam-id="${match?.homeTeamId || ''}" data-CTeam-name="${safe(match?.homeTeam || 'Home')}" data-season-year="${seasonYear}">${safe(match?.homeTeam || 'Home')}</span>
@@ -205,10 +210,38 @@ export function bindScheduleInteractions(container, handlers = {}) {
     container.querySelectorAll('.js-load-CTeam').forEach(node => {
         node.addEventListener('click', event => {
             event.stopPropagation();
-            const teamId = Number(node.dataset.teamId);
+            // Read the id from either spelling. The markup writes data-CTeam-id, which the dataset
+            // exposes as cTeamId, while this handler was reading dataset.teamId — so the id was
+            // always undefined and clicking a team name did nothing at all. Accepting both is not
+            // belt-and-braces, it is the fix: one of the two is what the markup produces and the
+            // other is what the code believed it produced.
+            const teamId = Number(node.dataset.teamId ?? node.dataset.cTeamId);
             const teamName = node.dataset.teamName || 'Team';
             const seasonYear = node.dataset.seasonYear ? Number(node.dataset.seasonYear) : null;
             if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, seasonYear);
+        });
+    });
+
+    // Venue link: goes to the club that plays there, so a fixture is a way into a stadium.
+    container.querySelectorAll('[data-open-team]').forEach(node => {
+        node.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const teamId = Number(node.dataset.openTeam);
+            const teamName = node.dataset.openTeamName || 'Team';
+            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, null);
+        });
+    });
+
+    // League link: goes to the division this fixture belongs to.
+    container.querySelectorAll('[data-open-league]').forEach(node => {
+        node.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const onOpenLeague = handlers.openLeagueById || window.openLeagueById;
+            if (typeof onOpenLeague === 'function') {
+                onOpenLeague(node.dataset.openLeague, node.dataset.leagueName || 'League');
+            }
         });
     });
 

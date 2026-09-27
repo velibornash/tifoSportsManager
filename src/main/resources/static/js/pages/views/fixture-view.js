@@ -6,9 +6,34 @@ export function createFixtureView(deps) {
         authFetch, getTeamId, ensureCurrentLeagueId, getCurrentLeagueBackTarget,
         getCurrentLeagueName, getLeagueSeasonYear, getSeasonYear,
         pushNavState, getActiveLeagueNavState, goBackSmart,
-        buildClubActionsHtml, loadMatch, matchesFeature,
+        buildClubActionsHtml, loadMatch, matchesFeature, loadLeagueTeam,
         renderFixturesView, renderMatches
     } = deps;
+
+    /**
+     * Wires the venue and competition links on the fixture detail.
+     *
+     * <p>Bound after every render rather than once, because the page is rebuilt from scratch each
+     * time it is opened and a listener on the old nodes goes with them.
+     */
+    function bindFixtureDetailLinks(container) {
+        container.querySelectorAll('[data-fixture-team]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (typeof loadLeagueTeam === 'function') {
+                    loadLeagueTeam(Number(link.dataset.fixtureTeam), link.dataset.fixtureTeamName || 'Team', null);
+                }
+            });
+        });
+        container.querySelectorAll('[data-fixture-league]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (typeof window.openLeagueById === 'function') {
+                    window.openLeagueById(link.dataset.fixtureLeague, link.dataset.leagueName || 'League', 'schedule');
+                }
+            });
+        });
+    }
 
     async function loadUpcomingMatches() {
         const teamId = getTeamId();
@@ -142,7 +167,12 @@ export function createFixtureView(deps) {
                     <div class="fm-medical-stat-grid team-summary-grid">
                         <div><strong>${htmlEscape(matchDate)}</strong><span>Date</span></div>
                         <div><strong>${htmlEscape(matchTime)}</strong><span>Kick-off</span></div>
-                        <div><strong>${htmlEscape(fixture.competitionName || 'Competition')}</strong><span>Competition</span></div>
+                        <div><strong>${
+                            fixture.competitionId
+                                ? `<a class="fm-CTeam-link" href="#" data-fixture-league="${htmlEscape(String(fixture.competitionId))}"
+                                      data-league-name="${htmlEscape(fixture.competitionName || '')}">${htmlEscape(fixture.competitionName || 'Competition')}</a>`
+                                : htmlEscape(fixture.competitionName || 'Competition')
+                        }</strong><span>Competition</span></div>
                         <div><strong>${fixture.round ? `Round ${htmlEscape(String(fixture.round))}` : '\u2014'}</strong><span>Status \u00B7 ${htmlEscape(statusLabel)}</span></div>
                     </div>
                 </section>
@@ -159,7 +189,14 @@ export function createFixtureView(deps) {
                             <div class="club-profile-detail-row"><span>Home team</span><strong>${htmlEscape(homeTeamName)}</strong></div>
                             <div class="club-profile-detail-row"><span>Away team</span><strong>${htmlEscape(awayTeamName)}</strong></div>
                             <div class="club-profile-detail-row"><span>Date & time</span><strong>${htmlEscape(matchDateTime)}</strong></div>
-                            <div class="club-profile-detail-row"><span>Venue</span><strong>${htmlEscape(venue)}</strong></div>
+                            <!-- The ground and the competition were both dead text. They are the two
+                                 things a manager looks at to decide anything, so both are links. -->
+                            <div class="club-profile-detail-row"><span>Venue</span><strong>${
+                                fixture.stadiumOwnerTeamId
+                                    ? `<a class="fm-CTeam-link" href="#" data-fixture-team="${htmlEscape(String(fixture.stadiumOwnerTeamId))}"
+                                          data-fixture-team-name="${htmlEscape(fixture.stadiumOwnerTeamName || '')}">${htmlEscape(venue)}</a>`
+                                    : htmlEscape(venue)
+                            }</strong></div>
                             <div class="club-profile-detail-row"><span>Status</span><strong>${htmlEscape(statusLabel)}</strong></div>
                             <div class="club-profile-detail-row"><span>Home OVR / form</span><strong>${Number.isFinite(homeStrength) ? Math.round(homeStrength) : '\u2014'} \u00B7 ${Number.isFinite(homeForm) ? homeForm.toFixed(1) : '\u2014'}</strong></div>
                             <div class="club-profile-detail-row"><span>Away OVR / form</span><strong>${Number.isFinite(awayStrength) ? Math.round(awayStrength) : '\u2014'} \u00B7 ${Number.isFinite(awayForm) ? awayForm.toFixed(1) : '\u2014'}</strong></div>
@@ -199,6 +236,7 @@ export function createFixtureView(deps) {
                     </section>
                 </div>
             </div>`;
+            bindFixtureDetailLinks(mainContent);
         } catch (err) {
             console.error("Error loading fixture:", err);
             mainContent.innerHTML = `

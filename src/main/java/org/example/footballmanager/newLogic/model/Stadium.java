@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.model;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -127,6 +128,46 @@ public class Stadium {
     private int clamp(int value) {
         return Math.max(1, Math.min(20, value));
     }
+
+    // --- appearance and build-out (stadium page) ---
+
+    /**
+     * The eight parts of a ground the manager can colour, as CSS colours.
+     *
+     * <p>Four sides and four corners, because that is how a ground is actually described and it maps
+     * onto a plan view. Null on any of them means "not set", and the page substitutes a neutral
+     * rather than the column holding a colour nobody chose — a stored default is indistinguishable
+     * from a decision the manager made.
+     */
+    private String northColour;
+    private String southColour;
+    private String eastColour;
+    private String westColour;
+    private String northEastCornerColour;
+    private String northWestCornerColour;
+    private String southEastCornerColour;
+    private String southWestCornerColour;
+
+    /**
+     * How good the seats are, 1-20. Deliberately separate from capacity: a ground can hold forty
+     * thousand people on concrete terraces, and the difference between terraces and a seat is most
+     * of what atmosphere is.
+     */
+    @ColumnDefault("10")
+    private Integer seatQuality = 10;
+
+    /** Whether the ground has a roof. Affects the match day, not how many can get in. */
+    @ColumnDefault("false")
+    private boolean roof = false;
+
+    /**
+     * The largest this ground can be built out to, or null for no limit.
+     *
+     * <p>A ceiling rather than an open number, so "expand" is a decision with a finish line. A ground
+     * that can grow forever is a ground nobody has to think about, and a municipal ground expandable
+     * to fifty thousand is not a municipal ground.
+     */
+    private Integer expandableTo;
 
     @OneToOne(mappedBy = "stadium")
     @EqualsAndHashCode.Exclude
