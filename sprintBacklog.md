@@ -924,25 +924,41 @@ squad depth without distorting the wage bill.
 
 ---
 
-### S3.5 — Work permits and foreign-player limits — ✅ built 2026-09-26
+### S3.5 — Work permits and foreign-player limits ❌ NOT BUILT (was marked ✅ in error)
 
-A strong Serbia-specific constraint: the domestic league has a **non-EU player quota** (Serbia's rule is 4 in the top flight, fewer below). Each foreign player needs a work permit.
+> **Corrected 2026-09-27.** This entry was marked "✅ built 2026-09-26" and named
+> `WorkPermit`, `WorkPermitService` and `Competition.foreignPlayerLimit` as delivered. **None of them
+> exists.** A re-audit for Sprint 5 found zero files matching `*WorkPermit*`, no `foreignPlayerLimit`
+> field on `Competition`, and no non-EU quota logic anywhere. The only related thing in the codebase is
+> `Player.nationality` (an ISO code, length 3) — the hook the feature would have been built on.
+>
+> The likely cause is the same one that hit S3.4 and S6.4: work landed in a pass that was never
+> re-verified against the source, and the ✅ was written from intent rather than from a compile.
+
+A strong Serbia-specific constraint: the domestic league has a **non-EU player quota** (Serbia's rule
+is 4 in the top flight, fewer below). Each foreign player needs a work permit.
 
 | # | Task | State |
 |---|---|---|
-| 1 | `WorkPermit` per foreign player (granted, refused, or pending based on reputation and league level) | ✅ `WorkPermit` + `WorkPermitService` |
-| 2 | Non-EU quota per competition (`Competition.foreignPlayerLimit`) | ✅ on `Competition`, with a per-tier default |
-| 3 | A signing is blocked when the quota is full | ✅ consulted by `PlayerContractService.sign` |
-| 4 | Buying from a weaker league grants a permit more easily | ✅ falls out of the reputation/pedigree rule |
+| 1 | `WorkPermit` per foreign player (granted, refused, or pending based on reputation and league level) | ❌ does not exist |
+| 2 | Non-EU quota per competition (`Competition.foreignPlayerLimit`) | ❌ no such column |
+| 3 | A signing is blocked when the quota is full | ❌ `PlayerContractService.sign` does not consult any quota |
+| 4 | Buying from a weaker league grants a permit more easily | ❌ |
 
-**⚠️ Open question for the owner — the exact per-tier quotas.** The working default is
-4 / 3 / 2 / 1 / 0 for tiers 1-5, and tier 5 takes no foreign players at all. Those numbers were
-inferred from "four in the top flight, fewer below" and are **not** confirmed. Because the quota lives
-on `Competition.foreignPlayerLimit`, correcting a tier is a data change and not a code change.
+**Why this is now on the critical path for Sprint 5.** S5.1 item 5 is **foreign youth recruitment**.
+Building a scouting network that finds teenagers in Brazil and England, with nothing stopping you
+from registering all of them, produces a game where a tier-5 Serbian club fields a team of foreign
+17-year-olds. The quota is what makes scouting a *decision* rather than a shopping trip.
 
-**Also unconfirmed:** the reputation thresholds (a club needs 40 + 6 per tier below the top, and a
-club under 70 reputation outside the top two tiers needs an €8m player to justify the permit). These
-are the numbers that decide whether a signing is possible, so they are worth a look.
+**Recommended order, once Sprint 5 starts:** S5.1 (scouting) can be built first and is not blocked by
+this, but **S5.1 item 5 — foreign recruitment — should not ship before the quota exists.** Items 1–4
+are roughly a day of work and unblock a meaningful design constraint.
+
+**Still needs an owner ruling regardless:** the per-tier quotas. The working default discussed was
+4 / 3 / 2 / 1 / 0 for tiers 1–5, which would mean **tier 5 takes no foreign players at all** — and
+that is the tier the owner is actually playing (Sremac Berkasovo, `Opštinska liga Šid`, tier 5). If
+that default is right, foreign recruitment is a Superliga feature and the S5.1 payoff at tier 5 is
+limited to *observing* foreign talent, not signing it. **Ask before building.**
 
 ---
 
@@ -1006,7 +1022,7 @@ Re-audited 2026-09-27. The transfer market is genuinely Sokker-shaped; what is m
 | `interestedTeams` prose encoding is gone | ✅ S3.7 — entity, DTOs, parser, resolver and purge all deleted |
 | Transfer windows are enforced | ✅ S3.3 — out-of-window attempts rejected with a reason |
 | Loans work both ways | ✅ S3.4 — full lifecycle (see above) |
-| Work permits and the non-EU quota block signings | ✅ S3.5 — **but the per-tier quotas are still the owner's unconfirmed guess** (4/3/2/1/0) |
+| Work permits and the non-EU quota block signings | ❌ **not built** — see S3.5; the entry was marked ✅ in error |
 | AI↔AI transfers happen; squads visibly evolve | 🟡 transfers happen, **evolution does not** — see below |
 | The seller chooses which offer to accept | ✅ S3.2 item 8 |
 
