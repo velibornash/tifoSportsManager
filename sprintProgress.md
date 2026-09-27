@@ -2071,6 +2071,57 @@ and stay open.
 
 **459 tests.**
 
+### S4.5 — Who learns what, and when
+
+Growth was governed by two global penalties — `STRIKER × 0.76` and `PACE × 0.86` for everybody — and
+one age curve for all eight skills. That is a reasonable way to stop finishing growing at thirty and
+a poor way to describe football. A winger learns crossing quickly and a centre-half does not; a
+striker's finishing peaks years before a goalkeeper's shot stopping; a full-back's pace goes before a
+centre-forward's does.
+
+`PositionGrowthProfile` answers **four deliberately separate questions**, because they are usually
+conflated and conflating them is how a later change quietly re-tunes an earlier one:
+
+| question | method |
+|---|---|
+| How fast is this a fit? | `learningRate` — 1.30 for a keeper's shot stopping, 0.25 for a winger's |
+| When is it worth working on? | `peakAge` + `ageFactor` |
+| How far can he go off-job? | `naturalCeiling` |
+| What does his body do? | `physicalFactor` — height and weight, seeded on every player and used for nothing until now |
+
+**Age ceilings are hard zeros, and that is the decision.** "A 34-year-old cannot improve pace at all
+regardless of talent" is only true if it is a rule. A taper approaching zero still lets a determined,
+talented thirty-four-year-old creep up forever — which means he is never actually too old, and the
+sentence everyone says about footballers turns out to be false in the only place it could be
+checked. Pace stops at 32, finishing at 34, everything else at 36, and goalkeeping at 38 because a
+goalkeeper at thirty is still the best he will be and the game is full of them.
+
+The curve never *rises* above the peak. There is no version of learning that gets faster in your late
+twenties.
+
+**Off-job ceilings are soft.** A centre-half trained on passing still improves — he approaches a
+plausible limit rather than the top of the scale. A hard cap would be a nicer-sounding rule and a
+worse game, because the interesting decision is exactly "can I turn this player into something else",
+and Sprint 4.1 exists to let a manager make it. The floor is level 7: a professional is not helpless at
+something outside his game.
+
+**The body is a nudge, ±8%**, bounded deliberately. It would be easy to let height matter enormously
+and that is precisely how you break a game using a field nobody has ever looked at. Taller and heavier
+helps a centre-half learn defending and hurts a sprinter; a player with no height or weight recorded
+is treated as average rather than penalised.
+
+**The old global penalty is gone, not kept alongside.** Leaving `STRIKER × 0.76` in place would have
+counted the same idea twice and made every striker's finishing slow for two unrelated reasons. Three
+now-dead methods went with it, including the old `talentFactor` growth multiplier that had already
+been removed from the formula and left behind as a corpse.
+
+**The magnitude guard.** Every property above can be satisfied while doubling or halving how fast
+everybody develops, and no property test would notice. `magnitudesStayInABand` walks every position,
+skill and age from 18 to 38 and holds the coefficient near continuity with the old
+`0.76`/`0.86`/`1.0` figures.
+
+**474 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

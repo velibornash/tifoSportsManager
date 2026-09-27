@@ -1070,17 +1070,27 @@ reading null as "no facilities" would have taken 10% off the growth of every clu
 
 ---
 
-### S4.5 — Position-specific learning curves
+### S4.5 — Position-specific learning curves — ✅ done 2026-09-27
 
-Today only a global `STRIKER × 0.76` / `PACE × 0.86` penalty (`TrainingProgressionService.java:374-382`).
+| # | Task | State |
+|---|---|---|
+| 1 | Per-position growth rates, per skill, with per-skill peaks | ✅ `PositionGrowthProfile` |
+| 2 | A skill-position matrix | ✅ rate + peak + ceiling, four separate questions |
+| 3 | **Age-based attribute ceilings** — a 34-year-old cannot improve pace at all | ✅ hard zero: pace 32, finishing 34, rest 36, goalkeeping 38 |
+| 4 | Natural ability caps by position, as a soft asymptote rather than a wall | ✅ floor at level 7, no cap on a natural skill |
+| 5 | Height/weight influence heading, strength and pace | ✅ ±8%, average when unrecorded |
 
-| # | Task |
-|---|---|
-| 1 | Per-position growth multipliers per skill. Wingers learn crossing fast; centre-backs learn heading slowly; strikers peak on finishing at 27; full-backs decline in pace earlier |
-| 2 | A skill-position matrix, e.g. `Map<Position, Map<SkillName, Double>>` |
-| 3 | **Age-based attribute ceilings** — a 34-year-old cannot improve pace at all regardless of talent |
-| 4 | Natural ability caps by position: a 1.68 m centre-back should not be able to reach 20 heading |
-| 5 | Height/weight influence heading, strength and jump (currently seeded at `YouthAcademyService:194-195` and never used) |
+**Verify:** a winger learns crossing faster than a centre-half, a centre-half's pace peaks before a
+striker's, nobody still improves pace at 34, and the whole rewrite did not quietly double or halve
+the rate everybody develops at. — `PositionGrowthProfileTest`, 15 tests.
+
+Replaces the global `STRIKER × 0.76` / `PACE × 0.86` penalty, which was **removed rather than kept
+alongside** — stacking them would have counted the same idea twice. The dead `talentFactor` went with
+it.
+
+The magnitude guard matters: every behavioural property can be satisfied while doubling how fast
+everybody develops, and no property test notices. The band test walks every position, skill and age
+18–38 and holds the coefficient near continuity with the old figures.
 
 ---
 

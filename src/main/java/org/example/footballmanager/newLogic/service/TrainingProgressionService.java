@@ -377,7 +377,10 @@ public class TrainingProgressionService {
         double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill,
                 advanced, trainingPercent, intensity, coach);
         dt *= injuryFactor;
-        dt *= slowSkillModifier(directSkill);
+        // The old global "striker x0.76 / pace x0.86 for everybody" penalty is gone rather than kept
+        // alongside the position matrix, which would have counted the same idea twice and made every
+        // striker's finishing 0.76 for two unrelated reasons.
+        dt *= ceilingDamping(player, directSkill, skills.getExact(directSkill));
         // Rare jackpot is allowed only for low-skill players, to avoid unrealistic fast growth on 14+.
         if (skills.getExact(directSkill) <= 4.0
                 && effectiveTalent(player.getTalent()) >= 9.0
@@ -404,7 +407,10 @@ public class TrainingProgressionService {
             // Stamina follows the same rule as everything else: the percentage decides how much of
             // the week's work happens, and the old talent factor is gone rather than left to be
             // applied a second time in a different place.
-            double staminaGain = 0.14 * ageTrainingFactor(player.getAge(), SkillName.STAMINA)
+            double staminaGain = 0.14
+                    * PositionGrowthProfile.ageFactor(
+                            player.getPosition(), SkillName.STAMINA, player.getAge())
+                    * PositionGrowthProfile.learningRate(player.getPosition(), SkillName.STAMINA)
                     * (trainingPercent / 100.0);
             staminaGain *= injuryFactor;
             skills.setExact(SkillName.STAMINA, skills.getExact(SkillName.STAMINA) + Math.max(0.03, staminaGain));
@@ -467,7 +473,12 @@ public class TrainingProgressionService {
                 * (intensity == null ? 1.0 : intensity.growthMultiplier())
                 * TrainingPercent.disciplineFactor(coach)
                 * facilityFactor(player, skill);
-        double ageFactor = ageTrainingFactor(player.getAge(), skill);
+        // Rate, timing, ceiling and body are four different questions (Sprint 4.5). They are answered
+        // in four different places on purpose, so a later change to one cannot quietly re-tune
+        // another.
+        base *= PositionGrowthProfile.learningRate(player.getPosition(), skill);
+        base *= PositionGrowthProfile.physicalFactor(player, skill);
+        double ageFactor = PositionGrowthProfile.ageFactor(player.getPosition(), skill, player.getAge());
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
         double randomFactor = 0.85 + random.nextDouble() * 0.35;
@@ -480,14 +491,23 @@ public class TrainingProgressionService {
         return Math.max(0.08, 1.0 - (normalized / 22.0) * 0.85);
     }
 
-    private double ageTrainingFactor(int age, SkillName skill) {
-        if (age <= 18) return 1.10;
-        if (age <= 23) return 1.0;
-        if (age <= 28) return 1.0 - ((age - 23) * 0.05);
-        if (age == 29) return 0.70;
-        double factor = 0.70 - ((age - 29) * 0.08);
-        if (skill == SkillName.PACE) factor -= 0.08;
-        return Math.max(0.20, factor);
+    /**
+     * How hard a player is pushed back as he approaches the ceiling of a skill that is not his job
+     * (Sprint 4.5).
+     *
+     * <p>Returns 1.0 — no damping at all — for a skill played at his own position, and for a player
+     * with no recorded position. Damping is applied on the last third of the approach so that early
+     * gains come at full rate and it is the asymptote that does the work: a centre-half worked on
+     * passing gets somewhere useful quickly, and then slows as he nears a plausible limit rather
+     * than stopping dead.
+     */
+    private double ceilingDamping(Player player, SkillName skill, double currentExact) {
+        if (player == null || player.getPosition() == null) return 1.0;
+        double ceiling = PositionGrowthProfile.naturalCeiling(player.getPosition(), skill);
+        if (ceiling >= 20.0) return 1.0;
+        double remaining = ceiling - currentExact;
+        if (remaining > 6.0) return 1.0;
+        return Math.max(0.15, remaining / 6.0);
     }
 
     private double effectiveTalent(double rawTalent) {
@@ -495,27 +515,8 @@ public class TrainingProgressionService {
         return Math.max(1.0, Math.min(10.0, rawTalent));
     }
 
-    private double talentFactor(double talent) {
-        if (talent <= 1.0) return 0.55;
-        if (talent <= 2.0) return 0.65;
-        if (talent <= 3.0) return 0.75;
-        if (talent <= 4.0) return 0.85;
-        if (talent <= 5.0) return 0.93;
-        if (talent <= 6.0) return 1.00;
-        if (talent <= 7.0) return 1.12;
-        if (talent <= 8.0) return 1.24;
-        if (talent <= 9.0) return 1.40;
-        return 1.55;
-    }
-
     private boolean isSlowSkill(SkillName skill) {
         return skill == SkillName.PACE || skill == SkillName.STRIKER;
-    }
-
-    private double slowSkillModifier(SkillName skill) {
-        if (skill == SkillName.STRIKER) return 0.76;
-        if (skill == SkillName.PACE) return 0.86;
-        return 1.0;
     }
 
     private double generalSkillModifier(SkillName skill) {
