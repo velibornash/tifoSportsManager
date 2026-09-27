@@ -1990,6 +1990,36 @@ Head-coach effect on **match** performance is the remaining half of S4.3, not do
 
 **435 tests.**
 
+### S4.3 (second half) — the head coach matters on the pitch
+
+The board's most expensive hire develops players well and then has no effect whatsoever on a
+Saturday. He now has one, at the single point where real ability becomes the engine's ability.
+
+`RealSquadFactory.toSimSkills` is that point: every duel, pass, shot and sprint the engine decides is
+read from those eight numbers. The coach's factor is applied there and nowhere else, so there is no
+path by which he is quietly bypassed. The overloads keep every existing caller compiling, but a
+caller who forgets the coach is now visibly calling a different method rather than silently getting a
+default that hides the omission.
+
+**Bounded at ±6%, and the bound is the point.** A real head coach is worth something — that is why
+the new-manager bounce is a genuine effect — but he is not worth half a defender. Anything wider would
+be re-tuning a calibrated match engine to justify a staffing decision. His factor comes from
+man-management and tactical work, weighted 60/40 toward the dressing room, because his goalkeeping or
+scouting rating has nothing to do with how a Saturday goes.
+
+A club with **no** head coach gets exactly 1.0 and its players are bit-for-bit what they were before
+this existed. Nobody hired is not the same man as somebody hired badly, and a club with an empty
+staff list should not be inventing a problem it does not have.
+
+**Why this got its own test file.** Every other coach test in this sprint passes happily against a
+build where the factor is computed and then thrown away, because the rule is right and the wiring is
+not — which is the exact failure this sprint has now hit twice. `HeadCoachReachesTheEngineTest`
+asserts the outcome at the far end instead: a 6% coach's players are measurably better *inside the
+simulation*, all eight skills are affected, a 0.0 factor falls back to neutral rather than producing
+a squad of zeroes, and nobody is pushed past the top of the scale.
+
+**447 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

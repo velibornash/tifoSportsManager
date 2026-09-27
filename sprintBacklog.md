@@ -1014,18 +1014,24 @@ than a slightly worse `NORMAL`. An injured player never picks up a second injury
 
 ---
 
-### S4.3 — Coaching staff affects growth (consume S2.3) — 🟡 half done 2026-09-27
+### S4.3 — Coaching staff affects growth (consume S2.3) — ✅ done 2026-09-27
 
 | # | Task | State |
 |---|---|---|
 | 1 | Growth multiplier from the relevant coach's `development` + `motivation` attributes | ✅ resolved per skill, not per club |
 | 2 | Position-specific coaching: a `GK_COACH` improves goalkeeping growth | ✅ GK coach teaches goalkeeping only; physio teaches stamina; youth coach only under-23s; a scout is not a coach. Scouting's `youthRating` effect is Sprint 5 |
 | 3 | A poor coach actively hurts growth (a `discipline`-driven penalty) | ✅ 0.75–1.0 off man-management, never above 1.0 |
-| 4 | **Head coach quality affects match performance**, not just training | ❌ **not done** — the remaining half |
+| 4 | **Head coach quality affects match performance**, not just training | ✅ ±6% on ability at the `toSimSkills` funnel, the one place real ability enters the engine |
 | 5 | Staff wage is a real ledger expense (S2.2) | ✅ already in the weekly ledger |
 
 **Verify:** replacing a low-development coach with a high one measurably speeds growth; a goalkeeping
-coach speeds goalkeeping and nothing else. — `TrainingPercentCoachResolutionTest`, 10 tests.
+coach speeds goalkeeping and nothing else; a head coach's players are measurably better *inside the
+sim*. — `TrainingPercentCoachResolutionTest` (10), `StaffMemberMatchFactorTest` (6),
+`HeadCoachReachesTheEngineTest` (6).
+
+The ±6% bound is load-bearing. A head coach who was worth half a defender would not be a staffing
+decision, it would be a balance change wearing one. A club with no head coach gets exactly 1.0, so its
+players are unchanged from before the feature existed.
 
 The bug these fix is the quiet one: a club hires a goalkeeping coach, his wage leaves the account every
 week, and the goalkeeper grows at exactly the same rate as with nobody in the room. The feature existed

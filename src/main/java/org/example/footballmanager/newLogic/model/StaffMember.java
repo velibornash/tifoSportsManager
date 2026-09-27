@@ -132,6 +132,34 @@ public class StaffMember {
         }
     }
 
+    /**
+     * How much better or worse this man makes his players on a Saturday, as a multiplier on their
+     * ability going into the match.
+     *
+     * <p>Bounded at ±6% on purpose. A head coach is the most expensive hire on the board and he has
+     * to be worth something, but a real one is not worth half a defender — his edge is measured in
+     * the few percent of a season, which is why a new-manager bounce is a real effect and not a
+     * transformation. Anything larger would be re-tuning the match engine's balance to justify a
+     * staffing decision, and the engine is calibrated.
+     *
+     * <p>Comes from the two attributes that actually describe how a manager treats players in a
+     * dressing room and on a tactics board: man-management and tactical work. His goalkeeping or
+     * scouting rating has nothing to do with it.
+     *
+     * <p>Null is 1.0, for the same reason as everywhere else in this class: nobody hired is not the
+     * same as somebody hired badly, and a club with an empty staff list should not be inventing a
+     * problem it does not have.
+     */
+    public double matchFactor() {
+        if (getMotivation() == null && getTactical() == null) {
+            return 1.0;
+        }
+        int manManagement = nz(getMotivation());
+        int tacticalWork = nz(getTactical());
+        double quality = (manManagement * 0.6 + tacticalWork * 0.4) / 20.0;
+        return 0.94 + 0.12 * quality;
+    }
+
     /** The first value actually recorded, clamped into range. */
     private int first(Integer... candidates) {
         for (Integer candidate : candidates) {

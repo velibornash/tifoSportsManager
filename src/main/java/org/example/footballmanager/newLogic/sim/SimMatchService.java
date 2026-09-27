@@ -17,7 +17,10 @@ import org.example.footballmanager.newLogic.repository.LineupRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.model.StaffMember;
+import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
@@ -55,6 +58,7 @@ public class SimMatchService {
     private final LineupRepository lineupRepository;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
+    private final StaffMemberRepository staffMemberRepository;
     private final AttendanceService attendanceService;
     private final ObjectMapper objectMapper;
 
@@ -100,7 +104,7 @@ public class SimMatchService {
             List<org.example.footballmanager.newLogic.model.Player> ordered =
                     lineup.getOrderedStartingPlayers();
             if (ordered != null && ordered.size() >= 11) {
-                return RealSquadFactory.buildSquad(lineup, side, benchOut);
+                return RealSquadFactory.buildSquad(lineup, side, benchOut, coachFactorFor(team));
             }
         }
         // No usable lineup template → build the XI from the team's real DB
@@ -109,7 +113,31 @@ public class SimMatchService {
         List<org.example.footballmanager.newLogic.model.Player> squad =
                 playerRepository.findByTeamId(team.getId());
         if (squad == null || squad.size() < 11) return null;
-        return RealSquadFactory.buildSquadFromPlayers(squad, side);
+        return RealSquadFactory.buildSquadFromPlayers(squad, side, coachFactorFor(team));
+    }
+
+    /**
+     * The head coach's effect on this club's players for this match (Sprint 4.3).
+     *
+     * <p>Only the head coach, and only from the attributes that describe how a manager actually
+     * handles players — an assistant's rating is not the same man, and a scout's certainly is not a
+     * coach. A club with no head coach gets 1.0, because nobody hired is not a coach who is bad at
+     * his job.
+     *
+     * <p>Resolved per match rather than cached with the squad, for the same reason the training
+     * service resolves its coach every week: a club can hire and fire between matches, and a manager
+     * remembered for a week too long would keep producing results that belonged to his predecessor.
+     */
+    private double coachFactorFor(Team team) {
+        if (team == null || team.getId() == null) {
+            return 1.0;
+        }
+        for (StaffMember member : staffMemberRepository.findByTeamId(team.getId())) {
+            if (member != null && member.getRole() == StaffRole.HEAD_COACH) {
+                return member.matchFactor();
+            }
+        }
+        return 1.0;
     }
 
     @Transactional

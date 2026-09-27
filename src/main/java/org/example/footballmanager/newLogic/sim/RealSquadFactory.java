@@ -52,15 +52,27 @@ public final class RealSquadFactory {
      * @param benchOut if non-null, receives the reserve players (positioned off the pitch)
      */
     public static List<Player> buildSquad(Lineup lineup, String team, List<Player> benchOut) {
+        return buildSquad(lineup, team, benchOut, 1.0);
+    }
+
+    /**
+     * As above, with the club's head coach applied.
+     *
+     * <p>The overloads exist so that every existing caller keeps compiling unchanged and, more
+     * importantly, so a caller that forgets the coach is visibly calling a different method rather
+     * than silently getting a default that hides the omission.
+     */
+    public static List<Player> buildSquad(Lineup lineup, String team, List<Player> benchOut,
+                                          double coachFactor) {
         if (lineup == null) return null;
         List<org.example.footballmanager.newLogic.model.Player> ordered =
                 lineup.getOrderedStartingPlayers();
         if (ordered == null || ordered.size() < 11) return null;
         List<org.example.footballmanager.newLogic.model.Player> starters =
                 new ArrayList<>(ordered.subList(0, 11));
-        List<Player> xi = buildFromStarters(starters, team);
+        List<Player> xi = buildFromStarters(starters, team, coachFactor);
         if (benchOut != null && ordered.size() > 11) {
-            benchOut.addAll(buildBench(ordered.subList(11, ordered.size()), team));
+            benchOut.addAll(buildBench(ordered.subList(11, ordered.size()), team, coachFactor));
         }
         return xi;
     }
@@ -70,7 +82,8 @@ public final class RealSquadFactory {
      * player with a real MOTM chance, but they are marked on-bench and never enter the live list.
      */
     private static List<Player> buildBench(
-            List<org.example.footballmanager.newLogic.model.Player> reserves, String team) {
+            List<org.example.footballmanager.newLogic.model.Player> reserves, String team,
+            double coachFactor) {
         List<Player> bench = new ArrayList<>();
         // A matchday squad is 18 in the league game: seven reserves is a usable bench.
         int limit = Math.min(reserves.size(), 7);
@@ -85,7 +98,7 @@ public final class RealSquadFactory {
                     role,
                     new Position(0, 0),
                     new Position(0, 0),
-                    toSimSkills(db.getSkills()),
+                    toSimSkills(db.getSkills(), coachFactor),
                     heightCm(db.getHeight()));
             p.setOnBench(true);
             bench.add(p);
@@ -114,6 +127,13 @@ public final class RealSquadFactory {
      */
     public static List<Player> buildSquadFromPlayers(
             List<org.example.footballmanager.newLogic.model.Player> players, String team) {
+        return buildSquadFromPlayers(players, team, 1.0);
+    }
+
+    /** As above, with the club's head coach applied (Sprint 4.3). */
+    public static List<Player> buildSquadFromPlayers(
+            List<org.example.footballmanager.newLogic.model.Player> players, String team,
+            double coachFactor) {
         if (players == null) return null;
         List<org.example.footballmanager.newLogic.model.Player> valid = players.stream()
                 .filter(p -> p != null && p.getId() != null && p.getName() != null)
@@ -121,12 +141,13 @@ public final class RealSquadFactory {
                 .collect(Collectors.toList());
         if (valid.size() < 11) return null;
         ensureSingleGK(valid);
-        return buildFromStarters(new ArrayList<>(valid.subList(0, 11)), team);
+        return buildFromStarters(new ArrayList<>(valid.subList(0, 11)), team, coachFactor);
     }
 
     /** Maps an ordered list of exactly-11 DB starters onto the slot grid. */
     private static List<Player> buildFromStarters(
-            List<org.example.footballmanager.newLogic.model.Player> starters, String team) {
+            List<org.example.footballmanager.newLogic.model.Player> starters, String team,
+            double coachFactor) {
         int[] slotPlayer = assignSlots(starters);
 
         List<Player> squad = new ArrayList<>(11);
@@ -141,7 +162,7 @@ public final class RealSquadFactory {
                     role,
                     anchor,
                     anchor,
-                    toSimSkills(db.getSkills()),
+                    toSimSkills(db.getSkills(), coachFactor),
                     heightCm(db.getHeight())));
         }
         return squad;
@@ -240,16 +261,33 @@ public final class RealSquadFactory {
     }
 
     private static PlayerSkills toSimSkills(Skills s) {
+        return toSimSkills(s, 1.0);
+    }
+
+    /**
+     * The single point where a real player's ability becomes the engine's ability (Sprint 4.3).
+     *
+     * <p>Everything the engine decides — a duel, a pass, a shot, a sprint — is read from these eight
+     * numbers, so a head coach's effect is applied <b>here</b> rather than anywhere downstream. One
+     * funnel means there is no path by which the coach is quietly bypassed, which is the failure mode
+     * this sprint keeps running into: a feature that exists, costs money, and does nothing.
+     *
+     * <p>Scaled after reading the exact value, so it lands on the real skill rather than on a
+     * rounded display figure, and clamped afterwards because a coach is not allowed to push anybody
+     * past the top of the scale.
+     */
+    private static PlayerSkills toSimSkills(Skills s, double coachFactor) {
         if (s == null) return PlayerSkills.neutral();
+        double factor = coachFactor <= 0 ? 1.0 : coachFactor;
         return new PlayerSkills(
-                clamp1(s.getExact(SkillName.PACE)),
-                clamp1(s.getExact(SkillName.STAMINA)),
-                clamp1(s.getExact(SkillName.GOALKEEPER)),
-                clamp1(s.getExact(SkillName.TECHNIQUE)),
-                clamp1(s.getExact(SkillName.PLAYMAKER)),
-                clamp1(s.getExact(SkillName.PASSING)),
-                clamp1(s.getExact(SkillName.STRIKER)),
-                clamp1(s.getExact(SkillName.DEFENDER)));
+                clamp1(s.getExact(SkillName.PACE) * factor),
+                clamp1(s.getExact(SkillName.STAMINA) * factor),
+                clamp1(s.getExact(SkillName.GOALKEEPER) * factor),
+                clamp1(s.getExact(SkillName.TECHNIQUE) * factor),
+                clamp1(s.getExact(SkillName.PLAYMAKER) * factor),
+                clamp1(s.getExact(SkillName.PASSING) * factor),
+                clamp1(s.getExact(SkillName.STRIKER) * factor),
+                clamp1(s.getExact(SkillName.DEFENDER) * factor));
     }
 
     private static double clamp1(double v) {
