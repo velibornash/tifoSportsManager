@@ -220,10 +220,4 @@ public class DuelService {
     private String p(Position pos) {
         return pos == null ? "?" : "(%.1f,%.1f)".formatted(pos.getRow(), pos.getColumn());
     }
-
-    private String minute() {
-        return String.format("%d:%02d",
-                state.getMatchTicks() / 40,
-                state.getMatchTicks() % 40 * 90 / 40);
-    }
 }

@@ -282,12 +282,17 @@ class OverlayManager {
   /** Show goal overlay with ball animation */
   showGoal(team, homeName, awayName, homeScore, awayScore) {
     this._type = 'goal';
-    this._blocking = true;
+    // NOT blocking. Every other overlay pauses the match while it is on screen, which is right for
+    // a VAR review or a half-time break, and wrong for a goal: the celebration is the thing you want
+    // to watch, and freezing the replay on the overlay meant the ball never visibly went in - the
+    // match sat still for six seconds behind a dim backdrop. Playback now runs underneath and the
+    // overlay is dismissed by clicking it, ESC or Space.
+    this._blocking = false;
     this._textEl.textContent = '\u26BD GOAL!';
     this._subEl.textContent = `${team === 'HOME' ? homeName : awayName} ${homeScore} - ${awayScore} ${team === 'HOME' ? awayName : homeName}`;
     this._el.className = 'overlay visible goal';
     this._active = true;
-    this._resumeTime = performance.now() + 6000; // 6 seconds
+    this._resumeTime = performance.now() + 4500; // 4.5 seconds, non-blocking
     this._goalAnim = { team, startRealTime: performance.now() };
   }
 

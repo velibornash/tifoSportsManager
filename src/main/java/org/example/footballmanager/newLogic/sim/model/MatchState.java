@@ -146,6 +146,26 @@ public class MatchState {
     private Player restartTaker;      // walks to the ball during a restart
     private boolean kickoffPending;   // true right after kickoff (match start / after goal)
 
+    /**
+     * Goal celebration, in ticks. The scoring side's players go to their own corner; the ball sits
+     * where it finished, in the net.
+     *
+     * <p>This is a <b>presentation hold, not dead time</b>, and that distinction is the whole point.
+     * On a goal the ball used to be teleported to the centre spot in the same tick the goal was
+     * detected, and the kickoff was even played in that same tick, so the snapshot a viewer replays
+     * shows the ball jumping backwards from the goal line to half-way. The goal overlay has a
+     * deliberate three-tick delay before it appears, and by then the ball was already back at the
+     * centre — which is why the goal reads as "it happened and then it was just a restart", with
+     * nothing of the shot on screen.
+     *
+     * <p>Holding here means the ball is <i>seen</i> crossing the line and lying in the net, and the
+     * players are seen running away to celebrate, before anything restarts. Twenty ticks is what the
+     * older engine used and it reads as about two seconds of replay.
+     */
+    private boolean celebrating;
+    private String celebratingTeam;   // the side that scored
+    private int celebrationHoldTicks;
+
     // Statistics
     private int passAttempts;
     private int passesCompleted;
@@ -520,6 +540,36 @@ public class MatchState {
 
     public MatchPhase getPhase() { return phase; }
     public void setPhase(MatchPhase phase) { this.phase = phase; }
+
+    public boolean isCelebrating() { return celebrating; }
+
+    /**
+     * Starts a celebration, and puts the match into the {@code GOAL_CELEBRATION} phase so a replay
+     * and any phase-dependent logic can tell it apart from ordinary open play.
+     */
+    public void startCelebration(String team, int holdTicks) {
+        this.celebrating = true;
+        this.celebratingTeam = team;
+        this.celebrationHoldTicks = holdTicks;
+        this.phase = MatchPhase.GOAL_CELEBRATION;
+    }
+
+    /**
+     * Spends one tick of the celebration.
+     *
+     * @return true while there is more celebration left
+     */
+    public boolean consumeCelebrationHoldTick() {
+        if (celebrationHoldTicks > 0) celebrationHoldTicks--;
+        if (celebrationHoldTicks > 0) return true;
+        celebrating = false;
+        celebratingTeam = null;
+        return false;
+    }
+
+    public String getCelebratingTeam() { return celebratingTeam; }
+    public int getCelebrationHoldTicks() { return celebrationHoldTicks; }
+    public void setCelebrationHoldTicks(int ticks) { this.celebrationHoldTicks = ticks; }
 
     public String getSetPieceType() { return setPieceType; }
     public void setSetPieceType(String setPieceType) { this.setPieceType = setPieceType; }

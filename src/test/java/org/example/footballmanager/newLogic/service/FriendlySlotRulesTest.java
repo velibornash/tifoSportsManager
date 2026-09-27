@@ -53,25 +53,27 @@ class FriendlySlotRulesTest {
     @Test
     @DisplayName("weeks 5 and 6 each give up one slot to a friendly")
     void midSeasonGivesUpOneSlotEach() {
-        assertEquals(1, SeasonCalendar.friendlySlots(5));
-        assertEquals(1, SeasonCalendar.matchesIn(5));
-        assertEquals(1, SeasonCalendar.friendlySlots(6));
-        assertEquals(1, SeasonCalendar.matchesIn(6));
+        assertEquals(0, SeasonCalendar.friendlySlots(5), "week 5 is league in both slots now");
+        assertEquals(2, SeasonCalendar.matchesIn(5));
+        assertEquals(2, SeasonCalendar.friendlySlots(6), "week 6 is all friendlies now");
+        assertEquals(0, SeasonCalendar.matchesIn(6), "week 6 has no league football");
     }
 
     @Test
-    @DisplayName("week 5 runs league-then-friendly and week 6 runs friendly-then-league")
-    void theTwoMidSeasonWeeksRunInOppositeDirections() {
+    @DisplayName("week 5 finishes the first half with two rounds and week 6 is entirely friendly")
+    void weekFiveEndsTheHalfAndWeekSixIsFree() {
+        // Round 10 was week 6's second slot until the owner moved it into week 5, so that week 6
+        // could be given over entirely to national-team qualifiers played day by day.
         assertEquals(SeasonCalendar.SlotKind.LEAGUE, SeasonCalendar.slot(5, 1).kind(),
-                "week 5 is round 9 on Thursday");
-        assertEquals(SeasonCalendar.SlotKind.FRIENDLY, SeasonCalendar.slot(5, 2).kind());
+                "week 5 day 3 is round 9");
+        assertEquals(SeasonCalendar.SlotKind.LEAGUE, SeasonCalendar.slot(5, 2).kind(),
+                "week 5 day 7 is round 10");
         assertEquals(SeasonCalendar.SlotKind.FRIENDLY, SeasonCalendar.slot(6, 1).kind());
-        assertEquals(SeasonCalendar.SlotKind.LEAGUE, SeasonCalendar.slot(6, 2).kind(),
-                "week 6 is round 10 on Sunday");
+        assertEquals(SeasonCalendar.SlotKind.FRIENDLY, SeasonCalendar.slot(6, 2).kind());
     }
 
     @Test
-    @DisplayName("in week 11 the playoff takes Thursday and only the playoff clubs lose a slot")
+    @DisplayName("in week 11 the playoff takes day 3 and only the playoff clubs lose a slot")
     void playoffWeekTakesThursdayFromThePlayoffClubs() {
         SeasonCalendar.WeekSlot thursday = SeasonCalendar.slot(11, 1);
         assertEquals(SeasonCalendar.SlotKind.FRIENDLY_IF_NOT_IN_PLAYOFF, thursday.kind());

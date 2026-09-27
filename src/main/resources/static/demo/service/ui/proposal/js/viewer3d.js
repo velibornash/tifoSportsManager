@@ -558,6 +558,18 @@ class Tifo3D {
 
   /* ───────── controls ───────── */
   _wireControls() {
+    // The news banner is dismissible, so give it a way to be dismissed. ESC and Space do the same
+    // as in the 2D viewer. The 3D overlay is a solid panel over the pitch, so a click that lands on
+    // one of the control buttons must not also clear the banner by accident.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || e.key === ' ') {
+        if (this._dismissNews()) e.preventDefault();
+      }
+    });
+    document.getElementById('overlay').addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      this._dismissNews();
+    });
     document.getElementById('playBtn').addEventListener('click', () => this.play());
     document.getElementById('pauseBtn').addEventListener('click', () => this.pause());
     const backBtn = document.getElementById('backBtn');
@@ -802,14 +814,33 @@ class Tifo3D {
     textEl.textContent = text;
     subEl.textContent = sub;
     overlay.className = 'overlay visible ' + (cls || '');
+    // A "fulltime" banner is the end of the match and stays; everything else can be clicked away.
+    // There was no dismissal at all here, so a GOAL banner had to be waited out on a timer while
+    // sitting over the pitch.
+    this._newsDismissible = !overlay.classList.contains('fulltime');
     clearTimeout(this._newsTimer);
     if (duration && isFinite(duration)) {
       this._newsTimer = setTimeout(() => {
-        if (!overlay.classList.contains('fulltime')) {
-          overlay.classList.remove('visible');
-        }
+        if (this._newsDismissible) overlay.classList.remove('visible');
       }, duration);
     }
+  }
+
+  /**
+   * Clears a dismissible banner.
+   *
+   * @returns true if one was showing, so a key handler can swallow the keypress only when it
+   *          actually did something — otherwise Space would stop scrolling the page on every
+   *          frame of a match with no banner up.
+   */
+  _dismissNews() {
+    const overlay = document.getElementById('overlay');
+    if (this._newsDismissible && overlay.classList.contains('visible')) {
+      clearTimeout(this._newsTimer);
+      overlay.classList.remove('visible');
+      return true;
+    }
+    return false;
   }
 
   /* ───────── event timeline ───────── */

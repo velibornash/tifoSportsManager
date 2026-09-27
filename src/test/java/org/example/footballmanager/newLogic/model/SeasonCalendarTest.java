@@ -50,16 +50,18 @@ class SeasonCalendarTest {
     }
 
     @Test
-    @DisplayName("two rounds a week, except in weeks 5 and 6 where a friendly takes the slot")
-    void twoRoundsExceptMidSeason() {
-        for (int week = 1; week <= 4; week++) {
+    @DisplayName("two rounds a week for nine weeks, and no league at all in weeks 6 and 12")
+    void twoRoundsExceptTheTwoNonLeagueWeeks() {
+        for (int week = 1; week <= 5; week++) {
             assertEquals(2, SeasonCalendar.matchesIn(week), "week " + week);
         }
-        assertEquals(1, SeasonCalendar.matchesIn(5), "week 5 has a friendly in the second slot");
-        assertEquals(1, SeasonCalendar.matchesIn(6), "week 6 has a friendly in the second slot");
+        // Week 6 is midseason, given over to national-team qualifiers. Not a gap in the calendar -
+        // a week with nothing in it because something else is in it.
+        assertEquals(0, SeasonCalendar.matchesIn(6), "week 6 must have no league football");
         for (int week = 7; week <= 10; week++) {
             assertEquals(2, SeasonCalendar.matchesIn(week), "week " + week);
         }
+        assertEquals(0, SeasonCalendar.matchesIn(12), "week 12 is the World Cup and has no league");
         assertEquals(0, SeasonCalendar.matchesIn(11), "week 11 is playoffs");
         assertEquals(0, SeasonCalendar.matchesIn(12), "week 12 is the break");
     }
@@ -71,8 +73,10 @@ class SeasonCalendarTest {
         assertEquals(List.of(3, 4), SeasonCalendar.roundsIn(2));
         assertEquals(List.of(5, 6), SeasonCalendar.roundsIn(3));
         assertEquals(List.of(7, 8), SeasonCalendar.roundsIn(4));
-        assertEquals(List.of(9), SeasonCalendar.roundsIn(5));
-        assertEquals(List.of(10), SeasonCalendar.roundsIn(6));
+        // Round 10 moved from week 6 into week 5 so week 6 could be left to national-team
+        // qualifiers. The first half of the season now ends inside week 5.
+        assertEquals(List.of(9, 10), SeasonCalendar.roundsIn(5));
+        assertEquals(List.of(), SeasonCalendar.roundsIn(6), "week 6 has no league football");
         assertEquals(List.of(11, 12), SeasonCalendar.roundsIn(7));
         assertEquals(List.of(13, 14), SeasonCalendar.roundsIn(8));
         assertEquals(List.of(15, 16), SeasonCalendar.roundsIn(9));
@@ -94,12 +98,13 @@ class SeasonCalendarTest {
         assertEquals("r7", slotLabel(4, 1));
         assertEquals("r8", slotLabel(4, 2));
 
-        // Week 5 is league-then-friendly and week 6 is friendly-then-league. That asymmetry is the
-        // owner's, and it is why a round number no longer implies a day.
+        // Round 10 used to be week 6's second slot. The owner moved it into week 5 so that week 6
+        // could be left entirely to national-team qualifiers, which is why the first half now ends
+        // on round 10 in a single week and the mid-season window opens the moment that round is done.
         assertEquals("r9", slotLabel(5, 1));
-        assertEquals("FRIENDLY", slotLabel(5, 2));
+        assertEquals("r10", slotLabel(5, 2));
         assertEquals("FRIENDLY", slotLabel(6, 1));
-        assertEquals("r10", slotLabel(6, 2));
+        assertEquals("FRIENDLY", slotLabel(6, 2));
 
         assertEquals("r11", slotLabel(7, 1));
         assertEquals("r12", slotLabel(7, 2));
@@ -161,8 +166,8 @@ class SeasonCalendarTest {
     @DisplayName("friendly slots appear in weeks 5, 6, 11 and 12 and nowhere else")
     void friendlySlots() {
         assertEquals(0, SeasonCalendar.friendlySlots(1));
-        assertEquals(1, SeasonCalendar.friendlySlots(5));
-        assertEquals(1, SeasonCalendar.friendlySlots(6));
+        assertEquals(0, SeasonCalendar.friendlySlots(5), "week 5 is two league rounds now");
+        assertEquals(2, SeasonCalendar.friendlySlots(6), "week 6 is two friendly slots now");
         assertEquals(0, SeasonCalendar.friendlySlots(7));
         // Week 11 offers two, but a club in the playoff only keeps one of them.
         assertEquals(2, SeasonCalendar.friendlySlots(11, false));

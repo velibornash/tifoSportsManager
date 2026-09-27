@@ -2327,6 +2327,55 @@ mismatch produces an account that logs in fine and manages nothing.
 
 **541 tests.**
 
+### Match viewer: a goal you can actually see (owner report 2026-09-27)
+
+Three bugs from watching a match, all of which had the same shape — a feature that ran, produced no
+error, and left nothing on screen.
+
+**The clock had minutes with eighty-seven seconds in them.** `tick % 40 * 90 / 40` — forty ticks make
+a *minute*, so the remainder scales to sixty, not ninety. The old arithmetic produced 0–87 and
+`%02d` printed it without complaint, which is how `[44:65|EXE]` and `[32:87|EXE]` sat in the logs and
+in the shipped replay. Three dead copies of the same broken helper went with it rather than being
+fixed, since a private method nothing calls is how you get a fourth copy next year.
+
+**A goal was invisible.** On a goal the ball was teleported to the centre spot *in the same tick* the
+goal was detected, and the kickoff was even played in that same tick. The snapshot a replay reads was
+already back at half-way, so the viewer interpolated the ball from row 7.1 to row 4.5 — visibly
+backwards — and the goal read as "it happened, then it was just a restart". The goal overlay has a
+deliberate three-tick delay before it appears, and by then the ball was long gone.
+
+A goal is now a **celebration**: the ball rests half a cell past the line it crossed, the scoring
+side's outfield players run goalward, and a snapshot is recorded on every tick for twenty. Verified in
+the exported replay: the ball goes 7.10 → 8.50, sits at 8.50 for twenty ticks with the phase marked
+`GOAL_CELEBRATION`, and only then returns to 4.50. A HOME defender runs from row 3.50 to the goal line
+while the ball is in the net.
+
+**The subtle part was the clock.** The first version of the hold returned before the clock step, so
+`matchTicks` never advanced and all twenty celebration frames were written onto **one tick**. The
+replay could only ever show the last of them, which looked identical to no celebration at all.
+Snapshots are keyed by match tick; a hold that does not advance the clock is a hold that cannot be
+seen. A goal celebration does not stop the match clock anyway, so the fix and the rule are the same
+thing.
+
+`StoppageClock.Reason.GOAL` is no longer fired. It froze the whole pipeline on the tick after the
+goal — by which time there was nothing left to see — and the celebration is the dead period instead,
+with the clock running through it.
+
+**The overlay no longer blocks.** Every other overlay pauses the match, which is right for a VAR
+review and wrong for a goal: the celebration is the thing you want to watch, and freezing the replay
+behind a dim backdrop for six seconds is why nothing appeared to happen. The goal overlay is now
+non-blocking and lasts 4.5s, and clicking anywhere on it dismisses it. The click only reached the
+handler on the text itself before, because `.overlay` is `pointer-events:none` and only
+`.overlay-inner` was re-enabled — so clicking the backdrop did nothing. The visible overlay now takes
+the pointer.
+
+The 3D viewer had **no dismissal at all** — a GOAL banner could only be waited out on a timer, and
+the full-time banner never left at all. It now dismisses on click, ESC and Space, except at full
+time. Space only stops propagating when a banner was actually showing, so it still scrolls the page
+during ordinary play.
+
+**549 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

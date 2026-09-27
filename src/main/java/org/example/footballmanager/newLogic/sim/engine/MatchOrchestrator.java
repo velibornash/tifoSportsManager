@@ -223,6 +223,66 @@ public class MatchOrchestrator {
     public MatchState getState() { return state; }
 
 
+    /**
+     * One tick of goal celebration, then the kickoff.
+     *
+     * <p>Three things run on every tick: the scoring side's outfield players run goalward at a
+     * sprint, a snapshot is captured, and the hold is counted down. On the last tick the ball goes
+     * back to the centre and the restart is set up, which is the first moment the viewer sees it move
+     * the other way — so the ball crossing the line, lying in the net, and then being reset all read
+     * as three separate things rather than one jump.
+     *
+     * <p>The scorer is excluded from the sprint, because he has just finished running and is
+     * standing near the penalty spot; everybody else is going somewhere.
+     */
+    private void tickCelebration() {
+        // The match clock KEEPS RUNNING through a celebration. That is both the football rule and the
+        // thing that makes the celebration work at all: snapshots are keyed by match tick, so a hold
+        // that does not advance the clock writes twenty identical frames onto one tick and the replay
+        // can only ever show the last of them. The first version of this returned before the clock
+        // step, held for twenty ticks, and produced exactly one frame.
+        //
+        // Half-time is still handled: the clock service sets its own stopped/half-time flags, and
+        // simulate() checks them after every tick, so a goal scored just before the break ends the
+        // half where it should.
+        clockService.tick(state);
+
+        String team = state.getCelebratingTeam();
+        Player scorer = state.getLastShooter();
+        Position goalSpot = BallResultHandler.goalExitPositionFor(team);
+        boolean towardsGoal = "HOME".equals(team);
+
+        for (Player p : state.getPlayers()) {
+            if (p == null || p.isGoalkeeper() || p == scorer || !team.equals(p.getTeam())) continue;
+            // Run past the goal, toward their own corner and the crowd behind it.
+            double row = towardsGoal ? Math.max(goalSpot.getRow(), p.getPosition().getRow() + 0.35)
+                    : Math.min(goalSpot.getRow(), p.getPosition().getRow() - 0.35);
+            p.setTarget(new Position(row, clampToField(p.getPosition().getColumn())));
+        }
+        movementEngine.moveAllTowardTargets(state);
+
+        boolean moreToCome = state.consumeCelebrationHoldTick();
+        recorder.captureSnapshot(state);
+        if (moreToCome) return;
+
+        // Hold is over. The phase goes back to a set piece and the ball returns to the centre.
+        if (state.getPhase() == MatchPhase.GOAL_CELEBRATION) {
+            state.setPhase(MatchPhase.SET_PIECE);
+        }
+        String kickoffTeam = state.getRestartTeam();
+        restartManager.handleKickoff(state, kickoffTeam);
+        // handleKickoff leaves the carrier null when it cannot find a kicker (all attackers
+        // unavailable) — never dereference it.
+        Player kicker = state.getCarrier();
+        log("RST", "celebration over -> kickoff " + kickoffTeam + " | ball"
+                + p(state.getBall().getPosition()) + " | taker "
+                + (kicker == null ? "none (no kicker available)" : kicker.getLabel()));
+    }
+
+    private double clampToField(double column) {
+        return Math.max(0.9, Math.min(7.0, column));
+    }
+
     private void log(String tag, String msg) {
         actionLog.log(tag, msg);
     }
@@ -241,6 +301,19 @@ public class MatchOrchestrator {
         // inflated by ~50%. Only the stoppage clock runs until the referee releases play.
         if (stoppage.isStopped()) {
             stoppage.tick(state);
+            return;
+        }
+
+        // A goal celebration runs BEFORE the stoppage check, because the stoppage it replaces used
+        // to fire on the very next tick and returned here with nothing to show: the ball had already
+        // been moved to the centre and the kickoff already played in the goal's own tick.
+        //
+        // This is the one place in the pipeline where players move, a snapshot is recorded, and
+        // nothing else happens. All three matter. Movement is the point — the scoring side runs to
+        // its own corner. The snapshot is what puts the ball in the net in the replay, without which
+        // the goal is a line in a log and nothing on the screen.
+        if (state.isCelebrating()) {
+            tickCelebration();
             return;
         }
 

@@ -94,6 +94,8 @@ public class MatchClockService {
      * Get current match second from tick count.
      */
     public int getMatchSecond(int tick) {
-        return ((tick % MATCH_TICKS_PER_MINUTE) * 90) / MATCH_TICKS_PER_MINUTE; // 1.5s per tick
+        // Forty ticks make a MINUTE and a tick is 1.5s, so the remainder scales to sixty, not
+        // ninety. Multiplying by ninety yields up to 87 and a clock with 87 seconds in it.
+        return ((tick % MATCH_TICKS_PER_MINUTE) * 60) / MATCH_TICKS_PER_MINUTE;
     }
 }

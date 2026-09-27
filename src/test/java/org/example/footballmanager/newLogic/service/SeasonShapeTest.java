@@ -23,9 +23,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SeasonShapeTest {
 
     /** The owner's table, written out. */
+    /**
+     * The owner's season shape, week by week (rule of 2026-09-27).
+     *
+     * <p>Week 5 now carries both round 9 and round 10, and week 6 carries none: it is midseason,
+     * reserved for national-team qualifiers played day by day. Weeks 11 and 12 have no league rounds
+     * either — week 11's day-3 slot is the playoff and week 12 is the World Cup.
+     */
     private static final List<List<Integer>> EXPECTED = List.of(
             List.of(1, 2), List.of(3, 4), List.of(5, 6), List.of(7, 8),
-            List.of(9), List.of(10),
+            List.of(9, 10), List.of(),
             List.of(11, 12), List.of(13, 14), List.of(15, 16), List.of(17, 18));
 
     @Test
@@ -59,8 +66,8 @@ class SeasonShapeTest {
         }
         assertEquals(18, total, "a club plays eighteen league matches a season");
         for (int week = 1; week <= 4; week++) assertEquals(2, SeasonCalendar.matchesIn(week));
-        assertEquals(1, SeasonCalendar.matchesIn(5));
-        assertEquals(1, SeasonCalendar.matchesIn(6));
+        assertEquals(2, SeasonCalendar.matchesIn(5), "week 5 ends the first half, both slots league");
+        assertEquals(0, SeasonCalendar.matchesIn(6), "week 6 is midseason, no league");
         for (int week = 7; week <= 10; week++) assertEquals(2, SeasonCalendar.matchesIn(week));
     }
 
@@ -86,14 +93,18 @@ class SeasonShapeTest {
     }
 
     @Test
-    @DisplayName("a club can ask for a friendly in weeks 5, 6, 11 and 12 only")
+    @DisplayName("a club can ask for a friendly in weeks 6, 11 and 12 only")
     void friendlyWeeks() {
         Set<Integer> friendlyWeeks = new HashSet<>();
         for (int week = 1; week <= 12; week++) {
             if (SeasonCalendar.friendlySlots(week) > 0) friendlyWeeks.add(week);
         }
-        assertEquals(Set.of(5, 6, 11, 12), friendlyWeeks);
-        assertEquals(2, SeasonCalendar.friendlySlots(12), "the break has two friendly slots");
+        // Week 5 dropped out of this set when round 10 moved into it, so the first half of the
+        // season now has no friendly at all. The remaining three are the two non-league weeks and
+        // the playoff week.
+        assertEquals(Set.of(6, 11, 12), friendlyWeeks);
+        assertEquals(2, SeasonCalendar.friendlySlots(6), "midseason has two friendly slots");
+        assertEquals(2, SeasonCalendar.friendlySlots(12), "the World Cup week has two");
     }
 
     @Test

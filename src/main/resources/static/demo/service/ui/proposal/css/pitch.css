@@ -194,6 +194,10 @@ canvas#pitch{
   opacity:1;
   cursor:pointer;
 }
+/* The whole overlay is a hit target, not just the text box. The container is pointer-events:none
+   so a *hidden* overlay never swallows a click, and the .visible rule turns it back on — so
+   clicking the dim backdrop dismisses, instead of only landing when the pointer is on the words. */
+.overlay.visible{pointer-events:auto}
 .overlay.visible::before{pointer-events:none}
 .overlay.visible .overlay-inner{pointer-events:auto;cursor:pointer}
 /* Dismiss hint — small click/ESC hint below the message so the user

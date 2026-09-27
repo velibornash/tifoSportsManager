@@ -36,6 +36,9 @@ import java.util.Set;
  */
 public class ActionLogService {
 
+    /** Forty ticks make a minute of match time, so a tick is 1.5 seconds. */
+    public static final int TICKS_PER_MINUTE = 40;
+
     /** Tags that drive the on-pitch match story — the only lines printed to stdout
      *  in compact (default) mode. A full match stays ~900 lines (vs ~28k raw),
      *  so the IntelliJ run-console buffer never cuts the match start. Deeper
@@ -131,10 +134,18 @@ public class ActionLogService {
         return sb.toString();
     }
 
-    /** Minute of play, formatted {@code M:SS} (40 ticks = 1 min of match time). */
+    /**
+     * Minute of play, formatted {@code M:SS} (40 ticks = 1 min of match time).
+     *
+     * <p>The seconds are {@code (ticks % 40) * 60 / 40}, not {@code * 90 / 40}. Forty ticks make a
+     * <b>minute</b>, so a tick is one and a half seconds and the remainder has to be scaled to
+     * sixty. Multiplying by ninety produces 0-87 and prints things like {@code 44:65} and
+     * {@code 32:87} — a clock with eighty-seven seconds in it. {@code %02d} does not care, it
+     * prints whatever it is given, which is why this sat unnoticed.
+     */
     public String minute() {
         return String.format("%d:%02d",
-                state.getMatchTicks() / 40,
-                state.getMatchTicks() % 40 * 90 / 40);
+                state.getMatchTicks() / TICKS_PER_MINUTE,
+                state.getMatchTicks() % TICKS_PER_MINUTE * 60 / TICKS_PER_MINUTE);
     }
 }

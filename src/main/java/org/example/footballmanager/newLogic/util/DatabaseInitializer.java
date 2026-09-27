@@ -129,6 +129,7 @@ public class DatabaseInitializer {
             // what makes it safe to call from the "everything already exists" path as well as the
             // bootstrap one.
             createSecondUserIfNotExists();
+            refreshClubIdentities();
             return;
         }
 
@@ -281,6 +282,25 @@ public class DatabaseInitializer {
      * <p>Idempotent: a boot on an existing database finds the account and re-asserts the link rather
      * than making a second one.
      */
+    /**
+     * Re-asserts the badge, ground and human flag on the two human clubs.
+     *
+     * <p>Exists because {@code createSecondUserIfNotExists} is the only thing that ran on an
+     * already-seeded database, and the badges are set by the owner path instead. So a database
+     * seeded <b>before</b> the badge became a column kept playing with a blank crest: the identity
+     * work only ever happened on a fresh install, which is the same "it only works if you reset"
+     * shape that has bitten this file more than once.
+     *
+     * <p>Idempotent and cheap — two lookups and a field write each.
+     */
+    @Transactional
+    private void refreshClubIdentities() {
+        for (String name : List.of("OFK Omladinac", SREMAC_TEAM_NAME)) {
+            teamRepository.findByName(name)
+                    .ifPresent(this::applyClubIdentity);
+        }
+    }
+
     private Team createSecondUserIfNotExists() {
         Team sremac = teamFactory.findOrCreate(SREMAC_TEAM_NAME);
         applyClubIdentity(sremac);

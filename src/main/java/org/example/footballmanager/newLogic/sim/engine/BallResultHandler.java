@@ -21,6 +21,25 @@ import org.example.footballmanager.newLogic.sim.rules.VARService;
  */
 public class BallResultHandler {
 
+    /**
+     * How long the scoring side gets to celebrate, in ticks.
+     *
+     * <p>Twenty is the number the older engine used, and it reads as roughly two seconds of replay
+     * at normal speed — long enough to see the ball sit in the net and the scorer peel away, short
+     * enough that a match with four goals does not spend ten seconds congratulating people.
+     */
+    public static final int GOAL_CELEBRATION_HOLD_TICKS = 20;
+
+    /**
+     * Where the ball rests once it is over the line: just behind the goal it went into.
+     *
+     * <p>HOME attacks the far line at row 8, so their goal-exit is beyond 8; AWAY's is behind 1.
+     * Half a cell past the line is enough to read as over, and no further.
+     */
+    public static Position goalExitPositionFor(String team) {
+        return "HOME".equals(team) ? new Position(8.5, 3.9) : new Position(0.5, 3.9);
+    }
+
     private final MatchState state;
     private final MatchRecorder recorder;
     private final ProposalStatsCollector stats;
@@ -272,17 +291,26 @@ public class BallResultHandler {
                                 assistId, assistName, state.getHomeGoals(), state.getAwayGoals(),
                                 null, null, null, null, null, null);
                         if (scorer != null) stats.onGoal(scorerTeam, scorer.getId(), assistId);
-                        if (onStoppage != null) onStoppage.accept(StoppageClock.Reason.GOAL);
+                        // The goal is now a celebration, and the kickoff waits for the end of it.
+                        //
+                        // The stoppage clock is deliberately NOT started here. It used to be, and it
+                        // froze the whole pipeline on the very next tick — after the ball had already
+                        // been moved to the centre and the kickoff played, so there was nothing left
+                        // to see. The celebration is the dead period instead: it is a real hold with
+                        // movement and a snapshot on every tick, so the goal is on screen.
                         state.clearPassContext();
                         state.setLastShooter(null); // shot outcome consumed
-                        // Reset for kickoff (clock keeps running)
-                        String kickoffTeam = "HOME".equals(scorerTeam) ? "AWAY" : "HOME";
-                        restartManager.handleKickoff(state, kickoffTeam);
-                        // handleKickoff leaves the carrier null when it cannot find
-                        // a kicker (all attackers unavailable) — never dereference it.
-                        Player kicker = state.getCarrier();
-                        log("RST", "kickoff -> ball at center, taker "
-                                + (kicker == null ? "none (no kicker available)" : kicker.getLabel()));
+                        state.setRestartTeam("HOME".equals(scorerTeam) ? "AWAY" : "HOME");
+                        state.startCelebration(scorerTeam, GOAL_CELEBRATION_HOLD_TICKS);
+                        // Park the ball just past the line it crossed, so the replay shows it in the
+                        // net rather than nicking back to half-way. Half a cell is enough to read as
+                        // "over the line" without putting it somewhere no viewer has drawn a goal.
+                        state.getBall().setPosition(goalExitPositionFor(scorerTeam));
+                        state.getBall().stop();
+                        state.setCarrier(null);
+                        log("ORC", "celebration " + scorerTeam + " for "
+                                + GOAL_CELEBRATION_HOLD_TICKS + " ticks | ball"
+                                + p(state.getBall().getPosition()));
                     }
                     case OOB_ENTER -> {
                         state.setOffsideFlaggedReceiver(null);
@@ -373,11 +401,5 @@ public class BallResultHandler {
 
     private String p(Position pos) {
         return pos == null ? "?" : "(%.1f,%.1f)".formatted(pos.getRow(), pos.getColumn());
-    }
-
-    private String minute() {
-        return String.format("%d:%02d",
-                state.getMatchTicks() / 40,
-                state.getMatchTicks() % 40 * 90 / 40);
     }
 }

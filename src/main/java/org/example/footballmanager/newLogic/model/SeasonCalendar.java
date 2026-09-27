@@ -15,26 +15,35 @@ import java.util.Map;
  * imply a season lasts five months of the player's life, which it does not.
  *
  * <h2>Every week has two slots</h2>
- * Thursday and Sunday. Anything that is not a scheduled fixture is an <b>option</b>, not an
+ * day 3 and day 7. Anything that is not a scheduled fixture is an <b>option</b>, not an
  * obligation: a club is not handed a friendly, it asks for one and the other club may refuse.
  *
  * <pre>
- *   week  1   Thu round  1   Sun round  2
- *   week  2   Thu round  3   Sun round  4
- *   week  3   Thu round  5   Sun round  6
- *   week  4   Thu round  7   Sun round  8
- *   week  5   Thu round  9   Sun friendly   | mid-season window OPENS after round 9
- *   week  6   Thu friendly  Sun round 10   | mid-season window CLOSES at end of week
- *   week  7   Thu round 11   Sun round 12
- *   week  8   Thu round 13   Sun round 14
- *   week  9   Thu round 15   Sun round 16
- *   week 10   Thu round 17   Sun round 18
- *   week 11   Thu playoff or friendly, Sun friendly   | window OPENS at start of week
- *   week 12   Thu friendly  Sun friendly               | window CLOSES at end of week
+ *   week  1   day 3 round  1   day 7 round  2
+ *   week  2   day 3 round  3   day 7 round  4
+ *   week  3   day 3 round  5   day 7 round  6
+ *   week  4   day 3 round  7   day 7 round  8
+ *   week  5   day 3 round  9   day 7 round 10   | mid-season window OPENS at end of week
+ *   week  6   day 3 friendly  day 7 friendly     | mid-season window CLOSES; no league
+ *   week  7   day 3 round 11   day 7 round 12
+ *   week  8   day 3 round 13   day 7 round 14
+ *   week  9   day 3 round 15   day 7 round 16
+ *   week 10   day 3 round 17   day 7 round 18
+ *   week 11   day 3 playoff or friendly, day 7 friendly   | window OPENS at start of week
+ *   week 12   day 3 friendly  day 7 friendly               | window CLOSES at end of week
  * </pre>
  *
- * <p>Ten clubs play each other twice: eighteen league matches. Two a week, except in weeks 5 and 6
- * where a friendly slot takes the place of a league round.
+ * <p>Ten clubs play each other twice: eighteen league matches, two a week for nine weeks.
+ *
+ * <p><b>Weeks 6 and 12 have no league football at all</b> (owner rule 2026-09-27). They are not gaps
+ * in the calendar — they are weeks given over to something else, played day by day: national-team
+ * qualifiers in week 6, and the World Cup in week 12. Neither is built yet, so both currently offer
+ * two ordinary friendly slots. They are named in the code so the weeks are recognisable as
+ * deliberate when those competitions arrive, rather than looking like a scheduling mistake.
+ *
+ * <p>A week is a container of seven days with two football moments in it — <b>day 3 and day 7</b>.
+ * That is how the season shape is written down rather than by weekday, so moving a fixture does not
+ * move the season.
  *
  * <p>Everything that needs to know "what is happening in week N" reads this, so the fixture
  * generator, the transfer windows and the viewer cannot drift apart.
@@ -50,7 +59,14 @@ public final class SeasonCalendar {
     public static final int SEASONS_PER_YEAR = 4;
 
     // --- windows ---
-    /** The mid-season window opens once round 9 is played, in week 5. */
+    /**
+     * The mid-season window opens at the end of week 5 and closes in week 6.
+     *
+     * <p>It used to open after round 9, because round 10 was the second slot of week 6. Round 10
+     * moved into week 5, so the window now opens once the first half is complete — which is what
+     * "mid-season window" always meant, and is also the only reading that leaves week 6 free for
+     * national-team football.
+     */
     public static final int MID_WINDOW_OPEN = 5;
     public static final int MID_WINDOW_CLOSE = 6;
 
@@ -64,13 +80,38 @@ public final class SeasonCalendar {
     /** Playoffs are week 11: the clubs in them play that instead of a friendly. */
     public static final int PLAYOFF_WEEK = 11;
 
-    /** Week 12 is the mid-season break: two friendly slots and nothing else. */
+    /**
+     * Week 6 is midseason: no league, and no fixtures to speak of.
+     *
+     * <p>Reserved for <b>national-team qualifiers, played day by day</b> (owner rule 2026-09-27).
+     * Those are not built yet, so for now the two slots are ordinary friendly opportunities. Named
+     * here so the week is recognisable as something other than "a gap in the calendar" the day the
+     * qualifiers land.
+     */
+    public static final int MIDSEASON_WEEK = 6;
+
+    /**
+     * Week 12 is the World Cup, day by day: no league.
+     *
+     * <p>Not built yet either. It is the end of the season and the end-of-season transfer window
+     * closes during it, so it is the last chance to move a player.
+     */
     public static final int BREAK_WEEK = 12;
 
     /** League rounds a ten-club double round-robin takes. */
     public static final int LEAGUE_ROUNDS = 18;
 
-    /** Every week has two match slots: Thursday and Sunday. */
+    /**
+     * Every week has two match slots.
+     *
+     * <p>Expressed as <b>day 3 and day 7 of the week</b> (owner rule 2026-09-27) rather than as
+     * weekdays. In practice slot 1 lands on a Wednesday, but naming it after a weekday couples the
+     * season shape to the day a fixture happens to be played, and the shape is what everything else
+     * — fixtures, windows, the viewer — is written against. A week is a container of seven days with
+     * two football moments in it, and saying so keeps that true when the fixtures move.
+     */
+    public static final int SLOT_ONE_DAY = 3;
+    public static final int SLOT_TWO_DAY = 7;
     public static final int SLOTS_PER_WEEK = 2;
 
     /** What occupies a slot. */
@@ -84,7 +125,7 @@ public final class SeasonCalendar {
         /**
          * A club may request a friendly here unless it is in that week's playoff.
          *
-         * <p>Only week 11's Thursday slot: the playoff clubs are busy, everyone else may play.
+         * <p>Only week 11's day-3 slot: the playoff clubs are busy, everyone else may play.
          */
         FRIENDLY_IF_NOT_IN_PLAYOFF
     }
@@ -115,16 +156,19 @@ public final class SeasonCalendar {
     private record SlotSpec(SlotKind kind, int round) { }
 
     private static WeekSlot[][] build() {
-        // One row per week, two columns: Thursday then Sunday. This is the owner's table, and it
-        // is the only place the season shape is written down.
+        // One row per week, two columns: day 3 then day 7. This is the owner's table, and it is
+        // the only place the season shape is written down.
         SlotSpec[][] table = {
                 {league(1), league(2)},                                                  // week 1
                 {league(3), league(4)},                                                  // week 2
                 {league(5), league(6)},                                                  // week 3
                 {league(7), league(8)},                                                  // week 4
-                // Week 5 runs league-then-friendly, week 6 friendly-then-league.
-                {league(9), friendly()},                                                 // week 5
-                {friendly(), league(10)},                                                // week 6
+                // Week 5 closes the league's first half with two rounds, back to back. Round 10
+                // used to sit in week 6's second slot; the owner moved it here so that week 6 is
+                // free for national-team qualifiers, day by day.
+                {league(9), league(10)},                                                 // week 5
+                // Week 6: no league at all. Midseason, for national-team qualifiers to be added.
+                {friendly(), friendly()},                                                // week 6
                 {league(11), league(12)},                                                // week 7
                 {league(13), league(14)},                                                // week 8
                 {league(15), league(16)},                                                // week 9
@@ -161,7 +205,7 @@ public final class SeasonCalendar {
         return new SlotSpec(SlotKind.FRIENDLY_IF_NOT_IN_PLAYOFF, -1);
     }
 
-    /** The slot for a week and slot number (1 = Thursday, 2 = Sunday). */
+    /** The slot for a week and slot number (1 = day 3, 2 = day 7). */
     public static WeekSlot slot(int week, int slotNumber) {
         if (week < 1 || week > WEEKS_PER_SEASON || slotNumber < 1 || slotNumber > SLOTS_PER_WEEK) {
             return null;
@@ -238,10 +282,16 @@ public final class SeasonCalendar {
         if (week == PLAYOFF_WEEK) {
             return "Playoffs, and the end-of-season window opens";
         }
-        if (week == BREAK_WEEK) return "Mid-season break, window closes tonight";
+        // These two weeks are not empty in the calendar, they are weeks given over to something
+        // else. Saying "0 matches, 2 friendly slots available" would be technically true and would
+        // read as a bug, so they are named.
+        if (week == MIDSEASON_WEEK) {
+            return "Midseason, no league — national-team qualifiers";
+        }
+        if (week == BREAK_WEEK) return "World Cup, no league — window closes tonight";
         if (isMidSeasonWindow(week)) {
             return week == MID_WINDOW_OPEN
-                    ? "Mid-season window opens after this round"
+                    ? "Mid-season window opens tonight"
                     : "Mid-season window closes tonight";
         }
         int league = matchesIn(week);
@@ -293,7 +343,7 @@ public final class SeasonCalendar {
     /**
      * The slot number a league round is played in, or -1.
      *
-     * <p>Needed because week 5 runs league-then-friendly while week 6 runs friendly-then-league.
+     * <p>Needed because rounds are spread across a week's two slots rather than one slot per week.
      */
     public static int slotOfRound(int round) {
         for (int week = 1; week <= WEEKS_PER_SEASON; week++) {
