@@ -1412,7 +1412,7 @@ that non-PLUS users can see is a range that reveals the ceiling.
 
 ---
 
-### S5.3a — The junior school (owner spec 2026-09-27) ❌ NOT BUILT
+### S5.3a — The junior school (owner spec 2026-09-27) ✅ DONE
 
 **Raised out of S5.2.** Answering "do AI clubs get the same uncertainty?" produced a better question:
 **should AI clubs have an academy at all?** The answer was no, and that turns the academy from a
@@ -1435,14 +1435,39 @@ manager is a human or not.
 
 | # | Task | State |
 |---|---|---|
-| 1 | `JuniorSchool` state per club: active, activated season/week, one-off paid, weekly cost | ❌ |
-| 2 | One-off activation cost as a ledger entry (S2.2 `FinanceCategory`) | ❌ — needs a new category or an existing expense line |
-| 3 | Weekly upkeep as a ledger expense, alongside `FACILITY_UPKEEP` | ❌ |
-| 4 | Activation permitted **only in week 1**, deactivation **only in week 12** | ❌ — the guard is the feature; a school that could be toggled any week would be a menu, not a commitment |
-| 5 | **Intake runs only for clubs with an active school** | ❌ — the single biggest behavioural change in the sprint |
-| 6 | Deactivation auto-promotes every junior **and lists each one** | ❌ |
-| 7 | UI: a toggle with the week window and the price shown | ❌ |
-| 8 | A club whose school is off has no intake, so it needs the market or scouting | ❌ — this is the design intent, and it is what makes S5.1 matter |
+| 1 | School state per club: active, since when | ✅ `Team.juniorSchoolActive` + `juniorSchoolSinceSeason`, both nullable |
+| 2 | One-off activation cost as a ledger entry | ✅ new `FinanceCategory.JUNIOR_SCHOOL`, charged on open |
+| 3 | Weekly upkeep as a ledger expense | ✅ in `WeeklyFinanceService`, **not** charged in the opening week — that week is the fee's |
+| 4 | Open **only** in week 1, close **only** in week 12 | ✅ the guard is the feature, and the refusal names the week it wants |
+| 5 | **Intake runs only for human clubs with an active school** | ✅ the single biggest behavioural change in the sprint |
+| 6 | Deactivation auto-promotes every junior **and lists each one** | ✅ — and it needed its own path, see below |
+| 7 | UI: a toggle with the week window and the price shown | ❌ **API only** — `JuniorSchoolServiceTest` and `JuniorSchoolRulesTest` cover it, no page yet |
+| 8 | A club whose school is off has no intake, so it needs the market or scouting | ✅ by construction |
+
+**Pricing:** one-off `5,000 + reputation × 900`, weekly `1,200 + reputation × 120`, both rounded to two
+decimals **at the source** rather than at the screen. A flat fee either locks a small club out of its
+own academy or is free to a large one, and the academy is the feature that makes a small club's season
+mean anything. A full season of upkeep is deliberately worth more than the activation fee, so the two
+figures cannot tell a manager opposite stories about what running a school costs.
+
+**Scout wages are still not charged here** — a scout is a `StaffMember` and his wage is already on
+`STAFF_WAGES` from Sprint 2.2. A second charge would bill the same man twice.
+
+#### The bug that would have made the feature inert: a school could not graduate anyone
+
+Closing the school routes each junior through `transferListJunior`, which enforces the *"decisions open
+from next season"* lock — the rule that stops a manager impulsively deciding the fate of a prospect he
+signed three days ago. But a school is opened in **week 1** and closed in **week 12 of the same
+season**, so every junior in the intake was locked. **Closing the school graduated nobody, in the only
+season the feature is used.** It surfaced as an `UnexpectedRollbackException` in the new test, not as
+a wrong count, which is a good argument for testing the path rather than the endpoint.
+
+`graduateForSchoolClosure` now exists alongside the locked path. The lock is right for a manager's
+button and wrong for a scheduled season-end decision, and the two are not the same operation.
+
+Also removed: a `catch (RuntimeException)` around each graduation. Swallowing an exception inside a
+transaction marks it rollback-only, so the caller fails on commit with a rollback error that names
+neither the junior nor the reason. One bad prospect now fails loudly.
 
 **Two consequences worth stating plainly, because they are the point of the feature rather than
 side-effects:**
@@ -1513,24 +1538,34 @@ prospects develop at visibly different rates; loans give young players minutes.
 | Criterion | Result |
 |---|---|
 | A club can assign scouts to countries and the assignment changes what it finds | 🟡 the network and its reach model are built and tested; the reports it feeds are S5.2 |
+| A junior's talent is a band that firms up, and it is paid information | ✅ S5.2 — the gate is wired, the raw field is gone, the band narrows with observation |
+| The academy is a purchase, not a default | ✅ S5.3a — one-off plus weekly, week 1 open / week 12 close, closing graduates the intake |
+| No AI club produces a junior | ✅ S5.3a — intake is gated on `humanControlled` **and** an active school |
 | `Country.youthRating` is read by the simulation | ✅ read by `ScoutingService.reach` — unread since Sprint 2.1 until now |
-| A junior's report is an estimate that firms up, not a number on day one | ❌ S5.2, not started |
+| A junior's report is an estimate that firms up, not a number on day one | ✅ S5.2 — `TalentRange`, ±(1+rnd3) narrowing to ±1 |
 | A junior has a position from intake and a route out of the academy | ❌ position absent; the loan path exists in `LoanService` but is unwired for juniors |
 | Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread — S5.3 item 5 |
 | Graduation distribution unchanged from the legacy model | ✅ `YouthAcademyGraduationTest` holds |
 
-**Progress: 1 of 4 features started.** S5.1 shipped its network and reach model on 2026-09-27.
+**Progress: 3 of 4 features substantially done** (S5.1 network, S5.2 talent reports, S5.3a junior
+school). S5.3's remaining items are the academy's internal quality, and S5.2's reports on foreign
+prospects are the obvious next slice.
+
+**The gap now, in one sentence:** a scouting network nobody can read and a talent band with no
+prospects to put it on. Both screens are API-only.
 
 **Planned order, and why:**
 
-1. **S5.1** — scouting network. 🟡 **done except the reports.** It is the sprint's spine: it gives
-   `youthRating` a consumer and is the input S5.2's uncertainty model needs to shrink over time.
-2. **S5.2** — report uncertainty, layered on the reach S5.1 produces. Doing it first would mean
-   inventing an observation counter with nothing to observe.
-3. **S5.3 items 1 + 5** — position at intake and academy quality. Small, self-contained, and they
-   make the intake the network reports on meaningful.
-4. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
-5. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
+1. ~~**S5.1** — scouting network.~~ ✅ the reach model is built and tested; **the reports it feeds are
+   still missing**, and they are the reason the network exists.
+2. ~~**S5.2** — report uncertainty.~~ ✅ the band, the gate and the intake roll are live.
+3. **S5.3 items 1 + 5** — position at intake, and academy quality from `youthLevel` + `YOUTH_COACH`.
+   Now more valuable than when first written: a purchased academy whose intake has no positions is a
+   worse purchase than a free one.
+4. **UI for both** — the scouting network and the junior school are API-only, so neither the
+   subscription nor the week windows are visible to a manager.
+5. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
+6. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
 
 ---
 

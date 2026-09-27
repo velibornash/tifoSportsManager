@@ -2887,3 +2887,69 @@ red suite. It is now also a habit to `pkill -f spring-boot:run` before a test ru
 
 **Tests: 592, unchanged — this was a wiring and seed change with no new behaviour to pin beyond the
 gate tests already added for S5.2.**
+
+---
+
+### S5.3a — the junior school, and a bug that made the whole feature inert
+
+Owner spec: one-off fee plus weekly upkeep, openable in **week 1 only**, closable in **week 12 only**,
+closing **auto-promotes every junior and lists each one**, and **no AI club has one**. All eight
+items are now built except the page.
+
+**The intake gate is the feature.** `generateSeasonIntakeForWeek2` now requires both
+`humanControlled` and an active school, so a club without one has to buy its way to young players —
+which is the only reason the scouting network and the transfer market matter. Before this, all 310
+clubs rolled a free intake every season, human-managed or not.
+
+**Pricing is rounded at the source, not at the screen.** The first run returned an activation fee of
+`82191.20164797436` because reputation is a raw seeded `Double`. Rounding in the UI would have hidden
+it and left every other consumer to deal with fourteen decimals, so the price itself is rounded to
+two decimals — the same rule as the pitch, applied at a second place it was needed.
+
+#### A school could not graduate anybody, in the only season it is used
+
+Closing the school routes each junior through `transferListJunior`, which enforces the **"decisions
+open from next season"** lock — the rule that stops a manager impulsively deciding the fate of a
+prospect he signed three days ago.
+
+But a school opens in **week 1** and closes in **week 12 of the same season**, so every junior in the
+intake was still locked. Closing the school graduated **nobody**. It surfaced as an
+`UnexpectedRollbackException` rather than a wrong count, which is the argument for testing the path
+instead of the endpoint.
+
+`graduateForSchoolClosure` now sits alongside the locked path. The lock is right for a manager's
+button and wrong for a scheduled end-of-season decision, and those are not the same operation.
+
+A `catch (RuntimeException)` around each graduation was also removed: swallowing an exception inside a
+transaction marks it rollback-only, so the caller fails on commit with a rollback error naming neither
+the junior nor the reason. One bad prospect now fails loudly.
+
+#### Two smaller things worth recording
+
+**The endpoint had no ownership check.** `/juniors/school/{teamId}/open` takes the club as a path
+variable, so any authenticated user could open a school on a rival, take the fee out of a budget they
+do not control, and then close it in week 12 to dump that club's intake onto the transfer list. Now
+gated on `isOwnTeam`, for the same reason `ScoutingService` checks the scout belongs to the club.
+Reading a state stays unrestricted — that is information, not an action.
+
+**One genuine flake, recorded rather than hidden.** `TrainingIntensityServiceTest` failed once in a
+full run (expected 46, got 54) and passed in isolation and on two subsequent full runs. The
+discrepancy is exactly 8 fatigue on a freshly constructed player, which points at an unseeded `Random`
+somewhere in that path rather than at anything in this work. Not chased — but it is a real flake and
+the next person to see it will not have this note.
+
+**Test data as requested.** Omladinac runs a junior school with six prospects already in it, so the
+academy, the talent bands and the graduation window can all be exercised immediately. **Sremac is
+deliberately left with no school**, and nothing in the startup path ever switches one *off* — so kecko
+gets the week-1 window for himself and a school he really does open survives a restart.
+
+| | Omladinac (Velja) | Sremac (Kecko) |
+|---|---|---|
+| School | active since season 2025 | none |
+| Week window | week 1 — `canOpen: false`, already open | week 1 — **`canOpen: true`** |
+| Fee / upkeep | 82,191.20 / 11,492.16 | 28,083.81 / 4,277.84 |
+| Prospects | 6 | 0 |
+
+**Tests: 16 new** (`JuniorSchoolRulesTest` 8 — windows and pricing, no Spring; `JuniorSchoolServiceTest`
+7 — the lifecycle, including that no school means no intake and that an AI club never produces one).
+**Full suite 608.**

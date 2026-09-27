@@ -977,6 +977,20 @@ public class DatabaseInitializer {
         } else if ("OFK Omladinac".equals(name)) {
             team.setLogoUrl(OMLADINAC_LOGO);
             team.setHumanControlled(true);
+            // Test data, at the owner's request (2026-09-27): Omladinac runs a junior school so the
+            // academy, the talent bands and the graduation window can all be exercised immediately.
+            //
+            // <b>Sremac is deliberately left alone.</b> Its column is new and therefore null, which is
+            // "no school", so kecko gets to switch one on and see the week-1 window for himself.
+            // Nothing here ever switches a school *off*, so a school a manager really did open
+            // survives a restart.
+            if (team.getJuniorSchoolActive() == null) {
+                team.setJuniorSchoolActive(true);
+                team.setJuniorSchoolSinceSeason(seasonRepository.findAll().stream()
+                        .map(s -> s.getSeasonYear())
+                        .min(Integer::compareTo)
+                        .orElse(1));
+            }
         }
         teamRepository.save(team);
     }

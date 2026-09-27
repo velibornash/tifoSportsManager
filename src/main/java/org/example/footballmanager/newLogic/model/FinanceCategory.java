@@ -23,6 +23,7 @@ public enum FinanceCategory {
     STAFF_WAGES(false, "Staff wages"),
     FACILITY_UPKEEP(false, "Facility upkeep"),
     PITCH_MAINTENANCE(false, "Pitch maintenance"),
+    JUNIOR_SCHOOL(false, "Junior school"),
     TRANSFER_FEE_OUT(false, "Transfer fees paid"),
     LOAN_OUT(false, "Loan payments");
 

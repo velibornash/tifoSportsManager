@@ -38,6 +38,29 @@ public class Team {
     private Integer juniorCoachSkill;
 
     /**
+     * Whether this club runs a junior school (Sprint 5.3a, owner 2026-09-27).
+     *
+     * <p><b>The academy is a purchase, not a default.</b> Before this, every one of the 310 clubs
+     * rolled an intake every season for free whether a human managed it or not. It now has to be
+     * switched on in week 1 and paid for, and switched off in week 12 — which is what turns it from a
+     * background process into a decision.
+     *
+     * <p><b>No AI club has one.</b> Bot squads keep the same players and train at the default pace.
+     * A club with no academy has to buy its way to young players, which is the entire reason the
+     * scouting network and the transfer market matter.
+     *
+     * <p>Nullable means "never had one", which is the same as {@code false} for behaviour but not for
+     * reporting: a club that has never opened a school is different from one that closed it, and the
+     * distinction is what a manager reads to understand why his intake stopped.
+     */
+    @Column(name = "junior_school_active")
+    private Boolean juniorSchoolActive;
+
+    /** The season the school was last switched on, so a report can say how long it has run. */
+    @Column(name = "junior_school_since_season")
+    private Integer juniorSchoolSinceSeason;
+
+    /**
      * Dressing-room cohesion, 0-100 (Sprint 4.6).
      *
      * <p>How settled this squad is: the same faces having played together. Grows a little every week

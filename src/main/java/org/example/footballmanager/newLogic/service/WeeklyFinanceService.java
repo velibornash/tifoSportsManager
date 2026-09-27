@@ -119,6 +119,7 @@ public class WeeklyFinanceService {
         lines.add(staffWages(team, seasonYear, week));
         lines.add(sponsorship(team, seasonYear, week));
         lines.add(facilityUpkeep(team, seasonYear, week));
+        lines.add(juniorSchoolUpkeep(team, seasonYear, week));
 
         // Only real lines are written, so the ledger does not fill with 0.00 rows.
         List<FinanceLedgerEntry> written = lines.stream()
@@ -201,6 +202,24 @@ public class WeeklyFinanceService {
      * The week number matters: a weekly ledger line with a null week is invisible to the weekly
      * view and to the idempotency check, so it would be paid for but never displayed.
      */
+    /**
+     * The junior school's weekly upkeep, while it is running (Sprint 5.3a).
+     *
+     * <p>Not charged in the opening week: that week is already covered by the one-off activation fee,
+     * and charging both in the same week turns a fee into a subscription with a misleading label.
+     *
+     * <p>Deliberately silent for the 300-odd AI clubs, none of which have a school. A ledger line that
+     * is always zero for most of the database is noise.
+     */
+    private FinanceLedgerEntry juniorSchoolUpkeep(Team team, Integer seasonYear, Integer week) {
+        if (!Boolean.TRUE.equals(team.getJuniorSchoolActive())) return null;
+        if (week != null && week == JuniorSchoolService.OPEN_WEEK) return null;
+        double upkeep = JuniorSchoolService.weeklyUpkeep(team);
+        if (upkeep <= 0) return null;
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.JUNIOR_SCHOOL, upkeep,
+                "Junior school upkeep");
+    }
+
     private FinanceLedgerEntry staffWages(Team team, Integer seasonYear, Integer week) {
         double bill = staffSponsors.weeklyStaffWage(team.getId());
         int n = staffSponsors.staffCount(team.getId());

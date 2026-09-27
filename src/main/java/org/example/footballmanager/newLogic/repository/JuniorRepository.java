@@ -24,6 +24,13 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
      */
     List<Junior> findByArrivalAgeIsNull();
 
+    /** The active intake, used when a junior school closes and every prospect graduates at once. */
+    List<Junior> findByTeamIdAndStatus(Long teamId,
+                                      org.example.footballmanager.newLogic.model.JuniorStatus status);
+
+    long countByTeamIdAndStatus(Long teamId,
+                                org.example.footballmanager.newLogic.model.JuniorStatus status);
+
     @Query("SELECT j FROM Junior j WHERE j.team.id = :teamId AND (j.archived = false OR j.archived IS NULL) ORDER BY j.academySkillExact DESC")
     List<Junior> findVisibleByTeamId(@Param("teamId") Long teamId);
 

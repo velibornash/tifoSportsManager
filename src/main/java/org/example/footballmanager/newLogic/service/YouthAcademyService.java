@@ -40,6 +40,18 @@ public class YouthAcademyService {
 
         for (Team team : teams) {
             if (team.getId() == null) continue;
+
+            // The academy is a purchase, not a default (Sprint 5.3a, owner 2026-09-27). Before this
+            // every one of the 310 clubs rolled an intake every season for free, human-managed or not.
+            // A club without a school now has to buy its way to young players, which is what makes
+            // the scouting network and the transfer market matter.
+            //
+            // Human-controlled only, by the same rule: bot squads keep the same players and train at
+            // the default pace.
+            if (!team.isHumanControlled() || !Boolean.TRUE.equals(team.getJuniorSchoolActive())) {
+                continue;
+            }
+
             long alreadyGenerated = juniorRepository.countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(team.getId(), seasonNumber, 2);
             if (alreadyGenerated > 0) continue;
             archiveResolvedJuniorsBeforeSeason(team.getId(), seasonNumber);
@@ -241,6 +253,38 @@ public class YouthAcademyService {
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
         return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
+    }
+
+    /**
+     * Graduates a junior because the junior school closed (Sprint 5.3a).
+     *
+     * <p><b>Deliberately bypasses the "decisions open from next season" lock</b> that
+     * {@link #loadDecisionJunior} enforces for the manager's own buttons.
+     *
+     * <p>That lock exists to stop a manager impulsively deciding the fate of a prospect he signed
+     * three days ago. Closing a school in week 12 is not that: it is a scheduled end-of-season
+     * decision about a whole intake, and the owner specified that it graduates everyone. Going through
+     * the locked path made a school opened in week 1 <b>unable to graduate anybody in the same
+     * season</b> — which is the only season in which the feature is used.
+     *
+     * <p>No {@code catch} here on purpose: a swallowed exception inside a transaction marks it
+     * rollback-only and the caller then fails on commit with a confusing
+     * {@code UnexpectedRollbackException} instead of a real cause.
+     */
+    @Transactional
+    public JuniorAcademyItemDTO graduateForSchoolClosure(Long juniorId, int currentSeason, int currentWeek) {
+        Junior junior = juniorRepository.findById(juniorId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "JUNIOR_NOT_FOUND", "Junior not found."));
+        if (junior.getStatus() != JuniorStatus.ACTIVE) {
+            return toDto(junior, false, null);
+        }
+        PromotionBuild build = createSeniorFromJunior(junior);
+        Player player = build.player;
+        transferService.listPlayerForTransfer(player.getId(), player.getPlayerValue());
+        junior.setStatus(JuniorStatus.TRANSFER_LISTED);
+        junior.setPromotedPlayer(player);
+        juniorRepository.save(junior);
+        return toDto(junior, false, null);
     }
 
     @Transactional
@@ -519,6 +563,10 @@ public class YouthAcademyService {
             j.setLastWeeklyDelta(0.0);
             j.setArrivalSeasonNumber(Math.max(0, seasonNumber - 1)); // eligible in current season week 1 as seed data
             j.setArrivalWeekNumber(2);
+            // The two Sprint 5.2 fields. Without them a seeded junior reports the maximum uncertainty
+            // forever, which looks like a bug rather than a missing column.
+            j.setArrivalAge(j.getAge());
+            j.setTalentRangeHalfWidth(TalentRange.intakeHalfWidth(random.nextInt(4)));
             j.setStatus(JuniorStatus.ACTIVE);
             j.setArchived(false);
             j.setTeam(team);
