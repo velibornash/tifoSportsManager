@@ -1576,6 +1576,18 @@ button.training-week-item {
     border-radius: 18px;
     padding: 18px 20px;
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
+    /* border-box, and this is load-bearing on phones (S8.3a).
+
+       The mobile block below gives .fm-panel `width: 100%`, and width:100% in content-box means
+       "100% of the parent's content, then add the padding on top". On a 390px phone that is
+       366 + 20 + 20 = 406px of panel inside a 366px column - 40px past the right edge, on all 243
+       panels in the app. `overflow-x: hidden` on html then makes the overflow invisible instead of
+       obvious, so a button simply cannot be tapped.
+
+       At desktop widths this changes nothing: the panel has no explicit width there, and an
+       `auto`-width block box resolves identically under either model. The only thing it changes is
+       that a child's `width: 100%` now fits inside the padding rather than overflowing it. */
+    box-sizing: border-box;
 }
 
 .fm-panel h2,

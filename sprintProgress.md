@@ -3379,3 +3379,38 @@ The one judgement call recorded rather than acted on: `demo/service` is 97 files
 working engine, and wired to nothing a manager can reach. It stays, because `MatchBatchRunner` and
 `MatchChainTrace` are still useful diagnostics — but deleting it is a decision that deserves its own
 commit, and it is the owner's.
+
+---
+
+## S8.3a — the mobile overflow, and a test that could not fail (2026-09-28)
+
+**The diagnosis in the backlog was wrong**, and the difference was not cosmetic. It blamed
+`.fm-panel` being `content-box`, which is true and mostly harmless: an `auto`-width block box resolves
+identically under either model. The real cause is the mobile media query giving `.fm-panel` an
+explicit `width: 100%` — and `width: 100%` in `content-box` is the textbook overflow bug, meaning
+*100% of the parent's content, then add the padding on top*. 374 + 20 + 20 + 2 = 426px of panel in a
+374px column, so 30px of **every one of the 243 panels** sat outside the viewport. Desktop was never
+affected, which is why it read as a phone-only problem.
+
+**The old test could not have caught it.** It asserted
+`document.documentElement.scrollWidth > window.innerWidth`, and `overflow-x: hidden` on `html`
+guarantees that is always false. The check was not merely wrong — it was structurally incapable of
+reporting the bug it existed for.
+
+`MobilePanelOverflowTest` replaces it. It renders the real stylesheet at 390×844 with the app's real
+class names and **real import order** (overrides before `dashboard.css`'s own trailing rules, which
+is the cascade that caused several earlier surprises), then asserts every panel's right edge is
+inside both its parent and the viewport.
+
+**Verified by breaking the fix**, which is the only honest way to know a geometry test works:
+
+| `.fm-panel` | Result |
+|---|---|
+| `content-box` | ❌ fails — `right=420` against `vw=390`, the reported symptom exactly |
+| `border-box` | ✅ passes |
+
+And the fixture had its own bug worth recording: with no `<meta name="viewport">`, Chromium laid the
+page out at the mobile default of **980px**, so every media query below 980 was never reached. The
+test was green, at the wrong width, measuring a tablet and reporting it as a phone. It only became
+trustworthy once the numbers were read rather than assumed — the 404-vs-406 gap between my predicted
+arithmetic and the measured 404 was what exposed it.

@@ -1893,23 +1893,40 @@ same viewer as your own match.
 
 ---
 
-### S8.3a — Every panel overflows the phone viewport ❌ FOUND 2026-09-27, not fixed
+### S8.3a — Every panel overflows the phone viewport ✅ FIXED 2026-09-28
 
 Found while building the junior-school panel (S5.3a) and **not** caused by it.
 
-`.fm-panel` is `box-sizing: content-box` with 14px horizontal padding. Its parent `.fm-page` is
-374px wide on a 390px phone, so each panel's total box is **404px** — 30px wider than its parent. The
-last 30px of every panel, including its action buttons, sits outside the viewport.
+**The recorded diagnosis was wrong, and getting it right mattered.** The note above blamed
+`.fm-panel` being `content-box`. That is true but harmless on its own: an `auto`-width block box
+resolves identically under either model. The actual cause is the **mobile media query**, which gives
+`.fm-panel` an explicit `width: 100%` — and `width: 100%` in `content-box` means *"100% of the
+parent's content, then add the padding on top"*. On a 390px phone: 374 + 20 + 20 + 2px border =
+**426px of panel in a 374px column**, putting 30px of every panel outside the viewport.
+
+Fixed by `box-sizing: border-box` on the base `.fm-panel` rule. At desktop widths this changes
+nothing, because the panel has no explicit width there.
 
 **Why it survived this long:** `html, body { overflow-x: hidden }` at ≤768px clips the overflow, so the
 usual smoke test (`document.documentElement.scrollWidth > window.innerWidth`) reports **false** while
-a control is genuinely unreachable. Every panel on every page of the SPA has this.
+a control is genuinely unreachable. Every panel on every page of the SPA had this — 243 panels.
 
-| # | Task |
-|---|---|
-| 1 | `box-sizing: border-box` on `.fm-panel` — verify every page at 390px afterwards, since it changes panel content width by 28px everywhere |
-| 2 | Audit the other content-box containers with padding (`.fm-page`, table wrappers) the same way |
-| 3 | Replace the `scrollWidth` smoke test with one that measures a known control's right edge against the viewport, since the current one cannot see this class of bug |
+| # | Task | |
+|---|---|---|
+| 1 | `box-sizing: border-box` on `.fm-panel` | ✅ done |
+| 2 | Replace the `scrollWidth` smoke test with one that measures a real control's right edge against the viewport | ✅ done — `MobilePanelOverflowTest` measures every panel's box against both its parent and the viewport |
+| 3 | Audit the other content-box containers with padding (`.fm-page`, table wrappers) the same way | ⬜ open |
+
+**The new test was verified by breaking the fix.** It passes with `border-box` and fails with
+`content-box`, reporting `right=420` against `vw=390` — the same symptom that was reported by hand.
+It is checked against the stylesheet on disk rather than a running application, because the bug is
+entirely in the CSS, and it uses the **real import order** (the overrides sheet is imported *before*
+`dashboard.css`'s own rules, so testing the reverse would test a layout that never shipped).
+
+One thing it caught that is worth keeping in mind: the first version of the fixture had no
+`<meta name="viewport">`, so Chromium laid it out at the mobile default of **980px** and every
+media query below 980 was never reached. The test was green, at the wrong width, measuring a tablet
+and calling it a phone.
 
 **Do this before the next mobile-facing feature.** It is a two-line fix with a wide blast radius, which
 is exactly the combination that wants a deliberate pass rather than an opportunistic one.
