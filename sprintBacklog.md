@@ -1043,15 +1043,30 @@ formula that was signed off.
 
 ---
 
-### S4.4 — Facilities
+### S4.4 — Facilities — 🟡 1–3 done 2026-09-27, 4–5 backlogged
 
-| # | Task |
-|---|---|
-| 1 | `TrainingGround` entity per club: `grassQuality`, `gymLevel`, `tacticalLevel`, `youthLevel` (1–20) |
-| 2 | Facilities multiply growth and **reduce injury risk** |
-| 3 | Upgrades are a one-off capital cost + weekly upkeep in the ledger |
-| 4 | Stadium quality affects home advantage and player attraction |
-| 5 | Youth facility level feeds academy intake quality (Sprint 5) |
+| # | Task | State |
+|---|---|---|
+| 1 | Facility levels per club | ✅ on `Stadium` — **not** a new `TrainingGround` entity, see below |
+| 2 | Facilities multiply growth and **reduce injury risk** | ✅ ±10% on growth; the gym removes up to 40% of training-injury risk |
+| 3 | Upgrades are a one-off capital cost + weekly upkeep in the ledger | ✅ progressive capital, linear upkeep, on the existing `FACILITY_UPKEEP` line |
+| 4 | Stadium quality affects home advantage and player attraction | ❌ **backlogged** — `pitchQuality` is still unread |
+| 5 | Youth facility level feeds academy intake quality | ❌ **backlogged** — `youthLevel` exists and is consumed in Sprint 5 |
+
+**Verify:** a club with a gym grows a better-conditioned player and injures him less; a club that
+cannot pay is refused. — `TrainingFacilityServiceTest`, 12 tests.
+
+`Stadium` already carried `trainingQuality`, `pitchQuality` and `pitchCondition` and **none of them
+was ever read**. A new `TrainingGround` entity would have split one club's buildings across two
+tables, so the levels went where the ground already is. The backlog asked for a separate entity and
+did not get one, deliberately.
+
+Facilities are symmetric around 1.0: poor ones *waste* the week rather than merely failing to help.
+A game whose floor is 1.0 quietly says facilities are free, which is the mirror image of the bug being
+fixed.
+
+**Unrecorded is neutral and is not level 1.** Every pre-existing club has null in these columns, so
+reading null as "no facilities" would have taken 10% off the growth of every club in the database.
 
 ---
 

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerTrainingIntensity;
+import org.example.footballmanager.newLogic.model.Stadium;
 import org.example.footballmanager.newLogic.model.Skills;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.model.TrainingIntensity;
@@ -159,8 +160,20 @@ public class TrainingIntensityService {
             return false;
         }
         int fatigue = player.getSkills() == null ? 0 : player.getSkills().getFatigue();
-        double chance = intensity.injuryChance(fatigue);
+        double chance = intensity.injuryChance(fatigue) * (1.0 - gymProtection(player));
         return chance > 0 && random.nextDouble() < chance;
+    }
+
+    /**
+     * How much this player's gym takes off the risk, 0.0 to 0.4.
+     *
+     * <p>Part of the roll rather than a subtraction, so a club with a good gym cannot end up with a
+     * negative risk and a club with a bad one cannot be pushed above the tier's own number.
+     */
+    private double gymProtection(Player player) {
+        if (player == null || player.getTeam() == null) return 0.0;
+        Stadium ground = player.getTeam().getStadium();
+        return ground == null ? 0.0 : ground.injuryProtection();
     }
 
     /** What one week of work did. */

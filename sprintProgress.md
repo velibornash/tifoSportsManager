@@ -2020,6 +2020,57 @@ a squad of zeroes, and nobody is pushed past the top of the scale.
 
 **447 tests.**
 
+### S4.4 — Training facilities
+
+The largest instance of this sprint's recurring bug: `Stadium` has carried `trainingQuality`,
+`pitchQuality` and `pitchCondition` in the database for a long time, and **not one of them was ever
+read**. A club's training ground was a decoration on a record.
+
+The fix is not a new `TrainingGround` entity. The backlog asked for one, and I did not build it,
+because the club's buildings are already modelled on `Stadium` and a second entity would have split
+one club's facilities across two tables and left exactly the kind of divergence that produced the bug
+in the first place. The levels live where the ground already is:
+
+| facility | affects |
+|---|---|
+| `trainingQuality` (existed, did nothing) | everything else |
+| `gymLevel` (new) | stamina and condition — **and injury risk** |
+| `tacticalLevel` (new) | passing, playmaking, technique |
+| `youthLevel` (new) | academy intake, Sprint 5 |
+
+**Symmetric around 1.0, and that is the decision.** Poor facilities do not merely fail to help, they
+*waste* the week — a squad training on a rutted pitch with no gym gets less out of the same coaching
+session. A game whose floor is 1.0 quietly says facilities are free, which is the mirror image of the
+bug being fixed. Bounded at ±10%, the same discipline the head coach is held to: a facility supports
+talent, it does not substitute for it.
+
+**Unrecorded is neutral, and it is not the same as level 1.** Every club predating this feature has
+null in these columns. Reading null as "no facilities" would have quietly taken 10% off the growth of
+every existing club in the database — a retroactive nerf wearing a default's clothes. A club that has
+genuinely built nothing says so with an explicit 1. This is the same "nobody hired is not somebody
+hired badly" rule as the coaching, and the same trap.
+
+**The gym is the injury facility**, and only the gym: a superb gym with no pitch is still a superb
+gym, and weight work in a good facility is what keeps a squad fit rather than breaking it. It is worth
+a 40% cut in risk — not immunity, because a gym that could remove the risk would be a reason never to
+rest anybody and would delete S4.2's central decision.
+
+**It costs money, or it is a hole in the budget.** Capital is steeply progressive (×1.45 per level) so
+that reaching level 11 is a genuinely better buy than level 20 and clubs do not all park at 11;
+upkeep is linear and boring, because that is what upkeep is. A club that cannot pay is **refused**,
+with the price in the response, rather than left in the red. Both stadium upkeep and training upkeep
+land on the existing `FACILITY_UPKEEP` line, with the two shown separately in its description so a
+manager can see what his facilities cost.
+
+Facilities ride along in the existing stadium payload rather than getting their own page — a manager
+does not think of "my gym" as separate from "my ground", and splitting them across two screens is how
+a feature ends up built and never looked at.
+
+Stadium quality affecting **home advantage** and youth level feeding **academy intake** are not done
+and stay open.
+
+**459 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

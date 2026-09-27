@@ -465,7 +465,8 @@ public class TrainingProgressionService {
         // scaled the same amount.
         double base = 0.52
                 * (intensity == null ? 1.0 : intensity.growthMultiplier())
-                * TrainingPercent.disciplineFactor(coach);
+                * TrainingPercent.disciplineFactor(coach)
+                * facilityFactor(player, skill);
         double ageFactor = ageTrainingFactor(player.getAge(), skill);
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
@@ -539,6 +540,19 @@ public class TrainingProgressionService {
             default -> setup.getDtSkillMid();
         };
         return skillKeyToEnum(normalizeDtSkill(key, role));
+    }
+
+    /**
+     * How well the club's own facilities support this piece of work (Sprint 4.4).
+     *
+     * <p>Null stadium is 1.0 — a club that has not recorded one is not thereby penalised, and this
+     * is the fourth multiplier in one expression, which is enough. Each answers a different question
+     * and none of them is allowed to answer another's.
+     */
+    private double facilityFactor(Player player, SkillName skill) {
+        if (player == null || player.getTeam() == null) return 1.0;
+        Stadium ground = player.getTeam().getStadium();
+        return ground == null ? 1.0 : ground.trainingFactorFor(skill);
     }
 
     /** The best coach this club has for the skill being trained, or null if it has nobody. */

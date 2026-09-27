@@ -67,6 +67,7 @@ public class WeeklyFinanceService {
     private final AdmissionService admission;
     private final PitchMaintenanceService pitch;
     private final StaffSponsorService staffSponsors;
+    private final TrainingFacilityService facilities;
 
     public WeeklyFinanceService(TeamRepository teamRepository,
                                 PlayerRepository playerRepository,
@@ -74,7 +75,8 @@ public class WeeklyFinanceService {
                                 FinanceLedgerEntryRepository ledger,
                                 AdmissionService admission,
                                 PitchMaintenanceService pitch,
-                                StaffSponsorService staffSponsors) {
+                                StaffSponsorService staffSponsors,
+                                TrainingFacilityService facilities) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.entryRepository = entryRepository;
@@ -82,6 +84,7 @@ public class WeeklyFinanceService {
         this.admission = admission;
         this.pitch = pitch;
         this.staffSponsors = staffSponsors;
+        this.facilities = facilities;
     }
 
     /**
@@ -232,7 +235,11 @@ public class WeeklyFinanceService {
         Stadium s = team.getStadium();
         if (s == null) return null;
         int capacity = s.getCapacity() == null ? 0 : s.getCapacity();
-        double upkeep = capacity * UPKEEP_PER_SEAT;
+        // What the club has built for training is billed on top of the ground it owns rather than
+        // folded silently into the same number - a manager reading this line should be able to see
+        // what his facilities are costing him.
+        double trainingUpkeep = facilities.weeklyUpkeep(team);
+        double upkeep = capacity * UPKEEP_PER_SEAT + trainingUpkeep;
 
         double maintenanceSpent = pitch.remainingOf(s);
         if (maintenanceSpent > 0) {
@@ -243,10 +250,12 @@ public class WeeklyFinanceService {
                         r.spent(), "Pitch work: condition " + r.before() + " -> " + r.after());
             }
             return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
-                    upkeep, capacity + " seats");
+                    upkeep, capacity + " seats + " + Math.round(trainingUpkeep)
+                            + " training facilities");
         }
         return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
-                upkeep, capacity + " seats, no pitch programme funded");
+                upkeep, capacity + " seats + " + Math.round(trainingUpkeep)
+                        + " training facilities, no pitch programme funded");
     }
 
     // --- helpers ---
