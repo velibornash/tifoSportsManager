@@ -79,6 +79,17 @@ public class SecurityConfig {
                                 "/images/**",
                                 "/audio/**",
                                 "/demo/service/ui/**",
+                                // Static assets shared by the non-football sports only. The whole
+                                // "/commonmanager/**" tree used to be public, which also exposed the
+                                // game API under it, so it was taken off the list - and with it these
+                                // two files. That is not a cosmetic break: common.css is the
+                                // stylesheet those pages are themed on, and common-utils.js defines
+                                // cmEscapeHtml / cmBuildEmptyState / cmRatingColor, so the browser got
+                                // a 302 to /login.html for a script (rejected by nosniff) and every
+                                // sport page threw ReferenceError on its first render. Only the asset
+                                // sub-paths are opened here; /commonmanager/api/** stays authenticated.
+                                "/commonmanager/css/**",
+                                "/commonmanager/js/**",
                                 // Legacy game modes. Neither reads the JWT (no Authorization
                                 // header anywhere under their /js folders), so they depend entirely
                                 // on permitAll. Leaving them open rather than breaking two
