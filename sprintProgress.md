@@ -2522,3 +2522,164 @@ growth it should have had.
 painted on both, drawer opens, dropdown opens with profile and sign-out, profile page shows the real
 club/league/country, league table headed `Opštinska liga Šid · Season 1` with Sremac in it, no
 horizontal overflow. **549 tests.**
+
+---
+
+### Sprint 5 begins — S5.1, the scouting network (2026-09-27)
+
+The academy could only ever produce what it generated itself. There was no way to look at a player
+the club had not already produced, and `Country.youthRating` had been seeded since Sprint 2.1 and
+read by **nothing** — the hook was already in the schema, waiting for this.
+
+**Owner rulings taken before any code was written**, because both changed the shape of the feature:
+
+1. **No non-EU quota for now.** S3.5 was believed built and is not (see below), and the quota was the
+   thing gating foreign recruitment.
+2. **Scouting produces intel, never signings.** A scouted prospect is reported on, not acquired.
+
+Ruling 2 is the load-bearing one, and it is why this service has **no dependency on the transfer or
+contract layer at all**. It also means S5.1 could be built before the missing quota: nothing here puts
+a foreign player into a squad, so nothing here can breach one. The day that changes, the quota becomes
+a blocker again — that dependency is written into the class javadoc so the next person finds it.
+
+**Scout wages are deliberately not charged here.** A scout is a `StaffMember` and his wage already
+flows through the weekly `STAFF_WAGES` ledger line whether or not he is abroad. S5.1 item 3 in the
+backlog asked for a scouting expense, and adding one would have billed the same man twice in the same
+week. The requirement was already satisfied by Sprint 2.2's infrastructure.
+
+#### The one modelling decision: reach is a product, not a sum
+
+```
+reach = 100 × (scouting / 20) × ((youthRating − 40) / 60)
+```
+
+Both inputs are normalised to 0..1 first, so the output is a real 0–100 rather than an accident of
+the two scales happening to be similar. **A sum would let a brilliant scout compensate for being sent
+somewhere with nothing to find**, and would let a rich pipeline compensate for being watched by
+someone who cannot tell a prospect from a squad player. Multiplying means both have to be right, which
+is what makes posting a scout a decision instead of a formality.
+
+Two edges are pinned deliberately rather than left to chance:
+
+- **The best possible posting is 92, not 100.** `youthRating` 95 against a floor of 40 over a span of
+  60 is 0.917. "Embedded" is the top of the scale and nothing reaches the end of it — a scouting
+  network that could promise certainty would not be one.
+- **An unrated scout defaults to 1, not 0.** Zero would make a freshly seeded scout literally blind.
+  The honest reading of "nobody has rated him" is "barely better than blind". This is the third
+  distinct instance of the *zero is a real value, null is "unmeasured"* trap in this codebase.
+
+Recall sets the assignment inactive rather than deleting it, so a report can say a club watched a
+country for two seasons. The wage is unaffected either way — the scout is still on the books, he is
+simply not abroad.
+
+**Validation, and the one that matters:** the scout must be a `SCOUT` **and belong to the club doing
+the posting**. A scout id is guessable, and without the own-club check a manager could post a *rival's*
+scout to a country and read reports generated with the rival's scouting attribute. The duplicate
+country check is a query rather than a read-then-write loop so two concurrent postings cannot both
+pass it.
+
+**Files:** `model/ScoutAssignment`, `repository/ScoutAssignmentRepository`, `service/ScoutingService`,
+`controller/ScoutingController` (`/scouting/team/{teamId}`), `dto/scouting/{ScoutAssignmentDTO,
+ScoutingNetworkDTO}`, `ScoutingReachTest`.
+
+**`ScoutingReachTest`, 9 tests.** The arithmetic is unit-tested without Spring because reach is the
+only number a manager reads on this screen, and a change to its shape would otherwise be invisible
+until someone complained that scouting had quietly got stronger or weaker. It pins the product
+property, the 92 ceiling, monotonicity in both inputs, 0–100 boundedness across the whole plausible
+input space including nonsense values, the unrated-scout floor, and that a mid-table posting lands
+where it can be read. The validation rules need the repositories and are left for a Spring test.
+
+#### S3.5 was built, then removed on purpose — and I got that wrong twice
+
+While scoping this task I reported that the non-EU quota and work permits were **"never built"**, and
+that the backlog carried a false ✅. **That was wrong, and the git history says so plainly.**
+`1661c97` (2026-09-26) built the whole feature; `a6394f9`, the same evening, **deleted it at the
+owner's direction** — `WorkPermit`, `WorkPermitService`, `WorkPermitRepository`, its 218-line test, the
+`Competition.foreignPlayerLimit` column and the gate in `PlayerContractService.sign`. 643 lines gone.
+The owner had decided *"No foreigner limit for now"*: Serbia's real rule is four non-EU players in the
+top flight and fewer below, but those numbers were inferred rather than confirmed, and shipping a
+guessed constraint was worse than shipping none.
+
+`Player.nationality` was deliberately kept, because the owner may later want a minimum number of
+players from the club's own country and a nationality column is what that would hang on.
+
+So the ✅ in the backlog was correct when it was written. **Absence in the source is not evidence of
+never having existed** — a feature can be built, reverted, or removed on purpose, and only the history
+tells those apart. Checking `git log` for a deletion is now part of the audit method, and it is the
+method note worth keeping from this whole exercise.
+
+It also means the ruling I asked for before writing any code — *"no quota at all for now"* — was a
+decision the owner had **already made the previous evening**. Asking was reasonable; asking without
+first reading the history cost a detour, and the answer should have been in `git log` from the start.
+
+**If the quota is ever wanted back, nothing needs rebuilding:** `1661c97` is the entire feature and
+`a6394f9` is a clean revert of it.
+
+The other two false positives from the audit — S3.4 (loans, built but unmarked) and S6.4 (stub
+services, deleted but still listed as open) — are genuine and stand. This one was not. The difference
+is exactly the one above: the first two were never revisited, this one was removed on purpose and the
+entry was never updated to say so.
+
+**Tests: 9 new, all green.** Full suite not yet re-run for this task.
+
+---
+
+### Closing the gaps in this log (audit 2026-09-27)
+
+The owner asked whether earlier commits had gone unrecorded here. They had — three pieces of work were
+in the repository and in the backlog but had no section in this file. A grep by commit hash is useless
+for that check, because this log is written as prose and only some sections carry a hash; the check
+that works is comparing the commit list against the section headings, then confirming by keyword.
+
+| Commit | Work | Where it was recorded |
+|---|---|---|
+| `988309e` | Top-bar layout fix and percentage formatting | ❌ **was missing** — now below |
+| `419838f` | Removing the "Open-football" references from the UI text | ❌ **was missing** — now below |
+| `7f5c4b6` (NT half) | National teams parked as an explicit placeholder | ❌ backlog only — now below |
+
+Two more were checked and found already covered: `883e20c` (the Java 24 toolchain problem, which cost
+a confusing `NoClassDefFoundError` and a Byte Buddy failure before the cause was found) and
+`221f72a` (the owner decisions of 2026-09-27, which are recorded in `sprintBacklog.md` and are binding
+on S4 and S5).
+
+#### The top bar was overlapping the logo, and it was not the account menu's fault
+
+`988309e`. The account corner had been pushed to the far right and was sitting under the club logo.
+The cause was not where it had been placed in the markup — it was there deliberately, after the Admin
+button. It was `components.css` being imported **after** `layout.css`, so any component rule that sets
+`display` silently beats the `.desktop-only { display: none }` responsive utility. Removing
+`margin-left: auto` from `.user-menu` moved it back next to Admin, and the utilities were then enforced
+with `!important` in `overrides.css`, the last file in the import order, so no component can outrank
+them again.
+
+The same pass found a **pre-existing** collision that had nothing to do with the account menu: the logo
+is `position: fixed` at the top right, and the live clock was the last flex item, so the logo was
+painted straight over the date. A hole is now reserved for it. Worth noting that this was invisible in
+the code review and obvious within seconds of looking at a screenshot at 1440×900.
+
+#### A pitch at 67.26952925761245
+
+`988309e`, the same pass. `pitchQuality` reached the browser as a raw `Double` and was rendered
+straight into the DOM. It is now a percentage through a shared `formatPercent`, and the house rule —
+**any decimal is rounded to two decimals** — was applied to `formatBudget` as well, because
+`Number(...).toLocaleString()` defaults to three and would have leaked the same class of number
+everywhere money is shown. A pitch now reads `67.27%`.
+
+#### "Open-football" was in the UI text
+
+`419838f`. The game is a closed, competitive manager game and the pages described it as open-source
+or open-football in several places. Removed from eight files, including the quarantined legacy page.
+Small, and the kind of copy that undermines a product the moment a manager reads it.
+
+#### National teams are parked, with the question that blocks it
+
+`7f5c4b6`. Recorded as an explicit placeholder at the end of the last sprint rather than half-built,
+together with the owner's specification: each country picks a **human** manager at the start of every
+season, who picks the squad, lineup and tactics, and a call-up counts toward the 120 weekly minutes
+that drive training — so selection is a *development* decision worth about 90 minutes of a week's
+training, not a prestige badge.
+
+The blocking question is recorded rather than guessed: **which weeks do national fixtures occupy?**
+Every week already has both its day-3 and day-7 slots filled, so a call-up that costs a league match is
+worth less than it looks. That is a season-shape decision, not an engineering one, and it belongs
+beside the playoff ladder's four open questions.

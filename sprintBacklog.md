@@ -924,41 +924,41 @@ squad depth without distorting the wage bill.
 
 ---
 
-### S3.5 — Work permits and foreign-player limits ❌ NOT BUILT (was marked ✅ in error)
+### S3.5 — Work permits and foreign-player limits ⏭️ BUILT, THEN REMOVED BY OWNER DECISION
 
-> **Corrected 2026-09-27.** This entry was marked "✅ built 2026-09-26" and named
-> `WorkPermit`, `WorkPermitService` and `Competition.foreignPlayerLimit` as delivered. **None of them
-> exists.** A re-audit for Sprint 5 found zero files matching `*WorkPermit*`, no `foreignPlayerLimit`
-> field on `Competition`, and no non-EU quota logic anywhere. The only related thing in the codebase is
-> `Player.nationality` (an ISO code, length 3) — the hook the feature would have been built on.
+> **Corrected 2026-09-27 — twice.** The first version of this entry said "✅ built" and named
+> `WorkPermit`, `WorkPermitService` and `Competition.foreignPlayerLimit` as delivered, which was true
+> when written (`1661c97`, 2026-09-26). A later audit then reported it as **"never built"**, which was
+> wrong: the feature was **deliberately deleted** the same evening at the owner's direction
+> (`a6394f9`), taking `WorkPermit`, `WorkPermitService`, `WorkPermitRepository`, its 218-line test, the
+> `Competition.foreignPlayerLimit` column and the gate in `PlayerContractService.sign` with it —
+> 643 lines removed.
 >
-> The likely cause is the same one that hit S3.4 and S6.4: work landed in a pass that was never
-> re-verified against the source, and the ✅ was written from intent rather than from a compile.
+> The lesson is the same one from S3.4 and S6.4, and it is worth stating precisely: **absence in the
+> source is not evidence of never having existed.** A feature can be built, reverted, or removed on
+> purpose, and only the git history distinguishes those. Checking `git log` for a deletion is now part
+> of the audit method.
 
-A strong Serbia-specific constraint: the domestic league has a **non-EU player quota** (Serbia's rule
-is 4 in the top flight, fewer below). Each foreign player needs a work permit.
+**The owner's decision, recorded at the time:** *"No foreigner limit for now."* Serbia's real rule is
+four non-EU players in the top flight and fewer below, but the numbers were inferred rather than
+confirmed, and rather than ship a guessed constraint the feature was removed.
+
+`Player.nationality` was **kept on purpose** — the owner may later want a minimum number of players
+from the club's own country, which is what a nationality column is for. It costs nothing now and saves
+a migration later.
 
 | # | Task | State |
 |---|---|---|
-| 1 | `WorkPermit` per foreign player (granted, refused, or pending based on reputation and league level) | ❌ does not exist |
-| 2 | Non-EU quota per competition (`Competition.foreignPlayerLimit`) | ❌ no such column |
-| 3 | A signing is blocked when the quota is full | ❌ `PlayerContractService.sign` does not consult any quota |
-| 4 | Buying from a weaker league grants a permit more easily | ❌ |
+| 1 | `WorkPermit` per foreign player | ⏭️ built in `1661c97`, removed in `a6394f9` |
+| 2 | Non-EU quota per competition | ⏭️ built, column removed |
+| 3 | A signing is blocked when the quota is full | ⏭️ built, gate removed |
+| 4 | Buying from a weaker league grants a permit more easily | ⏭️ built, removed |
 
-**Why this is now on the critical path for Sprint 5.** S5.1 item 5 is **foreign youth recruitment**.
-Building a scouting network that finds teenagers in Brazil and England, with nothing stopping you
-from registering all of them, produces a game where a tier-5 Serbian club fields a team of foreign
-17-year-olds. The quota is what makes scouting a *decision* rather than a shopping trip.
-
-**Recommended order, once Sprint 5 starts:** S5.1 (scouting) can be built first and is not blocked by
-this, but **S5.1 item 5 — foreign recruitment — should not ship before the quota exists.** Items 1–4
-are roughly a day of work and unblock a meaningful design constraint.
-
-**Still needs an owner ruling regardless:** the per-tier quotas. The working default discussed was
-4 / 3 / 2 / 1 / 0 for tiers 1–5, which would mean **tier 5 takes no foreign players at all** — and
-that is the tier the owner is actually playing (Sremac Berkasovo, `Opštinska liga Šid`, tier 5). If
-that default is right, foreign recruitment is a Superliga feature and the S5.1 payoff at tier 5 is
-limited to *observing* foreign talent, not signing it. **Ask before building.**
+**If it is ever wanted back,** the history is intact — `1661c97` is the whole feature and `a6394f9` is
+a clean revert of it. Nothing needs to be rebuilt from scratch, and no decision is blocked by its
+absence. The standing question is still the owner's: what the per-tier numbers should be, given that
+the discussed 4/3/2/1/0 would mean **tier 5 takes no foreign players at all** — and tier 5 is
+`Opštinska liga Šid`, where Sremac Berkasovo plays.
 
 ---
 
@@ -1022,7 +1022,7 @@ Re-audited 2026-09-27. The transfer market is genuinely Sokker-shaped; what is m
 | `interestedTeams` prose encoding is gone | ✅ S3.7 — entity, DTOs, parser, resolver and purge all deleted |
 | Transfer windows are enforced | ✅ S3.3 — out-of-window attempts rejected with a reason |
 | Loans work both ways | ✅ S3.4 — full lifecycle (see above) |
-| Work permits and the non-EU quota block signings | ❌ **not built** — see S3.5; the entry was marked ✅ in error |
+| Work permits and the non-EU quota block signings | ⏭️ built then **removed at the owner's direction** — see S3.5 |
 | AI↔AI transfers happen; squads visibly evolve | 🟡 transfers happen, **evolution does not** — see below |
 | The seller chooses which offer to accept | ✅ S3.2 item 8 |
 
@@ -1323,27 +1323,46 @@ uncertainty, no position at intake, and no pathway out — so a junior is a dice
 
 ---
 
-### S5.1 — Scouting network ❌ NOT STARTED
+### S5.1 — Scouting network 🟡 1–4 done 2026-09-27, item 5 deferred by owner
 
-**`Country.youthRating` is already seeded (45–95), already exposed via `CountrySummaryDTO`, and read
-by nothing.** A purpose-built hook for exactly this feature, and it has been sitting there since S2.1.
+**`Country.youthRating` is already seeded (45–95), already exposed via `CountrySummaryDTO`, and until
+this task read by nothing.** A purpose-built hook for exactly this feature, sitting in the schema
+since Sprint 2.1.
+
+**Owner rulings, 2026-09-27, taken before any code was written:**
+
+1. **No non-EU quota for now** — S3.5 was believed built and is not, and the quota was what gated
+   foreign recruitment.
+2. **Scouting produces intel, never signings.** A scouted prospect is reported on, not acquired.
+
+Ruling 2 is why `ScoutingService` has no dependency on the transfer or contract layer, and why S5.1
+could ship before the missing quota: nothing here registers a foreign player, so nothing here can
+breach one. **If that ever changes, the quota becomes a blocker again.**
 
 | # | Task | State |
 |---|---|---|
-| 1 | `ScoutingNetwork` entity per club: assigned scouts, regions covered | ❌ |
-| 2 | `ScoutAssignment` — assign a scout to a country or region; output volume scales with scout `scouting` attribute and the country's `youthRating` | ❌ |
-| 3 | Scout cost as a weekly ledger expense (S2.2) | ❌ — `FinanceCategory.SCOUT_WAGES` does not exist yet |
-| 4 | Better scouts → more and better intakes | ❌ |
-| 5 | **Foreign youth recruitment** — with 9 countries seeded, scouting opens up a real transfer market for teenagers | ❌ |
+| 1 | `ScoutingNetwork` entity per club: assigned scouts, regions covered | ✅ shipped as **`ScoutAssignment`** — one row per scout-country posting rather than a per-club blob, so "who is watching where" is queryable and a revoked posting is a state change rather than a re-serialised list |
+| 2 | `ScoutAssignment` — assign a scout to a country; output scales with scout `scouting` and country `youthRating` | ✅ `ScoutingService.reach = 100 × (scouting/20) × ((youthRating−40)/60)` — a **product**, so a brilliant scout cannot rescue a country with no pipeline and a rich pipeline cannot rescue a scout who cannot tell a prospect from a squad player |
+| 3 | Scout cost as a weekly ledger expense | ✅ **already satisfied, deliberately not re-implemented.** A scout is a `StaffMember`, so his wage already flows through the weekly `STAFF_WAGES` line from Sprint 2.2. A separate scouting charge would bill the same man twice in the same week |
+| 4 | Better scouts → more and better intakes | ✅ as reach. It does **not** yet change your own academy's intake, which is correct: the legacy graduation distribution is locked by owner decision, and the S5.3 items 1 + 5 are what make intake quality meaningful |
+| 5 | **Foreign youth recruitment** | ⏭️ **deferred by owner ruling 2** — scouting reports, it does not sign. Revisit when the quota exists and an owner decision says what tier 5 may do |
 
-**Note on ordering.** Item 5 is the reason this task is worth doing properly rather than minimally:
-a scouting network whose output is only ever your own academy is a numbers screen. The value is in
-opening the other eight countries, and that needs the `youthRating` hook to be the *driver* of intake
-quality, not a multiplier applied afterwards.
+**Not yet built, and it is the rest of the feature:** the reports themselves. Right now a posting
+produces a `reach` number and a label, which is the *input* to a report rather than a report. S5.2
+turns reach into an estimated range on an actual player.
+
+**Two edges pinned deliberately:** the best possible posting is **92, not 100** (`youthRating` 95
+against a floor of 40 over a span of 60 is 0.917 — "Embedded" is the top of the scale and nothing
+reaches the end of it), and an **unrated scout defaults to 1, not 0**, because zero would make a
+freshly seeded scout literally blind.
 
 **Also owed from Sprint 4:** `Stadium.youthLevel` and the `YOUTH_COACH` staff member's `development`
-attribute both feed intake quality and are both currently unread (S4.3 item 2 defers the scout half
-of scouting explicitly to this sprint).
+attribute both feed intake quality and are both still unread (S4.3 item 2 defers the scout half of
+scouting explicitly here). They belong to S5.3 items 1 and 5.
+
+**Tests:** `ScoutingReachTest`, 9 — the product property, the 92 ceiling, monotonicity in both inputs,
+0–100 boundedness across the whole input space, the unrated-scout floor, and that a mid-table posting
+lands where it can be read.
 
 ---
 
@@ -1405,21 +1424,23 @@ prospects develop at visibly different rates; loans give young players minutes.
 
 | Criterion | Result |
 |---|---|
-| A club can assign scouts to countries and the assignment changes what it finds | ❌ nothing exists |
-| `Country.youthRating` is read by the simulation | ❌ seeded and unread |
-| A junior's report is an estimate that firms up, not a number on day one | ❌ |
-| A junior has a position from intake and a route out of the academy | ❌ position absent; loan path unwired |
-| Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread |
+| A club can assign scouts to countries and the assignment changes what it finds | 🟡 the network and its reach model are built and tested; the reports it feeds are S5.2 |
+| `Country.youthRating` is read by the simulation | ✅ read by `ScoutingService.reach` — unread since Sprint 2.1 until now |
+| A junior's report is an estimate that firms up, not a number on day one | ❌ S5.2, not started |
+| A junior has a position from intake and a route out of the academy | ❌ position absent; the loan path exists in `LoanService` but is unwired for juniors |
+| Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread — S5.3 item 5 |
 | Graduation distribution unchanged from the legacy model | ✅ `YouthAcademyGraduationTest` holds |
+
+**Progress: 1 of 4 features started.** S5.1 shipped its network and reach model on 2026-09-27.
 
 **Planned order, and why:**
 
-1. **S5.1** — scouting network. It is the sprint's spine: it creates the foreign youth market, gives
-   `youthRating` a consumer, and is the input S5.2's uncertainty model needs to shrink over time.
-2. **S5.2** — report uncertainty, layered on the scouting levels S5.1 produces. Doing it first would
-   mean inventing an observation counter with nothing to observe.
+1. **S5.1** — scouting network. 🟡 **done except the reports.** It is the sprint's spine: it gives
+   `youthRating` a consumer and is the input S5.2's uncertainty model needs to shrink over time.
+2. **S5.2** — report uncertainty, layered on the reach S5.1 produces. Doing it first would mean
+   inventing an observation counter with nothing to observe.
 3. **S5.3 items 1 + 5** — position at intake and academy quality. Small, self-contained, and they
-   make the intake that S5.1 generates meaningful.
+   make the intake the network reports on meaningful.
 4. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
 5. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
 
