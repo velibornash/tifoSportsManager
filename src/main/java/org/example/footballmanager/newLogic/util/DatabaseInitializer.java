@@ -36,6 +36,7 @@ import java.util.stream.Collectors;
 public class DatabaseInitializer {
 
     private static final String OWNER_EMAIL = "velibor@example.com";
+    private static final String OWNER_DISPLAY_NAME = "Velja";
 
     /**
      * The second human manager's club and login (owner request 2026-09-27).
@@ -46,6 +47,7 @@ public class DatabaseInitializer {
      * {@code /admin/**}, which is reserved for OWNER/ADMIN/DEV.
      */
     private static final String SECOND_EMAIL = "kecko@example.com";
+    private static final String SECOND_DISPLAY_NAME = "Kecko";
     private static final String SECOND_PASSWORD = "Kecko123!";
     private static final String SREMAC_TEAM_NAME = "Sremac Berkasovo";
     private static final String SREMAC_LOGO = "/images/sremac_logo.jpg";
@@ -136,6 +138,7 @@ public class DatabaseInitializer {
             createSecondUserIfNotExists();
             refreshClubIdentities();
             backfillJuniorArrivalAges();
+            applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();
             return;
@@ -255,6 +258,11 @@ public class DatabaseInitializer {
             applyClubIdentity(omladinac);
             applyOwnerIdentity(owner, omladinac);
             owner.setPassword(encoder.encode("A12345!"));
+            owner.setDisplayName(OWNER_DISPLAY_NAME);
+            // A paid subscription, held separately from the role. OWNER would already see everything
+            // through the role bypass, so this field is what the profile reports as PLUS -- and it is
+            // the difference between "may see talent" and "paid for talent".
+            owner.setPlusSubscription(true);
             owner.setRole(UserRole.OWNER);
             userRepository.save(owner);
             ownerTeam = omladinac;
@@ -404,6 +412,30 @@ public class DatabaseInitializer {
     }
 
     /**
+     * Keeps the two seeded managers' display names and subscriptions authoritative (owner, 2026-09-27).
+     *
+     * <p><b>This is a repair, not a seed.</b> The creation blocks above only run when the account does
+     * not exist, so an existing save would keep a null display name forever and would never pick up a
+     * change of subscription. A paid account that the profile still shows as unsubscribed is worse
+     * than one that was never set up, because it looks like a bug in the checkout.
+     *
+     * <p>Written as an unconditional set rather than a null check, because "velibor has PLUS" is a
+     * <i>state</i> that can change after the row was created, not a default to fill in once.
+     */
+    private void applyManagerIdentities() {
+        userRepository.findByUsernameOrEmail(OWNER_EMAIL).ifPresent(owner -> {
+            owner.setDisplayName(OWNER_DISPLAY_NAME);
+            owner.setPlusSubscription(true);
+            userRepository.save(owner);
+        });
+        userRepository.findByUsernameOrEmail(SECOND_EMAIL).ifPresent(user -> {
+            user.setDisplayName(SECOND_DISPLAY_NAME);
+            user.setPlusSubscription(false);
+            userRepository.save(user);
+        });
+    }
+
+    /**
      * Gives every pre-existing junior an arrival age (Sprint 5.2).
      *
      * <p>A junior's talent report narrows against how long the club has been watching him, and that
@@ -444,6 +476,10 @@ public class DatabaseInitializer {
             User user = new User();
             user.setEmail(SECOND_EMAIL);
             user.setUsername(SECOND_EMAIL);
+            user.setDisplayName(SECOND_DISPLAY_NAME);
+            // No subscription: kecko is the account that must see the paywall, so the talent reports
+            // come back empty for him. That is the only way to test that the gate holds.
+            user.setPlusSubscription(false);
             user.setPassword(encoder.encode(SECOND_PASSWORD));
             // REGULAR, not ADMIN: he manages a club and reaches nothing under /admin/**.
             user.setRole(UserRole.REGULAR);

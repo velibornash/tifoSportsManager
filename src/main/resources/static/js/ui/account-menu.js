@@ -33,7 +33,10 @@ export function logout() {
  */
 export function paintAccountMenu(user, leagueName) {
     const username = (user && user.username) || '';
-    const initial = (username.trim()[0] || '?').toUpperCase();
+    // The name, not the login. `username` is an email address, and a manager should not have to read
+    // one in his own top bar every day; it is still the fallback so an unnamed account shows something.
+    const name = (user && user.displayName) || username;
+    const initial = (name.trim()[0] || '?').toUpperCase();
     const club = (user && (user.footballTeamName || user.teamName)) || 'No club';
     const role = (user && user.role) || '';
     const country = (user && user.countryName) || '';
@@ -42,18 +45,18 @@ export function paintAccountMenu(user, leagueName) {
     const lines = [club, leagueName, country, prettyRole(role)].filter(Boolean);
 
     setText('user-menu-avatar', initial);
-    setText('user-menu-name', username || 'Signed in');
-    setText('user-menu-panel-name', username || 'Signed in');
+    setText('user-menu-name', name || 'Signed in');
+    setText('user-menu-panel-name', name || 'Signed in');
     setText('user-menu-panel-meta', lines.join(' · '));
     setText('user-menu-avatar-mobile', initial);
-    setText('user-menu-name-mobile', username || 'Signed in');
+    setText('user-menu-name-mobile', name || 'Signed in');
     setText('user-menu-meta-mobile', lines.join(' · '));
 
     // The panel and the trigger carry the accessible name too, so the button is not read as bare
     // "question mark" by a screen reader.
     const trigger = document.getElementById('user-menu-trigger');
     if (trigger) {
-        trigger.setAttribute('title', username ? `Signed in as ${username}` : 'Account');
+        trigger.setAttribute('title', name ? `Signed in as ${name}` : 'Account');
     }
 }
 
@@ -132,11 +135,22 @@ export function renderUserProfile(user, escapeHtml, formatBudget) {
     const club = user.footballTeamName || user.teamName || 'No club';
     const league = user.competitionName || 'No league';
     const country = user.countryName || 'Not set';
+    const name = user.displayName || user.username || 'Manager';
+
+    // The subscription is reported from its own flag, not inferred from the role. An owner may see
+    // everything because OWNER bypasses the check, and showing him as a paying customer because of
+    // that would make the one screen that describes the account lie about it.
+    const subscribed = user.plusSubscription === true;
+    const subscription = subscribed
+        ? '<strong class="profile-plus profile-plus--on">PLUS</strong>'
+        : '<strong>Not subscribed</strong>';
 
     const rows = [
+        ['Name', name],
         ['Username', user.username || '—'],
         ['Email', user.email || '—'],
         ['Role', prettyRole(user.role)],
+        ['Subscription', subscription],
         ['Club', club],
         ['League', league],
         ['Country', country],
@@ -149,12 +163,12 @@ export function renderUserProfile(user, escapeHtml, formatBudget) {
                 <div class="fm-club-hero-main">
                     <div>
                         <div class="fm-eyebrow">Your account</div>
-                        <h2>${esc(user.username || 'Profile')}</h2>
+                        <h2>${esc(name)}</h2>
                     </div>
                 </div>
                 <div class="fm-medical-stat-grid team-summary-grid">
                     <div><strong>${esc(prettyRole(user.role))}</strong><span>Role</span></div>
-                    <div><strong>${esc(user.competitionTier ?? '—')}</strong><span>League tier</span></div>
+                    <div><strong>${subscribed ? 'PLUS' : '—'}</strong><span>Subscription</span></div>
                     <div><strong>${esc(country)}</strong><span>Country</span></div>
                     <div><strong>${esc(user.competitionName || '—')}</strong><span>League</span></div>
                 </div>
@@ -165,7 +179,7 @@ export function renderUserProfile(user, escapeHtml, formatBudget) {
                 <div class="club-profile-detail-list">
                     ${rows.map(([label, value]) => `
                         <div class="club-profile-detail-row">
-                            <span>${esc(label)}</span><strong>${esc(value)}</strong>
+                            <span>${esc(label)}</span><strong>${value}</strong>
                         </div>`).join('')}
                 </div>
             </section>

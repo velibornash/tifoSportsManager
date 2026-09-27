@@ -47,15 +47,40 @@ public class PlusFeatureService {
             Set.of(UserRole.OWNER, UserRole.DEV, UserRole.ADMIN);
 
     /**
-     * Whether the user may see talent and training percentages <b>at all</b>.
+     * Whether this user may see talent and training percentages <b>at all</b>.
      *
-     * <p>Checked before the own-team test so the two reasons can be told apart in a log.
+     * <p>Two independent things satisfy this, and conflating them is why they are written separately:
+     *
+     * <ul>
+     *   <li><b>the purchase</b> — {@link User#getPlusSubscription()}. This is the commercial one and
+     *       it is what the profile screen reports.</li>
+     *   <li><b>the role</b> — {@code OWNER}, {@code DEV} and {@code ADMIN}. A developer looking at a
+     *       bug needs the real number, and an owner running the game should not be locked out of his
+     *       own squad. This is a <b>debugging affordance</b>, not a subscription, which is exactly why
+     *       it must not be what the profile calls "PLUS".</li>
+     * </ul>
+     *
+     * <p>Even so, the role bypass does <b>not</b> skip the own-club test — see {@link #isOwnPlayer}.
      */
     public boolean hasPlus(User user) {
         if (user == null || user.getRole() == null) {
             return false;
         }
+        if (Boolean.TRUE.equals(user.getPlusSubscription())) {
+            return true;
+        }
         return ALWAYS_ALLOWED.contains(user.getRole()) || user.getRole() == UserRole.PLUS;
+    }
+
+    /**
+     * Whether this account has actually paid for PLUS.
+     *
+     * <p>What the profile shows. Unlike {@link #hasPlus} this does <b>not</b> grant the role bypass,
+     * because the question "did this person pay" has a different answer from "may this account see
+     * talent", and conflating them would show an owner as a paying customer.
+     */
+    public boolean hasPlusSubscription(User user) {
+        return user != null && Boolean.TRUE.equals(user.getPlusSubscription());
     }
 
     /**

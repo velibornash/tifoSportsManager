@@ -2826,3 +2826,64 @@ was only visible in a running application against real rows, and no amount of ar
 would have found it.
 
 **Tests: 24 new across the two suites. Full suite 592.**
+
+---
+
+### Names, and a subscription that is not a role (owner, 2026-09-27)
+
+The account showed `velibor@example.com` where a person's name belongs, and there was no way to see
+whether an account had actually paid for anything.
+
+**`User.displayName`** — "Velja" and "Kecko", seeded and repaired. Distinct from `username`, which is
+an email address and doubles as the login. Showing a raw identifier where a name belongs is the same
+class of mistake as `67.26952925761245` in a percentage field: technically accurate, wrong on screen.
+
+**`User.plusSubscription`** — a real subscription flag, and the important decision is that it is
+**separate from `UserRole`.** A role is a permission ("may reset the database"); a subscription is a
+purchase ("may see talent"). Collapsing them means an owner who never subscribed is shown as a paying
+customer, which is wrong on the one screen whose entire job is to tell the truth about the account.
+
+`PlusFeatureService` now answers two different questions instead of one:
+`hasPlusSubscription(user)` is what the profile reports — did this person pay; `hasPlus(user)` is what
+gates a number — may this account see talent, and it still lets `OWNER`/`DEV`/`ADMIN` through as a
+**documented debugging affordance**. Both still require the own-club test. The role bypass was
+deliberately left in place: a developer looking at a bug needs the real number, and an owner running
+the game should not be locked out of his own squad.
+
+**The account corner now shows the name too** (owner follow-up), not the email — with the username as
+the fallback so an unnamed account still shows something. Avatar initial follows the name, so it is
+"V" and not "v@".
+
+**The identity write is a repair, not a seed.** The creation blocks only run when an account does not
+exist, so an existing save would keep a null display name forever and would never pick up a *change* of
+subscription — a paid account the profile still calls unsubscribed is worse than one never set up,
+because it looks like a bug in the checkout. `applyManagerIdentities` therefore sets both values
+unconditionally for the two seeded accounts, and runs on every boot.
+
+**Verified in the browser, both accounts:**
+
+| | velibor | kecko |
+|---|---|---|
+| Corner | `Velja` · OFK Omladinac · Superliga Srbije · Serbia · Owner | `Kecko` · Sremac Berkasovo · Opštinska liga Šid · Serbia · Manager |
+| Profile name | Velja | Kecko |
+| Subscription | **PLUS** | **Not subscribed** |
+| Academy talent | bands, exact hidden | nothing (paywall) |
+
+#### A false alarm worth recording: 117 test errors that were not a code fault
+
+Mid-session the suite failed with **117 errors**, all of them `NoClassDefFoundError` on
+`BbDataInitializer$1` and "Unable to find a @SpringBootConfiguration". That looks like a broken
+context and a missing inner class; it was neither.
+
+A `spring-boot:run` from an earlier step was **still alive in the background**. `mvn test` and
+`spring-boot:run` share `target/classes`, so the running app rewrote classes while the test JVM was
+loading them, and 117 unrelated tests failed on a class that exists on disk. Confirmed by
+`ls target/classes/.../BbDataInitializer$1.class` — present the whole time.
+
+This is the same hazard as the `mvn clean` rule already recorded in `AGENTS.md`, one level down:
+**never build while the app is running**, and check for a stray background process before trusting a
+red suite. It is now also a habit to `pkill -f spring-boot:run` before a test run. The fix was
+`pkill` and a re-run; no code changed, and 592/592 were green immediately.
+
+**Tests: 592, unchanged — this was a wiring and seed change with no new behaviour to pin beyond the
+gate tests already added for S5.2.**

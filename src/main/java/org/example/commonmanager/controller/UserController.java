@@ -54,6 +54,9 @@ public class UserController {
         dto.setId(resolvedUser.getId());
         dto.setUsername(resolvedUser.getUsername());
         dto.setEmail(resolvedUser.getEmail());
+        dto.setDisplayName(resolvedUser.getDisplayName() != null && !resolvedUser.getDisplayName().isBlank()
+                ? resolvedUser.getDisplayName() : resolvedUser.getUsername());
+        dto.setPlusSubscription(Boolean.TRUE.equals(resolvedUser.getPlusSubscription()));
         dto.setRole(resolvedUser.getRole().name());
 
         if (resolvedUser.getCTeam() != null) {
@@ -128,7 +131,22 @@ public class UserController {
         private Long id;
         private String username;
         private String email;
+
+        /**
+         * What the manager is called. Falls back to the username when unset, so a profile never shows
+         * a blank where a name belongs.
+         */
+        private String displayName;
+
         private String role;
+
+        /**
+         * Whether this account has paid for PLUS — reported separately from {@link #role} on purpose.
+         * A role is a permission and a subscription is a purchase, and showing an owner as a paying
+         * customer because his role bypasses the check would be wrong on the one screen whose whole
+         * job is to tell the truth about the account.
+         */
+        private Boolean plusSubscription;
         private Long teamId;
         private String teamName;
         private Long footballTeamId;
