@@ -11,6 +11,7 @@ import org.example.footballmanager.newLogic.service.AdmissionService.TicketType;
 import org.example.footballmanager.newLogic.service.PitchMaintenanceService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -222,8 +223,14 @@ public class StadiumSettingsController {
         try {
             parsed = TrainingFacilityService.Facility.valueOf(facility.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException | NullPointerException e) {
+            // Built from the enum rather than written out, so a new facility cannot be added without
+            // appearing here. The previous message said "GROUND, GYM or TACTICAL" and would have told
+            // a manager that YOUTH does not exist.
+            String known = Arrays.stream(TrainingFacilityService.Facility.values())
+                    .map(Enum::name)
+                    .collect(java.util.stream.Collectors.joining(", "));
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Unknown facility '" + facility + "'. Use GROUND, GYM or TACTICAL."));
+                    "error", "Unknown facility '" + facility + "'. Use one of: " + known + "."));
         }
         Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
         if (team == null) {

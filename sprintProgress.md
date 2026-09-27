@@ -3062,3 +3062,77 @@ locally and fail in CI**, which is the opposite of what a test is for.
 week 2 both allowed, week 3 refused with the junior left untouched, the refusal naming both the window
 and the actual week, the age ceiling firing outside the window, position known at intake, promotion
 keeping it, and the legacy repair. **Full suite 616.**
+
+---
+
+### Academy quality, and the two bugs the owner found by looking at it
+
+**Both inputs already existed and were read by nothing.** `Stadium.youthLevel` was added in S4.4, whose
+item 5 said outright it was "consumed in Sprint 5"; `YOUTH_COACH.development` is the half of S4.3
+deferred here. A manager could see nothing, change nothing, and get identical prospects from a
+Portakabin and a purpose-built academy.
+
+**The multiplier sits on the development rate, never the intake roll.** That is the design decision
+that keeps this a feature rather than a balance change. Scaling the roll would move the graduation
+distribution the owner ruled must not move, and would mean a good academy *finds better raw material* —
+a different game. A good academy develops what it has faster, which is what one does in real football.
+Graduation **mechanics** are untouched; what changes is the level a graduate reaches.
+
+`1.0 ± 0.15 per input`, bounded 0.70–1.30, with **each input worth at most ±15% on its own** so neither
+rescues the other — a superb coach in a Portakabin is not a good academy. Same reasoning as the scouting
+reach model, and the two are deliberately interchangeable so neither is secretly the important one.
+
+**`YOUTH` was not a purchasable facility.** `Facility` held GROUND, GYM and TACTICAL only, so
+`youthLevel` could be read but never *changed* — half the model was unreachable in play and a manager
+could improve their academy only by hiring a better coach. It is now a fourth facility with the same
+cost curve, upkeep and upgrade path, and it appears in `levels()` and the weekly total. The
+controller's *"Use GROUND, GYM or TACTICAL"* message is now built from the enum, so a new facility
+cannot be added without appearing there — a hardcoded list of valid values is a list that goes stale.
+
+---
+
+### Two owner-reported bugs, and they were the same shape
+
+**A talent band could exceed the scale.** *Guliver Simić, 15, MID, 3.00 – 11.00* — on a **1–10** scale,
+because `bounds()` was plain `talent ± width` with no clamp. Now clamped to `[1, 10]`, and
+`TalentRange` owns the scale rather than assuming one.
+
+The clamp costs something real and is worth saying plainly: **a band that ends at 10 tells you the
+prospect is exceptional**, so a generational talent gives himself away at the edges of the scale. It is
+the trade every scouting report makes, and the alternative — impossible numbers on screen — is worse
+and would be reported as a bug. Verified live: the same junior now reads `3.0 - 10.0`.
+
+**The promotion reveal showed no talent.** The screen is called *Junior Promotion Reveal* and displayed
+a skill budget. The rule had been implemented on `JuniorAcademyItemDTO.talentExact` — but the reveal
+screen reads **`JuniorPromotionResultDTO`, a different DTO with no talent field at all**, so the
+feature existed and could not appear on the one screen named after it.
+
+That is now the third time in this sprint the same failure has appeared: the rule is implemented, and
+implemented *on a path nobody looks at*. `PlusFeatureService` (wired to nothing), the coaching staff
+whose wage left the account and whose teaching did nothing, and now this. **When a rule is about what a
+manager sees, the DTO that screen actually reads is the thing to check** — not the one where the rule
+seemed to belong.
+
+It is now present and gated on the same subscription as the band, with a non-subscriber still getting
+the player and the skills. The subscription gates *information*, not the club's own promotion.
+
+**"Exact talent with decimals" is an integer, and that is the right answer.** The owner asked for
+decimals; `rollTalent` is a weighted **integer** on a 1–10 scale, and re-rolling it as a double would
+move the graduation distribution, which the same owner ruled must not move. `revealExact` returns the
+integer and the javadoc says why — the honest reading of two decisions that appear to conflict.
+
+#### A flaky fixture of mine, twice, and the actual cause the second time
+
+`carryover()` failed intermittently again, and the first fix was wrong in an instructive way. I assumed
+the ten-junior cap was the problem and made it draw from the existing pool. It still failed, because
+**`generateSeasonIntakeForWeek2` is idempotent per (team, season, week)** — it skips when that season
+and week already produced an intake, so "generate another intake" silently did nothing and the helper
+sat with an empty pool and a cheerful assertion failure. The fix is a **second club**, which has its own
+ten slots and its own season/week, making the helper deterministic whatever the random intake size.
+
+Confirmed: **three consecutive clean runs** of the class after the change. A fixture that depends on a
+random count is a fixture that passes locally and fails in CI, and if the obvious fix does not work the
+second time, the cause is not the one you assumed.
+
+**Tests: 12 new** (9 `AcademyQualityTest`, 3 in `TalentRangeTest` and `JuniorDecisionWindowTest` for
+the clamp, the reveal and the subscription gate). **Full suite 630.**

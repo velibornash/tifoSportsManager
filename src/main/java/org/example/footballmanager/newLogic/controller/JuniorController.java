@@ -50,10 +50,11 @@ public class JuniorController {
     }
 
     @PostMapping("/{juniorId}/promote-reveal")
-    public JuniorPromotionResultDTO promoteJuniorReveal(@PathVariable Long juniorId) {
+    public JuniorPromotionResultDTO promoteJuniorReveal(@PathVariable Long juniorId,
+                                                       @AuthenticationPrincipal User principal) {
         int season = seasonService.getOrCreateClock().getCurrentSeason();
         int week = seasonService.getOrCreateClock().getCurrentWeek();
-        return youthAcademyService.promoteJuniorWithReveal(juniorId, season, week);
+        return youthAcademyService.promoteJuniorWithReveal(juniorId, season, week, maySee(principal));
     }
 
     @PostMapping("/{juniorId}/release")

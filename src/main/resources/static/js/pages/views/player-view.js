@@ -321,6 +321,9 @@ export function createPlayerView(deps) {
                 <section class="fm-panel fm-player-reveal">
                     <h3>Junior Promotion Reveal</h3>
                     <p class="fm-subtle">Skills are being generated from academy potential.</p>
+                    ${revealPayload.talent != null ? `
+                    <p class="fm-subtle fm-reveal-talent">Talent revealed: <strong>${htmlEscape(String(revealPayload.talent))}</strong> / 10</p>`
+                        : `<p class="fm-subtle fm-reveal-talent">Talent revealed: <strong>PLUS</strong> <span class="fm-subtle">— talent is a paid figure. The skills below are yours either way.</span></p>`}
                     <p class="fm-subtle">Remaining skill budget: <strong id="junior-reveal-remaining">${Number(revealPayload.totalSkillBudget || 0)}</strong></p>
                     <p class="fm-subtle" id="junior-reveal-status">Allocating 1 point every second...</p>
                 </section>` : ''}

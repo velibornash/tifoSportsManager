@@ -44,7 +44,18 @@ public class TrainingFacilityService {
         /** Strength and conditioning. Also the injury facility. */
         GYM,
         /** Tactical teaching: the video room, the whiteboard, the extra pitch. */
-        TACTICAL
+        TACTICAL,
+        /**
+         * The youth setup: the academy pitches, the gym the juniors use, the scouting and coaching
+         * facilities around them (Sprint 5.3).
+         *
+         * <p>Added because {@code Stadium.youthLevel} was written in Sprint 4.4 and had <b>no way to
+         * be changed</b> — it was read by nothing and bought with nothing. The moment it became the
+         * half of the academy quality model, leaving it unpurchasable would have meant a manager could
+         * improve their academy only by hiring a better youth coach, and the facility half would have
+         * been decoration.
+         */
+        YOUTH
     }
 
     /** Cheapest first level-to-level step, and the base the curve multiplies from. */
@@ -93,7 +104,8 @@ public class TrainingFacilityService {
         if (s == null) return 0.0;
         return WEEKLY_UPKEEP_PER_LEVEL * ((level(s.getTrainingQuality()) - 1)
                 + (level(s.getGymLevel()) - 1)
-                + (level(s.getTacticalLevel()) - 1));
+                + (level(s.getTacticalLevel()) - 1)
+                + (level(s.getYouthLevel()) - 1));
     }
 
     /**
@@ -116,6 +128,7 @@ public class TrainingFacilityService {
             case GROUND -> s.getTrainingQuality();
             case GYM -> s.getGymLevel();
             case TACTICAL -> s.getTacticalLevel();
+            case YOUTH -> s.getYouthLevel();
         };
         int level = clamp(current);
         if (level >= MAX_LEVEL) return java.util.OptionalDouble.empty();
@@ -132,6 +145,7 @@ public class TrainingFacilityService {
             case GROUND -> s.setTrainingQuality(next);
             case GYM -> s.setGymLevel(next);
             case TACTICAL -> s.setTacticalLevel(next);
+            case YOUTH -> s.setYouthLevel(next);
         }
         team.setBudget(budget - cost);
         teams.save(team);
@@ -152,6 +166,7 @@ public class TrainingFacilityService {
         out.put(Facility.GROUND, s == null ? 1 : level(s.getTrainingQuality()));
         out.put(Facility.GYM, s == null ? 1 : level(s.getGymLevel()));
         out.put(Facility.TACTICAL, s == null ? 1 : level(s.getTacticalLevel()));
+        out.put(Facility.YOUTH, s == null ? 1 : level(s.getYouthLevel()));
         return out;
     }
 

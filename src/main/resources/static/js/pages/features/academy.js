@@ -113,6 +113,30 @@
         </section>`;
     }
 
+    /**
+     * What the youth setup is worth, and what it is made of (Sprint 5.3).
+     *
+     * <p>A manager pays a weekly upkeep for a youth facility and a youth coach, so this says what
+     * those two are actually doing. Both were written in earlier sprints and read by nothing — the
+     * facility is the S4.4 item that said "consumed in Sprint 5", and the coach attribute is the half
+     * of S4.3 that deferred here.
+     *
+     * <p>The two are shown separately because <b>one cannot rescue the other</b>: a superb coach in a
+     * Portakabin is not a good academy, and a superb ground with nobody teaching is not either.
+     */
+    function renderQuality(a) {
+        const quality = Number(a.academyQuality != null ? a.academyQuality : 1);
+        const label = a.academyQualityLabel || 'Average';
+        const pct = Math.round((quality - 1) * 100);
+        const sign = pct > 0 ? '+' : '';
+        const facility = a.youthFacilityLevel != null ? a.youthFacilityLevel : '—';
+        const coach = a.youthCoachDevelopment != null ? a.youthCoachDevelopment : '—';
+        const boost = pct === 0
+            ? 'develops prospects at the standard rate'
+            : `develops prospects ${Math.abs(pct)}% ${pct > 0 ? 'faster' : 'slower'} than the standard rate`;
+        return `<strong>Academy quality ${escapeHtml(label)}</strong> (${sign}${pct}%) — ${escapeHtml(boost)}. Youth facility ${escapeHtml(String(facility))}/20, youth coach development ${escapeHtml(String(coach))}/20.`;
+    }
+
     async function loadJuniors() {
         const currentUserTeamId = getTeamId();
         const mainContent = document.getElementById("main-content");
@@ -247,6 +271,7 @@
                     <div><strong>${otherVisible.length}</strong><span>Resolved</span></div>
                     <div><strong>${archive.length}</strong><span>Archive</span></div>
                 </div>
+                <p class="fm-subtle academy-quality-line">${renderQuality(academy)}</p>
                 <p class="fm-subtle academy-footnote">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is 10.</p>
             </section>
 

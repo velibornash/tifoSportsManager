@@ -49,6 +49,7 @@ class JuniorDecisionWindowTest {
     @Autowired JuniorRepository juniors;
 
     private Team club;
+    private Team overflow;
     /** Juniors already handed to a test, so a second call does not return the same one. */
     private final Set<Long> handedOut = new HashSet<>();
 
@@ -65,6 +66,21 @@ class JuniorDecisionWindowTest {
         s.setTicketPrice(10.0);
         t.setStadium(s);
         club = teams.save(t);
+        // A second club, used only when the first runs out of prospects. See carryover() for why a
+        // single club is not enough.
+        Team second = new Team();
+        second.setName("Overflow club-" + System.nanoTime());
+        second.setBudget(9_000_000.0);
+        second.setReputation(60.0);
+        second.setHumanControlled(true);
+        Stadium g = new Stadium();
+        g.setName("Overflow Ground");
+        g.setCapacity(5_000);
+        g.setTicketPrice(10.0);
+        second.setStadium(g);
+        overflow = teams.save(second);
+        schools.open(overflow.getId(), 1, YouthAcademyService.DECISION_WINDOW_FIRST_WEEK);
+
         // Opened once here. Several tests need more than one carryover junior, and re-opening the
         // school is a real conflict rather than a fixture convenience.
         schools.open(club.getId(), 1, YouthAcademyService.DECISION_WINDOW_FIRST_WEEK);
@@ -73,32 +89,45 @@ class JuniorDecisionWindowTest {
     /**
      * A junior who arrived last season, so the only thing between him and a decision is the week.
      *
-     * <p>Draws from the existing pool before generating another intake. The academy caps at ten active
-     * juniors, so a test asking for a third or fourth prospect would intermittently find the pool
-     * exhausted — a flaky fixture, not a product failure, and one that only showed up in a full run
-     * because {@code rollIntakeCount} is random.
+     * <p>Two things made this flaky before, and both are worth recording:
+     *
+     * <ul>
+     *   <li>the academy caps at ten active juniors, so a test wanting three prospects could run the
+     *       pool dry;</li>
+     *   <li>and {@code generateSeasonIntakeForWeek2} is idempotent per (team, season, week) — it
+     *       skips when that season and week already produced an intake. So "generate another intake"
+     *       silently does nothing, and the helper sat there with an empty pool and a cheerful
+     *       assertion failure.</li>
+     * </ul>
+     *
+     * <p>So the fallback is a <b>second club</b>, not a second intake call: it has its own ten slots
+     * and its own season/week, which makes the helper deterministic regardless of how many
+     * prospects the random intake happens to produce.
      */
     private Junior carryover(int age) {
-        List<Junior> available = juniors.findByTeamIdAndStatus(club.getId(), JuniorStatus.ACTIVE).stream()
-                .filter(j -> !handedOut.contains(j.getId()))
-                .collect(Collectors.toList());
-
-        if (available.isEmpty()) {
-            academy.generateSeasonIntakeForWeek2(1, 2);
-            available = juniors.findByTeamIdAndStatus(club.getId(), JuniorStatus.ACTIVE).stream()
+        for (Team source : List.of(club, overflow)) {
+            List<Junior> available = juniors.findByTeamIdAndStatus(source.getId(), JuniorStatus.ACTIVE)
+                    .stream()
                     .filter(j -> !handedOut.contains(j.getId()))
                     .collect(Collectors.toList());
+            if (available.isEmpty()) {
+                academy.generateSeasonIntakeForWeek2(1, 2);
+                available = juniors.findByTeamIdAndStatus(source.getId(), JuniorStatus.ACTIVE).stream()
+                        .filter(j -> !handedOut.contains(j.getId()))
+                        .collect(Collectors.toList());
+            }
+            if (available.isEmpty()) {
+                continue;
+            }
+            Junior junior = available.get(0);
+            handedOut.add(junior.getId());
+            junior.setArrivalSeasonNumber(1);
+            junior.setArrivalAge(junior.getAge());
+            junior.setAge(age);
+            junior.setStatus(JuniorStatus.ACTIVE);
+            return juniors.save(junior);
         }
-        assertFalse(available.isEmpty(),
-                "the academy is full at ten juniors and every one has been used by this test");
-
-        Junior junior = available.get(0);
-        handedOut.add(junior.getId());
-        junior.setArrivalSeasonNumber(1);
-        junior.setArrivalAge(junior.getAge());
-        junior.setAge(age);
-        junior.setStatus(JuniorStatus.ACTIVE);
-        return juniors.save(junior);
+        throw new AssertionError("both academies are exhausted; the fixture cannot supply another junior");
     }
 
     // ── the window ─────────────────────────────────────────────────────────────────────────────
@@ -175,6 +204,44 @@ class JuniorDecisionWindowTest {
         juniors.save(junior);
 
         assertEquals(1, academy.promoteJuniorsPastWindow(1, 1));
+    }
+
+    // ── the promotion reveal ───────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("promoting reveals the exact talent to a subscriber")
+    void revealCarriesTalentForASubscriber() {
+        // Found by the owner: the reveal screen is called "Junior Promotion Reveal" and showed no
+        // talent. The rule had been implemented on JuniorAcademyItemDTO, while the reveal screen
+        // reads JuniorPromotionResultDTO -- a different DTO with no talent field at all.
+        Junior junior = carryover(18);
+        junior.setPosition(Position.ATT);
+        junior.setTalent(8.0);
+        juniors.save(junior);
+
+        var reveal = academy.promoteJuniorWithReveal(junior.getId(), 2, 1, true);
+
+        assertNotNull(reveal.getTalent(),
+                "a subscriber must be told the ceiling they just paid to see");
+        assertEquals(8.0, reveal.getTalent());
+        assertNotNull(reveal.getPlayerId(), "and the player must still be created either way");
+    }
+
+    @Test
+    @DisplayName("promoting reveals the talent to nobody without a subscription, but still makes the player")
+    void revealWithholdsTalentFromANonSubscriber() {
+        Junior junior = carryover(18);
+        junior.setPosition(Position.ATT);
+        junior.setTalent(9.0);
+        juniors.save(junior);
+
+        var reveal = academy.promoteJuniorWithReveal(junior.getId(), 2, 1, false);
+
+        org.junit.jupiter.api.Assertions.assertNull(reveal.getTalent(),
+                "the reveal is the paid moment; a non-subscriber must not get the ceiling from it");
+        assertNotNull(reveal.getPlayerId(),
+                "and the promotion itself must still happen -- the subscription gates information, not the club's own player");
+        assertNotNull(reveal.getAllocatedSkills(), "the skills are the manager's own work and are always shown");
     }
 
     // ── position at intake ─────────────────────────────────────────────────────────────────────

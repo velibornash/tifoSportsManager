@@ -49,6 +49,15 @@ public final class TalentRange {
      */
     private static final double MAX_COACH_SPEEDUP = 1.0;
 
+    /**
+     * The lowest and highest talent a player can actually have.
+     *
+     * <p>Junior talent is rolled on a <b>1-10 integer</b> scale ({@code rollTalent}'s own weights say
+     * "1..10"), so this is not a guess about a convention — it is the size of the array being rolled.
+     */
+    public static final int MIN_TALENT = 1;
+    public static final int MAX_TALENT = 10;
+
     private TalentRange() {
     }
 
@@ -107,7 +116,35 @@ public final class TalentRange {
     public static double[] bounds(double trueTalent, double halfWidth) {
         if (Double.isNaN(trueTalent) || Double.isInfinite(trueTalent)) return null;
         double width = Math.max(0.0, halfWidth);
-        return new double[] { round2(trueTalent - width), round2(trueTalent + width) };
+        // Clamped to the scale, deliberately and at the cost of a small leak.
+        //
+        // A talent of 10 reported at +/-1 is 9-11, and no player has a talent of 11. Showing it anyway
+        // is what a manager saw on the academy screen, and it reads as a broken number rather than a
+        // wide estimate. Clamping costs something real: a band that ends at 10 tells you the true value
+        // is high, so an exceptional prospect gives himself away at the edges of the scale. That is
+        // the trade every scouting report makes, and the alternative -- impossible numbers on screen --
+        // is worse and would be reported as a bug.
+        double low = Math.max(MIN_TALENT, trueTalent - width);
+        double high = Math.min(MAX_TALENT, trueTalent + width);
+        // A talent stored outside the scale (a legacy row, a bad migration) would invert the band.
+        if (low > high) {
+            low = Math.max(MIN_TALENT, Math.min(MAX_TALENT, trueTalent));
+            high = low;
+        }
+        return new double[] { round2(low), round2(high) };
+    }
+
+    /**
+     * The exact talent, for the moment it is revealed.
+     *
+     * <p>An <b>integer</b>, because that is what the roll produces. The owner asked for "exact talent
+     * with decimals"; the roll is a weighted integer on a 1-10 scale, and re-rolling it as a double
+     * would move the graduation distribution, which the same owner ruled must not move. Showing the
+     * integer is the honest reading of both decisions at once.
+     */
+    public static Double revealExact(double trueTalent) {
+        if (Double.isNaN(trueTalent) || Double.isInfinite(trueTalent)) return null;
+        return (double) (int) Math.round(trueTalent);
     }
 
     /**

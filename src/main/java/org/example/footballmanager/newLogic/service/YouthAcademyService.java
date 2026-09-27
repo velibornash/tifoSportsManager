@@ -108,7 +108,7 @@ public class YouthAcademyService {
             Team team = junior.getTeam();
             if (team == null) continue;
             ensureCoachSkill(team);
-            double delta = computeWeeklyDelta(junior, team.getJuniorCoachSkill());
+            double delta = computeWeeklyDelta(junior, team.getJuniorCoachSkill(), academyQualityOf(team));
             double nextExact = clamp(junior.getAcademySkillExact() + delta, 0.0, 20.99);
             junior.setAcademySkillExact(round2(nextExact));
             junior.setAcademySkill((int) Math.floor(junior.getAcademySkillExact()));
@@ -177,6 +177,13 @@ public class YouthAcademyService {
                 .anyMatch(j -> j.getStatus() == JuniorStatus.ACTIVE && j.getArrivalSeasonNumber() < currentSeason);
         dto.setDecisionsOpen(hasCarryoverActive);
 
+        double quality = academyQualityOf(team);
+        Integer coachDevelopment = youthCoachDevelopment(team);
+        dto.setAcademyQuality(AcademyQuality.round2(quality));
+        dto.setAcademyQualityLabel(AcademyQuality.label(quality));
+        dto.setYouthFacilityLevel(team.getStadium() == null ? null : team.getStadium().getYouthLevel());
+        dto.setYouthCoachDevelopment(coachDevelopment);
+
         // One resolution of the youth coach per request rather than per junior: it is the same
         // attribute for all of them, and the report narrows against it (TalentRange).
         Integer youthCoachDevelopment = youthCoachDevelopment(team);
@@ -193,6 +200,26 @@ public class YouthAcademyService {
      * <p>Feeds {@link TalentRange}: a better youth coach does not produce better prospects, it
      * <b>narrows the report on them faster</b>. This is the attribute's first consumer in the codebase.
      */
+    /**
+     * How good this club's academy is, as a growth multiplier (Sprint 5.3).
+     *
+     * <p>Both inputs were added in earlier sprints and read by nothing: {@code Stadium.youthLevel}
+     * by S4.4, whose item 5 said outright that it was "consumed in Sprint 5", and the
+     * {@code YOUTH_COACH}'s development attribute by S4.3, which deferred the scouting half of its
+     * effect here. A manager could buy a training ground, hire a youth coach, and watch the academy
+     * produce exactly the same prospects as a clubhouse with neither.
+     */
+    double academyQualityOf(Team team) {
+        if (team == null) return 1.0;
+        return AcademyQuality.multiplierFor(team.getStadium(), youthCoach(team));
+    }
+
+    /** The youth coach as a staff member, or null when the club has not hired one. */
+    private StaffMember youthCoach(Team team) {
+        if (team == null || team.getId() == null) return null;
+        return staffMemberRepository.findByTeamIdAndRole(team.getId(), StaffRole.YOUTH_COACH).orElse(null);
+    }
+
     private Integer youthCoachDevelopment(Team team) {
         if (team == null || team.getId() == null) return null;
         return staffMemberRepository.findByTeamIdAndRole(team.getId(), StaffRole.YOUTH_COACH)
@@ -250,7 +277,8 @@ public class YouthAcademyService {
     }
 
     @Transactional
-    public JuniorPromotionResultDTO promoteJuniorWithReveal(Long juniorId, int currentSeason, int currentWeek) {
+    public JuniorPromotionResultDTO promoteJuniorWithReveal(Long juniorId, int currentSeason, int currentWeek,
+                                                            boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
         PromotionBuild build = createSeniorFromJunior(junior);
         junior.setStatus(JuniorStatus.PROMOTED);
@@ -264,6 +292,11 @@ public class YouthAcademyService {
         dto.setPosition(build.player.getPosition() != null ? build.player.getPosition().name() : "MID");
         dto.setTotalSkillBudget(build.totalBudget);
         dto.setRemainingAfterFill(build.remainingAfterFill);
+        // The reveal. Gated on the same subscription rule as the band, because the moment a manager
+        // discovers the ceiling is the paid moment.
+        if (canSeeTalent) {
+            dto.setTalent(TalentRange.revealExact(junior.getTalent()));
+        }
         dto.setAllocatedSkills(build.allocatedSkills);
         dto.setAllocationSequence(build.allocationSequence);
         return dto;
@@ -538,12 +571,16 @@ public class YouthAcademyService {
         return Position.ATT;
     }
 
-    private double computeWeeklyDelta(Junior junior, int coachSkill) {
+    private double computeWeeklyDelta(Junior junior, int coachSkill, double academyQuality) {
         double coachFactor = 0.55 + (coachSkill / 100.0) * 0.95;
         double talentFactor = mapTalentFactor(junior.getTalent());
         double levelFactor = Math.max(0.10, 1.0 - (junior.getAcademySkillExact() / 21.0) * 0.82);
         double randomFactor = 0.82 + random.nextDouble() * 0.42;
-        double base = 0.24 * coachFactor * talentFactor * levelFactor * randomFactor;
+        // The academy setup: the youth facility and the youth coach (Sprint 5.3). It scales the *rate*,
+        // never the intake roll, so graduation mechanics and the talent distribution are untouched --
+        // what a better academy changes is the level a graduate reaches, which is the point of paying
+        // for one. 1.0 for a club that has recorded neither.
+        double base = 0.24 * coachFactor * talentFactor * levelFactor * randomFactor * academyQuality;
 
         // Small negative swing to simulate uncertain evaluation periods.
         if (random.nextDouble() < 0.08) {

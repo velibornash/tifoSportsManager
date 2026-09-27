@@ -158,12 +158,58 @@ class TalentRangeTest {
     @Test
     @DisplayName("bounds are the true value plus or minus the width, to two decimals")
     void boundsAreRoundedToTwoDecimals() {
-        assertArrayEquals(new double[] { 5.27, 11.27 },
-                TalentRange.bounds(8.27, 3.0),
-                "a 8.27 talent reported at ±3.0");
+        // Inside the 1-10 scale, so the clamp does not interfere with what is being tested here.
+        assertArrayEquals(new double[] { 4.27, 7.27 },
+                TalentRange.bounds(5.77, 1.5),
+                "a 5.77 talent reported at +/-1.5");
         assertArrayEquals(new double[] { 6.77, 8.77 },
                 TalentRange.bounds(7.77, 1.0),
-                "the ±1 floor is the tightest a report ever gets");
+                "the +/-1 floor is the tightest a report ever gets");
+    }
+
+    @Test
+    @DisplayName("a band never leaves the 1-10 scale, because no player has a talent of 11")
+    void boundsStayOnTheScale() {
+        // Caught by the owner looking at the academy screen: a talent of 10 reported at +/-4 read
+        // "6.00 - 14.00", and 14 is not a talent anybody can have.
+        assertEquals(1, TalentRange.MIN_TALENT);
+        assertEquals(10, TalentRange.MAX_TALENT);
+
+        for (int talent = 1; talent <= 10; talent++) {
+            for (int roll = 1; roll <= 4; roll++) {
+                Junior j = junior(15, TalentRange.intakeHalfWidth(roll));
+                double[] b = TalentRange.bounds(talent, TalentRange.currentHalfWidth(j, 15, 20, null));
+                assertTrue(b[0] >= TalentRange.MIN_TALENT,
+                        "talent " + talent + " roll " + roll + " reported below the floor: " + b[0]);
+                assertTrue(b[1] <= TalentRange.MAX_TALENT,
+                        "talent " + talent + " roll " + roll + " reported above the ceiling: " + b[1]);
+                assertTrue(b[0] <= b[1], "a clamped band must not invert");
+            }
+        }
+        assertArrayEquals(new double[] { 6.0, 10.0 }, TalentRange.bounds(10.0, 4.0),
+                "the widest possible report on the best possible talent");
+        assertArrayEquals(new double[] { 1.0, 5.0 }, TalentRange.bounds(1.0, 4.0),
+                "and on the worst");
+    }
+
+    @Test
+    @DisplayName("an out-of-scale stored talent produces a readable band rather than an inverted one")
+    void outOfScaleTalentDegrades() {
+        double[] high = TalentRange.bounds(14.0, 2.0);
+        assertTrue(high[0] <= high[1], "must not invert");
+        assertTrue(high[1] <= TalentRange.MAX_TALENT);
+    }
+
+    @Test
+    @DisplayName("the revealed talent is the integer the roll actually produced")
+    void revealIsTheIntegerRoll() {
+        // The owner asked for "exact talent with decimals". The roll is a weighted integer on a 1-10
+        // scale, and re-rolling it as a double would move the graduation distribution, which the same
+        // owner ruled must not move. So the honest reading of both decisions is an integer.
+        assertEquals(7.0, TalentRange.revealExact(7.0));
+        assertEquals(10.0, TalentRange.revealExact(10.0));
+        assertEquals(1.0, TalentRange.revealExact(1.0));
+        org.junit.jupiter.api.Assertions.assertNull(TalentRange.revealExact(Double.NaN));
     }
 
     @Test
@@ -180,7 +226,11 @@ class TalentRangeTest {
     void trueValueIsAlwaysInsideTheRange() {
         // The property that makes the feature honest rather than decorative: a report must never
         // exclude the truth, or the manager is being told something false rather than something vague.
-        for (double talent = 1.0; talent <= 20.0; talent += 0.37) {
+        //
+        // Walked across the real 1-10 scale. An earlier version walked to 20 and failed, which was the
+        // clamp working correctly: a talent of 10.25 does not exist, and a report that "contains" it
+        // would have to claim a talent of 14 is possible.
+        for (double talent = TalentRange.MIN_TALENT; talent <= TalentRange.MAX_TALENT; talent += 0.37) {
             for (int age = 15; age <= 20; age++) {
                 for (int roll = 0; roll <= 3; roll++) {
                     Junior j = junior(15, TalentRange.intakeHalfWidth(roll));

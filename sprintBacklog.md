@@ -1562,7 +1562,7 @@ prospects develop at visibly different rates; loans give young players minutes.
 | A junior's report is an estimate that firms up, not a number on day one | ✅ S5.2 — `TalentRange`, ±(1+rnd3) narrowing to ±1 |
 | A junior has a position from intake | ✅ Sprint 5.3 — a goalkeeper cannot come out of the academy by surprise |
 | A junior is signed into the first team in a registration window, not mid-season | ✅ Sprint 5.3 — weeks 1–2 only, with the age ceiling overriding it |
-| Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread — S5.3 item 5 |
+| Academy quality (`youthLevel` + youth coach) affects development | ✅ S5.3 — and `YOUTH` is now a **purchasable** facility, which it was not |
 | Graduation distribution unchanged from the legacy model | ✅ `YouthAcademyGraduationTest` holds |
 
 **Progress: 3 of 4 features substantially done** (S5.1 network, S5.2 talent reports, S5.3a junior
@@ -1577,8 +1577,8 @@ prospects to put it on. Both screens are API-only.
 1. ~~**S5.1** — scouting network.~~ ✅ the reach model is built and tested; **the reports it feeds are
    still missing**, and they are the reason the network exists.
 2. ~~**S5.2** — report uncertainty.~~ ✅ the band, the gate and the intake roll are live.
-3. **S5.3 item 5** — academy quality from `youthLevel` + `YOUTH_COACH`. Item 1 (position at intake) is
-   ✅ done, and the registration window landed with it.
+3. ~~**S5.3 item 5** — academy quality.~~ ✅ done. Item 1 (position at intake) ✅ and the registration
+   window ✅ landed with it.
 4. ~~**UI for the junior school**~~ ✅ done — panel on the academy page, window stated in words, close
    confirmed by name and count. **The scouting network is still API-only.**
 5. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).

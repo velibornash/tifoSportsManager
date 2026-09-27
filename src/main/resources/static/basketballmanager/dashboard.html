@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <title>Basketball Manager - Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Football owns the design system. Load order is the cascade: system, shared
+         sports layer, then this sport's colours. -->
+    <link rel="stylesheet" href="/css/dashboard.css">
     <link rel="stylesheet" href="/commonmanager/css/common.css">
     <link rel="stylesheet" href="/basketballmanager/css/basketball.css">
 </head>
@@ -24,7 +27,7 @@
     </div>
     <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
     <div class="menu-button mobile-only" onclick="cmToggleMobileMenu()">&#9776;</div>
-    <div class="mobile-only" style="margin-left:auto;"><img src="/images/logomain.jpg" alt="Logo" style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(232,125,47,0.3);"></div>
+    <div class="mobile-logo-wrapper mobile-only"><img src="/images/logomain.jpg" alt="Logo" class="corner-logo"></div>
 </div>
 
 <div id="mobileSidebar" class="sidebar mobile-only">
@@ -43,15 +46,18 @@
         <div onclick="loadPage('dashboard');cmCloseMobileMenu()">📊 Dashboard</div>
         <div onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
         <div onclick="window.location.href='/home.html'">&#127759; All Sports</div>
-        <div style="padding:12px;background:rgba(232,125,47,0.1);border-radius:8px;text-align:center;margin:10px 0;border:1px solid rgba(232,125,47,0.2);">
-            <strong id="clock-time-m">Loading...</strong><br>
+        <div class="live-clock mobile-only">
+            <strong id="clock-time-m">Loading...</strong>
             <small id="clock-date-m"></small>
         </div>
     </div>
 </div>
-<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="cmCloseMobileMenu()"></div>
+<!-- No `mobile-only` here on purpose: that utility is `display: block !important` inside the
+     mobile breakpoint, so on a phone it would pin the dimming backdrop over the whole app and
+     make every page unclickable. The overlay is shown by `.active` alone. -->
+<div id="mobileOverlay" class="mobile-overlay" onclick="cmCloseMobileMenu()"></div>
 
-<div id="clubSidebar" class="sidebar desktop-only">
+<div id="clubSidebar" class="sidebar">
     <div class="sidebar-content">
         <h3 style="color:#f5a623;">Club</h3>
         <div onclick="loadPage('firstTeam')">First Team</div>

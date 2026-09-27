@@ -723,3 +723,25 @@
         text-align: center;
     }
 }
+
+/* The academy's quality line (Sprint 5.3). Sits under the summary grid, not inside it: it is a
+   sentence explaining a number, and a sentence in a stat tile reads as a label that failed to load. */
+.academy-quality-line {
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.academy-quality-line strong {
+    color: #6fcf97;
+}
+
+/* The revealed talent on the promotion screen. Green because it is the one number the whole academy
+   was withheld until this moment, and it should read as an arrival rather than another stat. */
+.fm-reveal-talent {
+    margin: 6px 0;
+}
+
+.fm-reveal-talent strong {
+    color: #6fcf97;
+    font-size: 1.1em;
+}

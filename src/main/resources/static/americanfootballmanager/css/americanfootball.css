@@ -1,54 +1,47 @@
-/* ─── AMERICAN FOOTBALL MANAGER SPECIFIC STYLES ─── */
-/* NFL leather brown theme — like the ball itself */
+/* =============================================================
+   AMERICAN FOOTBALL MANAGER — theme + the parts of the game that
+   are not football. Everything structural comes from
+   /css/dashboard.css via /commonmanager/css/common.css; this file
+   only supplies the colour and the American-football-specific
+   pieces (positions, down/yardage tables, stadium).
+   ============================================================= */
 
 :root {
-    --af-primary: #8B5E3C;
-    --af-primary-light: #C49A6C;
-    --af-primary-dark: #5C3A1E;
-    --af-accent: #D4A574;
-    --af-bg: #1a1410;
-    --af-bg-gradient: linear-gradient(135deg, #1a1410, #2a1a10);
-    --af-highlight: rgba(139, 94, 60, 0.15);
-    --af-field: #3d2b1f;
+    /* Leather brown, the colour of the ball itself. Six values, because
+       the shared layer cannot derive an alpha from a hex without
+       relying on color-mix(). */
+    --cm-accent: #c49a6c;
+    --cm-accent-deep: #8b5e3c;
+    --cm-accent-bright: #d4a574;
+    --cm-accent-soft: rgba(196, 154, 108, 0.14);
+    --cm-accent-faint: rgba(196, 154, 108, 0.08);
+    --cm-accent-line: rgba(196, 154, 108, 0.3);
+
+    --af-primary: #8b5e3c;
+    --af-primary-light: #c49a6c;
+    --af-primary-dark: #5c3a1e;
+    --af-accent: #d4a574;
+    --af-highlight: rgba(196, 154, 108, 0.09);
     --af-away: #d4523e;
-    --af-away-dim: rgba(212, 82, 62, 0.08);
 }
 
-.background::after {
-    background:
-        radial-gradient(circle at top, rgba(196, 154, 108, 0.18), transparent 34%),
-        linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.86)) !important;
-}
-
-/* CSPosition colors — warm earth tones */
-.pos-QB { color: #D4A574; }
-.pos-RB { color: #C49A6C; }
-.pos-WR { color: #E8C88A; }
-.pos-TE { color: #B8864E; }
-.pos-OL { color: #8B7355; }
-.pos-DE { color: #d4523e; }
-.pos-DT { color: #b84535; }
-.pos-LB { color: #d4875e; }
-.pos-CB { color: #4a7ba8; }
-.pos-S { color: #4a9e8a; }
-.pos-K { color: #e8c840; }
-.pos-P { color: #8b6ea8; }
+/* ─── POSITIONS ────────────────────────────────────────────── */
 
 .pos-badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 0.65rem;
     font-weight: 800;
     letter-spacing: 0.5px;
     text-transform: uppercase;
 }
 
-.pos-badge.QB { background: rgba(212, 165, 116, 0.2); color: #D4A574; }
-.pos-badge.RB { background: rgba(196, 154, 108, 0.2); color: #C49A6C; }
-.pos-badge.WR { background: rgba(232, 200, 138, 0.2); color: #E8C88A; }
-.pos-badge.TE { background: rgba(184, 134, 78, 0.2); color: #B8864E; }
-.pos-badge.OL { background: rgba(139, 115, 85, 0.2); color: #8B7355; }
+.pos-badge.QB { background: rgba(212, 165, 116, 0.2); color: #d4a574; }
+.pos-badge.RB { background: rgba(196, 154, 108, 0.2); color: #c49a6c; }
+.pos-badge.WR { background: rgba(232, 200, 138, 0.2); color: #e8c88a; }
+.pos-badge.TE { background: rgba(184, 134, 78, 0.2); color: #b8864e; }
+.pos-badge.OL { background: rgba(139, 115, 85, 0.24); color: #9c8265; }
 .pos-badge.DE { background: rgba(212, 82, 62, 0.2); color: #d4523e; }
 .pos-badge.DT { background: rgba(184, 69, 53, 0.2); color: #b84535; }
 .pos-badge.LB { background: rgba(212, 135, 94, 0.2); color: #d4875e; }
@@ -57,73 +50,65 @@
 .pos-badge.K  { background: rgba(232, 200, 64, 0.2); color: #e8c840; }
 .pos-badge.P  { background: rgba(139, 110, 168, 0.2); color: #8b6ea8; }
 
-/* Stat colors */
-.stat-stamina { color: #C49A6C; }
-.stat-strength { color: #d4523e; }
-.stat-pace { color: #4a7ba8; }
-.stat-playmaking { color: #e8c840; }
-.stat-passing { color: #8b6ea8; }
-.stat-running { color: #d4875e; }
-.stat-tackling { color: #4a9e8a; }
-.stat-shooting { color: #d4523e; }
+.pos-QB { color: #d4a574; }
+.pos-RB { color: #c49a6c; }
+.pos-WR { color: #e8c88a; }
+.pos-TE { color: #b8864e; }
+.pos-OL { color: #9c8265; }
+.pos-DE { color: #d4523e; }
+.pos-DT { color: #b84535; }
+.pos-LB { color: #d4875e; }
+.pos-CB { color: #4a7ba8; }
+.pos-S  { color: #4a9e8a; }
+.pos-K  { color: #e8c840; }
+.pos-P  { color: #8b6ea8; }
 
-/* Skill bar colors */
-.skill-bar-af .skill-bar-fill.rating-stamina { background: linear-gradient(90deg, #C49A6C, #8B5E3C); }
-.skill-bar-af .skill-bar-fill.rating-strength { background: linear-gradient(90deg, #d4523e, #b84535); }
-.skill-bar-af .skill-bar-fill.rating-pace { background: linear-gradient(90deg, #4a7ba8, #3a6390); }
+/* ─── SKILL COLOURS ────────────────────────────────────────── */
+
+.skill-bar-af .skill-bar-fill.rating-stamina   { background: linear-gradient(90deg, #c49a6c, #8b5e3c); }
+.skill-bar-af .skill-bar-fill.rating-strength  { background: linear-gradient(90deg, #d4523e, #b84535); }
+.skill-bar-af .skill-bar-fill.rating-pace      { background: linear-gradient(90deg, #4a7ba8, #3a6390); }
 .skill-bar-af .skill-bar-fill.rating-playmaking { background: linear-gradient(90deg, #e8c840, #d4b430); }
-.skill-bar-af .skill-bar-fill.rating-passing { background: linear-gradient(90deg, #8b6ea8, #735890); }
-.skill-bar-af .skill-bar-fill.rating-running { background: linear-gradient(90deg, #d4875e, #b8704a); }
-.skill-bar-af .skill-bar-fill.rating-tackling { background: linear-gradient(90deg, #4a9e8a, #3a8570); }
-.skill-bar-af .skill-bar-fill.rating-shooting { background: linear-gradient(90deg, #d4523e, #b84535); }
+.skill-bar-af .skill-bar-fill.rating-passing    { background: linear-gradient(90deg, #8b6ea8, #735890); }
+.skill-bar-af .skill-bar-fill.rating-running    { background: linear-gradient(90deg, #d4875e, #b8704a); }
+.skill-bar-af .skill-bar-fill.rating-tackling   { background: linear-gradient(90deg, #4a9e8a, #3a8570); }
+.skill-bar-af .skill-bar-fill.rating-shooting   { background: linear-gradient(90deg, #d4523e, #b84535); }
 
-/* CPlayer profile header */
-.afl-player-header {
+.stat-highlight { color: var(--af-primary-light); }
+
+.pct-display { font-weight: 700; }
+.pct-display.good { color: #6fcf97; }
+.pct-display.average { color: #f2c94c; }
+.pct-display.poor { color: #eb5757; }
+
+/* ─── CLUB OVERVIEW ────────────────────────────────────────── */
+
+.af-team-header {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 24px;
-    background: linear-gradient(135deg, rgba(26, 20, 16, 0.95), rgba(42, 26, 16, 0.95));
-    border-radius: 14px;
-    border: 1px solid rgba(139, 94, 60, 0.2);
-    margin-bottom: 20px;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--cm-accent-line);
 }
 
-.afl-player-avatar {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--af-primary), var(--af-accent));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2.5rem;
-    font-weight: 900;
-    color: #fff;
-    flex-shrink: 0;
-    box-shadow: 0 4px 20px rgba(139, 94, 60, 0.3);
-}
-
-.afl-player-meta h2 {
-    font-size: 1.6rem;
-    margin-bottom: 4px;
-}
-
-.afl-player-meta .pos-label {
-    font-size: 0.85rem;
-    color: var(--af-primary-light);
-    font-weight: 700;
+.af-eyebrow {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    color: var(--af-primary-light);
+    margin-bottom: 6px;
 }
 
-/* CSStadium card */
 .stadium-card {
-    background: rgba(26, 20, 16, 0.3);
-    border: 1px solid rgba(139, 94, 60, 0.15);
-    border-radius: 12px;
     padding: 16px;
     margin: 12px 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .stadium-card h4 {
@@ -134,12 +119,61 @@
     margin-bottom: 8px;
 }
 
-.stadium-card .stadium-name {
-    font-size: 1.1rem;
-    font-weight: 700;
+.stadium-name { font-size: 1.1rem; font-weight: 700; }
+
+.next-match-card {
+    padding: 16px;
+    margin: 12px 0;
+    text-align: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--af-highlight), rgba(196, 154, 108, 0.02));
+    border: 1px solid var(--cm-accent-line);
+    transition: all 0.2s;
 }
 
-/* Stat grid */
+.next-match-card:hover {
+    background: linear-gradient(135deg, rgba(196, 154, 108, 0.16), rgba(196, 154, 108, 0.05));
+    border-color: var(--af-primary-light);
+}
+
+/* ─── PLAYER PROFILE ───────────────────────────────────────── */
+
+.afl-player-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 20px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
+}
+
+.afl-player-avatar {
+    width: 100px;
+    height: 100px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--af-primary), var(--af-accent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(139, 94, 60, 0.3);
+}
+
+.afl-player-meta h2 { font-size: 1.6rem; margin-bottom: 4px; }
+
+.afl-player-meta .pos-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--af-primary-light);
+}
+
 .stat-grid-af {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -148,244 +182,25 @@
 }
 
 .stat-cell {
-    background: rgba(255,255,255,0.03);
-    border-radius: 8px;
     padding: 10px 8px;
     text-align: center;
-    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
 }
 
-.stat-cell .stat-cell-value {
-    font-size: 1.2rem;
-    font-weight: 900;
-}
+.stat-cell .stat-cell-value { font-size: 1.2rem; font-weight: 900; }
 
 .stat-cell .stat-cell-label {
+    margin-top: 2px;
     font-size: 0.62rem;
-    color: #99a6bb;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-top: 2px;
+    color: var(--cm-muted);
 }
 
-/* Percentage display */
-.pct-display { font-weight: 700; }
-.pct-display.good { color: #6fcf97; }
-.pct-display.average { color: #f2c94c; }
-.pct-display.poor { color: #eb5757; }
+/* ─── SQUAD / BOX SCORE TABLE ──────────────────────────────── */
 
-/* Match card */
-.af-match-card {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 24px;
-    padding: 20px;
-    background: rgba(26, 20, 16, 0.3);
-    border-radius: 12px;
-    border: 1px solid rgba(139, 94, 60, 0.1);
-}
-
-.af-match-team { text-align: center; flex: 1; }
-
-.af-match-team .team-name {
-    font-weight: 700;
-    font-size: 1rem;
-    margin-bottom: 4px;
-}
-
-.af-match-score {
-    font-size: 2.2rem;
-    font-weight: 900;
-    color: var(--af-primary-light);
-}
-
-.af-match-vs {
-    font-size: 0.9rem;
-    color: #99a6bb;
-    font-weight: 700;
-}
-
-.af-match-period {
-    font-size: 0.72rem;
-    color: #99a6bb;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-/* Override common styles */
-.team-card .af-team-header {
-    border-bottom: 2px solid rgba(139, 94, 60, 0.2);
-    padding-bottom: 16px;
-    margin-bottom: 16px;
-}
-
-.af-eyebrow {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--af-primary-light);
-    margin-bottom: 2px;
-}
-
-/* ─── Match Viewer ─── */
-.match-viewer .scoreboard {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 24px;
-    padding: 24px;
-    background: linear-gradient(135deg, rgba(26,20,16,0.95), rgba(42,26,16,0.95));
-    border-radius: 14px;
-    border: 1px solid rgba(139,94,60,0.2);
-    margin-bottom: 16px;
-}
-
-.match-viewer .score-team { text-align: center; flex: 1; }
-
-.match-viewer .score-team-name {
-    font-size: 0.9rem;
-    color: #b9c7da;
-    margin-bottom: 6px;
-}
-
-.match-viewer .score-value {
-    font-size: 3.2rem;
-    font-weight: 900;
-    color: var(--af-primary-light);
-    line-height: 1;
-}
-
-.match-viewer .score-vs {
-    font-size: 0.8rem;
-    color: #5a6a7a;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-}
-
-.match-viewer .score-team.away .score-value { color: var(--af-away); }
-.match-viewer .score-team.away .score-team-name { color: var(--af-away); }
-
-.qtr-scores {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.qtr-score {
-    background: rgba(255,255,255,0.03);
-    border-radius: 8px;
-    padding: 8px 14px;
-    text-align: center;
-    min-width: 60px;
-    border: 1px solid rgba(255,255,255,0.04);
-}
-
-.qtr-label {
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #99a6bb;
-    margin-bottom: 4px;
-}
-
-.qtr-home, .qtr-away { font-size: 0.85rem; font-weight: 700; }
-.qtr-home { color: var(--af-primary-light); }
-.qtr-away { color: var(--af-away); }
-
-/* Tab buttons */
-.tab-btn {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    color: #99a6bb;
-    transition: all 0.2s;
-}
-
-.tab-btn.active {
-    background: rgba(139,94,60,0.15);
-    border-color: var(--af-primary);
-    color: var(--af-primary-light);
-}
-
-.tab-btn:hover { background: rgba(255,255,255,0.08); }
-.match-tab { margin-top: 12px; }
-
-.event-feed {
-    max-height: 500px;
-    overflow-y: auto;
-    padding: 12px;
-    background: rgba(0,0,0,0.2);
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.04);
-}
-
-.match-event {
-    padding: 4px 0;
-    font-size: 0.82rem;
-    color: #b9c7da;
-    border-bottom: 1px solid rgba(255,255,255,0.02);
-    font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
-}
-
-.match-event:last-child { border-bottom: none; }
-
-/* Play buttons — warm amber tones instead of generic green */
-.play-btn {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    background: rgba(196, 154, 108, 0.15);
-    color: #C49A6C;
-    border: 1px solid rgba(196, 154, 108, 0.35);
-    cursor: pointer;
-}
-
-.play-btn:hover { background: rgba(196, 154, 108, 0.25); }
-
-.play-all-btn {
-    display: inline-block;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    background: linear-gradient(135deg, rgba(139,94,60,0.3), rgba(212,165,116,0.2));
-    color: #D4A574;
-    border: 1px solid rgba(139,94,60,0.4);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.play-all-btn:hover {
-    background: linear-gradient(135deg, rgba(139,94,60,0.4), rgba(212,165,116,0.3));
-    transform: scale(1.02);
-}
-
-/* Schedule */
-.schedule-round {
-    border-left: 3px solid transparent;
-    padding-left: 12px;
-}
-
-.schedule-round.current-round { border-left-color: var(--af-primary-light); }
-
-.locked-row { opacity: 0.5; cursor: default !important; }
-.locked-row:hover { background: none !important; }
-
-/* Stats table */
 .afl-stats-table {
     width: 100%;
     border-collapse: collapse;
@@ -394,7 +209,7 @@
 .afl-stats-table th {
     padding: 8px 6px;
     text-align: center;
-    border-bottom: 2px solid rgba(139,94,60,0.15);
+    border-bottom: 2px solid var(--cm-accent-line);
     color: var(--af-primary-light);
     font-size: 0.62rem;
     text-transform: uppercase;
@@ -403,7 +218,7 @@
     white-space: nowrap;
 }
 
-.afl-stats-table th:hover { background: rgba(139,94,60,0.08); }
+.afl-stats-table th:hover { background: var(--af-highlight); }
 
 .afl-stats-table th:first-child,
 .afl-stats-table td:first-child { text-align: left; padding-left: 8px; }
@@ -411,62 +226,182 @@
 .afl-stats-table td {
     padding: 8px 6px;
     text-align: center;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--cm-border);
     font-size: 0.78rem;
 }
 
+.afl-stats-table tr:hover td { background: var(--af-highlight); }
+
 .afl-stats-table tr.total-row td {
-    background: rgba(139,94,60,0.1);
+    background: var(--af-highlight);
     font-weight: 800;
-    border-top: 2px solid rgba(139,94,60,0.3);
+    border-top: 2px solid var(--cm-accent-line);
 }
 
 .afl-stats-table .highlight-row td { background: var(--af-highlight); }
+.afl-stats-table .pos-num { color: var(--af-primary-light); font-weight: 800; }
+.afl-stats-table .pts-col { color: var(--af-primary); font-weight: 900; }
 
-.afl-stats-table .pos-num {
-    color: var(--af-primary-light);
-    font-weight: 800;
+/* ─── MATCH VIEWER ─────────────────────────────────────────── */
+
+.match-viewer .scoreboard {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
 }
 
-.afl-stats-table .pts-col {
-    color: var(--af-primary);
+.match-viewer .score-team { text-align: center; flex: 1; }
+.match-viewer .score-team-name { font-size: 0.9rem; color: #b9c7da; margin-bottom: 6px; }
+
+.match-viewer .score-value {
+    font-size: 3.2rem;
     font-weight: 900;
+    line-height: 1;
+    color: var(--af-primary-light);
 }
 
-/* Next match card */
-.next-match-card {
-    background: linear-gradient(135deg, rgba(196,154,108,0.08), rgba(196,154,108,0.02));
-    border: 1px solid rgba(196,154,108,0.2);
-    border-radius: 12px;
-    padding: 16px;
-    margin: 12px 0;
+.match-viewer .score-vs {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #5a6a7a;
+}
+
+.match-viewer .score-team.away .score-value,
+.match-viewer .score-team.away .score-team-name { color: var(--af-away); }
+
+.qtr-scores {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.qtr-score {
+    min-width: 60px;
+    padding: 8px 14px;
     text-align: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+}
+
+.qtr-label {
+    margin-bottom: 4px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--cm-muted);
+}
+
+.qtr-home, .qtr-away { font-size: 0.85rem; font-weight: 700; }
+.qtr-home { color: var(--af-primary-light); }
+.qtr-away { color: var(--af-away); }
+
+.match-tab { margin-top: 12px; }
+
+.tab-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--cm-muted);
     transition: all 0.2s;
 }
 
-.next-match-card:hover {
-    background: linear-gradient(135deg, rgba(196,154,108,0.15), rgba(196,154,108,0.05));
-    border-color: rgba(196,154,108,0.4);
+.tab-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+.tab-btn.active {
+    background: var(--af-highlight);
+    border-color: var(--af-primary);
+    color: var(--af-primary-light);
 }
 
-/* Side-by-side stats panels */
+.event-feed {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--cm-border);
+}
+
+.match-event {
+    padding: 4px 0;
+    font-size: 0.82rem;
+    color: #b9c7da;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.match-event:last-child { border-bottom: none; }
+
 .side-stats-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
 }
 
-.side-stats-home .afl-stats-table th,
-.side-stats-away .afl-stats-table th { font-size: 0.55rem; padding: 4px 2px; }
+.side-stats-home, .side-stats-away { min-width: 0; }
+.side-stats-home .stats-table th,
+.side-stats-away .stats-table th { font-size: 0.55rem; padding: 4px 2px; }
+.side-stats-home .stats-table td,
+.side-stats-away .stats-table td { font-size: 0.65rem; padding: 4px 2px; }
 
-.side-stats-home .afl-stats-table td,
-.side-stats-away .afl-stats-table td { font-size: 0.65rem; padding: 4px 2px; }
+/* ─── ACTIONS ──────────────────────────────────────────────── */
 
-/* Reset button */
+.play-btn,
+.play-all-btn {
+    display: inline-block;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.play-btn {
+    padding: 4px 14px;
+    font-size: 0.7rem;
+    background: rgba(196, 154, 108, 0.15);
+    color: #c49a6c;
+    border: 1px solid rgba(196, 154, 108, 0.35);
+}
+
+.play-btn:hover { background: rgba(196, 154, 108, 0.25); }
+
+.play-all-btn {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    background: linear-gradient(135deg, rgba(139, 94, 60, 0.3), rgba(212, 165, 116, 0.2));
+    color: #d4a574;
+    border: 1px solid rgba(139, 94, 60, 0.4);
+}
+
+.play-all-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 94, 60, 0.4), rgba(212, 165, 116, 0.3));
+    transform: scale(1.02);
+}
+
 .reset-btn {
     display: inline-block;
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 0.8rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -480,52 +415,26 @@
 
 .reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
 
-/* Dashboard stat tiles */
-.dash-tile {
-    text-align: center;
-    background: rgba(139,94,60,0.06);
-    border-radius: 12px;
-    padding: 14px 8px;
-    border: 1px solid rgba(139,94,60,0.1);
-}
+/* ─── SCHEDULE ─────────────────────────────────────────────── */
 
-.dash-tile .dash-tile-value { font-size: 1.8rem; font-weight: 900; }
+.schedule-round { border-left: 3px solid transparent; padding-left: 12px; }
+.schedule-round.current-round { border-left-color: var(--af-primary-light); }
 
-.dash-tile .dash-tile-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    color: #99a6bb;
-    letter-spacing: 1px;
-    margin-top: 2px;
-}
+.schedule-match-row { display: flex; align-items: center; gap: 12px; }
 
-/* Match viewer nav */
-.back-btn {
-    display: inline-block;
-    padding: 6px 16px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    color: #b9c7da;
-    cursor: pointer;
-    transition: all 0.2s;
-}
+.locked-row { opacity: 0.5; cursor: default !important; }
+.locked-row:hover { background: none !important; }
 
-.back-btn:hover { background: rgba(255,255,255,0.1); color: #eef4ff; }
+/* ─── MOBILE ───────────────────────────────────────────────── */
 
-/* ─── Mobile ─── */
 @media (max-width: 768px) {
     .afl-player-header { flex-direction: column; text-align: center; gap: 12px; }
-    .af-match-card { flex-wrap: wrap; gap: 12px; }
     .stat-grid-af { grid-template-columns: repeat(3, 1fr); }
     .side-stats-grid { grid-template-columns: 1fr; }
     .match-viewer .scoreboard { flex-wrap: wrap; gap: 12px; padding: 16px; }
     .match-viewer .score-value { font-size: 2.2rem; }
-    .dash-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    .schedule-match-row { flex-wrap: wrap; gap: 8px; }
     .afl-stats-table { font-size: 0.7rem; }
     .qtr-scores { gap: 6px; }
     .qtr-score { min-width: 44px; padding: 4px 8px; }
+    .schedule-match-row { flex-wrap: wrap; gap: 8px; }
 }
