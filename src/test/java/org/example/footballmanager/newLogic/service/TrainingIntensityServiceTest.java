@@ -10,11 +10,14 @@ import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
+
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.example.footballmanager.newLogic.service.TrainingIntensityService.INJURY_FATIGUE_KNOCK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -99,13 +102,47 @@ class TrainingIntensityServiceTest {
     @Test
     @DisplayName("A week of work adds fatigue and reports both sides")
     void applyAddsFatigueAndReportsIt() {
+        // The dice are pinned because this method is random. VERY_HARD hurts a rested player 4.5% of
+        // the time and the injury branch then adds a further 8 fatigue, so the exact figure asserted
+        // here was previously right only 95.5% of the time - a 1-in-22 flake, which is how a red
+        // build becomes something people re-run instead of read. 0.99 is above every chance in the
+        // table, so this exercises the working hard, nobody hurt, path on purpose.
+        service.useRandom(alwaysRolls(0.99));
         Player p = player("Vasa", 20);
         var outcome = service.apply(p, TrainingIntensity.VERY_HARD, 1, 5);
 
         assertEquals(20, outcome.fatigueBefore());
         assertEquals(20 + TrainingIntensity.VERY_HARD.weeklyFatigue(), outcome.fatigueAfter());
         assertTrue(outcome.costFatigue());
+        assertFalse(outcome.injured());
         assertEquals(20 + TrainingIntensity.VERY_HARD.weeklyFatigue(), p.getSkills().getFatigue());
+    }
+
+    @Test
+    @DisplayName("a training injury adds a knock on top of the week's work, and says so")
+    void trainingInjuryStacksOnTopOfTheWeek() {
+        // The branch the flaky assertion above was accidentally covering, now pinned deliberately.
+        // 0.0 is below every chance in the table, so the roll is a hit.
+        service.useRandom(alwaysRolls(0.0));
+        Player p = player("Vasa", 20);
+
+        var outcome = service.apply(p, TrainingIntensity.VERY_HARD, 1, 5);
+
+        assertTrue(outcome.injured(), "the roll was a hit");
+        assertEquals(20 + TrainingIntensity.VERY_HARD.weeklyFatigue() + INJURY_FATIGUE_KNOCK, outcome.fatigueAfter(),
+                "an injury is not just the week: he comes back tired, not fresh");
+        assertTrue(p.isInjured());
+        assertTrue(p.getInjuryDaysRemaining() >= 7, "a training injury costs a real spell out");
+    }
+
+    /** A dice that always returns the same value, so a test can choose its branch. */
+    private Random alwaysRolls(double value) {
+        return new Random() {
+            @Override
+            public double nextDouble() {
+                return value;
+            }
+        };
     }
 
     @Test

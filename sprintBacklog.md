@@ -1741,14 +1741,19 @@ which was the one deletion here that could have changed behaviour.
 | 4 | Fix the 3 documented-but-inactive claims | ✅ moot — the file is deleted |
 | 5 | `UI_FOOTBALL_MANAGER.md` — remove "✅ U potpunosti implementiran" | ✅ **file deleted** |
 | 6 | Correct the goal-mouth note (10 m, not 14 m) | ✅ the 10 m figure is used consistently |
-| 7 | Add an `ENGINE.md` stating which engine is live | ❌ **does not exist** — this is the remaining gap |
+| 7 | Add an `ENGINE.md` stating which engine is live | ✅ **done 2026-09-28** |
 | 8 | Keep `expertAudit.md` and `sprintBacklog.md` as the living docs | ✅ |
 
-**`ENGINE.md` is the one worth writing.** The single most expensive recurring mistake in this project
-was not knowing which engine was live: there have been three `MatchOrchestrator`/`MatchState` name
-collisions, a dashboard button called `start-realistic-demo-btn` for historical reasons, and a
-viewer under `static/demo/service/ui/proposal/`. One page that states the live path in one place
-would have prevented all of it.
+**`ENGINE.md` is now written.** The single most expensive recurring mistake in this project was not
+knowing which engine was live: there have been three `MatchOrchestrator`/`MatchState` name collisions,
+a dashboard button called `start-realistic-demo-btn` for historical reasons, and a viewer under
+`static/demo/service/ui/proposal/`.
+
+The first draft of it **stated three packages that no longer exist** — `engines/`, `cleanSheet/`,
+`old/` and `/api/v2/match` were all deleted in Sprint 6, and the draft was written from `AGENTS.md`
+rather than from the tree. Everything in the file is now verified against the source. Worth
+recording because it is the exact failure the file was written to prevent: **a document about which
+code is live is itself documentation, and goes stale the same way.**
 
 ---
 
@@ -1766,7 +1771,7 @@ one of them matters more than its size suggests.
 | No orphan POJOs | ❌ `TrainingAssignment`, `Crowd`, `Referee` |
 | No dead endpoints | ❌ 6 dead `/training/*` routes |
 | Documentation describes the current system | 🟡 `AGENTS.md` is a third of its old size but still over target |
-| **A reader can tell which engine is live in one place** | ❌ **`ENGINE.md` does not exist** |
+| **A reader can tell which engine is live in one place** | ✅ **`ENGINE.md` written 2026-09-28** |
 
 **The `ENGINE.md` rule, for whoever picks this up:** write down the live engine package, the entry
 point class, the entry point *endpoint*, the dashboard button id even where it is historically

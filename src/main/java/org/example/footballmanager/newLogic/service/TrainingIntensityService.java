@@ -39,6 +39,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TrainingIntensityService {
 
+    /**
+     * The fatigue an injury adds on top of the week's work.
+     *
+     * <p>Named because it is a rule and not an accident: a player who is hurt in training does not
+     * return the following week as though nothing happened. Previously a bare {@code + 8} with the
+     * reasoning in a comment, which no test could name.
+     */
+    static final int INJURY_FATIGUE_KNOCK = 8;
+
     /** How many days a training injury costs at minimum. */
     private static final int TRAINING_INJURY_MIN_DAYS = 7;
     private static final int TRAINING_INJURY_MAX_DAYS = 28;
@@ -46,7 +55,24 @@ public class TrainingIntensityService {
     private final PlayerTrainingIntensityRepository overrides;
     private final PlayerRepository players;
     private final TeamRepository teams;
-    private final Random random = new Random();
+    /**
+     * The injury dice.
+     *
+     * <p>Not final, and replaceable from tests, because {@code apply} is a genuinely random method:
+     * {@code VERY_HARD} hurts a rested player 4.5% of the time, and the injury branch then adds a
+     * further 8 fatigue on top of the week's work. A test asserting an exact fatigue figure on that
+     * path is flaky at 1 run in 22, which is how a red build becomes something people learn to
+     * re-run. Tests that care which branch they are on now say so by handing in a fixed dice.
+     */
+    private Random random = new Random();
+
+    /**
+     * Replaces the injury dice. Package-private on purpose: this is a test seam, not a product
+     * feature, and a manager must never be able to choose whether his squad gets hurt.
+     */
+    void useRandom(Random random) {
+        this.random = random == null ? new Random() : random;
+    }
 
     /**
      * The intensity a player actually trains at: his own override, or the club's for the week.
@@ -132,7 +158,7 @@ public class TrainingIntensityService {
             player.setInjurySeasonNumber(season);
             player.setInjuryWeekNumber(week);
             // A soft knock on top of the lay-off, so he is not fresh the moment he returns.
-            skills.setFatigue(Math.min(100, skills.getFatigue() + 8));
+            skills.setFatigue(Math.min(100, skills.getFatigue() + INJURY_FATIGUE_KNOCK));
             log.info("{} hurt in training at {} intensity in week {} ({} days), fatigue {}",
                     player.getName(), intensity, week, days, before);
         }

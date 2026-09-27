@@ -3339,3 +3339,43 @@ applies the **last** matching stub, so the catch-all had to be declared before t
 
 **Tests: 5 new** — 4 in `PlusFeatureServiceTest` (rounding-not-banding, zero surviving the gate, name
 resolution, role bypass is not a purchase) and the gate guard. **Full suite 649.**
+
+---
+
+## Housekeeping — the flaky build, and `ENGINE.md` (2026-09-28)
+
+### The flake, fixed at the source
+
+`TrainingIntensityServiceTest.applyAddsFatigueAndReportsIt` failed once in a while: expected fatigue
+46, got 54. Not a bad assertion — a **method that is genuinely random**. `apply()` adds the week's
+work, then rolls for injury, and the injury branch adds a further 8. `VERY_HARD` hurts a rested
+player **4.5%** of the time, so the assertion was right 95.5% of the time: a **1-in-22 flake**. That
+rate is the real damage, not the single failure — a build that is red one time in twenty teaches
+people to re-run instead of read.
+
+`random` is now replaceable from tests (`useRandom`, package-private on purpose — it is a test seam,
+and a manager must never be able to choose whether his squad gets hurt), and the `+ 8` is now
+`INJURY_FATIGUE_KNOCK` rather than a magic number no test could name.
+
+The two tests that replace it are better than the one they replace: the old test *accidentally*
+covered the injury branch whenever the dice fell its way, which is not coverage. Now both branches
+are pinned deliberately — `alwaysRolls(0.99)` for the working-hard-nobody-hurt path, `alwaysRolls(0.0)`
+for the injury path, which also asserts the knock-on fatigue and a real spell out. **15 consecutive
+runs green.**
+
+### `ENGINE.md`
+
+Written, and the interesting part is what happened while writing it. The first draft listed
+`engines/`, `cleanSheet/`, `old/` and `/api/v2/match` as quarantined engines — **all four were
+deleted in Sprint 6**, and the draft was written from `AGENTS.md` rather than from the tree. It was
+a document about which code is live, going stale in the same way the code it described was meant to
+prevent.
+
+Everything is now verified against the source, including the two traps worth keeping: the button id
+`start-realistic-demo-btn` is misnamed and the viewer lives under `proposal/`, and both are
+load-bearing history rather than something to tidy up.
+
+The one judgement call recorded rather than acted on: `demo/service` is 97 files, a complete
+working engine, and wired to nothing a manager can reach. It stays, because `MatchBatchRunner` and
+`MatchChainTrace` are still useful diagnostics — but deleting it is a decision that deserves its own
+commit, and it is the owner's.
