@@ -990,18 +990,27 @@ default and that all eight skills are focusable by anyone.
 
 ---
 
-### S4.2 — Training intensity: the core trade-off
+### S4.2 — Training intensity: the core trade-off — ✅ 1–5 done 2026-09-27, camp backlogged
 
-| # | Task |
-|---|---|
-| 1 | Intensity setting: `LIGHT` / `NORMAL` / `VERY_HARD` (per player and per team) |
-| 2 | Growth multiplier: `LIGHT 0.75×`, `NORMAL 1.0×`, `VERY_HARD 1.35×` |
-| 3 | **Fatigue cost** — training now generates fatigue. This is the missing half of the loop |
-| 4 | **Injury risk** — `VERY_HARD` on a fatigued player raises training-injury probability |
-| 5 | Weekly recovery via Sprint 0.5 passive decay |
-| 6 | Pre-season / training camp block with a temporary intensity boost at a cost |
+| # | Task | State |
+|---|---|---|
+| 1 | Intensity setting: `LIGHT` / `NORMAL` / `VERY_HARD` (per player and per team) | ✅ club default on the weekly setup, per-player override in its own table |
+| 2 | Growth multiplier: `LIGHT 0.75×`, `NORMAL 1.0×`, `VERY_HARD 1.35×` | ✅ as specified |
+| 3 | **Fatigue cost** — training now generates fatigue. This is the missing half of the loop | ✅ 4 / 12 / 26 a week |
+| 4 | **Injury risk** — `VERY_HARD` on a fatigued player raises training-injury probability | ✅ 0 / 0.4% / 4.5%, rising steeply with fatigue |
+| 5 | Weekly recovery via Sprint 0.5 passive decay | ✅ and the numbers are set against it |
+| 6 | Pre-season / training camp block with a temporary intensity boost at a cost | ❌ **backlogged** — not done |
 
-**Verify:** `VERY_HARD` grows faster and tires more; a tired player on `VERY_HARD` gets injured. The decision is now real.
+**Verify:** `VERY_HARD` grows faster and tires more; a tired player on `VERY_HARD` gets injured. The
+decision is now real. — covered by `TrainingIntensityServiceTest`.
+
+The numbers are only right in relation to recovery, which is the part worth remembering. A player
+recovers `22 × ageFactor` a week — 22 at 24 and under, ~19 at 26, 14 at 31, 11 at 34. `VERY_HARD` at
+14/week was *cheaper* than what a young player recovers, so the cost evaporated and the setting was
+free; it is 26 now, which is why the tiers actually separate over a twelve-week season.
+
+`LIGHT` never injures anyone at any fatigue — that is what makes it the rehabilitation option rather
+than a slightly worse `NORMAL`. An injured player never picks up a second injury.
 
 ---
 
