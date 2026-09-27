@@ -29,6 +29,7 @@ public class TrainingProgressionService {
     private final TeamTrainingSetupRepository teamTrainingSetupRepository;
     private final TrainingWeekReportRepository trainingWeekReportRepository;
     private final TrainingPercentService trainingPercentService;
+    private final TrainingFocusService focusService;
     private final SeasonService seasonService;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
@@ -155,7 +156,12 @@ public class TrainingProgressionService {
 
             String role = advancedRoleByPlayer.getOrDefault(player.getId(), roleFromPosition(player.getPosition()));
             boolean advanced = advancedRoleByPlayer.containsKey(player.getId());
-            SkillName directSkill = dtSkillForRole(setup, role);
+            // An individual focus wins over the role default (Sprint 4.1). The role default still
+            // applies to everything the focus does not name, so a striker focused on heading is still
+            // a striker - he is just being worked on differently.
+            SkillName roleDefault = dtSkillForRole(setup, role);
+            SkillName directSkill = focusService.primarySkillFor(player, roleDefault, season, week);
+            boolean hasFocus = focusService.hasFocus(player, season, week);
 
             Map<SkillName, Double> before = snapshotSkills(skills);
             double trainingPercent = trainingPercentService.percentForWeek(
@@ -173,6 +179,7 @@ public class TrainingProgressionService {
             playerRow.setRole(role);
             playerRow.setDirectTrainingSkill(skillToKey(directSkill));
             playerRow.setAdvancedTraining(advanced);
+            playerRow.setIndividualFocus(hasFocus);
             playerRow.setSkills(buildSkillDeltas(before, after));
             report.getPlayers().add(playerRow);
         }

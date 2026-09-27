@@ -1868,6 +1868,40 @@ Three floors, all deliberate and all tested:
 the default path, that age separates a 20-year-old from a 35-year-old, and that a full season stays
 gentle.
 
+### S4.1 — Individual training focus
+
+The headline training feature: pick one or two specific skills for one player, for one week. It is
+the thing the role buckets could never do, because a bucket picks a sensible default for a whole
+position group.
+
+**It bypasses the role's allow-list, on purpose.** The allow-list exists to give a striker a sensible
+default, not to forbid a decision. A system that quietly rewrote "heading" back to "shooting" because
+the player is a forward would be refusing the job it was asked to do — so all eight skills are
+available to everyone, which also satisfies the backlog's "add stamina and fitness" by removing the
+restriction rather than widening it.
+
+**Its own table, not the JSON blob.** The blob is a snapshot of a team's whole programme, and a focus
+is a per-player, per-week decision with a history. As rows, "what was the manager working on with
+this player in week 5" is a question the database can answer *after* week 6 overwrites the setup,
+which is what actually happens. One row per skill, so one-or-two is one-or-two rows.
+
+Four decisions, all deliberate:
+
+- **A third skill is trimmed, not refused.** The manager's own first two are kept, in his order.
+  An error he has to decode is worse than the rule applied.
+- **Setting a focus twice replaces it.** Changing your mind on Thursday must not leave a stale second
+  skill behind.
+- **Only the owning club may set one.** Otherwise a manager could write training data for a rival's
+  player.
+- **Unknown skill names are skipped, not fatal.** One typo in a two-skill request should not throw
+  away the decision he actually made.
+
+REST is in place (`PUT`/`DELETE /training/weekly/team/{teamId}/focus/{playerId}`, skills by name since
+the screen already speaks in names). **The drag-and-drop panel is not built** and is recorded as such
+rather than half-done.
+
+**409 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

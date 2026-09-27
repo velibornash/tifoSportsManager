@@ -965,17 +965,28 @@ second copy of the settlement next to `NegotiationService`'s. Both are gone.
 
 ---
 
-### S4.1 — Individual training focus (the headline feature)
+### S4.1 — Individual training focus (the headline feature) — 🟡 backend done 2026-09-27
 
-| # | Task | File:line |
+| # | Task | State |
 |---|---|---|
-| 1 | Per-player, per-week **individual focus**: pick 1–2 specific skills | new |
-| 2 | Bypass the role-bucket restriction — allow `"goalkeeper"` for any player, and add `stamina`/`fitness` to the allow-list | `TrainingProgressionService.java:415-430` |
-| 3 | First-class persistence — today the per-player choice only exists as an entry in the `advancedAssignmentsJson` blob | `TrainingProgressionService.java:59` |
-| 4 | Individual focus overrides the role default; role default still applies to the rest | — |
-| 5 | A drag-and-drop per-player panel in the Training Setup page | `static/js/pages/views/training-view.js:7-453` |
+| 1 | Per-player, per-week **individual focus**: pick 1–2 specific skills | ✅ `PlayerTrainingFocus` + `TrainingFocusService` |
+| 2 | Bypass the role-bucket restriction | ✅ all eight skills, for every player — the restriction is gone rather than widened, so a striker can be worked on heading and a midfielder on goalkeeping |
+| 3 | First-class persistence, not the JSON blob | ✅ its own table, so "what was he worked on in week 5" is answerable after week 6 overwrites the setup |
+| 4 | Focus overrides the role default; the default still applies to the rest | ✅ |
+| 5 | A drag-and-drop per-player panel in the Training Setup page | ❌ **not done** — REST is in place (`PUT`/`DELETE /training/weekly/team/{teamId}/focus/{playerId}`) but the panel is not built |
 
-**Verify:** assign a striker `shooting` focus → his shooting grows at the direct rate and his other skills at the general rate.
+**Verify:** a striker focused on heading grows heading at the direct rate and everything else at
+the general rate — covered by `TrainingFocusServiceTest`, which asserts the focus wins over the role
+default and that all eight skills are focusable by anyone.
+
+**Deliberate decisions worth knowing:**
+
+- **One or two skills, and a third is trimmed rather than refused.** The manager's own first two are
+  kept, in his order, because that is what he meant.
+- **Setting a focus twice replaces it.** Changing your mind on Thursday must not leave a stale second
+  skill behind.
+- **Only the owning club may set one**, or a manager could write training data for a rival's player.
+- **A focus lasts one week.** Next week he is back on the programme.
 
 ---
 

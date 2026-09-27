@@ -9,7 +9,10 @@ import org.example.footballmanager.newLogic.dto.training.TrainingWeekReportDTO;
 import org.example.footballmanager.newLogic.dto.training.TrainingWeekSummaryDTO;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TrainingRepository;
+import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
+import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.service.TrainingFocusService;
 import org.example.footballmanager.newLogic.service.PlayerSkillProgressionService;
 import org.example.footballmanager.newLogic.service.TrainingProgressionService;
 import org.example.commonmanager.model.User;
@@ -20,6 +23,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+import java.util.Optional;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,13 +39,19 @@ public class TrainingController {
     private final PlayerSkillProgressionService progressionService;
     private final TrainingProgressionService trainingProgressionService;
     private final PlusFeatureService plusFeatures;
+    private final TrainingFocusService focusService;
+    private final SeasonService seasonService;
 
 
     public TrainingController(TrainingRepository trainingRepository, PlayerRepository playerRepository,
                              PlayerSkillProgressionService progressionService,
                              TrainingProgressionService trainingProgressionService,
-                             PlusFeatureService plusFeatures) {
+                             PlusFeatureService plusFeatures,
+                             TrainingFocusService focusService,
+                             SeasonService seasonService) {
         this.plusFeatures = plusFeatures;
+        this.focusService = focusService;
+        this.seasonService = seasonService;
         this.trainingRepository = trainingRepository;
         this.playerRepository = playerRepository;
         this.progressionService = progressionService;
@@ -142,6 +154,74 @@ public class TrainingController {
      * same week is rejected with 409 TRAINING_ALREADY_RUN, which is what stops the UI button from
      * being a free infinite-skill-point exploit.
      */
+    /**
+     * A player's individual focus for the coming week: one or two skills.
+     *
+     * <p>Sprint 4.1. Takes the skills as names rather than ids because the training screen already
+     * speaks in skill names, and a manager picking "heading" should not have to know it is
+     * {@code DEFENDER} in a database.
+     */
+    @org.springframework.web.bind.annotation.PutMapping("/weekly/team/{teamId}/focus/{playerId}")
+    public ResponseEntity<Map<String, Object>> setFocus(@PathVariable Long teamId,
+                                                        @PathVariable Long playerId,
+                                                        @RequestParam(required = false) Integer season,
+                                                        @RequestParam(required = false) Integer week,
+                                                        @RequestBody FocusRequest request) {
+        int resolvedSeason = season != null ? season : currentSeason();
+        int resolvedWeek = week != null ? week : currentWeek();
+
+        // An unrecognised name is skipped rather than refused, so one typo in a two-skill request
+        // does not throw away the decision the manager actually made.
+        List<SkillName> skills = request == null || request.skills() == null
+                ? List.of()
+                : request.skills().stream()
+                        .map(name -> TrainingFocusService.parseSkill(name))
+                        .flatMap(Optional::stream)
+                        .toList();
+
+        List<SkillName> set = focusService.setFocus(teamId, playerId, resolvedSeason, resolvedWeek, skills);
+        if (set.isEmpty() && !skills.isEmpty()) {
+            // The difference matters: an empty list is a clear, an unknown player is a refusal.
+            throw new ApiException(HttpStatus.FORBIDDEN, "NOT_YOUR_PLAYER",
+                    "That player does not play for this club, so the focus cannot be set.");
+        }
+        return ResponseEntity.ok(Map.of(
+                "playerId", playerId,
+                "season", resolvedSeason,
+                "week", resolvedWeek,
+                "skills", set.stream().map(Enum::name).toList()));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/weekly/team/{teamId}/focus/{playerId}")
+    public ResponseEntity<Map<String, Object>> clearFocus(@PathVariable Long teamId,
+                                                          @PathVariable Long playerId,
+                                                          @RequestParam(required = false) Integer season,
+                                                          @RequestParam(required = false) Integer week) {
+        int resolvedSeason = season != null ? season : currentSeason();
+        int resolvedWeek = week != null ? week : currentWeek();
+        int cleared = focusService.clearFocus(playerId, resolvedSeason, resolvedWeek);
+        return ResponseEntity.ok(Map.of("playerId", playerId, "cleared", cleared));
+    }
+
+    /**
+     * The body of a focus request: the skills to work on, by name.
+     *
+     * <p>Skill names rather than ids because the training screen already speaks in names - a manager
+     * picking "heading" should not have to know that is DEFENDER in the database. An empty list is a
+     * clear, not an error.
+     */
+    public record FocusRequest(List<String> skills) { }
+
+    private int currentSeason() {
+        return seasonService.getOrCreateClock().getCurrentSeason() == null
+                ? 1 : seasonService.getOrCreateClock().getCurrentSeason();
+    }
+
+    private int currentWeek() {
+        return seasonService.getOrCreateClock().getCurrentWeek() == null
+                ? 1 : seasonService.getOrCreateClock().getCurrentWeek();
+    }
+
     @PostMapping("/weekly/team/{teamId}/run")
     public TrainingWeekReportDTO runWeeklyTraining(@PathVariable Long teamId) {
         return trainingProgressionService.runWeeklyTraining(teamId);
