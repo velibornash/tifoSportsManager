@@ -2122,6 +2122,66 @@ skill and age from 18 to 38 and holds the coefficient near continuity with the o
 
 **474 tests.**
 
+### S4.6 — Defending actually defends
+
+The largest no-op in the project, and the fifth of its kind in this sprint. The tactical data ships two
+rule sets, one per possession context, and the engine looks up the right one. I checked the data
+before touching the code:
+
+```
+total rules: 1012
+by context:  {'WE_HAVE_BALL': 506, 'OPPONENT_HAS_BALL': 506}
+common slot+state keys: 506 | identical targets: 506
+```
+
+**All 506 out-of-possession rules were copies of their in-possession twins.** So a team defended in
+exactly the shape it attacked, the possession context changed nothing, and every match was played in
+one tactical phase. The feature existed, the data was there, the context was threaded all the way
+through — and it did nothing.
+
+**Why derived rather than 506 hand-authored rules.** Authoring them would have been 506 arbitrary
+numbers, unverifiable one at a time, free to drift back into agreement at the next edit, and
+impossible to review. Deriving means the two shapes differ *by construction* and the next data edit
+cannot quietly undo the fix. It also makes the manager's attacking shape the single thing to design.
+
+Three movements, in the order a team performs them:
+
+1. **Drop** — the block falls back toward its own goal, and the further forward a player was playing
+   the further he comes. A striker does not walk backwards; a full-back already at home barely moves.
+2. **Compact** — the block narrows. This is what "closing down space" means.
+3. **Shift** — the block slides toward the ball, so the near side presses and the far side covers.
+   Partial on purpose: a block that slid all the way would abandon the other side entirely, which is
+   how teams concede from the far post.
+
+A goalkeeper holds his line rather than dropping with the outfield, and is still clamped — "he does
+not move" must not quietly become "he is not on the pitch".
+
+**Authored rules still win.** The first attempt ignored the out-of-possession rule entirely, and
+`TacticsPossessionContextTest` correctly failed: somebody who wrote a distinct defensive shape on
+purpose must be obeyed. Derivation is now the *fallback*, used only when the rule is missing or is a
+copy of its attacking twin — which is exactly the shipped state.
+
+**The constants were measured, not guessed.** The first pass (drop 0.25, width 0.65, shift 0.35)
+gave 4.37 goals and 13.9 corners; softening to 0.16/0.80/0.18 gave 3.97 goals with a near-perfect
+1.97/2.00 home-away split, so the softer values ship.
+
+**A regression the tests caught.** The derived block sits close enough to the half-way line to drag a
+kickoff-arranged player back across it as the pass was struck, and `KickoffHalfLineTest` failed. A
+kickoff is a placement, not a shape to walk to, so the hold now suppresses derivation for its
+duration. This is the third time in this sprint a correct-looking change broke a pre-existing
+invariant that had a name and a reason.
+
+**100-match batch:** goals 4.88 (2.50 / 2.38), shots 40.2 at 27% on target, pass accuracy 85%,
+possession 48/52. Corners rose from ~6 to ~14 — **that is an improvement**, since real football
+averages around ten and the old six was too low for the ball to be going out of play this engine
+produces elsewhere. Goals remain high for real football, but that is a pre-existing calibration matter
+this task did not touch; and the engine is chaotic enough that a 30-match run moved between 3.97 and
+5.00 on the same constants, so no claim finer than "same region" is supported.
+
+Mentoring, cohesion and new-signing familiarity remain open in S4.6.
+
+**484 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

@@ -1094,14 +1094,27 @@ everybody develops, and no property test notices. The band test walks every posi
 
 ---
 
-### S4.6 — Mentoring and cohesion
+### S4.6 — Mentoring and cohesion — 🟡 item 3 done 2026-09-27
 
-| # | Task |
-|---|---|
-| 1 | Pair a young player with a senior at the same position → growth bonus, mutual morale effect |
-| 2 | Squad cohesion: players who play together accumulate familiarity, improving tactical execution |
-| 3 | **Fix the no-op possession-context tactics.** All 506 rules in `TacticsRules` are identical, so in-possession vs out-of-possession shape does nothing (`backlog.md:381-385`) | 
-| 4 | Team training familiarity: new signings take time to learn the tactical system |
+| # | Task | State |
+|---|---|---|
+| 1 | Pair a young player with a senior at the same position | ❌ open |
+| 2 | Squad cohesion from players playing together | ❌ open |
+| 3 | **Fix the no-op possession-context tactics** | ✅ all 506 out-of-possession rules were identical copies; the defensive block is now derived |
+| 4 | Team training familiarity — new signings take time | ❌ open |
+
+**Verified before fixing:** 1012 rules shipped, 506 per context, and **all 506 pairs identical**. A team
+defended in exactly the shape it attacked, so the possession context did nothing and every match was
+played in one tactical phase.
+
+The defensive shape is **derived** from the attacking one — drop, compact, shift toward the ball —
+rather than 506 hand-authored numbers, so the two shapes differ by construction and cannot drift back
+into agreement. An explicitly authored out-of-possession rule still wins; derivation is the fallback
+for a missing or duplicated rule.
+
+Corners rose from ~6 to ~14 over 100 matches, which is **closer to real football** (~10) than the old
+six was. Goals remain high; that is a pre-existing calibration matter, and the engine is chaotic enough
+that no claim finer than "same region" is supported by these runs.
 
 ---
 

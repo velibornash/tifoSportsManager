@@ -77,7 +77,11 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
             Position desired = p.isGoalkeeper()
                     ? goalkeeperEngine.targetPosition(state, p)
                     : tactics.desiredCell(
-                            p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam);
+                            p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam,
+                            // No derived block while the kickoff hold is on: a kickoff is a placement,
+                            // not a shape to walk to, and the live block would drag a safely-placed
+                            // player back across the half-way line as the pass was struck.
+                            !state.isKickoffHalfHold());
 
             // KICKOFF HALF-LINE HOLD (owner rule 2026-09-25): excluding the
             // player taking the kickoff, everyone must be at least 0.5 cells in

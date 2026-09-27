@@ -123,11 +123,25 @@ public class TacticsRules {
     }
 
     public Position desiredCell(String role, Position ball, String team, String possessionTeam) {
+        return desiredCell(role, ball, team, possessionTeam, true);
+    }
+
+    /**
+     * As above, with the derived defensive block switchable.
+     *
+     * <p>The kickoff hold passes false, because a kickoff is an arrangement the players are
+     * <i>placed</i> into rather than a shape they walk to, and the derived block sits close enough
+     * to the half-way line to pull a player who was standing safely in his own half back towards it
+     * — leaving him in transit across the boundary at the moment the pass is struck.
+     */
+    public Position desiredCell(String role, Position ball, String team, String possessionTeam,
+                                boolean deriveDefensiveShape) {
         Position ballInEditorPerspective =
                 TacticalPerspectiveTransformer.toHomePerspective(ball, team);
         String context = possessionTeam != null && possessionTeam.equals(team)
                 ? WE_HAVE_BALL : OPPONENT_HAS_BALL;
-        Position targetInEditorPerspective = desiredCellFromContext(role, ballInEditorPerspective, context);
+        Position targetInEditorPerspective = desiredCellFromContext(
+                role, ballInEditorPerspective, context, deriveDefensiveShape);
         Position physical = TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
         return clampToField(physical);
     }
@@ -137,15 +151,49 @@ public class TacticsRules {
         return desiredCell(role, ball, WE_HAVE_BALL);
     }
 
-    private Position desiredCellFromContext(String role, Position ball, String context) {
+    /**
+     * Where a player stands in one tactical phase.
+     *
+     * <p>The out-of-possession case is <b>derived</b> from the in-possession shape rather than looked
+     * up, and that is the whole point. Both rule sets used to be shipped and both were consulted, but
+     * all 506 out-of-possession rules were copies of their in-possession twins, so the possession
+     * context changed nothing and a team defended in exactly the shape it attacked. Deriving the
+     * defensive block means the two shapes differ by construction and cannot drift back into
+     * agreement at the next data edit. See {@link DefensiveShape}.
+     */
+    private Position desiredCellFromContext(String role, Position ball, String context,
+                                            boolean deriveDefensiveShape) {
         String state = ballStateKey(ball);
-        Position fromRules = lookup(role, state, context);
-        if (fromRules == null && OPPONENT_HAS_BALL.equals(context)) {
-            fromRules = lookup(role, state, WE_HAVE_BALL);
+        if (!OPPONENT_HAS_BALL.equals(context)) {
+            Position raw = firstNonNull(lookup(role, state, context), anchor(role), new Position(1.5, 3.5));
+            return clampToField(raw);
         }
-        Position raw = fromRules != null ? fromRules : anchor(role);
-        if (raw == null) raw = new Position(1.5, 3.5);
-        return clampToField(raw);
+
+        Position attacking = firstNonNull(lookup(role, state, WE_HAVE_BALL), anchor(role),
+                new Position(1.5, 3.5));
+        Position authored = lookup(role, state, OPPONENT_HAS_BALL);
+
+        // An explicitly authored out-of-possession rule wins, because somebody wrote it on purpose.
+        // It is only ignored when it is missing or when it is a copy of the attacking rule — and a
+        // copy is precisely the shipped state: all 506 out-of-possession rules were duplicates of
+        // their in-posposition twins, so defending looked identical to attacking and the possession
+        // context did nothing at all. Deriving in that case makes the two shapes differ by
+        // construction, and the next data edit cannot quietly put them back in agreement.
+        if (authored != null && !DefensiveShape.sameShape(authored, attacking)) {
+            return clampToField(authored);
+        }
+        if (!deriveDefensiveShape) {
+            return clampToField(authored != null ? authored : attacking);
+        }
+        Position derived = DefensiveShape.derive(attacking, ball, role);
+        return clampToField(derived != null ? derived : attacking);
+    }
+
+    private static Position firstNonNull(Position... candidates) {
+        for (Position candidate : candidates) {
+            if (candidate != null) return candidate;
+        }
+        return null;
     }
 
     /** Formation anchor for a role, in physical coordinates for the team. */
