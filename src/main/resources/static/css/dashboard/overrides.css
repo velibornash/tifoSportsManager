@@ -419,6 +419,16 @@
 
 /* Global mobile tightening */
 /* Tablet: items may overflow, add wrapping */
+/* The logo is position:fixed out of the flow, so it needs a hole reserved for it in the bar. Without
+   this the clock is the last flex item and the logo is painted straight on top of the date. Scoped to
+   the same breakpoint as the logo, so the gap does not exist when the logo is hidden. */
+@media (min-width: 769px) {
+    .top-menu > .live-clock {
+        margin-left: auto;
+        margin-right: 190px;
+    }
+}
+
 @media (max-width: 1024px) {
     .top-menu {
         flex-wrap: wrap;

@@ -444,7 +444,6 @@ recent-match:hover .result-badge {
     position:relative;
     display:inline-flex;
     align-items:center;
-    margin-left:auto;
 }
 
 .user-menu-trigger{

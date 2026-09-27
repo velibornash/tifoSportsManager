@@ -55,7 +55,27 @@ export function normalizePlayerKey(name) {
 }
 
 export function formatBudget(value) {
-    return `EUR ${Number(value || 0).toLocaleString()}`;
+    // Capped at two decimals for the same reason percentages are: a budget that reaches the browser
+    // as a double must not print as "1,234.5678". Whole amounts are unaffected.
+    return `EUR ${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * A percentage, for display.
+ *
+ * <p>Percentages reach the browser as raw doubles — a pitch at 67.26952925761245 is a number nobody
+ * should be shown. Two decimals is the house rule for any decimal, and anything that is not a finite
+ * number is a dash rather than "NaN%".
+ *
+ * @param {*} value the raw percentage
+ * @param {number} [decimals=2] how many decimal places to show
+ * @returns {string} e.g. "67.27%", or "—" when there is no value
+ */
+export function formatPercent(value, decimals = 2) {
+    if (value == null || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `${num.toFixed(decimals)}%`;
 }
 
 export function formatMilestoneAttendanceValue(value) {

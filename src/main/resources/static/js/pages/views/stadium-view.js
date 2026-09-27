@@ -1,4 +1,4 @@
-import { htmlEscape } from './utils.js';
+import { htmlEscape, formatPercent } from './utils.js';
 
 /**
  * The stadium page: capacity, expansion, seats, roof, ticket prices, pitch maintenance, the colours,
@@ -167,8 +167,8 @@ export function createStadiumView(deps) {
                 <div class="fm-panel-head">The pitch</div>
                 <div class="fm-medical-stat-grid team-summary-grid">
                     <div><strong>${esc(s.pitchStatus || '—')}</strong><span>Condition</span></div>
-                    <div><strong>${s.maintenanceRemaining ?? '—'}%</strong><span>Programme funded</span></div>
-                    <div><strong>${esc(String(s.pitchQuality ?? '—'))}</strong><span>Surface quality</span></div>
+                    <div><strong>${esc(formatPercent(s.maintenanceRemaining, 0))}</strong><span>Programme funded</span></div>
+                    <div><strong>${esc(formatPercent(s.pitchQuality))}</strong><span>Surface quality</span></div>
                     <div><strong>${s.awaySectorCapacity ? s.awaySectorCapacity.toLocaleString() : '—'}</strong><span>Away fans</span></div>
                 </div>
                 <div class="fm-club-actions">
