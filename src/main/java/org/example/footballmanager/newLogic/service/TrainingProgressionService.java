@@ -31,6 +31,7 @@ public class TrainingProgressionService {
     private final TrainingPercentService trainingPercentService;
     private final TrainingFocusService focusService;
     private final TrainingIntensityService intensityService;
+    private final SquadEnvironmentService environment;
     private final SeasonService seasonService;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
@@ -375,7 +376,7 @@ public class TrainingProgressionService {
                                      TrainingIntensity intensity, StaffMember coach) {
         double injuryFactor = injuryTrainingFactor(player, season, week);
         double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill,
-                advanced, trainingPercent, intensity, coach);
+                advanced, trainingPercent, intensity, coach, season, week);
         dt *= injuryFactor;
         // The old global "striker x0.76 / pace x0.86 for everybody" penalty is gone rather than kept
         // alongside the position matrix, which would have counted the same idea twice and made every
@@ -465,7 +466,8 @@ public class TrainingProgressionService {
      */
     private double computeDirectFragment(Player player, double currentExact, SkillName skill,
                                           boolean advanced, double trainingPercent,
-                                          TrainingIntensity intensity, StaffMember coach) {
+                                          TrainingIntensity intensity, StaffMember coach,
+                                          int season, int week) {
         // Growth scales with intensity, and by how much of the coaching actually lands (Sprint 4.3).
         // Applied here rather than at the call site so every path that grows a direct skill is
         // scaled the same amount.
@@ -478,6 +480,12 @@ public class TrainingProgressionService {
         // another.
         base *= PositionGrowthProfile.learningRate(player.getPosition(), skill);
         base *= PositionGrowthProfile.physicalFactor(player, skill);
+        // The people side (Sprint 4.6): a settled dressing room, a player who knows the system, and
+        // somebody senior at his own position to show him how. All three are small, and all three are
+        // seasoning rather than a second growth system.
+        base *= SquadEnvironment.cohesionGrowthFactor(player.getTeam());
+        base *= SquadEnvironment.familiarityFactor(player);
+        base *= mentoringFactor(player, season, week);
         double ageFactor = PositionGrowthProfile.ageFactor(player.getPosition(), skill, player.getAge());
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
@@ -554,6 +562,19 @@ public class TrainingProgressionService {
         if (player == null || player.getTeam() == null) return 1.0;
         Stadium ground = player.getTeam().getStadium();
         return ground == null ? 1.0 : ground.trainingFactorFor(skill);
+    }
+
+    /**
+     * The mentoring bonus for one player this week.
+     *
+     * <p>Resolved through the service, which caches the pairing for the duration of one weekly run.
+     * Recomputing the whole squad's pairing for every player would be quadratic for no reason — the
+     * pairs are the same for everybody in the squad and do not change mid-week.
+     */
+    private double mentoringFactor(Player player, int season, int week) {
+        if (environment == null || player == null) return 1.0;
+        boolean mentored = environment.isMentored(player.getId(), season, week);
+        return mentored ? 1.0 + SquadEnvironment.MENTOR_GROWTH_BONUS : 1.0;
     }
 
     /** The best coach this club has for the skill being trained, or null if it has nobody. */

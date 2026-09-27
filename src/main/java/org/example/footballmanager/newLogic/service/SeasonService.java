@@ -45,6 +45,7 @@ public class SeasonService {
     private final FriendlyRequestService friendlyRequests;
     private final LoanService loans;
     private final SquadTrainingService squadTraining;
+    private final SquadEnvironmentService squadEnvironment;
     private final Random random = new Random();
 
     @Transactional
@@ -356,6 +357,14 @@ public class SeasonService {
             if (defaultTrained > 0) {
                 log.info("Week {} season {}: default training applied to {} players",
                         newWeek, seasonNumber, defaultTrained);
+            }
+            // The social side of the squad moves after the work, not before: familiarity follows the
+            // minutes just played, and cohesion follows how many faces are still new to the system.
+            // Doing it first would have credited a player with the week he is about to play.
+            int squadsAdvanced = squadEnvironment.advanceWeek(seasonNumber, newWeek);
+            if (squadsAdvanced > 0) {
+                log.info("Week {} season {}: squad environment advanced for {} clubs",
+                        newWeek, seasonNumber, squadsAdvanced);
             }
 
             // Loans that have run their course. A loan is temporary by definition, so somebody has

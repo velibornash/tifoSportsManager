@@ -2182,6 +2182,58 @@ Mentoring, cohesion and new-signing familiarity remain open in S4.6.
 
 **484 tests.**
 
+### S4.6 — Mentoring, familiarity, cohesion
+
+The rest of S4.6, and the other half of item 3. Owner's ruling: **mentoring is fully automatic, with
+no manager choice** — the effect is reported on the training screen rather than exposed as a decision.
+That is the better design here anyway, because a feature most clubs never use reads as broken, and
+because 300 AI clubs get it for free.
+
+**Mentoring** pairs each junior with a senior at his own position, best-talent first. The rules that
+matter are the ones that stop it being a blanket bonus:
+
+- **One senior teaches one junior.** Without that cap every veteran rubs off on every youngster in
+  the squad and the whole squad gets the bonus — a different feature, a worse one, and one no manager
+  could reason about.
+- **Same position only.** A centre-half helping a winger with crossing is a friendship, not a
+  mentorship, and without the position check the bonus stops meaning anything.
+- **Six years older and at least 27.** A 24-year-old has nothing to teach a 19-year-old.
+- **He cannot mentor himself** — which sounds absurd until a squad of one veteran is tested.
+
+**Familiarity** is the "new signings take time" mechanic (item 4), and it is the one I think matters
+most. A signing starts at 30 and is held back by about a tenth until he has played his way in;
+familiarity follows real minutes — a substitute's week counts for something, no football at all makes
+him forget — and the source is the same one the training percentage uses, so a player who played
+twenty minutes is treated identically in both places.
+
+**Cohesion** is a club-level 0–100 that grows while the squad is stable and falls with the number of
+faces still new to the system. A club that rebuilds every summer never settles, which is the honest
+outcome rather than a cosmetic slider.
+
+**Everything is derived, not stored.** The mentor pairings are recomputed from the squad each week
+rather than persisted, so they cannot go stale, cannot be left pointing at a sold player, and need no
+migration when a club is promoted. Only two fields were added — `Player.familiarity` and
+`Team.cohesion` — and both live on the entity they belong to. In a project that has been bitten five
+times this sprint by a field that was stored and never read, the smallest possible persistent surface
+is the point.
+
+**The `0`-as-sentinel trap, hit for the third time.** The first version used `<= 0` to mean "never
+measured", which makes a genuinely zero value — a shattered dressing room, a player who knows nothing
+— unexpressible, and the tests caught it immediately. Both fields are now nullable: `0` is a real
+value and `null` is the sentinel. Same lesson as the training facilities, where a null defaulting to
+level 1 would have quietly penalised every club in the database.
+
+**`Player` has a positional all-args constructor**, and adding `familiarity` in the middle of the field
+list silently reordered every argument after it and broke two tests that were never touched. The field
+now sits last, as `nationality` and `role` already did, with a comment saying why. This class wants
+a builder.
+
+All three effects are small on purpose — a mentor is worth about one good week from a good coach,
+cohesion is worth a couple of percent. Anything larger would rebalance a calibrated match engine
+because of a squad-management decision, and a test asserts those bounds.
+
+**501 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

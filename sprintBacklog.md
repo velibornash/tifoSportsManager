@@ -1094,27 +1094,27 @@ everybody develops, and no property test notices. The band test walks every posi
 
 ---
 
-### S4.6 — Mentoring and cohesion — 🟡 item 3 done 2026-09-27
+### S4.6 — Mentoring and cohesion — ✅ done 2026-09-27
+
+**Owner ruling:** mentoring is **fully automatic, no manager choice**; the effect is reported on the
+training screen. A feature most clubs would never use reads as broken, and 300 AI clubs get it free.
 
 | # | Task | State |
 |---|---|---|
-| 1 | Pair a young player with a senior at the same position | ❌ open |
-| 2 | Squad cohesion from players playing together | ❌ open |
+| 1 | Pair a young player with a senior at the same position | ✅ derived, not stored — one senior to one junior, same position, 6 years and 27+ |
+| 2 | Squad cohesion from players playing together | ✅ 0–100 per club, ±3% on the pitch, +4% in training, capped at 5% by a test |
 | 3 | **Fix the no-op possession-context tactics** | ✅ all 506 out-of-possession rules were identical copies; the defensive block is now derived |
-| 4 | Team training familiarity — new signings take time | ❌ open |
+| 4 | New signings take time to learn the system | ✅ `Player.familiarity` 30 on arrival → 100, holds growth back ~10% |
 
-**Verified before fixing:** 1012 rules shipped, 506 per context, and **all 506 pairs identical**. A team
-defended in exactly the shape it attacked, so the possession context did nothing and every match was
-played in one tactical phase.
+**Only two fields were added** — `Player.familiarity` and `Team.cohesion`. The mentor pairings are
+recomputed from the squad each week, so they cannot go stale or point at a sold player.
 
-The defensive shape is **derived** from the attacking one — drop, compact, shift toward the ball —
-rather than 506 hand-authored numbers, so the two shapes differ by construction and cannot drift back
-into agreement. An explicitly authored out-of-possession rule still wins; derivation is the fallback
-for a missing or duplicated rule.
+Both fields are **nullable**: `0` is a real value (a shattered dressing room, a player who knows
+nothing) and `null` is the "never measured" sentinel. Reading `<= 0` as unrecorded was the third
+instance of that trap in this sprint, and the tests caught it.
 
-Corners rose from ~6 to ~14 over 100 matches, which is **closer to real football** (~10) than the old
-six was. Goals remain high; that is a pre-existing calibration matter, and the engine is chaotic enough
-that no claim finer than "same region" is supported by these runs.
+`Player` carries a positional all-args constructor — a new field inserted mid-list reorders every
+argument after it. `familiarity` sits last for that reason; the class wants a builder.
 
 ---
 

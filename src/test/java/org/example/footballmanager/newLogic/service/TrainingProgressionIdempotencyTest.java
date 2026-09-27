@@ -83,6 +83,7 @@ class TrainingProgressionIdempotencyTest {
                         mock(org.example.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.PlayerRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.TeamRepository.class)),
+                mock(SquadEnvironmentService.class),
                 seasonService, mapper);
 
         GameClock clock = new GameClock();

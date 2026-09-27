@@ -73,6 +73,9 @@ public class Player {
      * non-EU quota, and whether he needs a work permit at all. Null is treated as domestic, which
      * is the safe default for a database that predates the column.
      *
+     * <p>Nullable, for the same reason {@code Team.cohesion} is: 0 means "knows nothing" and has to
+     * stay expressible, so null carries the "never measured" sentinel and reads as 100.
+     *
      * <p>Declared <b>last</b> on purpose. Lombok builds the all-args constructor in field order, and
      * two tests construct a Player with every argument spelled out positionally; adding a field in
      * the middle recompiled them into a call to a constructor that no longer exists.
@@ -91,6 +94,16 @@ public class Player {
     @Enumerated(EnumType.STRING)
     @Column(name = "role", length = 40)
     private PlayerRole role;
+
+    /**
+     * How well this player knows the club's way of playing, 0-100 (Sprint 4.6).
+     *
+     * <p>Defaults to 100 rather than to "new signing", so every player already in the database is
+     * established at their own club and nobody is retroactively signed into a system they have known
+     * for years. A genuinely new arrival is set to 30 by the transfer settlement.
+     */
+    @ColumnDefault("100")
+    private Double familiarity = 100.0;
 
     /** The role to actually use: the stored one, or a sensible default for his position. */
     @Transient

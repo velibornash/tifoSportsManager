@@ -21,6 +21,7 @@ import org.example.footballmanager.newLogic.model.StaffMember;
 import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
+import org.example.footballmanager.newLogic.service.SquadEnvironment;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome;
@@ -104,7 +105,8 @@ public class SimMatchService {
             List<org.example.footballmanager.newLogic.model.Player> ordered =
                     lineup.getOrderedStartingPlayers();
             if (ordered != null && ordered.size() >= 11) {
-                return RealSquadFactory.buildSquad(lineup, side, benchOut, coachFactorFor(team));
+                return RealSquadFactory.buildSquad(lineup, side, benchOut,
+                        coachFactorFor(team) * cohesionFactorFor(team));
             }
         }
         // No usable lineup template → build the XI from the team's real DB
@@ -113,7 +115,8 @@ public class SimMatchService {
         List<org.example.footballmanager.newLogic.model.Player> squad =
                 playerRepository.findByTeamId(team.getId());
         if (squad == null || squad.size() < 11) return null;
-        return RealSquadFactory.buildSquadFromPlayers(squad, side, coachFactorFor(team));
+        return RealSquadFactory.buildSquadFromPlayers(squad, side,
+                coachFactorFor(team) * cohesionFactorFor(team));
     }
 
     /**
@@ -138,6 +141,17 @@ public class SimMatchService {
             }
         }
         return 1.0;
+    }
+
+    /**
+     * What a settled dressing room is worth on the pitch (Sprint 4.6).
+     *
+     * <p>Multiplied with the head coach's factor rather than folded into it, so the two stay
+     * separately reportable: a manager who thinks his team is misperforming deserves to know whether
+     * the answer is the man on the touchline or the people around him.
+     */
+    private double cohesionFactorFor(Team team) {
+        return SquadEnvironment.cohesionMatchFactor(team);
     }
 
     @Transactional

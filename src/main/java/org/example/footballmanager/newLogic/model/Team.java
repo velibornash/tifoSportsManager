@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.*;
 
 import java.util.ArrayList;
@@ -35,6 +36,24 @@ public class Team {
     private Double budget;
     private Double reputation;
     private Integer juniorCoachSkill;
+
+    /**
+     * Dressing-room cohesion, 0-100 (Sprint 4.6).
+     *
+     * <p>How settled this squad is: the same faces having played together. Grows a little every week
+     * the squad is stable and falls when players arrive, so a club that rebuilds annually never quite
+     * gets settled. Worth a couple of percent on the pitch and a few on the training ground, which is
+     * seasoning rather than a second growth system.
+     *
+     * <p><b>Nullable, deliberately.</b> {@code 0} is a legal value — a completely shattered dressing
+     * room is a real state and it must be expressible — so it cannot double as the "never measured"
+     * sentinel. Null is that sentinel, and reads as 50: an average, unremarkable dressing room, so a
+     * club that has never been measured does not spend a season looking broken. This is the same
+     * lesson as the training facilities, where a null that defaulted to level 1 would have quietly
+     * penalised every club in the database.
+     */
+    @ColumnDefault("50")
+    private Double cohesion = 50.0;
     private boolean humanControlled;
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
