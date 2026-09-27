@@ -3,6 +3,9 @@ import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdmi
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
+// The club badge comes from the API now. It used to be a hardcoded
+// name === 'OFK Omladinac' check, which had no room for a second badge.
+let currentUserTeamLogoUrl = null;
 let currentUserCompetitionId = null;
 let currentUserCompetitionName = null;
 let currentSeasonYear = null;
@@ -44,7 +47,7 @@ function buildCountryMenuLabelHtml(countryLabel) {
 }
 
 function getCurrentTeamImagePath() {
-    return currentUserTeamName === 'OFK Omladinac' ? '/images/omladinac.png' : '/images/default-team.png';
+    return currentUserTeamLogoUrl || '/images/default-team.png';
 }
 
 function getCurrentLeagueId() {
@@ -443,6 +446,7 @@ window.addEventListener('load', async () => {
 
         currentUserTeamId = user.footballTeamId || user.teamId;
         currentUserTeamName = user.footballTeamName || user.teamName;
+        currentUserTeamLogoUrl = user.footballTeamLogoUrl || null;
         currentUserCompetitionId = user.competitionId ?? null;
         currentUserCompetitionName = user.competitionName ?? null;
         currentSeasonYear = user.seasonYear ?? null;

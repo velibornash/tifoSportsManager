@@ -1,6 +1,8 @@
 package org.example.commonmanager.controller;
 
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
+import java.util.List;
 import org.example.commonmanager.dto.JwtResponseDTO;
 import org.example.commonmanager.dto.LoginRequestDTO;
 import org.example.commonmanager.model.User;
@@ -14,6 +16,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 public class UserController {
@@ -61,12 +64,37 @@ public class UserController {
                 dto.setCountryIsoCode(resolvedUser.getCTeam().getCsCountry().getIsoCode());
             }
             
-            // Look up the newLogic football team by name
+            // Look up the newLogic football team by name.
+            //
+            // findByName throws when two clubs share a name, and two clubs sharing a name is
+            // explicitly allowed - TeamRepository's own javadoc says so. Calling it here meant a
+            // duplicate club name anywhere in the database could make /auth/me fail, which is a
+            // login failure for that user and not something a duplicate should be able to cause.
+            // findAllByNameIgnoreCase is the survivable call: it is explicit about the ambiguity
+            // instead of throwing on it.
             String teamName = resolvedUser.getCTeam().getName();
-            teamRepository.findByName(teamName).ifPresent(team -> {
-                dto.setFootballTeamId(team.getId());
-                dto.setFootballTeamName(team.getName());
-            });
+            List<Team> matches = teamRepository.findAllByNameIgnoreCase(teamName);
+            if (matches.size() > 1) {
+                // A human's club wins the tie. If two clubs match, the one somebody actually
+                // manages is the one they meant.
+                matches.stream()
+                        .filter(Team::isHumanControlled)
+                        .findFirst()
+                        .ifPresentOrElse(
+                                match -> log.warn("Naziv kluba '{}' pripada {} klubovima; "
+                                                + "koristim ljudski kontrolisani {}", teamName, matches.size(), match.getName()),
+                                () -> log.warn("Naziv kluba '{}' pripada {} klubovima i nijedan nije "
+                                        + "ljudski kontrolisan; koristim prvi", teamName, matches.size()));
+            }
+            matches.stream()
+                    .filter(Team::isHumanControlled)
+                    .findFirst()
+                    .or(() -> matches.stream().findFirst())
+                    .ifPresent(team -> {
+                        dto.setFootballTeamId(team.getId());
+                        dto.setFootballTeamName(team.getName());
+                        dto.setFootballTeamLogoUrl(team.getLogoUrl());
+                    });
         }
         if (resolvedUser.getTifoCTeam() != null) {
             dto.setTifoTeamId(resolvedUser.getTifoCTeam().getId());
@@ -94,6 +122,9 @@ public class UserController {
         private String teamName;
         private Long footballTeamId;
         private String footballTeamName;
+
+        /** Club badge path, or null when the club has none. The SPA applies its own default. */
+        private String footballTeamLogoUrl;
         private Long tifoTeamId;
         private String tifoTeamName;
         private Long basketballTeamId;

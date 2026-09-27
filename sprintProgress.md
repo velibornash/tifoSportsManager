@@ -2273,6 +2273,60 @@ rather than costing every other club's intake.
 
 **511 tests.**
 
+### Owner request 2026-09-27 — Opštinska liga Šid and the second manager
+
+A second human-managed club, in a real place, at the bottom of the pyramid. `kecko@example.com` /
+`Kecko123!`, role **REGULAR** — he manages a club and reaches nothing under `/admin/**`.
+
+**The league is `Opštinska liga Šid`**, the sixteenth municipal division (tier 5, `divisionLevel` 16),
+holding the nine real clubs from srbijasport.net plus one generated to make ten: Sremac Berkasovo,
+Sinđelić Gibarac, Graničar Jamena, Jednota Šid, Omladinac Batrovci, Borac Ilinci, Jedinstvo Morović,
+OFK Bačinci, OFK Bingula. Two of them already carry their town inside the club name, so appending it
+again would read as a stutter. The other fifteen municipal leagues are untouched and still generic.
+
+**Sremac's seventeen are the match sheet, in the printed shirts.** 1 and 12 are the goalkeepers,
+2–5 defend, 6/7/8/10 are midfield, 9 and 11 attack, 13–17 are a bench that is actually selectable
+(two defenders, two midfielders, an attacker). Number 8 is **Nenad Petrović** — the graphic said
+"Nena", which is a female name and there is already a Nenad at number 1.
+
+**They are a fifth-tier club.** Skills live in the 5–11 band and talent in 3–6.5, nothing like
+Omladinac's Superliga numbers. Seeding a village side with top-flight skills makes the bottom of the
+pyramid a place where players are born at full ability, and no amount of correct promotion and
+relegation above it holds up. Value and wage scale off the skill level, so changing the band moves
+the whole squad's worth with it.
+
+**The badge became a column.** There was no logo field on `Team` at all — Omladinac's was picked by a
+hardcoded `name.contains("Omladinac")` check that `expertAudit.md` already flags as a defect, and it
+had no room for a second badge. `Team.logoUrl` now carries it, seeded for both clubs, read by
+`TeamController` and `dashboard.js`, with the hardcoded checks deleted rather than left alongside.
+`Stadion Livadice` needed no code at all: the fixture view already resolves a ground whose name
+contains "livadice".
+
+**Three bugs the integration test caught that no unit test could have.**
+
+1. The account was **never created on a cold boot.** An edit anchored on the wrong copy of a repeated
+   block, so `createSecondUserIfNotExists()` landed in the admin rebuild path but not in the startup
+   path. The league seeded and velibor's account existed, so everything looked fine.
+2. The seeding **aborted half way** on `could not initialize proxy [Stadium] - no Session`.
+   `Team.stadium` is lazy and an event listener runs outside a session. The first fix — `@Transactional`
+   on the private helper — did **nothing**: Spring's `@Transactional` works through a proxy that cannot
+   see a private method, and even a public one is bypassed by the self-invocation. The boundary has to
+   be on the listener itself, which Spring does invoke through the proxy.
+3. All of it was **invisible** because the catch around the bootstrap logged only `e.getMessage()` and
+   called it "likely concurrent DB reset" — a diagnosis with nothing to do with the cause. A seeding
+   failure you can only see as a missing club is one nobody debugs. It logs the stack now.
+
+`/auth/me` also called `teamRepository.findByName`, which **throws** when two clubs share a name — and
+`TeamRepository`'s own javadoc says duplicate names are allowed. Any duplicate anywhere in the
+database could have made a user unable to log in. It now uses `findAllByNameIgnoreCase` and resolves
+the ambiguity explicitly in favour of a human-controlled club, and it returns the badge.
+
+`User` still has **no foreign key** to the football `Team`: the link is a `CTeam` matched by name. Both
+names come from one constant, and a test asserts the name resolves to exactly one real club — a
+mismatch produces an account that logs in fine and manages nothing.
+
+**541 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

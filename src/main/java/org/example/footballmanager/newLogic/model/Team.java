@@ -54,6 +54,22 @@ public class Team {
      */
     @ColumnDefault("50")
     private Double cohesion = 50.0;
+
+    /**
+     * Path to the club badge, served from {@code static/images} — the only persisted image field in
+     * the football domain.
+     *
+     * <p>Until this existed the Omladinac badge was picked by a hardcoded {@code name.contains()}
+     * check in {@code TeamController} and {@code dashboard.js}, which {@code expertAudit.md} already
+     * flags as a defect. That approach has no room for a second club badge, and the second
+     * human-managed club is exactly the case it breaks on. A column costs nothing and {@code
+     * ddl-auto=update} adds it, so the alternative was a code edit per logo.
+     *
+     * <p>Null means "no badge" and the UI falls back to its default image. It is deliberately not
+     * defaulted to the default image path: storing a path in a column so the code can ignore it is
+     * the same stored-and-unused pattern this column was added to fix.
+     */
+    private String logoUrl;
     private boolean humanControlled;
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore

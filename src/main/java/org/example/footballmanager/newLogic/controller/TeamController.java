@@ -133,11 +133,12 @@ public class TeamController {
         profile.put("budget", team.getBudget());
         profile.put("reputation", team.getReputation() > 70 ? "High" : team.getReputation() > 40 ? "Medium" : "Low");
         
-        // Logo based on team name
-        String logo = "/images/default-team.png";
-        if (team.getName() != null && team.getName().contains("Omladinac")) {
-            logo = "/images/omladinac.png";
-        }
+        // The badge is a column on the club now. It used to be a name.contains("Omladinac") check,
+        // which had no room for a second badge and is one of the defects expertAudit.md flags. The
+        // default is applied here rather than stored, so a club with no badge is honest about it.
+        String logo = (team.getLogoUrl() != null && !team.getLogoUrl().isBlank())
+                ? team.getLogoUrl()
+                : "/images/default-team.png";
         profile.put("logo", logo);
 
         return ResponseEntity.ok(profile);

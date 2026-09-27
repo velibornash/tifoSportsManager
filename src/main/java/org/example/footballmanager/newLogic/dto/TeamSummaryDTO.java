@@ -16,6 +16,14 @@ public class TeamSummaryDTO {
     private Double reputation;
     private boolean humanControlled;
 
+    /**
+     * Club badge path, or null when the club has none and the UI should use its default image.
+     *
+     * <p>Null is meaningful here and is not filled in with the default path, so "this club has no
+     * badge" and "this club's badge happens to be the default" stay distinguishable in the API.
+     */
+    private String logoUrl;
+
     public static TeamSummaryDTO from(Team team) {
         TeamSummaryDTO dto = new TeamSummaryDTO();
         dto.setId(team.getId());
@@ -28,6 +36,7 @@ public class TeamSummaryDTO {
         dto.setBudget(team.getBudget());
         dto.setReputation(team.getReputation());
         dto.setHumanControlled(team.isHumanControlled());
+        dto.setLogoUrl(team.getLogoUrl());
         return dto;
     }
 }

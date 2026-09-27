@@ -36,6 +36,46 @@ public class DatabaseInitializer {
 
     private static final String OWNER_EMAIL = "velibor@example.com";
 
+    /**
+     * The second human manager's club and login (owner request 2026-09-27).
+     *
+     * <p>Kept next to {@link #OWNER_EMAIL} rather than buried in a service, because these two are the
+     * only two accounts in the game and they have to be findable from one screen. {@code REGULAR} is
+     * deliberate: this account manages a club and has every club tool, but it does not reach
+     * {@code /admin/**}, which is reserved for OWNER/ADMIN/DEV.
+     */
+    private static final String SECOND_EMAIL = "kecko@example.com";
+    private static final String SECOND_PASSWORD = "Kecko123!";
+    private static final String SREMAC_TEAM_NAME = "Sremac Berkasovo";
+    private static final String SREMAC_LOGO = "/images/sremac_logo.jpg";
+    private static final String OMLADINAC_LOGO = "/images/omladinac.png";
+    private static final String SREMAC_STADIUM = "Stadion Livadice";
+
+    /**
+     * The Šid municipal league, and the nine real clubs that play in it.
+     *
+     * <p>Real names rather than generated ones because the point of this league is that it is a
+     * recognisable place — a manager who is sent here is sent somewhere, not somewhere random. Two
+     * of the nine already carry their town inside the club name ({@code OFK Bingula},
+     * {@code OFK Bačinci}) so appending it again would read as a stutter; the other seven follow the
+     * same "Club Place" shape as Sremac Berkasovo.
+     *
+     * <p>Note the ninth club is a plain {@code Omladinac} from Batrovci, which is a different club
+     * from velibor's {@code OFK Omladinac} in the Superliga. They are distinct strings, so nothing
+     * collides — but the two names are close enough to be worth knowing about.
+     */
+    private static final String MUNICIPAL_SID_LEAGUE = "Opštinska liga Šid";
+    private static final List<String> MUNICIPAL_SID_CLUBS = List.of(
+            SREMAC_TEAM_NAME,      // Sremac, Berkasovo   - the human's club
+            "Sinđelić Gibarac",
+            "Graničar Jamena",
+            "Jednota Šid",
+            "Omladinac Batrovci",
+            "Borac Ilinci",
+            "Jedinstvo Morović",
+            "OFK Bačinci",         // town already in the name
+            "OFK Bingula");        // town already in the name
+
     private final CountryRepository countryRepository;
     private final CompetitionRepository competitionRepository;
     private final UserRepository userRepository;
@@ -64,12 +104,31 @@ public class DatabaseInitializer {
         resetService.migrateTickStateMinuteColumn();
     }
 
+    /**
+     * Bootstraps the pyramid, and is <b>transactional on purpose</b>.
+     *
+     * <p>{@code Team.stadium} and {@code User.CTeam} are lazy proxies. An event listener runs
+     * outside any session, so touching either throws "could not initialize proxy - no Session" and
+     * aborts the whole seeding run half way through — leaving a database that looks seeded and is
+     * missing a club, an account and a badge.
+     *
+     * <p>The annotation has to be here and not on the private helpers. Spring's {@code @Transactional}
+     * works through a proxy, which cannot see a private method, and even a public one would be
+     * bypassed by the self-invocation from here. Putting the boundary on the listener is the only
+     * placement that actually opens a session for the work underneath it.
+     */
     @EventListener(ApplicationReadyEvent.class)
+    @Transactional
     public void ensureBaselineDataOnStartup() {
         if (countryRepository.count() > 0
                 && competitionRepository.count() > 0
                 && teamRepository.count() > 0
                 && userRepository.findByUsernameOrEmail(OWNER_EMAIL).isPresent()) {
+            // The baseline is already there, so the league content cannot be re-created. The second
+            // manager still has to be, though: this runs on every boot and is idempotent, which is
+            // what makes it safe to call from the "everything already exists" path as well as the
+            // bootstrap one.
+            createSecondUserIfNotExists();
             return;
         }
 
@@ -77,10 +136,15 @@ public class DatabaseInitializer {
         try {
             initSerbianFootballStructure();
             Team ownerTeam = createOwnerUserIfNotExists();
+            createSecondUserIfNotExists();
             seedInitialJuniorsForOwnerIfMissing(ownerTeam);
             assignSquadNumbersIfMissing();
         } catch (Exception e) {
-            log.warn("Startup initialization failed (likely concurrent DB reset): {}", e.getMessage());
+            // The stack trace matters. This catch used to log only e.getMessage() and call it a
+            // concurrent reset, which is how a lazy-proxy failure hid in plain sight: the message
+            // said "no Session" and the summary said something that had nothing to do with it.
+            // A seeding failure that is only visible as a missing club is a failure nobody debugs.
+            log.error("Startup initialization failed — the database may be partially seeded", e);
         }
     }
 
@@ -133,6 +197,10 @@ public class DatabaseInitializer {
         // 2. Kreiraj Owner korisnika ako ne postoji (sada baza ima strukturu, timovi postoje)
         progressListener.accept("Restoring owner account...");
         Team ownerTeam = createOwnerUserIfNotExists();
+        // Same reason as on a cold boot: a rebuild from the admin tools has to leave the database in
+        // the state a normal boot would, and that includes the second manager. The owner's own
+        // account is restored here, so leaving his out would be the same omission one level down.
+        createSecondUserIfNotExists();
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
         progressListener.accept("Assigning squad numbers and juniors...");
@@ -146,6 +214,7 @@ public class DatabaseInitializer {
     @Transactional
     public void seedOwnerAfterReset() {
         Team ownerTeam = createOwnerUserIfNotExists();
+        createSecondUserIfNotExists();
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         assignSquadNumbersIfMissing();
     }
@@ -171,6 +240,7 @@ public class DatabaseInitializer {
 
             omladinac.setHumanControlled(true);
             teamRepository.save(omladinac);
+            applyClubIdentity(omladinac);
             applyOwnerIdentity(owner, omladinac);
             owner.setPassword(encoder.encode("A12345!"));
             owner.setRole(UserRole.OWNER);
@@ -185,6 +255,7 @@ public class DatabaseInitializer {
                     .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac"));
             ownerTeam.setHumanControlled(true);
             teamRepository.save(ownerTeam);
+            applyClubIdentity(ownerTeam);
             applyOwnerIdentity(owner, ownerTeam);
             if (owner.getRole() == null) {
                 owner.setRole(UserRole.OWNER);
@@ -192,6 +263,66 @@ public class DatabaseInitializer {
             userRepository.save(owner);
         }
         return ownerTeam;
+    }
+
+    /**
+     * Creates the second human manager and points him at Sremac Berkasovo.
+     *
+     * <p>Structurally a twin of {@link #createOwnerUserIfNotExists()}, which is the point: the game
+     * has no other way to own a club, and until {@code RegistrationService} is actually wired to a
+     * controller this is the only path that produces one.
+     *
+     * <p><b>The user is linked to the club by name, not by id.</b> {@code User} has no foreign key
+     * to the football {@code Team}; it holds a {@code CTeam} and {@code /auth/me} resolves the
+     * football club by matching that name. So the CTeam and the Team must be created with
+     * <b>identical</b> names or the account logs in and manages nothing. That is the single easiest
+     * way to get this silently wrong, which is why both names come from the same constant.
+     *
+     * <p>Idempotent: a boot on an existing database finds the account and re-asserts the link rather
+     * than making a second one.
+     */
+    private Team createSecondUserIfNotExists() {
+        Team sremac = teamFactory.findOrCreate(SREMAC_TEAM_NAME);
+        applyClubIdentity(sremac);
+
+        Optional<User> existing = userRepository.findByUsernameOrEmail(SECOND_EMAIL);
+        if (existing.isEmpty()) {
+            User user = new User();
+            user.setEmail(SECOND_EMAIL);
+            user.setUsername(SECOND_EMAIL);
+            user.setPassword(encoder.encode(SECOND_PASSWORD));
+            // REGULAR, not ADMIN: he manages a club and reaches nothing under /admin/**.
+            user.setRole(UserRole.REGULAR);
+            user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            userRepository.save(user);
+            log.info("Kreiran korisnik '{}' sa timom {}", SECOND_EMAIL, SREMAC_TEAM_NAME);
+        } else {
+            User user = existing.get();
+            user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            if (user.getRole() == null) {
+                user.setRole(UserRole.REGULAR);
+            }
+            userRepository.save(user);
+        }
+        return sremac;
+    }
+
+    /**
+     * The text-mode club record for a name, created on demand.
+     *
+     * <p>Found rather than passed in so the two sides cannot disagree: the CTeam name is derived from
+     * the football Team name, which is the only thing the name-based lookup in {@code /auth/me}
+     * actually compares.
+     */
+    private org.example.footballtextmanager.model.CTeam csTeamNamed(String teamName) {
+        return csTeamRepository.findByName(teamName)
+                .orElseGet(() -> {
+                    org.example.footballtextmanager.model.CTeam cs = new org.example.footballtextmanager.model.CTeam();
+                    cs.setName(teamName);
+                    return csTeamRepository.save(cs);
+                });
     }
 
     void applyOwnerIdentity(User owner, Team ownerTeam) {
@@ -323,18 +454,24 @@ public class DatabaseInitializer {
             createLeagueIfNotExists(serbia, 4, "Okružna liga Grupa " + i, i, 10, currentSeason);
         }
 
-        // Tier 5 – 16 liga
+        // Tier 5 – 16 liga. The sixteenth one is a real place with real clubs in it rather than a
+        // sixteenth placeholder: Opštinska liga Šid is where the second human manager starts, and it
+        // is the bottom of the pyramid, so it is the only league a new player ever actually sees.
         for (int i = 1; i <= 16; i++) {
-            createLeagueIfNotExists(serbia, 5, "Opštinska liga Grupa " + i, i, 10, currentSeason);
+            String name = (i == 16) ? MUNICIPAL_SID_LEAGUE : "Opštinska liga Grupa " + i;
+            createLeagueIfNotExists(serbia, 5, name, i, 10, currentSeason);
         }
 
         // 4. Popuni timove u Tier 1 (Superliga) – obavezno Omladinac + 9 random/stvarnih
         populateLeagueWithTeams(tier1, 10, true, currentSeason);
 
-        // Ostale lige popuni random timovima
+        // Ostale lige popuni random timovima. The Šid league gets its real clubs first and one random
+        // club to make ten, which is what the rest of the pyramid does for the remainder.
         competitionRepository.findAll().stream()
                 .filter(c -> c.getCountry().getIsoCode().equals("SRB") && c.getTier() > 1)
-                .forEach(league -> populateLeagueWithTeams(league, 10, false, currentSeason));
+                .forEach(league -> populateLeagueWithTeams(league, 10, false, currentSeason,
+                        MUNICIPAL_SID_LEAGUE.equals(league.getName())
+                                ? MUNICIPAL_SID_CLUBS : null));
 
         // 5. Dodaj PromotionRule za lige
         addPromotionRulesForLeagues(currentSeason);
@@ -427,7 +564,21 @@ public class DatabaseInitializer {
      */
     private final Set<Long> teamIdsAssignedToALeague = new HashSet<>();
 
-    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac, Season season) {
+    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
+                                         Season season) {
+        populateLeagueWithTeams(league, teamCount, includeOmladinac, season, null);
+    }
+
+    /**
+     * Fills a division, preferring real club names where the league has them.
+     *
+     * @param preferredNames clubs this league really contains, or null to use generated names
+     *                       throughout. Only as many as are still missing are taken, so a league that
+     *                       is already half full is topped up with generated clubs rather than
+     *                       double-seeding the real ones.
+     */
+    private void populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
+                                         Season season, List<String> preferredNames) {
         SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(league, season.getSeasonYear())
                 .orElseThrow(() -> new RuntimeException("Sezona za ligu nije pronađena"));
 
@@ -463,7 +614,29 @@ public class DatabaseInitializer {
             }
         }
 
-        // 2. Dodaj preostale timove
+        // 2. Real clubs first. This is the difference between the Šid league being Šid and being
+        //    sixteen generic names that happen to sit in a division.
+        if (preferredNames != null) {
+            for (String realName : preferredNames) {
+                if (toCreate <= 0) break;
+                Team real = teamFactory.findOrCreate(realName);
+                if (real.getId() == null
+                        || usedTeamIdsInLeague.contains(real.getId())
+                        || teamIdsAssignedToALeague.contains(real.getId())) {
+                    continue;
+                }
+                if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, real).isEmpty()) {
+                    addTeamToLeague(real, sc);
+                    usedTeamIdsInLeague.add(real.getId());
+                    teamIdsAssignedToALeague.add(real.getId());
+                    economyProfile.apply(real, league);
+                    toCreate--;
+                    log.info("Dodat stvarni tim {} u ligu {}", realName, league.getName());
+                }
+            }
+        }
+
+        // 3. Generated names fill whatever is left, which is one club in the Šid league.
         while (toCreate > 0 && attempts < maxAttempts) {
             String candidateName = getRandomTeamName();
             Team team = teamFactory.findOrCreate(candidateName);
@@ -536,11 +709,50 @@ public class DatabaseInitializer {
             if (Objects.equals(team.getName(), "OFK Omladinac")) {
                 playerFactory.createOmladinacPlayers(team);
                 applyOmladinacTalentProfile(team);
+            } else if (Objects.equals(team.getName(), SREMAC_TEAM_NAME)) {
+                playerFactory.createSremacPlayers(team);
             } else {
                 playerFactory.createRandomTeamPlayers(team.getName(), team);
             }
         }
         squadNumberAssigner.assignMissingNumbers(team);
+    }
+
+    /**
+     * Gives the two human clubs their identity: badge, ground, and a manager.
+     *
+     * <p>Reads {@code Team.stadium}, which is a lazy proxy, so it has to run inside the session the
+     * caller opened. See {@link #ensureBaselineDataOnStartup()} — the transaction belongs on the
+     * listener, not here.
+     *
+     * <p>Split out of {@code addTeamToLeague} on purpose. Adding a club to a division and giving it
+     * a face are different jobs, and only one of them should run when a league is re-populated — the
+     * badge and the ground are facts about the club, not about the season it happens to be in.
+     */
+    private void applyClubIdentity(Team team) {
+        String name = team.getName();
+        if (name == null) {
+            return;
+        }
+        if (SREMAC_TEAM_NAME.equals(name)) {
+            team.setLogoUrl(SREMAC_LOGO);
+            team.setHumanControlled(true);
+            Stadium stadium = team.getStadium();
+            if (stadium == null) {
+                stadium = new Stadium();
+                stadium.setTeam(team);
+                team.setStadium(stadium);
+            }
+            stadium.setName(SREMAC_STADIUM);
+            // The fixture view already resolves a stadium whose name contains "livadice" to
+            // /images/livadice.png, so naming the ground is all that is needed to put the real
+            // picture on the match screen.
+            stadium.setLocation("Berkasovo");
+        } else if ("OFK Omladinac".equals(name)) {
+            team.setLogoUrl(OMLADINAC_LOGO);
+            team.setHumanControlled(true);
+        }
+        teamRepository.save(team);
     }
 
     private void applyOmladinacTalentProfile(Team team) {

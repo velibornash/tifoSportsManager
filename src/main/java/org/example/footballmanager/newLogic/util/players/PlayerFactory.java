@@ -93,6 +93,95 @@ public class PlayerFactory {
         return players;
     }
 
+    /**
+     * The FK Sremac Berkasovo squad, as named on the club's own match sheet.
+     *
+     * <p>Find-or-create, exactly like {@link #createOmladinacPlayers(Team)}, so re-seeding or a reset
+     * never produces two Nenad Ugrenovićs.
+     *
+     * <p><b>These are a fifth-tier club.</b> The numbers are deliberately nothing like Omladinac's:
+     * a Superliga squad runs to 18s, and a municipal one lives in the 5-11 band. Seeding a village
+     * side with top-flight skills would make the bottom of the pyramid a place where players are
+     * born at full ability, and no amount of correct promotion and relegation above it would hold up.
+     * Talent is set explicitly for the same reason — the tier-5 clubs sit around 3-6 on the 1-10
+     * scale, so a gifted fifteen-year-old here is genuinely promising rather than already good.
+     *
+     * <p>Numbers 13-17 are the bench and have no published position, so they are given a spread that
+     * makes an 18-man matchday squad selectable: two defenders, two midfielders, an attacker.
+     */
+    public List<Player> createSremacPlayers(Team team) {
+        // name, position, age, heightCm, weightKg, form, squadNumber,
+        // stamina, keeper, defender, pace, technique, playmaker, passing, striker
+        Object[][] data = {
+                {"Nenad Ugrenović", Position.GK, 27, 187.0, 81.0, 6.5, 1, 8, 11, 6, 6, 5, 4, 5, 2},
+                {"Miloš Matić", Position.DEF, 26, 182.0, 79.0, 6.0, 2, 9, 3, 10, 7, 6, 6, 7, 3},
+                {"Živko Malić", Position.DEF, 31, 184.0, 84.0, 5.5, 3, 8, 3, 11, 7, 5, 6, 7, 4},
+                {"Slobodan Milanković", Position.DEF, 29, 180.0, 77.0, 6.0, 4, 9, 3, 10, 7, 6, 5, 7, 3},
+                {"Jovica Bogdanović", Position.DEF, 23, 178.0, 75.0, 6.5, 5, 10, 3, 9, 7, 6, 6, 6, 3},
+                {"Milanko Subić", Position.MID, 28, 178.0, 74.0, 6.0, 6, 10, 2, 7, 9, 10, 9, 9, 6},
+                {"Vasilj Abramović", Position.MID, 24, 176.0, 71.0, 6.5, 7, 10, 2, 6, 8, 9, 8, 8, 7},
+                {"Nenad Petrović", Position.MID, 22, 180.0, 76.0, 6.0, 8, 9, 1, 7, 8, 9, 8, 8, 6},
+                {"Srđan Arambašić", Position.ATT, 26, 179.0, 73.0, 6.5, 9, 9, 1, 10, 8, 6, 6, 6, 11},
+                {"Boris Gospojević", Position.MID, 30, 177.0, 78.0, 5.5, 10, 8, 1, 6, 8, 9, 8, 7, 6},
+                {"Srđan Subić", Position.ATT, 25, 181.0, 75.0, 6.0, 11, 9, 1, 9, 10, 7, 6, 6, 10},
+                {"Stefan Ćetojević", Position.GK, 20, 189.0, 83.0, 5.5, 12, 8, 9, 5, 5, 4, 4, 5, 1},
+                {"Milan Ćetojević", Position.MID, 21, 175.0, 70.0, 5.0, 13, 8, 1, 5, 7, 7, 7, 7, 5},
+                {"Uroš Jovanović", Position.DEF, 20, 179.0, 76.0, 5.0, 14, 9, 1, 8, 6, 5, 5, 5, 3},
+                {"Lazar Brenjevarac", Position.MID, 23, 181.0, 79.0, 5.5, 15, 9, 1, 6, 7, 8, 7, 6, 6},
+                {"Nikola Jović", Position.ATT, 19, 177.0, 71.0, 5.5, 16, 8, 1, 9, 7, 5, 5, 5, 9},
+                {"Branislav Andrić", Position.DEF, 27, 183.0, 82.0, 5.0, 17, 9, 1, 9, 6, 5, 6, 6, 3},
+        };
+
+        // Explicit talent, weakest-first so the spread is deliberate rather than a re-seed changing.
+        double[] talentByRow = {4.5, 5.0, 4.0, 4.5, 5.5, 5.0, 5.5, 6.0, 5.5, 4.5, 5.5,
+                                6.0, 5.5, 6.5, 5.0, 6.5, 4.0, 4.5};
+
+        Map<String, Player> existingByName = playerRepository.findByTeam(team).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Player::getName, player -> player, (left, right) -> left, LinkedHashMap::new));
+
+        List<Player> players = new ArrayList<>();
+        List<Player> toSave = new ArrayList<>();
+
+        for (int i = 0; i < data.length; i++) {
+            Object[] row = data[i];
+            String name = (String) row[0];
+            Position position = (Position) row[1];
+            int age = (int) row[2];
+            double height = (double) row[3];
+            double weight = (double) row[4];
+            double form = (double) row[5];
+            int squadNumber = (int) row[6];
+
+            Player player = existingByName.get(name);
+            if (player == null) {
+                // Value and wage scale off skill level rather than being invented per row, so a
+                // change to the skill band moves the whole squad's worth with it.
+                double best = Math.max(Math.max((int) row[7], (int) row[8]), Math.max(
+                        Math.max((int) row[9], (int) row[10]),
+                        Math.max((int) row[11], Math.max((int) row[12],
+                                Math.max((int) row[13], (int) row[14])))));
+                double value = 4_000 + best * 4_500;
+                double earnings = 250 + best * 170;
+
+                player = createPlayer(name, age, team, value, earnings, height, weight, form, 6,
+                        (int) row[7], (int) row[8], (int) row[9], (int) row[10], (int) row[11],
+                        (int) row[12], (int) row[13], (int) row[14], position, squadNumber);
+                toSave.add(player);
+                existingByName.put(name, player);
+            }
+            player.setPosition(position);
+            player.setSquadNumber(squadNumber);
+            player.setTalent(Math.max(1.0, Math.min(10.0, talentByRow[i])));
+            players.add(player);
+        }
+
+        if (!toSave.isEmpty()) {
+            playerRepository.saveAll(toSave);
+        }
+        return players;
+    }
+
     public List<Player> createRandomTeamPlayers(String teamName, Team team) {
 
         List<Player> existingPlayers = playerRepository.findByTeamId(team.getId());
