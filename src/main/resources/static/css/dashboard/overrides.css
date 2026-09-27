@@ -644,3 +644,82 @@
     color: #6fcf97;
     letter-spacing: 0.08em;
 }
+
+/* ── Destructive action ────────────────────────────────────────────────────────────
+   There was no danger variant, so every irreversible action in the game was styled the same as
+   every harmless one. Closing a junior school graduates and lists the entire intake, permanently;
+   it should not look like "Book a friendly". */
+.fm-action-btn.danger {
+    background: rgba(255, 107, 107, 0.14);
+    border-color: rgba(255, 107, 107, 0.55);
+    color: #ff8f8f;
+}
+
+.fm-action-btn.danger:hover:not(:disabled) {
+    background: rgba(255, 107, 107, 0.24);
+    border-color: #ff6b6b;
+}
+
+.fm-action-btn.danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── The junior school (Sprint 5.3a) ──────────────────────────────────────────────
+   Sits above the prospect tables because the school is what produces them: a manager looking at
+   an empty academy needs to see the price before he wonders why it is empty. */
+.academy-school-panel {
+    border-left: 3px solid rgba(111, 207, 151, 0.5);
+    /* border-box, unlike the .fm-panel base. Every panel is content-box with 14px of padding, so on a
+       390px phone the panel's total box is ~30px wider than its parent and the action button runs off
+       the right edge — where `overflow-x: hidden` on html makes it unreachable rather than obvious.
+       That is a project-wide .fm-panel problem (see the backlog); this panel is fixed on its own
+       because a button you cannot tap is not a cosmetic issue. */
+    box-sizing: border-box;
+}
+
+.academy-school-off {
+    border-left: 3px solid rgba(255, 255, 255, 0.16);
+}
+
+.academy-school-grid {
+    margin-bottom: 14px;
+}
+
+.academy-school-on {
+    color: #6fcf97;
+}
+
+.academy-school-off {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* The week window, stated. A disabled button with no reason is indistinguishable from a bug, and
+   the window is the rule rather than a rendering artefact. */
+.academy-window-note {
+    align-self: center;
+    margin-left: 4px;
+}
+
+@media (max-width: 768px) {
+    /* On a phone the price grid is four tiles of money; it needs to stay readable rather than
+       shrinking, and the action row has to wrap so the window note is never pushed off-screen. */
+    /* !important because @import statements are hoisted to the top of dashboard.css, which puts every
+       one of its own ~2,600 rules AFTER overrides.css. A plain rule here loses to
+       `.fm-medical-stat-grid { grid-template-columns: repeat(auto-fit, ...) }` on source order alone.
+       Same reason the responsive utilities above need it. */
+    .academy-school-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .academy-school-panel .fm-club-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .academy-window-note {
+        margin-left: 0;
+        margin-top: 6px;
+        text-align: center;
+    }
+}

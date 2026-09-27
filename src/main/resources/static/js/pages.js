@@ -268,6 +268,8 @@ import {
         // The academy renders talent as a band, and the house rule is two decimals on any decimal
         // (Sprint 5.2). Without this the column would fall back to raw server strings.
         formatPercent,
+        // The junior school panel is priced in money.
+        formatBudget,
     });
     const teamFeature = createTeamFeature({
         authFetch,

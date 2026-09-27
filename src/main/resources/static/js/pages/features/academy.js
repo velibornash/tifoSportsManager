@@ -7,6 +7,8 @@
         loadPlayer,
         goBackSmart,
         formatPercent,
+        // The junior school panel is priced in money, and a price is not a percentage.
+        formatBudget,
     } = deps;
 
     /**
@@ -29,6 +31,88 @@
         return '<span class="fm-subtle">PLUS</span>';
     }
 
+    /**
+     * The club's junior school, or null when the endpoint could not be reached.
+     *
+     * <p>Null is not an error state to shout about: the academy is still perfectly readable without
+     * it, and a manager looking at his prospects should not be blocked by a budget panel failing.
+     */
+    async function loadSchoolState(teamId) {
+        try {
+            const res = await authFetch(`/juniors/school/team/${teamId}`);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            console.warn('Could not load the junior school state:', e);
+            return null;
+        }
+    }
+
+    /**
+     * The junior school panel (Sprint 5.3a).
+     *
+     * <p>The week window is stated in words, not implied by a disabled button. A greyed control with
+     * no reason is indistinguishable from a bug, and the window *is* the rule: the school can only be
+     * opened in week 1 and only closed in week 12.
+     */
+    function renderSchoolPanel(s) {
+        if (!s) {
+            return `<section class="fm-panel academy-school-panel">
+                <div class="fm-panel-head"><h3>Junior school</h3></div>
+                <p class="fm-subtle">Could not load the junior school. Your prospects below are unaffected.</p>
+            </section>`;
+        }
+
+        const fee = s.activationFee != null ? formatBudget(s.activationFee) : null;
+        const upkeep = formatBudget(s.weeklyUpkeep);
+        // A season's upkeep, so the running cost is not a surprise in week 6.
+        const seasonCost = formatBudget(Number(s.weeklyUpkeep || 0) * 11);
+        const week = Number(s.weekNumber || 0);
+
+        const figures = s.active
+            ? `<div class="fm-medical-stat-grid academy-school-grid">
+                   <div><strong>${escapeHtml(upkeep)}</strong><span>Per week</span></div>
+                   <div><strong>${escapeHtml(seasonCost)}</strong><span>Rest of season</span></div>
+                   <div><strong>${Number(s.activeJuniors || 0)}/10</strong><span>Prospects</span></div>
+                   <div><strong>${s.sinceSeason != null ? 'S' + escapeHtml(String(s.sinceSeason)) : '—'}</strong><span>Running since</span></div>
+               </div>`
+            : `<div class="fm-medical-stat-grid academy-school-grid">
+                   <div><strong>${escapeHtml(fee || '—')}</strong><span>To open</span></div>
+                   <div><strong>${escapeHtml(upkeep)}</strong><span>Per week after</span></div>
+                   <div><strong>${escapeHtml(seasonCost)}</strong><span>Season total</span></div>
+                   <div><strong>0/10</strong><span>Prospects</span></div>
+               </div>`;
+
+        // The button and the sentence explaining it are rendered together, so they can never disagree.
+        // Closing is always styled destructive, disabled or not: whether an action is dangerous is a
+        // property of the action, not of the week.
+        let action;
+        if (s.active) {
+            action = s.canClose
+                ? `<button type="button" class="fm-action-btn danger" data-school-action="close">Close the school</button>`
+                : `<button type="button" class="fm-action-btn danger" disabled>Close the school</button>
+                   <span class="fm-subtle academy-window-note">Only available in week 12. It is week ${week}.</span>`;
+        } else {
+            action = s.canOpen
+                ? `<button type="button" class="fm-action-btn" data-school-action="open">Open the school</button>`
+                : `<button type="button" class="fm-action-btn" disabled>Open the school</button>
+                   <span class="fm-subtle academy-window-note">Only available in week 1. It is week ${week}.</span>`;
+        }
+
+        return `<section class="fm-panel academy-school-panel">
+            <div class="fm-panel-head">
+                <div>
+                    <h3>Junior school</h3>
+                    <p class="fm-subtle academy-panel-copy">${escapeHtml(s.note || '')}</p>
+                </div>
+                <span class="fm-panel-action ${s.active ? 'academy-school-on' : 'academy-school-off'}">${s.active ? 'Running' : 'Not running'}</span>
+            </div>
+            ${figures}
+            <div class="fm-club-actions">${action}</div>
+            <p class="fm-subtle" data-school-note></p>
+        </section>`;
+    }
+
     async function loadJuniors() {
         const currentUserTeamId = getTeamId();
         const mainContent = document.getElementById("main-content");
@@ -38,6 +122,11 @@
             return;
         }
         const academy = await response.json();
+
+        // The school is a separate endpoint on purpose: the academy is a report on players and the
+        // school is a budget decision, so one of them failing must not blank the other. A null school
+        // renders as an unavailable panel rather than taking the page with it.
+        const school = await loadSchoolState(currentUserTeamId);
 
         const canDecide = academy.decisionsOpen === true;
         const currentSeason = Number(academy.currentSeasonNumber || 0);
@@ -141,6 +230,8 @@
                 <p class="fm-subtle academy-footnote">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is 10.</p>
             </section>
 
+            ${renderSchoolPanel(school)}
+
             ${renderSection('Carryover juniors', carryover.length, carryover, true, 'Decision pending players remain visible until you resolve them.')}
             ${renderSection(`Current intake · Season ${academy.currentSeasonNumber}`, currentIntake.length, currentIntake, false, 'New intake continues developing through the current season.')}
             ${otherVisible.length > 0 ? renderSection('Resolved juniors', otherVisible.length, otherVisible, false, 'Resolved players stay visible here until they move into the archive.') : ''}
@@ -189,6 +280,50 @@
         </div>`;
 
         mainContent.innerHTML = html;
+
+        mainContent.querySelectorAll("[data-school-action]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const action = btn.getAttribute("data-school-action");
+                const note = mainContent.querySelector("[data-school-note]");
+                const teamId = getTeamId();
+
+                // Closing graduates and lists the entire intake. It cannot be undone, so it is never
+                // one click away from a mis-tap, and the confirmation names what will happen rather
+                // than asking a bare "are you sure".
+                if (action === 'close') {
+                    const school = await loadSchoolState(teamId);
+                    const count = school ? Number(school.activeJuniors || 0) : 0;
+                    const warning = count === 1
+                        ? 'Close the junior school?\n\n1 prospect will graduate and be listed for transfer. This cannot be undone.'
+                        : `Close the junior school?\n\n${count} prospects will graduate and be listed for transfer. This cannot be undone.`;
+                    if (!window.confirm(warning)) return;
+                }
+
+                btn.disabled = true;
+                if (note) note.textContent = 'Working…';
+
+                const res = await authFetch(`/juniors/school/team/${teamId}/${action}`, { method: 'POST' });
+                if (!res.ok) {
+                    // The API explains itself — "A junior school can only be closed in week 12; it is
+                    // week 1" — and that sentence is the whole point of the window. Swallowing it into
+                    // "Action failed" would throw away the only useful thing on the wire.
+                    let msg = 'Could not change the junior school.';
+                    try {
+                        const payload = await res.json();
+                        if (payload && payload.message) msg = payload.message;
+                        else if (payload) msg = JSON.stringify(payload);
+                    } catch (e) {
+                        try { msg = await res.text(); } catch (e2) {}
+                    }
+                    if (note) note.textContent = msg;
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Anything that changes money or prospects re-reads the world rather than patching it.
+                await loadJuniors();
+            });
+        });
 
         mainContent.querySelectorAll(".junior-action-btn").forEach(btn => {
             btn.addEventListener("click", async () => {

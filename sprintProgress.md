@@ -2953,3 +2953,61 @@ gets the week-1 window for himself and a school he really does open survives a r
 **Tests: 16 new** (`JuniorSchoolRulesTest` 8 — windows and pricing, no Spring; `JuniorSchoolServiceTest`
 7 — the lifecycle, including that no school means no intake and that an AI club never produces one).
 **Full suite 608.**
+
+---
+
+### The junior school on the screen (S5.3a UI)
+
+A paid feature with no interface is not finished, and the week windows and the subscription that gates
+talent reports were all invisible. The panel sits on the academy page, above the prospect tables,
+because a manager looking at an empty academy needs to see the price before he wonders why it is empty.
+
+| | Kecko / Sremac, week 1 | Velja / Omladinac, week 1 |
+|---|---|---|
+| Badge | Not running | Running |
+| Note | "A school can only be opened in week 1." | "This is the only week it could have been opened." |
+| Figures | 28,083.81 to open · 4,277.84/wk · **47,056.24 season total** | 11,492.16/wk · **126,413.76 rest of season** · 6/10 · since S2025 |
+| Control | **Open the school** (enabled) | **Close the school** (disabled) + "Only available in week 12. It is week 1." |
+
+Three decisions, as proposed and approved:
+
+1. **On the academy page**, not a new nav entry — same context, and mobile already has Juniors.
+2. **Both figures plus a season total.** A per-week number alone is how a club discovers in week 6
+   that the academy was never affordable. The season total is the number you actually decide on.
+3. **Closing is confirmed by name and count** — "6 prospects will graduate and be listed for transfer.
+   This cannot be undone" — because it is irreversible and a bare "are you sure" on a destructive
+   action is a habit, not a safeguard.
+
+**The `409` is surfaced, not swallowed.** The API says *"A junior school can only be closed in week 12;
+it is week 1."* That sentence is the entire point of the window, so replacing it with "Action failed"
+would throw away the only useful thing on the wire. Verified live: the refusal arrives and is shown.
+
+**There was no `danger` button variant in the codebase.** Every irreversible action was styled exactly
+like every harmless one. Closing a school now looks like closing a school, disabled or not — whether an
+action is destructive is a property of the action, not of the week.
+
+#### A project-wide mobile bug found through this, and the check that cannot see it
+
+The panel was 404px wide inside a 374px parent on a 390px phone, and its button ran off the right edge.
+**It was not only mine: every `.fm-panel` is `content-box` with 14px of padding, so every panel on
+every page overflows by ~30px on a phone.**
+
+`html { overflow-x: hidden }` clips it, so `document.documentElement.scrollWidth > window.innerWidth`
+returns **false** — the standard mobile smoke test reports a clean page while a control is genuinely
+unreachable. The school panel sets `box-sizing: border-box` on itself because a button you cannot tap
+is not cosmetic; **the rest are still broken** and are filed as **S8.3a** with a note that the
+`scrollWidth` check must be replaced by one that measures a known control against the viewport.
+
+**The cascade lesson, for the second time.** `@import` hoists imported sheets to the top of
+`dashboard.css`, so its own ~2,600 rules land *after* `overrides.css` and win on source order. A mobile
+`grid-template-columns` in `overrides.css` silently lost to
+`.fm-medical-stat-grid { repeat(auto-fit, …) }` and needed `!important` — the same remedy the
+responsive utilities already use. **Overrides is not last. Nothing is, except `!important`.**
+
+Also fixed en route: `formatBudget` was used in the panel but never added to the feature's dependency
+list, so the academy page threw a `ReferenceError` and the router rendered a generic "API Error" card.
+Worth noting as a pattern — a missing dep in a `create*Feature(deps)` call fails as an opaque API error
+rather than anything pointing at the real cause.
+
+**608 tests, unchanged** — this was presentation. Verified in Chrome at 1280×900 and 390×844: no
+desktop change, panel fits on mobile, two price columns, button fully tappable.

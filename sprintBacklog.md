@@ -1441,7 +1441,7 @@ manager is a human or not.
 | 4 | Open **only** in week 1, close **only** in week 12 | ✅ the guard is the feature, and the refusal names the week it wants |
 | 5 | **Intake runs only for human clubs with an active school** | ✅ the single biggest behavioural change in the sprint |
 | 6 | Deactivation auto-promotes every junior **and lists each one** | ✅ — and it needed its own path, see below |
-| 7 | UI: a toggle with the week window and the price shown | ❌ **API only** — `JuniorSchoolServiceTest` and `JuniorSchoolRulesTest` cover it, no page yet |
+| 7 | UI: a toggle with the week window and the price shown | ✅ panel on the academy page, verified at 1280×900 and 390×844 |
 | 8 | A club whose school is off has no intake, so it needs the market or scouting | ✅ by construction |
 
 **Pricing:** one-off `5,000 + reputation × 900`, weekly `1,200 + reputation × 120`, both rounded to two
@@ -1452,6 +1452,23 @@ figures cannot tell a manager opposite stories about what running a school costs
 
 **Scout wages are still not charged here** — a scout is a `StaffMember` and his wage is already on
 `STAFF_WAGES` from Sprint 2.2. A second charge would bill the same man twice.
+
+#### The mobile bug underneath it, which is not only ours — see S8.3a
+
+Building the panel surfaced a **project-wide** overflow: every `.fm-panel` is `box-sizing:
+content-box` with 14px of padding, so on a 390px phone each panel's total box is ~404px inside a
+374px parent. The action button runs off the right edge, and `html { overflow-x: hidden }` makes it
+**unreachable rather than obviously broken** — `scrollWidth > innerWidth` reports `false`, so the
+usual check says the page is fine while a control is sitting off-screen.
+
+The school panel sets `box-sizing: border-box` on itself, because a button you cannot tap is not a
+cosmetic issue. **The other panels still overflow.** Filed as **S8.3a**.
+
+A second cascade lesson, the same one that caught the top bar: **`@import` hoists the imported sheets
+to the top of `dashboard.css`, so its own ~2,600 rules come *after* `overrides.css` and win on source
+order.** A mobile `grid-template-columns` in `overrides.css` lost to
+`.fm-medical-stat-grid { repeat(auto-fit, …) }` for exactly that reason and needed `!important`,
+which is the same remedy the responsive utilities already use.
 
 #### The bug that would have made the feature inert: a school could not graduate anyone
 
@@ -1562,8 +1579,8 @@ prospects to put it on. Both screens are API-only.
 3. **S5.3 items 1 + 5** — position at intake, and academy quality from `youthLevel` + `YOUTH_COACH`.
    Now more valuable than when first written: a purchased academy whose intake has no positions is a
    worse purchase than a free one.
-4. **UI for both** — the scouting network and the junior school are API-only, so neither the
-   subscription nor the week windows are visible to a manager.
+4. ~~**UI for the junior school**~~ ✅ done — panel on the academy page, window stated in words, close
+   confirmed by name and count. **The scouting network is still API-only.**
 5. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
 6. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
 
@@ -1824,6 +1841,29 @@ same viewer as your own match.
 | 8 | Add `/images/default-stadium.png` or remove the reference | `fixture-view.js:34` |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
 | 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | `academy.js:186-193` |
+
+---
+
+### S8.3a — Every panel overflows the phone viewport ❌ FOUND 2026-09-27, not fixed
+
+Found while building the junior-school panel (S5.3a) and **not** caused by it.
+
+`.fm-panel` is `box-sizing: content-box` with 14px horizontal padding. Its parent `.fm-page` is
+374px wide on a 390px phone, so each panel's total box is **404px** — 30px wider than its parent. The
+last 30px of every panel, including its action buttons, sits outside the viewport.
+
+**Why it survived this long:** `html, body { overflow-x: hidden }` at ≤768px clips the overflow, so the
+usual smoke test (`document.documentElement.scrollWidth > window.innerWidth`) reports **false** while
+a control is genuinely unreachable. Every panel on every page of the SPA has this.
+
+| # | Task |
+|---|---|
+| 1 | `box-sizing: border-box` on `.fm-panel` — verify every page at 390px afterwards, since it changes panel content width by 28px everywhere |
+| 2 | Audit the other content-box containers with padding (`.fm-page`, table wrappers) the same way |
+| 3 | Replace the `scrollWidth` smoke test with one that measures a known control's right edge against the viewport, since the current one cannot see this class of bug |
+
+**Do this before the next mobile-facing feature.** It is a two-line fix with a wide blast radius, which
+is exactly the combination that wants a deliberate pass rather than an opportunistic one.
 
 ---
 
