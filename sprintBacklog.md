@@ -965,6 +965,46 @@ second copy of the settlement next to `NegotiationService`'s. Both are gone.
 
 ---
 
+## Owner decisions — 2026-09-27
+
+Recorded here so they cannot drift. These are rulings, not proposals.
+
+### Match balance is left as-is
+
+The 100-match batch gives **4.88 goals per match** (real football ~2.7), 40 shots at 27% on target, 85%
+pass accuracy, 48/52 possession, corners ~14. The owner was asked whether to retune the newLogic sim
+and decided **no**. Goals stay high; that is a deliberate choice, not an oversight, and the number
+above is the reference for anyone who asks about it later.
+
+Corners rising from ~6 to ~14 is a *consequence* of S4.6 and is an improvement — real football averages
+around ten, so the old six was too low.
+
+### Sprint 6: prove it is dead, then delete
+
+The instruction is not "delete these packages" but **"carefully check whether they are called from any
+active code, then delete everything that is dead"**. So the method is: reference analysis first, a
+concrete call graph second, and deletion only for what is provably unreachable. Nothing irreversible on
+the strength of a filename or a comment claiming something is legacy.
+
+### Mentoring is fully automatic
+
+No manager choice, no UI. The effect is **reported on the training screen** so the manager can see it
+happened. Reasoning: a feature most clubs would never configure reads as broken, and 300 AI clubs get
+it for free.
+
+### Talent and training percentages: the full access rule
+
+- Talent and training percentages are **PLUS-gated**.
+- Visible for **your own first team** and **your own academy juniors** — nothing else.
+- **Access ends once the player signs for someone else.** A former player's numbers stop being yours.
+- **When you sell a player you can choose to reveal his talent.** That is the deliberate moment to show
+  it, and it is the seller's choice, not an automatic disclosure.
+- `OWNER` / `DEV` / `ADMIN` bypass the subscription check but **not** the own-team rule. Non-PLUS users
+  never see talent or training percentages.
+
+The first-team half of this is implemented in `PlusFeatureService`. The academy half and the
+sell-time reveal are **not** built yet and are tracked in Sprint 6's follow-ups.
+
 ### S4.1 — Individual training focus (the headline feature) — 🟡 backend done 2026-09-27
 
 | # | Task | State |
