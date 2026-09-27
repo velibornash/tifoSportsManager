@@ -19,7 +19,6 @@
 
     --af-primary: #8b5e3c;
     --af-primary-light: #c49a6c;
-    --af-primary-dark: #5c3a1e;
     --af-accent: #d4a574;
     --af-highlight: rgba(196, 154, 108, 0.09);
     --af-away: #d4523e;
@@ -63,63 +62,7 @@
 .pos-K  { color: #e8c840; }
 .pos-P  { color: #8b6ea8; }
 
-/* ─── SKILL COLOURS ────────────────────────────────────────── */
-
-.skill-bar-af .skill-bar-fill.rating-stamina   { background: linear-gradient(90deg, #c49a6c, #8b5e3c); }
-.skill-bar-af .skill-bar-fill.rating-strength  { background: linear-gradient(90deg, #d4523e, #b84535); }
-.skill-bar-af .skill-bar-fill.rating-pace      { background: linear-gradient(90deg, #4a7ba8, #3a6390); }
-.skill-bar-af .skill-bar-fill.rating-playmaking { background: linear-gradient(90deg, #e8c840, #d4b430); }
-.skill-bar-af .skill-bar-fill.rating-passing    { background: linear-gradient(90deg, #8b6ea8, #735890); }
-.skill-bar-af .skill-bar-fill.rating-running    { background: linear-gradient(90deg, #d4875e, #b8704a); }
-.skill-bar-af .skill-bar-fill.rating-tackling   { background: linear-gradient(90deg, #4a9e8a, #3a8570); }
-.skill-bar-af .skill-bar-fill.rating-shooting   { background: linear-gradient(90deg, #d4523e, #b84535); }
-
-.stat-highlight { color: var(--af-primary-light); }
-
-.pct-display { font-weight: 700; }
-.pct-display.good { color: #6fcf97; }
-.pct-display.average { color: #f2c94c; }
-.pct-display.poor { color: #eb5757; }
-
 /* ─── CLUB OVERVIEW ────────────────────────────────────────── */
-
-.af-team-header {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-    padding-bottom: 16px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--cm-accent-line);
-}
-
-.af-eyebrow {
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--af-primary-light);
-    margin-bottom: 6px;
-}
-
-.stadium-card {
-    padding: 16px;
-    margin: 12px 0;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--cm-border);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.stadium-card h4 {
-    color: var(--af-primary-light);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-}
-
-.stadium-name { font-size: 1.1rem; font-weight: 700; }
 
 .next-match-card {
     padding: 16px;
@@ -165,14 +108,6 @@
 }
 
 .afl-player-meta h2 { font-size: 1.6rem; margin-bottom: 4px; }
-
-.afl-player-meta .pos-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--af-primary-light);
-}
 
 .stat-grid-af {
     display: grid;
@@ -231,12 +166,6 @@
 }
 
 .afl-stats-table tr:hover td { background: var(--af-highlight); }
-
-.afl-stats-table tr.total-row td {
-    background: var(--af-highlight);
-    font-weight: 800;
-    border-top: 2px solid var(--cm-accent-line);
-}
 
 .afl-stats-table .highlight-row td { background: var(--af-highlight); }
 .afl-stats-table .pos-num { color: var(--af-primary-light); font-weight: 800; }
@@ -360,10 +289,13 @@
 .side-stats-home .stats-table td,
 .side-stats-away .stats-table td { font-size: 0.65rem; padding: 4px 2px; }
 
-/* ─── ACTIONS ──────────────────────────────────────────────── */
+/* ─── ACTIONS ──────────────────────────────────────────────────
+   These live in `.fm-panel` panels, not inside a `.team-card`, so a single
+   class is enough to out-rank the shared layer's card-button gradient. */
 
 .play-btn,
-.play-all-btn {
+.play-all-btn,
+.reset-btn {
     display: inline-block;
     border-radius: 10px;
     font-family: Arial, Helvetica, sans-serif;
@@ -373,16 +305,6 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-
-.play-btn {
-    padding: 4px 14px;
-    font-size: 0.7rem;
-    background: rgba(196, 154, 108, 0.15);
-    color: #c49a6c;
-    border: 1px solid rgba(196, 154, 108, 0.35);
-}
-
-.play-btn:hover { background: rgba(196, 154, 108, 0.25); }
 
 .play-all-btn {
     padding: 10px 20px;
@@ -397,20 +319,24 @@
     transform: scale(1.02);
 }
 
+/* The small chip on a fixture row — a span, never a button. */
+.play-btn {
+    padding: 4px 14px;
+    font-size: 0.7rem;
+    background: rgba(196, 154, 108, 0.15);
+    color: #c49a6c;
+    border: 1px solid rgba(196, 154, 108, 0.35);
+}
+
+.play-btn:hover { background: rgba(196, 154, 108, 0.25); }
+
+/* Resetting a season is not a normal action, so it must not wear the accent. */
 .reset-btn {
-    display: inline-block;
     padding: 8px 16px;
-    border-radius: 10px;
-    font-family: Arial, Helvetica, sans-serif;
     font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     background: rgba(235, 87, 87, 0.1);
     color: #eb5757;
     border: 1px solid rgba(235, 87, 87, 0.3);
-    cursor: pointer;
-    transition: all 0.2s;
 }
 
 .reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
@@ -419,8 +345,6 @@
 
 .schedule-round { border-left: 3px solid transparent; padding-left: 12px; }
 .schedule-round.current-round { border-left-color: var(--af-primary-light); }
-
-.schedule-match-row { display: flex; align-items: center; gap: 12px; }
 
 .locked-row { opacity: 0.5; cursor: default !important; }
 .locked-row:hover { background: none !important; }
@@ -436,5 +360,4 @@
     .afl-stats-table { font-size: 0.7rem; }
     .qtr-scores { gap: 6px; }
     .qtr-score { min-width: 44px; padding: 4px 8px; }
-    .schedule-match-row { flex-wrap: wrap; gap: 8px; }
 }

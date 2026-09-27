@@ -17,7 +17,6 @@
 
     --bball-primary: #e87d2f;
     --bball-primary-light: #f5a623;
-    --bball-primary-dark: #c0641a;
     --bball-accent: #ff6b35;
     --bball-highlight: rgba(245, 166, 35, 0.09);
     --bball-away: #64b5f6;
@@ -47,24 +46,6 @@
 .pos-PF { color: #c0641a; }
 .pos-C  { color: #d4a574; }
 
-/* ─── SKILL COLOURS ────────────────────────────────────────── */
-
-.skill-bar-bball .skill-bar-fill.rating-pace    { background: #f5a623; }
-.skill-bar-bball .skill-bar-fill.rating-steals  { background: #2ecc71; }
-.skill-bar-bball .skill-bar-fill.rating-blocks  { background: #e74c3c; }
-.skill-bar-bball .skill-bar-fill.rating-ft      { background: #3498db; }
-.skill-bar-bball .skill-bar-fill.rating-2pt     { background: #9b59b6; }
-.skill-bar-bball .skill-bar-fill.rating-3pt     { background: #e67e22; }
-.skill-bar-bball .skill-bar-fill.rating-reb     { background: #1abc9c; }
-.skill-bar-bball .skill-bar-fill.rating-play    { background: #f39c12; }
-
-.stat-highlight { color: var(--bball-primary-light); }
-
-.pct-display { font-weight: 700; }
-.pct-display.good { color: #6fcf97; }
-.pct-display.average { color: #f2c94c; }
-.pct-display.poor { color: #eb5757; }
-
 /* ─── CLUB OVERVIEW ────────────────────────────────────────── */
 
 .bball-team-header {
@@ -86,8 +67,7 @@
     margin-bottom: 6px;
 }
 
-.hall-card,
-.stadium-card {
+.hall-card {
     padding: 16px;
     margin: 12px 0;
     border-radius: 14px;
@@ -96,8 +76,7 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.hall-card h4,
-.stadium-card h4 {
+.hall-card h4 {
     color: var(--bball-primary-light);
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -105,8 +84,7 @@
     margin-bottom: 8px;
 }
 
-.hall-name,
-.stadium-name { font-size: 1.1rem; font-weight: 700; }
+.hall-name { font-size: 1.1rem; font-weight: 700; }
 
 /* The next fixture, as a card you can click to play. */
 .next-match-card {
@@ -152,14 +130,6 @@
 }
 
 .bball-player-meta h2 { font-size: 1.6rem; margin-bottom: 4px; }
-
-.bball-player-meta .pos-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--bball-primary-light);
-}
 
 .bball-player-meta .phys-stats { font-size: 0.82rem; color: #b9c7da; margin-top: 4px; }
 
@@ -313,10 +283,15 @@
 .side-stats-home .stats-table td,
 .side-stats-away .stats-table td { font-size: 0.65rem; padding: 4px 2px; }
 
-/* ─── ACTIONS ──────────────────────────────────────────────── */
+/* ─── ACTIONS ──────────────────────────────────────────────────
+   The `.team-card` variants below are not duplication. The shared layer
+   paints every button inside a card with a gradient at (0,1,1), which a
+   single-class rule cannot out-rank; without these the dashboard's
+   buttons would render in another sport's colours. */
 
 .play-btn,
-.play-all-btn {
+.play-all-btn,
+.reset-btn {
     display: inline-block;
     border-radius: 10px;
     font-family: Arial, Helvetica, sans-serif;
@@ -327,6 +302,22 @@
     transition: all 0.2s;
 }
 
+.play-all-btn,
+.team-card .play-all-btn {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    background: linear-gradient(135deg, rgba(232, 125, 47, 0.3), rgba(245, 166, 35, 0.2));
+    color: #f5a623;
+    border: 1px solid rgba(232, 125, 47, 0.4);
+}
+
+.play-all-btn:hover,
+.team-card .play-all-btn:hover {
+    background: linear-gradient(135deg, rgba(232, 125, 47, 0.45), rgba(245, 166, 35, 0.3));
+    transform: scale(1.02);
+}
+
+/* The small chip on a fixture row — a span, never a button. */
 .play-btn {
     padding: 4px 14px;
     font-size: 0.7rem;
@@ -337,36 +328,18 @@
 
 .play-btn:hover { background: rgba(245, 166, 35, 0.25); }
 
-.play-all-btn {
-    padding: 10px 20px;
-    font-size: 0.85rem;
-    background: linear-gradient(135deg, rgba(232, 125, 47, 0.3), rgba(245, 166, 35, 0.2));
-    color: #f5a623;
-    border: 1px solid rgba(232, 125, 47, 0.4);
-}
-
-.play-all-btn:hover {
-    background: linear-gradient(135deg, rgba(232, 125, 47, 0.45), rgba(245, 166, 35, 0.3));
-    transform: scale(1.02);
-}
-
-.reset-btn {
-    display: inline-block;
+/* Resetting a season is not a normal action, so it must not wear the accent. */
+.reset-btn,
+.team-card .reset-btn {
     padding: 8px 16px;
-    border-radius: 10px;
-    font-family: Arial, Helvetica, sans-serif;
     font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     background: rgba(235, 87, 87, 0.1);
     color: #eb5757;
     border: 1px solid rgba(235, 87, 87, 0.3);
-    cursor: pointer;
-    transition: all 0.2s;
 }
 
-.reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
+.reset-btn:hover,
+.team-card .reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
 
 /* ─── SCHEDULE ─────────────────────────────────────────────── */
 

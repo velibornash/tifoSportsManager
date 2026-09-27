@@ -77,11 +77,7 @@ a:hover { text-decoration: underline; }
 
 .top-menu { border-bottom-color: var(--cm-accent-line); }
 
-.menu-button:hover,
-.top-menu button:hover {
-    background: var(--cm-accent-soft);
-    border-color: var(--cm-accent-line);
-}
+.menu-button:hover { background: var(--cm-accent-soft); border-color: var(--cm-accent-line); }
 
 .sidebar,
 #mobileSidebar { border-right-color: var(--cm-accent-line); }
@@ -90,8 +86,7 @@ a:hover { text-decoration: underline; }
 .accordion-content div:hover,
 .accordion-header:hover { background: var(--cm-accent-soft) !important; }
 
-.live-clock,
-#live-clock-mobile { border-color: var(--cm-accent-line); }
+.live-clock { border-color: var(--cm-accent-line); }
 
 .corner-logo,
 .mobile-logo-wrapper .corner-logo { border-color: var(--cm-accent-line); }
@@ -100,6 +95,18 @@ a:hover { text-decoration: underline; }
 
 #loading-popup > div { border-color: var(--cm-accent-line); }
 
+/* Football paints every button inside a card with its blue→green gradient. That
+   selector is (0,1,1), so it out-ranks a sport's own single-class button rule —
+   which is how the basketball and American football dashboards ended up with
+   green "Play All Round" buttons in an orange game. Re-tint it here; the sport
+   files then only have to out-rank this one. */
+.team-card button {
+    background: linear-gradient(135deg, var(--cm-accent-deep), var(--cm-accent-bright));
+    border-color: var(--cm-accent-line);
+    border-radius: 12px;
+    color: #f7fbff;
+}
+
 /* ─── TABLES AND ROWS ──────────────────────────────────────── */
 
 .league-table th {
@@ -107,8 +114,7 @@ a:hover { text-decoration: underline; }
     color: #fff;
 }
 
-.league-table tr:hover,
-.clickable-team-row:hover { background: var(--cm-accent-faint) !important; }
+.league-table tr:hover { background: var(--cm-accent-faint) !important; }
 
 .league-table .team-cell {
     display: flex;
@@ -116,14 +122,6 @@ a:hover { text-decoration: underline; }
     gap: 8px;
     font-weight: 600;
     text-align: left;
-}
-
-.league-table .team-cell .team-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
 }
 
 .league-table .pos-num { color: var(--cm-accent); font-weight: 900; width: 24px; }
@@ -171,11 +169,6 @@ a:hover { text-decoration: underline; }
 .player-table .player-name-cell:hover { color: var(--cm-accent); }
 
 .player-table .highlight-row td { background: var(--cm-accent-faint); }
-.player-table .total-row td {
-    background: var(--cm-accent-soft);
-    font-weight: 800;
-    border-top: 2px solid var(--cm-accent-line);
-}
 
 /* The box-score table in the live match viewer. */
 .stats-table th { font-size: 0.6rem; padding: 6px 4px; }
@@ -254,15 +247,6 @@ a:hover { text-decoration: underline; }
 .back-button:hover,
 .back-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--cm-text); }
 
-.card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 14px;
-    margin: 16px 0;
-}
-
-.stat-icon { color: var(--cm-accent); }
-
 /* ─── FORM ELEMENTS ────────────────────────────────────────── */
 
 select,
@@ -325,17 +309,6 @@ select option { background: #1a2235; color: var(--cm-text); }
     letter-spacing: 1px;
 }
 
-/* The dim match photo behind the live match viewer. */
-.court-bg {
-    position: absolute;
-    inset: 0;
-    background-size: cover;
-    background-position: center;
-    opacity: 0.15;
-    pointer-events: none;
-    z-index: 0;
-}
-
 /* ─── MOBILE ───────────────────────────────────────────────── */
 
 .mobile-overlay {
@@ -350,12 +323,7 @@ select option { background: #1a2235; color: var(--cm-text); }
 
 @media (max-width: 768px) {
     .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .league-table { font-size: 0.72rem; }
     .league-table th, .league-table td { padding: 6px 4px; }
     .match-teams { flex-wrap: wrap; justify-content: center; }
-}
-
-@media (max-width: 400px) {
-    .card-grid { grid-template-columns: 1fr; }
 }
