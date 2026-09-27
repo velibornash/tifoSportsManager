@@ -53,6 +53,7 @@ public class TeamController {
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final LeagueMilestoneService leagueMilestoneService;
+    private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
     private final TeamMedicalService teamMedicalService;
@@ -69,7 +70,8 @@ public class TeamController {
                           ScheduleInsightService scheduleInsightService,
                           SeasonService seasonService,
                           TeamMedicalService teamMedicalService,
-                          TeamTacticsService teamTacticsService) {
+                          TeamTacticsService teamTacticsService,
+                          org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -82,6 +84,7 @@ public class TeamController {
         this.seasonService = seasonService;
         this.teamMedicalService = teamMedicalService;
         this.teamTacticsService = teamTacticsService;
+        this.plusFeatures = plusFeatures;
     }
 
     @GetMapping
@@ -171,7 +174,8 @@ public class TeamController {
     }
 
     @GetMapping("/{teamId}/players")
-    public ResponseEntity<List<PlayerDTO>> getPlayers(@PathVariable Long teamId) {
+    public ResponseEntity<List<PlayerDTO>> getPlayers(@PathVariable Long teamId,
+                                                     @AuthenticationPrincipal User user) {
         List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
         Map<Long, List<MatchPlayerStats>> statsByPlayerId = teamPlayers.isEmpty()
                 ? Map.of()
@@ -182,22 +186,31 @@ public class TeamController {
 
         List<PlayerDTO> players = teamPlayers
                 .stream()
-                .map(player -> toPlayerDto(player, statsByPlayerId.get(player.getId())))
+                .map(player -> toPlayerDto(player, statsByPlayerId.get(player.getId()), user))
                 .toList();
         return ResponseEntity.ok(players);
     }
 
     // Detalji jednog igrača
     @GetMapping("/{teamId}/players/{playerId}")
-    public ResponseEntity<PlayerDTO> getPlayer(@PathVariable Long teamId, @PathVariable Long playerId) {
+    public ResponseEntity<PlayerDTO> getPlayer(@PathVariable Long teamId, @PathVariable Long playerId,
+                                              @AuthenticationPrincipal User user) {
         return playerRepository.findById(playerId)
                 .filter(p -> p.getTeam().getId().equals(teamId))
-                .map(player -> toPlayerDto(player, matchPlayerStatsRepository.findByPlayerId(player.getId())))
+                .map(player -> toPlayerDto(player, matchPlayerStatsRepository.findByPlayerId(player.getId()), user))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    private PlayerDTO toPlayerDto(Player player, List<MatchPlayerStats> stats) {
+    /**
+     * Builds a player DTO for a specific viewer.
+     *
+     * <p>The talent is resolved by {@code PlusFeatureService} and passed in, rather than decided here:
+     * the DTO has no idea who is looking, and every controller that re-derived the entitlement rule
+     * is how four of the service's methods ended up with zero callers.
+     */
+    private PlayerDTO toPlayerDto(Player player, List<MatchPlayerStats> stats, User viewer) {
+        Long viewerTeamId = plusFeatures.viewerTeamId(viewer);
         List<MatchPlayerStats> safeStats = stats == null ? List.of() : stats;
         double averageRating10 = safeStats.stream()
                 .mapToInt(MatchPlayerStats::getRating)
@@ -206,8 +219,10 @@ public class TeamController {
         Double roundedAverageRating10 = safeStats.isEmpty()
                 ? null
                 : Math.round(averageRating10 * 10.0) / 10.0;
-        return PlayerDTO.from(player, safeStats.size(), roundedAverageRating10);
+        return PlayerDTO.from(player, safeStats.size(), roundedAverageRating10,
+                plusFeatures.talentOrNull(player, viewer, viewerTeamId));
     }
+
 
     @GetMapping("/{teamId}/matches")
     public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId,

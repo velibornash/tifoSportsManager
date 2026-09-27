@@ -1116,8 +1116,14 @@ it for free.
 - `OWNER` / `DEV` / `ADMIN` bypass the subscription check but **not** the own-team rule. Non-PLUS users
   never see talent or training percentages.
 
-The first-team half of this is implemented in `PlusFeatureService`. The academy half and the
-sell-time reveal are **not** built yet and are tracked in Sprint 6's follow-ups.
+Both halves are now live. **First team** (2026-09-28): `PlayerDTO.talent` carries the **exact** figure,
+own-squad only, PLUS-gated — not a band, because the academy already reveals the real number on
+promotion and carries it across, so a manager who owns the player simply knows him. The band's job was
+to say how sure you were *before* you committed; in your own squad it is no longer needed. **Academy:**
+a narrowing band, with the exact figure revealed on promotion under the same rule.
+
+The remaining hole is the reverse direction: a **rival's** talent is hidden, which is correct, and
+there is nothing yet that ever *tells* a manager that a rival has one. That is Sprint 6 territory.
 
 ### S4.1 — Individual training focus (the headline feature) — 🟡 backend done 2026-09-27
 
@@ -1423,20 +1429,30 @@ A club with a strong youth coach does not produce better prospects — it **know
 | 3 | Reports arrive progressively: initial impression → after a season → full assessment | ❌ — the spec above supersedes the three-tier wording; the range *is* the progression |
 | 4 | The single biggest *feel* upgrade available in the academy | — |
 
-#### 🚨 Found while scoping this: `PlusFeatureService` is not wired to anything
+#### ✅ `PlusFeatureService` was not wired to anything — FIXED 2026-09-28
 
-All five of its public methods — `talentOrNull`, `trainingPercentOrNull`, `canSee`,
-`isOwnPlayer`, `isOwnTeam` — have **zero callers** in the live path. The owner's rule that talent and
-training percentages are PLUS-gated and own-team-only is implemented, documented and unit-tested as a
-service, and then **never applied to a single DTO the UI reads.**
+**This was true when it was written and is now wrong. Kept because the shape of the bug is the
+lesson.** All five public methods had zero callers in the live path: the owner's rule that talent and
+training percentages are PLUS-gated and own-team-only was implemented, documented and unit-tested as a
+service, and then never applied to a single DTO the UI read.
 
-This is the same failure shape as the goalkeeping coach whose wage left the account and whose
-teaching did nothing, and it is why item 2 above is a *leak* rather than a missing feature:
-`JuniorAcademyItemDTO.talent` is the one place true talent reaches the frontend, and it is populated
-for everyone regardless of subscription.
+The reason is worth remembering, because it was not carelessness. **`TrainingController` was already
+applying the rule correctly** — it just did so by open-coding `hasPlus && isOwnTeam` instead of asking
+the service. The behaviour was right, so nothing looked broken, and the service sat there unused. A
+second copy of a rule is indistinguishable from the rule until you count the copies.
 
-**S5.2 therefore has to wire the gate as well as build the range.** They are not separable: a range
-that non-PLUS users can see is a range that reveals the ceiling.
+Two more gaps surfaced once the gate was actually consulted:
+
+| Gap | What it was | Fix |
+|---|---|---|
+| First-team talent not on the wire at all | `PlayerDTO` had **no** talent field, so own-squad talent was not a leak — it simply did not exist for anyone, PLUS or not | `PlayerDTO.talent`, populated by `talentOrNull` at the controller. The missing positive case |
+| `hasPlusSubscription` dead | Duplicated `hasPlus` minus the role bypass. The profile read the column directly, so the method was never needed | Moved to `User.isPlusSubscriber()`, where the field lives, so the auth module does not depend on the football engine to ask a question about its own user |
+
+**Enforcement, so this cannot recur silently:** `PlusGateHasCallersTest` fails the build if any public
+method on the gate has no call site anywhere under `src/main/java`. It had to be written twice to be
+correct — the first version counted a method's own Javadoc `{@link}` and its own signature as callers,
+and cheerfully reported live methods as dead. It now strips comments and excludes the declaration
+itself. A guard that certifies dead code is worse than no guard, because it is read as permission.
 
 ---
 

@@ -72,16 +72,6 @@ public class PlusFeatureService {
         return ALWAYS_ALLOWED.contains(user.getRole()) || user.getRole() == UserRole.PLUS;
     }
 
-    /**
-     * Whether this account has actually paid for PLUS.
-     *
-     * <p>What the profile shows. Unlike {@link #hasPlus} this does <b>not</b> grant the role bypass,
-     * because the question "did this person pay" has a different answer from "may this account see
-     * talent", and conflating them would show an owner as a paying customer.
-     */
-    public boolean hasPlusSubscription(User user) {
-        return user != null && Boolean.TRUE.equals(user.getPlusSubscription());
-    }
 
     /**
      * Whether this user may see a <b>junior's</b> reported talent.
@@ -147,6 +137,29 @@ public class PlusFeatureService {
      * <p>Fails closed: an unknown user, a user with no club, or a name that matches nothing is not
      * their team.
      */
+    /**
+     * The club this user actually runs, resolved the way {@code /auth/me} resolves it — by name —
+     * so that the answer here cannot disagree with the club the dashboard is showing.
+     *
+     * <p>Exists as a method because three call sites each grew their own private copy of this lookup,
+     * which is how the entitlement rule ended up implemented in several places at once. Fails closed:
+     * an unknown user, or one with no club, gets null, and every gate treats null as "not mine".
+     */
+    public Long viewerTeamId(User user) {
+        if (user == null) {
+            return null;
+        }
+        if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
+            return user.getTifoCTeam().getId();
+        }
+        String name = clubNameOf(user);
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        Team team = teams.findByName(name).orElse(null);
+        return team == null ? null : team.getId();
+    }
+
     public boolean isOwnTeam(User user, Long teamId) {
         if (user == null || teamId == null) {
             return false;
@@ -173,7 +186,25 @@ public class PlusFeatureService {
      * making an invisible 10-year-old look like a hopeless one.
      */
     public Double talentOrNull(Player player, User user, Long viewerTeamId) {
-        return canSee(player, user, viewerTeamId) ? player.getTalent() : null;
+        return canSee(player, user, viewerTeamId) ? round2(player.getTalent()) : null;
+    }
+
+    /**
+     * Rounds a talent to two decimals, or leaves it null if there is nothing to show.
+     *
+     * <p>Senior talent is <i>derived</i> — {@code (20 - (discipline + form)) / 2} over double-valued
+     * attributes — so the raw column holds values like {@code 7.340364151890263}. That is not a
+     * figure anyone can read, and calling it an "exact talent" while showing sixteen digits
+     * contradicts the point. Two decimals is a rounding of the same value, not a band: a manager still
+     * knows precisely how good the player is, and the number shown equals the number stored.
+     *
+     * <p>Junior talent arrives as an exact integer and passes through unchanged.
+     */
+    private Double round2(Double value) {
+        if (value == null) {
+            return null;
+        }
+        return Math.round(value * 100.0) / 100.0;
     }
 
     /** The training percentage, or null when the viewer may not see it. */

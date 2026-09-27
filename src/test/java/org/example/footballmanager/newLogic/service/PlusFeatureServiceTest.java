@@ -7,6 +7,8 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.mockito.Mockito.when;
+
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -136,4 +138,70 @@ class PlusFeatureServiceTest {
         assertFalse(service.hasPlus(new User()));
     }
 
+    // --- added 2026-09-28: first-team talent wiring ----------------------------------------------------
+    //
+    // Sprint 5.3 carried the academy rules and the gate itself. What it left out was the positive
+    // case: PlayerDTO had no talent field, so a manager's own first-team talent was not on the wire
+    // for anyone. These cover the four things that wiring introduced, none of which the tests above
+    // could have caught because the code did not exist yet.
+
+    @Test
+    @DisplayName("talent reaches the wire as a readable figure, not sixteen digits of a double")
+    void talentIsRoundedButNotBanded() {
+        // Senior talent is derived as (20 - (discipline + form)) / 2 over double attributes, so the
+        // column really does hold 7.340364151890263. Calling that an "exact talent" and showing it in
+        // full would be self-contradictory; two decimals is a rounding of the same number, and the
+        // value still equals what is stored.
+        assertEquals(7.34, service.talentOrNull(playerAt(1L, 7.340364151890263), user(UserRole.PLUS), 1L), 0.001);
+
+        // The distinction that matters: rounding is not the same as the academy band. 7.34 is the
+        // player's talent, not an estimate of it, and it must not be widened into a range here.
+        Double shown = service.talentOrNull(playerAt(1L, 7.34), user(UserRole.PLUS), 1L);
+        assertEquals(7.34, shown, 0.001, "an exact figure stays exact");
+
+        // Junior talent arrives as an exact integer and must survive untouched.
+        assertEquals(9.0, service.talentOrNull(playerAt(1L, 9.0), user(UserRole.PLUS), 1L), 0.001);
+    }
+
+    @Test
+    @DisplayName("a real talent of zero survives the gate instead of being swallowed as null")
+    void zeroIsAValidTalent() {
+        // The gate returns null to mean "not yours to see". Zero is a real talent, and collapsing the
+        // two would make a hopeless player render as a hidden one instead of a bad one.
+        assertEquals(0.0, service.talentOrNull(playerAt(1L, 0.0), user(UserRole.PLUS), 1L), 0.001);
+        assertNull(service.talentOrNull(playerAt(1L, 0.0), user(UserRole.REGULAR), 1L),
+                "and the same player is still hidden from a non-subscriber");
+    }
+
+    @Test
+    @DisplayName("a player's club is resolved by name, the same way /auth/me does it")
+    void viewerTeamIdResolvesByName() {
+        org.example.footballmanager.newLogic.repository.TeamRepository teams =
+                org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class);
+        when(teams.findByName("Omladinac")).thenReturn(java.util.Optional.of(team(1L)));
+        when(teams.findByName("Sremac Berkasovo")).thenReturn(java.util.Optional.of(team(2L)));
+
+        PlusFeatureService byName = new PlusFeatureService(teams);
+        User manager = user(UserRole.PLUS);
+        org.example.footballtextmanager.model.CTeam club = new org.example.footballtextmanager.model.CTeam();
+        club.setName("Omladinac");
+        manager.setCTeam(club);
+
+        assertEquals(1L, byName.viewerTeamId(manager));
+        assertTrue(byName.isOwnTeam(manager, 1L));
+        assertFalse(byName.isOwnTeam(manager, 2L), "a rival club is not yours even though it exists");
+    }
+
+    @Test
+    @DisplayName("the role bypass unlocks the screen but is still not a purchase")
+    void roleBypassIsNotASubscription() {
+        // The two questions have different answers and are deliberately not the same method. An owner
+        // may see talent, but the profile must still report that he never paid: showing an owner as a
+        // paying customer because his role overrode the check would be wrong on the one screen whose
+        // entire job is to tell the truth about the account.
+        User owner = user(UserRole.OWNER);
+
+        assertTrue(service.hasPlus(owner), "an owner may see paid information");
+        assertFalse(owner.isPlusSubscriber(), "but he did not subscribe");
+    }
 }

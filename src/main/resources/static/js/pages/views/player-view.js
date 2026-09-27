@@ -6,6 +6,31 @@ import {
     fetchPlayerRatingSummary, buildEmptyState, delay
 } from './utils.js';
 
+/**
+ * The talent figure, when this viewer is entitled to see it.
+ *
+ * <p>Rendered only when the value is present. A null talent is not a missing value to be dashed in —
+ * it is the answer "you are not allowed to see this", and the backend decided that. Printing a dash
+ * would show non-PLUS managers a fourth stat that permanently reads "-" and looks broken; leaving the
+ * cell out entirely keeps the strip honest and hides nothing that was not already hidden server-side.
+ *
+ * <p>An exact figure rather than a band, deliberately: the academy reveals the real number on
+ * promotion and carries it here, so a manager who owns the player simply knows him.
+ */
+function renderTalentCell(player) {
+    if (player?.talent === null || player?.talent === undefined) {
+        return '';
+    }
+    const value = Number(player.talent);
+    if (!Number.isFinite(value)) {
+        return '';
+    }
+    // Two decimals, trailing zeros trimmed: 9.0 reads "9", 7.5 reads "7.5", 7.34 stays "7.34". The
+    // figure shown is the figure stored, which is the whole point of calling it exact.
+    const text = value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    return `<div><strong>${text}</strong><span>Talent</span></div>`;
+}
+
 export function createPlayerView(deps) {
     const { authFetch, getTeamId, goBackSmart } = deps;
 
@@ -349,6 +374,7 @@ export function createPlayerView(deps) {
                                 <div><strong>${player.age ?? '-'}</strong><span>Age</span></div>
                                 <div><strong>${player.overall ?? '-'}</strong><span>OVR</span></div>
                                 <div><strong>${ratingSummary.matchesPlayed ?? 0}</strong><span>Apps</span></div>
+                                ${renderTalentCell(player)}
                             </div>
                         </section>
                         ${renderPlaceholder('Matches', 'player-by-player match log can be wired later')}

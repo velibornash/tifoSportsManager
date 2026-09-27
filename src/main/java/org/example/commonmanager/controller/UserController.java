@@ -56,7 +56,7 @@ public class UserController {
         dto.setEmail(resolvedUser.getEmail());
         dto.setDisplayName(resolvedUser.getDisplayName() != null && !resolvedUser.getDisplayName().isBlank()
                 ? resolvedUser.getDisplayName() : resolvedUser.getUsername());
-        dto.setPlusSubscription(Boolean.TRUE.equals(resolvedUser.getPlusSubscription()));
+        dto.setPlusSubscription(resolvedUser.isPlusSubscriber());
         dto.setRole(resolvedUser.getRole().name());
 
         if (resolvedUser.getCTeam() != null) {

@@ -57,7 +57,8 @@ class YouthAcademyGraduationTest {
 
         service = new YouthAcademyService(
                 mock(TeamRepository.class), juniors, players,
-                mock(TransferService.class), numbers, mock(StaffMemberRepository.class));
+                mock(TransferService.class), numbers, mock(StaffMemberRepository.class),
+                new PlusFeatureService(mock(TeamRepository.class)));
         // The academy draws from a plain Random, so seed it deterministically and make the seed
         // reachable. Without this the distribution tests could only assert on averages.
         Field random = findField(YouthAcademyService.class, "random");

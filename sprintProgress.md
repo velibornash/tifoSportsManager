@@ -3244,3 +3244,98 @@ simply came back with no attributes. Found only by looking at the data after the
 **Tests: 28 new** — 14 `JuniorDevelopmentTest` (height taper, the gym's contribution, no overshoot, no
 oscillation, effort separating two identical prospects, personality distribution, two-footed rarity) and
 14 more across `TalentRangeTest` and the junior suites. **Full suite 644.**
+
+---
+
+## Sprint 5 — the PLUS gate, finally wired (2026-09-28)
+
+Owner decision recorded first, because it decides everything else: **on promotion a junior's exact
+talent is revealed and carried into the first team, so first-team talent is an exact figure, not a
+band.** Asked what a non-PLUS manager should see of his own first-team players, the answer settled the
+shape: the band exists to say how sure you were *before* you committed to a seventeen-year-old. Once
+he is promoted, the real number is already known, so showing a range for your own striker would be
+theatre. Uncertainty is about other clubs' players — which is also how scouting works in real football.
+
+This also answered a question raised during scoping without needing a ceremony: the reveal screen
+appears only when the manager presses Promote, so the **age ceiling** and **school closure** graduate
+juniors with no reveal moment. The owner chose to accept that (option a). The reveal is a *moment*,
+not a *lock* — and since the value is visible in your own squad regardless, a forced promotion cannot
+leak anything by skipping it.
+
+### What was actually wrong
+
+`PlayerDTO` had **no talent field**, so own-first-team talent was not a leak — it did not exist for
+anyone, PLUS or not. That is the missing positive case, and it is the opposite failure from the one
+the backlog had been warning about since S5.2.
+
+The rest was duplication rather than absence. `TrainingController` had been applying the training-
+percentage rule correctly all along by open-coding `hasPlus(user) && isOwnTeam(user, teamId)`, which
+is exactly why the service's method showed zero callers while the behaviour was right. Same shape as
+the goalkeeping coach whose wage left the account and whose teaching did nothing: **a second copy of a
+rule is indistinguishable from the rule until you count the copies.**
+
+| Method | Before | After |
+|---|---|---|
+| `talentOrNull` | dead | `TeamController.toPlayerDto`, own squad only |
+| `trainingPercentOrNull` | dead | `TrainingController.applyVisibility` round-trips through it instead of re-deriving |
+| `canSeeJunior` | dead | `YouthAcademyService.getAcademyState` resolves **per junior**, not once per request |
+| `viewerTeamId` | new | one name-based resolver, replacing three private copies |
+| `hasPlusSubscription` | dead, and a duplicate | **deleted**; moved to `User.isPlusSubscriber()` |
+
+`canSee` and `isOwnPlayer` were reported dead in the earlier audit and were **not** — `canSee` calls
+`isOwnPlayer`. The audit was wrong, which is the reason the guard test below needed to exist.
+
+### Two decisions inside the wiring
+
+**Per-junior, not per-request.** `canSeeJunior` re-checks the *junior's own* club rather than trusting
+the `teamId` in the URL. The two agree today; the per-junior form stays correct if a caller ever passes
+a team it does not own.
+
+**Rounded to two decimals, not banded.** Senior talent is derived as `(20 - (discipline + form)) / 2`
+over double attributes, so the column really holds `7.340364151890263`. Calling that an "exact talent"
+and printing sixteen digits is self-contradictory. Two decimals is a rounding of the same number, and
+the value shown still equals the value stored — `assertEquals(7.34, …)` is a rounding test, not a
+range test. Junior talent arrives as an exact integer and passes through untouched.
+
+### `PlusGateHasCallersTest`
+
+Fails the build if any public method on the gate has no call site anywhere under `src/main/java` — the
+owner's full-wiring rule turned into an executable check. A source scan rather than a spy, because a
+spy proves a method was called *during one test* and cannot prove it is reachable from the product at
+all. Scoped to the one class on purpose: a general "no unused public method" rule would fail on
+hundreds of framework methods, and a rule that cries wolf gets deleted.
+
+**It had to be written twice.** Version one counted a method's own Javadoc `{@link}` and its own
+signature as call sites, and reported `isOwnPlayer` dead while `canSee` was calling it, then passed a
+genuinely dead `hasPlusSubscription` because `public boolean hasPlusSubscription(User user) {` contains
+its own name followed by a bracket. It now strips comments and excludes the declaration. A test that
+certifies dead code is worse than no test, because it is taken as permission.
+
+### Verified against the running app, not just in tests
+
+| Viewer | Club | Result |
+|---|---|---|
+| Velja (PLUS) | own Omladinac | `7.34`, `9.0`, `10.0`, `7.54` |
+| Velja (PLUS) | rival club 2 | `null` — subscription is not a league pass |
+| Kecko (no sub) | any club | `null` |
+
+The view renders the cell **only** when the value is present. A null talent is not a missing value to
+be dashed in, it is the server's answer "not yours to see"; a permanent fourth stat reading `-` would
+read as broken rather than as withheld.
+
+### Two mistakes worth recording
+
+**A clobbered test file.** A new `PlusFeatureServiceTest` was written over an existing one, silently
+replacing its 9 tests. The tell was the full-suite total not moving: 644 before and after adding 9
+tests. Restored from `HEAD` and merged — the 4 genuinely new cases were appended to the original 9,
+which is now 13. The three dropped cases (free agent, role bypass not skipping ownership, null user)
+covered ground the new ones did not.
+
+**Two failing tests that were the test's fault, not the product's.** One expected a PLUS manager to see
+a player standing at the *rival* club — the same leak the next test forbids. The other stubbed
+`findByName(anyString())` to return Omladinac for *every* name, which made "fails closed" untestable:
+a lookup for a club that does not exist was quietly succeeding. Mock ordering also bit — Mockito
+applies the **last** matching stub, so the catch-all had to be declared before the specific case.
+
+**Tests: 5 new** — 4 in `PlusFeatureServiceTest` (rounding-not-banding, zero surviving the gate, name
+resolution, role bypass is not a purchase) and the gate guard. **Full suite 649.**

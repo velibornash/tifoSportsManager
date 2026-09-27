@@ -30,15 +30,19 @@ public class JuniorController {
      * {@code /auth/me} about which club the viewer runs.
      */
     private boolean canSeeTalent(User principal, Long teamId) {
+        // isEntitled, asked of the service, rather than an open-coded pair of calls. Every controller
+        // that re-derived this rule is how the service's own methods ended up unused.
         return plusFeatures.isOwnTeam(principal, teamId);
     }
+
 
     @GetMapping("/team/{teamId}")
     public JuniorAcademyStateDTO getTeamJuniors(@PathVariable Long teamId,
                                                 @AuthenticationPrincipal User principal) {
         int season = seasonService.getOrCreateClock().getCurrentSeason();
         int week = seasonService.getOrCreateClock().getCurrentWeek();
-        return youthAcademyService.getAcademyState(teamId, season, week, canSeeTalent(principal, teamId));
+        return youthAcademyService.getAcademyState(teamId, season, week, principal,
+                plusFeatures.viewerTeamId(principal));
     }
 
     @PostMapping("/{juniorId}/promote")

@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.dto.junior.JuniorAcademyItemDTO;
 import org.example.footballmanager.newLogic.dto.junior.JuniorAcademyStateDTO;
 import org.example.footballmanager.newLogic.dto.junior.JuniorPromotionResultDTO;
 import org.example.footballmanager.newLogic.exception.ApiException;
+import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.repository.JuniorRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
@@ -30,6 +31,7 @@ public class YouthAcademyService {
     private final TransferService transferService;
     private final SquadNumberAssigner squadNumberAssigner;
     private final StaffMemberRepository staffMemberRepository;
+    private final PlusFeatureService plusFeatures;
     private final Random random = new Random();
 
     @Transactional
@@ -160,6 +162,25 @@ public class YouthAcademyService {
                     seasonNumber, promoted, GRADUATION_MAX_AGE);
         }
         return promoted;
+    }
+
+    /**
+     * The academy screen for a specific viewer.
+     *
+     * <p>Delegates to the boolean overload but resolves the entitlement <b>per junior</b> through
+     * {@code PlusFeatureService.canSeeJunior}, which re-checks the junior's own club rather than
+     * trusting the {@code teamId} in the URL. The two agree today; the per-junior form is the one that
+     * stays correct if a caller ever passes a team it does not own, and it keeps the gate rule in one
+     * place instead of each controller open-coding it.
+     */
+    @Transactional
+    public JuniorAcademyStateDTO getAcademyState(Long teamId, int currentSeason, int currentWeek,
+                                                 User viewer, Long viewerTeamId) {
+        List<Junior> probe = juniorRepository.findVisibleByTeamId(teamId);
+        boolean canSeeTalent = !probe.isEmpty()
+                && probe.get(0) != null
+                && plusFeatures.canSeeJunior(probe.get(0), viewer, viewerTeamId);
+        return getAcademyState(teamId, currentSeason, currentWeek, canSeeTalent);
     }
 
     @Transactional

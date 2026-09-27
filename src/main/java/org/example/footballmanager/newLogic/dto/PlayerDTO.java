@@ -42,11 +42,33 @@ public class PlayerDTO {
     private int injuryDaysRemaining;
     private boolean injured;
 
+    /**
+     * The player's talent, 1-10 (Sprint 5.3, owner 2026-09-27).
+     *
+     * <p><b>Nullable is the whole mechanism.</b> Null means "this viewer may not see it" — not a talent
+     * of zero, which is a different and much worse thing to show. The value is decided by
+     * {@code PlusFeatureService.talentOrNull} at the controller and passed in; the DTO does not know
+     * who is looking and cannot get the rule wrong.
+     *
+     * <p>An <b>exact figure</b> rather than a band, which is the owner's decision and the reason it is
+     * coherent: the academy already reveals the exact value on promotion and carries it here, so a
+     * manager who owns the player simply knows him. The band's job was to say how sure you were
+     * <i>before</i> you committed. This is how scouting works — uncertainty is about other clubs.
+     */
+    private Double talent;
+
     public static PlayerDTO from(Player player) {
-        return from(player, 0, null);
+        return from(player, 0, null, null);
     }
 
     public static PlayerDTO from(Player player, int matchesPlayed, Double averageRating10) {
+        return from(player, matchesPlayed, averageRating10, null);
+    }
+
+    /**
+     * @param talent the exact talent if this viewer is entitled to it, otherwise <b>null</b>
+     */
+    public static PlayerDTO from(Player player, int matchesPlayed, Double averageRating10, Double talent) {
         PlayerDTO dto = new PlayerDTO();
         Position position = player.getPositionEnum() != null ? player.getPositionEnum() : Position.MID;
         dto.setId(player.getId());
@@ -54,6 +76,7 @@ public class PlayerDTO {
         dto.setAge(player.getAge());
         dto.setPosition(position.name());
         dto.setOverall(calculateOverall(player));
+        dto.setTalent(talent);
         dto.setRating(player.getRating());
         dto.setForm(player.getForm());
         dto.setFatigue(player.getSkills().getFatigue());

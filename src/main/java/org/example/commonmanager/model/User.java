@@ -55,6 +55,24 @@ public class User implements UserDetails {
     @Column(name = "plus_subscription")
     private Boolean plusSubscription;
 
+    /**
+     * Whether this account has actually <b>paid</b> for PLUS.
+     *
+     * <p>Deliberately not the same question as "may this account see talent", which is
+     * {@code PlusFeatureService.hasPlus} and additionally honours the role bypass. A role is a
+     * permission and a subscription is a purchase; showing an owner as a paying customer because his
+     * role overrode the check would be wrong on the one screen whose entire job is to report the
+     * account truthfully.
+     *
+     * <p>It lives here rather than in the gate service so the profile can ask it without the auth
+     * module depending on the football engine. It was previously a method on the service that nothing
+     * called, because the profile read the column directly — the duplication the
+     * {@code PlusGateHasCallersTest} guard exists to stop.
+     */
+    public boolean isPlusSubscriber() {
+        return Boolean.TRUE.equals(this.plusSubscription);
+    }
+
     @Enumerated(EnumType.STRING)
     private UserRole role;
 

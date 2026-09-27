@@ -292,12 +292,27 @@ public class TrainingController {
         return plusFeatures.hasPlus(user) && plusFeatures.isOwnTeam(user, teamId);
     }
 
+    /**
+     * Strips the training percentage from anyone not entitled to it.
+     *
+     * <p>Delegated to {@code PlusFeatureService.trainingPercentOrNull} rather than re-deriving the
+     * rule here. This controller used to hand-roll the same check the service already existed to
+     * perform, which is precisely why that method had zero callers while the behaviour was correct —
+     * the rule was applied twice in one place and nowhere else.
+     *
+     * <p>Nulled rather than refused: the rest of the report is still legitimate, and a 403 would take
+     * away a page the manager can legitimately open.
+     */
     private void applyVisibility(List<PlayerTrainingReportDTO> rows, User user, Long teamId) {
+        boolean entitled = isEntitled(user, teamId);
         for (PlayerTrainingReportDTO row : rows) {
             if (row == null) continue;
-            if (!isEntitled(user, teamId)) {
+            if (!entitled) {
                 row.setTrainingPercent(null);
+                continue;
             }
+            // Round-trip through the service so there is exactly one implementation of the rule.
+            row.setTrainingPercent(plusFeatures.trainingPercentOrNull(row.getTrainingPercent(), null, user, teamId));
         }
     }
 
