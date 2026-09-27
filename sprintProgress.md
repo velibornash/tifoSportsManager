@@ -2239,6 +2239,40 @@ Byte Buddy only supports up to Java 23 — the suite fails on 18 Mockito tests w
 `Java 24 (68) is not supported` until `JAVA_HOME` is pinned to Corretto 21. Not a code problem; pin
 the JDK rather than bumping Byte Buddy.
 
+### S5.3 — Graduation: the window, and locking the distribution
+
+Owner rules (2026-09-27): graduates leave the academy on the **1-20 skill scale**, the promotion budget is
+spread randomly across the eight skills with a goalkeeper's seeded first, **graduates are aged 15 to 20**,
+and **talent carries from the academy into the first team**. The distribution was explicitly to be
+**kept as it already works** — so the first thing this task did was write it down as tests, because a
+rule nobody has recorded is a rule the next change will quietly alter.
+
+**Two tests exist purely to stop something.** A strong junior's budget spreads across at least three of
+the eight skills and never lands in one; a goalkeeper's goalkeeping averages higher than an
+outfielder's; no graduate ever exceeds 10 in a single skill; and every budget from 6 to 60 is fully
+spent with nothing left over. The per-skill cap of 10 is the existing behaviour and the owner chose to
+keep it, so it is now an assertion rather than an accident. The consequence is flagged in the backlog:
+no graduate can arrive better than 10 in anything, and a typical one lands around 2-3 across the board.
+
+**The real bug was the age.** A junior's age already moves once a year at the season boundary in
+`SeasonService.agePlayersAndJuniorsOneYear()`, so `age + 1` at promotion was **double-counting it** —
+which is exactly why promotion was floored at seventeen: the age was not tracking anything and a floor
+was propping it up. Graduation now uses the junior's own age, clamped into 15-20 so a bad value in the
+database cannot break the window.
+
+I got this wrong first and built a second ageing sweep on the assumption that juniors never aged. The
+existing `incrementAgeByStatus` was right there. The second sweep would have made every player a year
+older per season twice over, so it was removed and replaced with the part that genuinely was missing.
+
+**What was missing is what happens when the window closes.** Nothing acted on a junior reaching twenty,
+so he sat in the academy indefinitely — a twenty-four-year-old "prospect". A junior who reaches twenty
+is now promoted at the season boundary, deliberately *after* the ageing increment, so a nineteen-year-old
+at the end of the season graduates in the same pass rather than sitting out an extra one. That is the
+window being a deadline instead of a suggestion. A single unpromotable junior is logged and left alone
+rather than costing every other club's intake.
+
+**511 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

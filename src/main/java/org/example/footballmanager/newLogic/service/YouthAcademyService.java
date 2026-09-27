@@ -96,6 +96,48 @@ public class YouthAcademyService {
         log.info("Youth academy weekly progression done for season {}, week {} ({} juniors).", seasonNumber, weekNumber, active.size());
     }
 
+    /**
+     * Promotes every junior who has run out of graduation window.
+     *
+     * <p><b>This does not age anyone.</b> Ageing already happens once a year at the season boundary
+     * in {@code SeasonService.agePlayersAndJuniorsOneYear()}, and an earlier version of this method
+     * aged juniors as well, which would have made every player a year older per season twice over.
+     * The bug it caused is the one worth recording: because a junior's age moved at the season
+     * boundary, adding a year at promotion double-counted it, which is why graduation had to be
+     * hard-coded to a floor of seventeen to compensate.
+     *
+     * <p>What was genuinely missing is what happens when the window closes. Nothing acted on a junior
+     * reaching twenty, so he sat in the academy indefinitely — a twenty-four-year-old "prospect". The
+     * window is the rule, and a manager who has had all five years to decide has had the decision.
+     */
+    @Transactional
+    public int promoteJuniorsPastWindow(int seasonNumber, int seasonNumberNow) {
+        List<Junior> overAge = juniorRepository.findByStatusAndAgeGreaterThanEqual(
+                JuniorStatus.ACTIVE, GRADUATION_MAX_AGE);
+        if (overAge == null || overAge.isEmpty()) return 0;
+
+        int promoted = 0;
+        for (Junior junior : overAge) {
+            try {
+                PromotionBuild build = createSeniorFromJunior(junior);
+                junior.setStatus(JuniorStatus.PROMOTED);
+                junior.setPromotedPlayer(build.player);
+                promoted++;
+            } catch (RuntimeException e) {
+                // One unpromotable junior must not cost every other club's deadline. He is left
+                // ACTIVE and picked up next season, which is the safe failure: a slightly late
+                // promotion beats a season of missing players.
+                log.warn("Junior {} ({}) reached the graduation age and could not be promoted",
+                        junior.getId(), junior.getName(), e);
+            }
+        }
+        if (promoted > 0) {
+            log.info("Season {}: promoted {} junior(s) who reached the age of {}",
+                    seasonNumber, promoted, GRADUATION_MAX_AGE);
+        }
+        return promoted;
+    }
+
     @Transactional
     public JuniorAcademyStateDTO getAcademyState(Long teamId, int currentSeason, int currentWeek) {
         Team team = teamRepository.findById(teamId).orElseThrow(() -> new RuntimeException("Team not found"));
@@ -117,6 +159,18 @@ public class YouthAcademyService {
                 .forEach(j -> dto.getArchive().add(toDto(j)));
         return dto;
     }
+
+    /**
+     * The age window a junior may leave the academy in (owner rule 2026-09-27): <b>15 to 20</b>.
+     *
+     * <p>These are not decoration. The upper bound is a deadline — a junior who reaches it is
+     * promoted whether the manager is ready or not, because a twenty-one-year-old in a youth academy
+     * is a squad player being described as a prospect, and the whole point of the window is that it
+     * closes. The lower bound exists because intake can produce a fifteen-year-old, and a manager
+     * who wants to debut him immediately should be able to.
+     */
+    public static final int GRADUATION_MIN_AGE = 15;
+    public static final int GRADUATION_MAX_AGE = 20;
 
     @Transactional
     public JuniorAcademyItemDTO promoteJunior(Long juniorId, int currentSeason, int currentWeek) {
@@ -170,6 +224,18 @@ public class YouthAcademyService {
         return toDto(junior);
     }
 
+    /**
+     * The age this junior graduates at, inside the 15-20 window.
+     *
+     * <p>Clamped rather than trusted, because the window is the rule and a bad age in the database
+     * should not be how the rule gets broken. A junior who arrived as a fourteen-year-old graduates
+     * at fifteen, not at fourteen.
+     */
+    private int graduationAge(Junior junior) {
+        int age = junior == null ? GRADUATION_MIN_AGE : junior.getAge();
+        return Math.max(GRADUATION_MIN_AGE, Math.min(GRADUATION_MAX_AGE, age));
+    }
+
     private Junior loadDecisionJunior(Long juniorId, int currentSeason, int currentWeek) {
         Junior junior = juniorRepository.findById(juniorId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "JUNIOR_NOT_FOUND", "Junior not found."));
@@ -186,7 +252,11 @@ public class YouthAcademyService {
     private PromotionBuild createSeniorFromJunior(Junior junior) {
         Player player = new Player();
         player.setName(junior.getName());
-        player.setAge(Math.max(17, junior.getAge() + 1));
+        // His own age, not age+1. A junior's age already moves once a year at the season boundary,
+        // so adding a year here double-counted it and pushed every graduate a season too old. That
+        // double-count is why promotion used to be floored at seventeen: the age was not tracking
+        // anything, so a floor was propping it up.
+        player.setAge(graduationAge(junior));
         player.setTalent(junior.getTalent());
         player.setTeam(junior.getTeam());
         player.setForm(round2(4.5 + random.nextDouble() * 3.2));

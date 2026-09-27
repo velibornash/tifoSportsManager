@@ -28,4 +28,8 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     @Modifying
     @Query("update Junior j set j.age = j.age + 1 where j.status = :status")
     int incrementAgeByStatus(@Param("status") JuniorStatus status);
+
+    /** Every active junior at or past the graduation age — the window closing on them. */
+    List<Junior> findByStatusAndAgeGreaterThanEqual(@Param("status") JuniorStatus status,
+                                                    @Param("age") int age);
 }
