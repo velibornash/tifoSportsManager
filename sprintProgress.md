@@ -2620,7 +2620,28 @@ services, deleted but still listed as open) — are genuine and stand. This one 
 is exactly the one above: the first two were never revisited, this one was removed on purpose and the
 entry was never updated to say so.
 
-**Tests: 9 new, all green.** Full suite not yet re-run for this task.
+**The validation rules get their own test, and one of them is the reason.** `ScoutingServiceTest`,
+10 tests against the real repositories. A scout id is guessable, so without the own-club check a
+manager could post a **rival's** scout to a country and read reports generated with the rival's
+scouting attribute — a data leak wearing a convenience. That is not a rule a maths test would notice
+was missing, which is why the two suites are separate.
+
+The rest: only a `SCOUT` may be posted however good his attributes are, one posting per country,
+recalling releases the country (a network that could not change its mind about where it is looking
+would be a network you could only set once), a club cannot recall another's posting, an uncovered
+club gets an explicit empty state rather than a broken table, and the season is recorded so a report
+can say how long a posting has run.
+
+**One correction worth recording, because the first version of this test was wrong.** It synthesised
+its own countries with `isoCode = "SRB-" + System.nanoTime()`, which is 18 characters into a
+`CHARACTER VARYING(3)` unique column — every test errored in setup. The fix was not a shorter
+timestamp but to stop synthesising: **the seed already carries nine countries with known
+`youthRating` values** (Brazil 85, England 90, Serbia 70, North Macedonia 50, …), so the test now
+reads them. That is strictly better — the old version was asserting against fixtures it invented,
+and these assert against the data the game actually ships, which is where a wrong `youthRating` would
+otherwise go unnoticed.
+
+**Tests: 19 new, all green. Full suite 568.**
 
 ---
 
