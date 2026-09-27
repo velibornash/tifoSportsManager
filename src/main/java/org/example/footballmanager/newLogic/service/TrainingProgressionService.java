@@ -172,8 +172,11 @@ public class TrainingProgressionService {
             // grew, and charging it per skill would punish versatile players for being versatile.
             TrainingIntensity intensity = intensityService.intensityFor(
                     player, teamIntensity(setup), season, week);
+            // Resolved for the skill he is actually being worked on, so a club that hired a
+            // goalkeeping coach is not still developing its striker on his say-so (Sprint 4.3).
+            StaffMember coach = coachForSkill(player, directSkill);
             applyWeeklyGrowth(player, skills, directSkill, advanced, season, week, trainingPercent,
-                    intensity);
+                    intensity, coach);
             // The cost lands whether or not the growth arrived, and is charged after the growth so
             // an injury this week does not skip this week's training.
             intensityService.apply(player, intensity, season, week);
@@ -369,10 +372,10 @@ public class TrainingProgressionService {
 
     private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill,
                                      boolean advanced, int season, int week, double trainingPercent,
-                                     TrainingIntensity intensity) {
+                                     TrainingIntensity intensity, StaffMember coach) {
         double injuryFactor = injuryTrainingFactor(player, season, week);
         double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill,
-                advanced, trainingPercent, intensity);
+                advanced, trainingPercent, intensity, coach);
         dt *= injuryFactor;
         dt *= slowSkillModifier(directSkill);
         // Rare jackpot is allowed only for low-skill players, to avoid unrealistic fast growth on 14+.
@@ -456,8 +459,13 @@ public class TrainingProgressionService {
      */
     private double computeDirectFragment(Player player, double currentExact, SkillName skill,
                                           boolean advanced, double trainingPercent,
-                                          TrainingIntensity intensity) {
-        double base = 0.52 * (intensity == null ? 1.0 : intensity.growthMultiplier());
+                                          TrainingIntensity intensity, StaffMember coach) {
+        // Growth scales with intensity, and by how much of the coaching actually lands (Sprint 4.3).
+        // Applied here rather than at the call site so every path that grows a direct skill is
+        // scaled the same amount.
+        double base = 0.52
+                * (intensity == null ? 1.0 : intensity.growthMultiplier())
+                * TrainingPercent.disciplineFactor(coach);
         double ageFactor = ageTrainingFactor(player.getAge(), skill);
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
@@ -531,6 +539,11 @@ public class TrainingProgressionService {
             default -> setup.getDtSkillMid();
         };
         return skillKeyToEnum(normalizeDtSkill(key, role));
+    }
+
+    /** The best coach this club has for the skill being trained, or null if it has nobody. */
+    private StaffMember coachForSkill(Player player, SkillName skill) {
+        return trainingPercentService.coachForSkill(player, skill);
     }
 
     /** The club's intensity for the week, defaulting to NORMAL when unset or unrecognised. */

@@ -119,6 +119,79 @@ public final class TrainingPercent {
      * coached by his club coach. That was the owner's answer to the "whose coach is it for the NT"
      * question and it holds for every competition.
      */
+    /**
+     * The best coach a club has <b>for one specific skill</b>.
+     *
+     * <p>This is the difference between a specialist existing and a specialist mattering. Before
+     * this, only the head coach was ever consulted, so a club could hire a goalkeeping coach, pay his
+     * wage every week of the season, and see exactly nothing happen — which is worse than not having
+     * the role, because it looked like the feature existed.
+     *
+     * <p>Who may teach what is a deliberate statement about the jobs:
+     * <ul>
+     *   <li>the head coach and his assistant can teach anything;</li>
+     *   <li>a <b>goalkeeping coach</b> teaches goalkeeping and nothing else — if he could also
+     *       improve a striker, the role would not need a name;</li>
+     *   <li>a <b>physio</b> teaches stamina and condition, and that is the whole of his job;</li>
+     *   <li>a <b>youth coach</b> can teach anything, but only a player young enough to be his actual
+     *       responsibility — counting him towards a thirty-one-year-old's development would make
+     *       hiring him a free upgrade rather than a decision;</li>
+     *   <li>a <b>scout</b> is not a coach and is never returned here. He finds players; the growth
+     *       he causes is his own recruitment, not his coaching.</li>
+     * </ul>
+     *
+     * <p>The best available rating wins, and a tie goes to the head coach so that hiring anyone never
+     * makes a club's coaching worse than it already was.
+     */
+    public static StaffMember coachForSkill(Iterable<StaffMember> staff, SkillName skill, int playerAge) {
+        if (staff == null || skill == null) return null;
+        StaffMember best = null;
+        int bestRating = Integer.MIN_VALUE;
+        for (StaffMember member : staff) {
+            if (member == null || !teaches(member.getRole(), skill, playerAge)) continue;
+            int rating = member.coachRating(skill);
+            if (rating > bestRating) {
+                bestRating = rating;
+                best = member;
+            }
+        }
+        return best;
+    }
+
+    private static int clampSkill(int value) {
+        return Math.max(1, Math.min(20, value));
+    }
+
+    /** Whether this job can teach that skill to a player of that age. */
+    public static boolean teaches(StaffRole role, SkillName skill, int playerAge) {
+        if (role == null || skill == null) return false;
+        return switch (role) {
+            case HEAD_COACH, ASSISTANT -> true;
+            case GK_COACH -> skill == SkillName.GOALKEEPER;
+            case PHYSIO -> skill == SkillName.STAMINA || skill == SkillName.FATIGUE;
+            case YOUTH_COACH -> playerAge < 23;
+            case SCOUT -> false;
+        };
+    }
+
+    /**
+     * How much of the work actually lands, from the coach's man-management.
+     *
+     * <p>Never above 1.0, and that is the point rather than an oversight. The percentage already
+     * answers "how much of the budget was spent"; this answers "was it worth spending", and mixing
+     * the two would quietly change the training formula that was signed off. So a superb coach does
+     * not add anything here — he simply wastes none of it, while a bad one actively makes the week
+     * worse than the percentage implies.
+     *
+     * <p>A club with no coach at all gets 1.0 as well. Nobody hired is not the same as somebody hired
+     * badly, and punishing a club for having an empty staff list would be inventing a problem.
+     */
+    public static double disciplineFactor(StaffMember coach) {
+        if (coach == null) return 1.0;
+        int manManagement = coach.getMotivation() == null ? 10 : clampSkill(coach.getMotivation());
+        return 0.75 + 0.25 * (manManagement / 20.0);
+    }
+
     public static StaffMember coachFor(Iterable<StaffMember> staff) {
         if (staff == null) return null;
         StaffMember fallback = null;

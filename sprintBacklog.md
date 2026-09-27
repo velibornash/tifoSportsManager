@@ -1014,17 +1014,26 @@ than a slightly worse `NORMAL`. An injured player never picks up a second injury
 
 ---
 
-### S4.3 — Coaching staff affects growth (consume S2.3)
+### S4.3 — Coaching staff affects growth (consume S2.3) — 🟡 half done 2026-09-27
 
-| # | Task |
-|---|---|
-| 1 | Growth multiplier from the relevant coach's `development` + `motivation` attributes | |
-| 2 | Position-specific coaching: a `GK_COACH` improves goalkeeping growth, a scout improves `Country.youthRating` yield (Sprint 5) |
-| 3 | A poor coach actively hurts growth (a `discipline`-driven penalty) |
-| 4 | **Head coach quality affects match performance**, not just training — the board's most expensive hire should matter on the pitch |
-| 5 | Staff wage is a real ledger expense (S2.2) — so good coaching is a budget decision |
+| # | Task | State |
+|---|---|---|
+| 1 | Growth multiplier from the relevant coach's `development` + `motivation` attributes | ✅ resolved per skill, not per club |
+| 2 | Position-specific coaching: a `GK_COACH` improves goalkeeping growth | ✅ GK coach teaches goalkeeping only; physio teaches stamina; youth coach only under-23s; a scout is not a coach. Scouting's `youthRating` effect is Sprint 5 |
+| 3 | A poor coach actively hurts growth (a `discipline`-driven penalty) | ✅ 0.75–1.0 off man-management, never above 1.0 |
+| 4 | **Head coach quality affects match performance**, not just training | ❌ **not done** — the remaining half |
+| 5 | Staff wage is a real ledger expense (S2.2) | ✅ already in the weekly ledger |
 
-**Verify:** replacing a 60-development coach with a 90 one measurably speeds growth; the batch shows a visible development-rate change.
+**Verify:** replacing a low-development coach with a high one measurably speeds growth; a goalkeeping
+coach speeds goalkeeping and nothing else. — `TrainingPercentCoachResolutionTest`, 10 tests.
+
+The bug these fix is the quiet one: a club hires a goalkeeping coach, his wage leaves the account every
+week, and the goalkeeper grows at exactly the same rate as with nobody in the room. The feature existed
+and did nothing, which is worse than not having the role.
+
+`disciplineFactor` is capped at 1.0 **on purpose**. The percentage answers "how much of the budget was
+spent"; man-management answers "was it worth spending". Merging them would silently change the training
+formula that was signed off.
 
 ---
 

@@ -1948,6 +1948,48 @@ REST: `PUT /training/weekly/team/{teamId}/intensity/{playerId}`, mirroring the f
 
 **425 tests.**
 
+### S4.3 — Coaching staff affects growth
+
+The quiet bug this fixes: a club hires a goalkeeping coach, his wage leaves the account every week of
+the season, and the goalkeeper improves at exactly the same rate as he would have with nobody in the
+room. The feature existed, the staff directory listed him, and nothing happened — which is worse than
+not having the role, because it looked finished.
+
+**Coaching is now resolved per skill, not per club.** The best available coach for the skill actually
+being trained wins, and who may teach what is a statement about the jobs:
+
+| | teaches |
+|---|---|
+| head coach, assistant | anything |
+| goalkeeping coach | goalkeeping, and nothing else |
+| physio | stamina and condition |
+| youth coach | anything, but only a player under 23 — his actual responsibility |
+| scout | nothing. He finds players; the growth he causes is recruitment, not coaching |
+
+A goalkeeping coach who could also improve a striker would not need the name. A youth coach counted
+towards a thirty-one-year-old's development would make hiring him a free upgrade rather than a
+decision. Ties go to the head coach, so hiring anyone never makes a club's coaching *worse* than it
+already was.
+
+**A poor coach now actively hurts.** `disciplineFactor` runs 0.75–1.0 off his man-management, and
+deliberately never exceeds 1.0. The percentage already answers "how much of the budget was spent";
+this answers "was it worth spending". Folding the second into the first would quietly change the
+training formula that was signed off, so it is a separate multiplier on growth instead — a superb coach
+adds nothing here, he simply wastes none of it, while a bad one makes the week worse than the
+percentage implies.
+
+An unrated coach is a **mediocre** coach: neither 1.0 nor the 0.75 floor. That is the same convention
+`StaffMember.coachRating` already uses, and the only safe one — defaulting an empty record to 20
+would hand every backfilled club a perfect coach, and defaulting it to 1 would make every one of them
+a bad one. Either is a data artefact wearing a rule's clothes.
+
+Uses `motivation`, which is already documented as "motivation, discipline, man-management", rather
+than adding a near-duplicate `discipline` column.
+
+Head-coach effect on **match** performance is the remaining half of S4.3, not done.
+
+**435 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

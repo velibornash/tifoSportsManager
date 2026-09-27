@@ -51,28 +51,58 @@ public class TrainingPercentService {
         if (skill == null) {
             skill = TrainingPercent.primarySkillFor(player.effectiveRole());
         }
-        StaffMember coach = coachFor(player);
+        StaffMember coach = coachForSkill(player, skill);
         Long teamId = player.getTeam() == null ? -1L : player.getTeam().getId();
         int minutes = minutesPlayed(player.getId(), teamId, season, week);
         return TrainingPercent.percentFor(player, coach, skill, minutes);
     }
 
-    /** The same, for a whole squad, resolving the coach once. */
+    /**
+     * The same, for a whole squad.
+     *
+     * <p>The club's staff list is fetched <b>once</b>, because it is a query and this runs for every
+     * club in the league. The coach is then resolved per player and per skill from that list, which is
+     * cheap — it is a walk over a handful of staff — and it is what makes a specialist worth
+     * anything. Resolving one coach for the whole squad and using him for everybody would hand a
+     * goalkeeper the striker's coaching.
+     */
     @Transactional(readOnly = true)
     public Map<Long, Double> percentForSquad(List<Player> squad, Integer season, Integer week) {
         Map<Long, Double> out = new HashMap<>();
         if (squad == null || squad.isEmpty()) return out;
         Long teamId = squad.get(0).getTeam() == null ? -1L : squad.get(0).getTeam().getId();
         Map<Long, Integer> minutes = minutesForWeekKey(teamId, season, week);
-        StaffMember coach = coachFor(squad.get(0));
+        List<StaffMember> staffAtClub = staffFor(squad.get(0));
 
         for (Player player : squad) {
             if (player == null || player.getId() == null) continue;
             SkillName skill = TrainingPercent.primarySkillFor(player.effectiveRole());
+            StaffMember coach = TrainingPercent.coachForSkill(staffAtClub, skill, player.getAge());
             out.put(player.getId(), TrainingPercent.percentFor(
                     player, coach, skill, minutes.getOrDefault(player.getId(), 0)));
         }
         return out;
+    }
+
+    /**
+     * The best coach at this club for one skill, or null if the club has nobody who teaches it.
+     *
+     * <p>Null is a real answer and not a failure: a club with no staff trains on talent and minutes
+     * alone, which is a worse but perfectly valid week.
+     */
+    public StaffMember coachForSkill(Player player, SkillName skill) {
+        if (player == null || player.getTeam() == null || player.getTeam().getId() == null) {
+            return null;
+        }
+        return TrainingPercent.coachForSkill(staffFor(player), skill, player.getAge());
+    }
+
+    /** The club's staff list, or empty rather than null so callers can walk it. */
+    private List<StaffMember> staffFor(Player player) {
+        if (player == null || player.getTeam() == null || player.getTeam().getId() == null) {
+            return List.of();
+        }
+        return staff.findByTeamId(player.getTeam().getId());
     }
 
     /**

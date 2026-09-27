@@ -186,8 +186,12 @@ public class StaffSponsorService {
             case ASSISTANT -> {
                 m.setDevelopment(clampSkill(m.getDevelopment() + spread));
                 m.setTactical(clampSkill(m.getTactical() + 1));
+                m.setMotivation(clampSkill(m.getMotivation() + spread));
             }
-            case GK_COACH -> m.setGoalkeeping(clampSkill(m.getGoalkeeping() + spread + 1));
+            case GK_COACH -> {
+                m.setGoalkeeping(clampSkill(m.getGoalkeeping() + spread + 1));
+                m.setMotivation(clampSkill(m.getMotivation() + spread));
+            }
             case PHYSIO -> m.setFitness(clampSkill(m.getFitness() + spread + 1));
             case SCOUT -> m.setScouting(clampSkill(m.getScouting() + spread + 1));
             case YOUTH_COACH -> {
