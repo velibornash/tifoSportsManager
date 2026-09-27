@@ -6,7 +6,28 @@
         buildClubActionsHtml,
         loadPlayer,
         goBackSmart,
+        formatPercent,
     } = deps;
+
+    /**
+     * A junior's talent, as the manager is entitled to see it (Sprint 5.2).
+     *
+     * <p>Three shapes, and the difference between them is the feature: a band while he is a prospect,
+     * the exact figure once he has been promoted, and a dash for a manager without PLUS. The server
+     * decides which by omitting the fields — there is deliberately no raw `talent` on the payload, so
+     * this function cannot accidentally print a ceiling the viewer was not sold.
+     */
+    function renderTalent(j) {
+        if (j.talentExact != null) {
+            return `${escapeHtml(formatPercent(j.talentExact, 2).replace("%", ""))}<span class="fm-subtle"> exact</span>`;
+        }
+        if (j.talentLow != null && j.talentHigh != null) {
+            const low = escapeHtml(formatPercent(j.talentLow, 2).replace("%", ""));
+            const high = escapeHtml(formatPercent(j.talentHigh, 2).replace("%", ""));
+            return `${low} – ${high}`;
+        }
+        return '<span class="fm-subtle">PLUS</span>';
+    }
 
     async function loadJuniors() {
         const currentUserTeamId = getTeamId();
@@ -55,7 +76,7 @@
                     <tr>
                         <td>${escapeHtml(j.name)}</td>
                         <td>${j.age}</td>
-                        <td>${Number(j.talent).toFixed(1)}</td>
+                        <td>${renderTalent(j)}</td>
                         <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
                         <td class="academy-delta-cell" style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
                         <td>${renderStatus(j.status)}</td>
@@ -86,7 +107,7 @@
                             <tr>
                                 <th class="sq-name">Junior</th>
                                 <th>Age</th>
-                                <th>Talent</th>
+                                <th>Talent (est.)</th>
                                 <th>Academy</th>
                                 <th>Δ Week</th>
                                 <th>Status</th>
@@ -139,7 +160,7 @@
                                 <tr>
                                     <th class="sq-name">Junior</th>
                                     <th>Age</th>
-                                    <th>Talent</th>
+                                    <th>Talent (est.)</th>
                                     <th>Academy</th>
                                     <th>Status</th>
                                     <th>Season In</th>
@@ -152,7 +173,7 @@
                                         <tr>
                                             <td class="sq-name">${escapeHtml(j.name)}</td>
                                             <td>${j.age}</td>
-                                            <td>${Number(j.talent).toFixed(1)}</td>
+                                            <td>${renderTalent(j)}</td>
                                             <td>${Number(j.academySkillExact).toFixed(2)} <span class="ps-team">int ${j.academySkill}</span></td>
                                             <td>${renderStatus(j.status)}</td>
                                             <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>

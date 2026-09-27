@@ -2768,3 +2768,61 @@ leak.
 DTO change that replaces the raw `talent` field with the range.
 
 **Tests: 15 new. Full suite 583.**
+
+---
+
+### S5.2 finished — the gate, the intake roll, and a bug the tests could not see
+
+**The gate is now wired, and the raw field is gone rather than nulled.**
+`JuniorAcademyItemDTO.talent` was removed, not conditionally populated. A field that is "sometimes
+filled" is one caller away from leaking and there is no way to grep for it; with the field gone the
+only ways talent reaches the browser are `talentLow`/`talentHigh` (the band), `talentExact` (promoted
+only) and `talentRangeHalfWidth`, and each is set on purpose. `PlusFeatureService.canSeeJunior` is the
+new gate: subscription **and** own club, both required, failing closed.
+
+`JuniorController` now takes `@AuthenticationPrincipal` and resolves through `PlusFeatureService`
+rather than reimplementing the check, so the academy cannot disagree with `/auth/me` about which club
+the viewer runs.
+
+**Verified against the running app, not only in tests.** As `kecko` (REGULAR) reading Omladinac's
+academy — a club he does not own — all six juniors came back with every talent field null and no
+`talent` key in the payload at all. As `velibor` (OWNER) reading his own, the bands appeared and
+`talentExact` stayed null for active juniors.
+
+**The intake roll does not touch the quality distribution.** `talent` and `academySkill` are rolled
+exactly as they always were, which is the owner rule that graduation must not move. The new
+`rnd(0..3)` decides only how wide the report drawn on that roll is allowed to be.
+
+**Legacy juniors needed an arrival age, and the repair value is a judgement.** The column did not
+exist when existing saves' academies were created, so every legacy row would have reported the maximum
+uncertainty **forever** — a permanently vague report is a missing field, not honesty. The true arrival
+age is not recoverable (a nineteen-year-old might have arrived at fifteen or last season), so
+`DatabaseInitializer` backfills `GRADUATION_MIN_AGE`. Of the two fallbacks, leaving it null is safe and
+useless forever, while assuming the *longest* window the 15–20 rule allows narrows at the slowest rate
+that window permits and so never over-claims. Six rows repaired in the live database.
+
+#### The bug the green suite did not catch
+
+Every junior in the live academy came back at `halfWidth 1.0` — the floor — regardless of age, which
+meant the narrowing mechanic did nothing at all. `graduationAge()` clamps to the **current** age, so
+passing it as the observation horizon made the span `(graduationAge - arrivalAge)` equal the elapsed
+time for every active junior. Progress was therefore 1.0 across the board.
+
+The arithmetic is correct **for the arguments it was given**, which is why 17 green tests missed it:
+nothing was wrong with `TalentRange`, the caller was passing the wrong horizon. It is now
+`GRADUATION_MAX_AGE` — the graduation *deadline* — with the reasoning in a comment at the call site, and
+a test pins the difference:
+
+| age | half-width | band |
+|---:|---:|---|
+| 15 | 4.0 | 3.0 – 11.0 |
+| 17 | 2.8 | 2.2 – 7.8 |
+| 18 | 2.2 | 1.8 – 6.2 |
+| 19 | 1.6 | 6.4 – 9.6 |
+| 20 (graduation) | 1.0 | exact revealed on promotion |
+
+**Worth keeping as a lesson:** unit tests pin the function, not the wiring between callers. This one
+was only visible in a running application against real rows, and no amount of arithmetic coverage
+would have found it.
+
+**Tests: 24 new across the two suites. Full suite 592.**

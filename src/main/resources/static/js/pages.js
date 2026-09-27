@@ -7,7 +7,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
 import { createCommunityFeature } from './pages/features/community.js';
 import {
-    htmlEscape, formatBudget, formatGoalDiff, buildEmptyState,
+    htmlEscape, formatBudget, formatGoalDiff, buildEmptyState, formatPercent,
     parseMatchDate, getImageFilename, formatMilestoneAttendanceValue,
     buildMilestoneCardHtml, buildMilestoneBoardHtml, formatDateTimeLabel,
     formatFormBadge, formatRatingBadge, getRatingColor, formatCompactPlayerName,
@@ -265,6 +265,9 @@ import {
         buildClubActionsHtml,
         loadPlayer: (...args) => loadPlayer(...args),
         goBackSmart: (...args) => goBackSmart(...args),
+        // The academy renders talent as a band, and the house rule is two decimals on any decimal
+        // (Sprint 5.2). Without this the column would fall back to raw server strings.
+        formatPercent,
     });
     const teamFeature = createTeamFeature({
         authFetch,

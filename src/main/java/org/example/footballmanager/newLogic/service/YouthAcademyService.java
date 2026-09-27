@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.repository.JuniorRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.util.players.NameGenerator;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
@@ -28,6 +29,7 @@ public class YouthAcademyService {
     private final PlayerRepository playerRepository;
     private final TransferService transferService;
     private final SquadNumberAssigner squadNumberAssigner;
+    private final StaffMemberRepository staffMemberRepository;
     private final Random random = new Random();
 
     @Transactional
@@ -63,6 +65,12 @@ public class YouthAcademyService {
                 j.setLastWeeklyDelta(0.0);
                 j.setArrivalSeasonNumber(seasonNumber);
                 j.setArrivalWeekNumber(2);
+                j.setArrivalAge(j.getAge());
+                // How badly the club is guessing about him on day one. This does NOT touch the
+                // quality distribution -- talent and academy skill are rolled exactly as they always
+                // were, which is the owner rule that the graduation distribution must not move. All
+                // this does is decide how wide the report drawn on that roll is allowed to be.
+                j.setTalentRangeHalfWidth(TalentRange.intakeHalfWidth(random.nextInt(4)));
                 j.setStatus(JuniorStatus.ACTIVE);
                 j.setArchived(false);
                 j.setTeam(team);
@@ -139,7 +147,8 @@ public class YouthAcademyService {
     }
 
     @Transactional
-    public JuniorAcademyStateDTO getAcademyState(Long teamId, int currentSeason, int currentWeek) {
+    public JuniorAcademyStateDTO getAcademyState(Long teamId, int currentSeason, int currentWeek,
+                                                 boolean canSeeTalent) {
         Team team = teamRepository.findById(teamId).orElseThrow(() -> new RuntimeException("Team not found"));
         ensureCoachSkill(team);
         List<Junior> visible = juniorRepository.findVisibleByTeamId(teamId);
@@ -154,10 +163,27 @@ public class YouthAcademyService {
                 .anyMatch(j -> j.getStatus() == JuniorStatus.ACTIVE && j.getArrivalSeasonNumber() < currentSeason);
         dto.setDecisionsOpen(hasCarryoverActive);
 
-        visible.forEach(j -> dto.getJuniors().add(toDto(j)));
+        // One resolution of the youth coach per request rather than per junior: it is the same
+        // attribute for all of them, and the report narrows against it (TalentRange).
+        Integer youthCoachDevelopment = youthCoachDevelopment(team);
+
+        visible.forEach(j -> dto.getJuniors().add(toDto(j, canSeeTalent, youthCoachDevelopment)));
         juniorRepository.findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(teamId)
-                .forEach(j -> dto.getArchive().add(toDto(j)));
+                .forEach(j -> dto.getArchive().add(toDto(j, canSeeTalent, youthCoachDevelopment)));
         return dto;
+    }
+
+    /**
+     * The YOUTH_COACH's development attribute, or null when the club has no youth coach.
+     *
+     * <p>Feeds {@link TalentRange}: a better youth coach does not produce better prospects, it
+     * <b>narrows the report on them faster</b>. This is the attribute's first consumer in the codebase.
+     */
+    private Integer youthCoachDevelopment(Team team) {
+        if (team == null || team.getId() == null) return null;
+        return staffMemberRepository.findByTeamIdAndRole(team.getId(), StaffRole.YOUTH_COACH)
+                .map(StaffMember::getDevelopment)
+                .orElse(null);
     }
 
     /**
@@ -173,14 +199,15 @@ public class YouthAcademyService {
     public static final int GRADUATION_MAX_AGE = 20;
 
     @Transactional
-    public JuniorAcademyItemDTO promoteJunior(Long juniorId, int currentSeason, int currentWeek) {
+    public JuniorAcademyItemDTO promoteJunior(Long juniorId, int currentSeason, int currentWeek,
+                                             boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
         PromotionBuild build = createSeniorFromJunior(junior);
         Player player = build.player;
         junior.setStatus(JuniorStatus.PROMOTED);
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
-        return toDto(junior);
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
     }
 
     @Transactional
@@ -204,7 +231,8 @@ public class YouthAcademyService {
     }
 
     @Transactional
-    public JuniorAcademyItemDTO transferListJunior(Long juniorId, int currentSeason, int currentWeek) {
+    public JuniorAcademyItemDTO transferListJunior(Long juniorId, int currentSeason, int currentWeek,
+                                                   boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
         PromotionBuild build = createSeniorFromJunior(junior);
         Player player = build.player;
@@ -212,16 +240,17 @@ public class YouthAcademyService {
         junior.setStatus(JuniorStatus.TRANSFER_LISTED);
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
-        return toDto(junior);
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
     }
 
     @Transactional
-    public JuniorAcademyItemDTO releaseJunior(Long juniorId, int currentSeason, int currentWeek) {
+    public JuniorAcademyItemDTO releaseJunior(Long juniorId, int currentSeason, int currentWeek,
+                                             boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
         junior.setStatus(JuniorStatus.RELEASED);
         junior.setLastWeeklyDelta(0.0);
         juniorRepository.save(junior);
-        return toDto(junior);
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
     }
 
     /**
@@ -515,20 +544,56 @@ public class YouthAcademyService {
         }
     }
 
-    private JuniorAcademyItemDTO toDto(Junior j) {
+    /**
+     * Builds the manager's view of a junior, with talent reported as a <b>band</b> rather than a number.
+     *
+     * <p>Three rules, all from the owner (2026-09-27), and they are not interchangeable:
+     * <ol>
+     *   <li>a viewer without PLUS sees <b>nothing</b> — both bounds and the exact value are null;</li>
+     *   <li>a viewer with PLUS sees the <b>band</b>, which narrows with observation;</li>
+     *   <li>the <b>exact</b> value appears only once he has been promoted.</li>
+     * </ol>
+     *
+     * <p>The exact value is withheld from an active junior even from a paying viewer on purpose. The
+     * academy exists to make a manager watch a player; printing the ceiling on arrival removes the
+     * only thing the feature was for.
+     */
+    private JuniorAcademyItemDTO toDto(Junior j, boolean canSeeTalent, Integer youthCoachDevelopment) {
         JuniorAcademyItemDTO dto = new JuniorAcademyItemDTO();
         dto.setId(j.getId());
         dto.setName(j.getName());
         dto.setAge(j.getAge());
-        dto.setTalent(round2(j.getTalent()));
         dto.setAcademySkill(j.getAcademySkill());
         dto.setAcademySkillExact(round2(j.getAcademySkillExact()));
         dto.setLastWeeklyDelta(round2(j.getLastWeeklyDelta()));
         dto.setStatus(j.getStatus() != null ? j.getStatus().name() : JuniorStatus.ACTIVE.name());
         dto.setArrivalSeasonNumber(j.getArrivalSeasonNumber());
         dto.setArrivalWeekNumber(j.getArrivalWeekNumber());
+        dto.setArrivalAge(j.getArrivalAge());
         dto.setPromotedPlayerId(j.getPromotedPlayer() != null ? j.getPromotedPlayer().getId() : null);
         dto.setArchived(Boolean.TRUE.equals(j.getArchived()));
+
+        if (canSeeTalent) {
+            boolean revealed = j.getStatus() != null
+                    && (j.getStatus() == JuniorStatus.PROMOTED || j.getStatus() == JuniorStatus.TRANSFER_LISTED);
+            if (revealed) {
+                dto.setTalentExact(round2(j.getTalent()));
+            }
+            // The observation horizon is the graduation DEADLINE, not this junior's own graduation age.
+            // graduationAge() clamps to the current age, so passing it here would make the span
+            // (graduationAge - arrivalAge) equal the elapsed time for every active junior — progress
+            // would be 1.0 for all of them, every report would sit at the +/-1 floor from arrival, and
+            // the whole narrowing mechanic would be inert. A19-year-old has one more season of
+            // observation left, and his band should say so.
+            double halfWidth = TalentRange.currentHalfWidth(
+                    j, j.getAge(), GRADUATION_MAX_AGE, youthCoachDevelopment);
+            dto.setTalentRangeHalfWidth(halfWidth);
+            double[] bounds = TalentRange.bounds(j.getTalent(), halfWidth);
+            if (bounds != null) {
+                dto.setTalentLow(bounds[0]);
+                dto.setTalentHigh(bounds[1]);
+            }
+        }
         return dto;
     }
 

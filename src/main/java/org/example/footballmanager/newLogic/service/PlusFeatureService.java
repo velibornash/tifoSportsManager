@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.commonmanager.model.User;
 import org.example.commonmanager.model.UserRole;
+import org.example.footballmanager.newLogic.model.Junior;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -46,7 +47,7 @@ public class PlusFeatureService {
             Set.of(UserRole.OWNER, UserRole.DEV, UserRole.ADMIN);
 
     /**
-     * Whether this user may see talent and training percentages <b>at all</b>.
+     * Whether the user may see talent and training percentages <b>at all</b>.
      *
      * <p>Checked before the own-team test so the two reasons can be told apart in a log.
      */
@@ -55,6 +56,28 @@ public class PlusFeatureService {
             return false;
         }
         return ALWAYS_ALLOWED.contains(user.getRole()) || user.getRole() == UserRole.PLUS;
+    }
+
+    /**
+     * Whether this user may see a <b>junior's</b> reported talent.
+     *
+     * <p>The owner's rule covers "your own first team <b>and your own academy juniors</b>", and this is
+     * the academy half. It is a separate method from {@link #canSee} rather than an overload because
+     * the subject is a different type, and because a junior is a <b>report</b> rather than a player:
+     * what is revealed is a band that firms up (Sprint 5.2), not a number.
+     *
+     * <p>Deliberately <b>not</b> widened to "any junior in the game". A scouting network reports on
+     * foreign prospects, and if this returned true for those the subscription would be worth nothing.
+     */
+    public boolean canSeeJunior(Junior junior, User user, Long viewerTeamId) {
+        if (junior == null || viewerTeamId == null) {
+            return false;
+        }
+        if (!hasPlus(user)) {
+            return false;
+        }
+        Team club = junior.getTeam();
+        return club != null && club.getId() != null && club.getId().equals(viewerTeamId);
     }
 
     /** Whether this user may see paid information about this specific player. */

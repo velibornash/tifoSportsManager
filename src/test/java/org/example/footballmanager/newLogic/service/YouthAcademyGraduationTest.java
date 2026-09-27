@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.JuniorRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +57,7 @@ class YouthAcademyGraduationTest {
 
         service = new YouthAcademyService(
                 mock(TeamRepository.class), juniors, players,
-                mock(TransferService.class), numbers);
+                mock(TransferService.class), numbers, mock(StaffMemberRepository.class));
         // The academy draws from a plain Random, so seed it deterministically and make the seed
         // reachable. Without this the distribution tests could only assert on averages.
         Field random = findField(YouthAcademyService.class, "random");

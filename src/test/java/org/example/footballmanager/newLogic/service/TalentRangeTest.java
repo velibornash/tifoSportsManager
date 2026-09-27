@@ -195,6 +195,41 @@ class TalentRangeTest {
     }
 
     @Test
+    @DisplayName("the horizon is the graduation deadline, not the junior's own graduation age")
+    void horizonMustBeTheDeadlineNotHisOwnAge() {
+        // Found against live data, not by a failing test: every junior in a real academy came back at
+        // the +/-1 floor from arrival, because the caller passed graduationAge(), which clamps to the
+        // CURRENT age. Span therefore equalled elapsed time, progress was 1.0 for everyone, and the
+        // narrowing mechanic did nothing at all. A green suite did not catch it because the arithmetic
+        // is correct for the arguments it was given.
+        //
+        // The tell: a wide intake roll must still be wide for a nineteen-year-old who has a season
+        // left to be watched.
+        Junior j = junior(15, 4.0);
+        double againstOwnAge = TalentRange.currentHalfWidth(j, 19, 19, null);
+        double againstDeadline = TalentRange.currentHalfWidth(j, 19, 20, null);
+
+        assertEquals(1.0, againstOwnAge,
+                "passing his own age as the horizon collapses the span and pins every report at the floor");
+        assertTrue(againstDeadline > 1.0,
+                "against the real deadline a 19-year-old must still be uncertain, got " + againstDeadline);
+        assertEquals(1.0, TalentRange.currentHalfWidth(j, 20, 20, null),
+                "at the deadline the report has converged");
+    }
+
+    @Test
+    @DisplayName("a wide intake roll is still wide for a young player with years to go")
+    void youngPlayerStaysUncertain() {
+        Junior j = junior(15, 4.0);
+        assertEquals(4.0, TalentRange.currentHalfWidth(j, 15, 20, null),
+                "a fifteen-year-old on arrival knows nothing");
+        assertTrue(TalentRange.currentHalfWidth(j, 17, 20, null) < 4.0,
+                "two years of observation must tighten the band");
+        assertTrue(TalentRange.currentHalfWidth(j, 17, 20, null) > 1.0,
+                "but two years is not the whole window");
+    }
+
+    @Test
     @DisplayName("rounding to two decimals is the house rule and is applied everywhere")
     void twoDecimalRounding() {
         assertEquals(1.23, TalentRange.round2(1.2345));

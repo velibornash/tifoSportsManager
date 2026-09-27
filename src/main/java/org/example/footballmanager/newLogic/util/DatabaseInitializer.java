@@ -15,6 +15,7 @@ import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TacticsProfileBackupEntry;
 import org.example.footballmanager.newLogic.service.TacticsProfileBackupService;
 import org.example.footballmanager.newLogic.service.YouthAcademyService;
+import org.example.footballmanager.newLogic.service.YouthAcademyService;
 import org.example.footballmanager.newLogic.util.players.PlayerFactory;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.example.footballmanager.newLogic.util.teams.EconomyProfileService;
@@ -99,6 +100,7 @@ public class DatabaseInitializer {
     private final org.example.footballtextmanager.repository.CSTeamRepository csTeamRepository;
     private final org.example.footballtextmanager.repository.CSCountryRepository csCountryRepository;
     private final StadiumRepository stadiumRepository;
+    private final org.example.footballmanager.newLogic.repository.JuniorRepository juniorRepository;
 
     @EventListener(ApplicationReadyEvent.class)
     public void sanitizeLegacySchemaOnStartup() {
@@ -133,6 +135,7 @@ public class DatabaseInitializer {
             ensureSidLeague();
             createSecondUserIfNotExists();
             refreshClubIdentities();
+            backfillJuniorArrivalAges();
             backfillClubCountries();
             backfillStadiumCeilings();
             return;
@@ -398,6 +401,38 @@ public class DatabaseInitializer {
             teamRepository.findByName(name)
                     .ifPresent(this::applyClubIdentity);
         }
+    }
+
+    /**
+     * Gives every pre-existing junior an arrival age (Sprint 5.2).
+     *
+     * <p>A junior's talent report narrows against how long the club has been watching him, and that
+     * needs an arrival age. The column did not exist when the academies in existing saves were
+     * created, so every legacy row would report the maximum possible uncertainty <b>forever</b> — a
+     * permanently vague report is not honesty, it is a missing field.
+     *
+     * <p>Backfilled to {@link org.example.footballmanager.newLogic.service.YouthAcademyService#GRADUATION_MIN_AGE}
+     * deliberately, and the reason is worth stating. The true arrival age is not recoverable: a
+     * nineteen-year-old might have arrived at fifteen or last season. Of the two possible fallbacks,
+     * one over-claims and one under-claims:
+     *
+     * <ul>
+     *   <li>leaving it null keeps the report frozen at ±4 — safe, and useless forever;</li>
+     *   <li>assuming a <i>long</i> observation window (arrived at 15, graduates at 20) narrows at the
+     *       slowest rate the 15-20 window allows, so it never tells a manager he knows more than he
+     *       could. A late arrival gains a slightly tighter band a season early; that is the cheaper
+     *       of the two mistakes.</li>
+     * </ul>
+     */
+    private void backfillJuniorArrivalAges() {
+        List<Junior> legacy = juniorRepository.findByArrivalAgeIsNull();
+        if (legacy.isEmpty()) return;
+        for (Junior junior : legacy) {
+            junior.setArrivalAge(YouthAcademyService.GRADUATION_MIN_AGE);
+        }
+        juniorRepository.saveAll(legacy);
+        log.info("Backfilled arrival age for {} pre-existing academy juniors (Sprint 5.2 talent reports).",
+                legacy.size());
     }
 
     private Team createSecondUserIfNotExists() {

@@ -15,6 +15,15 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     List<Junior> findByTeamId(Long teamId);
     List<Junior> findByTeamIdOrderByAcademySkillExactDesc(Long teamId);
 
+    /**
+     * Juniors created before the arrival-age column existed (Sprint 5.2).
+     *
+     * <p>Exists so their talent reports can narrow at all. Null here means "the roll never happened",
+     * not "arrived at graduation age" — see the backfill in {@code DatabaseInitializer} for why the
+     * repair value is chosen the way it is.
+     */
+    List<Junior> findByArrivalAgeIsNull();
+
     @Query("SELECT j FROM Junior j WHERE j.team.id = :teamId AND (j.archived = false OR j.archived IS NULL) ORDER BY j.academySkillExact DESC")
     List<Junior> findVisibleByTeamId(@Param("teamId") Long teamId);
 
