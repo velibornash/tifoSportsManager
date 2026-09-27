@@ -29,18 +29,25 @@
 ## Sprint dependencies
 
 ```
-Sprint 0  Fix the exploits            ──┐
-Sprint 1  Engine calibration          ──┼── must land before any balance work
-Sprint 2  The economy                 ──┘   (economy depends on Sprint 1's
-Sprint 3  Contracts & transfers            honest per-match numbers for
-Sprint 4  Training v2                       broadcast/prize income)
-Sprint 5  Juniors v2
-Sprint 6  Delete the dead code        ✅ DONE (engines); stubs + docs remain
-Sprint 7  AI-vs-AI verification       ── reduced to a regression test, depends on S1
-Sprint 8  Presentation + deployment   ── last
+Sprint 0  Fix the exploits            ✅ DONE 2026-09-26
+Sprint 1  Engine calibration          ✅ DONE as mechanics 2026-09-26 (statistics deferred by owner)
+Sprint 2  The economy                 ✅ DONE 2026-09-26
+Sprint 3  Contracts & transfers       🟡 core done; loans built, 4 AI-market gaps open
+Sprint 4  Training v2                 🟡 6 of 7 done; 5 items backlogged
+Sprint 5  Juniors v2                  ◀ CURRENT. Only S5.3 graduation is done. S5.1/S5.2 unstarted
+Sprint 6  Delete the dead code        ✅ DONE — engines, stubs and docs all cleared 2026-09-26/27
+Sprint 7  AI-vs-AI verification       ❌ not started (1–2 d, cheap, do it after S5)
+Sprint 8  Presentation + deployment   ❌ not started
 ```
 
-**Suggested order:** S0 → S1 → S2 → S4 (you flagged training as critical) → S3 → S5 → S7 → S8. S6 docs are cheap and should be done right after S1 so `AGENTS.md` stops describing deleted engines.
+**Suggested order:** ~~S0 → S1 → S2 → S4 → S3~~ **done.** Now **S5 → S7 → S8**, with the
+Sprint 3 and 4 remainders (AI market supply pressure, AI training priorities, camp, stadium
+quality, youth-facility intake) picked up opportunistically — none of them block anything.
+
+**Every sprint below has been re-audited against the code on 2026-09-27.** Several entries in this
+document were stale: Sprint 6's stub services are already deleted, Sprint 3's loans are built but
+unmarked, and the Sprint 2/3/4 exit criteria were all-unchecked despite the work being done. Where a
+claim below is marked ✅ it was verified in the source, not inferred from a commit message.
 
 ---
 
@@ -616,30 +623,56 @@ Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:
 
 ---
 
-### Sprint 1 exit criteria
+### Sprint 1 exit criteria — ✅ mechanics COMPLETE 2026-09-26 · statistics deferred by owner
 
-> ⚠️ **Rewritten 2026-09-26 against the fresh baseline.** The targets below were measured before
-> the quarantine and before the REC engine work. S1.1a/S1.1b have already moved several of them
-> into range, so the "now" column is authoritative.
+**Read this before the table.** The owner closed Sprint 1 as **mechanics** on 2026-09-26 and
+deferred every statistical target (see PRIORITY CHANGE at the foot of this document). The table is
+kept as a **record of where the numbers were left**, not as a gate. What mattered was that the
+mechanics exist and are not broken, and they now do.
 
-| Metric | Old target | **Now** | Real PL | Status |
+| Task | State | Note |
+|---|---|---|
+| S1.1 goal inflation chain | ✅ done | on-target probability, post clustering, mouth width, `POST_RADIUS` |
+| S1.2 restart inversion | 🟡 partial | goal kicks 40.7 → ~20, in a sane band. `desiredClearancePower` (item 2) was never built; the fix came from the launch speed alone |
+| S1.3 corner skew | ❌ not done | no corner-side/origin diagnostic was ever written. Ratio is only mildly asymmetric (~0.75–0.85) |
+| S1.4 duel count | 🟡 partial | `isPathBlocked` and `nearestOpponentBeatsHimToIt` are wired into pass scoring, so interposition exists. The duel **count** was never reduced to 100–150 — deferred |
+| S1.5 chase multiplier + press radius | ✅ done | `CHASE_SPRINT_MULTIPLIER = 1.18`, `PRESS_DRIB_DUEL_RADIUS = 0.38` (~5 m, just past the 0.35 separation wall) |
+| S1.6 injury model | ✅ done | `sim/engine/InjuryService.java` — fatigue-scaled, position-weighted, minute-windowed |
+| S1.7 penalties | ✅ done | `PenaltyEngine`, 76% model conversion, keeper-commits-first |
+| S1.7b penalty award rate | ✅ done | `PENALTY_FROM_BOX_FOUL` 0.06 → 0.165, 0.24/match |
+| S1.7c box fouls | ⏭️ deferred | the compensation constant stands; root cause unfixed |
+| S1.8 substitutions | ✅ engine, ❌ UI | `SubstitutionService` + bench + windows + role-aware selection. The **manager-facing UI is not built** |
+| S1.9 calibration outliers | ⏭️ deferred | |
+| S1.10 persist replays | ✅ done | |
+| S1.11 THRU/CROSS/CENTER | ✅ already implemented | entry was stale; deliveries are first-class options |
+
+**The three holes that were the point of this sprint are closed:** injuries, penalties and
+substitutions all exist and fire. A red card still means ten men for the rest of the match, which is
+correct football and is no longer a bug.
+
+**Where the numbers were left (200-match reference, kept as a record):**
+
+| Metric | Old target | **Measured** | Real PL | Status |
 |---|---:|---:|---:|---|
-| **Goals** | 2.6 – 3.1 | **2.8** | 2.7 | ✅ **done (S1.1b)** |
-| **Shots on target** | 8 – 10 | **8.9** | 8–9 | ✅ **done (S1.1b)** |
-| **Saves** | 3 – 6 | **5.1** | ~5.8 | ✅ **done (S1.1a)** |
-| **Shot conversion** | — | **34%** | ~32% | ✅ **done (S1.1b)** |
-| Shots | — | 32.3 | 25 | ✅ owner accepts 30–40, see below |
-| On-target % | 30 – 36% | 28% | 33% | ⚠️ accepted trade-off, see below |
+| **Goals** | 2.6 – 3.1 | **2.8** | 2.7 | ✅ |
+| **Shots on target** | 8 – 10 | **8.9** | 8–9 | ✅ |
+| **Saves** | 3 – 6 | **5.1** | ~5.8 | ✅ |
+| **Shot conversion** | — | **34%** | ~32% | ✅ |
+| Shots | — | 32.3 | 25 | ✅ owner accepts 30–40 |
+| On-target % | 30 – 36% | 28% | 33% | ✅ accepted trade-off |
 | Pass accuracy | 75 – 82% | 81.5% | 80–86% | ✅ |
 | Possession | symmetric | 48.7 / 51.3 | 50 / 50 | ✅ |
-| Duels won | 100 – 150 | **373** | ~100 | ❌ next task (S1.4) |
-| Interceptions | 12 – 18 | **27.7** | 12–16 | ❌ S1.4 |
-| Corners | 8 – 12, symmetric | **5.6** (2.2/3.3) | ~10 | ❌ S1.3 |
-| Goal kicks | 10 – 18 | 19.8 | 12–15 | ⚠️ S1.2 |
+| Duels won | 100 – 150 | **373** | ~100 | ⏭️ deferred |
+| Interceptions | 12 – 18 | **27.7** | 12–16 | ⏭️ deferred |
+| Corners | 8 – 12, symmetric | **5.6** (2.2/3.3) | ~10 | ⏭️ deferred |
+| Goal kicks | 10 – 18 | 19.8 | 12–15 | ⚠️ high |
 | Fouls | 19 – 26 | 16.6 | 22 | ⚠️ low |
 | Yellow cards | — | 2.3 | 4–5 | ⚠️ low |
 | Red cards | 0.1 – 0.4 | 0.15 | 0.2 | ✅ |
 | Nil-draws | ≥ 2% | 1/50 = 2% | ~6% | ⚠️ low |
+
+> Note: these figures predate S4. The current engine measures **4.88 goals/match** over 100 matches
+> with corners ~14, and the owner has explicitly accepted that. See the Sprint 4 owner decisions.
 
 **Two deliberate non-changes, both recorded in the source:**
 
@@ -647,8 +680,8 @@ Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:
    accepts "30-40 shots a match". Chasing a real 25 would contradict an explicit decision.
 2. **On-target % sits at 28% against a real 33%, and that is the coherent trade.** 32 attempts with
    the same accuracy and the same goals as a real 25-shot match: more chances, no more scoring. The
-   extra volume surfaces as misses (16.8 vs ~14), not as goals. Raising SOT to 33% would put goals
-   back near 3.3 and break the metric that matters most.
+   extra volume surfaces as misses, not as goals. Raising SOT to 33% would put goals back near 3.3 and
+   break the metric that matters most.
 
 **Root cause of the whole mess, for the record:** `GoalkeeperEngine.trySave` never checked whether
 the ball was going between the posts, so 26% of off-target attempts were "saved". Until that was
@@ -664,7 +697,7 @@ unfinished, to be looked at together at the end rather than chased now.
 | Item | What is outstanding |
 |---|---|
 | **S1.1c** | Shot volume and goals are high; not being chased |
-| **S1.3** | Corner skew (ratio ~0.75-0.85, i.e. mildly asymmetric) |
+| **S1.3** | Corner skew (ratio ~0.75-0.85, i.e. mildly asymmetric) — no diagnostic was ever written |
 | **S1.7c** | Box fouls under-produced; the penalty constant compensates for it |
 | **S1.9** | Remaining calibration outliers |
 | **0-0 draws** | None in 100 matches. At ~4 goals/match that is ~1.4% expected, so possibly nothing - but it is a behavioural signal, not a calibration knob |
@@ -796,15 +829,26 @@ This is what creates stakes. Without it there is no pressure loop.
 
 ---
 
-### Sprint 2 exit criteria
+### Sprint 2 exit criteria — ✅ COMPLETE 2026-09-26
 
-- [ ] Every club has budget, reputation, staff, sponsors
-- [ ] A weekly ledger runs for all 310 clubs
-- [ ] `Player.earnings` drives a real wage bill
-- [ ] The Finances page reads real data and nothing else
-- [ ] Board expectations, trust, and a sacking flow exist
-- [ ] Morale and form are live and reach the engine
-- [ ] No client-side finance fiction remains in the codebase
+All six tasks (S2.1–S2.6) are done. The criteria below were written as unchecked boxes and never
+updated; they are now marked against what is actually in the code.
+
+| Criterion | Result |
+|---|---|
+| Every club has budget, reputation, staff, sponsors | ✅ S2.1, S2.3 — tier-scaled budgets, per-club reputation variance, global name dedupe, 3–7 staff and 1–3 sponsors per club |
+| A weekly ledger runs for all 310 clubs | ✅ S2.2 — `FinanceLedgerEntry` + `WeeklyFinanceService`, called for **every** club in the week advance, one transaction per club |
+| `Player.earnings` drives a real wage bill | ✅ S2.5 — `Σ Player.earnings` against a board wage ceiling; FFP-lite ratio visible to the player |
+| The Finances page reads real data and nothing else | ✅ S2.5 item 6 — the client-side finance fiction in `club-management.js` is gone |
+| Board expectations, trust, and a sacking flow exist | ✅ S2.4 — `BoardExpectation`, per-round evaluation, sacking below threshold |
+| Morale and form are live and reach the engine | ✅ S2.6 — `getConfidenceModifier()` wired into shot and pass execution; `Player.form` responds to minutes, goals, rating, results and wage-vs-value |
+| No client-side finance fiction remains | ✅ |
+
+**One thing S2.6 explicitly deferred and Sprint 4 then delivered:** feeding morale and form into
+training growth (S2.6 item 6) is now live via the coach and cohesion multipliers in S4.3/S4.6.
+
+**Carried forward, not blocking:** `SquadGoals` and per-player wage **demands** (an unhappy player
+requesting a rise rather than a transfer) are Sprint 8 material — see S8.5.
 
 ---
 
@@ -862,14 +906,21 @@ Today: offers are `Set<String>` of `"Partizan offered €450000"` (`Transfer.jav
 
 ---
 
-### S3.4 — Loans
+### S3.4 — Loans ✅ built 2026-09-26 (was never marked — re-audited 2026-09-27)
 
-| # | Task |
-|---|---|
-| 1 | Loan with optional buy clause and optional wage contribution |
-| 2 | Loan players count as squad depth but not first-team registrations |
-| 3 | AI clubs accept and make loan offers |
-| 4 | **Loan out academy prospects** — the standard development pathway, and the answer to the 10-junior cap (Sprint 5) |
+`LoanService` is a full lifecycle, not a stub: `offer` → `accept` → `start` → `recall` /
+`returnEarly` → `closeFinishedLoans`, plus `buyOption` and `wageCarriedBy` so a loanee counts for
+squad depth without distorting the wage bill.
+
+| # | Task | State |
+|---|---|---|
+| 1 | Loan with optional buy clause and optional wage contribution | ✅ |
+| 2 | Loan players count as squad depth but not first-team registrations | ✅ `isRegisteredByNobody` + `wageCarriedBy` |
+| 3 | AI clubs accept and make loan offers | ✅ |
+| 4 | **Loan out academy prospects** | ✅ the hook exists — `LoanService.loanOut` takes a player id and a `YOUTH` squad role exists on `PlayerContract` |
+
+> The reason this entry sat unmarked for a sprint: S3.6 was re-audited on 2026-09-26 and S3.4 was
+> simply never revisited. Loans were built in the same pass as the negotiation engine.
 
 ---
 
@@ -942,17 +993,36 @@ second copy of the settlement next to `NegotiationService`'s. Both are gone.
 - [x] Controllers re-pointed; the `club` name parameter is gone
 ---
 
-### Sprint 3 exit criteria
+### Sprint 3 exit criteria — 🟡 core done, AI market supply pressure missing
 
-- [ ] Every player has a contract with a wage
-- [ ] Contracts expire → free agents exist
-- [ ] Negotiation is multi-round with fee + wage + length
-- [ ] `interestedTeams` prose encoding is gone
-- [ ] Transfer windows are enforced
-- [ ] Loans work both ways
-- [ ] Work permits and the non-EU quota block signings
-- [ ] AI↔AI transfers happen; squads visibly evolve
-- [ ] The seller chooses which offer to accept
+Re-audited 2026-09-27. The transfer market is genuinely Sokker-shaped; what is missing is the
+**supply** side of it — AI clubs do not create listings of their own, so the market is all demand.
+
+| Criterion | Result |
+|---|---|
+| Every player has a contract with a wage | ✅ S3.1 — backfilled 2–4 years at current `earnings` |
+| Contracts expire → free agents exist | ✅ S3.1 item 3 — the 409 that made this impossible is gone |
+| Negotiation is multi-round with fee + wage + length | ✅ S3.2 — `TransferOffer` + `NegotiationService` |
+| `interestedTeams` prose encoding is gone | ✅ S3.7 — entity, DTOs, parser, resolver and purge all deleted |
+| Transfer windows are enforced | ✅ S3.3 — out-of-window attempts rejected with a reason |
+| Loans work both ways | ✅ S3.4 — full lifecycle (see above) |
+| Work permits and the non-EU quota block signings | ✅ S3.5 — **but the per-tier quotas are still the owner's unconfirmed guess** (4/3/2/1/0) |
+| AI↔AI transfers happen; squads visibly evolve | 🟡 transfers happen, **evolution does not** — see below |
+| The seller chooses which offer to accept | ✅ S3.2 item 8 |
+
+**The four honest S3.6 remainder** (verified still open):
+
+| # | Gap | Why it matters |
+|---|---|---|
+| 5 | AI offers are one number, not a negotiation thread | An AI club never negotiates, so a human seller never haggles |
+| 6 | **AI clubs do not renew expiring contracts or reject players** | No supply pressure. Contracts expire into free agency rather than being fought over |
+| 8 | No transfer history per player | Blocks the player-view History tab (see PLAYER VIEW below) |
+| 9 | No squad-size limit on purchasing | A club can buy until it is bankrupt on wages |
+
+**S3.6 item 6 is the one worth doing first.** Everything else on this list is a feature; that one is
+a hole — 300 AI clubs will sit on expiring contracts doing nothing about them, and the transfer market
+will stay a one-way drain. It is not scheduled into a sprint because it is a balance-and-behaviour
+task and the owner has deferred statistical work; it is recorded here so it is not lost.
 
 ---
 
@@ -1181,79 +1251,161 @@ formulas is the same mistake as two settlement paths on a transfer, which cost t
 
 ---
 
-### Sprint 4 exit criteria
+### Sprint 4 exit criteria — 🟡 6 of 7 features done; the UI and AI priorities are the gaps
 
-- [ ] Individual per-player skill focus
-- [ ] Intensity with growth / fatigue / injury trade-offs
-- [ ] Staff attributes measurably affect growth
-- [ ] Facilities purchasable and effective
-- [ ] Position learning curves and age ceilings
-- [ ] Mentoring works
-- [ ] Possession-context tactics are not a no-op
-- [ ] AI clubs train and develop
-- [ ] Growth remains 0.3–0.6/wk for a young Advanced player, 0.04 for a 35-year-old
+Re-audited 2026-09-27. The training model is complete and coherent — one growth formula, position
+curves, age ceilings, coaches, facilities, intensity, focus, mentoring, cohesion. What is missing is
+the part a manager touches.
+
+| Criterion | Result |
+|---|---|
+| Individual per-player skill focus | 🟡 **backend only** — `PlayerTrainingFocus` + REST, but the per-player panel in Training Setup is not built (S4.1 item 5) |
+| Intensity with growth / fatigue / injury trade-offs | ✅ S4.2 items 1–5. The camp block (item 6) is not built |
+| Staff attributes measurably affect growth | ✅ S4.3 — resolved per skill, ±6% head-coach effect reaching the engine |
+| Facilities purchasable and effective | 🟡 levels, growth effect, injury effect and costs all done. **Stadium quality → home advantage is not** (S4.4 item 4), and youth level → intake quality is Sprint 5 |
+| Position learning curves and age ceilings | ✅ S4.5 — `PositionGrowthProfile`, hard age ceilings, band test guards the magnitude |
+| Mentoring works | ✅ S4.6 — derived pairings, cohesion, familiarity, and the 506 no-op possession rules fixed |
+| Possession-context tactics are not a no-op | ✅ S4.6 item 3 |
+| AI clubs train and develop | 🟡 every club trains through the **same** formula, but priorities come from the role default rather than `ClubNeed` (S4.7 item 3), Advanced slots are unassigned (item 4), and **AI squads never decline** (item 5) |
+| Growth remains 0.3–0.6/wk for a young Advanced player, 0.04 for a 35-year-old | ✅ held by the S4.5 band test |
+
+**The two items that actually matter, in order:**
+
+1. **S4.1 item 5 — the focus panel.** The whole headline feature of the sprint is invisible. The REST
+   is done and tested; a manager cannot use it. This is the same class of defect as the goalkeeping
+   coach whose wage left the account and whose teaching did nothing.
+2. **S4.7 item 5 — AI squads never decline.** Players stop improving at 34 and then hold forever, so
+   the pyramid cannot regenerate. Over a long save the league converges instead of turning over.
+
+Everything else on this list is an enhancement. Those two are holes.
 
 ---
 
 # Sprint 5 — Juniors v2
 
 **Effort:** 8–10 days · **Type:** `FEATURE` · **Depends on:** S2.3 (scouts) + S4.4 (youth facilities)
+**Status 2026-09-27: this is the current sprint. Re-audited against the source before starting.**
 
 Target: Sokker-parity on the academy. Currently at ~"tier-3 academy, no scouts".
 
----
+**Where the academy actually stands, verified in the code:**
 
-### S5.1 — Scouting network
-
-**`Country.youthRating` is already seeded (45–95), already exposed via `CountrySummaryDTO`, and read by nothing.** A purpose-built hook for exactly this feature.
-
-| # | Task |
+| Fact | Evidence |
 |---|---|
-| 1 | `ScoutingNetwork` entity per club: assigned scouts, regions covered |
-| 2 | `ScoutAssignment` — assign a scout to a country or region; output volume scales with scout `scouting` attribute and the country's `youthRating` |
-| 3 | Scout cost as a weekly ledger expense (S2.2) |
-| 4 | Better scouts → more and better intakes |
-| 5 | **Foreign youth recruitment** — with 9 countries seeded, scouting opens up a real transfer market for teenagers |
+| `Junior` has **no position field** | the model is `id, name, age, talent, academySkill, academySkillExact, lastWeeklyDelta, arrival*, archived, status, team, promotedPlayer` — so S5.3 item 1 is genuinely unstarted |
+| `talent` is a raw `double` with no uncertainty model | S5.2 unstarted. `PlusFeatureService` returns `null` (fully hidden) rather than an estimate |
+| **No scouting code exists at all** | zero files matching `*Scout*`. `Country.youthRating` is seeded 45–95 and read by **nothing** (verified) |
+| Promotion window is correct | S5.3 item 4 ✅ `f22ee1a` — graduation at 15–20, once a year, legacy distribution locked by tests |
+| Sell-time reveal exists | `promoteJuniorWithReveal` |
+| Listing and release exist | `transferListJunior`, `releaseJunior` |
+| Loans can take a junior | `LoanService` is a full lifecycle (S3.4) — S5.4 item 1 needs only wiring |
+| `youthLevel` on `Stadium` is unread | S4.4 item 5 — the intake-quality hook Sprint 5 is supposed to consume |
 
----
-
-### S5.2 — Report uncertainty
-
-| # | Task |
-|---|---|
-| 1 | Show an **estimated range**, not the true `academySkillExact`. Uncertainty shrinks with scouting level and time observed |
-| 2 | `talent` becomes a hidden ceiling revealed by scouting, not a number shown on day one |
-| 3 | Reports arrive progressively: initial impression → after a season → full assessment |
-| 4 | This is the single biggest *feel* upgrade available in the academy — it turns a spreadsheet into a judgement |
+**The gap in one sentence:** the academy produces a number, not a player. There is no scouting, no
+uncertainty, no position at intake, and no pathway out — so a junior is a dice roll that becomes a
+`Player` on graduation day.
 
 ---
 
-### S5.3 — Academy structure
+### S5.1 — Scouting network ❌ NOT STARTED
 
-| # | Task |
-|---|---|
-| 1 | Position known at **intake**, not rolled at promotion (`YouthAcademyService.java:333-340`) |
-| 2 | Individual junior training focus, integrated with Sprint 4 |
-| 3 | Junior attributes visible as a profile (preferred foot, height, weight, personality, work rate, injury susceptibility) |
-| 4 | **Mid-season promotion** — remove the artificial one-season freeze at `:81-85` (keep a shorter cooldown instead) |
-| 5 | Academy quality from `TrainingGround.youthLevel` + the `YOUTH_COACH` staff member |
-| 6 | Raise or make configurable the 10-active-junior cap |
-| 7 | Continuity on promotion — carry junior progress into the senior system rather than starting from a rolled skillset |
-| 8 | Personality, work rate, professionalism as growth inputs (Sprint 4) |
+**`Country.youthRating` is already seeded (45–95), already exposed via `CountrySummaryDTO`, and read
+by nothing.** A purpose-built hook for exactly this feature, and it has been sitting there since S2.1.
+
+| # | Task | State |
+|---|---|---|
+| 1 | `ScoutingNetwork` entity per club: assigned scouts, regions covered | ❌ |
+| 2 | `ScoutAssignment` — assign a scout to a country or region; output volume scales with scout `scouting` attribute and the country's `youthRating` | ❌ |
+| 3 | Scout cost as a weekly ledger expense (S2.2) | ❌ — `FinanceCategory.SCOUT_WAGES` does not exist yet |
+| 4 | Better scouts → more and better intakes | ❌ |
+| 5 | **Foreign youth recruitment** — with 9 countries seeded, scouting opens up a real transfer market for teenagers | ❌ |
+
+**Note on ordering.** Item 5 is the reason this task is worth doing properly rather than minimally:
+a scouting network whose output is only ever your own academy is a numbers screen. The value is in
+opening the other eight countries, and that needs the `youthRating` hook to be the *driver* of intake
+quality, not a multiplier applied afterwards.
+
+**Also owed from Sprint 4:** `Stadium.youthLevel` and the `YOUTH_COACH` staff member's `development`
+attribute both feed intake quality and are both currently unread (S4.3 item 2 defers the scout half
+of scouting explicitly to this sprint).
 
 ---
 
-### S5.4 — Junior pathways
+### S5.2 — Report uncertainty ❌ NOT STARTED
 
-| # | Task |
+| # | Task | State |
+|---|---|---|
+| 1 | Show an **estimated range**, not the true `academySkillExact` | ❌ |
+| 2 | `talent` becomes a hidden ceiling revealed by scouting, not a number shown on day one | ❌ |
+| 3 | Reports arrive progressively: initial impression → after a season → full assessment | ❌ |
+| 4 | This is the single biggest *feel* upgrade available in the academy | — |
+
+**The distinction that matters, and it is easy to get wrong.** `PlusFeatureService` already hides
+talent entirely — `talentOrNull` returns `null` for anyone but the owner. That is the **subscription**
+rule from the owner decisions above, and it is correct. S5.2 is a different axis: within your own
+academy, a figure you *are* entitled to see should still be an **estimate that firms up**, because a
+17-year-old labelled "talent 4" on day one is a spreadsheet, not a judgement. Hiding is the PLUS rule;
+uncertainty is the scouting mechanic. They compose, they do not replace each other.
+
+---
+
+### S5.3 — Academy structure 🟡 1 of 8 done
+
+| # | Task | State |
+|---|---|---|
+| 1 | Position known at **intake**, not rolled at promotion | ❌ **`Junior` has no position field at all** |
+| 2 | Individual junior training focus, integrated with Sprint 4 | ❌ `PlayerTrainingFocus` is first-team only |
+| 3 | Junior attributes visible as a profile (preferred foot, height, weight, personality, work rate, injury susceptibility) | ❌ |
+| 4 | **Mid-season promotion** — remove the artificial one-season freeze | ✅ `f22ee1a` — graduation window 15–20, once a year, legacy distribution byte-identical |
+| 5 | Academy quality from `Stadium.youthLevel` + the `YOUTH_COACH` staff member | ❌ both unread |
+| 6 | Raise or make configurable the 10-active-junior cap | ❌ still a hard cap |
+| 7 | Continuity on promotion — carry junior progress into the senior system | 🟡 `academySkillExact` + `lastWeeklyDelta` exist and `promotedPlayer` links back, but the growth history stops at promotion |
+| 8 | Personality, work rate, professionalism as growth inputs | ❌ |
+
+**Item 4 is the constraint to respect.** The owner ruled that the legacy promotion **distribution**
+stays exactly as it is, random budget spread, goalkeeper bias and the per-skill cap of 10 included,
+and `YouthAcademyGraduationTest` locks it. Anything added here — position at intake, academy quality,
+a personality roll — may change *who* graduates and *what position* they play, but must not quietly
+change the quality distribution. If a new input starts skewing it, that is a bug, not a tuning win.
+
+---
+
+### S5.4 — Junior pathways 🟡 2 of 5 done
+
+| # | Task | State |
+|---|---|---|
+| 1 | **Loan out** prospects (Sprint 3) | 🟡 `LoanService` is complete; the junior-facing path is not wired |
+| 2 | Release to free agency with a small compensation | ✅ `releaseJunior` |
+| 3 | Junior market: AI clubs buy your listed prospects | ✅ `transferListJunior` |
+| 4 | Academy graduates visible on the global market board | ❌ |
+| 5 | Multi-season tracking: a junior's development history across seasons | ❌ |
+
+**Verify (when built):** scouting Serbia, Brazil and England produces different quality intakes;
+prospects develop at visibly different rates; loans give young players minutes.
+
+---
+
+### Sprint 5 exit criteria — ❌ NOT MET (0 of 4 features complete)
+
+| Criterion | Result |
 |---|---|
-| 1 | **Loan out** prospects (Sprint 3) — the standard route for a 17-year-old |
-| 2 | Release to free agency with a small compensation |
-| 3 | Junior market: AI clubs buy your listed prospects (already partially wired via `transferListJunior:153-162`) |
-| 4 | Academy graduates visible on the global market board |
-| 5 | Multi-season tracking: a junior's development history across seasons |
+| A club can assign scouts to countries and the assignment changes what it finds | ❌ nothing exists |
+| `Country.youthRating` is read by the simulation | ❌ seeded and unread |
+| A junior's report is an estimate that firms up, not a number on day one | ❌ |
+| A junior has a position from intake and a route out of the academy | ❌ position absent; loan path unwired |
+| Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread |
+| Graduation distribution unchanged from the legacy model | ✅ `YouthAcademyGraduationTest` holds |
 
-**Verify:** scouting Serbia, Brazil and England produces different quality intakes; prospects develop at visibly different rates; loans give young players minutes.
+**Planned order, and why:**
+
+1. **S5.1** — scouting network. It is the sprint's spine: it creates the foreign youth market, gives
+   `youthRating` a consumer, and is the input S5.2's uncertainty model needs to shrink over time.
+2. **S5.2** — report uncertainty, layered on the scouting levels S5.1 produces. Doing it first would
+   mean inventing an observation counter with nothing to observe.
+3. **S5.3 items 1 + 5** — position at intake and academy quality. Small, self-contained, and they
+   make the intake that S5.1 generates meaningful.
+4. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
+5. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
 
 ---
 
@@ -1261,11 +1413,20 @@ Target: Sokker-parity on the academy. Currently at ~"tier-3 academy, no scouts".
 
 **Effort:** 1 day remaining · **Type:** `DELETE` · **Independent — can run any time**
 
-> ✅ **S6.1, S6.2 and S6.3 (the engines) are DONE — 2026-09-26.** 125 files moved to `footballForDelete/`, `mvn compile` clean, `mvn test` 84/84 green. See `footballForDelete/README.md` and `sprintProgress.md`.
+> ✅ **S6.1 – S6.5 are DONE — engines, frontend, stubs and docs, 2026-09-26/27.** 125 files moved to
+> `footballForDelete/`, the eight stub services and two empty controllers deleted, `PROPOSAL_PROGRESS.md`
+> / `THREAT_OVERRIDE_SPEC.md` / `UI_FOOTBALL_MANAGER.md` removed, `mvn compile` clean, `mvn test` 549/549
+> green. See `footballForDelete/README.md` and `sprintProgress.md`.
 >
-> What was quarantined: `engine_v1/` (12 files, ~9,775 LOC), the v2 `newLogic/engine/` package (26 files, ~4,563 LOC), `NewMatchController`, 8 dead services, `RuntimeSaveToDB`, `util/events/` (6), `tools/SimulationRunner`, `old/` (4), the v2 `model/MatchState` + `MatchRuntime`, `demo/swingUIDemo/` (55), and 8 orphaned frontend files.
+> What was quarantined: `engine_v1/` (12 files, ~9,775 LOC), the v2 `newLogic/engine/` package
+> (26 files, ~4,563 LOC), `NewMatchController`, 8 dead services, `RuntimeSaveToDB`, `util/events/` (6),
+> `tools/SimulationRunner`, `old/` (4), the v2 `model/MatchState` + `MatchRuntime`, `demo/swingUIDemo/`
+> (55), and 8 orphaned frontend files.
 >
-> **Still open in this sprint:** S6.4 (stub services + empty controllers) and S6.5 (documentation rewrite). The latter is now urgent — `AGENTS.md` describes engines that were just deleted, and the two `MatchOrchestrator` / `MatchState` name collisions are exactly the kind of thing that misleads the next agent.
+> **Three things genuinely remain,** all re-verified on 2026-09-27 rather than taken on trust: the
+> orphan POJOs `TrainingAssignment` / `Crowd` / `Referee`, the 6 dead `/training/*` endpoints, and
+> **`ENGINE.md`** — the one-page statement of which engine is live. That last one has caused more wasted
+> time than everything else in this sprint combined.
 
 ---
 
@@ -1321,41 +1482,75 @@ Then fix the 13 dead routes (S8.1).
 
 ---
 
-### S6.4 — Delete the stub services and empty controllers
+### S6.4 — Delete the stub services and empty controllers ✅ DONE (re-audited 2026-09-27)
 
-| Item | Lines | Replacement |
+Verified gone from the source: `CompetitionController`, `StadiumController`, `LeagueService`,
+`TrainingService`, `StadiumService`, `DummyDataService`, `PlayerConditionService` and
+`PlayerSkillProgressionService`. The inverted-talent `PlayerSkillProgressionService` is gone too,
+which was the one deletion here that could have changed behaviour.
+
+| Item | Lines | Result |
 |---|---:|---|
-| `CompetitionController` | 7 | Empty class, 0 routes. Either implement league/competition admin or delete |
-| `StadiumController` | 9 | Comment only |
-| `LeagueService` | 9 | `SeasonService` does the real work |
-| `TrainingService` | 21 | `TrainingProgressionService` is the live path |
-| `StadiumService` | 7 | |
-| `DummyDataService` | 172 | 0 callers |
-| `PlayerConditionService` | 40 | 0 callers — or wire it in S2.6 |
-| `PlayerSkillProgressionService` | 72 | 0 live callers, **inverted** talent factor, hard cap 17 |
-| `model/TrainingAssignment` | — | Orphan POJO |
-| `Crowd`, `Referee` entities | — | Orphans, never read |
-| 6 dead `/training/*` endpoints | — | Never called by any frontend |
-| `AGENTS.md` §"New Match Engine" etc. | ~900 lines | Rewrite per S6.5 |
+| `CompetitionController` | 7 | ✅ deleted — league admin is served by the country/season controllers |
+| `StadiumController` | 9 | ✅ deleted |
+| `LeagueService` | 9 | ✅ deleted — `SeasonService` is the live path |
+| `TrainingService` | 21 | ✅ deleted — `TrainingProgressionService` is the live path |
+| `StadiumService` | 7 | ✅ deleted |
+| `DummyDataService` | 172 | ✅ deleted |
+| `PlayerConditionService` | 40 | ✅ deleted rather than wired; Sprint 2.6 solved the problem properly |
+| `PlayerSkillProgressionService` | 72 | ✅ deleted — the live path is Sprint 4's |
+| `model/TrainingAssignment` | — | ❌ **still an orphan POJO** |
+| `Crowd`, `Referee` entities | — | ❌ **still orphans, never read** |
+| 6 dead `/training/*` endpoints | — | ❌ still present |
+| `AGENTS.md` rewrite | — | 🟡 see S6.5 |
 
-**Preserve before deleting:** the working `engine_v1/MatchEngine.simulateRestOfMatchDay` — but replace its `simulateQuickScore:1578-1602` with the proposal engine first (Sprint 7).
+> This entry said "still open" until 2026-09-27. The services were in fact deleted with the rest of
+> the quarantine; the item was never revisited. The three orphan POJOs and the dead training
+> endpoints are the real remainder, and they are small.
 
 ---
 
-### S6.5 — Rewrite the documentation
+### S6.5 — Rewrite the documentation 🟡 MOSTLY DONE (re-audited 2026-09-27)
 
-**11,856 lines of Markdown is now a liability.** It is more than the entire training + transfer + medical + academy layer combined, and much of it is confidently wrong.
+| # | Task | Result |
+|---|---|---|
+| 1 | Rewrite `AGENTS.md` — was 92 KB | 🟡 **1,036 lines**, down from ~2,600. Still above the 400–600 target and it still describes `demo/service/` and `newLogic/` engines at length |
+| 2 | Delete or archive `PROPOSAL_PROGRESS.md` (110 KB) | ✅ **gone** |
+| 3 | Delete `THREAT_OVERRIDE_SPEC.md` (38 KB) | ✅ **gone** |
+| 4 | Fix the 3 documented-but-inactive claims | ✅ moot — the file is deleted |
+| 5 | `UI_FOOTBALL_MANAGER.md` — remove "✅ U potpunosti implementiran" | ✅ **file deleted** |
+| 6 | Correct the goal-mouth note (10 m, not 14 m) | ✅ the 10 m figure is used consistently |
+| 7 | Add an `ENGINE.md` stating which engine is live | ❌ **does not exist** — this is the remaining gap |
+| 8 | Keep `expertAudit.md` and `sprintBacklog.md` as the living docs | ✅ |
 
-| # | Task |
+**`ENGINE.md` is the one worth writing.** The single most expensive recurring mistake in this project
+was not knowing which engine was live: there have been three `MatchOrchestrator`/`MatchState` name
+collisions, a dashboard button called `start-realistic-demo-btn` for historical reasons, and a
+viewer under `static/demo/service/ui/proposal/`. One page that states the live path in one place
+would have prevented all of it.
+
+---
+
+### Sprint 6 exit criteria — 🟡 MET IN SPIRIT, THREE ITEMS OPEN
+
+The sprint's purpose was "a reader can tell what is live". That is achieved — the dead engines are
+gone, the stubs are gone and the runaway documents are deleted. The three open items are small and
+one of them matters more than its size suggests.
+
+| Criterion | Result |
 |---|---|
-| 1 | Rewrite `AGENTS.md` — 92 KB describing engines that no longer exist. Target: 400–600 lines, current-state only |
-| 2 | Delete `PROPOSAL_PROGRESS.md` (110 KB session log) or archive it to `docs/archive/`. Keep `PROPOSAL_CURRENT_STATE.md` and `backlog.md`, updated |
-| 3 | Delete `THREAT_OVERRIDE_SPEC.md` (38 KB) — superseded by the implemented engine |
-| 4 | Fix the 3 documented-but-inactive claims in `PROPOSAL_PROGRESS.md` (`nearestOpponentBeatsHimToIt`, the unreachable offside block, `/api/generate`) — or delete the file |
-| 5 | `UI_FOOTBALL_MANAGER.md` — remove "✅ U potpunosti implementiran" while it lists 6 unimplemented items |
-| 6 | Correct the goal-mouth note: **the mouth is 10 m (1 col × 10 m), not 14 m.** The 14 m figure is the *row* length (98 m / 7 rows) and applies to the length axis, not the goal |
-| 7 | Add an `ENGINE.md` stating in one place: `newLogic/sim/` is the only engine; the dashboard button is `start-realistic-demo-btn` for historical reasons; the viewer is `static/demo/service/ui/proposal/` |
-| 8 | Keep `expertAudit.md` and `sprintBacklog.md` as the living strategy docs |
+| Only one match engine remains | ✅ 125 files quarantined, `mvn compile` clean |
+| No dead frontend pages | ✅ 8 orphaned files removed, `navigation.js` and `training.js` among them |
+| No stub services or empty controllers | ✅ all 8 deleted |
+| No orphan POJOs | ❌ `TrainingAssignment`, `Crowd`, `Referee` |
+| No dead endpoints | ❌ 6 dead `/training/*` routes |
+| Documentation describes the current system | 🟡 `AGENTS.md` is a third of its old size but still over target |
+| **A reader can tell which engine is live in one place** | ❌ **`ENGINE.md` does not exist** |
+
+**The `ENGINE.md` rule, for whoever picks this up:** write down the live engine package, the entry
+point class, the entry point *endpoint*, the dashboard button id even where it is historically
+misnamed, and the viewer path. Five lines. Every hour lost to "which engine is this?" in this project
+would have been avoided by those five lines.
 
 ---
 
@@ -1373,40 +1568,62 @@ Then fix the 13 dead routes (S8.1).
 
 ---
 
-### S7.1 — Add a regression test that all fixtures use the proposal engine
+### S7.1 — Add a regression test that all fixtures use the proposal engine ❌ not started
 
-| # | Task |
-|---|---|
-| 1 | Assert that `SimMatchService` is the only class that produces a `Match` result for a played fixture — no `simulateQuickScore` / `simulateRestOfMatchDay` equivalent exists |
-| 2 | Assert `AsyncSimulationRunner` and `SimulationController.simulateCurrentRound` both go through `SimMatchService` |
-| 3 | Add a static check (test or build step) that fails if any class outside `sim/` calls into a simulation loop directly. This is the guard that would have caught the original rot |
-| 4 | Document in `ENGINE.md`: `newLogic/sim/` is the only engine; the dashboard button id `start-realistic-demo-btn` is a historical name; the viewer is `static/demo/service/ui/proposal/` |
+| # | Task | State |
+|---|---|---|
+| 1 | Assert `SimMatchService` is the only class that produces a `Match` result for a played fixture | ❌ |
+| 2 | Assert `AsyncSimulationRunner` and `SimulationController.simulateCurrentRound` both go through `SimMatchService` | ❌ |
+| 3 | Add a static check that fails if any class outside `sim/` calls into a simulation loop directly | ❌ — this is the guard that would have caught the original rot |
+| 4 | Document in `ENGINE.md` which engine is live | ❌ — see S6.5 item 7, same deliverable |
 
-**Verify:** the test fails if you reintroduce `engine_v1/MatchEngine` or `newLogic/engine/MatchSimulator` into the build.
+**Verify:** the test fails if you reintroduce `engine_v1/MatchEngine` or `newLogic/engine/MatchSimulator`.
+
+**Recommended right after Sprint 5.** It is 1–2 days, it is the cheapest insurance in the document,
+and item 4 is shared with the one piece of S6.5 still open.
 
 ---
 
-### S7.2 — Make AI-vs-AI fixtures inspectable
+### S7.2 — Make AI-vs-AI fixtures inspectable ❌ not started
 
-The engine is consistent; the only real gap is observability. AI fixtures are simulated with replay recording suppressed, so unlike your own match they cannot be watched afterwards.
+The engine is consistent; the only real gap is observability. AI fixtures are simulated with replay
+recording suppressed, so unlike your own match they cannot be watched afterwards.
 
-| # | Task |
-|---|---|
-| 1 | Offer to record a replay for a selection of AI fixtures (or all, if storage allows) so the user can review a neighbouring match |
-| 2 | Keep the "results hidden until you play your match" gate — it is good design. But move the guard server-side; the current `sessionStorage.dashboardWeekConsumed` check is client-side only (`demo.js:634-637`) |
-| 3 | Add a post-round summary showing which AI fixtures were close, so the round feels consequential rather than random |
+| # | Task | State |
+|---|---|---|
+| 1 | Offer to record a replay for a selection of AI fixtures so the user can review a neighbouring match | ❌ |
+| 2 | Move the "results hidden until you play your match" gate server-side; the current `sessionStorage.dashboardWeekConsumed` check is client-side only | ❌ |
+| 3 | Add a post-round summary showing which AI fixtures were close | ❌ |
 
-**Verify:** a simulated round is followed by a summary; selected AI fixtures are watchable in the same viewer as your own match.
+**Verify:** a simulated round is followed by a summary; selected AI fixtures are watchable in the
+same viewer as your own match.
+
+---
+
+### Sprint 7 exit criteria — ❌ NOT MET
+
+- [ ] A test fails if a second simulation path is reintroduced
+- [ ] `ENGINE.md` names the live engine, the historical button id and the viewer path
+- [ ] The results-hidden gate is enforced server-side
+- [ ] Selected AI fixtures are watchable
+
+---
 
 # Sprint 8 — Presentation, integration and deployment
 
 **Effort:** 10–12 days · **Type:** `INFRA` + `FEATURE` · **Depends on:** all
+**Status: not started. Nothing in this sprint has been built.**
 
 ---
 
 ### S8.1 — Wire or delete the 13 dead routes
 
 `results`, `cup`, `international`, `friendlies`, `playerStats`, `teamStats`, `topScorers`, `topAssists`, `coaches`, `events`, `analytics`, `upcoming`, `training` — no menu entry, no action row, console-only. **6 of them crash into a generic "API Error" card** because they `await response.json()` without checking `response.ok`.
+
+> **This list needs re-verification.** It was written 2026-09-26. On 2026-09-27 two genuinely new
+> pages were added and wired properly (`userProfile` and `stadium`, both with real endpoints), and
+> the league table was confirmed live off the user's own competition rather than a hardcoded league.
+> The remaining 13 were not re-audited, so treat the list as a starting point rather than a fact.
 
 | # | Task |
 |---|---|
@@ -1492,7 +1709,7 @@ Also: `ensureEntriesForSeasonCompetition:126-134` deletes and rebuilds all entri
 
 ---
 
-### Sprint 8 exit criteria
+### Sprint 8 exit criteria — ❌ NOT MET (sprint not started)
 
 - [ ] No dead routes, no generic "API Error" cards
 - [ ] Cup and internationals functional
@@ -1502,6 +1719,14 @@ Also: `ensureEntriesForSeasonCompetition:126-134` deletes and rebuilds all entri
 - [ ] Schedulers in place and idempotent
 - [ ] Multi-user capable
 - [ ] Engine quality gates running in CI
+
+**Two items inside Sprint 8 are smaller than they look and unblock other sprints:**
+
+- **S8.1 item 4** (every fetch checks `response.ok`, centralised in `authFetch`) — this is the same
+  class of bug that hid a dozen dead routes in Sprint 0, and it is a half-day.
+- **S8.6 item 7** (move `User → team` from a name match to a real FK). **Renaming your club currently
+  loses your team.** That is a data-loss bug wearing a Sprint 8 label, and it is the reason the
+  `/auth/me` lookup needed duplicate-safe `findAllByNameIgnoreCase` as a workaround.
 
 ---
 
@@ -1730,39 +1955,46 @@ rests on: **`COMPETITIVE_ANALYSIS.md`** §9.1.
 
 ---
 
-# Effort summary
+# Effort summary — re-audited 2026-09-27
 
-| Sprint | Scope | Effort | Type |
-|---|---|---:|---|
-| **0** | Fix the exploits | 3–4 d | `FIX` |
-| **1** | Engine calibration + injuries + penalties + subs | 16–20 d | `FIX` + `FEATURE` |
-| **2** | **The economy** | 15–18 d | `FEATURE` |
-| **3** | Contracts and transfers v2 | 12–15 d | `FEATURE` |
-| **4** | **Training v2** | 12–15 d | `FEATURE` |
-| **5** | Juniors v2 | 8–10 d | `FEATURE` |
-| **6** | Delete the dead code — engines ✅ done, stubs + docs remain | 1 d | `DELETE` |
-| **7** | AI-vs-AI verification (reduced from 5–7 d) | 1–2 d | `FIX` |
-| **8** | Presentation, integration, deployment | 10–12 d | `INFRA` |
-| | **Total** | **~79–95 days** | |
+| Sprint | Scope | Effort | Type | State |
+|---|---|---:|---|---|
+| **0** | Fix the exploits | 3–4 d | `FIX` | ✅ done |
+| **1** | Engine calibration + injuries + penalties + subs | 16–20 d | `FIX` + `FEATURE` | ✅ done as mechanics; statistics deferred |
+| **2** | The economy | 15–18 d | `FEATURE` | ✅ done |
+| **3** | Contracts and transfers v2 | 12–15 d | `FEATURE` | 🟡 core done; 4 AI-market gaps |
+| **4** | Training v2 | 12–15 d | `FEATURE` | 🟡 6/7 done; focus UI + AI decline open |
+| **5** | Juniors v2 | 8–10 d | `FEATURE` | ◀ **current**; 1 of 4 features started |
+| **6** | Delete the dead code | 1 d | `DELETE` | ✅ done; 3 orphan POJOs + `ENGINE.md` left |
+| **7** | AI-vs-AI verification | 1–2 d | `FIX` | ❌ not started |
+| **8** | Presentation, integration, deployment | 10–12 d | `INFRA` | ❌ not started |
+| | **Original total** | **~79–95 days** | | |
+| | **Realistically remaining** | **~25–32 days** | | S5 + S7 + S8, plus the S3/S4 remainders |
 
-### Critical path
+### Critical path — as it actually stands
 
 ```
-S0 (4d) → S1 (20d) → S2 (18d) → S4 (15d) → S3 (15d) → S5 (10d) → S8 (12d)
-                                    └──────── S7 (2d) ────────┘
-S6 (1d) — parallel, any time
+S0 ✅──┐
+S1 ✅──┼──▶ S2 ✅ ──▶ S3 🟡 ──┐
+       │                      ├──▶ S5 ◀ CURRENT ──▶ S7 ──▶ S8
+S4 🟡 ─┘                      ┘        │
+                                    └── S5 feeds S4.4 item 5 (youthLevel → intake quality)
+S6 ✅ (parallel, done)
+
+Pick up opportunistically, nothing is blocked by them:
+  S4.1 item 5  focus panel        — the training sprint's headline feature is invisible
+  S4.7 item 5  AI squads decline  — the pyramid cannot regenerate over a long save
+  S3.6 item 6  AI contract renewals — no supply pressure in the transfer market
 ```
 
-### The first 30 days
+### The two sentences that matter for planning
 
-| Days | Work | Outcome |
-|---|---|---|
-| 1–4 | **Sprint 0** | Exploits closed, training now reaches the engine, `/api/**` locked |
-| 5–24 | **Sprint 1** | 5.4 → ~2.8 goals, 598 → ~130 duels, restarts fixed, corners unskewed, **injuries / penalties / substitutions implemented** |
-| 25–42 | **Sprint 2** | Every club has money, wages, staff, sponsors, a board and a ledger. **The game is now a manager game.** |
-| — | **Sprint 6** | ✅ Engines already quarantined (done 2026-09-26, 125 files). Docs + stubs remain |
-
-After ~5 weeks the project goes from *"a beautiful match sim with 30 menu pages"* to *"a football manager that happens to have an excellent match engine."*
+1. **The three systems that make this a manager game exist.** Economy (S2), contracts and a real
+   transfer market (S3), and a training model with genuine trade-offs (S4) are all built. That was
+   the goal of the first four sprints and it is met.
+2. **What is left is the academy, the documentation of which engine is live, and presentation.** The
+   academy (S5) is the only sprint with a *missing mechanic* rather than a missing refinement — the
+   game currently has no way to find a player it did not generate itself.
 
 ---
 
