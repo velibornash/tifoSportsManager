@@ -1902,6 +1902,52 @@ rather than half-done.
 
 **409 tests.**
 
+### S4.2 — Training intensity, and what it costs
+
+Training had growth but no cost, which means pushing every player as hard as possible every week was
+the only sensible strategy. A game with no downside has one strategy, and one strategy is not a game.
+
+Three tiers, and each one trades growth for fatigue:
+
+| | growth | fatigue/week | injury chance (rested) |
+|---|---|---|---|
+| `LIGHT` | ×0.75 | 4 | none, ever |
+| `NORMAL` | ×1.0 | 12 | 0.4% |
+| `VERY_HARD` | ×1.35 | 26 | 4.5%, rising steeply with fatigue |
+
+**`VERY_HARD` is a decision, not an upgrade.** It beats `NORMAL` by a third on a rested player, which
+is real over a twelve-week season. On a tired player it is most of a certainty, and the player is out
+for 7–28 days. Both halves have to be true or it is not a choice.
+
+**The fatigue numbers are set against recovery, which is the part that is easy to get wrong.** A player
+recovers `22 × ageFactor` a week — 22 at 24-and-under, about 19 at 26, 14 at 31, 11 at 34. My first
+pass had `VERY_HARD` costing 14 a week, which is *less* than what a young player recovers, so the cost
+silently evaporated and the setting was free. It only showed up because a test walked a full season and
+asked what fatigue a 24-year-old was left with. Now the tiers genuinely separate over twelve weeks, and
+`VERY_HARD` is measurably worse for a 34-year-old than a 24-year-old — which is the point, because the
+decision has to depend on who you are pointing it at.
+
+**`LIGHT` never injures anyone**, at any fatigue. That is what makes it the rehabilitation option
+rather than a slightly worse `NORMAL`, and it is a deliberate rule rather than a small number.
+
+**An injured player does not pick up a second injury.** He is not training, and rolling for him would
+extend a lay-off for no reason.
+
+**A week's work is charged once per player, not once per skill.** A week of training costs a week of
+fatigue however many skills it grew, and charging per skill would have quietly punished versatile
+players for being versatile.
+
+Club default lives on the weekly setup (`TeamTrainingSetup.trainingIntensity`); a per-player override
+gets its own table for the case a manager actually needs — the squad rests after a European night
+except the young striker who needs minutes. Setting an override twice replaces it, only the owning club
+may write one, and `byName` accepts `"Very Hard"` as readily as `"VERY_HARD"`, because the setting is
+read by a person.
+
+REST: `PUT /training/weekly/team/{teamId}/intensity/{playerId}`, mirroring the focus endpoint —
+403 for someone else's player, 400 for an unknown intensity, empty body clears the override.
+
+**425 tests.**
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.

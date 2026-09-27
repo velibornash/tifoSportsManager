@@ -30,6 +30,7 @@ public class TrainingProgressionService {
     private final TrainingWeekReportRepository trainingWeekReportRepository;
     private final TrainingPercentService trainingPercentService;
     private final TrainingFocusService focusService;
+    private final TrainingIntensityService intensityService;
     private final SeasonService seasonService;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
@@ -166,7 +167,16 @@ public class TrainingProgressionService {
             Map<SkillName, Double> before = snapshotSkills(skills);
             double trainingPercent = trainingPercentService.percentForWeek(
                     player, season, week, directSkill);
-            applyWeeklyGrowth(player, skills, directSkill, advanced, season, week, trainingPercent);
+            // Intensity is the missing cost side (Sprint 4.2). Resolved and charged once per player
+            // here, not per skill: a week of work costs a week of fatigue however many skills it
+            // grew, and charging it per skill would punish versatile players for being versatile.
+            TrainingIntensity intensity = intensityService.intensityFor(
+                    player, teamIntensity(setup), season, week);
+            applyWeeklyGrowth(player, skills, directSkill, advanced, season, week, trainingPercent,
+                    intensity);
+            // The cost lands whether or not the growth arrived, and is charged after the growth so
+            // an injury this week does not skip this week's training.
+            intensityService.apply(player, intensity, season, week);
             skills.syncVisibleFromExact();
             player.setSkills(skills);
             updatedPlayers.add(player);
@@ -358,10 +368,11 @@ public class TrainingProgressionService {
     }
 
     private void applyWeeklyGrowth(Player player, Skills skills, SkillName directSkill,
-                                     boolean advanced, int season, int week, double trainingPercent) {
+                                     boolean advanced, int season, int week, double trainingPercent,
+                                     TrainingIntensity intensity) {
         double injuryFactor = injuryTrainingFactor(player, season, week);
         double dt = computeDirectFragment(player, skills.getExact(directSkill), directSkill,
-                advanced, trainingPercent);
+                advanced, trainingPercent, intensity);
         dt *= injuryFactor;
         dt *= slowSkillModifier(directSkill);
         // Rare jackpot is allowed only for low-skill players, to avoid unrealistic fast growth on 14+.
@@ -444,8 +455,9 @@ public class TrainingProgressionService {
      * in about two weeks on advanced direct training) and is not part of what the owner changed.
      */
     private double computeDirectFragment(Player player, double currentExact, SkillName skill,
-                                          boolean advanced, double trainingPercent) {
-        double base = 0.52;
+                                          boolean advanced, double trainingPercent,
+                                          TrainingIntensity intensity) {
+        double base = 0.52 * (intensity == null ? 1.0 : intensity.growthMultiplier());
         double ageFactor = ageTrainingFactor(player.getAge(), skill);
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;
@@ -519,6 +531,13 @@ public class TrainingProgressionService {
             default -> setup.getDtSkillMid();
         };
         return skillKeyToEnum(normalizeDtSkill(key, role));
+    }
+
+    /** The club's intensity for the week, defaulting to NORMAL when unset or unrecognised. */
+    private TrainingIntensity teamIntensity(TeamTrainingSetup setup) {
+        if (setup == null) return TrainingIntensity.NORMAL;
+        TrainingIntensity parsed = TrainingIntensity.byName(setup.getTrainingIntensity());
+        return parsed != null ? parsed : TrainingIntensity.NORMAL;
     }
 
     private String normalizeRole(String role) {

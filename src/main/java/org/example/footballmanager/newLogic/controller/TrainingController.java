@@ -12,7 +12,9 @@ import org.example.footballmanager.newLogic.repository.TrainingRepository;
 import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.model.TrainingIntensity;
 import org.example.footballmanager.newLogic.service.TrainingFocusService;
+import org.example.footballmanager.newLogic.service.TrainingIntensityService;
 import org.example.footballmanager.newLogic.service.PlayerSkillProgressionService;
 import org.example.footballmanager.newLogic.service.TrainingProgressionService;
 import org.example.commonmanager.model.User;
@@ -40,6 +42,7 @@ public class TrainingController {
     private final TrainingProgressionService trainingProgressionService;
     private final PlusFeatureService plusFeatures;
     private final TrainingFocusService focusService;
+    private final TrainingIntensityService intensityService;
     private final SeasonService seasonService;
 
 
@@ -48,9 +51,11 @@ public class TrainingController {
                              TrainingProgressionService trainingProgressionService,
                              PlusFeatureService plusFeatures,
                              TrainingFocusService focusService,
+                        TrainingIntensityService intensityService,
                              SeasonService seasonService) {
         this.plusFeatures = plusFeatures;
         this.focusService = focusService;
+        this.intensityService = intensityService;
         this.seasonService = seasonService;
         this.trainingRepository = trainingRepository;
         this.playerRepository = playerRepository;
@@ -191,6 +196,45 @@ public class TrainingController {
                 "week", resolvedWeek,
                 "skills", set.stream().map(Enum::name).toList()));
     }
+
+    /**
+     * Sets or clears a player's intensity override for a week (Sprint 4.2).
+     *
+     * <p>Mirrors the focus endpoint deliberately, down to the refusal: a player who does not play for
+     * this club is a 403, not a bad request, because the request is well formed and the manager simply
+     * is not allowed to make it. An empty or absent {@code intensity} clears the override, which puts
+     * the player back on his club's setting rather than removing him from training.
+     */
+    @org.springframework.web.bind.annotation.PutMapping("/weekly/team/{teamId}/intensity/{playerId}")
+    public ResponseEntity<Map<String, Object>> setIntensity(@PathVariable Long teamId,
+                                                            @PathVariable Long playerId,
+                                                            @RequestParam(required = false) Integer season,
+                                                            @RequestParam(required = false) Integer week,
+                                                            @RequestBody IntensityRequest request) {
+        int resolvedSeason = season != null ? season : currentSeason();
+        int resolvedWeek = week != null ? week : currentWeek();
+
+        String requested = request == null ? null : request.intensity();
+        TrainingIntensity intensity = TrainingIntensity.byName(requested);
+        if (intensity == null && requested != null && !requested.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "UNKNOWN_INTENSITY",
+                    "'" + requested + "' is not an intensity. Use LIGHT, NORMAL or VERY_HARD.");
+        }
+
+        if (!intensityService.setOverride(teamId, playerId, resolvedSeason, resolvedWeek, intensity)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "NOT_YOUR_PLAYER",
+                    "That player does not play for this club, so his intensity cannot be set.");
+        }
+        return ResponseEntity.ok(Map.of(
+                "playerId", playerId,
+                "season", resolvedSeason,
+                "week", resolvedWeek,
+                "intensity", intensity == null ? "CLUB_DEFAULT" : intensity.name()));
+    }
+
+    public record IntensityRequest(String intensity) {
+    }
+
 
     @org.springframework.web.bind.annotation.DeleteMapping("/weekly/team/{teamId}/focus/{playerId}")
     public ResponseEntity<Map<String, Object>> clearFocus(@PathVariable Long teamId,
