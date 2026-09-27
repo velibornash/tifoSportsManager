@@ -2704,3 +2704,67 @@ The blocking question is recorded rather than guessed: **which weeks do national
 Every week already has both its day-3 and day-7 slots filled, so a call-up that costs a league match is
 worth less than it looks. That is a season-shape decision, not an engineering one, and it belongs
 beside the playoff ladder's four open questions.
+
+---
+
+### S5.2 — the talent report, and the junior school it turned into (owner spec 2026-09-27)
+
+**The answer to "do AI clubs get the same uncertainty?" was a better question than the one asked:**
+should AI clubs have an academy at all? The answer was no — and that converts the academy from a free
+background process into a **purchased, staffed, seasonal thing**, which is what makes it a decision
+rather than a default. It is now tracked as **S5.3a** in the backlog, separately from S5.2, because
+it is bigger than the feature it came out of.
+
+#### The talent range (owner spec)
+
+Intake half-width is `±(1 + rnd(0..3))` — between ±1 and ±4, rolled once per junior — narrowing to
+**±1 with decimals by promotion**, and **a better `YOUTH_COACH` narrows it faster**. PLUS users see
+the range, non-PLUS see nothing, and promotion reveals the exact value.
+
+Two design points worth keeping:
+
+- **The width is stored, not re-rolled.** A range that changed every week would be theatre: the report
+  would move because it was redrawn, not because anything was learned.
+- **Progress is measured in ages, not weeks.** A junior's age is the only clock in the academy that
+  moves on its own, so a report that narrowed weekly would narrow through a season in which nothing
+  about the player changed.
+
+`YOUTH_COACH.development` now has its first consumer in the codebase, which closes S4.3 item 2's
+explicit deferral. **The academy does not produce better prospects — it knows what it has, sooner.**
+
+**A bug the test caught, and it was in the code rather than the test.** `observationProgress` returned
+`1.0` for both "arrived at graduation age, so the observation window is zero-length" and "arrival age
+never recorded". Those look identical and are opposites: the first means *already fully observed*, the
+second means *we do not know how long we have been watching*. The second must report at **full
+width**, because returning "fully observed" would hand every junior in a pre-existing database a
+confident ±1 he had not earned — the same null-means-certainty trap that has now appeared in three
+separate features this sprint. Both cases are now pinned by their own tests.
+
+The property that makes the feature honest rather than decorative is also pinned: **the true value
+always sits inside its own reported range**, walked across talent 1–20 × ages 15–20 × all four intake
+rolls. A report that excluded the truth would not be vague, it would be false.
+
+#### 🚨 `PlusFeatureService` is wired to nothing
+
+Found while scoping this. All five of its public methods — `talentOrNull`, `trainingPercentOrNull`,
+`canSee`, `isOwnPlayer`, `isOwnTeam` — have **zero callers** in the live path. (A grep for `canSee`
+returns hits only in `demo/service`'s `PlayerPerceptionService.canSeeBall`, which is unrelated.)
+
+So the owner's rule that talent and training percentages are PLUS-gated and own-team-only is
+implemented, documented and unit-tested **as a service, and then never applied to a single DTO the UI
+reads.** The one place true talent reaches the browser is `JuniorAcademyItemDTO.talent`, populated with
+`round2(j.getTalent())` for every caller regardless of subscription.
+
+This is why S5.2 item 2 is a **leak** rather than a missing feature, and it is the same failure shape
+as the goalkeeping coach whose wage left the account and whose teaching did nothing: the rule exists,
+the number moves, and the rule is not applied. **Wiring the gate and building the range are not
+separable** — a range shown to someone who may not see talent is not a narrower leak, it is the same
+leak.
+
+**Files:** `service/TalentRange` (pure, static, separately testable), `Junior.arrivalAge` and
+`Junior.talentRangeHalfWidth` (both nullable, both meaning "never recorded"), `TalentRangeTest` (15).
+
+**Still to do on S5.2:** the gate wiring, the intake roll in `generateSeasonIntakeForWeek2`, and the
+DTO change that replaces the raw `talent` field with the range.
+
+**Tests: 15 new. Full suite 583.**

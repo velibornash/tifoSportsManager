@@ -1366,24 +1366,112 @@ lands where it can be read.
 
 ---
 
-### S5.2 — Report uncertainty ❌ NOT STARTED
+### S5.2 — Report uncertainty 🟡 SPEC COMPLETE, not built (owner spec 2026-09-27)
+
+> **The distinction that matters, and it is easy to get wrong.** `PlusFeatureService` already hides
+> talent entirely — `talentOrNull` returns `null` for anyone but the owner. That is the **subscription**
+> rule from the owner decisions above, and it is correct. S5.2 is a different axis: within your own
+> academy, a figure you *are* entitled to see should still be an **estimate that firms up**, because a
+> 17-year-old labelled "talent 4" on day one is a spreadsheet, not a judgement. Hiding is the PLUS rule;
+> uncertainty is the scouting mechanic. They compose, they do not replace each other.
+
+**Owner's specification, 2026-09-27:**
+
+| Question | Answer |
+|---|---|
+| Does a scout's reach narrow the range, or only time? | **Reach narrows the range.** Time-only would leave S5.1 with almost nothing to do |
+| Exact talent, or a band? | **A range around the exact value, from intake, narrowing until promotion.** Width at intake is `±(1 + rnd(3))` — so between ±1 and ±4, rolled per junior. It narrows to **±1 (with decimals) by promotion**. **A better `YOUTH_COACH` narrows it faster.** On promotion the **exact talent with decimals is revealed** |
+| Who sees it? | **PLUS users see the range. Non-PLUS see nothing.** Exact-on-promotion follows the same rule |
+| Do AI clubs get uncertainty? | Moot — **AI clubs have no junior school at all** (see below), so they generate no juniors to report on |
+
+**What this makes `YOUTH_COACH` do.** Its `development` attribute now has a consumer, which closes
+S4.3 item 2's explicit deferral ("a scout's `youthRating` effect is Sprint 5") and half of S5.3 item 5.
+A club with a strong youth coach does not produce better prospects — it **knows what it has, sooner.**
 
 | # | Task | State |
 |---|---|---|
 | 1 | Show an **estimated range**, not the true `academySkillExact` | ❌ |
-| 2 | `talent` becomes a hidden ceiling revealed by scouting, not a number shown on day one | ❌ |
-| 3 | Reports arrive progressively: initial impression → after a season → full assessment | ❌ |
-| 4 | This is the single biggest *feel* upgrade available in the academy | — |
+| 2 | `talent` becomes a hidden ceiling revealed by observation | ❌ — **the true value currently leaks**: `JuniorAcademyItemDTO.talent` is populated with `round2(j.getTalent())` for every caller |
+| 3 | Reports arrive progressively: initial impression → after a season → full assessment | ❌ — the spec above supersedes the three-tier wording; the range *is* the progression |
+| 4 | The single biggest *feel* upgrade available in the academy | — |
 
-**The distinction that matters, and it is easy to get wrong.** `PlusFeatureService` already hides
-talent entirely — `talentOrNull` returns `null` for anyone but the owner. That is the **subscription**
-rule from the owner decisions above, and it is correct. S5.2 is a different axis: within your own
-academy, a figure you *are* entitled to see should still be an **estimate that firms up**, because a
-17-year-old labelled "talent 4" on day one is a spreadsheet, not a judgement. Hiding is the PLUS rule;
-uncertainty is the scouting mechanic. They compose, they do not replace each other.
+#### 🚨 Found while scoping this: `PlusFeatureService` is not wired to anything
+
+All five of its public methods — `talentOrNull`, `trainingPercentOrNull`, `canSee`,
+`isOwnPlayer`, `isOwnTeam` — have **zero callers** in the live path. The owner's rule that talent and
+training percentages are PLUS-gated and own-team-only is implemented, documented and unit-tested as a
+service, and then **never applied to a single DTO the UI reads.**
+
+This is the same failure shape as the goalkeeping coach whose wage left the account and whose
+teaching did nothing, and it is why item 2 above is a *leak* rather than a missing feature:
+`JuniorAcademyItemDTO.talent` is the one place true talent reaches the frontend, and it is populated
+for everyone regardless of subscription.
+
+**S5.2 therefore has to wire the gate as well as build the range.** They are not separable: a range
+that non-PLUS users can see is a range that reveals the ceiling.
 
 ---
 
+### S5.3a — The junior school (owner spec 2026-09-27) ❌ NOT BUILT
+
+**Raised out of S5.2.** Answering "do AI clubs get the same uncertainty?" produced a better question:
+**should AI clubs have an academy at all?** The answer was no, and that turns the academy from a
+free background process into a **purchased, staffed, seasonal thing** — which makes it a decision
+rather than a default.
+
+Today `YouthAcademyService.generateSeasonIntakeForWeek2` loops **every** club from
+`findClubTeamsForOperations()`. All 310 clubs roll an intake every season, for free, whether their
+manager is a human or not.
+
+**Owner's specification:**
+
+| Question | Answer |
+|---|---|
+| Do AI clubs have a junior school? | **No. Not one.** AI squads keep the same players with only the default training pace applied |
+| What does it cost? | **One-off activation cost + a weekly upkeep** |
+| When can it be switched on? | **Week 1 only** |
+| When can it be switched off? | **Week 12** |
+| What happens to the intake when it closes? | **Every junior is automatically promoted and placed on the transfer list** |
+
+| # | Task | State |
+|---|---|---|
+| 1 | `JuniorSchool` state per club: active, activated season/week, one-off paid, weekly cost | ❌ |
+| 2 | One-off activation cost as a ledger entry (S2.2 `FinanceCategory`) | ❌ — needs a new category or an existing expense line |
+| 3 | Weekly upkeep as a ledger expense, alongside `FACILITY_UPKEEP` | ❌ |
+| 4 | Activation permitted **only in week 1**, deactivation **only in week 12** | ❌ — the guard is the feature; a school that could be toggled any week would be a menu, not a commitment |
+| 5 | **Intake runs only for clubs with an active school** | ❌ — the single biggest behavioural change in the sprint |
+| 6 | Deactivation auto-promotes every junior **and lists each one** | ❌ |
+| 7 | UI: a toggle with the week window and the price shown | ❌ |
+| 8 | A club whose school is off has no intake, so it needs the market or scouting | ❌ — this is the design intent, and it is what makes S5.1 matter |
+
+**Two consequences worth stating plainly, because they are the point of the feature rather than
+side-effects:**
+
+1. **A club can end a season with no youth pipeline at all.** Shutting the school in week 12 dumps
+   the intake onto the transfer list. That is a real, expensive mistake a manager can make, and the
+   feature is worthless without it.
+2. **Intake is now a purchase, so the graduation window interacts with money.** A club that cannot
+   afford the school in week 1 has no juniors in week 2, and the first intake it gets is a full year
+   away. The 10-junior cap and the 15–20 graduation window are unchanged — the owner ruled the
+   **distribution** stays exactly as it is — but *whether there is anyone in the academy at all* is now
+   a decision.
+
+#### 🟡 Adjacent, and NOT part of this sprint: the takeover mechanic
+
+Answering the AI question surfaced a second rule that has **no backlog entry at all** and is not
+Sprint 5 work:
+
+> When a human takes over a bot club's slot, the bot squad's **players all become free agents and go
+> onto the transfer list**, and the human **gets a fresh team**. Bot clubs keep their squad and simply
+> train at the default pace; weak ones relegate normally.
+
+That is a club-takeover feature — inherited name and competition slot, inherited *nothing else*. It
+touches user↔team binding (the same name-match fragility as S8.6 item 7), squad generation, free-agent
+market supply and the transfer list. It is recorded here so it is not lost, and it should be its own
+task with its own brief rather than folded into an academy sprint.
+
+| # | Task | State |
+|---|---|---|
 ### S5.3 — Academy structure 🟡 1 of 8 done
 
 | # | Task | State |
