@@ -41,6 +41,27 @@ public class Junior {
      */
     private Double talentRangeHalfWidth;
 
+    /**
+     * The position he was signed for (Sprint 5.3, owner 2026-09-27).
+     *
+     * <p>This used to be rolled at <b>promotion</b>, which meant a manager paid for a school, signed a
+     * fifteen-year-old with no position listed anywhere, and then watched a goalkeeper come out of the
+     * academy. A prospect is signed for a position; that is the whole basis on which a scouting
+     * decision is made.
+     *
+     * <p>The <b>distribution</b> is deliberately unchanged — the same 12% goalkeepers and the same
+     * three-way split of the rest — because the owner ruled that graduation must not move. Only the
+     * <i>timing</i> changes: the roll happens at intake instead of at graduation, so the same
+     * probabilities produce the same number of each kind of player.
+     *
+     * <p>Nullable means "recorded before positions existed". Reading null as a real position would
+     * invent one, and reading it as "unknown" at promotion would quietly re-roll it — which is the one
+     * outcome this field exists to prevent.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "position", length = 8)
+    private Position position;
+
     private Boolean archived = false;
 
     @Enumerated(EnumType.STRING)

@@ -138,6 +138,11 @@ public class DatabaseInitializer {
             createSecondUserIfNotExists();
             refreshClubIdentities();
             backfillJuniorArrivalAges();
+            int positioned = youthAcademyService.assignMissingPositions();
+            if (positioned > 0) {
+                log.info("Assigned an intake position to {} pre-existing academy juniors (Sprint 5.3).",
+                        positioned);
+            }
             applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();

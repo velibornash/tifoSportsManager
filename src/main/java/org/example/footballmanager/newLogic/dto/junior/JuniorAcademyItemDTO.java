@@ -37,6 +37,11 @@ public class JuniorAcademyItemDTO {
     private Integer arrivalAge;
 
     /**
+     * The position he was signed for. Null only for a junior created before positions were recorded.
+     */
+    private String position;
+
+    /**
      * The reported talent band, lower bound. Null when the viewer may not see talent at all.
      *
      * <p>Width at intake is {@code ±(1 + rnd(0..3))}, narrowing to {@code ±1} by promotion, and a

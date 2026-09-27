@@ -78,6 +78,8 @@ public class YouthAcademyService {
                 j.setArrivalSeasonNumber(seasonNumber);
                 j.setArrivalWeekNumber(2);
                 j.setArrivalAge(j.getAge());
+                // Signed for a position, not rolled on the way out (Sprint 5.3).
+                j.setPosition(rollPosition());
                 // How badly the club is guessing about him on day one. This does NOT touch the
                 // quality distribution -- talent and academy skill are rolled exactly as they always
                 // were, which is the owner rule that the graduation distribution must not move. All
@@ -210,6 +212,31 @@ public class YouthAcademyService {
     public static final int GRADUATION_MIN_AGE = 15;
     public static final int GRADUATION_MAX_AGE = 20;
 
+    /**
+     * The weeks in which a manager may decide a junior's fate (owner, 2026-09-27).
+     *
+     * <p>Promoting a youth player is a <b>registration</b> decision, not a match-day one: real football
+     * submits squad lists at the start of a season, and a manager does not sign a seventeen-year-old in
+     * week nine because he had a good month. Before this the window ran from the start of the following
+     * season to the end of it — effectively "always available".
+     *
+     * <p>Two weeks rather than one rigid week, so that logging in slightly late does not cost a
+     * prospect a whole season. It is still a window, not a standing permission.
+     *
+     * <p><b>Does not apply to the age ceiling.</b> A junior who reaches
+     * {@link #GRADUATION_MAX_AGE} is promoted whether the manager is ready or not, in whatever week
+     * that falls — a twenty-one-year-old in an academy is a squad player described as a prospect. That
+     * path contains no decision, so there is nothing for the window to protect against. Nor does it
+     * apply to school closure, which is a scheduled end-of-season decision.
+     */
+    public static final int DECISION_WINDOW_FIRST_WEEK = 1;
+    public static final int DECISION_WINDOW_LAST_WEEK = 2;
+
+    /** Whether manager-initiated junior decisions are open this week. */
+    public static boolean isDecisionWindow(int weekNumber) {
+        return weekNumber >= DECISION_WINDOW_FIRST_WEEK && weekNumber <= DECISION_WINDOW_LAST_WEEK;
+    }
+
     @Transactional
     public JuniorAcademyItemDTO promoteJunior(Long juniorId, int currentSeason, int currentWeek,
                                              boolean canSeeTalent) {
@@ -319,6 +346,12 @@ public class YouthAcademyService {
             throw new ApiException(HttpStatus.CONFLICT, "DECISION_LOCKED",
                     "This junior is too new. Decisions open from next season.");
         }
+        if (!isDecisionWindow(currentWeek)) {
+            throw new ApiException(HttpStatus.CONFLICT, "DECISION_WINDOW_CLOSED",
+                    "Junior decisions are open in weeks " + DECISION_WINDOW_FIRST_WEEK + "-"
+                            + DECISION_WINDOW_LAST_WEEK + " only; it is week " + currentWeek
+                            + ". A prospect cannot be signed into the first team mid-season.");
+        }
         return junior;
     }
 
@@ -338,7 +371,9 @@ public class YouthAcademyService {
         player.setWeight(round2(65 + random.nextDouble() * 20));
         player.setEarnings(500 + random.nextInt(2500));
 
-        Position position = rollPosition();
+        // The position he was signed for. Legacy rows predate the column and are rolled here, once,
+        // so a pre-existing academy is not left with players who have no position at all.
+        Position position = junior.getPosition() != null ? junior.getPosition() : rollPosition();
         player.setPosition(position);
         player.setSquadNumber(squadNumberAssigner.nextNumberForTeam(junior.getTeam(), position));
 
@@ -473,6 +508,27 @@ public class YouthAcademyService {
         };
     }
 
+    /**
+     * Gives every pre-existing junior the position he is graduating into (Sprint 5.3).
+     *
+     * <p>Without this a legacy row has a null position and promotion re-rolls one, quietly restoring the
+     * exact behaviour the field was added to remove — but only for saves that predate it.
+     *
+     * <p>Rolling here rather than at graduation is <b>not</b> a distribution change: the same
+     * probabilities over the same juniors produce the same number of goalkeepers and the same spread of
+     * outfielders. Only the moment at which a position becomes knowable moves, which is the point.
+     */
+    @Transactional
+    public int assignMissingPositions() {
+        List<Junior> legacy = juniorRepository.findByPositionIsNull();
+        if (legacy.isEmpty()) return 0;
+        for (Junior junior : legacy) {
+            junior.setPosition(rollPosition());
+        }
+        juniorRepository.saveAll(legacy);
+        return legacy.size();
+    }
+
     private Position rollPosition() {
         int roll = random.nextInt(100);
         if (roll < 12) return Position.GK;
@@ -567,6 +623,7 @@ public class YouthAcademyService {
             // forever, which looks like a bug rather than a missing column.
             j.setArrivalAge(j.getAge());
             j.setTalentRangeHalfWidth(TalentRange.intakeHalfWidth(random.nextInt(4)));
+            j.setPosition(rollPosition());
             j.setStatus(JuniorStatus.ACTIVE);
             j.setArchived(false);
             j.setTeam(team);
@@ -618,6 +675,7 @@ public class YouthAcademyService {
         dto.setArrivalSeasonNumber(j.getArrivalSeasonNumber());
         dto.setArrivalWeekNumber(j.getArrivalWeekNumber());
         dto.setArrivalAge(j.getArrivalAge());
+        dto.setPosition(j.getPosition() != null ? j.getPosition().name() : null);
         dto.setPromotedPlayerId(j.getPromotedPlayer() != null ? j.getPromotedPlayer().getId() : null);
         dto.setArchived(Boolean.TRUE.equals(j.getArchived()));
 

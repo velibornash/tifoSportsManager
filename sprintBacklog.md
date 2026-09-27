@@ -1518,7 +1518,7 @@ task with its own brief rather than folded into an academy sprint.
 
 | # | Task | State |
 |---|---|---|
-| 1 | Position known at **intake**, not rolled at promotion | ❌ **`Junior` has no position field at all** |
+| 1 | Position known at **intake**, not rolled at promotion | ✅ `Junior.position`, set in both intake paths, read by `createSeniorFromJunior`. Six legacy rows repaired on boot |
 | 2 | Individual junior training focus, integrated with Sprint 4 | ❌ `PlayerTrainingFocus` is first-team only |
 | 3 | Junior attributes visible as a profile (preferred foot, height, weight, personality, work rate, injury susceptibility) | ❌ |
 | 4 | **Mid-season promotion** — remove the artificial one-season freeze | ✅ `f22ee1a` — graduation window 15–20, once a year, legacy distribution byte-identical |
@@ -1560,7 +1560,8 @@ prospects develop at visibly different rates; loans give young players minutes.
 | No AI club produces a junior | ✅ S5.3a — intake is gated on `humanControlled` **and** an active school |
 | `Country.youthRating` is read by the simulation | ✅ read by `ScoutingService.reach` — unread since Sprint 2.1 until now |
 | A junior's report is an estimate that firms up, not a number on day one | ✅ S5.2 — `TalentRange`, ±(1+rnd3) narrowing to ±1 |
-| A junior has a position from intake and a route out of the academy | ❌ position absent; the loan path exists in `LoanService` but is unwired for juniors |
+| A junior has a position from intake | ✅ Sprint 5.3 — a goalkeeper cannot come out of the academy by surprise |
+| A junior is signed into the first team in a registration window, not mid-season | ✅ Sprint 5.3 — weeks 1–2 only, with the age ceiling overriding it |
 | Academy quality (`youthLevel` + youth coach) affects intake | ❌ both unread — S5.3 item 5 |
 | Graduation distribution unchanged from the legacy model | ✅ `YouthAcademyGraduationTest` holds |
 
@@ -1576,9 +1577,8 @@ prospects to put it on. Both screens are API-only.
 1. ~~**S5.1** — scouting network.~~ ✅ the reach model is built and tested; **the reports it feeds are
    still missing**, and they are the reason the network exists.
 2. ~~**S5.2** — report uncertainty.~~ ✅ the band, the gate and the intake roll are live.
-3. **S5.3 items 1 + 5** — position at intake, and academy quality from `youthLevel` + `YOUTH_COACH`.
-   Now more valuable than when first written: a purchased academy whose intake has no positions is a
-   worse purchase than a free one.
+3. **S5.3 item 5** — academy quality from `youthLevel` + `YOUTH_COACH`. Item 1 (position at intake) is
+   ✅ done, and the registration window landed with it.
 4. ~~**UI for the junior school**~~ ✅ done — panel on the academy page, window stated in words, close
    confirmed by name and count. **The scouting network is still API-only.**
 5. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).

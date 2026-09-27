@@ -3011,3 +3011,54 @@ rather than anything pointing at the real cause.
 
 **608 tests, unchanged** — this was presentation. Verified in Chrome at 1280×900 and 390×844: no
 desktop change, panel fits on mobile, two price columns, button fully tappable.
+
+---
+
+### Position at intake, and a registration window instead of "any time you like" (owner, 2026-09-27)
+
+Two questions in one conversation, answered together because they touch the same buttons and columns.
+
+**A prospect now has a position from the day he signs.** It used to be rolled at *promotion* — you paid
+for a school, signed a fifteen-year-old with no position listed anywhere, and got a goalkeeper out of the
+academy. A prospect is signed for a position; that is the entire basis of a scouting decision. The
+**distribution is unchanged on purpose** (same 12% goalkeepers, same three-way split) because the owner
+ruled graduation must not move. Only the moment a position becomes *knowable* changes. Six legacy rows
+repaired on boot: *"Assigned an intake position to 6 pre-existing academy juniors."*
+
+**Decisions are now a registration window: weeks 1–2.** Promoting a youth player is a registration
+decision, not a match-day one — real football submits squad lists at the start of a season, and nobody
+signs a seventeen-year-old in week nine because he had a good month. Before this the window ran from the
+start of the following season to the end of it, which is "always available" in all but name. Two weeks
+rather than one rigid week, so logging in slightly late does not cost a prospect a whole season.
+
+**Decision (a): the age ceiling overrides the window.** A junior who reaches 20 is promoted in whatever
+week that falls — a twenty-one-year-old in an academy is a squad player described as a prospect. That
+path holds no decision, so there is nothing for a window to protect against. It is pinned by a test that
+fires it in **week 7**, precisely so nobody "fixes" it back into the window later.
+
+**The age model needed no change and already does what the owner asked for.** Ages move once a year at
+the season boundary and a junior keeps the age he has, so a prospect promoted in week 1 plays that whole
+season at the age he exited with. The week-1/2 window is what makes that true: promote him in week 9 and
+he is the same age, but the academy held him back a season for no sporting reason.
+
+**School closure is a third path, deliberately outside the window.** Closing in week 12 graduates the
+whole intake and has always bypassed the lock, or a school opened in week 1 could never close. Now
+explicit in the code and the docs rather than an accident of implementation order.
+
+**A UI detail that matters more than it looks.** A junior who is inside the window but too new to decide
+on, and one who is outside the window entirely, are different situations. The table now says **"Too
+new"** and **"Window closed"** respectively instead of showing the same empty cell, and the hero states
+the window in words: *"Decisions open in weeks 1-2 only. It is week 7. A prospect keeps developing until
+then, and still graduates at 20 whether you are ready or not."*
+
+**A flaky fixture of my own, caught by the full run and not by isolation.** `carryover()` generated a
+fresh intake on every call, so a test wanting three prospects intermittently hit the ten-junior cap and
+found an empty pool — it passed alone and failed in a full run, because `rollIntakeCount()` is random. It
+now draws from the existing pool before generating more, and says so when the academy is genuinely full.
+Worth noting the shape of it: **a fixture that depends on a random count is a fixture that will pass
+locally and fail in CI**, which is the opposite of what a test is for.
+
+**Tests: 8 new** in `JuniorDecisionWindowTest` — the window is weeks 1–2 and nothing else, week 1 and
+week 2 both allowed, week 3 refused with the junior left untouched, the refusal naming both the window
+and the actual week, the age ceiling firing outside the window, position known at intake, promotion
+keeping it, and the legacy repair. **Full suite 616.**

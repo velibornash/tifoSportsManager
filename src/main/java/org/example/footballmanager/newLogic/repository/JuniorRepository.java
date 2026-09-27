@@ -28,6 +28,14 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     List<Junior> findByTeamIdAndStatus(Long teamId,
                                       org.example.footballmanager.newLogic.model.JuniorStatus status);
 
+    /**
+     * Juniors created before the position column existed (Sprint 5.3).
+     *
+     * <p>Repaired rather than read-as-unknown, because a null position at promotion re-rolls one —
+     * which is the single behaviour this field was added to remove.
+     */
+    List<Junior> findByPositionIsNull();
+
     long countByTeamIdAndStatus(Long teamId,
                                 org.example.footballmanager.newLogic.model.JuniorStatus status);
 

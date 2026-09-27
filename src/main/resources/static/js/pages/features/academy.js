@@ -129,6 +129,13 @@
         const school = await loadSchoolState(currentUserTeamId);
 
         const canDecide = academy.decisionsOpen === true;
+        // Junior decisions are a registration window (Sprint 5.3, owner 2026-09-27): weeks 1-2 only.
+        // A prospect cannot be signed into the first team mid-season, and a manager who could would
+        // sign one in week nine because he had a good month. The window is stated in the copy below
+        // rather than left as a set of missing buttons.
+        const week = Number(academy.currentWeekNumber || 0);
+        const inDecisionWindow = week >= 1 && week <= 2;
+        const windowNote = `Decisions open in weeks 1-2 only. It is week ${week}.`;
         const currentSeason = Number(academy.currentSeasonNumber || 0);
         const archive = Array.isArray(academy.archive) ? academy.archive : [];
 
@@ -160,11 +167,17 @@
             return list.map(j => {
                 const delta = Number(j.lastWeeklyDelta || 0);
                 const deltaText = `${delta >= 0 ? "+ " : "- "}${Math.abs(delta).toFixed(2)}`;
-                const decisionEligible = withActions && canDecide && j.status === "ACTIVE" && Number(j.arrivalSeasonNumber || 0) < currentSeason;
+                const decisionEligible = withActions && canDecide && inDecisionWindow
+                    && j.status === "ACTIVE" && Number(j.arrivalSeasonNumber || 0) < currentSeason;
+                // A junior inside the window but too new to decide on, and one outside the window, are
+                // different situations and must not read the same.
+                const pendingNew = withActions && j.status === "ACTIVE"
+                    && Number(j.arrivalSeasonNumber || 0) >= currentSeason;
                 return `
                     <tr>
                         <td>${escapeHtml(j.name)}</td>
                         <td>${j.age}</td>
+                        <td>${escapeHtml(j.position || '—')}</td>
                         <td>${renderTalent(j)}</td>
                         <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
                         <td class="academy-delta-cell" style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
@@ -174,6 +187,8 @@
                                 ${decisionEligible ? actionButton("Promote", j.id, "promote-reveal") : ""}
                                 ${decisionEligible ? actionButton("Transfer List", j.id, "transfer-list") : ""}
                                 ${decisionEligible ? actionButton("Release", j.id, "release", true) : ""}
+                                ${!decisionEligible && pendingNew ? `<span class="fm-subtle">Too new</span>` : ""}
+                                ${!decisionEligible && !pendingNew && j.status === "ACTIVE" ? `<span class="fm-subtle">Window closed</span>` : ""}
                                 ${j.promotedPlayerId ? `<span class="sq-player-link" data-open-player="${j.promotedPlayerId}">Open Player</span>` : ""}
                             </div>
                         </td>
@@ -196,6 +211,7 @@
                             <tr>
                                 <th class="sq-name">Junior</th>
                                 <th>Age</th>
+                                <th>Pos</th>
                                 <th>Talent (est.)</th>
                                 <th>Academy</th>
                                 <th>Δ Week</th>
@@ -217,7 +233,11 @@
                         <div class="fm-eyebrow">Academy overview</div>
                         <h2>Youth Academy</h2>
                         <p class="fm-subtle">Season ${academy.currentSeasonNumber} · Week ${academy.currentWeekNumber} · Junior Coach Skill ${academy.juniorCoachSkill}/100</p>
-                        <p class="fm-subtle academy-hero-copy">${canDecide ? "Carryover juniors are ready for Promote / Transfer List / Release decisions." : "No carryover juniors are waiting for a final decision right now."}</p>
+                        <p class="fm-subtle academy-hero-copy">${inDecisionWindow
+                            ? (canDecide
+                                ? "Carryover juniors are ready for Promote / Transfer List / Release decisions."
+                                : "No carryover juniors are waiting for a final decision right now.")
+                            : windowNote + " A prospect keeps developing until then, and still graduates at 20 whether you are ready or not."}</p>
                     </div>
                     ${buildClubActionsHtml('juniors')}
                 </div>
@@ -251,6 +271,7 @@
                                 <tr>
                                     <th class="sq-name">Junior</th>
                                     <th>Age</th>
+                                    <th>Pos</th>
                                     <th>Talent (est.)</th>
                                     <th>Academy</th>
                                     <th>Status</th>
@@ -264,13 +285,14 @@
                                         <tr>
                                             <td class="sq-name">${escapeHtml(j.name)}</td>
                                             <td>${j.age}</td>
+                                            <td>${escapeHtml(j.position || '—')}</td>
                                             <td>${renderTalent(j)}</td>
                                             <td>${Number(j.academySkillExact).toFixed(2)} <span class="ps-team">int ${j.academySkill}</span></td>
                                             <td>${renderStatus(j.status)}</td>
                                             <td>S${j.arrivalSeasonNumber} W${j.arrivalWeekNumber}</td>
                                             <td>${j.promotedPlayerId ? `<span class="sq-player-link" data-open-player="${j.promotedPlayerId}">Open Player</span>` : "-"}</td>
                                         </tr>`).join("")
-                                    : `<tr><td colspan="7"><div class="fm-empty">Archive is empty.</div></td></tr>`
+                                    : `<tr><td colspan="8"><div class="fm-empty">Archive is empty.</div></td></tr>`
                                 }
                             </tbody>
                         </table>
