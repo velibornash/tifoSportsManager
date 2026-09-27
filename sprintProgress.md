@@ -3136,3 +3136,111 @@ second time, the cause is not the one you assumed.
 
 **Tests: 12 new** (9 `AcademyQualityTest`, 3 in `TalentRangeTest` and `JuniorDecisionWindowTest` for
 the clamp, the reveal and the subscription gate). **Full suite 630.**
+
+---
+
+### S5.3 — prospects as people: effort, temperament, and a body that changes (owner, 2026-09-27)
+
+The academy produced a talent band, one ability figure and a weekly delta — so two seventeen-year-olds
+of identical talent developed **identically**, and a fifteen-year-old's body did not move at all between
+intake and graduation. In football, what you scout a teenager on is not only ability.
+
+**Owner decisions, taken before the build:** work rate **visible and sortable**; personality
+**survives into the senior squad**; and **carrying plus full wiring** — no field carried for later.
+
+#### What each new attribute does, and where it is consumed
+
+| Attribute | Effect | Consumed by |
+|---|---|---|
+| Work rate 1–20 | Growth multiplier | `JuniorDevelopment.growthFactor`, the weekly academy delta |
+| Personality (5) | Growth **and** variance | same, **and** `MoraleService.moraleModifier` → senior training |
+| Preferred foot | Shown; carried | `createSeniorFromJunior` |
+| Height / weight | Move weekly; carried | Sprint 4.5 already uses these for first-team growth |
+| Natural weight | The target the gym corrects toward | `JuniorDevelopment.weeklyWeightChange` |
+
+**Height barely moves; weight is corrected** — the owner's split, and the physiologically correct one.
+Height is granted on the birthday and **tapers to nothing at the graduation deadline**: a fifteen-year-old
+still grows, a nineteen-year-old is finished, and a club must not get a centre-half who is still
+sprouting at twenty. Weight is not a growth question but a **conditioning** one, so a junior has a
+*natural* weight and a *current* weight, and **the gym sets the correction rate**. The gym does not
+give you a better body; it lets you correct the one you got, and a club without one lets a heavy
+prospect stay heavy. That reuses a facility the owner already pays for, so it needed no new building.
+
+#### The full wiring, and the seam it had to be wired into
+
+Personality was to reach the senior squad, so I went looking for where that should land and found the
+obvious place was **dead**: `MoraleService.moraleModifier` — a documented, deliberately-narrow
+morale→growth factor — had **zero callers**, and the senior training formula had no morale term in it
+at all. (The similar-looking line in `PlayerContractService` is a *wage demand* calculation, not
+growth; I was wrong to call it a duplicate when I first raised it.)
+
+So the wiring was: personality onto `Player`, `moraleModifier` extended to include it and bounded
+0.82–1.18, and `moraleModifier` **called from `computeDirectFragment`** — the one place a senior
+develops. Both the senior growth path and the academy now read the same personality factor, so a junior
+who worked at 0.82× does not become a different person at eighteen.
+
+`moraleModifier` is no longer a field something reads and nothing uses. That is the fifth time this
+sprint, and the standing rule is now written into the backlog as a test: **trace the value from where
+it is written to where a manager can observe it.**
+
+#### The `Player` constructor, one more time
+
+`Player` carries `@AllArgsConstructor`, and I put the two new fields in after `form` at first — which
+silently reordered every argument after it and broke two test factories with *"no suitable
+constructor"*, an error that says nothing about the real cause. **Third time this trap has been sprung
+in this project** (`familiarity` is last for the same reason).
+
+Worth stating precisely, because the convention note is misleading: **appending to the end of a class
+does not avoid touching call sites.** An `@AllArgsConstructor` grows by one parameter per field
+wherever you put it. "Add it at the end" keeps the *order* stable so the diff is readable; it never
+avoids the edit. The two factories were updated either way.
+
+#### Four model bugs the tests caught, all of them mine
+
+1. **A twenty-four-kilo gap moved twenty-eight kilos in one week.** The correction was a fraction of the
+   gap with no cap. Capping it then made the gym *irrelevant* — a poor gym and a good one both moved
+   0.9kg, so the difference vanished exactly when the gap was large enough to care. Now a **fixed**
+   weekly step scaled by the gym: about a season to correct twenty kilos with a good gym, longer
+   without one.
+2. **The height "maximum" was not the maximum.** The jitter factor can exceed 1.0, so a fifteen-year-old
+   could gain 6.3cm in a season — a growth spurt, not a modelling error. The product is clamped, and a
+   test walks the range.
+3. **A negative tenure produced the *maximum* growth**, because the remaining years were computed from
+   the raw value: a junior who arrived before he was born had more growth ahead than any real one.
+   Nonsense input now degrades to "just arrived".
+4. **Work rate only used ten of its twenty values** — 6 to 15, so a 15/20 worker was the best the roll
+   could give and a 5/20 idler could not exist. Now bell-shaped across the whole scale.
+
+The first one is the reason the standing rule exists. Each was a plausible-looking formula that was
+wrong at the edges, and only a test that walked the whole input space found them.
+
+#### Two things the owner caught by looking
+
+**The skill layout.** Three headed sections in one column became **two parallel columns of four**:
+left Stamina, Pace, Technique, Passing; right Goalkeeper, Defending, Playmaker, Striker, with Overall
+kept in the panel head and the three headers dropped. Verified at 1280×900 and 390×844 — and the mobile
+check needed `!important` for the same reason the top bar and the academy grid did, because
+`dashboard.css`'s own `.fm-skills-grid { repeat(3, …) }` sits at line 2915, **after** the imported
+sheets.
+
+**Overall is not a sum**, and the owner asked before accepting it back on screen:
+`50 + position-weighted skill score × 28 + form boost + recent rating + role contribution`, clamped
+45–99, where the skill score is weighted by position (a keeper's maximum is 76.5, a midfielder's
+108.8). So Overall 83 on a goalkeeper with Defending 4.00 is correct rather than a bug.
+
+**Injury susceptibility was cut** on the owner's instruction rather than wired, which was the cheaper
+option and the right one: it was the most speculative of the five attributes and the least visible.
+Cutting a field that nothing read is better than inventing a consumer for it.
+
+**Database reset and re-initialise**, at the owner's authorisation, with the tactics table preserved
+(`resetDatabase` snapshots and restores it) and both seeded managers' clubs, leagues and subscriptions
+intact: 9 countries, 31 Serbian leagues, Sremac in `Opštinska liga Šid`, Omladinac in the Superliga.
+
+That reset also exposed a **silent no-op edit** worth recording: a scripted replace had added
+`rollBodyAndTemperament` twice to the season intake path and **not at all** to `seedInitialJuniorsForTeam`,
+because the anchor string appeared in both. Nothing failed, nothing was logged, and the seeded prospects
+simply came back with no attributes. Found only by looking at the data after the reset.
+
+**Tests: 28 new** — 14 `JuniorDevelopmentTest` (height taper, the gym's contribution, no overshoot, no
+oscillation, effort separating two identical prospects, personality distribution, two-footed rarity) and
+14 more across `TalentRangeTest` and the junior suites. **Full suite 644.**

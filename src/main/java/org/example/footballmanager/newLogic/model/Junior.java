@@ -62,6 +62,46 @@ public class Junior {
     @Column(name = "position", length = 8)
     private Position position;
 
+    /**
+     * Effort in training, 1-20 (Sprint 5.3, owner 2026-09-27).
+     *
+     * <p>Visible and sortable on purpose. A manager should be able to rank an academy by effort, and
+     * discovering that his best prospect is not the hardest worker is <i>interesting</i> — it is a
+     * scouting judgement rather than a frustration. Hiding it would remove the only thing a manager can
+     * act on.
+     */
+    private Integer workRate;
+
+    /** How he is wired. Feeds development, and is carried into the senior squad. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "personality", length = 16)
+    private Personality personality;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_foot", length = 8)
+    private PreferredFoot preferredFoot;
+
+
+    /**
+     * Height in centimetres at intake.
+     *
+     * <p>Changes very little while he is in the academy: a fifteen-year-old is still growing, a
+     * nineteen-year-old is finished. See {@code YouthAcademyService.developBody}.
+     */
+    private Double height;
+
+    /** Weight in kilograms now — what the club has actually got him to. */
+    private Double weight;
+
+    /**
+     * The weight his body wants to be, rolled once at intake.
+     *
+     * <p>This is what makes the gym meaningful. The gym does not hand a club a better body; it lets the
+     * club <b>correct</b> the one it was given, by pulling {@link #weight} toward this figure faster.
+     * A club with no gym simply lets a heavy prospect stay heavy, which is a real risk.
+     */
+    private Double naturalWeight;
+
     private Boolean archived = false;
 
     @Enumerated(EnumType.STRING)

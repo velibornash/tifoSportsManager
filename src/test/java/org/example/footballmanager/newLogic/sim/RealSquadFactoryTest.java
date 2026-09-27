@@ -129,7 +129,11 @@ class RealSquadFactoryTest {
                 0, 0, null, false, 0, null, null, null,
                 // nationality, role and familiarity, all added last so this positional
                 // constructor kept its signature for everything before them
-                null, null, 100.0);
+                null, null, 100.0,
+                // personality and preferredFoot (Sprint 5.3), also appended last. An @AllArgsConstructor
+                // grows by one parameter per field wherever you put it, so "add it at the end" keeps
+                // the *order* stable but never avoids touching the call sites.
+                null, null);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

@@ -62,4 +62,29 @@ public class JuniorAcademyItemDTO {
 
     /** The half-width currently in force, for the UI to render "6.4 – 9.2" without recomputing it. */
     private Double talentRangeHalfWidth;
+
+    // ── What the prospect is made of (Sprint 5.3) ────────────────────────────────────────────────
+    // All visible and sortable. A manager should be able to rank an academy by effort, and finding
+    // out his best prospect is not the hardest worker is a scouting judgement, not a frustration.
+
+    /** Effort in training, 1-20. The primary growth lever below first-team level. */
+    private Integer workRate;
+
+    /** Enum name, so the label comes from {@code Personality} rather than being duplicated here. */
+    private String personality;
+
+    /** How unreliably his growth arrives, as a proportion of the weekly figure. */
+    private double personalityVariance;
+
+    /** Enum name; the label lives on {@code PreferredFoot}. */
+    private String preferredFoot;
+
+    /** Centimetres now — which changes slowly, and not at all near the graduation deadline. */
+    private Double height;
+
+    /** Kilograms now, which the club's gym is actively correcting toward {@link #naturalWeight}. */
+    private Double weight;
+
+    /** The weight his body wants to be, so the manager can see what the gym is aiming at. */
+    private Double naturalWeight;
 }

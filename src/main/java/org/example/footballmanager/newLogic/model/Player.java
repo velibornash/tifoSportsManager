@@ -36,6 +36,14 @@ public class Player {
     @ColumnDefault("6.0")
     private double form;
 
+    // The two Sprint 5.3 fields sit at the END of the class, deliberately. Player carries a positional
+    // all-args constructor, so a field inserted mid-list silently reorders every argument after it and
+    // breaks each caller with a "no suitable constructor" that says nothing about the real cause. This
+    // is the third time this trap has been sprung in this project; familiarity is last for the same
+    // reason, and the class wants a builder.
+
+
+
     /**
      * Dressing-room morale, 0-100. Distinct from {@link #form}: form is a week-to-week swing, morale
      * is the season-long state that decides whether the swing happens at all. Moved by
@@ -103,7 +111,30 @@ public class Player {
      * for years. A genuinely new arrival is set to 30 by the transfer settlement.
      */
     @ColumnDefault("100")
+
     private Double familiarity = 100.0;
+    /**
+     * How this player is wired, carried from the academy (Sprint 5.3, owner 2026-09-27).
+     *
+     * <p><b>This field is consumed.</b> It feeds the morale → growth factor in {@code MoraleService},
+     * so a club that signs a difficult teenager has signed a difficult player rather than resetting him
+     * at eighteen. That was the point of asking for personality to survive promotion.
+     *
+     * <p>Nullable means "never recorded" and is treated as {@link Personality#PROFESSIONAL}: a player
+     * from before the column existed is not thereby a handful.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "personality", length = 16)
+    private Personality personality;
+
+    /**
+     * Which foot he prefers. Carried from the academy for the same reason — a right-footed keeper
+     * does not arrive as a lefty — and readable by anything that models technique or crossing.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_foot", length = 8)
+    private PreferredFoot preferredFoot;
+
 
     /** The role to actually use: the stored one, or a sensible default for his position. */
     @Transient

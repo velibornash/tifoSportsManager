@@ -84,6 +84,12 @@ class TrainingProgressionIdempotencyTest {
                         mock(org.example.footballmanager.newLogic.repository.PlayerRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.TeamRepository.class)),
                 mock(SquadEnvironmentService.class),
+                // The morale/personality growth factor (Sprint 5.3). A real MoraleService, not a mock:
+                // the point of wiring it in is that it is now consumed, and a mock would let this
+                // regress to an unwired field with no test noticing.
+                new MoraleService(
+                        mock(org.example.footballmanager.newLogic.repository.PlayerRepository.class),
+                        mock(org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository.class)),
                 seasonService, mapper);
 
         GameClock clock = new GameClock();

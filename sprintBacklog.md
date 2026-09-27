@@ -15,6 +15,34 @@
 | **Verify** | How you know it is done. Prefer a command or a number over "it looks right". |
 | **Type** | `FIX` (correctness) · `FEATURE` (new capability) · `DELETE` (removal) · `INFRA` (build/ops) |
 
+### 🟢 STANDING RULE — owner, 2026-09-27: everything gets fully wired
+
+> **"If it isn't there, build it. If it is, connect it. Wire it so it is a real feature and not
+> something that looks like a feature."**
+
+The project is in its final polish phase. This supersedes the earlier "don't add new dead code" instinct
+with something stricter: **a half-wired feature is worse than no feature**, because it reads as
+finished. It costs a manager real attention and gives nothing back.
+
+**What this has already caught**, all in one sprint, all the same shape — a rule implemented, and
+implemented *on a path nobody looks at*:
+
+| Found | The seam |
+|---|---|
+| `PlusFeatureService` | All five methods had **zero callers**. The PLUS rule was documented and unit-tested and applied to no DTO the UI read |
+| Coaching staff | The wage left the account every week and the teaching did nothing |
+| The promotion reveal | The rule was on `JuniorAcademyItemDTO`; the reveal screen reads `JuniorPromotionResultDTO`, which had no talent field at all |
+| `MoraleService.moraleModifier` | **Zero callers.** `PlayerContractService` had its own inline copy of the same morale→growth formula, and *that* was the live one |
+
+**The test to apply before calling anything done:** *trace the value from where it is written to where
+a manager or a match can observe it.* If the chain has a break anywhere, the feature is not done. And
+"it is on the DTO" is not an answer — the question is which DTO **that screen** reads.
+
+Fields carried for later use do not get an exemption. If a field is carried, something reads it in the
+same task, or it does not ship.
+
+---
+
 ### Standing constraints
 
 - **The proposal engine (`newLogic/sim/`) is the only engine.** Do not add a second one.
@@ -1882,6 +1910,7 @@ Also: `ensureEntriesForSeasonCompetition:126-134` deletes and rebuilds all entri
 | 1 | **Press conferences** — pick a response, affect `fanMood` / `mediaPressure` (S2.4) |
 | 2 | **Squad goals** — players have season targets, reported in the weekly update |
 | 3 | **Inbox** — match reports, board messages, transfer offers, injury news. Sokker's inbox is a core retention feature |
+| 3b | **The gym reshapes senior bodies** — mass, conditioning, and a body that responds to a season of training rather than a player who never changes shape. **Added by owner request 2026-09-27.** The gym already exists and already reduces training-injury risk; this is its third job | ❌ |
 | 4 | **In-match decisions** — change tactics at half time / after a goal (`TacticsAdjustmentService` exists at 41 lines — check what it does and wire it) |
 | 5 | Set your own **formation and mentality** mid-match, which currently only `MatchLiveService` (being deleted) could |
 | 6 | Match preview quality — `ZoxApiController:59-60` hardcodes `drawProbability = 0.25`. Build a real model from team strength and home advantage |

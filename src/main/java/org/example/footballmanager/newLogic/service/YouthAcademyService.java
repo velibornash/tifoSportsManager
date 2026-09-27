@@ -80,6 +80,7 @@ public class YouthAcademyService {
                 j.setArrivalAge(j.getAge());
                 // Signed for a position, not rolled on the way out (Sprint 5.3).
                 j.setPosition(rollPosition());
+                rollBodyAndTemperament(j);
                 // How badly the club is guessing about him on day one. This does NOT touch the
                 // quality distribution -- talent and academy skill are rolled exactly as they always
                 // were, which is the owner rule that the graduation distribution must not move. All
@@ -113,6 +114,7 @@ public class YouthAcademyService {
             junior.setAcademySkillExact(round2(nextExact));
             junior.setAcademySkill((int) Math.floor(junior.getAcademySkillExact()));
             junior.setLastWeeklyDelta(round2(delta));
+            developBody(junior, team);
         }
         juniorRepository.saveAll(active);
         log.info("Youth academy weekly progression done for season {}, week {} ({} juniors).", seasonNumber, weekNumber, active.size());
@@ -209,6 +211,45 @@ public class YouthAcademyService {
      * effect here. A manager could buy a training ground, hire a youth coach, and watch the academy
      * produce exactly the same prospects as a clubhouse with neither.
      */
+    /**
+     * One week of a junior's body changing (Sprint 5.3, owner 2026-09-27).
+     *
+     * <p>Height taps to nothing at the graduation deadline and weight is pulled toward the junior's
+     * natural weight at a rate the club's <b>gym</b> sets. The gym does not give a club a better body;
+     * it lets the club correct the one it was given, and a club without one lets a heavy prospect stay
+     * heavy — which is a risk the manager accepted by not spending the money.
+     *
+     * <p>Height accumulates on the birthday rather than weekly, because a boy's growth spurt is not
+     * spread evenly across a season. Applying it weekly would make him creep upward in a straight line
+     * and look synthetic.
+     */
+    private void developBody(Junior junior, Team team) {
+        Integer arrivalAge = junior.getArrivalAge();
+        if (arrivalAge == null) {
+            return;
+        }
+        int graduationAge = graduationAge(junior);
+
+        // Height: gains are granted on the year he turns, and taper to nothing at the deadline.
+        int yearsElapsed = junior.getAge() - arrivalAge;
+        if (yearsElapsed > 0) {
+            double gain = JuniorDevelopment.seasonalHeightGain(yearsElapsed, graduationAge, random.nextDouble());
+            if (gain > 0 && junior.getHeight() != null) {
+                junior.setHeight(JuniorDevelopment.round2(junior.getHeight() + gain));
+            }
+        }
+
+        // Weight: pulled toward the natural figure, at a rate the gym decides.
+        if (junior.getWeight() != null && junior.getNaturalWeight() != null) {
+            Integer gym = JuniorDevelopment.gymLevelOf(team == null ? null : team.getStadium());
+            double change = JuniorDevelopment.weeklyWeightChange(
+                    junior.getWeight(), junior.getNaturalWeight(), gym, random.nextDouble());
+            if (change != 0.0) {
+                junior.setWeight(JuniorDevelopment.round2(junior.getWeight() + change));
+            }
+        }
+    }
+
     double academyQualityOf(Team team) {
         if (team == null) return 1.0;
         return AcademyQuality.multiplierFor(team.getStadium(), youthCoach(team));
@@ -398,6 +439,13 @@ public class YouthAcademyService {
         player.setAge(graduationAge(junior));
         player.setTalent(junior.getTalent());
         player.setTeam(junior.getTeam());
+        // Carry the body and the temperament across (Sprint 5.3). Height and weight were previously
+        // re-rolled at promotion, so a club that spent two years shaping a prospect got a different
+        // body out of the academy than the one it developed.
+        player.setHeight(junior.getHeight() != null ? junior.getHeight() : round2(1.72 + random.nextDouble() * 0.24));
+        player.setWeight(junior.getWeight() != null ? junior.getWeight() : 65 + random.nextInt(20));
+        player.setPersonality(junior.getPersonality());
+        player.setPreferredFoot(junior.getPreferredFoot());
         player.setForm(round2(4.5 + random.nextDouble() * 3.2));
         player.setRating(50);
         player.setHeight(round2(1.72 + random.nextDouble() * 0.24));
@@ -562,6 +610,25 @@ public class YouthAcademyService {
         return legacy.size();
     }
 
+    /**
+     * Everything about a prospect that is decided on the day he signs (Sprint 5.3).
+     *
+     * <p>One method for both intake paths, deliberately. The season intake and the legacy seed had
+     * already drifted apart once over the arrival-age and range-width fields, and two copies of "what a
+     * new junior looks like" is two places for the next divergence to hide.
+     */
+    private void rollBodyAndTemperament(Junior junior) {
+        junior.setWorkRate(JuniorDevelopment.rollWorkRate(random.nextDouble()));
+        junior.setPersonality(JuniorDevelopment.rollPersonality(random.nextDouble()));
+        junior.setPreferredFoot(JuniorDevelopment.rollFoot(random.nextDouble()));
+        double height = JuniorDevelopment.rollHeight(junior.getPosition(), random.nextDouble());
+        junior.setHeight(JuniorDevelopment.round2(height));
+        double[] body = JuniorDevelopment.rollBody(height, random.nextDouble());
+        // He arrives carrying his natural weight, so the gym has nothing to correct on day one.
+        junior.setNaturalWeight(JuniorDevelopment.round2(body[0]));
+        junior.setWeight(JuniorDevelopment.round2(body[0]));
+    }
+
     private Position rollPosition() {
         int roll = random.nextInt(100);
         if (roll < 12) return Position.GK;
@@ -580,7 +647,14 @@ public class YouthAcademyService {
         // never the intake roll, so graduation mechanics and the talent distribution are untouched --
         // what a better academy changes is the level a graduate reaches, which is the point of paying
         // for one. 1.0 for a club that has recorded neither.
-        double base = 0.24 * coachFactor * talentFactor * levelFactor * randomFactor * academyQuality;
+        // Effort and temperament (Sprint 5.3), multiplied rather than added so a hard-working
+        // Temperamental and a laid-back Professional land in the same place: neither rescues the other.
+        double characterFactor = JuniorDevelopment.growthFactor(junior.getWorkRate(), junior.getPersonality());
+        // And the weekly wander that makes a difficult player difficult week to week.
+        double characterWander = 1.0 + (random.nextDouble() * 2.0 - 1.0)
+                * JuniorDevelopment.growthVariance(junior.getPersonality());
+        double base = 0.24 * coachFactor * talentFactor * levelFactor * randomFactor * academyQuality
+                * characterFactor * characterWander;
 
         // Small negative swing to simulate uncertain evaluation periods.
         if (random.nextDouble() < 0.08) {
@@ -661,6 +735,7 @@ public class YouthAcademyService {
             j.setArrivalAge(j.getAge());
             j.setTalentRangeHalfWidth(TalentRange.intakeHalfWidth(random.nextInt(4)));
             j.setPosition(rollPosition());
+            rollBodyAndTemperament(j);
             j.setStatus(JuniorStatus.ACTIVE);
             j.setArchived(false);
             j.setTeam(team);
@@ -713,6 +788,13 @@ public class YouthAcademyService {
         dto.setArrivalWeekNumber(j.getArrivalWeekNumber());
         dto.setArrivalAge(j.getArrivalAge());
         dto.setPosition(j.getPosition() != null ? j.getPosition().name() : null);
+        dto.setWorkRate(j.getWorkRate());
+        dto.setPersonality(j.getPersonality() != null ? j.getPersonality().name() : null);
+        dto.setPersonalityVariance(j.getPersonality() != null ? j.getPersonality().variance() : 0.0);
+        dto.setPreferredFoot(j.getPreferredFoot() != null ? j.getPreferredFoot().name() : null);
+        dto.setHeight(j.getHeight());
+        dto.setWeight(j.getWeight());
+        dto.setNaturalWeight(j.getNaturalWeight());
         dto.setPromotedPlayerId(j.getPromotedPlayer() != null ? j.getPromotedPlayer().getId() : null);
         dto.setArchived(Boolean.TRUE.equals(j.getArchived()));
 

@@ -268,32 +268,28 @@ export function createPlayerView(deps) {
         const injuryText = player.injured
             ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
             : 'Available';
-        const skillSections = [
-            {
-                title: 'Ball Skills',
-                items: [
-                    ['Technique', formatPlayerSkill(player.techniqueExact, player.technique), 'skill-technique-val'],
-                    ['Passing', formatPlayerSkill(player.passingExact, player.passing), 'skill-passing-val'],
-                    ['Shooting', formatPlayerSkill(player.shootingExact, player.shooting), 'skill-shooting-val']
-                ]
-            },
-            {
-                title: 'Athletic & Duels',
-                items: [
-                    ['Pace', formatPlayerSkill(player.paceExact, player.pace), 'skill-pace-val'],
-                    ['Stamina', formatPlayerSkill(player.staminaExact, player.stamina), 'skill-stamina-val'],
-                    ['Defending', formatPlayerSkill(player.defendingExact, player.defending), 'skill-defending-val']
-                ]
-            },
-            {
-                title: 'Role Profile',
-                items: [
-                    ['Playmaker', formatPlayerSkill(player.playmakerExact, player.playmaker), 'skill-playmaker-val'],
-                    ['Goalkeeper', formatPlayerSkill(player.goalkeeperExact, player.goalkeeper), 'skill-goalkeeper-val'],
-                    ['Overall', player.overall ?? '-', null]
-                ]
-            }
+        // Two parallel columns of four, as the owner specified (2026-09-27). The three section headers
+        // are gone: they only existed to group a single column, and with two columns side by side the
+        // grouping is self-evident.
+        //
+        //   left   Stamina, Pace, Technique, Passing
+        //   right  Goalkeeper, Defending, Playmaker, Striker
+        //
+        // The owner gave this order and it is a good one -- the left column is engine and ball, the
+        // right is role and outcome, so the two halves read as two questions rather than eight.
+        const SKILL_LEFT = [
+            ['Stamina', formatPlayerSkill(player.staminaExact, player.stamina), 'skill-stamina-val'],
+            ['Pace', formatPlayerSkill(player.paceExact, player.pace), 'skill-pace-val'],
+            ['Technique', formatPlayerSkill(player.techniqueExact, player.technique), 'skill-technique-val'],
+            ['Passing', formatPlayerSkill(player.passingExact, player.passing), 'skill-passing-val']
         ];
+        const SKILL_RIGHT = [
+            ['Goalkeeper', formatPlayerSkill(player.goalkeeperExact, player.goalkeeper), 'skill-goalkeeper-val'],
+            ['Defending', formatPlayerSkill(player.defendingExact, player.defending), 'skill-defending-val'],
+            ['Playmaker', formatPlayerSkill(player.playmakerExact, player.playmaker), 'skill-playmaker-val'],
+            ['Striker', formatPlayerSkill(player.shootingExact, player.shooting), 'skill-shooting-val']
+        ];
+        const skillSections = [SKILL_LEFT, SKILL_RIGHT];
 
         const renderSkillValue = (value, id) => `<td${id ? ` id="${id}"` : ''}>${revealActive && id ? '0.00' : value}</td>`;
         const renderPlaceholder = (title, text) => `
@@ -363,18 +359,15 @@ export function createPlayerView(deps) {
                         <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">
                             <div class="fm-panel-head">
                                 <h3>Attributes</h3>
-                                <span class="fm-panel-action">Overview with our current skills</span>
+                                <span class="fm-panel-action">Overall <strong id="player-overall">${player.overall ?? '-'}</strong></span>
                             </div>
                             <div class="fm-skills-grid">
                                 ${skillSections.map(section => `
-                                    <div class="fm-skill-col">
-                                        <h4>${section.title}</h4>
-                                        <table class="fm-skills">
-                                            <tbody>
-                                                ${section.items.map(([label, value, id]) => `<tr><td>${label}</td>${renderSkillValue(value, id)}</tr>`).join('')}
-                                            </tbody>
-                                        </table>
-                                    </div>`).join('')}
+                                    <table class="fm-skills fm-skill-col">
+                                        <tbody>
+                                            ${section.map(([label, value, id]) => `<tr><td>${label}</td>${renderSkillValue(value, id)}</tr>`).join('')}
+                                        </tbody>
+                                    </table>`).join('')}
                             </div>
                         </section>
                         <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="overview">

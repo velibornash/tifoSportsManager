@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.model.Personality;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
@@ -37,6 +38,17 @@ public class MoraleService {
     /** Morale below this and a player is genuinely unhappy in the dressing room. */
     public static final double UNHAPPY_MORALE = 40.0;
     public static final double CONTENT_MORALE = 65.0;
+
+    /**
+     * The floor and ceiling of the whole morale-plus-personality factor.
+     *
+     * <p>Tighter than the bare personality range on purpose: this is multiplied into a growth figure
+     * that already carries intensity, coach, facilities, position curve, cohesion, familiarity and
+     * mentoring. Every one of those answers a different question, and this one must not be allowed to
+     * become the reason a player stops developing.
+     */
+    public static final double MIN_MODIFIER = 0.82;
+    public static final double MAX_MODIFIER = 1.18;
 
     private final PlayerRepository players;
     private final MatchPlayerStatsRepository matchStats;
@@ -160,7 +172,17 @@ public class MoraleService {
     public double moraleModifier(Player player) {
         if (player == null) return 1.0;
         double morale = moraleOf(player);
-        return 0.90 + 0.20 * (morale / 100.0);
+        // The morale half stays exactly as Sprint 2.6 specified: narrow, because morale *changes* and a
+        // wide swing feeds back on itself.
+        double fromMorale = 0.90 + 0.20 * (morale / 100.0);
+        // Personality is the same lever without the feedback risk, because it does not move. A
+        // laid-back player is laid-back every week; his development is lower every week, and that is
+        // stable rather than compounding.
+        //
+        // The same number the academy uses, deliberately: a junior who worked at 0.82x should not
+        // become a different person at eighteen.
+        double fromPersonality = Personality.orDefault(player.getPersonality()).growthFactor();
+        return clamp(fromMorale * fromPersonality, MIN_MODIFIER, MAX_MODIFIER);
     }
 
     private boolean isUnderpaid(Player player) {

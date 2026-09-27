@@ -32,6 +32,7 @@ public class TrainingProgressionService {
     private final TrainingFocusService focusService;
     private final TrainingIntensityService intensityService;
     private final SquadEnvironmentService environment;
+    private final MoraleService moraleService;
     private final SeasonService seasonService;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
@@ -486,6 +487,11 @@ public class TrainingProgressionService {
         base *= SquadEnvironment.cohesionGrowthFactor(player.getTeam());
         base *= SquadEnvironment.familiarityFactor(player);
         base *= mentoringFactor(player, season, week);
+        // Morale and personality (Sprint 5.3). This is the first time the senior growth path has
+        // consumed either: MoraleService.moraleModifier existed since Sprint 2.6 with zero callers and
+        // the training formula simply had no morale term in it. Personality is carried from the
+        // academy, so a difficult teenager arrives a difficult player instead of being reset at 18.
+        base *= moraleService.moraleModifier(player);
         double ageFactor = PositionGrowthProfile.ageFactor(player.getPosition(), skill, player.getAge());
         double levelFactor = levelResistance(currentExact);
         double advancedFactor = advanced ? 1.0 : 0.5;

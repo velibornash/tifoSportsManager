@@ -19,6 +19,102 @@
      * decides which by omitting the fields — there is deliberately no raw `talent` on the payload, so
      * this function cannot accidentally print a ceiling the viewer was not sold.
      */
+    /**
+     * What a prospect is made of, in one compact strip (Sprint 5.3).
+     *
+     * <p>Work rate and personality are the two that change how he develops, so they lead. Height and
+     * weight follow because they are the ones that visibly move while he is in the school, and the
+     * natural weight is shown only when it differs enough to be worth correcting — otherwise every
+     * row carries a number nobody can act on.
+     */
+    /**
+     * The sort control (owner: "visible, and sortable").
+     *
+     * <p>Defaults to <b>work rate</b> rather than talent. Talent is already ordered by the band the
+     * server gave us, and it is the number a manager is least able to act on -- effort is the one he
+     * can change by coaching, and the one that is invisible if you cannot sort by it.
+     *
+     * <p>Sorting is client-side over the rows already on the page. There is never more than ten
+     * prospects, so a round trip to reorder ten rows would be slower and would lose the scroll
+     * position for nothing.
+     */
+    const SORTS = [
+        { key: 'workRate', label: 'Work rate' },
+        { key: 'talentMid', label: 'Talent' },
+        { key: 'academySkillExact', label: 'Ability' },
+        { key: 'age', label: 'Age' },
+        { key: 'name', label: 'Name' }
+    ];
+
+    function renderSortBar(sort, prospects) {
+        const options = SORTS.map(s => `<option value="${s.key}"${s.key === sort ? ' selected' : ''}>${s.label}</option>`).join('');
+        return `<div class="academy-sortbar">
+            <label for="academy-sort">Sort prospects by</label>
+            <select id="academy-sort" class="fm-season-select" data-academy-sort>${options}</select>
+            <span class="fm-subtle">${prospects} in the academy</span>
+        </div>`;
+    }
+
+    /** The sort key for one junior, including the band's midpoint so talent sorts sensibly. */
+    function sortValue(j, key) {
+        if (key === 'talentMid') {
+            if (j.talentLow == null || j.talentHigh == null) return -1;
+            return (Number(j.talentLow) + Number(j.talentHigh)) / 2;
+        }
+        const value = j[key];
+        if (value == null) return key === 'workRate' ? 0 : -1;
+        return typeof value === 'string' ? value.toLowerCase() : Number(value);
+    }
+
+    /** Applies the sort by reordering the rows already in the DOM. */
+    function applyAcademySort(key) {
+        const bodies = document.querySelectorAll('.academy-squad tbody');
+        bodies.forEach(body => {
+            const rows = Array.from(body.querySelectorAll('tr[data-junior-id]'));
+            if (rows.length < 2) return;
+            rows.sort((a, b) => {
+                const ja = JSON.parse(a.getAttribute('data-junior-json') || '{}');
+                const jb = JSON.parse(b.getAttribute('data-junior-json') || '{}');
+                const va = sortValue(ja, key), vb = sortValue(jb, key);
+                if (va === vb) return 0;
+                return va > vb ? -1 : 1;   // descending: the best prospect first
+            });
+            rows.forEach(row => body.appendChild(row));
+        });
+    }
+
+    function renderCharacter(j) {
+        const bits = [];
+        if (j.workRate != null) bits.push(escapeHtml(String(j.workRate)) + '/20 work');
+        if (j.personality) bits.push(escapeHtml(personalityLabel(j.personality)));
+        if (j.preferredFoot) bits.push(escapeHtml(footLabel(j.preferredFoot)) + '-footed');
+        if (j.height != null) bits.push(escapeHtml(String(Math.round(j.height))) + 'cm');
+        if (j.weight != null) bits.push(escapeHtml(String(Math.round(j.weight))) + 'kg');
+        return bits.length ? `<span class="academy-character">${bits.join(' · ')}</span>` : '';
+    }
+
+    /**
+     * The personality label, mapped here rather than sent from the server.
+     *
+     * <p>The enum name is on the payload so the DTO does not carry presentation; the wording is one
+     * place, and "Laid-back" reads better than LAID_BACK in a table.
+     */
+    function personalityLabel(name) {
+        const labels = {
+            PROFESSIONAL: 'Professional',
+            AMBITIOUS: 'Ambitious',
+            TEMPERAMENTAL: 'Temperamental',
+            LAID_BACK: 'Laid-back',
+            HEADSTRONG: 'Headstrong'
+        };
+        return labels[name] || name;
+    }
+
+    function footLabel(name) {
+        const labels = { LEFT: 'Left', RIGHT: 'Right', BOTH: 'Both' };
+        return labels[name] || name;
+    }
+
     function renderTalent(j) {
         if (j.talentExact != null) {
             return `${escapeHtml(formatPercent(j.talentExact, 2).replace("%", ""))}<span class="fm-subtle"> exact</span>`;
@@ -152,6 +248,11 @@
         // renders as an unavailable panel rather than taking the page with it.
         const school = await loadSchoolState(currentUserTeamId);
 
+        // Every visible prospect, for the "N in the academy" count and for sorting.
+        const allProspects = (Array.isArray(academy.juniors) ? academy.juniors : []).length
+            + (Array.isArray(academy.archive) ? academy.archive.length : 0);
+        let currentSort = sessionStorage.getItem('academy_sort') || 'workRate';
+
         const canDecide = academy.decisionsOpen === true;
         // Junior decisions are a registration window (Sprint 5.3, owner 2026-09-27): weeks 1-2 only.
         // A prospect cannot be signed into the first team mid-season, and a manager who could would
@@ -197,12 +298,21 @@
                 // different situations and must not read the same.
                 const pendingNew = withActions && j.status === "ACTIVE"
                     && Number(j.arrivalSeasonNumber || 0) >= currentSeason;
+                // data-junior-json is what the client-side sorter reads. Embedding the row's own
+                // values keeps the sort independent of column order, so a column can move later
+                // without breaking it.
+                const rowJson = escapeHtml(JSON.stringify({
+                    id: j.id, name: j.name, age: j.age, workRate: j.workRate,
+                    academySkillExact: j.academySkillExact,
+                    talentLow: j.talentLow, talentHigh: j.talentHigh
+                }));
                 return `
-                    <tr>
+                    <tr data-junior-id="${j.id}" data-junior-json="${rowJson}">
                         <td>${escapeHtml(j.name)}</td>
                         <td>${j.age}</td>
                         <td>${escapeHtml(j.position || '—')}</td>
                         <td>${renderTalent(j)}</td>
+                        <td>${renderCharacter(j)}</td>
                         <td>${Number(j.academySkillExact).toFixed(2)} <span style="opacity:0.8;">(int ${j.academySkill})</span></td>
                         <td class="academy-delta-cell" style="color:${delta >= 0 ? "#6fcf97" : "#ff6b6b"};">${deltaText}</td>
                         <td>${renderStatus(j.status)}</td>
@@ -237,6 +347,7 @@
                                 <th>Age</th>
                                 <th>Pos</th>
                                 <th>Talent (est.)</th>
+                                <th>Character &amp; body</th>
                                 <th>Academy</th>
                                 <th>Δ Week</th>
                                 <th>Status</th>
@@ -276,6 +387,7 @@
             </section>
 
             ${renderSchoolPanel(school)}
+            ${renderSortBar(currentSort, allProspects)}
 
             ${renderSection('Carryover juniors', carryover.length, carryover, true, 'Decision pending players remain visible until you resolve them.')}
             ${renderSection(`Current intake · Season ${academy.currentSeasonNumber}`, currentIntake.length, currentIntake, false, 'New intake continues developing through the current season.')}
@@ -307,7 +419,11 @@
                             <tbody>
                                 ${archive.length > 0
                                     ? archive.map(j => `
-                                        <tr>
+                                        <tr data-junior-id="${j.id}" data-junior-json="${escapeHtml(JSON.stringify({
+                                            id: j.id, name: j.name, age: j.age, workRate: j.workRate,
+                                            academySkillExact: j.academySkillExact,
+                                            talentLow: j.talentLow, talentHigh: j.talentHigh
+                                        }))}">
                                             <td class="sq-name">${escapeHtml(j.name)}</td>
                                             <td>${j.age}</td>
                                             <td>${escapeHtml(j.position || '—')}</td>
@@ -327,6 +443,17 @@
         </div>`;
 
         mainContent.innerHTML = html;
+
+        const sortSelect = mainContent.querySelector('[data-academy-sort]');
+        if (sortSelect) {
+            sortSelect.addEventListener('change', () => {
+                sessionStorage.setItem('academy_sort', sortSelect.value);
+                applyAcademySort(sortSelect.value);
+            });
+            // Applied after paint rather than before: the sorter reorders existing rows, so there
+            // have to be rows to reorder.
+            applyAcademySort(currentSort);
+        }
 
         mainContent.querySelectorAll("[data-school-action]").forEach(btn => {
             btn.addEventListener("click", async () => {
