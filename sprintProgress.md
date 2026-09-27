@@ -2234,6 +2234,11 @@ because of a squad-management decision, and a test asserts those bounds.
 
 **501 tests.**
 
+**Toolchain note.** `mvn` on this machine now resolves to Homebrew Java 24, and the project's
+Byte Buddy only supports up to Java 23 — the suite fails on 18 Mockito tests with
+`Java 24 (68) is not supported` until `JAVA_HOME` is pinned to Corretto 21. Not a code problem; pin
+the JDK rather than bumping Byte Buddy.
+
 ## Where Sprint 1 stands
 
 Statistics are **no longer benchmarked against Premier League figures** — owner decision 2026-09-26.
