@@ -2007,17 +2007,87 @@ same viewer as your own match.
 
 ---
 
+#### Owner decisions — 2026-09-28 (all 14 questions answered)
+
+Recorded here because they are the design, and the tasks below are the consequence.
+
+**Ranking — three separate lists, and the answer is Elo.** Club ranking, senior NT ranking and U-21 NT
+ranking are **independent**. The rules:
+
+| Rule | Detail |
+|---|---|
+| Tier seeding | A club from a higher tier sits **higher in ranking** than any club from a lower league. Ranking is global across all tiers, not per-league |
+| National start | NT and U-21 NT **begin at equal ratings** |
+| NT movement | Senior ranking moves **only** on NT results. Beating a higher-ranked nation is worth more; losing to a lower-ranked nation costs more |
+| WC > qualifying | A World Cup win is worth more than a qualifying win, plus a separate bonus for qualifying at all |
+| Club movement | Clubs gain and lose rating in the matches they play |
+| One list, two uses | A club's rating drives **both** its within-country position (across all tiers) **and** its international position. The owner's own illustration: a tier-5 club beating a tier-1 club in the cup is an enormous rating gain |
+| Upsets | Handled by the rating maths, not a special case — this is what an upset *is* |
+| Match value | **international cup > league > cup > friendly** |
+
+**Elections — once per season, one-season mandate, secret ballot.**
+
+| Rule | Detail |
+|---|---|
+| Registration | Candidates register in **week 12** of the preceding season, and may also register during **week 1** |
+| Withdrawal | A candidate may **withdraw** their application |
+| Voting | Starts **week 1 day 1**. Every user **of that country** votes |
+| Dual role | A user may be **candidate and voter** |
+| Changeable | A vote **can be changed** after casting |
+| Deadline | **week 7, 12:00** — winner declared (see Q-A1, this is ambiguous) |
+| Secrecy | **Results are invisible until declared.** Only admin/owner can see the count |
+| Mandate | **One season**, then re-election. **Admins can annul an election** if they find an irregularity |
+| Cadence | **Every season** (four a year) |
+
+**Selector powers.** The selector picks the **25-player pool**, the **starting XI and substitutes**,
+and **sets the tactics**.
+
+**Player eligibility.** Any player of that nationality may be in the 25 — no conditions. A player may be
+in the 25 and still be **unavailable for a specific match**: injured, suspended on an even number of
+yellows, or red-carded. An **observe list** is wanted alongside the 25, for tracking players who might
+soon be promoted into it. (See Q-B4 on whether the observe list is in scope now.)
+
+**Call-up confirmation.** The **first** call-up is **approved automatically by the system**; **every
+subsequent** call-up must be **confirmed by the club manager**. (See Q-B2 — what happens on refusal.)
+
+**Cup final slot.** Week 11, but in the **cup slot, day 5** — the league's day 3 and day 7 are
+untouched, so there is no collision with the week-11 playoff. Cup matches are a **day-5 slot** in
+general.
+
+**Schedule template.** Every country has the **same** template. The design allows **adding events to
+the template** when something happens — the NT and U-21 qualifying draw, the cup draw, the playoff
+draw. A country with no international fixture that week still shows the same week, with that day
+simply empty.
+
+**International clubs — by tier, with a promotion rule.** Entered by tier. A **tier-2 champion plays
+Champions Cup tier 1** as the owner's baseline; if a club climbs in the ranking above where its tier
+would place it, it plays in the **higher** cup. **Masters Cup** takes 2nd and 3rd, **Challenge Cup**
+takes 4th. (See Q-B3 — the tier naming needs confirming before any bracket is designed.)
+
+**Out of scope now.** The junior match on day 6 — confirmed deferred. The international cup **draw and
+system** — the owner deferred it to its own task, so Part 5 stops at the entry list.
+
+**My answer to "how should the random primitive work" (Q11), since the owner asked my view:** one
+shared, **seeded** random utility used by every coin-flip and tie-break. Two reasons. It is
+**reproducible** — a bracket or an election that went wrong can be replayed exactly, which is otherwise
+impossible. And it is **testable** — a rigged constant in a tie-break is the single worst bug this
+feature set can produce, because it silently decides outcomes and never announces itself. A single
+`Random` seed recorded alongside the result means "why did this team go out?" has an answer. The
+election tie ("plain random" between candidates on equal votes) and the tournament tie (points → goal
+difference → goals scored → coin) both go through it, and the seed is stored on the tie so the
+outcome is auditable afterwards.
+
 #### Part 0 — Foundations (do these first; everything else is downstream)
 
 | # | Task | Notes |
 |---|---|---|
-| 0.1 | **National ranking list** | The spec says "the best 48 teams from the ranking list" and "teams ranked 203 to 310". A ranking must therefore exist for **nations and for clubs**, and it must be **stored and ordered**, not derived ad hoc per query. **Open: what produces it** — see Q1 |
-| 0.2 | **Club ranking list** | 310 clubs today; the cup needs positions 203–310 and 1–202. Same question: what is the ordering |
+| 0.1 | **National ranking (senior and U-21 — two independent lists)** | **Elo, decided by the owner.** Moves only on NT results. Beating a higher-ranked nation pays more; losing to a lower-ranked one costs more. WC win > qualifying win, plus a qualifying bonus. Senior and U-21 start **equal**. Ties on equal rating broken by the shared random |
+| 0.2 | **Club ranking list** | **Elo**, driven by the same match-value order: **international cup > league > cup > friendly**. Tier gives a starting offset so a tier-1 club outranks any tier-5 club. One list serves both the within-country order and the international order. Rating changes are recorded per match so an upset is visible as an event |
 | 0.3 | Create the national team entities | 9 countries × 2 = 18 teams. `Country.seniorNationalTeam` / `u21NationalTeam` are already there waiting. They are **not clubs**: no league, no transfers, no wages — but they need players |
 | 0.4 | **Day-level calendar slots** | `SeasonCalendar` has the days; it needs **named slots** for day 1 (international 20:45), day 2 (finance), day 4 (training), day 5 (cup 18:00), day 6 (form/morale + junior). With room to add more — the owner asked for space to grow |
 | 0.5 | **Knockout resolution: penalties** | 90 minutes, then a shootout. The engine produces a 90-minute score; a shootout is a **new concept** that must not leak into league results |
 | 0.6 | **Draw engine: seeded pots and byes** | Potted draws, one team per pot per group, and a bracket that handles a non-power-of-two field (256 is fine; 202 direct entrants is not) |
-| 0.7 | **Tie-breaker chain** | Points → goal difference → goals scored → **toss of a coin**. The coin is the same primitive needed for the election tie ("plain random") — one shared utility |
+| 0.7 | **Tie-breaker chain + one shared seeded random** | Points → goal difference → goals scored → coin. The **same** primitive serves the election tie. The seed is **stored on the result** so any tie-break is replayable and auditable — see the owner's "how should it work" answer above |
 
 > **0.5 and 0.6 are the quiet risk.** Everything above them is CRUD and scheduling. A bracket that is
 > subtly wrong produces a plausible-looking tournament that quietly eliminates the right team, and
@@ -2031,14 +2101,14 @@ same viewer as your own match.
 |---|---|---|
 | 1.1 | NT section on the country page, containing **elections** | New section, above the existing country content |
 | 1.2 | **Any user may stand as a candidate**, regardless of nationality | "because there are foreign coaches" — no nationality gate on candidacy |
-| 1.3 | Candidate registers by clicking a button | During the registration window |
-| 1.4 | **Voting by clicking a candidate in the list** | **Open: who votes, and how many times** — see Q2 |
+| 1.3 | Candidate registers by clicking a button | **Week 12** of the preceding season, and also during **week 1**. A candidate may **withdraw**. Registration in week 12 is what makes a week-1 vote meaningful |
+| 1.4 | **Voting by clicking a candidate in the list** | Every user **of that country** votes. A user may be candidate **and** voter. **One vote, changeable** at any time before the deadline. Results **invisible until declared** — admin/owner may see the count |
 | 1.5 | Winner = most votes; **tie broken by plain random** | Uses 0.7 |
-| 1.6 | **Identical structure for U-21** | Everything in 1.1–1.5, run separately for U-21 |
-| 1.7 | Selector sees **every player's skills** for their country — **not talent, all skills** | A deliberate difference from `PlusFeatureService`, which gates talent. A selector sees skills; talent stays hidden |
-| 1.8 | Sortable player list: **by any skill, by wage, by value** | Sorting infrastructure must be added or reused |
-| 1.9 | Selector marks **25 players**, changeable at any time | "no conditions on which 25" — see Q3 |
-| 1.10 | How long a selector holds the role | **Open** — see Q4 |
+| 1.6 | **Identical structure for U-21** | Separate ranking, separate election, separate squad — everything in 1.1–1.5 run twice |
+| 1.7 | Selector sees **every player's skills** for their country — **not talent, all skills** | A deliberate difference from `PlusFeatureService`, which gates talent. A selector sees skills; **talent stays hidden** |
+| 1.8 | Sortable player list: **by any skill, by wage, by value** | Sorting must be **server-side** — a country's player pool is far too large to sort in the browser |
+| 1.9 | Selector marks **25 players**, changeable at any time | **No conditions** on which 25. A player may be in the 25 and still **unavailable for a given match** — injured, suspended on an even number of yellows, or red-carded. Availability is per-match, membership is not |
+| 1.10 | Mandate and annulment | **One season**, then re-election. Elections every season. **Admins can annul** an election on irregularity |
 
 ---
 
@@ -2046,10 +2116,10 @@ same viewer as your own match.
 
 | # | Task | Spec |
 |---|---|---|
-| 2.1 | Top **48 nations by ranking** enter | Needs 0.1 |
+| 2.1 | Top **48 nations by national rating** enter | From 0.1. **Global, not a region** — the owner was explicit that a nations list cannot be Serbia-only. **Open: how many nations exist** — see Q-B1 |
 | 2.2 | **8 groups of 6**, by seeding: **pots of 8** — pot 1, then pot 2, and so on. From each pot, **one team drawn at random into each group** | A pot is not a fixed group. Each group gets one team from every pot |
 | 2.3 | **Round robin**, 5 matchdays: days **1, 2, 3, 5, 7** of week 6 | Day 4 is deliberately empty |
-| 2.4 | **Home is the worse-ranked side** | Not a home/away alternation — the lower-ranked team hosts every game |
+| 2.4 | **Home is the worse-rated side** | Not an alternation — the lower-rated side hosts every game, so it is always the weaker team's stadium |
 | 2.5 | **Top 2 from each group advance** → 16 nations | 8 × 2 = 16, which is exactly a 1/16-final field. The arithmetic is self-consistent |
 | 2.6 | Tie-breaker: points → goal difference → goals scored → coin | Uses 0.7 |
 | 2.7 | **Identical for U-21** | |
@@ -2079,7 +2149,7 @@ same viewer as your own match.
 | 4.2 | **Week 2** — 202 direct entrants + 54 winners = **256**, play 1/256 | |
 | 4.3 | **Week 3** 1/128 · **Week 4** 1/64 · **Week 5** 1/32 | |
 | 4.4 | **Week 6 — no cup.** National-team qualifiers | Already reserved in `SeasonCalendar` |
-| 4.5 | **Week 7** 1/16 · **Week 8** 1/8 · **Week 9** 1/4 · **Week 10** 1/2 · **Week 11** final | Five rounds across five weeks. Arithmetic checks out |
+| 4.5 | **Week 7** 1/16 · **Week 8** 1/8 · **Week 9** 1/4 · **Week 10** 1/2 · **Week 11 day 5** final | Five rounds across five weeks. The final is in the **day-5 cup slot**, so the league's day 3 and day 7 — including the week-11 playoff — are untouched |
 | 4.6 | 90 minutes then penalties throughout | Uses 0.5 |
 | 4.7 | Cup tie is a **single match** — no home/away legs anywhere in the cup | |
 
@@ -2093,10 +2163,11 @@ same viewer as your own match.
 
 | # | Task | Spec |
 |---|---|---|
-| 5.1 | **Champions Cup** — every **champion** enters | |
-| 5.2 | **Masters Cup** — every **2nd and 3rd** placed team enters | |
-| 5.3 | **Challenge Cup** — every **4th** placed team enters | |
-| 5.4 | Draw, bracket and schedule | **Explicitly deferred by the owner to a separate task** — the draw and system will be discussed on their own. Do not design it here |
+| 5.1 | **Champions Cup** — every **champion** enters | By tier. A tier-2 champion plays **Champions Cup tier 1** as the owner's baseline, falling back to **tier-1 clubs only** if a per-tier system proves too complex |
+| 5.2 | **Masters Cup** — every **2nd and 3rd** placed team enters | Per tier as well |
+| 5.3 | **Challenge Cup** — every **4th** placed team enters | Per tier as well |
+| 5.4 | **Ranking-based promotion between cups** | A club that **climbs above where its tier would place it plays in the higher cup** — the owner's rule. Needs a rule for the boundary: at what rating gap does a tier-2 champion become a tier-1 entrant? See Q-B3 |
+| 5.5 | Draw, bracket and schedule | **Deferred by the owner to a separate task.** Do not design it here |
 
 > **Open and load-bearing:** which competitions feed these three cups. "All champions" across how many
 > tiers and how many countries is not stated, and the answer changes the size of every bracket. See Q5.
@@ -2117,7 +2188,7 @@ same viewer as your own match.
 
 | # | Task | Notes |
 |---|---|---|
-| 6.1 | Render the week as a day-by-day schedule, with **room to add events** | The owner asked for the space explicitly |
+| 6.1 | Render the week as a day-by-day schedule, with **room to add events** | **Every country has the same template.** Events can be **added to the template** when something happens — the NT and U-21 qualifying draw, the cup draw, the playoff draw. A day with nothing on it stays visibly empty rather than being hidden |
 | 6.2 | Per-country schedule on the country page | "every user can click their country's schedule and see what is happening each day" |
 
 ---
@@ -2127,10 +2198,12 @@ same viewer as your own match.
 | # | Task |
 |---|---|
 | 7.1 | Replace the hardcoded NT placeholder in `country-view.js:186-208` |
-| 7.2 | Decouple national-team players from their clubs: availability, fatigue, release |
-| 7.3 | Election and tournament state must survive a database reset and a restart |
-| 7.4 | AI nations need coaches and squads even where no human took the election |
-| 7.5 | Everything the manager sees must be readable by someone who did not build it — no silent failures in brackets |
+| 7.2 | **Call-up confirmation flow** | The **first** call-up is **approved by the system automatically**; **every subsequent** one needs the **club manager to confirm**. This is the mechanism that stops a selector quietly stripping a rival of eleven players. See Q-B2 for the refusal path |
+| 7.3 | NT availability per match | Weeks 6 and 12 have no league football, so no one is absent *by the schedule*. But a called player **cannot play any other match** in weeks 6 and 12 — NT only |
+| 7.4 | **Observe list** | Wanted alongside the 25: players tracked as likely to enter the pool. See Q-B4 on scope |
+| 7.5 | Election and tournament state must survive a database reset and a restart |
+| 7.6 | AI nations need coaches and squads even where no human took the election — a season where nobody stood must not leave a nation with no selector |
+| 7.7 | Everything the manager sees must be readable by someone who did not build it — no silent failures in brackets |
 
 ---
 
