@@ -15,7 +15,6 @@ let seasonNumber = 1;
 let weekNumber = 1;
 let dayNumber = 1;
 let dayLabel = '';
-let gameTimeOffsetMs = 0;
 let phaseLabel = "Season in progress";
 
 async function syncWithServerTime() {
@@ -38,11 +37,6 @@ async function syncGameClock() {
         weekNumber = Number(data.weekNumber || 1);
         dayNumber = Number(data.day || 1);
         dayLabel = data.dayLabel || '';
-        // Render GAME time, not wall-clock time. Advancing the hour must be visible in the header;
-        // showing the real clock made the advance look like it had done nothing, which was the whole
-        // reason the game time was made an offset instead of a stored value.
-        const offsetSeconds = Number(data.advanceOffsetSeconds || 0);
-        gameTimeOffsetMs = offsetSeconds * 1000;
         phaseLabel = data.phase || "Season in progress";
     } catch (err) {
         console.warn("Game clock sync failed:", err);
@@ -50,8 +44,14 @@ async function syncGameClock() {
 }
 
 function updateLiveClock() {
-    // Real time, corrected for server drift, plus everything the owner has advanced.
-    const nowMs = Date.now() - serverOffsetMs + gameTimeOffsetMs;
+    // Real Belgrade time, corrected for server drift. NOT the game offset.
+    //
+    // The offset is a test accelerator that moves the season/week/day counters along; it is not a
+    // second clock the header should display. Showing offset time made Advance Hour look like it had
+    // jumped the wall clock by an hour, which is not what it does. The header shows the real time and
+    // the game position beside it as "Season 1 - Week 1 - Day 1 (International)", so the manager can
+    // always see which day of the season it is without reading a date.
+    const nowMs = Date.now() - serverOffsetMs;
     const now = new Date(nowMs);
 
     const timeStr = now.toLocaleTimeString('sr-RS', {

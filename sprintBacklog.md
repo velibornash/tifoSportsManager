@@ -3321,3 +3321,39 @@ The lesson worth keeping: three separate bugs here (self-invocation, `hours/24`,
 timestamp-derived counter) all presented as "a job silently did not run". Any scheduled job that
 quietly does nothing is indistinguishable from one that has not been wired yet, so the next
 scheduled job gets a live check, not a unit test.
+
+### Scheduler: the season plays itself in production (owner, 2026-09-28)
+
+**The question asked: does a job fire on app start in production without anyone clicking advance?**
+Before this change, no. A job ran only when a button was pressed. Fine for testing, useless in
+production - nobody sits there clicking Advance Hour so the season plays itself.
+
+`GameClockScheduler` runs on the hour (`game.clock.cron`, default `0 0 * * * *`) and does two things:
+
+1. **Advances** the clock an hour, when auto-advance is on. Advancing is what makes a job due, so
+   the two belong together.
+2. **Checks** what is due regardless, whether or not it advanced. This is the half the owner asked
+   for and it is the important one: a job missed because the app was down over a kickoff, or one
+   that failed and was re-queued, is picked up instead of being skipped for good. The done-flags make
+   the second and third tick harmless.
+
+Cron rather than a fixed rate: a fixed rate drifts against the wall clock and can fire twice in an
+hour across a DST change.
+
+**Off by default, on per profile.** `game.clock.scheduler-enabled` / `game.clock.auto-advance` are
+false in dev and true in prod. Auto-advancing in dev or test would move the season underneath the
+test run and make every season test time-dependent. The advance buttons stay as the manual path.
+
+**The header shows real Belgrade time, not the offset time.** The owner settled this: the offset is a
+test accelerator that moves the season/week/day counters, not a second clock. Displaying offset time
+made Advance Hour look as though it had jumped the wall clock by an hour, which is not what it does.
+The header shows the real time, with the game position beside it as
+`Season 1 - Week 1 - Day 1 (International)`. No calendar date is shown at all, so the manager reads
+the day off the season position rather than off a date that has nothing to do with the fixture list.
+
+### OPEN QUESTION for the owner
+
+Auto-advance rate on prod. The hourly tick advances one game hour per real hour, so a 7-day week
+takes 7 real days and a 12-week season takes 12 real weeks. That is realistic but slow for a live
+game. Options: hourly, or a configurable multiplier (`game.clock.minutes-per-game-hour`). Left at 1:1
+because the owner has not chosen, and it is one property to change.
