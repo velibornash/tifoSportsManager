@@ -94,6 +94,30 @@ class CountryPageRendersTest {
                 assertTrue(body.contains(kind), "the week grid is missing the " + kind + " day");
             }
 
+            // The four country cards must be capped, not spread. The owner reported them still
+            // stretching after an earlier fix that had the wrong specificity and lost on source order.
+            Object cardWidth = page.evaluate(
+                    "() => { const g = document.querySelector('.fm-country-hero .fm-country-stat-grid');"
+                    + " if (!g) return null; const c = g.querySelector('div');"
+                    + " return { card: Math.round(c.getBoundingClientRect().width),"
+                    + "          grid: Math.round(g.getBoundingClientRect().width) }; }");
+            assertTrue(cardWidth != null, "the country stat cards were not found");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> widths = (Map<String, Object>) cardWidth;
+            int card = (Integer) widths.get("card");
+            int grid = (Integer) widths.get("grid");
+            assertTrue(card <= 150, "each card is " + card + "px wide inside a " + grid
+                    + "px grid - they are stretching again");
+
+            // The season view, so weeks 6 and 12 are visible as deliberate rather than as a gap.
+            assertTrue(body.contains("Week 6") && body.contains("Week 12"),
+                    "the season grid should show all twelve weeks");
+            assertTrue(body.contains("no league football"),
+                    "weeks 6 and 12 must say they have no league football");
+
+            assertTrue(!body.contains("Top-level squad hub placeholder"),
+                    "the placeholder copy is still on the country page");
+
             assertTrue(pageErrors.isEmpty(), "uncaught errors on the page: " + pageErrors);
             assertTrue(consoleErrors.isEmpty(), "console errors on the page: " + consoleErrors);
         } finally {

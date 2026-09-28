@@ -53,6 +53,49 @@ public class CalendarController {
      * show the nearest real week, not an error, because the only way to ask for a bad week is a
      * client that has got its arithmetic wrong.
      */
+    /**
+     * The whole season at a glance: all twelve weeks, each flagged with what makes it different.
+     *
+     * <p>This is what a manager needs before a season rather than during one. Weeks 6 and 12 are the
+     * two that matter most and neither is obvious: both have no league football at all, so a manager
+     * who does not know would read them as a bug.
+     */
+    @GetMapping("/season")
+    public Map<String, Object> getSeason() {
+        int current = seasonService.getOrCreateClock().getCurrentWeek();
+        List<Map<String, Object>> weeks = new java.util.ArrayList<>();
+        for (int week = 1; week <= SeasonCalendar.WEEKS_PER_SEASON; week++) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("week", week);
+            row.put("current", week == current);
+            row.put("note", noteForWeek(week));
+            // What is on each of the two league days, so the season reads as a shape rather than
+            // twelve identical rows. "Rounds 3-4" is more use than "League".
+            row.put("dayThree", roundsFor(week, 0));
+            row.put("daySeven", roundsFor(week, 1));
+            weeks.add(row);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("seasonWeeks", SeasonCalendar.WEEKS_PER_SEASON);
+        body.put("currentWeek", current);
+        body.put("weeks", weeks);
+        return body;
+    }
+
+    /** The league rounds in one of a week's two slots, as a short label. */
+    private String roundsFor(int week, int slotIndex) {
+        var slot = SeasonCalendar.slot(week, slotIndex + 1);
+        if (slot == null) {
+            return null;
+        }
+        return switch (slot.kind()) {
+            case LEAGUE -> "Round " + slot.leagueRound();
+            case PLAYOFF -> "Playoff";
+            case FRIENDLY -> "Friendly";
+            case FRIENDLY_IF_NOT_IN_PLAYOFF -> "Friendly (if not in playoff)";
+        };
+    }
+
     @GetMapping("/week/{week}")
     public Map<String, Object> getWeek(@PathVariable int week) {
         return buildWeek(week);

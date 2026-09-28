@@ -894,15 +894,34 @@
    is given. With four items in a wide hero that is a quarter of the page each.
    Capping the column width and hugging the left is the whole fix - the cards then
    take the width their content needs, which is what a stat card is for. */
-.fm-country-stat-grid {
+/* Scoped through .fm-country-hero on purpose. A bare `.fm-country-stat-grid` has the SAME specificity
+   as `.fm-medical-stat-grid`, and dashboard.css's own rules come AFTER the imported sheets - so the
+   override lost on source order and the cards kept stretching. That is the exact trap documented a few
+   hundred lines above in this file, and this selector is the fix for having walked into it. */
+.fm-country-hero .fm-country-stat-grid {
     grid-template-columns: repeat(4, minmax(0, 132px));
     justify-content: start;
 }
 
 @media (max-width: 620px) {
-    .fm-country-stat-grid {
+    .fm-country-hero .fm-country-stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+}
+
+/* The page title. .fm-page-toolbar is `justify-content: space-between`, which is right for
+   "Back on the left, an action on the right" and wrong for a title - it left the country name jammed
+   against the right edge with a void next to Back. The title block is allowed to grow and sit next to
+   the button instead. */
+.fm-page--country .fm-page-toolbar {
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 16px;
+}
+
+.fm-page--country .fm-page-title-block {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 /* ── The week grid ─────────────────────────────────────────────────────────────────
@@ -967,5 +986,72 @@
         grid-template-columns: repeat(7, minmax(96px, 1fr));
         overflow-x: auto;
         padding-bottom: 6px;
+    }
+}
+
+/* ── Season grid (owner, 2026-09-28) ────────────────────────────────────────────────
+   Twelve weeks in three columns. Week 6 and week 12 are marked: both have no
+   league football at all, and a manager who does not know that reads them as a
+   bug rather than as a design. */
+.fm-season-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fm-season-week {
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fm-season-week.is-current {
+    border-color: rgba(143, 211, 255, 0.45);
+    background: rgba(143, 211, 255, 0.09);
+}
+
+.fm-season-week.is-special {
+    border-left: 3px solid rgba(255, 212, 121, 0.55);
+}
+
+.fm-season-week-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.fm-season-week-number {
+    font-size: 0.82rem;
+    color: #eef4ff;
+}
+
+.fm-season-week-now {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(143, 211, 255, 0.9);
+}
+
+.fm-season-week-rounds {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.74rem;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.fm-season-week-note {
+    margin-top: 6px;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    color: #ffd479;
+}
+
+@media (max-width: 760px) {
+    .fm-season-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

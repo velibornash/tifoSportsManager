@@ -8,8 +8,7 @@ export function createCountryView(deps) {
     const {
         authFetch, loadPage, setActiveLeagueContext,
         getCurrentUserCountryIsoCode, getActiveLeagueCountryIsoCode,
-        getCurrentUserCountryName, getSeasonYear,
-        buildClubActionsHtml
+        getCurrentUserCountryName, getSeasonYear
     } = deps;
 
     async function openCountryLeague(leagueId, leagueName) {
@@ -32,12 +31,13 @@ export function createCountryView(deps) {
 
         try {
             const countryIso = String(countryIsoCode).toUpperCase();
-            const [countriesResponse, leaguesResponse, calendarResponse] = await Promise.all([
+            const [countriesResponse, leaguesResponse, calendarResponse, seasonResponse] = await Promise.all([
                 authFetch('/countries'),
                 authFetch(`/countries/${encodeURIComponent(countryIso)}/leagues`),
                 // The schedule is read from the server, not restated here. The seven-day template is
                 // a fact about the game; a copy of it in JavaScript is a second fact that will drift.
-                authFetch('/calendar/week')
+                authFetch('/calendar/week'),
+                authFetch('/calendar/season')
             ]);
 
             if (!leaguesResponse.ok) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
@@ -68,6 +68,13 @@ export function createCountryView(deps) {
             const weekDays = Array.isArray(calendar?.days) ? calendar.days : [];
             const calendarWeek = calendar?.week;
             const calendarNote = calendar?.note;
+
+            // The whole season, so weeks 6 and 12 are visible as deliberate rather than as a gap.
+            // Both have no league football, and a manager who does not know that reads them as a bug.
+            const season = seasonResponse && seasonResponse.ok
+                ? await seasonResponse.json().catch(() => null)
+                : null;
+            const seasonWeeks = Array.isArray(season?.weeks) ? season.weeks : [];
 
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--country">
@@ -132,6 +139,30 @@ export function createCountryView(deps) {
                         <section class="fm-panel">
                             <div class="fm-panel-head">
                                 <div>
+                                    <h3>Season</h3>
+                                    <p class="fm-subtle">All twelve weeks. Week 6 and week 12 have no league football.</p>
+                                </div>
+                                <span class="fm-panel-action">${htmlEscape(countryTitle)}</span>
+                            </div>
+                            <div class="fm-season-grid">
+                                ${seasonWeeks.map(week => `
+                                    <div class="fm-season-week${week.current ? ' is-current' : ''}${week.note ? ' is-special' : ''}">
+                                        <div class="fm-season-week-head">
+                                            <span class="fm-season-week-number">Week ${week.week}</span>
+                                            ${week.current ? '<span class="fm-season-week-now">now</span>' : ''}
+                                        </div>
+                                        <div class="fm-season-week-rounds">
+                                            <span>Day 3 &middot; ${htmlEscape(week.dayThree || '—')}</span>
+                                            <span>Day 7 &middot; ${htmlEscape(week.daySeven || '—')}</span>
+                                        </div>
+                                        ${week.note ? `<div class="fm-season-week-note">${htmlEscape(week.note)}</div>` : ''}
+                                    </div>`).join('')}
+                            </div>
+                        </section>
+
+                        <section class="fm-panel">
+                            <div class="fm-panel-head">
+                                <div>
                                     <h3>${htmlEscape(calendarNote ? `Week ${calendarWeek} schedule` : 'This week')}</h3>
                                     <p class="fm-subtle">${htmlEscape(calendarNote || 'What happens each day, for every club in the country.')}</p>
                                 </div>
@@ -163,14 +194,12 @@ export function createCountryView(deps) {
                                 <article class="fm-country-team-card">
                                     <div class="fm-milestone-kicker">Senior</div>
                                     <div class="fm-update-title">${htmlEscape(country?.seniorNationalTeam?.name || `${country?.name || getCurrentUserCountryName() || 'Country'} National Team`)}</div>
-                                    <div class="fm-update-meta">Top-level squad hub placeholder.</div>
-                                    <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-placeholder="nationalTeam">Open</button>
+                                    <div class="fm-update-meta">Squad, elections and tournament. Not built yet.</div>
                                 </article>
                                 <article class="fm-country-team-card">
                                     <div class="fm-milestone-kicker">U-21</div>
                                     <div class="fm-update-title">${htmlEscape(country?.u21NationalTeam?.name || `${country?.name || getCurrentUserCountryName() || 'Country'} U-21`)}</div>
-                                    <div class="fm-update-meta">Youth national setup placeholder.</div>
-                                    <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-placeholder="u21Team">Open</button>
+                                    <div class="fm-update-meta">Squad, elections and tournament. Not built yet.</div>
                                 </article>
                             </div>
                         </section>
@@ -194,9 +223,6 @@ export function createCountryView(deps) {
                 });
             }
 
-            mainContent.querySelectorAll('[data-country-placeholder]').forEach(button => {
-                button.addEventListener('click', () => loadPage(button.dataset.countryPlaceholder || 'nationalTeam'));
-            });
         } catch (err) {
             console.error('Failed to load country page:', err);
             mainContent.innerHTML = `
@@ -224,15 +250,14 @@ export function createCountryView(deps) {
                         <div>
                             <div class="fm-eyebrow">National setup</div>
                             <h2>${htmlEscape(title)}</h2>
-                            <p class="fm-subtle">This route is intentionally a frontend placeholder for now, so the action-row buttons already have a clean destination before BE national-team payloads are wired.</p>
+                            <p class="fm-subtle">Squad, selection and tournaments are not built yet.</p>
                         </div>
-                        ${buildClubActionsHtml(currentActionPage)}
                     </div>
                     <div class="fm-medical-stat-grid team-summary-grid">
                         <div><strong>${htmlEscape(getCurrentUserCountryName() || '\u2014')}</strong><span>Country</span></div>
                         <div><strong>${isU21 ? 'U-21' : 'Senior'}</strong><span>Level</span></div>
-                        <div><strong>Placeholder</strong><span>Status</span></div>
-                        <div><strong>Later</strong><span>Backend data</span></div>
+                        <div><strong>Not built</strong><span>Status</span></div>
+                        <div><strong>&mdash;</strong><span>Backend data</span></div>
                     </div>
                 </section>
                 <section class="fm-panel">

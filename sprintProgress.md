@@ -4180,3 +4180,55 @@ the seeder was needed.
 
 **Clean total 713, all green.** Two browser tests skip when nothing is on :8080, which is the correct
 answer and not a gap.
+
+
+---
+
+## Country page, round two — the visual mess, and the season view (2026-09-28)
+
+Owner: the weekly schedule is *"ok, top"*, but the country page is *"vizuelno sredis, jer je preruzna"* —
+and three specific complaints, all of which turned out to be real:
+
+1. **The four cards still stretch.** My earlier fix used a bare `.fm-country-stat-grid`, which has the
+   **same specificity** as `.fm-medical-stat-grid`, and `dashboard.css`'s own rules come **after** the
+   imported sheets — so it lost on source order. That is the exact trap documented a few hundred lines
+   above in the same CSS file, and I walked into it anyway. Fixed by scoping through
+   `.fm-country-hero`, which beats on specificity, and **now asserted in the browser test by measuring
+   the rendered card width** — 132px, not a quarter of the page. Measuring the result is the only
+   check that survives someone re-lowering the specificity.
+
+2. **The title sits far right with a void next to Back.** `.fm-page-toolbar` is
+   `justify-content: space-between`, correct for "Back left, action right" and wrong for a title.
+   The country toolbar now starts at the left.
+
+3. **National teams led to the wrong pages.** Not exactly wrong — the routes exist — but they led to
+   `loadNationalTeamPlaceholder`, and that page rendered `buildClubActionsHtml`, so a national team
+   offered **First Team, Finances, Transfers and Squad Numbers** for a side that has none of those. The
+   action row is off, and with it the dead `[data-country-placeholder]` listener that was the other
+   half of a link that went nowhere useful.
+
+**Two of my earlier "fixes" had never landed at all.** The title subtitle and both
+`…placeholder.` lines were still the old text — I had written `python` replacements without asserting
+on those two, and they silently matched nothing. The browser test now asserts the placeholder copy is
+**gone**, which is the check that would have caught it.
+
+### The season view
+
+`GET /calendar/season` — all twelve weeks, each with what is on day 3 and day 7, and a note on the weeks
+that differ. Weeks 6 and 12 are marked, because both have no league football at all and a manager who
+does not know reads them as a bug:
+
+| Week | Day 3 | Day 7 | |
+|---|---|---|---|
+| 5 | Round 9 | Round 10 | Mid-season window opens at the end of it |
+| **6** | Friendly | Friendly | **No league football. Reserved for national-team qualifiers** |
+| 11 | Friendly (if not in playoff) | Friendly | Playoff week |
+| **12** | Friendly | Friendly | **No league football. Reserved for the World Cup** |
+
+### Still to do from this batch
+
+- **League and cup clickable** from the week grid — the owner asked for it, and the data exists.
+- **Cup rounds in the schedule** — the owner noted *"imas sve podatke da mozes da napravis kup, runde i
+  ubacis u raspored"*. True: 310 ranked clubs, 108 in the cup range, and a seven-day template with a
+  day-5 cup slot.
+- **Velja as selector for senior and U-21** so the national team can actually be tested.
