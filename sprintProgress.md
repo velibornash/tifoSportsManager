@@ -3473,3 +3473,36 @@ asset: a dim stand above turf with a halfway line and centre circle, the two mar
 Worth noting the `onerror` case specifically. `onerror="this.src='/images/default-stadium.png'"` means
 a broken stadium image retried with another broken path, and the second failure had no handler — so
 the user got a browser's broken-image glyph rather than a placeholder, on every stadium in the game.
+
+---
+
+## S8.3 #6 — two of the three "dead" items were not dead code (2026-09-28)
+
+Deleting dead code is easy and this was a good example of why you check first.
+
+**`emptyStateHtml`** — genuinely dead, zero references. Deleted. It lives in `ui/components.js`, not
+`utils.js` as the backlog said.
+
+**`loadRecentLeagueMatches`** — not dead, **disabled**. The function exists, the container
+`#recent-league-matches-list` is written into the dashboard markup, and the only call is commented
+out at `dashboard.js:563`. The markup is itself inside an `<!-- -->` block, so the "Recent League
+Results" section was switched off, probably during the `pages.js` refactor. Delete or restore is a
+product decision, so it was **skipped rather than guessed** — deleting it throws away working code
+that may have only been disabled by accident, and restoring it puts back something that may have
+been removed on purpose.
+
+**`resolveFixtureStadiumImage`** — a symptom of a bigger hole, and the bigger hole is the interesting
+find. The function maps a stadium *name* to an image by substring and is never called. Following that
+thread:
+
+> `Stadium` has **no `image` field at all**. `stadium-view.js` reads
+> `s.image || '/images/default-stadium.png'`, and no backend endpoint ever sends an `image` key.
+
+So the stadium page has never been able to show a real ground. It has always fallen through to the
+default — which, until the previous commit, **was itself a 404**. Which means every stadium in the
+game has been rendering a broken-image glyph, not a placeholder, and the `onerror` handler pointed at
+the same missing file. Three real ground images are reachable only through that dead name-matching
+function, so all three are effectively orphaned assets.
+
+The fix is the same shape as S8.3 #7 — stop inferring from names, add a real field — but it touches
+the schema, so it is written up and left rather than done unattended.

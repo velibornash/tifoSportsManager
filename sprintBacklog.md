@@ -1755,6 +1755,44 @@ rather than from the tree. Everything in the file is now verified against the so
 recording because it is the exact failure the file was written to prevent: **a document about which
 code is live is itself documentation, and goes stale the same way.**
 
+#### 🟡 S8.3 #6 — two of the three "dead" items are owner decisions, not deletions (2026-09-28)
+
+Checked each before deleting, and the backlog was wrong about two of the three.
+
+**`emptyStateHtml` (in `ui/components.js`, not `utils.js`) — deleted.** Zero references anywhere. The
+only importer of that module takes `backButtonHtml`.
+
+**`loadRecentLeagueMatches` is not dead code — it is a disabled feature.** The function exists, the
+container `#recent-league-matches-list` is written into the dashboard markup, and the only call is
+commented out at `dashboard.js:563`. The markup itself is inside an `<!-- -->` block, so the "Recent
+League Results" section was deliberately switched off, most likely during the `pages.js` refactor.
+**Delete or restore is the owner's call, and it was skipped rather than guessed** — deleting a
+section that was only disabled by accident throws away working code, and restoring one that was
+disabled on purpose puts back something the owner removed.
+
+**`resolveFixtureStadiumImage` is a symptom of a bigger hole.** It maps a stadium *name* to an image
+by substring (`livadice`, `dunjareal`, `bilino`) and is never called. Investigating why turned up
+something worse:
+
+> **`Stadium` has no `image` field at all.** `stadium-view.js` reads `s.image || '/images/default-stadium.png'`,
+> and nothing in the backend ever sends an `image` key. So the stadium page has **never** been able to
+> show a real ground — it has always fallen through to the default, which until today was itself a
+> **404**, meaning a broken-image glyph rather than a placeholder.
+
+Three real ground images (`livadice.png`, `dunjareal.png`, `bilinopolje.png`) are reachable only
+through that dead name-matching function, so all three are effectively orphaned assets.
+
+**The fix, when it is wanted, is the same shape as S8.3 #7**: stop inferring from names. Add a real
+image field to `Stadium`, populate it for the grounds that have artwork, serve it on both the stadium
+and fixture payloads, and delete the substring matcher. That touches the schema, which is why it was
+not done unattended.
+
+| Sub-item | Status |
+|---|---|
+| `emptyStateHtml` | ✅ deleted |
+| `loadRecentLeagueMatches` / "Recent League Results" section | ⏸ owner decision — restore or remove |
+| Stadium image as data (schema change) | ⬜ open, scoped above |
+
 ---
 
 ### Sprint 6 exit criteria — 🟡 MET IN SPIRIT, THREE ITEMS OPEN
@@ -1885,7 +1923,7 @@ same viewer as your own match.
 | 3 | Mobile sidebar has **no `tacticEditor` entry** and uses different labels than desktop | `dashboard.html:31-92` vs `:95-133` |
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
 | 5 | `training-view.js` — merge the two ~450-line parallel implementations | `training-view.js:7-453,455-907` |
-| 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | — |
+| 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | 🟡 **partly done 2026-09-28** — `emptyStateHtml` deleted; the other two turned out to be decisions, not dead code. See below |
 | 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
