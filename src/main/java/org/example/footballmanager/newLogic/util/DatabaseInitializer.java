@@ -95,6 +95,7 @@ public class DatabaseInitializer {
     private final TeamRepository teamRepository;
     private final TransferActivitySeeder transferActivitySeeder;
     private final NationalTeamSeeder nationalTeamSeeder;
+    private final CupFixtureSeeder cupFixtureSeeder;
     private final PlayerRepository playerRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -165,6 +166,11 @@ public class DatabaseInitializer {
                 nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
             } catch (RuntimeException e) {
                 log.warn("Could not seed national teams: {}", e.getMessage());
+            }
+            try {
+                cupFixtureSeeder.seedIfMissing();
+            } catch (RuntimeException e) {
+                log.warn("Could not draw the cup: {}", e.getMessage());
             }
             return;
         }

@@ -1055,3 +1055,442 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* ============================================================================
+   Country page (owner, 2026-09-28)
+
+   Rebuilt as one full-width page of stacked segments. The previous layout was a
+   two-column grid: a Federation panel with ~250px of dead space above a row of
+   four tall stat cards, next to a leagues panel with an orphaned action label.
+   The dead space came from stretching cards to match the tallest sibling, and
+   the cards held three values already visible elsewhere on the page.
+
+   Specificity is raised deliberately. These sheets are @import-ed by
+   dashboard.css, so equal-specificity rules in that file win on order alone.
+   ========================================================================== */
+
+.fm-page--country,
+.fm-page--national-team {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 1240px;
+    margin: 0 auto;
+}
+
+/* Stacked segments: the page is a column of full-width bands, not a mosaic. */
+.fm-country-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fm-country-stack > .fm-panel,
+.fm-country-stack > .fm-nt-card {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+/* Title left, Back hard right on the same row, facts on one line underneath.
+   Previously Back sat in its own first column, which pushed the flag and title sideways and
+   left the header reading as two unrelated blocks. */
+.fm-page--country .fm-country-header,
+.fm-page--national-team .fm-country-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 14px 20px;
+    padding: 20px 24px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(24, 32, 54, 0.94), rgba(15, 21, 38, 0.94));
+    border: 1px solid rgba(120, 150, 210, 0.22);
+}
+
+.fm-page--country .fm-country-header-back,
+.fm-page--national-team .fm-country-header-back {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+}
+
+.fm-page--country .fm-country-header-main,
+.fm-page--national-team .fm-country-header-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.fm-page--country .fm-country-header-title,
+.fm-page--national-team .fm-country-header-title {
+    margin: 2px 0 0;
+    font-size: 30px;
+    line-height: 1.15;
+    text-align: left;
+}
+
+/* Facts as a definition list running along the header. Compact, one line, and
+   they wrap instead of stretching to fill whatever height the title needs. */
+.fm-page--country .fm-country-facts,
+.fm-page--national-team .fm-country-facts {
+    /* Spans under both columns. The facts stay on ONE line and each label/value pair stays on one
+       line: as a bare <dl> the browser put every dt and dd on its own row, which read as a column
+       of ten loose words. */
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 26px;
+    margin: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid rgba(120, 150, 210, 0.16);
+}
+
+.fm-page--country .fm-country-fact,
+.fm-page--national-team .fm-country-fact {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 7px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-country-fact dt,
+.fm-page--national-team .fm-country-fact dt {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+.fm-page--country .fm-country-fact dd,
+.fm-page--national-team .fm-country-fact dd {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+/* --- National teams ------------------------------------------------------ */
+
+.fm-page--country .fm-nt-card,
+.fm-page--national-team .fm-nt-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.fm-page--country .fm-nt-card .fm-panel-head,
+.fm-page--national-team .fm-nt-card .fm-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 16px 20px;
+    margin: 0;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.16);
+}
+
+.fm-page--country .fm-panel-head-actions,
+.fm-page--national-team .fm-panel-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.fm-page--country .fm-nt-squad-count,
+.fm-page--national-team .fm-nt-squad-count {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-nt-provisional,
+.fm-page--national-team .fm-nt-provisional {
+    font-size: 11px;
+    color: #e5b567;
+    white-space: nowrap;
+}
+
+/* A 25-player squad is a list. Rows, not cards: 25 boxes with card padding
+   pushed the page past 4000px and gave every row 150px of nothing. */
+.fm-page--country .fm-squad,
+.fm-page--national-team .fm-squad {
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-page--country .fm-squad-row,
+.fm-page--national-team .fm-squad-row {
+    display: grid;
+    grid-template-columns: 34px 46px 1fr auto 56px;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 20px;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+}
+
+.fm-page--country .fm-squad-row:last-child,
+.fm-page--national-team .fm-squad-row:last-child {
+    border-bottom: none;
+}
+
+.fm-page--country .fm-squad-row:nth-child(even),
+.fm-page--national-team .fm-squad-row:nth-child(even) {
+    background: rgba(120, 150, 210, 0.04);
+}
+
+.fm-page--country .fm-squad-rank,
+.fm-page--national-team .fm-squad-rank {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-page--country .fm-squad-pos,
+.fm-page--national-team .fm-squad-pos {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #8fd0ff;
+}
+
+.fm-page--country .fm-squad-name,
+.fm-page--national-team .fm-squad-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #eef3ff;
+    font-weight: 600;
+}
+
+.fm-page--country .fm-squad-meta,
+.fm-page--national-team .fm-squad-meta {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-rating,
+.fm-page--national-team .fm-squad-rating {
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+    color: #9fe6b0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Leagues ------------------------------------------------------------- */
+
+.fm-page--country .fm-league-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-page--country .fm-league-row {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 12px 20px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+    transition: background 120ms ease;
+}
+
+.fm-page--country .fm-league-row:last-child { border-bottom: none; }
+
+.fm-page--country .fm-league-row:hover,
+.fm-page--country .fm-league-row:focus-visible {
+    background: rgba(120, 160, 230, 0.1);
+    outline: none;
+}
+
+.fm-page--country .fm-league-row-tier {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+.fm-page--country .fm-league-row-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #eef3ff;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-league-row-go {
+    font-size: 12px;
+    color: #8fd0ff;
+    white-space: nowrap;
+}
+
+/* --- Week strip ---------------------------------------------------------- */
+
+.fm-page--country .fm-week-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-week-day {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(120, 150, 210, 0.06);
+    border: 1px solid transparent;
+    min-width: 0;
+}
+
+.fm-page--country .fm-week-day.is-match {
+    border-color: rgba(143, 208, 255, 0.4);
+    background: rgba(90, 150, 220, 0.12);
+}
+
+.fm-page--country .fm-week-day-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-page--country .fm-week-day-number {
+    font-size: 12px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+.fm-page--country .fm-week-day-time {
+    font-size: 11px;
+    color: #8fd0ff;
+}
+
+.fm-page--country .fm-week-day-kind {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cfd9ee;
+}
+
+.fm-page--country .fm-week-day-event {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+/* --- Season grid --------------------------------------------------------- */
+
+.fm-page--country .fm-season-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-season-week {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(120, 150, 210, 0.06);
+    border: 1px solid transparent;
+}
+
+.fm-page--country .fm-season-week.is-current {
+    border-color: rgba(159, 230, 176, 0.45);
+    background: rgba(80, 170, 120, 0.12);
+}
+
+.fm-page--country .fm-season-week.is-special {
+    border-color: rgba(229, 181, 103, 0.4);
+}
+
+.fm-page--country .fm-season-week-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-page--country .fm-season-week-number {
+    font-size: 13px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+.fm-page--country .fm-season-week-now {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9fe6b0;
+}
+
+.fm-page--country .fm-season-week-rounds {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+.fm-page--country .fm-season-week-note {
+    font-size: 11px;
+    color: #e5b567;
+}
+
+/* --- Narrow screens ------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+    .fm-page--country .fm-season-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .fm-page--country .fm-week-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 780px) {
+    .fm-page--country .fm-country-header,
+    .fm-page--national-team .fm-country-header {
+        grid-template-columns: 1fr;
+        padding: 16px;
+    }
+
+    .fm-page--country .fm-country-facts,
+    .fm-page--national-team .fm-country-facts { grid-column: 1; }
+
+    .fm-page--country .fm-country-header-title,
+    .fm-page--national-team .fm-country-header-title { font-size: 24px; }
+
+    .fm-page--country .fm-season-grid,
+    .fm-page--country .fm-week-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .fm-page--country .fm-squad-row,
+    .fm-page--national-team .fm-squad-row {
+        grid-template-columns: 28px 40px 1fr auto;
+        gap: 8px;
+        padding: 9px 14px;
+        font-size: 13px;
+    }
+
+    .fm-page--country .fm-squad-meta,
+    .fm-page--national-team .fm-squad-meta { display: none; }
+
+    .fm-page--country .fm-league-row { grid-template-columns: 1fr; gap: 4px; }
+    .fm-page--country .fm-league-row-go { display: none; }
+}

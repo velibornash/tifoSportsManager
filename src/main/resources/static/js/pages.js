@@ -515,11 +515,11 @@ import {
 	                    break;
 
 	                case "nationalTeam":
-	                    await loadNationalTeamPlaceholder('senior');
+	                    await countryView.loadNationalTeamPage('senior');
 	                    break;
 
 	                case "u21Team":
-	                    await loadNationalTeamPlaceholder('u21');
+	                    await countryView.loadNationalTeamPage('u21');
 	                    break;
 
                 // COMMUNITY
@@ -659,8 +659,8 @@ import {
         return countryView.loadCountryPage();
     }
 
-    async function loadNationalTeamPlaceholder(level = 'senior') {
-        return countryView.loadNationalTeamPlaceholder(level);
+    async function loadNationalTeam(level = 'senior') {
+        return countryView.loadNationalTeamPage(level);
     }
 
     async function loadTopScorersAndAssists(mode = "both") {

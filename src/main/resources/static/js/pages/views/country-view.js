@@ -1,14 +1,14 @@
 // pages/views/country-view.js
 import {
     htmlEscape, buildEmptyState, sortCountryLeagues, buildCountryFlagBadgeHtml,
-    buildLeagueMetaLabel, formatSeasonShortLabel
+    buildLeagueMetaLabel
 } from './utils.js';
 
 export function createCountryView(deps) {
     const {
         authFetch, loadPage, setActiveLeagueContext,
         getCurrentUserCountryIsoCode, getActiveLeagueCountryIsoCode,
-        getCurrentUserCountryName, getSeasonYear
+        getCurrentUserCountryName
     } = deps;
 
     async function openCountryLeague(leagueId, leagueName) {
@@ -21,6 +21,160 @@ export function createCountryView(deps) {
         await loadPage('leagueTable', { preserveLeagueContext: true });
     }
 
+    async function openNationalTeam(level) {
+        setActiveLeagueContext({ nationalTeamLevel: level, backTarget: 'country' });
+        await loadPage(level === 'u21' ? 'u21Team' : 'nationalTeam');
+    }
+
+    /** A national team that failed to load must not blank the page it sits on. */
+    async function readNationalTeam(countryIso, level) {
+        try {
+            const response = await authFetch(
+                `/countries/${encodeURIComponent(countryIso)}/national-team?level=${encodeURIComponent(level)}`
+            );
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (err) {
+            console.warn(`National team (${level}) unavailable:`, err);
+            return null;
+        }
+    }
+
+    /**
+     * One row per player: position, name, age, rating.
+     *
+     * <p>Not a table, and deliberately not a grid of cards. A 25-player squad is a list; rendering it
+     * as 25 boxes gives every row 150px of vertical padding and pushes the page to 4000px for no gain.
+     */
+    function buildSquadRows(squad) {
+        return (squad || []).map((player, index) => `
+            <div class="fm-squad-row">
+                <span class="fm-squad-rank">${index + 1}</span>
+                <span class="fm-squad-pos">${htmlEscape(player?.position || '—')}</span>
+                <span class="fm-squad-name">${htmlEscape(player?.name || 'Unknown')}</span>
+                <span class="fm-squad-meta">${player?.age ?? '—'} yrs</span>
+                <span class="fm-squad-rating">${player?.rating ?? '—'}</span>
+            </div>`).join('');
+    }
+
+    function buildNationalTeamSegment(nationalTeam, level) {
+        if (!nationalTeam || !nationalTeam.exists) {
+            return `
+                <article class="fm-panel fm-nt-card">
+                    <div class="fm-panel-head">
+                        <div>
+                            <div class="fm-eyebrow">${level === 'u21' ? 'U-21' : 'Senior'}</div>
+                            <h3>Not created yet</h3>
+                            <p class="fm-subtle">This national team has not been set up.</p>
+                        </div>
+                    </div>
+                </article>`;
+        }
+
+        const squad = nationalTeam.squad || [];
+        // Stated, not implied. The manager standing in is a temporary convenience, and the screen
+        // must not read as though a vote happened.
+        const selectorLine = nationalTeam.selectorName
+            ? `${htmlEscape(nationalTeam.selectorName)}${nationalTeam.selectorIsProvisional ? ' <span class="fm-nt-provisional">provisional</span>' : ''}`
+            : 'No selector assigned';
+
+        return `
+            <article class="fm-panel fm-nt-card">
+                <div class="fm-panel-head">
+                    <div>
+                        <div class="fm-eyebrow">${level === 'u21' ? 'U-21' : 'Senior national team'}</div>
+                        <h3>${htmlEscape(nationalTeam.teamName || 'National Team')}</h3>
+                        <p class="fm-subtle">Selector: ${selectorLine}</p>
+                    </div>
+                    <div class="fm-panel-head-actions">
+                        <span class="fm-nt-squad-count">${squad.length} squad</span>
+                        <button type="button" class="fm-action-btn secondary" data-nt-level="${level}">Manage</button>
+                    </div>
+                </div>
+                ${squad.length
+                    ? `<div class="fm-squad">${buildSquadRows(squad)}</div>`
+                    : '<div class="fm-empty">Squad is empty. The country has no players to call up.</div>'}
+            </article>`;
+    }
+
+    function buildLeagueSegment(sortedLeagues) {
+        if (!sortedLeagues.length) {
+            return '<section class="fm-panel"><div class="fm-empty">No leagues found for this country yet.</div></section>';
+        }
+        return `
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Leagues</h3>
+                        <p class="fm-subtle">${sortedLeagues.length} competition${sortedLeagues.length === 1 ? '' : 's'} in this country.</p>
+                    </div>
+                </div>
+                <div class="fm-league-list">
+                    ${sortedLeagues.map(league => `
+                        <button type="button" class="fm-league-row" data-country-league-id="${league?.id || ''}" data-country-league-name="${htmlEscape(league?.name || 'League')}">
+                            <span class="fm-league-row-tier">${htmlEscape(buildLeagueMetaLabel(league))}</span>
+                            <span class="fm-league-row-name">${htmlEscape(league?.name || 'League')}</span>
+                            <span class="fm-league-row-go">Open table &rsaquo;</span>
+                        </button>`).join('')}
+                </div>
+            </section>`;
+    }
+
+    function buildWeekSegment(weekDays, calendarWeek, calendarNote) {
+        if (!weekDays.length) {
+            return '<section class="fm-panel"><div class="fm-empty">The weekly schedule could not be loaded.</div></section>';
+        }
+        return `
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>${htmlEscape(calendarNote ? `Week ${calendarWeek}` : 'This week')}</h3>
+                        <p class="fm-subtle">${htmlEscape(calendarNote || 'What happens each day, for every club in the country.')}</p>
+                    </div>
+                </div>
+                <div class="fm-week-strip">
+                    ${weekDays.map(day => `
+                        <div class="fm-week-day${day.matchDay ? ' is-match' : ''}">
+                            <div class="fm-week-day-head">
+                                <span class="fm-week-day-number">Day ${day.day}</span>
+                                ${day.kickoff ? `<span class="fm-week-day-time">${htmlEscape(day.kickoff)}</span>` : ''}
+                            </div>
+                            <div class="fm-week-day-kind">${htmlEscape(day.label)}</div>
+                            ${(day.events || []).map(event => `<div class="fm-week-day-event">${htmlEscape(event.label)}</div>`).join('')}
+                        </div>`).join('')}
+                </div>
+            </section>`;
+    }
+
+    function buildSeasonSegment(seasonWeeks) {
+        if (!seasonWeeks.length) {
+            return '<section class="fm-panel"><div class="fm-empty">The season calendar could not be loaded.</div></section>';
+        }
+        return `
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>Season</h3>
+                        <p class="fm-subtle">All twelve weeks. Week 6 and week 12 have no league football.</p>
+                    </div>
+                </div>
+                <div class="fm-season-grid">
+                    ${seasonWeeks.map(week => `
+                        <div class="fm-season-week${week.current ? ' is-current' : ''}${week.note ? ' is-special' : ''}">
+                            <div class="fm-season-week-head">
+                                <span class="fm-season-week-number">Week ${week.week}</span>
+                                ${week.current ? '<span class="fm-season-week-now">now</span>' : ''}
+                            </div>
+                            <div class="fm-season-week-rounds">
+                                <span>Day 3 &middot; ${htmlEscape(week.dayThree || '—')}</span>
+                                <span>Day 7 &middot; ${htmlEscape(week.daySeven || '—')}</span>
+                            </div>
+                            ${week.note ? `<div class="fm-season-week-note">${htmlEscape(week.note)}</div>` : ''}
+                        </div>`).join('')}
+                </div>
+            </section>`;
+    }
+
     async function loadCountryPage() {
         const mainContent = document.getElementById('main-content');
         const countryIsoCode = getCurrentUserCountryIsoCode();
@@ -31,11 +185,14 @@ export function createCountryView(deps) {
 
         try {
             const countryIso = String(countryIsoCode).toUpperCase();
+
+            // Render the shell first so a slow national-team call cannot leave the page blank, then
+            // fill the squads in when they land.
             const [countriesResponse, leaguesResponse, calendarResponse, seasonResponse] = await Promise.all([
                 authFetch('/countries'),
                 authFetch(`/countries/${encodeURIComponent(countryIso)}/leagues`),
-                // The schedule is read from the server, not restated here. The seven-day template is
-                // a fact about the game; a copy of it in JavaScript is a second fact that will drift.
+                // The schedule is read from the server, not restated here. The seven-day template is a
+                // fact about the game; a copy of it in JavaScript is a second fact that will drift.
                 authFetch('/calendar/week'),
                 authFetch('/calendar/season')
             ]);
@@ -45,164 +202,65 @@ export function createCountryView(deps) {
             const countries = countriesResponse.ok ? await countriesResponse.json() : [];
             const leagues = await leaguesResponse.json();
             const sortedLeagues = sortCountryLeagues(leagues);
-            const quickLeagues = sortedLeagues.slice(0, 2);
             const country = (Array.isArray(countries) ? countries : []).find(item => String(item?.isoCode || '').toUpperCase() === countryIso) || {
                 name: getCurrentUserCountryName() || countryIso,
                 isoCode: countryIso,
                 flagImagePath: '',
-                currencyCode: '',
-                reputation: null,
-                youthRating: null,
-                seniorNationalTeam: null,
-                u21NationalTeam: null
+                currencyCode: ''
             };
             const countryName = country?.name || getCurrentUserCountryName() || countryIso;
             const countryTitle = htmlEscape(countryName);
-            const countryBadgeHtml = buildCountryFlagBadgeHtml(country, countryName);
 
-            // A failed calendar load must not take the page down with it. The rest of the country
-            // page is still worth showing, and a blank schedule says "nothing is on" which is a lie.
+            // A failed calendar load must not take the page down with it. The rest of the country page
+            // is still worth showing, and a blank schedule says "nothing is on", which is a lie.
             const calendar = calendarResponse && calendarResponse.ok
                 ? await calendarResponse.json().catch(() => null)
                 : null;
             const weekDays = Array.isArray(calendar?.days) ? calendar.days : [];
-            const calendarWeek = calendar?.week;
-            const calendarNote = calendar?.note;
 
-            // The whole season, so weeks 6 and 12 are visible as deliberate rather than as a gap.
-            // Both have no league football, and a manager who does not know that reads them as a bug.
+            // The whole season, so weeks 6 and 12 are visible as deliberate rather than as a gap. Both
+            // have no league football, and a manager who does not know that reads them as a bug.
             const season = seasonResponse && seasonResponse.ok
                 ? await seasonResponse.json().catch(() => null)
                 : null;
             const seasonWeeks = Array.isArray(season?.weeks) ? season.weeks : [];
 
+            // Facts, once, in a strip. The previous four tall cards held 50 / 50 / 31 / RSD - three of
+            // which a manager can already read off the page around them.
+            const facts = [
+                { label: 'ISO', value: country?.isoCode || countryIso },
+                { label: 'Currency', value: country?.currencyCode || '—' },
+                { label: 'Leagues', value: sortedLeagues.length },
+                { label: 'Reputation', value: country?.reputation ?? '—' },
+                { label: 'Youth rating', value: country?.youthRating ?? '—' }
+            ];
+
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--country">
-                    <div class="fm-page-toolbar">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                        <div class="fm-page-title-block">
-                            <div class="fm-eyebrow">Country overview</div>
-                            <h2>${countryTitle}</h2>
-                            <div class="fm-subtle">Browse your federation, jump into any league table, and keep the main League button tied to your club context.</div>
+                    <header class="fm-country-header">
+                        <div class="fm-country-header-main">
+                            ${buildCountryFlagBadgeHtml(country, countryName)}
+                            <div>
+                                <div class="fm-eyebrow">National football &middot; ${htmlEscape(countryName)}</div>
+                                <h2 class="fm-country-header-title">${countryTitle}</h2>
+                            </div>
                         </div>
-                    </div>
+                        <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
+                        <dl class="fm-country-facts">
+                            ${facts.map(fact => `
+                                <div class="fm-country-fact">
+                                    <dt>${htmlEscape(fact.label)}</dt>
+                                    <dd>${htmlEscape(String(fact.value))}</dd>
+                                </div>`).join('')}
+                        </dl>
+                    </header>
 
-                    <div class="fm-grid-top fm-grid-top--country">
-                        <section class="fm-panel fm-country-hero">
-                            <div class="fm-country-hero-main">
-                                ${countryBadgeHtml}
-                                <div class="fm-country-meta">
-                                    <div class="fm-eyebrow">Federation</div>
-                                    <h3>${countryTitle}</h3>
-                                    <div class="fm-subtle">ISO ${htmlEscape(country?.isoCode || countryIso)}${country?.currencyCode ? ` \u00B7 Currency ${htmlEscape(country.currencyCode)}` : ''}</div>
-                                    <div class="fm-country-note">Season ${htmlEscape(formatSeasonShortLabel(getSeasonYear()))}</div>
-                                </div>
-                            </div>
-                            <div class="fm-medical-stat-grid team-summary-grid fm-country-stat-grid">
-                                <div><strong>${country?.reputation ?? '\u2014'}</strong><span>Reputation</span></div>
-                                <div><strong>${country?.youthRating ?? '\u2014'}</strong><span>Youth rating</span></div>
-                                <div><strong>${sortedLeagues.length}</strong><span>Leagues</span></div>
-                                <div><strong>${htmlEscape(country?.currencyCode || '\u2014')}</strong><span>Currency</span></div>
-                            </div>
-                        </section>
-
-                        <section class="fm-panel">
-                            <div class="fm-panel-head">
-                                <div>
-                                    <h3>Quick leagues</h3>
-                                    <p class="fm-subtle">The top levels, with a dropdown for the rest.</p>
-                                </div>
-                                <span class="fm-panel-action">Country browse</span>
-                            </div>
-                            <div class="fm-country-league-grid">
-                                ${quickLeagues.map(league => `
-                                    <article class="fm-country-league-card">
-                                        <div class="fm-milestone-kicker">${htmlEscape(buildLeagueMetaLabel(league))}</div>
-                                        <div class="fm-update-title">${htmlEscape(league?.name || 'League')}</div>
-                                        <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-league-id="${league?.id || ''}" data-country-league-name="${htmlEscape(league?.name || 'League')}">Open table</button>
-                                    </article>`).join('') || `<div class="fm-empty">No leagues found for this country yet.</div>`}
-                            </div>
-                            ${sortedLeagues.length ? `
-                                <div class="fm-country-select-row">
-                                    <label class="fm-season-select-wrap fm-country-select-control">
-                                        <span>All leagues</span>
-                                        <select id="country-league-select" class="fm-season-select">
-                                            ${sortedLeagues.map(league => `<option value="${league?.id || ''}" data-league-name="${htmlEscape(league?.name || 'League')}">${htmlEscape(league?.name || 'League')} \u00B7 ${htmlEscape(buildLeagueMetaLabel(league))}</option>`).join('')}
-                                        </select>
-                                    </label>
-                                    <button type="button" id="country-open-selected-league" class="fm-action-btn">Open selected league</button>
-                                </div>` : ''}
-                        </section>
-                    </div>
-
-                    <div class="fm-grid-bottom fm-grid-bottom--single">
-                        <section class="fm-panel">
-                            <div class="fm-panel-head">
-                                <div>
-                                    <h3>Season</h3>
-                                    <p class="fm-subtle">All twelve weeks. Week 6 and week 12 have no league football.</p>
-                                </div>
-                                <span class="fm-panel-action">${htmlEscape(countryTitle)}</span>
-                            </div>
-                            <div class="fm-season-grid">
-                                ${seasonWeeks.map(week => `
-                                    <div class="fm-season-week${week.current ? ' is-current' : ''}${week.note ? ' is-special' : ''}">
-                                        <div class="fm-season-week-head">
-                                            <span class="fm-season-week-number">Week ${week.week}</span>
-                                            ${week.current ? '<span class="fm-season-week-now">now</span>' : ''}
-                                        </div>
-                                        <div class="fm-season-week-rounds">
-                                            <span>Day 3 &middot; ${htmlEscape(week.dayThree || '—')}</span>
-                                            <span>Day 7 &middot; ${htmlEscape(week.daySeven || '—')}</span>
-                                        </div>
-                                        ${week.note ? `<div class="fm-season-week-note">${htmlEscape(week.note)}</div>` : ''}
-                                    </div>`).join('')}
-                            </div>
-                        </section>
-
-                        <section class="fm-panel">
-                            <div class="fm-panel-head">
-                                <div>
-                                    <h3>${htmlEscape(calendarNote ? `Week ${calendarWeek} schedule` : 'This week')}</h3>
-                                    <p class="fm-subtle">${htmlEscape(calendarNote || 'What happens each day, for every club in the country.')}</p>
-                                </div>
-                                <span class="fm-panel-action">${htmlEscape(countryTitle)}</span>
-                            </div>
-                            <div class="fm-week-grid">
-                                ${weekDays.map(day => `
-                                    <div class="fm-week-day${day.matchDay ? ' is-match' : ''}">
-                                        <div class="fm-week-day-head">
-                                            <span class="fm-week-day-number">Day ${day.day}</span>
-                                            ${day.kickoff ? `<span class="fm-week-day-time">${htmlEscape(day.kickoff)}</span>` : ''}
-                                        </div>
-                                        <div class="fm-week-day-kind">${htmlEscape(day.label)}</div>
-                                        ${(day.events || []).map(event => `
-                                            <div class="fm-week-day-event">${htmlEscape(event.label)}</div>`).join('')}
-                                    </div>`).join('')}
-                            </div>
-                        </section>
-
-                        <section class="fm-panel">
-                            <div class="fm-panel-head">
-                                <div>
-                                    <h3>National teams</h3>
-                                    <p class="fm-subtle">Senior and U-21. Elections, squads and tournaments are not built yet.</p>
-                                </div>
-                                <span class="fm-panel-action">Not yet</span>
-                            </div>
-                            <div class="fm-country-team-grid">
-                                <article class="fm-country-team-card">
-                                    <div class="fm-milestone-kicker">Senior</div>
-                                    <div class="fm-update-title">${htmlEscape(country?.seniorNationalTeam?.name || `${country?.name || getCurrentUserCountryName() || 'Country'} National Team`)}</div>
-                                    <div class="fm-update-meta">Squad, elections and tournament. Not built yet.</div>
-                                </article>
-                                <article class="fm-country-team-card">
-                                    <div class="fm-milestone-kicker">U-21</div>
-                                    <div class="fm-update-title">${htmlEscape(country?.u21NationalTeam?.name || `${country?.name || getCurrentUserCountryName() || 'Country'} U-21`)}</div>
-                                    <div class="fm-update-meta">Squad, elections and tournament. Not built yet.</div>
-                                </article>
-                            </div>
-                        </section>
+                    <div class="fm-country-stack">
+                        ${buildWeekSegment(weekDays, calendar?.week, calendar?.note)}
+                        ${buildSeasonSegment(seasonWeeks)}
+                        ${buildNationalTeamSegment(null, 'senior')}
+                        ${buildNationalTeamSegment(null, 'u21')}
+                        ${buildLeagueSegment(sortedLeagues)}
                     </div>
                 </div>`;
 
@@ -211,60 +269,98 @@ export function createCountryView(deps) {
                     openCountryLeague(Number(button.dataset.countryLeagueId), button.dataset.countryLeagueName || 'League');
                 });
             });
+            mainContent.querySelectorAll('[data-nt-level]').forEach(button => {
+                button.addEventListener('click', () => openNationalTeam(button.dataset.ntLevel));
+            });
 
-            const countryLeagueSelect = document.getElementById('country-league-select');
-            const openSelectedLeagueButton = document.getElementById('country-open-selected-league');
-            if (countryLeagueSelect && openSelectedLeagueButton) {
-                openSelectedLeagueButton.addEventListener('click', () => {
-                    const selectedOption = countryLeagueSelect.options[countryLeagueSelect.selectedIndex];
-                    const selectedLeagueId = Number(countryLeagueSelect.value);
-                    if (!selectedLeagueId) return;
-                    openCountryLeague(selectedLeagueId, selectedOption?.dataset?.leagueName || selectedOption?.textContent || 'League');
+            // The squads arrive after the shell so the page is usable immediately.
+            const [senior, u21] = await Promise.all([
+                readNationalTeam(countryIso, 'senior'),
+                readNationalTeam(countryIso, 'u21')
+            ]);
+            const cards = mainContent.querySelectorAll('.fm-nt-card');
+            const replacements = [buildNationalTeamSegment(senior, 'senior'), buildNationalTeamSegment(u21, 'u21')];
+            cards.forEach((card, index) => {
+                if (!replacements[index]) return;
+                const holder = document.createElement('div');
+                holder.innerHTML = replacements[index];
+                const fresh = holder.firstElementChild;
+                card.replaceWith(fresh);
+                fresh.querySelectorAll('[data-nt-level]').forEach(button => {
+                    button.addEventListener('click', () => openNationalTeam(button.dataset.ntLevel));
                 });
-            }
+            });
 
         } catch (err) {
             console.error('Failed to load country page:', err);
             mainContent.innerHTML = `
                 <div class="manager-card">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                     <h2>Error</h2>
                     <p>Could not load your country overview.</p>
                 </div>`;
         }
     }
 
-    async function loadNationalTeamPlaceholder(level = 'senior') {
-        const isU21 = level === 'u21';
+    /**
+     * The national-team screen. Reads the real squad created by NationalTeamSeeder.
+     *
+     * <p>Replaces the placeholder that said "not built yet" while a real squad sat in the database.
+     */
+    async function loadNationalTeamPage(level = 'senior') {
         const mainContent = document.getElementById('main-content');
-        const title = isU21
-            ? `${getCurrentUserCountryName() || 'Country'} U-21`
-            : `${getCurrentUserCountryName() || 'Country'} National Team`;
-        const currentActionPage = isU21 ? 'u21Team' : 'nationalTeam';
+        const countryIsoCode = getCurrentUserCountryIsoCode();
+        if (!countryIsoCode) {
+            mainContent.innerHTML = buildEmptyState('Country data is not available for this manager yet.');
+            return;
+        }
+
+        const countryIso = String(countryIsoCode).toUpperCase();
+        const nationalTeam = await readNationalTeam(countryIso, level);
+        if (!nationalTeam) {
+            mainContent.innerHTML = `
+                <div class="manager-card">
+                    <h2>Error</h2>
+                    <p>Could not load the national team.</p>
+                </div>`;
+            return;
+        }
+
+        const squad = nationalTeam.squad || [];
+        const selectorLine = nationalTeam.selectorName
+            ? `${htmlEscape(nationalTeam.selectorName)}${nationalTeam.selectorIsProvisional ? ' <span class="fm-nt-provisional">provisional, pending elections</span>' : ''}`
+            : 'No selector assigned';
 
         mainContent.innerHTML = `
-            <div class="fm-page fm-page--club">
-                <section class="fm-panel fm-club-hero fm-placeholder-hero">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <div class="fm-club-hero-main">
+            <div class="fm-page fm-page--national-team">
+                <header class="fm-country-header">
+                    <div class="fm-country-header-main">
                         <div>
-                            <div class="fm-eyebrow">National setup</div>
-                            <h2>${htmlEscape(title)}</h2>
-                            <p class="fm-subtle">Squad, selection and tournaments are not built yet.</p>
+                            <div class="fm-eyebrow">${level === 'u21' ? 'Under-21' : 'Senior national team'} &middot; ${htmlEscape(nationalTeam.countryName || countryIso)}</div>
+                            <h2 class="fm-country-header-title">${htmlEscape(nationalTeam.teamName || 'National Team')}</h2>
                         </div>
                     </div>
-                    <div class="fm-medical-stat-grid team-summary-grid">
-                        <div><strong>${htmlEscape(getCurrentUserCountryName() || '\u2014')}</strong><span>Country</span></div>
-                        <div><strong>${isU21 ? 'U-21' : 'Senior'}</strong><span>Level</span></div>
-                        <div><strong>Not built</strong><span>Status</span></div>
-                        <div><strong>&mdash;</strong><span>Backend data</span></div>
-                    </div>
-                </section>
-                <section class="fm-panel">
-                    <div class="fm-empty">National-team squad, schedule, call-ups, and staff will be added here once backend endpoints are ready.</div>
-                </section>
+                    <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
+                    <dl class="fm-country-facts">
+                        <div class="fm-country-fact"><dt>Selector</dt><dd>${selectorLine}</dd></div>
+                        <div class="fm-country-fact"><dt>Squad</dt><dd>${squad.length}</dd></div>
+                    </dl>
+                </header>
+
+                <div class="fm-country-stack">
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Squad</h3>
+                                <p class="fm-subtle">Best-rated players from every club in the country. Call-ups, form and fixtures come next.</p>
+                            </div>
+                        </div>
+                        ${squad.length
+                            ? `<div class="fm-squad">${buildSquadRows(squad)}</div>`
+                            : '<div class="fm-empty">No squad has been selected for this national team yet.</div>'}
+                    </section>
+                </div>
             </div>`;
     }
 
-    return { loadCountryPage, loadNationalTeamPlaceholder, openCountryLeague };
+    return { loadCountryPage, loadNationalTeamPage, openCountryLeague };
 }
