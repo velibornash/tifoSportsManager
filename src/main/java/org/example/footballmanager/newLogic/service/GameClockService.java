@@ -96,12 +96,11 @@ public class GameClockService {
     public Map<String, Object> snapshot() {
         GameClock clock = clock();
         int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        // The hour is DERIVED from the game timestamp, never stored as the authority. Storing it and
-        // also computing it from the offset gave two answers for the same question - the header read
-        // "hour 20" while the timestamp it was rendered from read 06:22, because the counter and the
-        // offset had drifted apart. A derived value cannot drift.
-        Instant gameTime = gameTime();
-        int hour = gameTime.atZone(GAME_ZONE).getHour();
+        // An explicit counter, the same one advanceHour wraps. It was derived from the game
+        // timestamp before, which tied the hour to the wall clock and made a 23:00 job fire or not
+        // depending on what time the manager pressed the button. gameTime() is still reported below
+        // for the ticking display, but it no longer decides what hour it is.
+        int hour = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
         GameDay gameDay = GameDay.of(day);
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -119,136 +118,145 @@ public class GameClockService {
     }
 
     /**
-     * Moves the game clock forward by whole hours.
+     * Moves the game clock forward one hour (owner, 2026-09-28).
      *
-     * <p>Adds to the offset <b>and</b> moves the day counter, carrying into week and season. Both
-     * are updated in one transaction because the header shows the ticking time while the day label
-     * comes from the counter: if only the offset moved, the clock would show 20:00 on day 1 after
-     * advancing a day, which is worse than either being wrong on its own.
+     * <p>The rules, exactly as the owner stated them: the offset on the real clock grows by an hour,
+     * and the counters wrap.
+     *
+     * <pre>
+     *   hour  23 -&gt; 0,  and the day moves up by one
+     *   day    7 -&gt; 1,  and the week moves up by one
+     *   week  12 -&gt; 1,  and the season moves up by one
+     * </pre>
+     *
+     * <p><b>Explicit counters, not derived values.</b> The previous version derived the hour from the
+     * game timestamp and worked the day out by measuring the date it moved across. That tied the
+     * counters to the wall clock: a job at 23:00 was evaluated or skipped depending on what time of
+     * day the manager pressed the button, so week-rollover and season-rollover never ran. Counters
+     * that wrap cannot be missed that way.
      */
+    @Transactional
+    public Map<String, Object> advanceHour() {
+        GameClock clock = clock();
+        int hour = (clock.getCurrentHour() == null ? 0 : clock.getCurrentHour()) + 1;
+        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+
+        if (hour > 23) {
+            hour = 0;
+            day += 1;
+            if (day > GameDay.LAST) {
+                day = GameDay.FIRST;
+                week += 1;
+                if (week > SeasonService.WEEKS_PER_SEASON) {
+                    week = 1;
+                    season += 1;
+                }
+            }
+        }
+
+        clock.setCurrentHour(hour);
+        clock.setCurrentDay(day);
+        clock.setCurrentWeek(week);
+        clock.setCurrentSeason(season);
+        clock.setAdvanceOffsetSeconds(offsetOf(clock) + SECONDS_PER_HOUR);
+        clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
+        clocks.save(clock);
+
+        return afterMove(clock, hour);
+    }
+
+    /**
+     * One whole day, finishing the current day first (owner, 2026-09-28).
+     *
+     * <p>Every remaining hour of the day is offered to the runner before the date rolls, so a job at
+     * 23:00 is evaluated on the day it belongs to rather than on the next one.
+     */
+    @Transactional
+    public Map<String, Object> advanceDay() {
+        GameClock clock = clock();
+        int seasonYear = seasonYearOf(clock);
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
+        int from = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
+
+        for (int hour = from; hour < HOURS_PER_DAY; hour++) {
+            jobRunner.runDue(seasonYear, week, day, hour);
+        }
+        return advanceHours(HOURS_PER_DAY - from);
+    }
+
+    /**
+     * A whole week: the week counter up by one, wrapping the season at the end (owner, 2026-09-28).
+     *
+     * <p>Deliberately not seven advance-day calls. The owner specified the week counter moving, and
+     * composing it from days made the end of a week depend on the hour the button was pressed.
+     */
+    @Transactional
+    public Map<String, Object> advanceWeek() {
+        GameClock clock = clock();
+        int week = (clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) + 1;
+        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+        if (week > SeasonService.WEEKS_PER_SEASON) {
+            week = 1;
+            season += 1;
+        }
+        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
+        int hour = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
+
+        clock.setCurrentWeek(week);
+        clock.setCurrentSeason(season);
+        clock.setAdvanceOffsetSeconds(offsetOf(clock) + (long) HOURS_PER_DAY * SECONDS_PER_HOUR);
+        clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
+        clocks.save(clock);
+
+        return afterMove(clock, hour);
+    }
+
+    private int seasonYearOf(GameClock clock) {
+        return SeasonService.BASE_SEASON_YEAR
+                + ((clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) - 1);
+    }
+
+    /** Runs whatever is due for the position the clock has just arrived at. */
+    private Map<String, Object> afterMove(GameClock clock, int hour) {
+        Map<String, Object> result = snapshot();
+        result.put("jobs", jobRunner.runDue(seasonYearOf(clock),
+                clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek(),
+                clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay(),
+                hour));
+        return result;
+    }
+
+    /** N raw hours, one at a time, so no trigger is stepped over. */
     @Transactional
     public Map<String, Object> advanceHours(int hours) {
         if (hours <= 0) {
             throw new IllegalArgumentException("Advance must be a positive number of hours.");
         }
-        GameClock clock = clock();
-
-        // The day is derived from the date the clock moves across, NOT from hours/24. Advancing one
-        // hour from 23:00 to 00:00 crosses midnight, so the day must advance - and hours/24 said
-        // zero, which left day 2 reading as 00:00 and the day counter stuck. That is the bug this
-        // now measures before and after instead of dividing.
-        java.time.LocalDate dayBefore = gameTime().atZone(GAME_ZONE).toLocalDate();
-
-        clock.setAdvanceOffsetSeconds(offsetOf(clock) + (long) hours * SECONDS_PER_HOUR);
-
-        long carry = java.time.temporal.ChronoUnit.DAYS.between(
-                dayBefore, gameTime().atZone(GAME_ZONE).toLocalDate());
-        int day = (clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay()) + (int) carry;
-        while (day > GameDay.LAST) {
-            day -= GameDay.LAST;
-            clock.setCurrentWeek((clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) + 1);
-        }
-        clock.setCurrentDay(day);
-
-        rollSeasonIfSeasonEnded(clock);
-        clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
-        clocks.save(clock);
-
-        // Jobs become due because time moved, so they run here. One advance path means there is
-        // nowhere else a job could be started from - which is what makes the done-flags meaningful.
-        int seasonYear = SeasonService.BASE_SEASON_YEAR
-                + ((clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) - 1);
-        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
-        int dayNow = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        Map<String, Object> result = snapshot();
-        result.put("jobs", jobRunner.runDue(seasonYear, week, dayNow, gameTime().atZone(GAME_ZONE).getHour()));
-        return result;
-    }
-
-    /**
-     * A whole week, as seven day advances (owner, 2026-09-28).
-     *
-     * <p>The old advance-week did the week's work itself: injuries, fatigue, contracts, finance,
-     * training, youth, transfers. If it kept doing that, advancing a day and then advancing a week
-     * would apply the same week twice, and the jobs would be a second code path competing with it.
-     * So the week is now nothing but seven day advances, and every job fires from inside those.
-     */
-    @Transactional
-    public Map<String, Object> advanceWeek() {
         Map<String, Object> last = null;
-        for (int day = 0; day < 7; day++) {
-            last = advanceDay();
+        for (int step = 0; step < hours; step++) {
+            last = advanceHour();
         }
         return last == null ? snapshot() : last;
     }
 
     /**
-     * One whole day, finishing the current day before starting the next (owner, 2026-09-28).
+     * Straight to a kickoff hour, e.g. 20 for day 1 internationals.
      *
-     * <p>Advancing by a flat 24 hours was wrong, and it silently swallowed most of the schedule.
-     * The hour is derived from the timestamp, so +24h preserves the hour of day: from 00:00 to 00:00.
-     * The clock never passed 10:00 or 23:00, so training (day 4, 10:00) and week-rollover (day 7,
-     * 23:00) were never due and Advance Week ran a week in which nothing but day-opened happened.
-     *
-     * <p>So a day is finished, not jumped over. Step to 23:00 first - which is the last hour of the
-     * day, so every job due that day now is - and then one more hour rolls the date and fires
-     * day-opened for the new day. Twenty-four hours in total, with nothing skipped.
-     */
-    @Transactional
-    public Map<String, Object> advanceDay() {
-        // Sweep the current day hour by hour, then roll the date.
-        //
-        // The previous version walked the real clock hour by hour and hoped midnight fell inside the
-        // window. It did not reliably: the loop returned as soon as the date changed, and depending on
-        // where the wall clock started, the hour that triggered day 7's week-rollover was skipped.
-        // Deciding that a day is finished means every hour of it has been offered to the runner, so
-        // the hours are enumerated rather than inferred from where the clock happens to be.
-        int currentHour = gameTime().atZone(GAME_ZONE).getHour();
-        int seasonYear = SeasonService.BASE_SEASON_YEAR
-                + ((clock().getCurrentSeason() == null ? 1 : clock().getCurrentSeason()) - 1);
-        int week = clock().getCurrentWeek() == null ? 1 : clock().getCurrentWeek();
-        int day = clock().getCurrentDay() == null ? GameDay.FIRST : clock().getCurrentDay();
-
-        for (int hour = currentHour; hour < HOURS_PER_DAY; hour++) {
-            jobRunner.runDue(seasonYear, week, day, hour);
-        }
-
-        // Then move the clock to the start of the next day.
-        return advanceHours(HOURS_PER_DAY - currentHour);
-    }
-
-    /**
-     * Moves to a specific hour of the current day, e.g. straight to kickoff.
-     *
-     * <p>Never moves backwards: asking for an hour already past is a no-op rather than a rewind.
-     * Rewinding would have to undo job runs, and the done-flags in P2 are not reversible.
+     * <p>Never moves backwards: rewinding would have to undo job runs, and the done-flags are not
+     * reversible. A target already passed is a no-op, not an error.
      */
     @Transactional
     public Map<String, Object> advanceToHour(int targetHour) {
         if (targetHour < 0 || targetHour > 23) {
             throw new IllegalArgumentException("Hour must be between 0 and 23.");
         }
-        int current = gameTime().atZone(GAME_ZONE).getHour();
+        int current = clock().getCurrentHour() == null ? 0 : clock().getCurrentHour();
         if (targetHour <= current) {
-            // Already past it: a no-op returning the current state, not an error. This used to call
-            // advanceHours(0) and answer 500, so asking to go to an hour the day had already passed
-            // - which is a normal thing to do when positioning a test - blew up.
             return snapshot();
         }
         return advanceHours(targetHour - current);
-    }
-
-    /**
-     * Ends the season when the last week is done.
-     *
-     * <p>Twelve weeks, then a new season. The week counter goes back to 1 rather than to 13 so a
-     * long-running database cannot accumulate a week number no schedule will ever match.
-     */
-    private void rollSeasonIfSeasonEnded(GameClock clock) {
-        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
-        if (week > SeasonService.WEEKS_PER_SEASON) {
-            clock.setCurrentWeek(1);
-            clock.setCurrentSeason((clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) + 1);
-        }
     }
 }

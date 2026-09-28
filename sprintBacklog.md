@@ -3285,3 +3285,39 @@ the owner asked to avoid. Sequence is P1 -> P2 -> P3, and P4..P7 are small once 
   has to be visible in `JobRunLog` or an advancing clock becomes unrecoverable.
 - The existing week-advance logic is wrapped in one method. Splitting it is the bulk of P3 and
   cannot be done safely without the done-flag from P2.
+
+### P1-P3 addendum — clock semantics settled (owner, 2026-09-28)
+
+The owner restated the rules after four attempts got them subtly wrong. Recorded here because the
+wrong version looked correct every time.
+
+    advance hour   offset += 1h
+                   hour  23 -> 0  and day  +1
+                   day    7 -> 1  and week +1
+                   week  12 -> 1  and season +1
+
+    advance day    every remaining hour of the day is offered to the job runner, then the date rolls
+
+    advance week   week +1; if the week moved off 12, week -> 1 and season +1
+
+**Explicit counters, not derived values.** The hour, day, week and season are stored integers that
+wrap. An earlier version derived the hour from the game timestamp and worked the day out by
+measuring the date the clock moved across. That tied the counters to the wall clock, so a job
+triggering at 23:00 was evaluated or skipped depending on what time of day the manager pressed the
+button — which is exactly why `week-rollover` (day 7, 23:00) and `season-rollover` (week 12, day 7,
+23:00) never fired. Counters that wrap cannot be missed that way.
+
+`advanceWeek` is deliberately NOT seven `advanceDay` calls. Composing it that way made the end of a
+week depend on the hour the button was pressed.
+
+`gameTime()` is still reported for the ticking display — one game second per real second, since only
+the offset is stored — but it no longer decides what hour it is.
+
+Verified after the change:
+- day 7, hour 21 → 22 (day-opened) → 23 (**week-rollover**) → 0, day 1, week 2.
+- week 12, day 7, hour 23, advance hour → **season 2, week 1, day 1, hour 0**.
+
+The lesson worth keeping: three separate bugs here (self-invocation, `hours/24`, and a
+timestamp-derived counter) all presented as "a job silently did not run". Any scheduled job that
+quietly does nothing is indistinguishable from one that has not been wired yet, so the next
+scheduled job gets a live check, not a unit test.
