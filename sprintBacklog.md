@@ -3396,3 +3396,36 @@ fixtures at season 1, so this is NOT yet confirmed fixed — treat the day-5 mat
 
 **Rule that follows from all of it:** any new scheduled job gets a live check against a running app
 that proves it changed something, not just a green status. A DONE job is not evidence of work.
+
+### Owner decisions taken 2026-09-28 (recorded while the owner was away)
+
+1. **12 in-game weeks is 12 real weeks.** Auto-advance stays at one game hour per real hour; the
+   `game.clock.minutes-per-game-hour` multiplier is not needed. Question closed.
+2. **Internationals and national-team matches share a type, with specifics underneath.** Implemented
+   as `MatchFormat`, an abstract base holding what the formats have in common - code, label, kickoff,
+   two legs, whether a draw stands, penalties - with `League`, `KnockoutCup`, `NationalSide` (the
+   shared national base), `International` and `Tournament` beneath it. An enum could not do this: the
+   differences are behaviour, and a switch that grows a branch per format is how those rules end up
+   inconsistent. `CompetitionType` stays an enum because it is a persisted discriminator and changing
+   it is a schema migration; it gains `INTERNATIONAL` and `TOURNAMENT` so the day-1 matchday can
+   eventually be registered. This is what unblocks the missing day-1 international job.
+3. **Morale / form is a zone compute, and recovery happens every day.** Not a day-6 event.
+
+### Zone-based recovery — NOT built, and why
+
+There is no zone model in the codebase: no class, no enum, nothing that says where on the pitch a
+player did his work. The owner's ask is that recovery and form derive from that, so a striker and a
+keeper who both played 90 minutes do not recover identically.
+
+A `RecoveryJob` was written and then **deleted**, deliberately. It would have had to either fake a
+zone (a flat recovery labelled as zone-based, which is worse than an honest flat number because it
+looks like the thing that was asked for) or do nothing at all. Both are the failure shape this backlog
+now forbids: a job that completes while doing nothing.
+
+What it actually needs, in order:
+- a `Zone` model (the engine has cells; the database has nothing)
+- `Player.zoneLoad` - minutes or intensity per zone, written by the match engine
+- recovery and morale as functions of that load
+- `Player.lastPlayedAt`, so a reserve who did not play does not recover from a match he was not in
+
+Until a zone model exists, a daily recovery job would be a lie in the job list.
