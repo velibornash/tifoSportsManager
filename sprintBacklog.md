@@ -1982,7 +1982,170 @@ same viewer as your own match.
 
 ---
 
-### S8.2 — Implement the cup and internationals
+### S8.2 — Cups, national teams, internationals and the weekly day schedule 🔴 EXPANDED 2026-09-28 — NOT BUILT
+
+> **This replaces the six-line stub below.** The owner specified the whole structure on 2026-09-28:
+> national teams (senior and U-21) with **elections**, World Cup qualifying, a World Cup, a domestic
+> cup, three international club cups, and a **seven-day weekly schedule**. The original six items were
+> a guess at the size of it. Nothing here is started.
+
+#### What already exists (audited 2026-09-28, so the tasks are not built on sand)
+
+| Asset | State |
+|---|---|
+| `SeasonCalendar` | **Already models 12 weeks × 7 days**, and **already reserves week 6 for national-team qualifiers and week 12 for the World Cup** by owner rule. League sits on **day 3 and day 7** — which is exactly the spec. This is the single most useful thing already in the codebase |
+| Days 1, 2, 4, 5, 6 | **Undefined.** Day 1/4/5/6 are new work; day 2 (finance) and day 6 (form/morale) are described but not implemented as day events |
+| `Country.seniorNationalTeam`, `Country.u21NationalTeam` | Entity fields and DB columns **exist** — and are `NULL` for all 9 countries. No national team has ever been created |
+| `CompetitionType` | `LEAGUE`, `CUP` |
+| `MatchFixture` | Carries `seasonYear`, `roundNumber`, `weekNumber`, `matchDate` (`LocalDateTime`), `played`, `playedMatch` |
+| `Kup Srbije` competition row | **Exists** with `teamsPerCompetition = 64`, `hasSeeding = true` — and is never populated or scheduled |
+| `country-view.js` NT page | A hardcoded **placeholder** that prints "Placeholder / Later / Backend data" |
+| Ranking list | **Does not exist at all** — not for nations, not for clubs. *Everything in this section depends on it* |
+
+**The two structural gaps that gate the whole thing:** there is no **ranking list**, and there is no
+**day-level scheduling**. Both are Part 0, and neither is optional.
+
+---
+
+#### Part 0 — Foundations (do these first; everything else is downstream)
+
+| # | Task | Notes |
+|---|---|---|
+| 0.1 | **National ranking list** | The spec says "the best 48 teams from the ranking list" and "teams ranked 203 to 310". A ranking must therefore exist for **nations and for clubs**, and it must be **stored and ordered**, not derived ad hoc per query. **Open: what produces it** — see Q1 |
+| 0.2 | **Club ranking list** | 310 clubs today; the cup needs positions 203–310 and 1–202. Same question: what is the ordering |
+| 0.3 | Create the national team entities | 9 countries × 2 = 18 teams. `Country.seniorNationalTeam` / `u21NationalTeam` are already there waiting. They are **not clubs**: no league, no transfers, no wages — but they need players |
+| 0.4 | **Day-level calendar slots** | `SeasonCalendar` has the days; it needs **named slots** for day 1 (international 20:45), day 2 (finance), day 4 (training), day 5 (cup 18:00), day 6 (form/morale + junior). With room to add more — the owner asked for space to grow |
+| 0.5 | **Knockout resolution: penalties** | 90 minutes, then a shootout. The engine produces a 90-minute score; a shootout is a **new concept** that must not leak into league results |
+| 0.6 | **Draw engine: seeded pots and byes** | Potted draws, one team per pot per group, and a bracket that handles a non-power-of-two field (256 is fine; 202 direct entrants is not) |
+| 0.7 | **Tie-breaker chain** | Points → goal difference → goals scored → **toss of a coin**. The coin is the same primitive needed for the election tie ("plain random") — one shared utility |
+
+> **0.5 and 0.6 are the quiet risk.** Everything above them is CRUD and scheduling. A bracket that is
+> subtly wrong produces a plausible-looking tournament that quietly eliminates the right team, and
+> nothing in the UI will ever say so. Both need a real test, not a smoke test.
+
+---
+
+#### Part 1 — National teams: elections and selection
+
+| # | Task | Spec |
+|---|---|---|
+| 1.1 | NT section on the country page, containing **elections** | New section, above the existing country content |
+| 1.2 | **Any user may stand as a candidate**, regardless of nationality | "because there are foreign coaches" — no nationality gate on candidacy |
+| 1.3 | Candidate registers by clicking a button | During the registration window |
+| 1.4 | **Voting by clicking a candidate in the list** | **Open: who votes, and how many times** — see Q2 |
+| 1.5 | Winner = most votes; **tie broken by plain random** | Uses 0.7 |
+| 1.6 | **Identical structure for U-21** | Everything in 1.1–1.5, run separately for U-21 |
+| 1.7 | Selector sees **every player's skills** for their country — **not talent, all skills** | A deliberate difference from `PlusFeatureService`, which gates talent. A selector sees skills; talent stays hidden |
+| 1.8 | Sortable player list: **by any skill, by wage, by value** | Sorting infrastructure must be added or reused |
+| 1.9 | Selector marks **25 players**, changeable at any time | "no conditions on which 25" — see Q3 |
+| 1.10 | How long a selector holds the role | **Open** — see Q4 |
+
+---
+
+#### Part 2 — World Cup qualifying (week 6, days 1, 2, 3, 5, 7)
+
+| # | Task | Spec |
+|---|---|---|
+| 2.1 | Top **48 nations by ranking** enter | Needs 0.1 |
+| 2.2 | **8 groups of 6**, by seeding: **pots of 8** — pot 1, then pot 2, and so on. From each pot, **one team drawn at random into each group** | A pot is not a fixed group. Each group gets one team from every pot |
+| 2.3 | **Round robin**, 5 matchdays: days **1, 2, 3, 5, 7** of week 6 | Day 4 is deliberately empty |
+| 2.4 | **Home is the worse-ranked side** | Not a home/away alternation — the lower-ranked team hosts every game |
+| 2.5 | **Top 2 from each group advance** → 16 nations | 8 × 2 = 16, which is exactly a 1/16-final field. The arithmetic is self-consistent |
+| 2.6 | Tie-breaker: points → goal difference → goals scored → coin | Uses 0.7 |
+| 2.7 | **Identical for U-21** | |
+
+---
+
+#### Part 3 — The World Cup (week 12)
+
+| # | Task | Spec |
+|---|---|---|
+| 3.1 | **1/16 final — day 1** | |
+| 3.2 | **1/8 final — day 2** | |
+| 3.3 | **Quarter-final — day 3** | |
+| 3.4 | **Semi-final — day 5** | Day 4 empty |
+| 3.5 | **Final and 3rd-place play-off — day 7** | |
+| 3.6 | 90 minutes, then **penalties** if drawn | Uses 0.5 |
+| 3.7 | Bracket from the 16 qualifiers, seeded from ranking | |
+| 3.8 | **Identical for U-21** | |
+
+---
+
+#### Part 4 — Domestic cup (Kup Srbije)
+
+| # | Task | Spec |
+|---|---|---|
+| 4.1 | **Week 1** — clubs ranked **203–310** (108 clubs) play one knockout round: **203 v 310, 204 v 309**, and so on → 54 winners | |
+| 4.2 | **Week 2** — 202 direct entrants + 54 winners = **256**, play 1/256 | |
+| 4.3 | **Week 3** 1/128 · **Week 4** 1/64 · **Week 5** 1/32 | |
+| 4.4 | **Week 6 — no cup.** National-team qualifiers | Already reserved in `SeasonCalendar` |
+| 4.5 | **Week 7** 1/16 · **Week 8** 1/8 · **Week 9** 1/4 · **Week 10** 1/2 · **Week 11** final | Five rounds across five weeks. Arithmetic checks out |
+| 4.6 | 90 minutes then penalties throughout | Uses 0.5 |
+| 4.7 | Cup tie is a **single match** — no home/away legs anywhere in the cup | |
+
+> **The cup weeks line up with `SeasonCalendar` exactly**, including week 6 being free. That was not a
+> coincidence — the calendar already had week 6 reserved for qualifiers and week 12 for the World Cup
+> from the owner's 2026-09-26 rules. Worth saying so this is not rebuilt by accident.
+
+---
+
+#### Part 5 — International club cups
+
+| # | Task | Spec |
+|---|---|---|
+| 5.1 | **Champions Cup** — every **champion** enters | |
+| 5.2 | **Masters Cup** — every **2nd and 3rd** placed team enters | |
+| 5.3 | **Challenge Cup** — every **4th** placed team enters | |
+| 5.4 | Draw, bracket and schedule | **Explicitly deferred by the owner to a separate task** — the draw and system will be discussed on their own. Do not design it here |
+
+> **Open and load-bearing:** which competitions feed these three cups. "All champions" across how many
+> tiers and how many countries is not stated, and the answer changes the size of every bracket. See Q5.
+
+---
+
+#### Part 6 — The weekly schedule
+
+| Day | Event | State |
+|---|---|---|
+| 1 | International 20:45 | new |
+| 2 | Weekly finance update | partially exists (weekly settlement), not a day event |
+| 3 | **League 19:00** | **exists** |
+| 4 | Training | exists as a weekly action, not a day event |
+| 5 | Cup 18:00 | new |
+| 6 | Form/morale update, **eventually** a junior match | form/morale passive decay exists; the junior match is explicitly "eventually" |
+| 7 | **League 16:00** | **exists** |
+
+| # | Task | Notes |
+|---|---|---|
+| 6.1 | Render the week as a day-by-day schedule, with **room to add events** | The owner asked for the space explicitly |
+| 6.2 | Per-country schedule on the country page | "every user can click their country's schedule and see what is happening each day" |
+
+---
+
+#### Part 7 — Wiring and rules
+
+| # | Task |
+|---|---|
+| 7.1 | Replace the hardcoded NT placeholder in `country-view.js:186-208` |
+| 7.2 | Decouple national-team players from their clubs: availability, fatigue, release |
+| 7.3 | Election and tournament state must survive a database reset and a restart |
+| 7.4 | AI nations need coaches and squads even where no human took the election |
+| 7.5 | Everything the manager sees must be readable by someone who did not build it — no silent failures in brackets |
+
+---
+
+#### Verification, when it gets built
+
+| Property | How it is checked |
+|---|---|
+| A pot is not a group | Every group has exactly one team from each pot — assert it, do not eyeball it |
+| 8 groups × 6, one round robin of 5 | Every nation plays 5 qualifying matches, no more, no fewer |
+| 16 qualifiers, and the cup's 256 | Field sizes are exact powers of two; a byes bug shows up as a team playing twice |
+| Week 6 and week 12 carry no league | `SeasonCalendar` already enforces the intent; assert it rather than trust it |
+| A draw is reproducible from a seed | Same seed, same draw — otherwise a bracket bug is unreproducible |
+| The coin is fair | A tie-break must be able to go either way; a rigged constant is the worst bug in the set |
+
+
 
 `DatabaseInitializer:611-630` creates `Kup Srbije` with `teamsPerCompetition = 64` and `hasSeeding = true`, but **never populates or schedules it** (the fixture loop filters `type == LEAGUE` at `:346`). `Competition.hasPlayoff`, `hasPlayout`, `hasSeeding`, `seededTeamsCount` and `reputationWeight` are all dead columns.
 
@@ -2794,4 +2957,3 @@ Also out of range on its own: **38 shots**, where the project's own target is 15
 
 **This is the owner's own report and is trusted over any reading of the numbers taken from a different
 match.** The figures above are as reported.
-

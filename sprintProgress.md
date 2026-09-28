@@ -3755,3 +3755,55 @@ owner's call and deserves its own commit.
 
 Nothing else in the backlog was found to be inaccurate. Working tree clean apart from the owner's own
 `COMPETITIVE_ANALYSIS.md`, which is never touched.
+
+---
+
+## S8.2 expanded — national teams, cups, internationals, and the weekly day schedule (2026-09-28)
+
+The owner specified the whole structure and asked for a precise backlog entry first, implementation
+second, and questions on **everything** unclear.
+
+### The audit that shaped the task list
+
+I checked what exists before writing anything, and two findings changed the shape of the work:
+
+**1. `SeasonCalendar` already implements half the spec, and nobody had noticed.**
+
+It models **12 weeks × 7 days**, puts the league on **day 3 and day 7** — which is precisely the
+owner's schedule — and **already reserves week 6 for national-team qualifiers and week 12 for the
+World Cup** as a 2026-09-26 owner rule. The cup weeks the owner gave (1–5, 7–11, with week 6 free and
+the final in week 11) line up with that calendar exactly, without anything being forced. My first
+instinct was to report "there is no day-within-week concept"; that was wrong, and it was wrong because
+I grepped `GameClock` instead of finding `SeasonCalendar`. The right reading is that the architecture
+anticipated this and the calendar was written correctly.
+
+**2. The national-team fields exist and have never been used.**
+
+`Country.seniorNationalTeam` and `Country.u21NationalTeam` are real entity references and real DB
+columns — and `senior_national_team_id` is **null for all 9 countries**. The NT page in
+`country-view.js` is a hardcoded placeholder that prints "Placeholder / Later / Backend data". So the
+shape is there and the contents are not.
+
+**What genuinely does not exist, and gates everything:** a **ranking list**, for nations or clubs.
+The spec depends on it three times — top 48 nations, pots of 8 seeded from it, clubs 203–310 for the
+cup, and "the worse-ranked side hosts" for qualifying. That is Part 0, and it is not optional.
+
+### Two structural risks, called out in the entry
+
+**Penalties and the draw engine.** Everything else in this section is CRUD and scheduling. A bracket
+that is subtly wrong produces a plausible-looking tournament that quietly eliminates the wrong team,
+and nothing in the UI will ever say so — a silent wrong answer, which is the worst kind. Both get real
+tests, not smoke tests.
+
+### The arithmetic was checked, and it holds
+
+- 8 groups × 2 advancing = **16** = exactly a 1/16-final field.
+- Cup: 108 clubs → 54 winners, + 202 direct = **256**, then 128/64/32/16/8/4/2/1 across weeks 2–5 and
+  7–11, with week 6 free and the final in week 11.
+- Qualifying: 6 teams per group, 5 matchdays (days 1, 2, 3, 5, 7 — day 4 deliberately empty).
+
+### Not started, deliberately
+
+The backlog entry is written and the questions are asked. **No implementation until the owner answers
+them**, because the answers change the data model — the ranking source in particular decides whether
+this is a stored table or a derived query, and that is not a decision to make by accident.
