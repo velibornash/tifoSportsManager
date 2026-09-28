@@ -3429,3 +3429,29 @@ What it actually needs, in order:
 - `Player.lastPlayedAt`, so a reserve who did not play does not recover from a match he was not in
 
 Until a zone model exists, a daily recovery job would be a lie in the job list.
+
+### Cup ties are real matches, and they open (owner, 2026-09-29)
+
+**The question asked: are cup round-1 ties real matches or just strings?** Both, in sequence, and
+that is the correct shape. A `match_fixture` is a scheduled pairing — home, away, week, day. The
+`Match` only exists once the simulator has run and set `played_match_id`. So a tie is text before it
+is played and a match after, and the screen has to say which it is rather than showing a 0-0 that
+never happened.
+
+**The season_year bug is fixed, and confirmed this time.** `CupFixtureSeeder.buildRound` was being
+passed a hardcoded `1` for the season — the season index — while the day-5 matchday job asked for
+`BASE_SEASON_YEAR + (season - 1)`. Changing the `SEED_SEASON` constant was not enough, because the
+value never came from it. That is why the earlier "fix" appeared to do nothing: I changed the
+constant and the call site was still hardcoded. Also switched the idempotency check to count by
+(season, week, day) so it matches what the seeder actually writes.
+
+Verified live, not reasoned about: cup fixtures at season **2025**, day 5, 54 ties drawn, and the
+day-5 matchday logged "54 CUP fixtures played for week 1 day 5". Played ties carry a real
+`played_match_id`; a checked one reads `NK Metalac 1931 1-2 ŽFK Teleoptik 1901`, matchId 50.
+
+**Ties open now.** `GET /countries/{iso}/cup/fixture/{id}` returns both sides with their ids (so a
+client can link to the club page, which is what "click the teams" needs), up to 25 squad players each,
+and the result once played. The cup page renders every tie as a button, and it says "not played yet"
+rather than inventing a scoreline.
+
+A reset was NOT needed - the fix was a code path, not the data.

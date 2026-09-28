@@ -106,8 +106,7 @@ public class CupFixtureSeeder {
         }
 
         // Idempotent by fixture count, not by a flag: if the draw exists, the fixtures are the record.
-        long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
-                cup.getId(), SEED_SEASON, 1);
+        long existing = fixtures.countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(SEED_SEASON, CUP_WEEKS[0], CUP_DAY);
         log.info("Cup {}: {} round-1 ties already drawn.", cup.getName(), existing);
         if (existing > 0) {
             return;
@@ -128,7 +127,7 @@ public class CupFixtureSeeder {
         // direct entrants make the 256 that carry the rest of the tournament.
         List<Team> firstKnockout = new ArrayList<>(ranked.subList(0, ENTRY_ROUND_TEAMS));
         List<Team> directEntrants = new ArrayList<>(ranked.subList(ENTRY_ROUND_TEAMS, MAIN_DRAW_TEAMS));
-        List<MatchFixture> round1 = buildRound(cup, firstKnockout, 1, CUP_WEEKS[0], 1);
+        List<MatchFixture> round1 = buildRound(cup, firstKnockout, 1, CUP_WEEKS[0], SEED_SEASON);
 
         // Round 2 onwards can only be wired once the earlier rounds are actually played, so the
         // seeding creates round 1 and leaves the bracket to be driven by results. A full 8-round

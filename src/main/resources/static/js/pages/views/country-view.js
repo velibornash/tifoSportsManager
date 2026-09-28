@@ -444,14 +444,80 @@ export function createCountryView(deps) {
                         </div>
                         ${round.fixtures.length
                             ? `<div class="fm-cup-ties">${round.fixtures.map(tie => `
-                                <div class="fm-cup-tie">
+                                <button type="button" class="fm-cup-tie" data-cup-fixture="${tie.id}"
+                                    title="Open the pre-match state for this tie">
                                     <span>${htmlEscape(tie.home || 'TBC')}</span>
-                                    <span class="fm-cup-tie-sep">v</span>
+                                    <span class="fm-cup-tie-sep">${tie.played ? tie.score || 'v' : 'v'}</span>
                                     <span>${htmlEscape(tie.away || 'TBC')}</span>
-                                </div>`).join('')}</div>`
+                                </button>`).join('')}</div>`
                             : '<div class="fm-empty">Not drawn yet.</div>'}
                     </div>`).join('')}
             </section>`;
+    }
+
+    /**
+     * Pre-match state for one tie (owner, 2026-09-29).
+     *
+     * <p>The owner found the cup page was a wall of text and asked for a tie to open the way a league
+     * fixture does. A tie is a fixture until the simulator runs, so there is genuinely nothing to show
+     * for it yet - this says that plainly instead of showing a 0-0 that never happened.
+     */
+    async function loadCupFixturePage(countryIso, fixtureId) {
+        const mainContent = document.getElementById('main-content');
+        const data = await readJson(
+            `/countries/${encodeURIComponent(countryIso)}/cup/fixture/${encodeURIComponent(fixtureId)}`);
+        if (!data || data.failed) {
+            mainContent.innerHTML = '<div class="fm-empty">That tie could not be loaded.</div>';
+            return;
+        }
+
+        const played = data.played === true;
+        const side = (which) => {
+            const team = data[which] || {};
+            return `
+                <section class="fm-panel fm-cup-side">
+                    <div class="fm-cup-side-head">
+                        <h3>${htmlEscape(team.name || 'Unknown')}</h3>
+                        <span class="fm-subtle">${htmlEscape(team.country || '')}</span>
+                    </div>
+                    <div class="fm-squad">
+                        ${(team.squad || []).map(player => `
+                            <div class="fm-squad-row">
+                                <span class="fm-squad-pos">${htmlEscape(player.position || '—')}</span>
+                                <span class="fm-squad-name">${htmlEscape(player.name || '')}</span>
+                                <span class="fm-squad-meta">${player.age ?? '—'} yrs</span>
+                                <span class="fm-squad-rating">${player.rating ?? '—'}</span>
+                            </div>`).join('')}
+                    </div>
+                </section>`;
+        };
+
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--country">
+                <header class="fm-country-header">
+                    <div class="fm-country-header-main">
+                        <div>
+                            <div class="fm-eyebrow">Cup &middot; week ${htmlEscape(String(data.week ?? '—'))} &middot; day ${htmlEscape(String(data.day ?? '—'))}</div>
+                            <h2 class="fm-country-header-title">${htmlEscape((data.home || {}).name || 'Tie')} v ${htmlEscape((data.away || {}).name || 'Tie')}</h2>
+                        </div>
+                    </div>
+                    <button class="back-to-dashboard fm-country-header-back" data-country-route="cup">Back</button>
+                </header>
+                <div class="fm-country-stack">
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>${played ? 'Result' : 'Not played yet'}</h3>
+                                <p class="fm-subtle">${played
+                                    ? `Played on ${htmlEscape(String((data.date || '').slice(0, 10)))}.`
+                                    : 'This tie has not been played. The simulator picks it up on the cup day.'}</p>
+                            </div>
+                            ${played ? `<span class="fm-cup-final-score">${htmlEscape(String(data.homeScore ?? 0))} &ndash; ${htmlEscape(String(data.awayScore ?? 0))}</span>` : ''}
+                        </div>
+                    </section>
+                    <div class="fm-cup-sides">${side('home')}${side('away')}</div>
+                </div>
+            </div>`;
     }
 
     // ------------------------------------------------------------------ page
@@ -709,6 +775,15 @@ export function createCountryView(deps) {
             </div>`;
         mainContent.querySelectorAll('[data-country-tab]').forEach(button => {
             button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTab }));
+        });
+        mainContent.querySelectorAll('[data-cup-fixture]').forEach(button => {
+            button.addEventListener('click', () => loadCupFixturePage(
+                countryIso, button.dataset.cupFixture));
+        });
+        mainContent.querySelectorAll('[data-country-route]').forEach(button => {
+            button.addEventListener('click', () => {
+                if (button.dataset.countryRoute === 'cup') loadCupPage();
+            });
         });
     }
 

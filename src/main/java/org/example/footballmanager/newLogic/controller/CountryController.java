@@ -230,6 +230,65 @@ public class CountryController {
     }
 
     /**
+     * Pre-match state for one cup tie (owner, 2026-09-29).
+     *
+     * <p>The owner asked for this after finding that a cup tie was a row of text. It is, until it is
+     * played: a fixture is a scheduled pairing, and the {@code Match} only exists once the simulator
+     * has run. So the tie needs somewhere to be looked at before that - the same information a league
+     * fixture shows, for the same reason.
+     *
+     * <p>Team names are returned with their ids so the client can link to the club page, which is what
+     * "click the teams" needs; the squad is here so the tie is worth opening.
+     */
+    @GetMapping("/{isoCode}/cup/fixture/{fixtureId}")
+    public Map<String, Object> getCupFixture(@PathVariable String isoCode,
+                                             @PathVariable long fixtureId) {
+        Country country = requireCountry(isoCode);
+        MatchFixture fixture = matchFixtureRepository.findById(fixtureId)
+                .orElseThrow(() -> new IllegalArgumentException("No such cup tie: " + fixtureId));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("fixtureId", fixture.getId());
+        out.put("week", fixture.getWeekNumber());
+        out.put("day", fixture.getDayNumber());
+        out.put("round", fixture.getRoundNumber());
+        out.put("played", fixture.isPlayed());
+        out.put("date", fixture.getMatchDate());
+        // Null until the simulator has run. Deliberately not faked: a tie that has not been played
+        // has no result, and inventing a 0-0 would read as a real one.
+        out.put("matchId", fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getId());
+        out.put("homeScore", fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getHomeGoals());
+        out.put("awayScore", fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getAwayGoals());
+        out.put("home", cupSide(fixture.getHomeTeam()));
+        out.put("away", cupSide(fixture.getAwayTeam()));
+        return out;
+    }
+
+    /** One side of a tie: identity for linking, and enough squad to make it worth opening. */
+    private Map<String, Object> cupSide(Team team) {
+        Map<String, Object> side = new LinkedHashMap<>();
+        if (team == null) {
+            return side;
+        }
+        side.put("id", team.getId());
+        side.put("name", team.getName());
+        side.put("logoUrl", team.getLogoUrl());
+        side.put("country", team.getCountry() == null ? null : team.getCountry().getIsoCode());
+        side.put("squad", playerRepository.findByTeamId(team.getId()).stream()
+                .limit(25)
+                .map(player -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("name", player.getName());
+                    row.put("position", player.getPosition() == null ? null : player.getPosition().name());
+                    row.put("rating", player.getRating());
+                    row.put("age", player.getAge());
+                    return row;
+                })
+                .toList());
+        return side;
+    }
+
+    /**
      * Playoff ties for this country.
      *
      * <p>Empty until playoffs exist. Reported as an empty list so the link is live and the page says

@@ -38,6 +38,9 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     List<MatchFixture> findBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
             Integer seasonYear, Integer weekNumber, Integer dayNumber);
 
+    long countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+            Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
     @Query("select f from MatchFixture f where f.homeTeam.id = :teamId or f.awayTeam.id = :teamId")
     List<MatchFixture> findAllForTeam(@Param("teamId") Long teamId);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndPlayedFalse(Long competitionId, Integer seasonYear);
