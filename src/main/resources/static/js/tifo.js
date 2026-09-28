@@ -1,3 +1,4 @@
+import { escapeHtml } from './ui/escape.js';
 ﻿// tifo.js - Clean Sheet Text Mode (in-memory)
 
 let gameState = null;
@@ -1172,14 +1173,6 @@ function truncate(text, max) {
     return text.substring(0, max) + '...';
 }
 
-function escapeHtml(text) {
-    return (text || '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}
 
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

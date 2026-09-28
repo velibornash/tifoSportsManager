@@ -1,26 +1,14 @@
-async function authFetch(url, options = {}) {
-    const token = sessionStorage.getItem('token');
-    if (!token) {
-        throw new Error("No active session.");
-    }
-
-    options.headers = {
-        ...options.headers,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
-
-    const response = await fetch(url, options);
-    if (!response.ok) {
-        if (response.status === 401) {
-            sessionStorage.removeItem('token');
-            localStorage.removeItem('token');
-            window.location.href = '/login.html';
-        }
-        throw new Error(`Error ${response.status}: ${await response.text()}`);
-    }
-    return response;
-}
+// The shared implementation, not a local copy (owner, 2026-09-28).
+//
+// clock.js had its own stripped-down authFetch: it attached the token and threw on failure, but on a
+// missing token it only threw, where the shared one redirects to the login page, and it ignored the
+// redirect-to-login and network-error cases entirely. Two copies of an authenticated fetch is how a
+// clock keeps polling against a session that has already ended, and the failure shows up as a page
+// that quietly stops updating rather than as an error anyone is shown.
+//
+// The only behavioural change is the intended one: a missing or expired session now sends the manager
+// to the login screen instead of leaving a dead clock on screen.
+import { authFetch } from './auth.js';
 
 let serverOffsetMs = 0;
 let seasonNumber = 1;

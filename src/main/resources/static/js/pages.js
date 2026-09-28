@@ -1,4 +1,5 @@
 ﻿// pages.js
+import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
 import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
@@ -574,14 +575,6 @@ import {
             console.error(err);
             mainContent.innerHTML = buildEmptyState("API Error");
         }
-    }
-    function escapeHtml(value) {
-        return String(value ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\"/g, "&quot;")
-            .replace(/'/g, "&#39;");
     }
     // --- Thin wrapper functions that delegate to view modules ---
 

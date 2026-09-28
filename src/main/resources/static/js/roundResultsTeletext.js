@@ -1,3 +1,4 @@
+import { escapeHtml } from './ui/escape.js';
 const state = {
     feed: null,
     minute: 0,
@@ -460,11 +461,3 @@ function naturalLeagueCompare(left, right) {
     return String(left || '').localeCompare(String(right || ''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}

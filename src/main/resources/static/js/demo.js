@@ -1,4 +1,5 @@
 // /js/demo.js
+import { escapeHtml } from './ui/escape.js';
 import { authFetch } from './auth.js';
 
 let currentUserTeamId = null;
@@ -19,14 +20,6 @@ function resetButton(button, label) {
     button.textContent = label;
 }
 
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}
 
 function showModal(title, bodyHtml) {
     document.getElementById('season-flow-modal')?.remove();

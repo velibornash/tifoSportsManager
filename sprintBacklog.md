@@ -1763,14 +1763,14 @@ rather than from the tree. Everything in the file is now verified against the so
 recording because it is the exact failure the file was written to prevent: **a document about which
 code is live is itself documentation, and goes stale the same way.**
 
-#### 🟡 S8.3 #6 — two of the three "dead" items are owner decisions, not deletions (2026-09-28)
+#### ✅ S8.3 #6 — two of the three "dead" items were decisions, not deletions (2026-09-28)
 
 Checked each before deleting, and the backlog was wrong about two of the three.
 
 **`emptyStateHtml` (in `ui/components.js`, not `utils.js`) — deleted.** Zero references anywhere. The
 only importer of that module takes `backButtonHtml`.
 
-**`loadRecentLeagueMatches` is not dead code — it is a disabled feature.** The function exists, the
+**`loadRecentLeagueMatches` was not dead code — it was a disabled feature, and the owner has since confirmed Recent Matches covers it and asked for this to go (2026-09-28).** Deleted: the commented markup, the commented call, and the 67-line function. The function exists, the
 container `#recent-league-matches-list` is written into the dashboard markup, and the only call is
 commented out at `dashboard.js:563`. The markup itself is inside an `<!-- -->` block, so the "Recent
 League Results" section was deliberately switched off, most likely during the `pages.js` refactor.
@@ -1927,10 +1927,10 @@ same viewer as your own match.
 | # | Task | File:line |
 |---|---|---|
 | 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | ✅ **done 2026-09-28** — and the desktop accordions were **dead**, not just double-rendering. See below |
-| 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | `dashboard.js:70`; `pages.js:532`; `utils.js:4`; `clock.js:1-23` |
+| 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | ✅ **done 2026-09-28** — it was **5** copies of `escapeHtml`, now one `ui/escape.js`. `authFetch` had a **behaviour** difference |
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
 | 5 | `training-view.js` — merge the two ~450-line parallel implementations | ✅ **done 2026-09-28** — not a merge: three functions were declared twice in one scope, so the first copies were **shadowed and unreachable**. 183 lines deleted |
-| 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | 🟡 **partly done 2026-09-28** — `emptyStateHtml` deleted; the other two turned out to be decisions, not dead code. See below |
+| 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | ✅ **done 2026-09-28** — `emptyStateHtml`, `loadRecentLeagueMatches` + its markup all deleted. `resolveFixtureStadiumImage` folded into the stadium-image work |
 | 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
