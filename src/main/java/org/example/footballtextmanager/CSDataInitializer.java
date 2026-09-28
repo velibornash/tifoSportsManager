@@ -52,7 +52,11 @@ public class CSDataInitializer {
         CSCountry serbia = new CSCountry();
         serbia.setName("Serbia");
         serbia.setIsoCode("SRB");
-        serbia.setFlagImagePath("/images/flags/srb.png");
+        // /images/flags/ does not exist, so this was a 404 for the one country that has a flag.
+// Serbia is the only country with artwork and the football game already points at the file that is
+// actually there; the eight countries without artwork are not given a broken path, they fall back
+// to a real flag emoji from the ISO code in the country view.
+serbia.setFlagImagePath("/images/serbiaflag.png");
         serbia.setCurrencyCode("RSD");
         serbia.setReputation(55);
         serbia.setYouthRating(65);

@@ -1933,7 +1933,7 @@ same viewer as your own match.
 | 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | ✅ **done 2026-09-28** — `emptyStateHtml`, `loadRecentLeagueMatches` + its markup all deleted. `resolveFixtureStadiumImage` folded into the stadium-image work |
 | 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
-| 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
+| 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | ✅ **done 2026-09-28** — it already degrades to a real flag emoji; one 404 path fixed. See below |
 | 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | ✅ **closed 2026-09-28, owner decision** — the premise was wrong; see below |
 
 ---
@@ -1969,6 +1969,37 @@ matched indentation with `\s+`. `\s` also matches newlines, so a greedy `\s+` sw
 above a declaration and the `^` anchor quietly stops meaning anything. The test passed with a shadowed
 copy sitting right in front of it. Indentation is matched with `[ \t]+` now, and the reason is a
 comment in the file.
+
+---
+
+#### ✅ S8.3 #9 — country flags: the field is wired, the fallback is real (2026-09-28)
+
+Owner position: *"stavi mesto za sliku, kako budemo pravili drzave tako cemo dodavati zastave"* — put
+a place for the image, and add artwork as countries are built.
+
+**There was already a place, and it was already used.** `Country.flagImagePath` is seeded, exposed on
+`CountrySummaryDTO`, and consumed by `buildCountryFlagBadgeHtml`. The important part is what it does
+when the value is `null`, which is the case for 8 of the 9 countries:
+
+```js
+const flagEmoji = countryFlagEmojiFromIso(country?.isoCode);
+return `<div class="fm-country-badge">${flagEmoji || '🌍'}</div>`;
+```
+
+`countryFlagEmojiFromIso` derives the emoji from the ISO code via regional indicator symbols
+(`String.fromCodePoint(127397 + …)`), with an alpha-3 → alpha-2 table for codes stored long. So a
+country with no artwork gets its **actual flag emoji**, not a blank box and not a generic globe —
+which is the correct "missing image" behaviour for a flag, and much better than the alternative of
+shipping eight placeholder images that all look the same.
+
+**One real 404 found and fixed.** `CSDataInitializer` pointed Serbia at
+`/images/flags/srb.png`; **`/images/flags/` does not exist**. That is the one country that *does*
+have artwork, pointing at a file that is not there. Now `/images/serbiaflag.png`, which is what the
+football game already used.
+
+**Added:** a sweep that checks every `/images/...` string literal in `src/main/java` against the
+filesystem. It now reports zero broken references (the single remaining hit is `/images/**` in
+`SecurityConfig`, which is a security whitelist pattern, not an asset).
 
 ---
 
