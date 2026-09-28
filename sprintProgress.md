@@ -4090,3 +4090,43 @@ nothing on :8080).
 
 The schedule **screen** — the per-country day-by-day view the owner asked for, and the competition
 pages (8.1–8.5) that reuse the same shape. The data exists; nothing renders it yet.
+
+---
+
+## Country page: the schedule, and the four stretched cards (2026-09-28)
+
+Owner: the schedule should be on the country tab; and *"izdužile su se ove 4 kartice za ovaj mali
+podatak… gomila drugih podataka koji nisu povezani… mora to da se popravi relativno hitno."*
+
+### The four cards
+
+The complaint is specific and correct: four cards holding one number each, spread across the full
+width of the hero, so each is a large empty box around "50" or "RSD".
+
+**The cause was not a margin.** `.fm-medical-stat-grid` is
+`grid-template-columns: repeat(auto-fit, minmax(110px, 1fr))`, and `auto-fit` **expands its columns to
+fill whatever width it is given** — with four items in a wide hero, that is a quarter of the page
+each. Capping the column at 132px and hugging the left is the whole fix. Two columns on a phone.
+
+### The filler underneath
+
+The panels below were worse than empty, because they were **actively misleading**: "Open the same
+standings/fixtures/scorers shell used for your main league view" is engine talk, and the national-team
+panel called itself a placeholder three times over. A panel that says "placeholder" on a shipped page
+teaches the reader to distrust the other two panels. Rewritten to say what is and is not built, with
+the placeholder cards' filler sentences removed.
+
+### The schedule
+
+`GET /calendar/week` — the **current** week, resolved server-side. The client is deliberately not asked
+which week it wants: the clock is server state that moves when a manager advances the week, and a
+client that guessed would show last week's schedule with total confidence.
+
+The template is read from the server, not restated in JavaScript. That is the **second time today** the
+same lesson has come up — a table written in two places stops being a table, and the two versions
+differ in ways only one of them notices. The country catalog was the first.
+
+Rendered on the country page as seven columns (scrolling on a phone), with match days marked — a
+manager reading it needs to know at a glance which days can be taken by something else. Verified live:
+day 1 International 20:45, day 2 Finance, day 3 League 19:00, day 4 Training, day 5 Cup 18:00,
+day 6 Form & morale, day 7 League 16:00.

@@ -883,3 +883,89 @@
     margin-bottom: 14px;
     font-size: 12px;
 }
+
+/* ── Country page: the four stat cards (owner, 2026-09-28) ─────────────────────────
+   Complaint that is fair and specific: four cards with one number each, stretched
+   across the full width of the hero, so each became a large empty box around "50"
+   or "RSD".
+
+   The cause is not a margin. `.fm-medical-stat-grid` is `repeat(auto-fit,
+   minmax(110px, 1fr))`, and auto-fit expands its columns to fill whatever width it
+   is given. With four items in a wide hero that is a quarter of the page each.
+   Capping the column width and hugging the left is the whole fix - the cards then
+   take the width their content needs, which is what a stat card is for. */
+.fm-country-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 132px));
+    justify-content: start;
+}
+
+@media (max-width: 620px) {
+    .fm-country-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── The week grid ─────────────────────────────────────────────────────────────────
+   Seven columns on a desktop, scrolling on a phone. Day 1, 3, 5 and 7 are match
+   days and are marked, because a manager reading this needs to know at a glance
+   which days can be taken by something else. */
+.fm-week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fm-week-day {
+    padding: 10px 9px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    min-width: 0;
+}
+
+.fm-week-day.is-match {
+    background: rgba(143, 211, 255, 0.07);
+    border-color: rgba(143, 211, 255, 0.2);
+}
+
+.fm-week-day-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.fm-week-day-number {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.fm-week-day-time {
+    font-size: 0.72rem;
+    color: rgba(143, 211, 255, 0.9);
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-week-day-kind {
+    font-size: 0.82rem;
+    color: #eef4ff;
+    line-height: 1.25;
+}
+
+.fm-week-day-event {
+    margin-top: 5px;
+    font-size: 0.72rem;
+    color: #ffd479;
+}
+
+@media (max-width: 760px) {
+    /* Seven columns on a phone makes seven unreadable slivers, so the week scrolls instead. */
+    .fm-week-grid {
+        grid-template-columns: repeat(7, minmax(96px, 1fr));
+        overflow-x: auto;
+        padding-bottom: 6px;
+    }
+}

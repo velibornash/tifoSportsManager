@@ -32,9 +32,12 @@ export function createCountryView(deps) {
 
         try {
             const countryIso = String(countryIsoCode).toUpperCase();
-            const [countriesResponse, leaguesResponse] = await Promise.all([
+            const [countriesResponse, leaguesResponse, calendarResponse] = await Promise.all([
                 authFetch('/countries'),
-                authFetch(`/countries/${encodeURIComponent(countryIso)}/leagues`)
+                authFetch(`/countries/${encodeURIComponent(countryIso)}/leagues`),
+                // The schedule is read from the server, not restated here. The seven-day template is
+                // a fact about the game; a copy of it in JavaScript is a second fact that will drift.
+                authFetch('/calendar/week')
             ]);
 
             if (!leaguesResponse.ok) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
@@ -56,6 +59,15 @@ export function createCountryView(deps) {
             const countryName = country?.name || getCurrentUserCountryName() || countryIso;
             const countryTitle = htmlEscape(countryName);
             const countryBadgeHtml = buildCountryFlagBadgeHtml(country, countryName);
+
+            // A failed calendar load must not take the page down with it. The rest of the country
+            // page is still worth showing, and a blank schedule says "nothing is on" which is a lie.
+            const calendar = calendarResponse && calendarResponse.ok
+                ? await calendarResponse.json().catch(() => null)
+                : null;
+            const weekDays = Array.isArray(calendar?.days) ? calendar.days : [];
+            const calendarWeek = calendar?.week;
+            const calendarNote = calendar?.note;
 
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--country">
@@ -91,7 +103,7 @@ export function createCountryView(deps) {
                             <div class="fm-panel-head">
                                 <div>
                                     <h3>Quick leagues</h3>
-                                    <p class="fm-subtle">Fast access for the top levels, plus a dropdown for the full league list.</p>
+                                    <p class="fm-subtle">The top levels, with a dropdown for the rest.</p>
                                 </div>
                                 <span class="fm-panel-action">Country browse</span>
                             </div>
@@ -100,7 +112,6 @@ export function createCountryView(deps) {
                                     <article class="fm-country-league-card">
                                         <div class="fm-milestone-kicker">${htmlEscape(buildLeagueMetaLabel(league))}</div>
                                         <div class="fm-update-title">${htmlEscape(league?.name || 'League')}</div>
-                                        <div class="fm-update-meta">Open the same standings/fixtures/scorers shell used for your main league view.</div>
                                         <button type="button" class="fm-action-btn secondary fm-country-card-action" data-country-league-id="${league?.id || ''}" data-country-league-name="${htmlEscape(league?.name || 'League')}">Open table</button>
                                     </article>`).join('') || `<div class="fm-empty">No leagues found for this country yet.</div>`}
                             </div>
@@ -121,10 +132,32 @@ export function createCountryView(deps) {
                         <section class="fm-panel">
                             <div class="fm-panel-head">
                                 <div>
-                                    <h3>National teams</h3>
-                                    <p class="fm-subtle">Navigation placeholders are ready now; backend data can be connected later.</p>
+                                    <h3>${escapeHtml(calendarNote ? `Week ${calendarWeek} schedule` : 'This week')}</h3>
+                                    <p class="fm-subtle">${escapeHtml(calendarNote || 'What happens each day, for every club in the country.')}</p>
                                 </div>
-                                <span class="fm-panel-action">Placeholder</span>
+                                <span class="fm-panel-action">${escapeHtml(countryTitle)}</span>
+                            </div>
+                            <div class="fm-week-grid">
+                                ${weekDays.map(day => `
+                                    <div class="fm-week-day${day.matchDay ? ' is-match' : ''}">
+                                        <div class="fm-week-day-head">
+                                            <span class="fm-week-day-number">Day ${day.day}</span>
+                                            ${day.kickoff ? `<span class="fm-week-day-time">${escapeHtml(day.kickoff)}</span>` : ''}
+                                        </div>
+                                        <div class="fm-week-day-kind">${escapeHtml(day.label)}</div>
+                                        ${(day.events || []).map(event => `
+                                            <div class="fm-week-day-event">${escapeHtml(event.label)}</div>`).join('')}
+                                    </div>`).join('')}
+                            </div>
+                        </section>
+
+                        <section class="fm-panel">
+                            <div class="fm-panel-head">
+                                <div>
+                                    <h3>National teams</h3>
+                                    <p class="fm-subtle">Senior and U-21. Elections, squads and tournaments are not built yet.</p>
+                                </div>
+                                <span class="fm-panel-action">Not yet</span>
                             </div>
                             <div class="fm-country-team-grid">
                                 <article class="fm-country-team-card">

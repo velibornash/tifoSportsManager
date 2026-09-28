@@ -2299,7 +2299,7 @@ tabela ako postoji (kup nema tabelu), rezultati po rundama, schedule."*
 | # | Task | Notes |
 |---|---|---|
 | 6.1 | Render the week as a day-by-day schedule, with **room to add events** | **Every country has the same template.** Events can be **added to the template** when something happens — the NT and U-21 qualifying draw, the cup draw, the playoff draw. A day with nothing on it stays visibly empty rather than being hidden |
-| 6.2 | Per-country schedule on the country page | "every user can click their country's schedule and see what is happening each day" |
+| 6.2 | Per-country schedule on the country page | ✅ done 2026-09-28 — a seven-day grid on the country page, the week resolved **server-side** so the client cannot show a stale one |
 
 ---
 
