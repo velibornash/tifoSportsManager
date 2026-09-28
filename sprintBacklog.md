@@ -1918,7 +1918,7 @@ same viewer as your own match.
 
 | # | Task | File:line |
 |---|---|---|
-| 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | `app.js:8-36`; `sidebar.js:39-74` |
+| 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | ✅ **done 2026-09-28** — and the desktop accordions were **dead**, not just double-rendering. See below |
 | 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | `dashboard.js:70`; `pages.js:532`; `utils.js:4`; `clock.js:1-23` |
 | 3 | Mobile sidebar has **no `tacticEditor` entry** and uses different labels than desktop | `dashboard.html:31-92` vs `:95-133` |
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
@@ -1928,6 +1928,50 @@ same viewer as your own match.
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
 | 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | `academy.js:186-193` |
+
+---
+
+#### 🟡 S8.3 #1 — the desktop sidebar accordions were completely inert, not merely double-rendering (2026-09-28)
+
+The backlog called this "loadPage fires twice per click". That is true and it is **the lesser half**.
+The accordions did not work at all.
+
+Every `.accordion-header` in the desktop sidebar carries **two** bindings:
+
+1. an inline `onclick="toggleAccordion(this)"` in the markup, and
+2. an `addEventListener` on `.accordion-header` added by `sidebar.js`.
+
+`toggleAccordion` is **not idempotent** — it reads the open state and then writes the opposite. Two
+calls open the panel and close it again in the same tick. So all three groups (Players, Tactics,
+Club) were no-ops.
+
+**Why it survived so long:** a collapsed accordion and a dead accordion are the same picture from
+outside. `after=0px` is exactly what a working accordion that has just closed looks like, so the
+symptom matched "normal" perfectly. No amount of reading the code finds this — a browser finds it in
+one click.
+
+**And deleting `app.js` was not enough.** `app.js` was a genuine *third* binder and removing it
+removed the double `loadPage`, but the accordions stayed dead, because the real duplicate was the
+inline handler versus `sidebar.js`. Measured in Chromium after deleting `app.js`: still `0px`.
+Only removing `sidebar.js`'s listener fixed it — now `102px / 102px / 276px`.
+
+The inline handler is the binding that stays, because it is the only one that covers `#mobileSidebar`,
+which is not in `sidebar.js`'s list.
+
+| Layer | Test | Result |
+|---|---|---|
+| Static | `SidebarBindingTest` — one file may bind a sidebar; `sidebar.js` must not bind `.accordion-header`; every *wrapped* accordion header has exactly one toggle | ✅ verified by re-adding the listener and watching it fail |
+| Live | `SidebarAccordionOpensTest` — logs in with a real browser and asserts `style.maxHeight` is non-zero after one click | ✅ `102 / 102 / 276`; **skips** when the app is not running |
+
+Two things about those tests worth recording, because both were my mistakes first:
+
+- `SidebarBindingTest` originally walked the JS with **`Files.list`, which is not recursive** — it
+  could never see `js/pages/`, `js/ui/` or `js/demo/`. It would have passed while a duplicate binder
+  sat in a subdirectory. Now `Files.walk`.
+- The test then asserted *every* `.accordion-header` has a toggle, and failed with "13 headers, 5
+  handlers". **The test was wrong, not the markup**: the class is also used to style ten flat mobile
+  navigation buttons that call `loadPage` directly, so class reuse looked like eight missing
+  handlers. It now counts only headers inside an `.accordion` wrapper, of which there are 3.
 
 ---
 

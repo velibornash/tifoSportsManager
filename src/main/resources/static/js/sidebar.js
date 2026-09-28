@@ -64,13 +64,17 @@ sidebars.forEach(id => {
         });
     });
 
-    // Accordion header
-    sidebar.querySelectorAll(".accordion-header").forEach(header => {
-        header.addEventListener('click', e => {
-            e.stopPropagation();
-            toggleAccordion(header);
-        });
-    });
+    // Accordion headers are deliberately NOT bound here.
+    //
+    // Every .accordion-header in both sidebars already carries an inline `onclick="toggleAccordion(this)"`
+    // (or toggleMobileAccordion), and toggleAccordion is not idempotent: it reads the open state and
+    // then writes the opposite. Binding it a second time meant every desktop header click toggled
+    // twice - open, then closed again in the same tick - so all three groups were inert. `after=0px`
+    // is what a working accordion that has just closed looks like, which is why this survived as long
+    // as it did: from the outside, a collapsed panel and a dead panel are the same picture.
+    //
+    // The inline handler is kept as the single path because it is the only one that covers
+    // #mobileSidebar, which is not in the `sidebars` list below.
 });
 
 // Blokiraj skrol glavnog sadržaja kad je sidebar otvoren

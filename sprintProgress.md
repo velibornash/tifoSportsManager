@@ -3513,3 +3513,42 @@ failing run's output was not captured — the grep in use filtered to the aggreg
 precisely the line that was missing — so there is nothing to diagnose. Three subsequent full runs
 were clean. Recorded rather than dismissed: the honest position is "not reproduced and not
 understood", and if it recurs the first thing to do is capture the whole log.
+
+---
+
+## S8.3 #1 — the sidebar accordions were dead, and "fires twice" was the smaller half (2026-09-28)
+
+The backlog said `loadPage` fires twice per click. True, and irrelevant next to what was actually
+wrong: **all three desktop accordion groups did nothing at all.**
+
+Every `.accordion-header` carries two bindings — an inline `onclick="toggleAccordion(this)"` in the
+markup, and an `addEventListener` added by `sidebar.js`. `toggleAccordion` is not idempotent: it reads
+the open state, then writes the opposite. Two calls open the panel and close it in the same tick.
+
+**Why nobody noticed:** a collapsed accordion and a dead accordion look identical. `after=0px` is
+precisely what a working accordion that has just closed looks like, so the symptom matched "normal"
+perfectly. Reading the code does not find this. One click in a browser does.
+
+**Deleting `app.js` was necessary and not sufficient.** It was a real *third* binder and removing it
+killed the double `loadPage`, but the accordions stayed dead — measured in Chromium right after, still
+`0px` — because the actual duplicate was inline-handler versus `sidebar.js`. Only dropping
+`sidebar.js`'s listener fixed it: `102px / 102px / 276px` for Players, Tactics, Club.
+
+The inline handler is the one that stays: it is the only binding that covers `#mobileSidebar`, which
+is not in `sidebar.js`'s list.
+
+**Two mistakes of my own, both caught by the browser rather than by reasoning:**
+
+- `SidebarBindingTest` walked the JS with `Files.list`, which is **not recursive**. It could never see
+  `js/pages/`, `js/ui/` or `js/demo/`, so it would have passed while a duplicate binder sat in a
+  subdirectory. Now `Files.walk`.
+- The test then asserted every `.accordion-header` has a toggle and failed with "13 headers, 5
+  handlers". **The test was wrong, not the markup.** The class is also used to style ten flat mobile
+  navigation buttons that call `loadPage` directly, so class reuse looked like eight missing handlers.
+  It now counts only headers inside an `.accordion` wrapper — of which there are exactly 3.
+
+`SidebarAccordionOpensTest` is the test that actually earns its keep, and it is the reason the real
+bug was found: it logs in with a real browser and reads `style.maxHeight` after one click, which is
+the only thing that can tell a dead accordion from a closed one. It **skips** when the app is not
+running, because the rest of the suite runs with nothing on :8080 and a test that reports
+`ERR_CONNECTION_REFUSED` as an error teaches people to ignore errors.
