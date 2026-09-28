@@ -144,6 +144,42 @@ public final class SeasonCalendar {
         }
     }
 
+    /**
+     * The seven-day template every country shares (owner, 2026-09-28).
+     *
+     * <p>Reached through here rather than used directly, so the two tables are checked against each
+     * other once, at class load. They describe the same week from two angles — this file says which
+     * <i>league round</i> is in week 7, {@link WeekTemplate} says which <i>kind of day</i> day 3 is —
+     * and nothing forces them to agree except this assertion.
+     */
+    public static java.util.List<WeekTemplate.DaySlot> dayTemplate() {
+        return WeekTemplate.all();
+    }
+
+    /** One day of the shared template, or null outside 1-7. */
+    public static WeekTemplate.DaySlot day(int dayNumber) {
+        return WeekTemplate.day(dayNumber);
+    }
+
+    /**
+     * Fails fast if the two tables disagree about day 3 or day 7.
+     *
+     * <p>The failure this prevents is quiet and expensive. If {@link WeekTemplate} were edited to put
+     * the cup on day 3, every fixture in the game would still be generated into the day-3 league slot
+     * while the schedule screen told managers the cup was on tonight. Nothing would fail; the two
+     * would simply describe different weeks.
+     */
+    private static void assertSlotsMatchTemplate() {
+        for (int slot = 1; slot <= SLOTS_PER_WEEK; slot++) {
+            int day = slot == 1 ? SLOT_ONE_DAY : SLOT_TWO_DAY;
+            WeekTemplate.DaySlot templateDay = WeekTemplate.day(day);
+            if (templateDay == null || !templateDay.matchDay()) {
+                throw new IllegalStateException("SeasonCalendar slot " + slot + " is day " + day
+                        + ", which the week template does not treat as a match day");
+            }
+        }
+    }
+
     private static final WeekSlot[][] SLOTS = build();
 
     /**
@@ -156,6 +192,8 @@ public final class SeasonCalendar {
     private record SlotSpec(SlotKind kind, int round) { }
 
     private static WeekSlot[][] build() {
+        assertSlotsMatchTemplate();
+
         // One row per week, two columns: day 3 then day 7. This is the owner's table, and it is
         // the only place the season shape is written down.
         SlotSpec[][] table = {

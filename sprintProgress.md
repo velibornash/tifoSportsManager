@@ -4032,3 +4032,61 @@ Earlier commits reported totals taken by summing `target/surefire-reports/*.txt`
 **accumulates stale files** — so those figures were inflated. A clean run is **691, all green, 1
 skipped** (the live browser test, correctly skipped with nothing on :8080). The per-commit numbers in
 this file before today are a few high.
+
+---
+
+## The seven-day week — `WeekTemplate` and `CalendarEvent` (2026-09-28)
+
+Part 0 continues. The owner's weekly schedule, transcribed exactly:
+
+| Day | | |
+|---|---|---|
+| 1 | International | 20:45 |
+| 2 | Weekly finance update | |
+| 3 | **League** | 19:00 |
+| 4 | Training | |
+| 5 | Cup | 18:00 |
+| 6 | Form / morale (junior match, eventually) | |
+| 7 | **League** | 16:00 |
+
+**Why this is not just a table in `SeasonCalendar`.** That class already holds a per-week table of
+**league rounds** in two slots, day 3 and day 7, and reserves week 6 for qualifiers and week 12 for
+the World Cup. This is the **shape of a week** — what kind of day each of the seven is, and when it
+plays. Complementary, not replacement: one says "week 7, day 3 is round 11", the other says "day 3 is
+league at 19:00".
+
+**Which means they can drift, and nothing would stop them.** If `WeekTemplate` were edited to put the
+cup on day 3, every fixture in the game would still be generated into the day-3 league slot while the
+schedule screen told managers the cup was on tonight. Nothing crashes; the two simply describe
+different weeks. So `SeasonCalendar.build()` now asserts at class load that slot 1 and slot 2 land on
+days the template treats as match days.
+
+**Verified by introducing exactly that drift**: day 3 changed to `TRAINING`, and it fails with
+*"SeasonCalendar slot 1 is day 3, which the week template does not treat as a match day"* — at class
+load, before a single fixture could be generated with the wrong week.
+
+### Events are data, not shape
+
+The owner asked for a shared template with room to add things when they happen — the NT and U-21
+qualifying draws, the cup draw, a playoff — and stressed that **every country has the same template**.
+
+So events are a separate concept. `CalendarEvent` is laid *over* the fixed template, and
+`CalendarEvent.weekWith(week, events)` is a pure function that returns a displayable week. The
+separation is the point: if an event were a mutation of the template, a draw in one country would
+alter the week every other country sees.
+
+Tests assert that adding events **does not** change `WeekTemplate` — same size, same day 1 — and that
+an event shows only on its own week, and that two reads of the same week return the same order. A
+schedule that reshuffles itself between reads is not a schedule.
+
+**Deliberately not persisted here.** A draw is something the engine decides and must survive a
+restart, so storage is a service's problem. What lives in the calendar is the vocabulary, so whoever
+builds the draw cannot invent a different one.
+
+**Tests: 15. Clean total 706, all green, 1 skipped** (the live browser test, correctly skipped with
+nothing on :8080).
+
+### Still open in 0.4
+
+The schedule **screen** — the per-country day-by-day view the owner asked for, and the competition
+pages (8.1–8.5) that reuse the same shape. The data exists; nothing renders it yet.
