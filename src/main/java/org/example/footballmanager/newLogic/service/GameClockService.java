@@ -196,19 +196,25 @@ public class GameClockService {
      */
     @Transactional
     public Map<String, Object> advanceDay() {
-        // Step hour by hour until the date moves, rather than computing how many hours that is.
-        // Two attempts at the arithmetic each landed the clock one hour short of 23:00, which meant
-        // week-rollover (day 7, 23:00) never became due and the week's work silently did not happen.
-        // Walking the hours cannot skip a trigger: every hour in the day is evaluated in order.
-        java.time.LocalDate dayBefore = gameTime().atZone(GAME_ZONE).toLocalDate();
-        Map<String, Object> result = snapshot();
-        for (int step = 0; step < HOURS_PER_DAY; step++) {
-            result = advanceHours(1);
-            if (!gameTime().atZone(GAME_ZONE).toLocalDate().equals(dayBefore)) {
-                return result;
-            }
+        // Sweep the current day hour by hour, then roll the date.
+        //
+        // The previous version walked the real clock hour by hour and hoped midnight fell inside the
+        // window. It did not reliably: the loop returned as soon as the date changed, and depending on
+        // where the wall clock started, the hour that triggered day 7's week-rollover was skipped.
+        // Deciding that a day is finished means every hour of it has been offered to the runner, so
+        // the hours are enumerated rather than inferred from where the clock happens to be.
+        int currentHour = gameTime().atZone(GAME_ZONE).getHour();
+        int seasonYear = SeasonService.BASE_SEASON_YEAR
+                + ((clock().getCurrentSeason() == null ? 1 : clock().getCurrentSeason()) - 1);
+        int week = clock().getCurrentWeek() == null ? 1 : clock().getCurrentWeek();
+        int day = clock().getCurrentDay() == null ? GameDay.FIRST : clock().getCurrentDay();
+
+        for (int hour = currentHour; hour < HOURS_PER_DAY; hour++) {
+            jobRunner.runDue(seasonYear, week, day, hour);
         }
-        return result;
+
+        // Then move the clock to the start of the next day.
+        return advanceHours(HOURS_PER_DAY - currentHour);
     }
 
     /**
