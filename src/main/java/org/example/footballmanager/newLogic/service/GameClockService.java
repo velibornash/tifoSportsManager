@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.GameDay;
+import org.example.footballmanager.newLogic.jobs.JobRunner;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,10 +59,12 @@ public class GameClockService {
 
     private final GameClockRepository clocks;
     private final SeasonService seasons;
+    private final JobRunner jobRunner;
 
-    public GameClockService(GameClockRepository clocks, SeasonService seasons) {
+    public GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner) {
         this.clocks = clocks;
         this.seasons = seasons;
+        this.jobRunner = jobRunner;
     }
 
     private GameClock clock() {
@@ -146,7 +149,16 @@ public class GameClockService {
         rollSeasonIfSeasonEnded(clock);
         clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
         clocks.save(clock);
-        return snapshot();
+
+        // Jobs become due because time moved, so they run here. One advance path means there is
+        // nowhere else a job could be started from - which is what makes the done-flags meaningful.
+        int seasonYear = SeasonService.BASE_SEASON_YEAR
+                + ((clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) - 1);
+        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        int dayNow = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
+        Map<String, Object> result = snapshot();
+        result.put("jobs", jobRunner.runDue(seasonYear, week, dayNow, gameTime().atZone(GAME_ZONE).getHour()));
+        return result;
     }
 
     /** One day is twenty-four hours; the counters carry on their own. */

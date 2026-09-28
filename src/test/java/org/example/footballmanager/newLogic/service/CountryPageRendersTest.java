@@ -84,14 +84,22 @@ class CountryPageRendersTest {
             assertTrue(body.contains("Serbia"),
                     "the country page should name the manager's own country");
 
+            // The schedule lives on the Calendar tab now (owner, 2026-09-28), so this has to open it.
+            // Asserting the week grid on the default tab was passing before the split and failing
+            // after it, which is the test doing its job - it was the test that was wrong.
+            page.click("button[data-country-tab='calendar']");
+            // Default Playwright timeout is fine here: the tab click re-renders from cached payloads.
+            page.waitForSelector(".fm-week-strip");
+            String calendarBody = page.content();
+
             // Seven days, each named. If the schedule silently failed to load, the grid is absent and
             // this is what notices.
             for (String day : List.of("Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7")) {
-                assertTrue(body.contains(day), "the week grid is missing " + day);
+                assertTrue(calendarBody.contains(day), "the week grid is missing " + day);
             }
             for (String kind : List.of("International", "Finance update", "League", "Training", "Cup",
                     "Form &amp; morale")) {
-                assertTrue(body.contains(kind), "the week grid is missing the " + kind + " day");
+                assertTrue(calendarBody.contains(kind), "the week grid is missing the " + kind + " day");
             }
 
             // The four country cards must be capped, not spread. The owner reported them still

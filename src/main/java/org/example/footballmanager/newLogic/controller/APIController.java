@@ -8,6 +8,8 @@ import org.example.footballmanager.newLogic.service.GameClockService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import java.util.Locale;
+import java.util.List;
+import java.util.LinkedHashMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,6 +28,8 @@ public class APIController {
 
     private final SeasonService seasonService;
     private final GameClockService gameClockService;
+    private final org.example.footballmanager.newLogic.jobs.JobRunner jobRunner;
+    private final org.example.footballmanager.newLogic.repository.JobRunRepository jobRunRepository;
 
     @GetMapping("/server-time")
     public ResponseEntity<Map<String, String>> getServerTime() {
@@ -63,6 +67,59 @@ public class APIController {
     @PostMapping("/game-clock/advance-to-hour")
     public Map<String, Object> advanceToHour(@RequestParam int hour) {
         return gameClockService.advanceToHour(hour);
+    }
+
+    /**
+     * Runs any job whose trigger has been reached, without moving the clock (owner, 2026-09-28).
+     *
+     * <p>Advancing the clock already runs what is due. This exists for the case where a job failed
+     * and has been re-queued, and for seeing the outcome of a scan without an advance. It is safe to
+     * call repeatedly: a job with a DONE record is skipped.
+     */
+    @PostMapping("/jobs/run-due")
+    public Map<String, Object> runDueJobs() {
+        Map<String, Object> snapshot = gameClockService.snapshot();
+        return jobRunner.runDue(
+                Integer.parseInt(String.valueOf(
+                        SeasonService.BASE_SEASON_YEAR + (asInt(snapshot.get("seasonNumber"), 1) - 1))),
+                asInt(snapshot.get("weekNumber"), 1),
+                asInt(snapshot.get("day"), 1),
+                asInt(snapshot.get("hour"), 0));
+    }
+
+    private int asInt(Object value, int fallback) {
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** Every job and its trigger, so the schedule is inspectable rather than folklore. */
+    @GetMapping("/jobs")
+    public List<Map<String, Object>> listJobs() {
+        return jobRunner.describeJobs();
+    }
+
+    /** Job history for a week: what ran, when, and what failed. */
+    @GetMapping("/jobs/runs")
+    public List<Map<String, Object>> jobRuns(
+            @RequestParam(defaultValue = "1") int week,
+            @RequestParam(defaultValue = "1") int season) {
+        int seasonYear = SeasonService.BASE_SEASON_YEAR + (season - 1);
+        return jobRunRepository.findBySeasonYearAndWeekNumberOrderByDayNumberAscRanAtHourAsc(seasonYear, week)
+                .stream()
+                .map(run -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("key", run.getJobKey());
+                    row.put("day", run.getDayNumber());
+                    row.put("hour", run.getRanAtHour());
+                    row.put("status", run.getStatus().name());
+                    row.put("ranAt", run.getRanAt());
+                    row.put("message", run.getMessage());
+                    return row;
+                })
+                .toList();
     }
 
     @GetMapping("/game-clock")
