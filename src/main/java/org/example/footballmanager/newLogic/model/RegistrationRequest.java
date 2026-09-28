@@ -29,6 +29,16 @@ public class RegistrationRequest {
     @JoinColumn(name = "team_id")
     private Team team;
 
+    /**
+     * The country chosen on the registration form (owner, 2026-09-28).
+     *
+     * <p>Kept on the request as well as the user, because the club is reserved <i>at submission time</i>
+     * and an admin reviewing the request needs to see what the applicant actually asked for. Without
+     * it the reviewer sees a club and has to infer the intent from which country the club happens to
+     * be in.
+     */
+    private String countryCode;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
     private RegistrationRequestStatus status;

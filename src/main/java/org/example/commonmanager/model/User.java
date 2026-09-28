@@ -78,6 +78,21 @@ public class User implements UserDetails {
 
     private LocalDateTime communityLastViewedAt;
 
+    /**
+     * The nation this manager plays in, chosen at registration (owner, 2026-09-28).
+     *
+     * <p>This is the field the whole country-agnostic system hangs off. It used to not exist: a user's
+     * country was <i>derived</i> on every request by looking up the club they managed, so you got a
+     * country as a consequence of picking a club rather than by choosing one — and a country could
+     * never be chosen that had no club to hand out yet.
+     *
+     * <p>A three-letter code from {@code CountryCatalog}, not a foreign key, on purpose: the
+     * registration form has to offer these before any user exists, and the two must not be able to
+     * drift. Nullable, because a legacy row predates the field; the resolver falls back to the
+     * club's country so an old account keeps working.
+     */
+    private String countryCode;
+
     @OneToOne
     private CTeam CTeam;
 

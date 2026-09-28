@@ -2159,11 +2159,14 @@ one.
 
 | # | Task |
 |---|---|
-| 0.4a | **`User.country`** — a real column, chosen at registration from the 48 |
-| 0.4b | A country picker on the registration form, populated from the country list |
-| 0.4c | Club selection scoped to the chosen country, so a manager can only run a club in their own country |
-| 0.4d | **Every** league, transfer, cup, national-team and international read scopes by that country. Nothing may assume Serbia |
-| 0.4e | Audit for hardcoded country or league assumptions — `DatabaseInitializer` seeds Serbian leagues and the seeding logic assumes them |
+| 0.4a | **`User.countryCode`** — a real column, chosen at registration | ✅ done 2026-09-28 |
+| 0.4b | A country picker on the registration form | ✅ done — populated from `/countries/catalog`, unseeded countries listed but not selectable |
+| 0.4c | Club reservation scoped to the chosen country | ✅ done — the club is reserved from that country's leagues at submission |
+| 0.4c2 | 🔴 **The club is actually linked on approval** | ✅ done — `approveRequest` now creates the `CTeam` the user is resolved through |
+| 0.4c3 | 🔴 **`POST /auth/register` did not exist** | ✅ added |
+| 0.4c4 | 🔴 **The admin queue and approve/reject did not exist** | ✅ added — `GET /admin/registration-requests`, `POST /admin/registration-requests/{id}/{approve,reject}` |
+| 0.4d | **Every** league, transfer, cup, national-team and international read scopes by that country | ⬜ **not done** — the field exists, nothing reads it yet |
+| 0.4e | Audit for hardcoded country or league assumptions | ⬜ **not done** — `DatabaseInitializer` still seeds Serbian leagues |
 
 > **This is the single most important architectural item in the section**, and it is cheap to get
 > right now and expensive to retrofit. Every table that will be built in Parts 1–7 gets a country

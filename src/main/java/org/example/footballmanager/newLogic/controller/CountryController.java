@@ -15,6 +15,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.example.footballmanager.newLogic.model.CountryCatalog;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
+
+import java.util.Locale;
+import java.util.Set;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +34,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/countries")
 public class CountryController {
     private final CountryRepository countryRepository;
+    private final TeamRepository teamRepository;
     private final CompetitionRepository competitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PlayerRepository playerRepository;
@@ -43,6 +49,7 @@ public class CountryController {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
+        this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.seasonCompetitionRepository = seasonCompetitionRepository;
         this.matchRepository = matchRepository;
@@ -50,6 +57,45 @@ public class CountryController {
         this.seasonRepository = seasonRepository;
         this.scheduleInsightService = scheduleInsightService;
         this.seasonService = seasonService;
+    }
+
+    /**
+     * The 48 nations, for the registration form (owner, 2026-09-28).
+     *
+     * <p>Served from {@link CountryCatalog} rather than from the {@code country} table, and that
+     * distinction matters. The registration form must work <b>before anyone has registered</b> — for a
+     * new install, and for a manager choosing a country whose leagues are not seeded yet. Listing
+     * only seeded countries would hide exactly the countries a new player most wants to see.
+     *
+     * <p>Each entry also reports whether it is playable right now, so the form can show "not seeded
+     * yet" rather than letting someone pick a country that will refuse their registration.
+     *
+     * <p>Public on purpose: it must be readable by an unauthenticated visitor, and it exposes nothing
+     * but a list of country names.
+     */
+    @GetMapping("/catalog")
+    public List<Map<String, Object>> getCountryCatalog() {
+        Set<String> seeded = countryRepository.findAll().stream()
+                .map(Country::getIsoCode)
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> code.toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        Set<String> seededWithClubs = teamRepository.findAll().stream()
+                .map(team -> team.getCountry())
+                .filter(Objects::nonNull)
+                .map(Country::getIsoCode)
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> code.toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+
+        return CountryCatalog.all().stream().map(c -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("code", c.code());
+            row.put("name", c.displayName());
+            row.put("seeded", seeded.contains(c.code()));
+            row.put("hasClubs", seededWithClubs.contains(c.code()));
+            return row;
+        }).toList();
     }
 
     @GetMapping

@@ -105,6 +105,12 @@ public class SecurityConfig {
                                 "/basketballmanager/**",
                                 "/americanfootballmanager/**",
                                 "/auth/**",
+                                // The country list, for the registration form (owner, 2026-09-28).
+                                // Public on purpose and deliberately narrow: the form has to work before
+                                // anyone has an account, and this exposes nothing but country names,
+                                // codes and whether each is seeded. The seeded countries endpoint at
+                                // /countries stays behind auth - it carries reputation and ratings.
+                                "/countries/catalog",
                                 "/api/server-time",
                                 "/api/game-clock",
                                 "/home.html",

@@ -2,7 +2,9 @@ package org.example.commonmanager.controller;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.example.commonmanager.dto.JwtResponseDTO;
 import org.example.commonmanager.dto.LoginRequestDTO;
 import org.example.commonmanager.model.User;
@@ -25,12 +27,54 @@ public class UserController {
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
     private final TeamRepository teamRepository;
+    private final org.example.footballmanager.newLogic.service.RegistrationService registrationService;
 
-    public UserController(UserRepository userRepo, AuthenticationManager authManager, JwtUtil jwtUtil, TeamRepository teamRepository) {
+    public UserController(UserRepository userRepo, AuthenticationManager authManager, JwtUtil jwtUtil, TeamRepository teamRepository,
+                          org.example.footballmanager.newLogic.service.RegistrationService registrationService) {
         this.userRepo = userRepo;
         this.authManager = authManager;
         this.jwtUtil = jwtUtil;
         this.teamRepository = teamRepository;
+        this.registrationService = registrationService;
+    }
+
+    /**
+     * Registers a manager's interest in a club.
+     *
+     * <p><b>This endpoint did not exist</b> (owner, 2026-09-28). `register.html` had been posting to
+     * `/auth/register` since it was written, `RegistrationService` was fully built, and nothing called
+     * it — so registration silently did nothing and the only accounts in the game were the two
+     * hand-seeded ones. It was found while adding the country picker, which had nothing to post to.
+     *
+     * <p>Public, like {@link #login}: a request is a request, not a session. It creates a <i>pending</i>
+     * request that an admin approves; no account exists until then.
+     */
+    @PostMapping("/register")
+    public ResponseEntity<Map<String, Object>> register(
+            @RequestBody org.example.footballmanager.newLogic.dto.RegisterRequestDTO dto) {
+        try {
+            var request = registrationService.createPendingRequest(dto);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("status", "PENDING");
+            body.put("message", "Your registration request has been sent for approval.");
+            body.put("countryCode", request.getCountryCode());
+            body.put("countryName", org.example.footballmanager.newLogic.model.CountryCatalog
+                    .byCode(request.getCountryCode())
+                    .map(org.example.footballmanager.newLogic.model.CountryCatalog::displayName)
+                    .orElse(request.getCountryCode()));
+            body.put("reservedTeamName", request.getTeam() != null ? request.getTeam().getName() : null);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            // A 400, not a 500: the request was well formed and one of its values was not acceptable.
+            // The manager needs to read what was wrong, so the message goes back verbatim.
+            return ResponseEntity.badRequest()
+                    .body(Map.of("status", "REJECTED", "message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            // No free club in that country. A 409 rather than a 400: nothing is wrong with the request,
+            // the club supply is exhausted, and that is worth distinguishing.
+            return ResponseEntity.status(409)
+                    .body(Map.of("status", "NO_CLUB", "message", e.getMessage()));
+        }
     }
 
     @PostMapping("/login")
@@ -66,6 +110,23 @@ public class UserController {
                 dto.setCountryName(resolvedUser.getCTeam().getCsCountry().getName());
                 dto.setCountryIsoCode(resolvedUser.getCTeam().getCsCountry().getIsoCode());
             }
+        }
+
+        // The country the manager CHOSE, which outranks whatever club they happen to hold
+        // (owner, 2026-09-28). Without this the whole country-agnostic system hangs off a derived
+        // value, and a user would see the leagues of whatever country their club is in regardless of
+        // the country they registered with. The block above is the legacy path for an account created
+        // before the field existed, and only survives here when the user has no country of their own.
+        String chosenCountry = resolvedUser.getCountryCode();
+        if (chosenCountry != null && !chosenCountry.isBlank()) {
+            org.example.footballmanager.newLogic.model.CountryCatalog.byCode(chosenCountry)
+                    .ifPresent(chosen -> {
+                        dto.setCountryIsoCode(chosen.code());
+                        dto.setCountryName(chosen.displayName());
+                    });
+        }
+
+        if (resolvedUser.getCTeam() != null) {
             
             // Look up the newLogic football team by name.
             //

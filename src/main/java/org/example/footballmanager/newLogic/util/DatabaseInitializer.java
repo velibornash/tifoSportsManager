@@ -47,6 +47,15 @@ public class DatabaseInitializer {
      * {@code /admin/**}, which is reserved for OWNER/ADMIN/DEV.
      */
     private static final String SECOND_EMAIL = "kecko@example.com";
+
+    /**
+     * The country both seeded managers play in.
+     *
+     * <p>Named rather than left to be derived from the club (owner, 2026-09-28), because a derived
+     * country cannot be chosen and a null one drops an account onto the legacy path — so a seeded
+     * manager and a newly registered one would behave differently for no visible reason.
+     */
+    private static final String SEEDED_COUNTRY_CODE = "SRB";
     private static final String SECOND_DISPLAY_NAME = "Kecko";
     private static final String SECOND_PASSWORD = "Kecko123!";
     private static final String SREMAC_TEAM_NAME = "Sremac Berkasovo";
@@ -270,6 +279,7 @@ public class DatabaseInitializer {
             // the difference between "may see talent" and "paid for talent".
             owner.setPlusSubscription(true);
             owner.setRole(UserRole.OWNER);
+            owner.setCountryCode(SEEDED_COUNTRY_CODE);
             userRepository.save(owner);
             ownerTeam = omladinac;
 
@@ -429,14 +439,20 @@ public class DatabaseInitializer {
      * <i>state</i> that can change after the row was created, not a default to fill in once.
      */
     private void applyManagerIdentities() {
+        // Both seeded managers play in Serbia (owner, 2026-09-28). Stated explicitly on every boot
+        // rather than left null and derived from the club, because the whole country-agnostic system
+        // reads this column - a null here would silently fall back to the legacy club-derived path and
+        // make the two accounts behave differently from a newly registered one.
         userRepository.findByUsernameOrEmail(OWNER_EMAIL).ifPresent(owner -> {
             owner.setDisplayName(OWNER_DISPLAY_NAME);
             owner.setPlusSubscription(true);
+            owner.setCountryCode(SEEDED_COUNTRY_CODE);
             userRepository.save(owner);
         });
         userRepository.findByUsernameOrEmail(SECOND_EMAIL).ifPresent(user -> {
             user.setDisplayName(SECOND_DISPLAY_NAME);
             user.setPlusSubscription(false);
+            user.setCountryCode(SEEDED_COUNTRY_CODE);
             userRepository.save(user);
         });
     }
@@ -491,12 +507,14 @@ public class DatabaseInitializer {
             user.setRole(UserRole.REGULAR);
             user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
             user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            user.setCountryCode(SEEDED_COUNTRY_CODE);
             userRepository.save(user);
             log.info("Kreiran korisnik '{}' sa timom {}", SECOND_EMAIL, SREMAC_TEAM_NAME);
         } else {
             User user = existing.get();
             user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
             user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            user.setCountryCode(SEEDED_COUNTRY_CODE);
             if (user.getRole() == null) {
                 user.setRole(UserRole.REGULAR);
             }

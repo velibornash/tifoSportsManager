@@ -3909,3 +3909,76 @@ borders for free. `DatabaseInitializer` seeding Serbian leagues is a known hardc
 - **A page per competition** — cup, Champions, Masters, Challenge, and each national tournament — with
   a **league table where one exists** and **no table for a cup**, results by round, and the schedule.
   A cup must not render an empty table; that is the failure mode to avoid.
+
+---
+
+## Country chosen at registration — and registration itself did not exist (2026-09-28)
+
+Owner: *"ispravi sve gde treba da se drzava bira PRI REGISTRACIJI"*, with both seeded managers pinned to Serbia.
+
+### The finding: all four legs of registration were unwired
+
+While adding the country picker I checked where it posts, and **the endpoint did not exist.**
+`UserController` had only `/login` and `/me`. `register.html` had been posting to `/auth/register`
+since it was written. `RegistrationService` was complete — `createPendingRequest`, `approveRequest`,
+`rejectRequest` — and **none of the three was called from anywhere.** The admin queue called
+`/admin/registration-requests/{id}/{action}`, which also did not exist.
+
+So applying to play did nothing, approving an application could not be done from the interface, and
+the only accounts in the game were the two hand-seeded ones. `DatabaseInitializer` had a comment
+saying exactly this and nobody had acted on it: *"until `RegistrationService` is actually wired to a
+controller this is the only path that produces one."*
+
+**The country picker had nothing to post to**, so wiring registration was not scope creep — it was the
+minimum for the requested change to mean anything.
+
+### Built
+
+- **`CountryCatalog`** — the 48 nations in one place, English names and three-letter codes. Declared
+  once so the form and the backend cannot disagree, which is how they had already drifted.
+- **`User.countryCode`** and **`RegistrationRequest.countryCode`**, and `/auth/me` now reports the
+  **chosen** country, with the old club-derived path kept only for an account created before the field.
+- **The club is reserved from the chosen country's leagues**, not "the first free AI club" — which was
+  always a club in Serbia, so a manager in Qatar was handed a Serbian club and given a country by
+  accident.
+- **Approval links the club.** It did not: `User` is resolved to a football club through a `CTeam` by
+  name, and nothing ever created one, so an approved account would have logged in and managed nothing.
+- **`POST /auth/register`**, and the admin list/approve/reject endpoints, with the country on each
+  request so a reviewer can see what the applicant actually asked for rather than inferring it.
+- **Both seeded managers pinned to `SRB`**, set on every boot rather than derived.
+
+### Two things the tests caught
+
+**`List.of(values())` does not preserve order.** The obvious one-liner for an enum's values treats the
+array as a *collection of elements* rather than a sequence, so the 48 came back **shuffled**. Nothing
+crashed and a count-only test would have passed. A stream over `values()` keeps encounter order, which
+is the declaration order. This is the same failure the whole catalog exists to prevent — a list written
+down once and read somewhere else — except it was in one place and still lost the information.
+
+**My own edit landed between an annotation and its target.** Adding `countryCode` to `User` inserted
+the field after a bare `@OneToOne`, so the annotation attached to my `String` instead of to
+`CTeam`, and Hibernate refused to start: *"Association 'User.countryCode' targets the type
+'java.lang.String' which is not an '@Entity' type."* The message named the symptom rather than the
+cause. A scripted replace anchored on a field name is not enough when annotations sit above their
+targets.
+
+### Verified against the running application
+
+| Check | Result |
+|---|---|
+| `GET /countries/catalog` with no token | **200**, 48 countries, `hasClubs` true for Serbia only |
+| Register with `countryCode: SRB` | **200** — pending, country echoed, club `ŽFK Zrenjanin` reserved |
+| Register with no country | **400** — *"Choose the country you want to play in."* |
+| Register for Brazil (no clubs yet) | **409** — *"No free clubs are available in Brazil yet."* |
+| Register with a made-up code | **400** — *"'XXX' is not a country this game knows about."* |
+| Admin queue | lists the request with its country |
+| Approve, then log in | **`/auth/me` reports `Serbia / SRB`**, club `ŽFK Zrenjanin`, 15 players readable |
+
+Test data removed afterwards. **Tests: 12 new. Full suite 695.**
+
+### Still open, and load-bearing
+
+`0.4d` — nothing yet **reads** the country column. It is stored, validated and reported, but the
+leagues, transfers and competitions are still Serbian by assumption. `0.4e`, the audit for hardcoded
+assumptions, is also open; `DatabaseInitializer` still seeds Serbian leagues. Until both are done the
+field is correct but inert, and that is stated in the backlog rather than glossed.

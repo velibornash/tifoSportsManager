@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,6 +23,67 @@ public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
     private final TransferService transferService;
+    private final org.example.footballmanager.newLogic.service.RegistrationService registrationService;
+    private final org.example.footballmanager.newLogic.repository.RegistrationRequestRepository registrationRequests;
+
+    /**
+     * The pending registration requests, for the admin queue.
+     *
+     * <p><b>All four legs of registration were unwired</b> (owner, 2026-09-28): {@code register.html}
+     * posted to an endpoint that did not exist, the admin queue called one that did not exist, and
+     * {@code RegistrationService.approveRequest} and {@code rejectRequest} — both fully written — had
+     * no caller anywhere. So applying to play did nothing, and approving an application could not be
+     * done from the interface. The only accounts in the game were the two hand-seeded ones.
+     *
+     * <p>Each request now carries the country its applicant chose, because the club was reserved
+     * from that country's leagues and a reviewer looking at a club name alone cannot tell what the
+     * applicant actually asked for.
+     */
+    @GetMapping("/registration-requests")
+    public ResponseEntity<java.util.List<Map<String, Object>>> listPendingRegistrations() {
+        return ResponseEntity.ok(registrationRequests
+                .findByStatus(org.example.footballmanager.newLogic.model.RegistrationRequestStatus.PENDING)
+                .stream()
+                .map(request -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", request.getId());
+                    row.put("username", request.getUsername());
+                    row.put("email", request.getEmail());
+                    row.put("countryCode", request.getCountryCode());
+                    row.put("countryName",
+                            org.example.footballmanager.newLogic.model.CountryCatalog
+                                    .byCode(request.getCountryCode())
+                                    .map(org.example.footballmanager.newLogic.model.CountryCatalog::displayName)
+                                    .orElse(request.getCountryCode()));
+                    row.put("teamId", request.getTeam() != null ? request.getTeam().getId() : null);
+                    row.put("teamName", request.getTeam() != null ? request.getTeam().getName() : null);
+                    row.put("createdAt", request.getCreatedAt());
+                    return row;
+                })
+                .toList());
+    }
+
+    /** Approves a request, which is what actually creates the account and links the club. */
+    @PostMapping("/registration-requests/{id}/{action:approve|reject}")
+    public ResponseEntity<Map<String, Object>> decideRegistration(
+            @PathVariable Long id,
+            @PathVariable String action,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User reviewer,
+            @RequestBody(required = false) Map<String, String> body) {
+        String note = body == null ? null : body.get("note");
+        try {
+            var request = "approve".equalsIgnoreCase(action)
+                    ? registrationService.approveRequest(id, reviewer, note)
+                    : registrationService.rejectRequest(id, reviewer, note);
+            return ResponseEntity.ok(Map.of(
+                    "id", request.getId(),
+                    "status", request.getStatus().name(),
+                    "countryCode", request.getCountryCode() == null ? "" : request.getCountryCode()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     @PostMapping("/initialize-db")
     public ResponseEntity<Map<String, Object>> initializeDatabase() {

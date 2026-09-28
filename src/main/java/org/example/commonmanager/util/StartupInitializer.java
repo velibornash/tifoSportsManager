@@ -104,6 +104,9 @@ public class StartupInitializer implements org.springframework.boot.CommandLineR
         owner.setTifoCTeam(footballTeam);
         owner.setBasketballTeam(basketballTeam);
         owner.setAmericanFootballTeam(americanFootballTeam);
+        // The seeded owner plays in Serbia (owner, 2026-09-28), stated rather than derived - see the
+        // note in DatabaseInitializer on why a null country is not a neutral default.
+        owner.setCountryCode("SRB");
 
         userRepository.save(owner);
         log.info("Created owner user '{}' with role OWNER", ownerUsername);

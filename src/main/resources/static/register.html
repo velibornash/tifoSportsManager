@@ -43,8 +43,23 @@
                 <label>Confirm password</label>
             </div>
 
+            <!--
+                The country decides which league system this account sees, so it is chosen first and
+                before anything else exists (owner, 2026-09-28). Populated from /countries/catalog, which
+                is served from the server's own list rather than a hand-typed set of options here - the
+                two used to be maintained separately, and had already drifted.
+            -->
+            <div class="input-group">
+                <select name="countryCode" id="countrySelect" required>
+                    <option value="" disabled selected>Loading countries...</option>
+                </select>
+                <label>Country you play in</label>
+            </div>
+            <p class="auth-note" id="countryNote" hidden></p>
+
             <p class="auth-note">
-                If no free AI clubs exist, registration will be refused and you will get a clear message.
+                A club in your country is reserved when you apply. Countries without a league system
+                yet are listed but not selectable, so you can see what is coming.
             </p>
             <div id="registerStatus" class="auth-status info" hidden></div>
             <button id="registerBtn" type="submit">Send registration request</button>
