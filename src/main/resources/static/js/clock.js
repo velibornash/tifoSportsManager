@@ -13,6 +13,8 @@ import { authFetch } from './auth.js';
 let serverOffsetMs = 0;
 let seasonNumber = 1;
 let weekNumber = 1;
+let dayNumber = 1;
+let dayLabel = '';
 let phaseLabel = "Season in progress";
 
 async function syncWithServerTime() {
@@ -33,6 +35,8 @@ async function syncGameClock() {
         const data = await response.json();
         seasonNumber = Number(data.seasonNumber || 1);
         weekNumber = Number(data.weekNumber || 1);
+        dayNumber = Number(data.day || 1);
+        dayLabel = data.dayLabel || '';
         phaseLabel = data.phase || "Season in progress";
     } catch (err) {
         console.warn("Game clock sync failed:", err);
@@ -51,26 +55,29 @@ function updateLiveClock() {
         hour12: false
     });
 
-    const dateStr = now.toLocaleDateString('sr-RS', {
-        timeZone: 'Europe/Belgrade',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    });
 
-    const seasonWeek = `Season ${seasonNumber} • Week ${weekNumber}`;
+    // Game state only, per the owner (2026-09-28): the real calendar date was removed. It sat
+    // directly next to "Day 3" and read as though the game day were a weekday, which it is not - the
+    // day is a position in the seven-day cycle, so the same season would show different days
+    // depending on when it was started. The wall clock above is still the real time, which is what
+    // the date was for.
+    //
+    // The day label is appended only when the server sent one, so a clock payload without it
+    // degrades to the shorter text instead of rendering "Day undefined".
+    const dayText = dayLabel ? ` \u00b7 Day ${dayNumber} (${dayLabel})` : ` \u00b7 Day ${dayNumber}`;
+    const seasonWeek = `Season ${seasonNumber} \u2022 Week ${weekNumber}${dayText}`;
 
     const timeEl = document.getElementById('clock-time');
     const dateEl = document.getElementById('clock-date');
     const phaseEl = document.getElementById('clock-phase');
     if (timeEl) timeEl.textContent = timeStr;
-    if (dateEl) dateEl.textContent = `${dateStr} • ${seasonWeek}`;
+    if (dateEl) dateEl.textContent = seasonWeek;
     if (phaseEl) phaseEl.textContent = phaseLabel;
 
     const timeMobile = document.getElementById('clock-time-m');
     const dateMobile = document.getElementById('clock-date-m');
     if (timeMobile) timeMobile.textContent = timeStr;
-    if (dateMobile) dateMobile.textContent = `${dateStr} • ${seasonWeek}`;
+    if (dateMobile) dateMobile.textContent = seasonWeek;
 }
 
 syncWithServerTime();

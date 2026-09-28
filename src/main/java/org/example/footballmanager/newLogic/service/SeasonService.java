@@ -58,6 +58,18 @@ public class SeasonService {
             c.setCurrentDate(LocalDateTime.now());
             return c;
         });
+        // A row created before the day/hour columns existed has them null, and an entity field
+        // default only applies to rows Hibernate inserts - it does not backfill. Reading that null
+        // made /api/game-clock report hour=null, so the day is seeded here instead of being patched
+        // in the database by hand.
+        if (clock.getCurrentDay() == null) {
+            clock.setCurrentDay(GameDay.FIRST);
+        }
+        if (clock.getCurrentHour() == null) {
+            // Before the first kickoff of the day, not at kickoff: the day starts at 09:00 so
+            // "Watch match" is correctly inactive until the hour reaches the fixture.
+            clock.setCurrentHour(9);
+        }
         if (clock.getCurrentSeason() != null && clock.getCurrentSeason() > 1000) {
             // Legacy format stored calendar year (e.g. 2025). Convert to Season index (Season 1 starts at BASE_SEASON_YEAR).
             int normalized = clock.getCurrentSeason() - BASE_SEASON_YEAR + 1;

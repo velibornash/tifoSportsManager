@@ -42,6 +42,16 @@ public class APIController {
         Map<String, Object> response = new HashMap<>();
         response.put("seasonNumber", clock.getCurrentSeason());
         response.put("weekNumber", clock.getCurrentWeek());
+        // Day and hour (owner, 2026-09-28). The header renders the day next to season and week; the
+        // hour is what "Watch match" is gated on, so it travels with the same payload.
+        org.example.footballmanager.newLogic.model.GameDay gameDay =
+                org.example.footballmanager.newLogic.model.GameDay.of(clock.getCurrentDay());
+        response.put("day", gameDay.number());
+        response.put("dayLabel", gameDay.label());
+        response.put("dayKind", gameDay.kind().name());
+        response.put("matchDay", gameDay.isMatchDay());
+        response.put("kickoffHour", gameDay.kickoffHour());
+        response.put("hour", clock.getCurrentHour());
         response.put("phase", "Season in progress");
         return ResponseEntity.ok(response);
     }
