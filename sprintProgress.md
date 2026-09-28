@@ -3552,3 +3552,32 @@ bug was found: it logs in with a real browser and reads `style.maxHeight` after 
 the only thing that can tell a dead accordion from a closed one. It **skips** when the app is not
 running, because the rest of the suite runs with nothing on :8080 and a test that reports
 `ERR_CONNECTION_REFUSED` as an error teaches people to ignore errors.
+
+---
+
+## Owner decisions taken (2026-09-28) — S8.3 sweep
+
+Working through the deferred list, the owner answered each one.
+
+| # | Decision |
+|---|---|
+| **S4.1 / S5.3 item 2** | **We do not have individual focus.** Training is only what is chosen in Advanced Training and on the training slot. **The backend is to be deleted.** |
+| Recent League Results | Delete if the dashboard already has Recent Matches; keep otherwise |
+| Stadium image | Every stadium gets a picture. Fallback is the Dunjareal ground. **Schema change approved.** Manager-uploadable image also wanted |
+| S8.3 #1 | Fix — done, 5090de2 |
+| S8.3 #2 | Fix |
+| S8.3 #3 | **Moved to the end of the backlog.** Whether the Tactic Editor works on a phone at all is unknown, so the task needs scoping first. Training Setup / Training Reports live inside the Club section on desktop and the league area has its own table, so the three mobile-only entries are deliberate shortcuts — **only Tactic Editor is a genuine gap** |
+| S8.3 #5 | Fix |
+| S8.3 #9 | Put a place for the flag; add artwork as countries are built |
+| S8.3 #10 | Close — done, the premise was wrong |
+
+**S4.1 is the significant one and it runs backwards from the backlog.** The headline feature of
+Sprint 4 was recorded as "backend done 2026-09-27, panel not built". The owner has since established
+that the feature is not wanted at all: training follows Advanced Training and the training slot, and
+nothing else. So the work is not "build the panel" but **delete `TrainingFocusService`, its entity,
+its table, its two endpoints, the `individualFocus` DTO field and its tests** — and the `SkillName`
+enum is shared with that machinery and needs checking before it goes.
+
+The lesson is the same one from `PlusFeatureService` and from `S8.3 #1`: a feature can be
+implemented, tested and documented, and still be something nobody asked for. All three were only
+visible once someone looked at whether anything used them.

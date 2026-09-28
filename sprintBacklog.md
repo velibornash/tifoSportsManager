@@ -1920,14 +1920,54 @@ same viewer as your own match.
 |---|---|---|
 | 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | ✅ **done 2026-09-28** — and the desktop accordions were **dead**, not just double-rendering. See below |
 | 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | `dashboard.js:70`; `pages.js:532`; `utils.js:4`; `clock.js:1-23` |
-| 3 | Mobile sidebar has **no `tacticEditor` entry** and uses different labels than desktop | `dashboard.html:31-92` vs `:95-133` |
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
 | 5 | `training-view.js` — merge the two ~450-line parallel implementations | `training-view.js:7-453,455-907` |
 | 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | 🟡 **partly done 2026-09-28** — `emptyStateHtml` deleted; the other two turned out to be decisions, not dead code. See below |
 | 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
-| 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | `academy.js:186-193` |
+| 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | ✅ **closed 2026-09-28, owner decision** — the premise was wrong; see below |
+
+---
+
+#### ✅ S8.3 #10 — `promote-reveal` in `sessionStorage`: closed, the premise was wrong (2026-09-28)
+
+The recorded concern was that the reveal "breaks on refresh and across devices". It does neither, for
+the thing that matters.
+
+The **talent value is server-side already**: `promoteJuniorWithReveal` persists the promotion and the
+revealed number onto the `Player`. The `sessionStorage` entry holds only the *celebration banner* —
+`player-view.js` reads it, renders a flourish, and deletes it. Refresh before the flourish paints and
+the flourish is gone; the number is not.
+
+And since S8.3's sibling work wired first-team talent (873588d), the promoted player's exact talent is
+now visible in the squad anyway, so the banner is decoration of decoration.
+
+**Closed rather than built.** A server-side reveal record would buy a confetti animation that survives
+a refresh. Not worth a table.
+
+---
+
+#### ⬜ S8.3 #3 — mobile sidebar has no Tactic Editor — MOVED TO END OF BACKLOG 2026-09-28 (owner)
+
+**Confirmed real, deliberately not fixed now.** The two sidebars have drifted in both directions:
+
+| | desktop `#clubSidebar` | mobile `#mobileSidebar` |
+|---|---|---|
+| entries | 10 | 12 |
+| Tactic Editor | ✅ | ❌ **missing** |
+| Training Setup · Training Reports · League Table | ❌ | ✅ mobile-only |
+
+**Owner position (2026-09-28): the Tactic Editor's suitability on a phone is unknown, so this needs
+to be scoped before it is touched.** Not a bug to fix but a question to answer first: is the advanced
+Tactic Editor usable on a 390px screen at all, or should mobile reach the *basic* formations view
+instead? Building a panel for a screen that may not work is worse than leaving the gap visible.
+
+**Context that makes the second half of this table explicable, from the owner:** Training Setup and
+Training Reports live inside the Club section on desktop, and the league area has its own table — so
+the three mobile-only entries are shortcuts rather than missing navigation. That means the drift is
+**not** three missing desktop links; it is three deliberate mobile shortcuts, and only Tactic Editor
+is a genuine gap. Any eventual fix should add Tactic Editor to mobile and leave the other three alone.
 
 ---
 
