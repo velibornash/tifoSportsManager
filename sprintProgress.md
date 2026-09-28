@@ -3695,3 +3695,36 @@ it is an allow-list. **`image/svg+xml` is excluded deliberately**: SVG is a docu
 script, and this file is served from the app's own origin.
 
 **Tests: 8. Full suite 670.**
+
+---
+
+## ME TWEAK added — and the match the owner caught (2026-09-28)
+
+The owner asked for a `# 🔴 ME TWEAK` section at the end of the backlog: their own items, outside the
+sprint structure, so a re-audit cannot quietly drop them. Added, with one item in it.
+
+**T1 — a 1–1 draw with 38–4 shots and 9.5–0.9 xG.** Owner: *"pazi ove brojke, nemoguce"*. Four
+independent reasons it cannot happen, any one of which is enough:
+
+1. **9.5 xG does not become 1 goal.** Poisson: P(≤1) = 0.079%, about **1 match in 1,272**.
+2. **9.50 xG over 6 shots on target is 1.58 each** — a penalty is 0.79, a six-yard header ~0.40–0.60,
+   and only a shot from about two yards approaches 1.0.
+3. **xG 9.5 and "32 of 38 off target" are opposite claims.** One of the two is describing a match that
+   did not happen.
+4. **The routed team completed a higher share of its passes** — 88% against 86% while being outshot
+   4–38 and out-cornered 1–10.
+
+**What it most likely is:** two independent series that do not know they are in the same match. The
+score and shot count describe a 1–1 with a handful of chances each; the xG describes a 10–0. The
+mechanism to look for is xG being summed over a different event set than the shot counter uses — or
+double-counting, which `PROPOSAL_PROGRESS.md` already hints at with *"penali bez duplog brojanja"*,
+a note you only write after it has happened once.
+
+**38 shots is also above the project's own 15–25 target**, on its own.
+
+The most useful fix is not a better model, it is a **gate**: a match whose goals and xG disagree by
+this much should be impossible to serialise, not merely unlikely. An assertion in
+`ProposalMatchOutcomeBuilder` of the shape `goals <= xG * 3 + 1` would have refused this match.
+
+**Not fixed here.** This needs a diagnostic run against a real match's event stream, and I would want
+to look at the data before changing the engine. It is the owner's report and it is recorded as given.

@@ -2683,3 +2683,92 @@ For any task in this backlog:
 - [ ] **Every `fetch` checks `response.ok`** and surfaces a real error
 - [ ] **`AGENTS.md` is updated** if the change alters architecture — it is read by every future agent, and it is currently wrong in several places
 - [ ] **No new dead code** — if you add something and do not wire it, delete it. The repo has ~40k LOC of exactly that
+
+---
+
+# 🔴 ME TWEAK
+
+Items the owner raised directly, outside the sprint structure. Newest first. These are **not**
+sequenced against the sprints — they are the owner's own list, and they sit here so they cannot be
+lost in a re-audit.
+
+---
+
+## 🔴 T1 — a 1–1 draw with 38–4 shots and 9.5–0.9 xG. Those numbers are impossible (2026-09-28)
+
+Owner: *"pazi ove brojke, nemoguce"* — look at these numbers, impossible. Reported from a real
+match screen, Omladinac 1–1 Napredak, Season 1 Week 1.
+
+| Stat | OFK Omladinac | NK Napredak 1931 |
+|---|---|---|
+| Possession | 57% | 43% |
+| **xG** | **9.50** | **0.90** |
+| Shots | 38 | 4 |
+| Shots on target | 6 | 1 |
+| Shots off target | 32 | 3 |
+| Pass accuracy | 86% | 88% |
+| Corners | 10 | 1 |
+| Offsides | 0 | 0 |
+| Yellow / Red | 0 / 0 | 1 / 0 |
+| Penalties awarded | 0 | 1 |
+| Fouls | 9 | 4 |
+
+### Why it is impossible — four independent reasons
+
+**1. 9.5 xG does not become 1 goal. Not once in a thousand matches.**
+
+| | |
+|---|---|
+| P(0 goals from λ=9.5) | 0.000075 |
+| P(1 goal) | 0.000711 |
+| **P(≤1)** | **0.079% — about 1 match in 1,272** |
+
+A 1–1 draw from 9.5 expected goals is a once-in-thirteen-hundreds event. Even allowing for a keeper
+having an all-time game, this is not a tail anyone should expect to see in a season.
+
+**2. 9.50 xG from 6 shots on target is 1.58 xG per shot on target — above the scale.**
+
+A penalty is 0.79. A six-yard header is roughly 0.40–0.60. Only a shot from about two yards, straight
+in, approaches 1.0, and almost no such shots exist. For six shots to average 1.58, essentially every
+one of them would have to be a goal from a yard away.
+
+**3. xG 9.5 and "32 of 38 off target" cannot both be true.**
+
+These say opposite things. 9.5 xG means the chances were high quality. 84% of the shots missing the
+target means they were not. Whichever number is being summed from a different set of events than the
+one counting shots, one of the two is describing a match that did not happen.
+
+**4. The team that was routed has the better pass completion.**
+
+Outshot 4–38, out-cornered 1–10, and finishing with **88% pass accuracy against 86%**. A side taking
+four shots concedes the game; it does not then complete a higher proportion of its passes than the
+side taking thirty-eight.
+
+### What this most likely is
+
+**Two independent series that do not know they are in the same match.** The score and the shot count
+describe a 1–1 draw in which one team had a handful of chances; the xG describes a 10–0. The most
+likely mechanism is that **xG is summed over a different event set than the one the shot counter
+counts** — xG accumulates across chances, while shots are counted from outcome events, or one of
+them double-counts.
+
+There is direct precedent for the double-counting half of that: `PROPOSAL_PROGRESS.md` records the xG
+sum as *"suma `xG` nad GOAL/SHOT_SAVED/SHOT_MISSED/SHOT_BLOCKED/CROSS_HEADER/PENALTY, penali bez
+duplog brojanja"* — penalties specifically excluded from double counting, which is a note you only
+write after it has happened once.
+
+Also out of range on its own: **38 shots**, where the project's own target is 15–25 per match.
+
+### To diagnose
+
+| # | Step |
+|---|---|
+| 1 | Dump every shot event for one match with its `xG`, and check that the number of events equals the reported shot count |
+| 2 | Check the xG sum counts each shot **once** — specifically penalties and headers, the two that have form-double-counted before |
+| 3 | Check the xG table is not keyed such that one event yields several xG readings |
+| 4 | Sanity-gate the result: a match where xG and goals disagree by this much should be **impossible to serialise**, not merely unlikely. A post-hoc test in `ProposalMatchOutcomeBuilder` asserting `goals <= xG * 3 + 1` would have caught this match |
+| 5 | Separately: 38 shots is above the 15–25 target and worth a look on its own |
+
+**This is the owner's own report and is trusted over any reading of the numbers taken from a different
+match.** The figures above are as reported.
+
