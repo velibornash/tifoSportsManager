@@ -96,6 +96,7 @@ public class DatabaseInitializer {
     private final TransferActivitySeeder transferActivitySeeder;
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
+    private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
     private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
     private final org.example.footballmanager.newLogic.service.NationalTeamElectionService electionService;
     private final PlayerRepository playerRepository;
@@ -198,6 +199,13 @@ public class DatabaseInitializer {
                 cupFixtureSeeder.seedIfMissing();
             } catch (RuntimeException e) {
                 log.warn("Could not draw the cup: {}", e.getMessage());
+            }
+            // League fixtures seeded before MatchFixture.dayNumber existed have a week but no day, so
+            // the day-3 and day-7 matchday jobs select nothing and the season plays no league football.
+            try {
+                leagueFixtureDayBackfill.backfill();
+            } catch (RuntimeException e) {
+                log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
             }
             // The country's manager stands in as selector until the elections run. Recorded as an
             // appointment rather than derived from the viewer, so "only the selector sees the squad"

@@ -242,6 +242,12 @@ public class SeasonService {
                 fixture.setWeekNumber(week > 0 ? week : round + 1);
                 // Only a relative offset is kept: the season is twelve weeks and has no months in
                 // it, so this is used for ordering only and never shown to a manager.
+                // Day 3, 19:00 - the first league round of the week. The reverse leg in this same
+                // week becomes day 7. A week holds exactly two rounds, which is why the generator's
+                // "two rounds share a week" comment is what makes the day split possible at all;
+                // without a day stamped here the day-3 matchday job has nothing of its own to play
+                // and would either find nothing or steal the day-7 round.
+                fixture.setDayNumber(GameDay.LEAGUE_FIRST_DAY);
                 fixture.setMatchDate(startDate.plusWeeks(fixture.getWeekNumber() - 1L));
                 fixture.setPlayed(false);
                 fixtures.add(fixture);
@@ -259,6 +265,8 @@ public class SeasonService {
             reverse.setSeasonYear(seasonYear);
             reverse.setRoundNumber(base.getRoundNumber() + rounds);
             reverse.setWeekNumber(base.getWeekNumber());
+            // Day 7, 16:00 - the second league round of the same week.
+            reverse.setDayNumber(GameDay.LEAGUE_SECOND_DAY);
             reverse.setMatchDate(base.getMatchDate());
             reverse.setPlayed(false);
             fixtures.add(reverse);

@@ -19,17 +19,19 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
 | Advance | `advance hour` / `advance day` / `advance week`. Counters wrap: hour 23→0 + day, day 7→1 + week, week 12→1 + season. |
 | Jobs | `DayJob` + `JobRunner` + `JobRun`. A job runs only if no DONE row exists for (season, week, day, key). Failed jobs are recorded and not auto-retried. |
 | Scheduler | `GameClockScheduler`, hourly. Advances the clock and checks what is due, so a job missed while the app was down is caught. On in prod, off in dev/test. |
-| Jobs registered | `day-opened`, `finance` (d2), `training` (d4), `recovery` — NOT built, see open — `matchday-cup` (d5), `matchday-league-a` (d3), `matchday-league-b` (d7), `week-rollover` (d7 23:00), `season-rollover` (w12 d7 23:00). |
+| Jobs registered | `day-opened`, `finance` (d2), `training` (d4), `matchday-league-a` (d3 19:00), `matchday-cup` (d5 18:00), `matchday-league-b` (d7 16:00), `week-rollover` (d7 23:00), `season-rollover` (w12 d7 23:00). All three matchdays **verified playing real matches**. |
 | Cup | Real draw (56 → 256 clubs, favourites vs non-favourites, non-favourite at home), `MatchFixture.dayNumber`, ties open to a pre-match view, day-5 matchday **verified playing real matches**. |
 | Country page | Four tabs — General, Calendar, National Team, U-21. Selector-only squad editing (release / call up, verified round trip). Elections: stand, vote, declare, annul. |
 | Formats | `MatchFormat` abstract base with `League`, `KnockoutCup`, `NationalSide`, `International`, `Tournament`. `CompetitionType` extended with `INTERNATIONAL`, `TOURNAMENT`. |
 
 ### Open, in the order I would do them
 
-1. **League fixtures have no `day_number`.** The day-3 and day-7 matchday jobs are registered but
-   find nothing, because the round-robin generator assigns rounds per week and does not stamp which
-   of the two days each belongs to. Until this lands, a week plays no league football from the job
-   path.
+1. ~~League fixtures have no `day_number`~~ — **DONE 2026-09-29.** The generator stamps day 3 on the
+   first round of a week and day 7 on its reverse leg, and `LeagueFixtureDayBackfill` stamped the
+   2790 fixtures that already existed so no world reset is needed. Verified: the day-3 matchday
+   logged "106 LEAGUE fixtures played for week 1 day 3". Note the split is 775 / 2015 rather than
+   even - several leagues share week numbers, and the per-competition scoping helped but did not
+   fully explain it. Not a blocker (both days have fixtures) but not understood yet.
 2. **Day 1 internationals.** `CompetitionType` and `MatchFormat` are ready; there is no
    `INTERNATIONAL` competition and no draw. Needs the draw.
 3. **Zone-based morale and daily recovery.** No zone model exists in the codebase at all. Needs:

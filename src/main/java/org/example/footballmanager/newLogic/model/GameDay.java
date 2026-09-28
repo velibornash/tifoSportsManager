@@ -23,6 +23,16 @@ public enum GameDay {
     DAY_7(7, WeekTemplate.DayKind.LEAGUE_SECOND, "League");
 
     public static final int FIRST = 1;
+
+    /** The two league days, named once so the generator and the matchday jobs cannot drift. */
+    public static final int LEAGUE_FIRST_DAY = 3;
+    public static final int LEAGUE_SECOND_DAY = 7;
+
+    /** The cup day, from the owner schedule. */
+    public static final int CUP_DAY = 5;
+
+    /** Day 1 internationals, 20:45. */
+    public static final int INTERNATIONAL_DAY = 1;
     public static final int LAST = 7;
 
     private final int number;
