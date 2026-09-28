@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.example.footballmanager.newLogic.service.GameClockService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,6 +38,7 @@ public class SimulationController {
     private final TeamRepository teamRepository;
     private final MatchFixtureRepository matchFixtureRepository;
     private final CurrentRoundSimulationStateService stateService;
+    private final GameClockService gameClockService;
     private final CompetitionRepository competitionRepository;
     private final SeasonService seasonService;
     private final TrainingProgressionService trainingProgressionService;
@@ -265,25 +267,23 @@ public class SimulationController {
                 }
             }
 
-            Competition superLiga = competitionRepository.findByName("Superliga Srbije").orElse(null);
-            if (superLiga == null) {
-                superLiga = competitionRepository.findByCountryIsoCodeAndType("SRB", null).stream().findFirst().orElse(null);
-            }
-            if (superLiga != null) {
-                seasonService.advanceWeekAndHandleSeasonTransition(superLiga);
-            } else {
-                clock.setCurrentWeek(currentWeek + 1);
-                if (clock.getCurrentDate() != null) {
-                    clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
-                }
-                seasonService.getOrCreateClock();
-            }
+            // The week is now seven day advances, nothing more. This used to call
+            // advanceWeekAndHandleSeasonTransition, which did the week's work inline - injuries,
+            // contracts, finance, training, youth, transfers - so Advance Week and Advance Day were
+            // two different code paths and only one of them ran scheduled jobs. Everything that call
+            // did is now a job, including the season rollover that used to hang off its tail.
+            Map<String, Object> clockResult = gameClockService.advanceWeek();
 
             GameClock updatedClock = seasonService.getOrCreateClock();
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("status", "ok");
             payload.put("action", "WEEK_ADVANCED");
             payload.put("message", "Week advanced from " + currentWeek + " to " + updatedClock.getCurrentWeek() + ".");
+            // The jobs that fired, so the advance is not a black box. This is how you confirm a
+            // week of the season actually happened rather than merely the counter moving.
+            payload.put("day", clockResult.get("day"));
+            payload.put("dayLabel", clockResult.get("dayLabel"));
+            payload.put("jobs", clockResult.get("jobs"));
             payload.put("newWeek", updatedClock.getCurrentWeek());
             stateService.setAdvanceSnapshot(payload);
             return ResponseEntity.ok(payload);

@@ -182,10 +182,33 @@ public class GameClockService {
         return last == null ? snapshot() : last;
     }
 
-    /** One day is twenty-four hours; the counters carry on their own. */
+    /**
+     * One whole day, finishing the current day before starting the next (owner, 2026-09-28).
+     *
+     * <p>Advancing by a flat 24 hours was wrong, and it silently swallowed most of the schedule.
+     * The hour is derived from the timestamp, so +24h preserves the hour of day: from 00:00 to 00:00.
+     * The clock never passed 10:00 or 23:00, so training (day 4, 10:00) and week-rollover (day 7,
+     * 23:00) were never due and Advance Week ran a week in which nothing but day-opened happened.
+     *
+     * <p>So a day is finished, not jumped over. Step to 23:00 first - which is the last hour of the
+     * day, so every job due that day now is - and then one more hour rolls the date and fires
+     * day-opened for the new day. Twenty-four hours in total, with nothing skipped.
+     */
     @Transactional
     public Map<String, Object> advanceDay() {
-        return advanceHours(HOURS_PER_DAY);
+        // Step hour by hour until the date moves, rather than computing how many hours that is.
+        // Two attempts at the arithmetic each landed the clock one hour short of 23:00, which meant
+        // week-rollover (day 7, 23:00) never became due and the week's work silently did not happen.
+        // Walking the hours cannot skip a trigger: every hour in the day is evaluated in order.
+        java.time.LocalDate dayBefore = gameTime().atZone(GAME_ZONE).toLocalDate();
+        Map<String, Object> result = snapshot();
+        for (int step = 0; step < HOURS_PER_DAY; step++) {
+            result = advanceHours(1);
+            if (!gameTime().atZone(GAME_ZONE).toLocalDate().equals(dayBefore)) {
+                return result;
+            }
+        }
+        return result;
     }
 
     /**
