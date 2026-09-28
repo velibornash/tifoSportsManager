@@ -277,7 +277,7 @@ export function createCountryView(deps) {
         }
 
         const stateLabel = decided ? 'Declared'
-            : state === 'ANNULLED ? 'void'
+            : state === 'ANNULLED' ? 'Void'
             : canVote ? 'Voting open'
             : canStand ? 'Registration open'
             : 'Closed';
