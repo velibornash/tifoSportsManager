@@ -2029,12 +2029,13 @@ ranking are **independent**. The rules:
 
 | Rule | Detail |
 |---|---|
-| Registration | Candidates register in **week 12** of the preceding season, and may also register during **week 1** |
+| Registration | Opens **week 12 day 1** of the preceding season. **New candidates may still register during week 1**, after voting has already opened |
 | Withdrawal | A candidate may **withdraw** their application |
 | Voting | Starts **week 1 day 1**. Every user **of that country** votes |
 | Dual role | A user may be **candidate and voter** |
 | Changeable | A vote **can be changed** after casting |
-| Deadline | **week 7, 12:00** — winner declared (see Q-A1, this is ambiguous) |
+| Registration window | Opens **week 12 day 1**; **new candidates may still register during week 1**, even after voting has opened |
+| Deadline | Voting closes **week 1 day 7 at midday** and the winner is declared, becoming selector. *(The owner confirmed this is what the original "week 7 12:00 PM" meant.)* |
 | Secrecy | **Results are invisible until declared.** Only admin/owner can see the count |
 | Mandate | **One season**, then re-election. **Admins can annul an election** if they find an irregularity |
 | Cadence | **Every season** (four a year) |
@@ -2083,7 +2084,8 @@ outcome is auditable afterwards.
 |---|---|---|
 | 0.1 | **National ranking (senior and U-21 — two independent lists)** | **Elo, decided by the owner.** Moves only on NT results. Beating a higher-ranked nation pays more; losing to a lower-ranked one costs more. WC win > qualifying win, plus a qualifying bonus. Senior and U-21 start **equal**. Ties on equal rating broken by the shared random |
 | 0.2 | **Club ranking list** | **Elo**, driven by the same match-value order: **international cup > league > cup > friendly**. Tier gives a starting offset so a tier-1 club outranks any tier-5 club. One list serves both the within-country order and the international order. Rating changes are recorded per match so an upset is visible as an event |
-| 0.3 | Create the national team entities | 9 countries × 2 = 18 teams. `Country.seniorNationalTeam` / `u21NationalTeam` are already there waiting. They are **not clubs**: no league, no transfers, no wages — but they need players |
+| 0.3 | Create the national team entities | 2 per country. `Country.seniorNationalTeam` / `u21NationalTeam` are already there waiting and are `null` for all 9 countries. They are **not clubs**: no league, no transfers, no wages — but they need players |
+| 0.3a | Seed ~48 nations with their own leagues and clubs | **The single largest item in this section, and it is a data job, not a feature.** The owner intends **at least 48 nations — ideally exactly 48: 47 named plus "Other"**. The database has 9, all Serbia-region, and 31 leagues. **Scope question — see below** |
 | 0.4 | **Day-level calendar slots** | `SeasonCalendar` has the days; it needs **named slots** for day 1 (international 20:45), day 2 (finance), day 4 (training), day 5 (cup 18:00), day 6 (form/morale + junior). With room to add more — the owner asked for space to grow |
 | 0.5 | **Knockout resolution: penalties** | 90 minutes, then a shootout. The engine produces a 90-minute score; a shootout is a **new concept** that must not leak into league results |
 | 0.6 | **Draw engine: seeded pots and byes** | Potted draws, one team per pot per group, and a bracket that handles a non-power-of-two field (256 is fine; 202 direct entrants is not) |
@@ -2101,7 +2103,7 @@ outcome is auditable afterwards.
 |---|---|---|
 | 1.1 | NT section on the country page, containing **elections** | New section, above the existing country content |
 | 1.2 | **Any user may stand as a candidate**, regardless of nationality | "because there are foreign coaches" — no nationality gate on candidacy |
-| 1.3 | Candidate registers by clicking a button | **Week 12** of the preceding season, and also during **week 1**. A candidate may **withdraw**. Registration in week 12 is what makes a week-1 vote meaningful |
+| 1.3 | Candidate registers by clicking a button | Opens **week 12 day 1**; **still open during week 1**. A candidate may **withdraw**. Registering in week 12 is what makes a week-1 ballot meaningful — a candidate added on week 1 day 3 simply appears in the running |
 | 1.4 | **Voting by clicking a candidate in the list** | Every user **of that country** votes. A user may be candidate **and** voter. **One vote, changeable** at any time before the deadline. Results **invisible until declared** — admin/owner may see the count |
 | 1.5 | Winner = most votes; **tie broken by plain random** | Uses 0.7 |
 | 1.6 | **Identical structure for U-21** | Separate ranking, separate election, separate squad — everything in 1.1–1.5 run twice |
@@ -2116,7 +2118,7 @@ outcome is auditable afterwards.
 
 | # | Task | Spec |
 |---|---|---|
-| 2.1 | Top **48 nations by national rating** enter | From 0.1. **Global, not a region** — the owner was explicit that a nations list cannot be Serbia-only. **Open: how many nations exist** — see Q-B1 |
+| 2.1 | Top **48 nations by national rating** enter | From 0.1. **Global** — the owner's correction: *"ne može biti da Srbija ima više država, Srbija je jedna država"*. The 9 countries in the database are **Serbia plus neighbours added while building**; the real set is **almost all of Europe plus the football nations of the world** |
 | 2.2 | **8 groups of 6**, by seeding: **pots of 8** — pot 1, then pot 2, and so on. From each pot, **one team drawn at random into each group** | A pot is not a fixed group. Each group gets one team from every pot |
 | 2.3 | **Round robin**, 5 matchdays: days **1, 2, 3, 5, 7** of week 6 | Day 4 is deliberately empty |
 | 2.4 | **Home is the worse-rated side** | Not an alternation — the lower-rated side hosts every game, so it is always the weaker team's stadium |
@@ -2163,10 +2165,10 @@ outcome is auditable afterwards.
 
 | # | Task | Spec |
 |---|---|---|
-| 5.1 | **Champions Cup** — every **champion** enters | By tier. A tier-2 champion plays **Champions Cup tier 1** as the owner's baseline, falling back to **tier-1 clubs only** if a per-tier system proves too complex |
+| 5.1 | **Champions Cup** — every **champion** enters | **The cup you enter is decided by the tier of the league you won, not the tier you are currently in.** The owner's example: win league tier 2 in season 1, get promoted into tier 1 for season 2 — and still play **Champions Cup tier 2**, because tier 2 is the league he won. Promotion does **not** move you up a cup |
 | 5.2 | **Masters Cup** — every **2nd and 3rd** placed team enters | Per tier as well |
 | 5.3 | **Challenge Cup** — every **4th** placed team enters | Per tier as well |
-| 5.4 | **Ranking-based promotion between cups** | A club that **climbs above where its tier would place it plays in the higher cup** — the owner's rule. Needs a rule for the boundary: at what rating gap does a tier-2 champion become a tier-1 entrant? See Q-B3 |
+| 5.4 | **No rating-based promotion between cups** | Corrected 2026-09-28. An earlier reading of this rule as "climb the ranking to play a higher cup" was **wrong**. Entry tier comes from the **league won**, full stop. (Rating still decides seeding *within* a cup, and still decides the qualifying pots — just not cup entry) |
 | 5.5 | Draw, bracket and schedule | **Deferred by the owner to a separate task.** Do not design it here |
 
 > **Open and load-bearing:** which competitions feed these three cups. "All champions" across how many
@@ -2198,9 +2200,10 @@ outcome is auditable afterwards.
 | # | Task |
 |---|---|
 | 7.1 | Replace the hardcoded NT placeholder in `country-view.js:186-208` |
-| 7.2 | **Call-up confirmation flow** | The **first** call-up is **approved by the system automatically**; **every subsequent** one needs the **club manager to confirm**. This is the mechanism that stops a selector quietly stripping a rival of eleven players. See Q-B2 for the refusal path |
+| 7.2 | **Call-up confirmation flow** | The **first** call-up is **approved by the system automatically**; **every subsequent** one needs the **club manager to confirm**. This is the mechanism that stops a selector quietly stripping a rival of eleven players |
+| 7.2a | **Refusal and silence** | The manager has **24 hours**. **No answer counts as approval** — silence must never read as a refusal. If the manager **refuses**, that player **cannot enter the 25 at all**; he is not merely benched, he is out of the squad |
 | 7.3 | NT availability per match | Weeks 6 and 12 have no league football, so no one is absent *by the schedule*. But a called player **cannot play any other match** in weeks 6 and 12 — NT only |
-| 7.4 | **Observe list** | Wanted alongside the 25: players tracked as likely to enter the pool. See Q-B4 on scope |
+| 7.4 | **National Pool (the observe list)** | **Build now — no approval needed, and no manager confirmation either.** The **25 are automatically on it**. Naming per the owner: the watch list is the **National Pool**, the 25 are the **Squad**. So the Pool contains the Squad plus anyone else being tracked for it |
 | 7.5 | Election and tournament state must survive a database reset and a restart |
 | 7.6 | AI nations need coaches and squads even where no human took the election — a season where nobody stood must not leave a nation with no selector |
 | 7.7 | Everything the manager sees must be readable by someone who did not build it — no silent failures in brackets |
