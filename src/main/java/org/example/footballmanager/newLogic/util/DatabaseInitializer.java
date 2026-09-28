@@ -97,6 +97,7 @@ public class DatabaseInitializer {
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
     private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
+    private final org.example.footballmanager.newLogic.service.NationalTeamElectionService electionService;
     private final PlayerRepository playerRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -117,6 +118,31 @@ public class DatabaseInitializer {
     private final org.example.footballtextmanager.repository.CSCountryRepository csCountryRepository;
     private final StadiumRepository stadiumRepository;
     private final org.example.footballmanager.newLogic.repository.JuniorRepository juniorRepository;
+
+    /**
+     * The current season, for opening this season's elections.
+     *
+     * <p>The highest season year that exists, so a database carrying seasons 1 and 2 is on season 2.
+     * Falls back to 1 so a fresh install still opens an election.
+     */
+    private int currentSeasonYear() {
+        return seasonRepository.findAll().stream()
+                .map(season -> season.getSeasonYear())
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .filter(year -> year > 0)
+                .orElse(1);
+    }
+
+    /**
+     * When week 1 day 1 kicked off, which is where the voting window is measured from.
+     *
+     * <p>Anchored to the start of the current day rather than the instant the process booted, so the
+     * window does not move every time the app restarts.
+     */
+    private java.time.Instant weekOneKickoff() {
+        return java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void sanitizeLegacySchemaOnStartup() {
@@ -181,6 +207,19 @@ public class DatabaseInitializer {
                         countryRepository.findByIsoCode("SRB").orElse(null));
             } catch (RuntimeException e) {
                 log.warn("Could not appoint the baseline selector: {}", e.getMessage());
+            }
+            // Elections were never created automatically, so the national-team panel could only ever
+            // report "no election running" and nobody could stand in one. ensureElection is
+            // idempotent, so this is a no-op once an election exists for the season.
+            try {
+                for (Country country : countryRepository.findAll()) {
+                    for (org.example.footballmanager.newLogic.model.NationalTeamLevel lvl
+                            : org.example.footballmanager.newLogic.model.NationalTeamLevel.values()) {
+                        electionService.ensureElection(country, lvl, currentSeasonYear(), weekOneKickoff());
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.warn("Could not open the national-team elections: {}", e.getMessage());
             }
             return;
         }

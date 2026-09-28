@@ -16,7 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Random;
 
@@ -146,10 +149,32 @@ public class CupFixtureSeeder {
             }
             clubs.add(team);
         }
-        clubs.sort(Comparator
-                .comparingDouble((Team t) -> averageSquadRating(t)).reversed()
+        return sortByStrength(clubs, strengthOf(clubs));
+    }
+
+    /**
+     * Squad strength for every team, one query each, computed once.
+     *
+     * <p>This exists because the obvious version - sorting with a comparator that calls
+     * {@code averageSquadRating} - re-queries the database on every comparison. With 310 clubs that
+     * is roughly 2500 extra queries, and the draw appeared to do nothing at all: the seeder had not
+     * failed, it was still working. The symptom is indistinguishable from a silent crash, which is
+     * why the earlier rounds of this had "a draw that does nothing" with no error in the log.
+     */
+    private Map<Long, Double> strengthOf(List<Team> clubs) {
+        Map<Long, Double> strength = new HashMap<>();
+        for (Team team : clubs) {
+            strength.put(team.getId(), averageSquadRating(team));
+        }
+        return strength;
+    }
+
+    private List<Team> sortByStrength(List<Team> clubs, Map<Long, Double> strength) {
+        List<Team> sorted = new ArrayList<>(clubs);
+        sorted.sort(Comparator
+                .comparingDouble((Team t) -> strength.getOrDefault(t.getId(), 0.0)).reversed()
                 .thenComparing(t -> t.getName() == null ? "" : t.getName()));
-        return clubs;
+        return sorted;
     }
 
     private double averageSquadRating(Team team) {
@@ -164,20 +189,51 @@ public class CupFixtureSeeder {
         return total / squad.size();
     }
 
-    /** One knockout round: shuffled copy, paired, home/away alternated. */
+    /**
+     * One knockout round, drawn the way the owner specified.
+     *
+     * <p>The rule: split the remaining clubs by ranking. The better half are the favourites and the
+     * weaker half are the non-favourites. Every tie is one random favourite against one random
+     * non-favourite, and <b>the non-favourite hosts</b>. The split is recomputed each round from
+     * whoever is left, so the favourites are the best of the survivors rather than a fixed group set
+     * at the start of the tournament.
+     *
+     */
     private List<MatchFixture> buildRound(Competition cup, List<Team> entrants, int roundNumber,
                                           int week, int seasonYear) {
-        List<Team> shuffled = new ArrayList<>(entrants);
-        java.util.Collections.shuffle(shuffled, random);
+        List<Team> ranked = sortByStrength(new ArrayList<>(entrants), strengthOf(entrants));
+
+        // The half is recomputed from whoever is left in this round, not fixed at the start of the
+        // tournament. Round 1 is not a special case: it draws the 108 entry-round clubs, and the
+        // same split puts the stronger 54 against the weaker 54, which carries the seeding into
+        // round 2 when the direct entrants arrive.
+        int half = ranked.size() / 2;
+        List<Team> favourites = new ArrayList<>(ranked.subList(0, half));
+        List<Team> nonFavourites = new ArrayList<>(ranked.subList(half, ranked.size()));
+
+        // One random from each half, so the favourite is never paired with another favourite and a
+        // weak club never draws another weak club.
+        Collections.shuffle(favourites, random);
+        Collections.shuffle(nonFavourites, random);
+
+        int ties = Math.min(favourites.size(), nonFavourites.size());
+        if (ties * 2 < ranked.size()) {
+            // Odd count: the unpaired clubs from the larger half enter as byes rather than being
+            // dropped. Losing a club silently would be worse than a slightly lopsided draw.
+            log.info("Cup {} round {}: {} clubs, {} ties, {} byes.",
+                    cup.getName(), roundNumber, ranked.size(), ties, ranked.size() - ties * 2);
+        }
 
         List<MatchFixture> made = new ArrayList<>();
-        for (int i = 0; i + 1 < shuffled.size(); i += 2) {
-            Team home = shuffled.get(i);
-            Team away = shuffled.get(i + 1);
+        for (int i = 0; i < ties; i++) {
+            Team favourite = favourites.get(i);
+            Team nonFavourite = nonFavourites.get(i);
             MatchFixture fixture = new MatchFixture();
             fixture.setCompetition(cup);
-            fixture.setHomeTeam(home);
-            fixture.setAwayTeam(away);
+            // The non-favourite is at home. That is the owner's rule and it is the whole point of
+            // the split: the tie is the upset, and the weaker side gets the home crowd.
+            fixture.setHomeTeam(nonFavourite);
+            fixture.setAwayTeam(favourite);
             fixture.setRoundNumber(roundNumber);
             fixture.setWeekNumber(week);
             fixture.setSeasonYear(seasonYear);
@@ -188,8 +244,8 @@ public class CupFixtureSeeder {
             fixture.setMatchDate(LocalDateTime.of(day5, java.time.LocalTime.of(CUP_HOUR, 0)));
             made.add(fixtures.save(fixture));
         }
-        log.info("Cup {} round {}: {} ties for week {} (day {}).",
-                cup.getName(), roundNumber, made.size(), week, CUP_DAY);
+        log.info("Cup {} round {}: {} ties for week {} (day {}), favourites vs non-favourites, "
+                        + "non-favourite at home.", cup.getName(), roundNumber, made.size(), week, CUP_DAY);
         return made;
     }
 }
