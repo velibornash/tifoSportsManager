@@ -1929,12 +1929,46 @@ same viewer as your own match.
 | 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | ✅ **done 2026-09-28** — and the desktop accordions were **dead**, not just double-rendering. See below |
 | 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | `dashboard.js:70`; `pages.js:532`; `utils.js:4`; `clock.js:1-23` |
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
-| 5 | `training-view.js` — merge the two ~450-line parallel implementations | `training-view.js:7-453,455-907` |
+| 5 | `training-view.js` — merge the two ~450-line parallel implementations | ✅ **done 2026-09-28** — not a merge: three functions were declared twice in one scope, so the first copies were **shadowed and unreachable**. 183 lines deleted |
 | 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | 🟡 **partly done 2026-09-28** — `emptyStateHtml` deleted; the other two turned out to be decisions, not dead code. See below |
 | 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
 | 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
 | 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | ✅ **closed 2026-09-28, owner decision** — the premise was wrong; see below |
+
+---
+
+#### ✅ S8.3 #5 — not a merge: 183 lines of *shadowed* code (2026-09-28)
+
+The backlog said "merge the two ~450-line parallel implementations". It was not two implementations to
+merge, and merging them would have been the wrong move.
+
+`render`, `renderGraph` and `openPlayerGraph` were each **declared twice at the same brace depth**
+inside `createTrainingView`. In JavaScript a later function declaration silently **shadows** an earlier
+one. The first copies were unreachable — **183 lines** of code no call could ever reach:
+
+| Shadowed | Surviving |
+|---|---|
+| `openPlayerGraph` (149–158) | 589 |
+| `renderGraph` (187–235) | 707 |
+| `render` (237–360) | 824 |
+
+**Why deletion and not a merge:** the copies had already **diverged** — the surviving `renderGraph`
+builds a player-profile hero (`buildPlayerProfileHeroHtml`) that the shadowed one never had. Reconciling
+a dead function with a live one is a good way to lose the better half.
+
+**Why it survived:** a shadowed declaration is **valid JavaScript**. `node --check` passes, there is no
+bundler warning, and no linter in the project flags it. Only counting the names finds it.
+
+`TrainingViewNoShadowedDeclarationsTest` now does that, scoping by indentation so a nested function of
+the same name is not a false positive. Verified by re-introducing a shadowed `render` and watching it
+report `{render=2}`.
+
+**One bug of mine, worth recording because the test was green while the bug was present:** the guard
+matched indentation with `\s+`. `\s` also matches newlines, so a greedy `\s+` swallows the blank line
+above a declaration and the `^` anchor quietly stops meaning anything. The test passed with a shadowed
+copy sitting right in front of it. Indentation is matched with `[ \t]+` now, and the reason is a
+comment in the file.
 
 ---
 

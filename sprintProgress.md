@@ -3616,3 +3616,37 @@ development database. Harmless; `DROP TABLE IF EXISTS player_training_focus;` cl
 **The pattern across this whole sweep, three times now:** a feature implemented, tested, documented —
 and never used. `PlusFeatureService` (behaviour right, service unused), the stadium accordion (dead),
 and now the focus. Each was invisible until someone asked whether anything read it.
+
+---
+
+## S8.3 #5 — 183 lines of shadowed code, not a merge (2026-09-28)
+
+The backlog said "merge the two ~450-line parallel implementations". It was not two implementations to
+merge, and merging would have been the wrong move.
+
+`render`, `renderGraph` and `openPlayerGraph` were each declared **twice at the same brace depth**
+inside `createTrainingView`. In JavaScript a later function declaration silently shadows an earlier
+one, so the first copies were unreachable — 183 lines, not the ~350 guessed:
+
+| Shadowed | Surviving |
+|---|---|
+| `openPlayerGraph` 149–158 | 589 |
+| `renderGraph` 187–235 | 707 |
+| `render` 237–360 | 824 |
+
+**Deletion, not a merge**, because the copies had diverged: the surviving `renderGraph` builds a
+player-profile hero the shadowed one never had. Reconciling a dead function with a live one is a
+good way to lose the better half. Before cutting I checked every identifier the dead spans touched —
+all of them are used by the surviving code as well, and the call at line 464 resolves to the surviving
+`openPlayerGraph`.
+
+**Why this survived at all:** a shadowed declaration is valid JavaScript. `node --check` passes, no
+bundler warns, no linter in the project flags it. Only counting the names finds it.
+
+**And the guard was green while the bug was in front of it.** The first version matched indentation
+with `\s+`; `\s` also matches newlines, so a greedy `\s+` swallows the blank line above a declaration
+and the `^` anchor quietly stops meaning anything. Now `[ \t]+`, with the reason as a comment in the
+file. Verified by re-introducing a shadowed `render` and watching it report `{render=2}` — the first
+attempt at that verification silently did not write the file, and I only noticed because the test
+passed again. Checking that the fault was actually inserted, rather than trusting the patch script,
+is the part that saved the verification.
