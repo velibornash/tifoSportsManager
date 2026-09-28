@@ -87,9 +87,14 @@ Seven small, high-impact defects. Every one of these is a correctness bug, not a
 
 ---
 
-### S0.1 — Close the €1 transfer exploit
+### S0.1 — Close the €1 transfer exploit ✅ DONE (verified 2026-09-28 — guard present, method renamed)
 
 **File:** `newLogic/service/TransferService.java`
+
+> **Verified 2026-09-28.** The guard exists, but the method was **renamed** — grepping for
+> `normalizePrice` finds nothing and looks like an open bug. It is now `resolveAgreedPrice`, which
+> rejects NaN and infinite prices, rejects anything ≤ 0, and throws `PRICE_BELOW_ASKING` when the
+> offer is under the asking price. `buyListedPlayer` goes through it, so the €1 exploit is closed.
 
 The bug: `normalizePrice:421-424` returns `Math.max(1.0, resolved)` with no check against `askingPrice`, and `buyListedPlayer:181-186` passes the client-supplied price straight into `completeTransfer`.
 
@@ -106,7 +111,7 @@ The bug: `normalizePrice:421-424` returns `Math.max(1.0, resolved)` with no chec
 
 ---
 
-### S0.2 — Fix the transfer-list soft-lock
+### S0.2 — Fix the transfer-list soft-lock ✅ DONE (verified 2026-09-28 — `hasPricedOffer` gate in place)
 
 **File:** `newLogic/service/TransferService.java`
 
@@ -124,7 +129,7 @@ The bug: a bare-club-name "Register interest" (`:159`) is not an "offer" (`isOff
 
 ---
 
-### S0.3 — Idempotency guard on weekly training
+### S0.3 — Idempotency guard on weekly training ✅ DONE (`TrainingProgressionIdempotencyTest`)
 
 **File:** `newLogic/service/TrainingProgressionService.java:68-130`
 
@@ -1408,7 +1413,7 @@ lands where it can be read.
 
 ---
 
-### S5.2 — Report uncertainty 🟡 SPEC COMPLETE, not built (owner spec 2026-09-27)
+### S5.2 — Report uncertainty ✅ DONE 2026-09-27, gate wired 2026-09-28
 
 > **The distinction that matters, and it is easy to get wrong.** `PlusFeatureService` already hides
 > talent entirely — `talentOrNull` returns `null` for anyone but the owner. That is the **subscription**
@@ -1432,10 +1437,17 @@ A club with a strong youth coach does not produce better prospects — it **know
 
 | # | Task | State |
 |---|---|---|
-| 1 | Show an **estimated range**, not the true `academySkillExact` | ❌ |
-| 2 | `talent` becomes a hidden ceiling revealed by observation | ❌ — **the true value currently leaks**: `JuniorAcademyItemDTO.talent` is populated with `round2(j.getTalent())` for every caller |
-| 3 | Reports arrive progressively: initial impression → after a season → full assessment | ❌ — the spec above supersedes the three-tier wording; the range *is* the progression |
-| 4 | The single biggest *feel* upgrade available in the academy | — |
+| 1 | Show an **estimated range**, not the true value | ✅ `TalentRange` — `talentMin`/`talentMax` on `JuniorAcademyItemDTO` |
+| 2 | The true value stops leaking | ✅ **fixed 2026-09-28.** The raw `talent` field is **gone** from the DTO; a non-PLUS or non-own-club viewer receives no exact value at all. `talentExact` exists but is only populated for an entitled viewer |
+| 3 | Reports firm up over time | ✅ the range *is* the progression: intake `±(1 + rnd 0..3)`, narrowing to `±1` by graduation, faster with a better `YOUTH_COACH` |
+| 4 | Exact reveal on promotion | ✅ `promoteJuniorWithReveal` → `JuniorPromotionResultDTO.talentExact`; the player is created either way, so a non-subscriber still gets the player and only loses the number |
+| 5 | `YOUTH_COACH.development` has a consumer | ✅ closes S4.3 item 2's explicit deferral and half of S5.3 item 5 |
+
+> **The leak in item 2 was the whole point of the sprint, and it took a second pass to actually close.**
+> The range was built and the gate was documented and unit-tested, and the DTO still shipped the true
+> value to every caller — because the controller applied the rule by hand instead of asking the
+> service. That is now enforced by `PlusGateHasCallersTest`, which fails the build if any gate method
+> has no caller.
 
 #### ✅ `PlusFeatureService` was not wired to anything — FIXED 2026-09-28
 
@@ -1566,18 +1578,18 @@ task with its own brief rather than folded into an academy sprint.
 
 | # | Task | State |
 |---|---|---|
-### S5.3 — Academy structure 🟡 1 of 8 done
+### S5.3 — Academy structure 🟡 5 of 8 done (2 removed, 1 dropped)
 
 | # | Task | State |
 |---|---|---|
 | 1 | Position known at **intake**, not rolled at promotion | ✅ `Junior.position`, set in both intake paths, read by `createSeniorFromJunior`. Six legacy rows repaired on boot |
 | 2 | Individual junior training focus, integrated with Sprint 4 | ❌ **removed 2026-09-28** — depended on S4.1, which the owner deleted. Junior training follows Advanced Training like everyone else |
-| 3 | Junior attributes visible as a profile (preferred foot, height, weight, personality, work rate, injury susceptibility) | ❌ |
+| 3 | Junior attributes visible as a profile | ✅ preferred foot, height, weight, personality, work rate. **`injurySusceptibility` was cut on the owner's instruction** rather than wired |
 | 4 | **Mid-season promotion** — remove the artificial one-season freeze | ✅ `f22ee1a` — graduation window 15–20, once a year, legacy distribution byte-identical |
-| 5 | Academy quality from `Stadium.youthLevel` + the `YOUTH_COACH` staff member | ❌ both unread |
+| 5 | Academy quality from `Stadium.youthLevel` + the `YOUTH_COACH` staff member | ✅ `AcademyQuality` — `1 + .15` per deviation, bounded `0.70–1.30`, neutral when unset. `YOUTH` is now a purchasable facility and counts toward upkeep |
 | 6 | Raise or make configurable the 10-active-junior cap | ❌ still a hard cap |
 | 7 | Continuity on promotion — carry junior progress into the senior system | 🟡 `academySkillExact` + `lastWeeklyDelta` exist and `promotedPlayer` links back, but the growth history stops at promotion |
-| 8 | Personality, work rate, professionalism as growth inputs | ❌ |
+| 8 | Personality, work rate, professionalism as growth inputs | ✅ work rate and personality drive growth. **Professionalism was never added** — it was named in the original list and has no field, no growth term and no UI. Dropped rather than left as a ❌ |
 
 **Item 4 is the constraint to respect.** The owner ruled that the legacy promotion **distribution**
 stays exactly as it is, random budget spread, goalkeeper bias and the per-skill cap of 10 included,
@@ -1681,6 +1693,11 @@ prospects to put it on. Both screens are API-only.
 ---
 
 ### S6.2 — Freeze `demo/service/` as a reference module (partially done)
+> **Stance recorded 2026-09-28; the decision is the owner's.** `demo/service/` is **97 Java files** — a
+> complete, working, unwired second engine. It **stays** for now, because `MatchBatchRunner` and
+> `MatchChainTrace` are still useful as batch diagnostics. Deleting 97 files deserves its own commit
+> and its own decision rather than riding along on a frontend sweep. `ENGINE.md` now states the live
+> path explicitly, which is the part of this item that was actually urgent.
 
 19,488 LOC. Its `corePrinciples.md` §1–48 is the design spec the proposal engine was ported from, and `ComprehensiveBatchRunner` / `MatchDetailedAnalyzer` are the calibration oracle. **Keep it. Stop editing it. Move it out of the main build path** so nobody "improves" it again.
 
@@ -1944,17 +1961,23 @@ same viewer as your own match.
 
 `results`, `cup`, `international`, `friendlies`, `playerStats`, `teamStats`, `topScorers`, `topAssists`, `coaches`, `events`, `analytics`, `upcoming`, `training` — no menu entry, no action row, console-only. **6 of them crash into a generic "API Error" card** because they `await response.json()` without checking `response.ok`.
 
-> **This list needs re-verification.** It was written 2026-09-26. On 2026-09-27 two genuinely new
-> pages were added and wired properly (`userProfile` and `stadium`, both with real endpoints), and
-> the league table was confirmed live off the user's own competition rather than a hardcoded league.
-> The remaining 13 were not re-audited, so treat the list as a starting point rather than a fact.
+> **Re-verified 2026-09-28, and the list stands.** Every one of the 13 **does** have a `case` in
+> the `pages.js` router, and **not one of the 13 has a menu entry** — checked against `dashboard.html`
+> and both nav builders in `pages-renderers.js`, all thirteen at zero. So the accurate description is
+> not "dead routes" but **routed and unreachable**: the page renders, nothing links to it, and the
+> only way in is to type the route. That is a slightly different problem from a dead route and worth
+> keeping the distinction, because wiring the router is done and the work is entirely in navigation.
+>
+> The count also moved this week for a different reason: the two individual-focus training endpoints
+> were deleted with S4.1, and the Recent League Results section went with its dead function. Neither
+> was on this list, so 13 is still 13.
 
 | # | Task |
 |---|---|
 | 1 | Wire `results`, `upcoming`, `playerStats`, `teamStats`, `topScorers`, `topAssists` — the endpoints exist, only the routing is missing |
 | 2 | `cup` and `international` depend on the Cup being populated (S8.2). Until then, **remove them from the router and the menus** rather than leaving broken pages |
 | 3 | `analytics` → replace the broken `zox-match-preview.html` (4 unbound tabs, unused Chart.js, doubled stylesheet) with a real analytics page, or route it into the existing match-detail view |
-| 4 | Global fix: every fetch must check `response.ok` and surface a real error, not a generic card. Centralise this in `authFetch` |
+| 4 | Global fix: every fetch must check `response.ok` and surface a real error, not a generic card. Centralise this in `authFetch` | 🟡 the centralisation is **done** (S8.3 #2 — there is now one `authFetch`, and it handles 401, redirects and network errors). The audit of whether every caller checks `response.ok` is **not** done |
 | 5 | Add `loadPage` state to the browser URL (`#/leagueTable`) so pages are linkable and the back button works |
 
 ---

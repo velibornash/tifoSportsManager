@@ -3728,3 +3728,30 @@ this much should be impossible to serialise, not merely unlikely. An assertion i
 
 **Not fixed here.** This needs a diagnostic run against a real match's event stream, and I would want
 to look at the data before changing the engine. It is the owner's report and it is recorded as given.
+
+---
+
+## Backlog re-audit — 2026-09-28
+
+Walked `sprintBacklog.md` end to end and corrected four places where it was **wrong rather than
+merely incomplete**. All four were found by checking the code, not by re-reading the document.
+
+| Section | Was | Now |
+|---|---|---|
+| **S5.2** | "SPEC COMPLETE, **not built**", and item 2 asserted the true talent *"currently leaks"* | **Done.** The range is built, the exact value is gated, the reveal works. The leak claim had been true once and was the whole point of the sprint — leaving it in the backlog was actively misleading |
+| **S5.3** | "1 of 8 done" | **5 of 8** — items 3, 5 and 8 were built on 2026-09-27 and never marked. Item 3's `injurySusceptibility` was cut on the owner's instruction, and item 8's *professionalism* was never built at all, so both are now recorded as dropped rather than left as ❌ |
+| **S8.1** | "13 dead routes", with a note admitting the list had not been re-audited | **Re-verified, and the description was wrong.** All 13 *do* have a router `case`, and **none of the 13 has a menu entry** — all zero against `dashboard.html` and both nav builders. So they are not dead routes, they are **routed and unreachable**: the page renders, nothing links to it. Different problem, and the work is entirely in navigation |
+| **S0.1 / S0.2 / S0.3** | No status at all | **All done, verified.** S0.1's guard exists but the method was **renamed** `normalizePrice` → `resolveAgreedPrice`, so grepping the recorded name finds nothing and reads as an open bug |
+
+**The S0.1 one is the pattern worth keeping.** Nothing was broken; the *document* was. A reader
+checking the backlog would search for `normalizePrice`, find nothing, and conclude the exploit was
+unfixed — the exact opposite of the truth. A backlog that describes code by name and line number
+goes stale the moment anything is renamed, and a stale entry that says "vulnerable" is worse than no
+entry at all.
+
+**S6.2** gained the recorded stance: `demo/service/` is 97 files, complete and unwired, and **stays**
+because `MatchBatchRunner` and `MatchChainTrace` are still useful diagnostics. Deleting it is the
+owner's call and deserves its own commit.
+
+Nothing else in the backlog was found to be inaccurate. Working tree clean apart from the owner's own
+`COMPETITIVE_ANALYSIS.md`, which is never touched.
