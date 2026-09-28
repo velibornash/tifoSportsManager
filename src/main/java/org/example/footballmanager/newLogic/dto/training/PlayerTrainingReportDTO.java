@@ -16,13 +16,6 @@ public class PlayerTrainingReportDTO {
      */
     private Double trainingPercent;
 
-    /**
-     * Whether this player had an individual focus this week (Sprint 4.1).
-     *
-     * <p>On the report so a manager can see that a week was not the programme's doing, and a striker
-     * being worked on heading is not a bug.
-     */
-    private Boolean individualFocus;
 
     private Long playerId;
     private String playerName;

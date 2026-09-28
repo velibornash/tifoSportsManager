@@ -29,7 +29,6 @@ public class TrainingProgressionService {
     private final TeamTrainingSetupRepository teamTrainingSetupRepository;
     private final TrainingWeekReportRepository trainingWeekReportRepository;
     private final TrainingPercentService trainingPercentService;
-    private final TrainingFocusService focusService;
     private final TrainingIntensityService intensityService;
     private final SquadEnvironmentService environment;
     private final MoraleService moraleService;
@@ -159,12 +158,14 @@ public class TrainingProgressionService {
 
             String role = advancedRoleByPlayer.getOrDefault(player.getId(), roleFromPosition(player.getPosition()));
             boolean advanced = advancedRoleByPlayer.containsKey(player.getId());
-            // An individual focus wins over the role default (Sprint 4.1). The role default still
-            // applies to everything the focus does not name, so a striker focused on heading is still
-            // a striker - he is just being worked on differently.
-            SkillName roleDefault = dtSkillForRole(setup, role);
-            SkillName directSkill = focusService.primarySkillFor(player, roleDefault, season, week);
-            boolean hasFocus = focusService.hasFocus(player, season, week);
+            // The direct skill is the role's default for the week (owner, 2026-09-28).
+            //
+            // Sprint 4.1 added a per-player individual focus that could override this. It was removed:
+            // training follows what the manager chose in Advanced Training and on the training slot,
+            // and nothing else. There is deliberately no second opinion here - if a club wants a
+            // striker worked on heading, that is an Advanced Training choice, not a second control
+            // competing with it.
+            SkillName directSkill = dtSkillForRole(setup, role);
 
             Map<SkillName, Double> before = snapshotSkills(skills);
             double trainingPercent = trainingPercentService.percentForWeek(
@@ -194,7 +195,6 @@ public class TrainingProgressionService {
             playerRow.setRole(role);
             playerRow.setDirectTrainingSkill(skillToKey(directSkill));
             playerRow.setAdvancedTraining(advanced);
-            playerRow.setIndividualFocus(hasFocus);
             playerRow.setSkills(buildSkillDeltas(before, after));
             report.getPlayers().add(playerRow);
         }

@@ -1125,28 +1125,36 @@ a narrowing band, with the exact figure revealed on promotion under the same rul
 The remaining hole is the reverse direction: a **rival's** talent is hidden, which is correct, and
 there is nothing yet that ever *tells* a manager that a rival has one. That is Sprint 6 territory.
 
-### S4.1 — Individual training focus (the headline feature) — 🟡 backend done 2026-09-27
+### S4.1 — Individual training focus — ❌ REMOVED by owner 2026-09-28
+
+**The headline feature of Sprint 4 was not wanted.** The owner's position, 2026-09-28:
+
+> NEMAMO individual focus, trening je samo po onome sto je izabrano u advanced training i na training
+> slotu, mozes obrisati bekend
+
+Training follows **what the manager chose in Advanced Training and on the training slot, and nothing
+else.** There is no second control competing with it.
 
 | # | Task | State |
 |---|---|---|
-| 1 | Per-player, per-week **individual focus**: pick 1–2 specific skills | ✅ `PlayerTrainingFocus` + `TrainingFocusService` |
-| 2 | Bypass the role-bucket restriction | ✅ all eight skills, for every player — the restriction is gone rather than widened, so a striker can be worked on heading and a midfielder on goalkeeping |
-| 3 | First-class persistence, not the JSON blob | ✅ its own table, so "what was he worked on in week 5" is answerable after week 6 overwrites the setup |
-| 4 | Focus overrides the role default; the default still applies to the rest | ✅ |
-| 5 | A drag-and-drop per-player panel in the Training Setup page | ❌ **not done** — REST is in place (`PUT`/`DELETE /training/weekly/team/{teamId}/focus/{playerId}`) but the panel is not built |
+| 1–4 | Per-player focus, role-bucket bypass, own table, override semantics | ❌ **deleted** — `TrainingFocusService`, `PlayerTrainingFocus`, `PlayerTrainingFocusRepository`, the `PUT`/`DELETE .../focus/{playerId}` endpoints, `FocusRequest`, the `individualFocus` report field, and `TrainingFocusServiceTest` |
+| 5 | Drag-and-drop focus panel | ❌ **will never be built** |
 
-**Verify:** a striker focused on heading grows heading at the direct rate and everything else at
-the general rate — covered by `TrainingFocusServiceTest`, which asserts the focus wins over the role
-default and that all eight skills are focusable by anyone.
+**What was preserved, deliberately:**
 
-**Deliberate decisions worth knowing:**
+- **`SkillName` stays.** It is shared by 18 files — growth profiles, staff, stadium facilities, match
+  context, the text-based game. Only the *focus* machinery was the feature; the enum is not.
+- **`PlayerTrainingIntensity` stays**, and is the better model of the two: a per-player weekly override
+  that is genuinely used, keeps its own row per week, and answers "what was he on in week 5".
 
-- **One or two skills, and a third is trimmed rather than refused.** The manager's own first two are
-  kept, in his order, because that is what he meant.
-- **Setting a focus twice replaces it.** Changing your mind on Thursday must not leave a stale second
-  skill behind.
-- **Only the owning club may set one**, or a manager could write training data for a rival's player.
-- **A focus lasts one week.** Next week he is back on the programme.
+**Behaviour after removal:** the direct training skill is the role default for the week
+(`dtSkillForRole`), which is exactly what `primarySkillFor` fell back to when no focus existed. Growth
+rates, intensity cost, injury risk and the coach-for-skill match are all untouched — the focus was
+only ever an override on top of them.
+
+**One loose end for the owner:** `ddl-auto=update` will not drop the now-orphaned
+`player_training_focus` table from the development database. Harmless, and `DROP TABLE IF EXISTS
+player_training_focus;` clears it whenever you want.
 
 ---
 
@@ -1563,7 +1571,7 @@ task with its own brief rather than folded into an academy sprint.
 | # | Task | State |
 |---|---|---|
 | 1 | Position known at **intake**, not rolled at promotion | ✅ `Junior.position`, set in both intake paths, read by `createSeniorFromJunior`. Six legacy rows repaired on boot |
-| 2 | Individual junior training focus, integrated with Sprint 4 | ❌ `PlayerTrainingFocus` is first-team only |
+| 2 | Individual junior training focus, integrated with Sprint 4 | ❌ **removed 2026-09-28** — depended on S4.1, which the owner deleted. Junior training follows Advanced Training like everyone else |
 | 3 | Junior attributes visible as a profile (preferred foot, height, weight, personality, work rate, injury susceptibility) | ❌ |
 | 4 | **Mid-season promotion** — remove the artificial one-season freeze | ✅ `f22ee1a` — graduation window 15–20, once a year, legacy distribution byte-identical |
 | 5 | Academy quality from `Stadium.youthLevel` + the `YOUTH_COACH` staff member | ❌ both unread |
@@ -1625,7 +1633,7 @@ prospects to put it on. Both screens are API-only.
    window ✅ landed with it.
 4. ~~**UI for the junior school**~~ ✅ done — panel on the academy page, window stated in words, close
    confirmed by name and count. **The scouting network is still API-only.**
-5. **S5.3 item 2** — junior training focus, once first-team focus has a UI (S4.1 item 5).
+5. ~~**S5.3 item 2** — junior training focus.~~ **Dropped 2026-09-28** with S4.1.
 6. **S5.4 item 1** — loan out, which is a wiring job on a service that already exists.
 
 ---

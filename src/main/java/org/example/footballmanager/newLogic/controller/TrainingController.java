@@ -13,7 +13,6 @@ import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.model.TrainingIntensity;
-import org.example.footballmanager.newLogic.service.TrainingFocusService;
 import org.example.footballmanager.newLogic.service.TrainingIntensityService;
 import org.example.footballmanager.newLogic.service.PlayerSkillProgressionService;
 import org.example.footballmanager.newLogic.service.TrainingProgressionService;
@@ -41,7 +40,6 @@ public class TrainingController {
     private final PlayerSkillProgressionService progressionService;
     private final TrainingProgressionService trainingProgressionService;
     private final PlusFeatureService plusFeatures;
-    private final TrainingFocusService focusService;
     private final TrainingIntensityService intensityService;
     private final SeasonService seasonService;
 
@@ -50,11 +48,9 @@ public class TrainingController {
                              PlayerSkillProgressionService progressionService,
                              TrainingProgressionService trainingProgressionService,
                              PlusFeatureService plusFeatures,
-                             TrainingFocusService focusService,
                         TrainingIntensityService intensityService,
                              SeasonService seasonService) {
         this.plusFeatures = plusFeatures;
-        this.focusService = focusService;
         this.intensityService = intensityService;
         this.seasonService = seasonService;
         this.trainingRepository = trainingRepository;
@@ -160,44 +156,6 @@ public class TrainingController {
      * being a free infinite-skill-point exploit.
      */
     /**
-     * A player's individual focus for the coming week: one or two skills.
-     *
-     * <p>Sprint 4.1. Takes the skills as names rather than ids because the training screen already
-     * speaks in skill names, and a manager picking "heading" should not have to know it is
-     * {@code DEFENDER} in a database.
-     */
-    @org.springframework.web.bind.annotation.PutMapping("/weekly/team/{teamId}/focus/{playerId}")
-    public ResponseEntity<Map<String, Object>> setFocus(@PathVariable Long teamId,
-                                                        @PathVariable Long playerId,
-                                                        @RequestParam(required = false) Integer season,
-                                                        @RequestParam(required = false) Integer week,
-                                                        @RequestBody FocusRequest request) {
-        int resolvedSeason = season != null ? season : currentSeason();
-        int resolvedWeek = week != null ? week : currentWeek();
-
-        // An unrecognised name is skipped rather than refused, so one typo in a two-skill request
-        // does not throw away the decision the manager actually made.
-        List<SkillName> skills = request == null || request.skills() == null
-                ? List.of()
-                : request.skills().stream()
-                        .map(name -> TrainingFocusService.parseSkill(name))
-                        .flatMap(Optional::stream)
-                        .toList();
-
-        List<SkillName> set = focusService.setFocus(teamId, playerId, resolvedSeason, resolvedWeek, skills);
-        if (set.isEmpty() && !skills.isEmpty()) {
-            // The difference matters: an empty list is a clear, an unknown player is a refusal.
-            throw new ApiException(HttpStatus.FORBIDDEN, "NOT_YOUR_PLAYER",
-                    "That player does not play for this club, so the focus cannot be set.");
-        }
-        return ResponseEntity.ok(Map.of(
-                "playerId", playerId,
-                "season", resolvedSeason,
-                "week", resolvedWeek,
-                "skills", set.stream().map(Enum::name).toList()));
-    }
-
-    /**
      * Sets or clears a player's intensity override for a week (Sprint 4.2).
      *
      * <p>Mirrors the focus endpoint deliberately, down to the refusal: a player who does not play for
@@ -236,25 +194,8 @@ public class TrainingController {
     }
 
 
-    @org.springframework.web.bind.annotation.DeleteMapping("/weekly/team/{teamId}/focus/{playerId}")
-    public ResponseEntity<Map<String, Object>> clearFocus(@PathVariable Long teamId,
-                                                          @PathVariable Long playerId,
-                                                          @RequestParam(required = false) Integer season,
-                                                          @RequestParam(required = false) Integer week) {
-        int resolvedSeason = season != null ? season : currentSeason();
-        int resolvedWeek = week != null ? week : currentWeek();
-        int cleared = focusService.clearFocus(playerId, resolvedSeason, resolvedWeek);
-        return ResponseEntity.ok(Map.of("playerId", playerId, "cleared", cleared));
-    }
 
-    /**
-     * The body of a focus request: the skills to work on, by name.
-     *
-     * <p>Skill names rather than ids because the training screen already speaks in names - a manager
-     * picking "heading" should not have to know that is DEFENDER in the database. An empty list is a
-     * clear, not an error.
-     */
-    public record FocusRequest(List<String> skills) { }
+
 
     private int currentSeason() {
         return seasonService.getOrCreateClock().getCurrentSeason() == null

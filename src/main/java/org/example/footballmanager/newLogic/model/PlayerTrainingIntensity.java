@@ -20,8 +20,8 @@ import java.util.Objects;
  * level from his team-mates. That is the case a manager actually needs: the squad rests after a
  * European night, except the young striker who needs minutes.
  *
- * <p>A row per player per week, so "what was he on in week 5" stays answerable — the same reasoning as
- * {@link PlayerTrainingFocus}, and for the same reason.
+ * <p>A row per player per week, so "what was he on in week 5" stays answerable after week 6 overwrites
+ * the setup.
  */
 @Entity
 @Getter

@@ -3581,3 +3581,38 @@ enum is shared with that machinery and needs checking before it goes.
 The lesson is the same one from `PlusFeatureService` and from `S8.3 #1`: a feature can be
 implemented, tested and documented, and still be something nobody asked for. All three were only
 visible once someone looked at whether anything used them.
+
+---
+
+## S4.1 — the individual focus feature deleted (2026-09-28)
+
+The owner settled what the academy work was for: **training is only what is chosen in Advanced
+Training and on the training slot. There is no individual focus, and the backend could go.**
+
+This one runs backwards from the backlog, which recorded Sprint 4.1 as *"backend done 2026-09-27,
+panel not built — the headline feature"*. The correct reading is that the feature was never asked
+for.
+
+**Deleted:** `TrainingFocusService`, `PlayerTrainingFocus`, `PlayerTrainingFocusRepository`, the
+`PUT`/`DELETE /training/weekly/team/{teamId}/focus/{playerId}` endpoints, the `FocusRequest` record,
+the `individualFocus` field on `PlayerTrainingReportDTO`, and `TrainingFocusServiceTest`.
+
+**Kept on purpose, which is the part worth being careful about:**
+
+- `SkillName` is shared by **18 files** — growth profiles, staff, stadium facilities, match context,
+  the text-based game. The focus machinery was the feature; the enum is not. Deleting it would have
+  taken the whole training system with it.
+- `PlayerTrainingIntensity` stays, and is the better of the two designs: a per-player weekly override
+  that is genuinely used, keeps its own row per week, and answers "what was he on in week 5".
+
+**Behaviour is unchanged where it counts.** The direct training skill is now the role default for the
+week, `dtSkillForRole(setup, role)` — which is precisely what `primarySkillFor` returned when no
+focus existed. Growth rates, intensity cost, injury risk and the coach-for-skill match are untouched;
+the focus was only ever an override layered on top.
+
+**One loose end:** `ddl-auto=update` will not drop the orphaned `player_training_focus` table from the
+development database. Harmless; `DROP TABLE IF EXISTS player_training_focus;` clears it.
+
+**The pattern across this whole sweep, three times now:** a feature implemented, tested, documented —
+and never used. `PlusFeatureService` (behaviour right, service unused), the stadium accordion (dead),
+and now the focus. Each was invisible until someone asked whether anything read it.
