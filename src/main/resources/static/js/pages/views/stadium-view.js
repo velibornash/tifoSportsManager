@@ -27,6 +27,9 @@ const CORNERS = [
 ];
 const NEUTRAL = '#26303f';
 
+/** Kept in step with StadiumImageService.DEFAULT_STADIUM_IMAGE on the server. */
+const DEFAULT_STADIUM_IMAGE = '/images/dunjareal.png';
+
 export function createStadiumView(deps) {
     const { authFetch, getTeamId, formatBudget } = deps;
     let esc = typeof htmlEscape === 'function' ? htmlEscape : (v) => String(v ?? '');
@@ -223,12 +226,30 @@ export function createStadiumView(deps) {
         </div>`;
     }
 
+    /**
+     * The ground's picture, and the control that replaces it (owner, 2026-09-28).
+     *
+     * <p>The fallback is a photograph of a real ground, not the generated placeholder. A club without
+     * artwork should look like a football ground; a grey gradient reads as a broken image, and so did
+     * the broken-image glyph before that.
+     *
+     * <p>The file input is styled rather than hidden, because an invisible input is impossible to
+     * use with a keyboard and impossible to explain to anyone who did not build it.
+     */
     function picture(s) {
-        const src = s.image || '/images/default-stadium.png';
+        const src = s.image || DEFAULT_STADIUM_IMAGE;
         return `
         <div class="stadium-picture">
             <img src="${esc(src)}" alt="${esc(s.name || 'Stadium')}"
-                 onerror="this.src='/images/default-stadium.png'">
+                 onerror="this.src='${DEFAULT_STADIUM_IMAGE}'">
+            <div class="stadium-picture-actions">
+                <label class="stadium-upload">
+                    <span>Change picture</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+                           data-stadium-image-input>
+                </label>
+                <span class="stadium-upload-note" data-stadium-image-note>PNG, JPEG, WEBP or GIF, up to 4&nbsp;MB.</span>
+            </div>
         </div>`;
     }
 
@@ -285,7 +306,39 @@ export function createStadiumView(deps) {
                 });
                 note.textContent = 'Saving…';
                 try {
-                    const res = await authFetch(`/api/teams/${teamId}/stadium/paint`, {
+                    const input = mainContent.querySelector('[data-stadium-image-input]');
+            if (input) {
+                input.addEventListener('change', async () => {
+                    const file = input.files && input.files[0];
+                    if (!file) return;
+                    const note = mainContent.querySelector('[data-stadium-image-note]');
+                    // FormData, not JSON: the file has to go as multipart so the browser streams it
+                    // and the server can check its type. Setting Content-Type by hand here would omit
+                    // the multipart boundary and the request would arrive unparseable.
+                    const body = new FormData();
+                    body.append('file', file);
+                    if (note) note.textContent = 'Uploading…';
+                    try {
+                        const res = await authFetch(`/api/teams/${teamId}/stadium/image`, {
+                            method: 'POST',
+                            body,
+                        });
+                        const payload = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            if (note) note.textContent = payload.error || 'That picture did not upload.';
+                            return;
+                        }
+                        if (note) note.textContent = 'Saved.';
+                        await loadStadium();
+                    } catch (err) {
+                        if (note) note.textContent = `That picture did not upload. ${err.message || ''}`;
+                    } finally {
+                        input.value = '';
+                    }
+                });
+            }
+
+            const res = await authFetch(`/api/teams/${teamId}/stadium/paint`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(colours),

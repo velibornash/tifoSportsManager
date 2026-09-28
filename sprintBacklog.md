@@ -1803,6 +1803,58 @@ not done unattended.
 
 ---
 
+### Stadium picture as a field + manager upload — ✅ DONE 2026-09-28 (owner)
+
+Owner instruction: *"svaki stadion ce imati sliku, zaasad stavi fallback neka koja ima (dunjareal
+stadion) tako da treba polje za sliku. omoguciti da korisnik uploaduje svoju sliku. ok for shema
+change"*
+
+**What was actually broken, which was more than "no field":**
+
+`Stadium` had **no `image` field at all**, and the stadium page read `s.image` from a payload that
+never contained an `image` key. So the ground page has **never once** shown a real ground. It always
+fell through to a default that was itself a **404**, which — with the `onerror` handler pointing at
+the same missing file — rendered as a browser broken-image glyph on every stadium in the game.
+
+| Piece | What it does |
+|---|---|
+| `Stadium.image` | The column. Null means "use the fallback" |
+| `StadiumImageService.DEFAULT_STADIUM_IMAGE` | `/images/dunjareal.png` — a real photograph, per the owner. **Not** the generated placeholder: a stadium with no artwork should look like a football ground, and a grey gradient reads as a broken image |
+| `POST /api/teams/{teamId}/stadium/image` | The upload, multipart |
+| `UploadResourceConfig` | Serves `/uploads/**` from a real directory |
+| `StadiumSettingsController` | Sends `image` on the payload — the key the view already read |
+| `TeamController` schedule row | Sends `stadiumImage`, so fixtures show the right ground |
+| `resolveFixtureStadiumImage` | **Deleted.** The substring matcher that was never called |
+
+**Two traps worth writing down, because both fail quietly:**
+
+1. **Where the file goes.** Everything under `src/main/resources/static` is served from the
+   **classpath**, and that copy is made at build time. An upload written into the source directory is
+   stored successfully and then 404s until the next rebuild — and in a packaged jar the directory is
+   not writable at all. Uploads therefore go to `app.uploads.dir` (default `./uploads`), served by a
+   resource handler. Verified: the file is written to `uploads/stadiums/` and **not** into `static/`.
+2. **`/uploads/**` must be public.** A browser loads an `<img>` with no `Authorization` header, so a
+   JWT-gated upload would store the file and then render as a **302 on every page**. The `GET` is
+   public like `/images/**`; the `POST` that writes a file still checks the manager owns the club.
+
+**Ownership, verified live rather than assumed:** Velja manages **Omladinac (1)**, Kecko manages
+**Sremac (2)** — both clubs are seeded as human-controlled, which nearly caused a false alarm here.
+Upload to team 1 → 200. Upload to team 2 → **403**. A `text/plain` file → **400** with a message, not
+a 500. The `GET` of an accepted upload → **200**, real PNG bytes.
+
+**Safe by construction:** the stored filename is a **UUID**, never the manager's — a client-supplied
+name is a path-traversal vector and gets reflected back into markup. The extension comes from the
+content type. It is an **allow-list** (`png`, `jpeg`, `webp`, `gif`), and **`image/svg+xml` is
+excluded on purpose**: SVG is a document that can carry script, and the file is served from this
+origin to everyone who views the stadium.
+
+**Tests: 8** — fallback when there is no artwork and when there is no stadium row at all, own artwork
+winning, the file landing outside the classpath, the manager's filename being ignored, non-image and
+SVG and empty uploads all refused, and a club with no stadium row getting one so the manager is not
+told to go and create a stadium. **Full suite 670.**
+
+---
+
 ### Sprint 6 exit criteria — 🟡 MET IN SPIRIT, THREE ITEMS OPEN
 
 The sprint's purpose was "a reader can tell what is live". That is achieved — the dead engines are

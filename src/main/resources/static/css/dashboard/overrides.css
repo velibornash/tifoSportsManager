@@ -811,3 +811,50 @@
         gap: 6px;
     }
 }
+
+/* ── Stadium picture upload (owner, 2026-09-28) ──────────────────────────────────────
+   The input is styled, not hidden: an invisible file input cannot be reached with a keyboard and
+   gives the manager nothing to click. The label is the button. */
+.stadium-picture-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.stadium-upload {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fm-legacy-text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.stadium-upload:hover {
+    background: rgba(143, 211, 255, 0.14);
+}
+
+.stadium-upload input[type='file'] {
+    /* Kept in the layout and 1px, rather than display:none, so it stays focusable and the label
+       is a real control rather than a decoration. */
+    width: 1px;
+    height: 1px;
+    opacity: 0.01;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--fm-muted-text, #9aa0a6);
+}
+
+.stadium-upload input[type='file']::file-selector-button {
+    display: none;
+}
+
+.stadium-upload-note {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}

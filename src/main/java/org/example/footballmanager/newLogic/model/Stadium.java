@@ -16,6 +16,21 @@ public class Stadium {
     private String name;
     private Integer capacity;
     private String location;
+
+    /**
+     * This ground's picture, as a URL path (owner, 2026-09-28).
+     *
+     * <p><b>Why this column exists at all:</b> the stadium page used to read {@code s.image} from a
+     * payload that never contained an {@code image} key, and the fixture view separately guessed a
+     * picture from the stadium's <i>name</i> by substring — a function that was never called, so three
+     * real ground images were unreachable. Both were the same mistake as the club-logo item: inferring
+     * from a name when a field could just hold the answer.
+     *
+     * <p>Null is normal and means "use the fallback". The fallback is a real ground photograph
+     * (Dunjareal) rather than a generated placeholder, so a club without artwork still looks like a
+     * football ground instead of a grey box.
+     */
+    private String image;
     @ManyToOne(fetch = FetchType.LAZY)
     @EqualsAndHashCode.Exclude
     @JsonManagedReference

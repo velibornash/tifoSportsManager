@@ -50,6 +50,7 @@ public class DatabaseInitializer {
     private static final String SECOND_DISPLAY_NAME = "Kecko";
     private static final String SECOND_PASSWORD = "Kecko123!";
     private static final String SREMAC_TEAM_NAME = "Sremac Berkasovo";
+    private static final String SREMAC_STADIUM_IMAGE = "/images/livadice.png";
     private static final String SREMAC_LOGO = "/images/sremac_logo.jpg";
     private static final String OMLADINAC_LOGO = "/images/omladinac.png";
     private static final String SREMAC_STADIUM = "Stadion Livadice";
@@ -975,9 +976,13 @@ public class DatabaseInitializer {
                 team.setStadium(stadium);
             }
             stadium.setName(SREMAC_STADIUM);
-            // The fixture view already resolves a stadium whose name contains "livadice" to
-            // /images/livadice.png, so naming the ground is all that is needed to put the real
-            // picture on the match screen.
+            // The picture used to be inferred from the name: the fixture view matched "livadice" by
+            // substring in a function nothing called, so the artwork was unreachable. The field holds
+            // it directly now, and a club that has not uploaded anything falls back to the Dunjareal
+            // ground rather than a grey box.
+            if (stadium.getImage() == null || stadium.getImage().isBlank()) {
+                stadium.setImage(SREMAC_STADIUM_IMAGE);
+            }
             stadium.setLocation("Berkasovo");
         } else if ("OFK Omladinac".equals(name)) {
             team.setLogoUrl(OMLADINAC_LOGO);

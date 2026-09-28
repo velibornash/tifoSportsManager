@@ -3650,3 +3650,48 @@ file. Verified by re-introducing a shadowed `render` and watching it report `{re
 attempt at that verification silently did not write the file, and I only noticed because the test
 passed again. Checking that the fault was actually inserted, rather than trusting the patch script,
 is the part that saved the verification.
+
+---
+
+## Stadium picture as a field, and manager uploads (2026-09-28)
+
+Owner: every stadium gets a picture; for now fall back to the Dunjareal ground; the field is needed;
+let a manager upload their own; schema change approved.
+
+**Worth stating plainly: the ground page had never once shown a real ground.** `Stadium` had no
+`image` field at all, and `stadium-view.js` read `s.image` from a payload that never had an `image`
+key. It always fell through to a default that was itself a 404, and the `onerror` handler pointed at
+the same missing file — so every stadium in the game rendered a browser broken-image glyph.
+
+Now: `Stadium.image`, the Dunjareal photograph as the fallback, an upload endpoint, `image` on the
+stadium payload, `stadiumImage` on the schedule row so fixtures show the right ground, and the dead
+substring matcher deleted.
+
+**Two traps that both fail quietly, and both of which I hit:**
+
+1. **Where the file lands.** Everything under `src/main/resources/static` is served from the
+   *classpath*, and that copy is made at build time. An upload written into the source directory
+   stores fine and then 404s until the next rebuild; in a packaged jar the directory is not writable
+   at all. Uploads go to `app.uploads.dir` (default `./uploads`) via a resource handler. Verified the
+   file is in `uploads/stadiums/` and **not** in `static/`.
+2. **`/uploads/**` has to be public.** A browser loads an `<img>` with no `Authorization` header, so
+   gating the `GET` would store the file and then render a 302 on every page. My first version had
+   exactly that: the `POST` returned 200 and the `GET` returned **302**. The `POST` still checks
+   ownership; the `GET` is public like `/images/**`.
+
+**Nearly reported a security bug that was not one.** Both Sremac and Omladinac are seeded as
+human-controlled, so my test assumed Velja owned team 2. The upload to team 1 returned 200 and to team
+2 returned 403, which read as exactly backwards. `/auth/me` says Velja manages **Omladinac (1)** and
+Kecko manages **Sremac (2)** — so the check was right and the assumption was wrong. Worth the check
+before calling anything inverted.
+
+Verified live: own club 200, rival club 403, `text/plain` 400 with a message rather than a 500, and
+the accepted file served back as 200 with real PNG bytes. Sremac's seeded artwork is `/images/livadice.png`;
+every other club resolves to the Dunjareal fallback.
+
+Safe by construction: the stored name is a UUID, never the manager's — a client-supplied filename is a
+path-traversal vector and is reflected back into markup. The extension comes from the content type, and
+it is an allow-list. **`image/svg+xml` is excluded deliberately**: SVG is a document that can carry
+script, and this file is served from the app's own origin.
+
+**Tests: 8. Full suite 670.**

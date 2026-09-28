@@ -77,6 +77,14 @@ public class SecurityConfig {
                                 "/css/**",
                                 "/js/**",
                                 "/images/**",
+                                // Manager-uploaded stadium pictures (owner, 2026-09-28).
+                                //
+                                // Public for the same reason /images/** is, and it is not optional: a
+                                // browser loads an <img> without an Authorization header, so a JWT-gated
+                                // upload would store the file successfully and then render as a
+                                // redirect on every page. The upload itself is still gated — the POST
+                                // that writes a file checks the manager owns the club.
+                                "/uploads/**",
                                 "/audio/**",
                                 "/demo/service/ui/**",
                                 // Static assets shared by the non-football sports only. The whole

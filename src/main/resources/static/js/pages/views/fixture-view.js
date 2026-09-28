@@ -51,14 +51,6 @@ export function createFixtureView(deps) {
         return matchesFeature.loadFixtures();
     }
 
-    function resolveFixtureStadiumImage(fixture) {
-        const venueKey = String(fixture?.stadium || fixture?.stadiumName || '').toLowerCase();
-        if (venueKey.includes('livadice')) return '/images/livadice.png';
-        if (venueKey.includes('dunjareal')) return '/images/dunjareal.png';
-        if (venueKey.includes('bilino')) return '/images/bilinopolje.png';
-        return '/images/default-stadium.png';
-    }
-
     async function findFixtureRow(fixtureId) {
         const teamId = getTeamId();
         const numericFixtureId = Number(fixtureId);
@@ -270,5 +262,5 @@ export function createFixtureView(deps) {
         renderFixturesView(fixtures, title, options);
     }
 
-    return { loadFixture, loadFixtures, loadUpcomingMatches, loadFriendlies, findFixtureRow, resolveFixtureStadiumImage, renderFixtures };
+    return { loadFixture, loadFixtures, loadUpcomingMatches, loadFriendlies, findFixtureRow, renderFixtures };
 }

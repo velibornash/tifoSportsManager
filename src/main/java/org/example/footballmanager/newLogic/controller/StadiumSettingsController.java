@@ -17,9 +17,13 @@ import java.util.Map;
 import java.util.OptionalDouble;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.example.commonmanager.model.User;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
@@ -42,6 +46,33 @@ public class StadiumSettingsController {
     private final TrainingFacilityService facilities;
     private final org.example.footballmanager.newLogic.service.StadiumBuildService build;
     private final PitchMaintenanceService pitch;
+    private final org.example.footballmanager.newLogic.service.StadiumImageService stadiumImages;
+    private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
+
+    /**
+     * Uploads the club's stadium picture (owner, 2026-09-28).
+     *
+     * <p>Ownership is checked through {@code PlusFeatureService} rather than a local club lookup, so
+     * "is this your club" cannot disagree with the answer the rest of the game gives. Without it any
+     * authenticated manager could overwrite a rival's ground.
+     */
+    @PostMapping("/image")
+    public ResponseEntity<Map<String, Object>> uploadImage(
+            @PathVariable Long teamId,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal User principal) {
+        if (!plusFeatures.isOwnTeam(principal, teamId)) {
+            return ResponseEntity.status(403).body(Map.of(
+                    "error", "You can only change the picture of your own club's stadium."));
+        }
+        try {
+            String url = stadiumImages.storeForTeam(teamId, file);
+            return ResponseEntity.ok(Map.of("image", url));
+        } catch (IllegalArgumentException e) {
+            // A 400, not a 500: the request was well formed and the file was simply not acceptable.
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(@PathVariable Long teamId) {
@@ -172,6 +203,9 @@ public class StadiumSettingsController {
         stadium.put("name", s.getName());
         stadium.put("capacity", s.getCapacity());
         stadium.put("location", s.getLocation());
+        // The key stadium-view.js has always read. It was never sent, so the page has never shown a
+        // real ground. imageFor resolves null to the Dunjareal fallback rather than a grey box.
+        stadium.put("image", stadiumImages.imageFor(s));
         stadium.put("standardTicketPrice", admission.priceOf(s, TicketType.STANDARD));
         stadium.put("prices", admission.allPrices(s));
         stadium.put("pitchCondition", pitch.conditionOf(s));

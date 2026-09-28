@@ -473,6 +473,13 @@ public class TeamController {
         row.put("competitionId", fixture.getCompetition() != null ? fixture.getCompetition().getId() : null);
         row.put("matchDate", formatDateTime(fixture.getMatchDate()));
         row.put("stadium", resolveStadiumName(fixture));
+        // The picture comes from the ground's own field rather than from matching its name. The name
+        // matcher was a function nothing called, which is why three real ground images were
+        // unreachable; a null here falls back to the Dunjareal ground on the client.
+        row.put("stadiumImage", fixture.getHomeTeam() != null
+                && fixture.getHomeTeam().getStadium() != null
+                ? fixture.getHomeTeam().getStadium().getImage()
+                : null);
         // Which club's ground this is, so the venue can be a link to that club rather than a
         // dead piece of text.
         row.put("stadiumOwnerTeamId", fixture.getHomeTeam() != null ? fixture.getHomeTeam().getId() : null);
