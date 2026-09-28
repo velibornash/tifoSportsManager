@@ -2078,6 +2078,111 @@ election tie ("plain random" between candidates on equal votes) and the tourname
 difference → goals scored → coin) both go through it, and the seed is stored on the tie so the
 outcome is auditable afterwards.
 
+#### The 48 nations (owner list, 2026-09-28)
+
+**English names, three-letter codes.** The seeding of clubs, leagues and players is a **separate job
+done 1-by-1 at the end**, once the application works. The nine countries in the database are enough
+to build and test against until then.
+
+| # | Country | Code | Its domestic league (when seeded) |
+|---|---|---|---|
+| 1 | **Serbia** | `SRB` | Serbia — Superliga |
+| 2 | **Croatia** | `CRO` | Croatia — HNL |
+| 3 | **Bosnia and Herzegovina** | `BIH` | Bosnia — Premier League |
+| 4 | **Montenegro** | `MNE` | Montenegro — Prva liga |
+| 5 | **North Macedonia** | `MKD` | Macedonia — First League |
+| 6 | **Slovenia** | `SVN` | Slovenia — PrvaLiga |
+| 7 | **Hungary** | `HUN` | Hungary — Nemzeti Bajnoksag |
+| 8 | **Romania** | `ROU` | Romania — Liga I |
+| 9 | **Bulgaria** | `BUL` | Bulgaria — First League |
+| 10 | **Greece** | `GRE` | Greece — Super League |
+| 11 | **Italy** | `ITA` | Italy — Serie A |
+| 12 | **Austria** | `AUT` | Austria — Bundesliga |
+| 13 | **France** | `FRA` | France — Ligue 1 |
+| 14 | **Spain** | `ESP` | Spain — La Liga |
+| 15 | **Portugal** | `POR` | Portugal — Primeira Liga |
+| 16 | **Switzerland** | `SUI` | Switzerland — Super League |
+| 17 | **Germany** | `GER` | Germany — Bundesliga |
+| 18 | **Poland** | `POL` | Poland — Ekstraklasa |
+| 19 | **Czechia** | `CZE` | Czechia — Czech First League |
+| 20 | **Slovakia** | `SVK` | Slovakia — Nik liga |
+| 21 | **Russia** | `RUS` | Russia — Premier League |
+| 22 | **Netherlands** | `NED` | Netherlands — Eredivisie |
+| 23 | **Belgium** | `BEL` | Belgium — Pro League |
+| 24 | **Turkey** | `TUR` | Turkey — Super Lig |
+| 25 | **England** | `ENG` | England — Premier League |
+| 26 | **Scotland** | `SCO` | Scotland — Premiership |
+| 27 | **Northern Ireland** | `NIR` | Northern Ireland — Premiership |
+| 28 | **Ireland** | `IRL` | Ireland — Premier Division |
+| 29 | **Denmark** | `DEN` | Denmark — Superliga |
+| 30 | **Norway** | `NOR` | Norway — Eliteserien |
+| 31 | **Sweden** | `SWE` | Sweden — Allsvenskan |
+| 32 | **Finland** | `FIN` | Finland — Veikkausliiga |
+| 33 | **United States** | `USA` | United States — MLS |
+| 34 | **Canada** | `CAN` | Canada — CPL |
+| 35 | **Australia** | `AUS` | Australia — A-League |
+| 36 | **Brazil** | `BRA` | Brazil — Serie A |
+| 37 | **Argentina** | `ARG` | Argentina — Primera Division |
+| 38 | **Uruguay** | `URU` | Uruguay — Primera Division |
+| 39 | **China** | `CHN` | China — Chinese Super League |
+| 40 | **Japan** | `JPN` | Japan — J1 League |
+| 41 | **Morocco** | `MAR` | Morocco — Botola Pro |
+| 42 | **Egypt** | `EGY` | Egypt — Premier League |
+| 43 | **India** | `IND` | India — Indian Super League |
+| 44 | **Mauritius** | `MRI` | Mauritius — Mauritius League |
+| 45 | **Georgia** | `GEO` | Georgia — Erovnuli Liga |
+| 46 | **Saudi Arabia** | `KSA` | Saudi Arabia — Saudi Pro League |
+| 47 | **Qatar** | `QAT` | Qatar — Qatar Stars League |
+| 48 | **Other Nations** | `OTH` | the remaining nations of the world, ranked and fielded as nations but without a domestic league of their own |
+
+**Exactly 48, so 47 named plus "Other Nations"** — which is a real entry, not a filler: it holds the
+rest of the world, is ranked and fielded like any other nation, and simply has no league of its own
+generating players.
+
+> **Two code collisions to be careful about.** **Greece is `GRE` and Georgia is `GEO`** — neither may
+> use `GRU`, and the country-view flag badge derives an emoji from the code, so a wrong code there
+> shows the wrong flag. Separately, three codes in the database today are **non-standard and will
+> change**: Croatia is `HRV` (should be `CRO`), Germany is `DEU` (should be `GER`) and England is
+> `GBR` (should be `ENG`). `ENG` rather than `GBR` is deliberate — England and the United Kingdom are
+> different football nations, and this list includes both Scotland and Northern Ireland separately.
+
+#### 🔴 The whole system must be country-agnostic, and today it is not
+
+Owner's requirement: *"ceo sistem koji napravis — sistem liga, nt, ntu21, kup itd — to sve treba da
+radi ISTO za bilo koju zemlju i da se bira iz korisnikovog polja country pri registraciji."*
+
+**Audited 2026-09-28, and there is no such field.** `RegisterRequestDTO` carries only
+`username`, `email` and `password`. **`User` has no `country` column at all.** A user's country is
+currently *derived* — `/auth/me` returns `countryIsoCode` and `countryName` by looking up the **club
+they manage**, so a manager gets a country as a consequence of picking a club rather than by choosing
+one.
+
+| # | Task |
+|---|---|
+| 0.4a | **`User.country`** — a real column, chosen at registration from the 48 |
+| 0.4b | A country picker on the registration form, populated from the country list |
+| 0.4c | Club selection scoped to the chosen country, so a manager can only run a club in their own country |
+| 0.4d | **Every** league, transfer, cup, national-team and international read scopes by that country. Nothing may assume Serbia |
+| 0.4e | Audit for hardcoded country or league assumptions — `DatabaseInitializer` seeds Serbian leagues and the seeding logic assumes them |
+
+> **This is the single most important architectural item in the section**, and it is cheap to get
+> right now and expensive to retrofit. Every table that will be built in Parts 1–7 gets a country
+> scope, and getting one of them wrong produces a Serbian league that a manager in Qatar can see and
+> a transfer market that crosses borders for free.
+
+#### Cup and international competitions need their own page
+
+Owner's requirement: *"Kup (kao i internacionalna takmičenja) moraju imati svoju stranu gde se vidi
+tabela ako postoji (kup nema tabelu), rezultati po rundama, schedule."*
+
+| # | Task |
+|---|---|
+| 8.1 | A page per competition — cup, Champions Cup, Masters, Challenge, and each national tournament |
+| 8.2 | **League table where one exists**; a cup shows **no table**, and must not render an empty one |
+| 8.3 | **Results by round** — 1/16, 1/8, quarter, semi, final as a bracket or as a list per round |
+| 8.4 | **Schedule** — the same day-by-day view as the country page, scoped to that competition |
+| 8.5 | Reachable from the country page, so a manager never has to guess a URL |
+
 #### Part 0 — Foundations (do these first; everything else is downstream)
 
 | # | Task | Notes |
@@ -2085,7 +2190,7 @@ outcome is auditable afterwards.
 | 0.1 | **National ranking (senior and U-21 — two independent lists)** | **Elo, decided by the owner.** Moves only on NT results. Beating a higher-ranked nation pays more; losing to a lower-ranked one costs more. WC win > qualifying win, plus a qualifying bonus. Senior and U-21 start **equal**. Ties on equal rating broken by the shared random |
 | 0.2 | **Club ranking list** | **Elo**, driven by the same match-value order: **international cup > league > cup > friendly**. Tier gives a starting offset so a tier-1 club outranks any tier-5 club. One list serves both the within-country order and the international order. Rating changes are recorded per match so an upset is visible as an event |
 | 0.3 | Create the national team entities | 2 per country. `Country.seniorNationalTeam` / `u21NationalTeam` are already there waiting and are `null` for all 9 countries. They are **not clubs**: no league, no transfers, no wages — but they need players |
-| 0.3a | Seed ~48 nations with their own leagues and clubs | **The single largest item in this section, and it is a data job, not a feature.** The owner intends **at least 48 nations — ideally exactly 48: 47 named plus "Other"**. The database has 9, all Serbia-region, and 31 leagues. **Scope question — see below** |
+| 0.3a | Seed ~48 nations with their own leagues and clubs | **Deferred by the owner to a separate, 1-by-1 job at the END**, once the application works. The 9 in the database are enough to build and test against until then. Exactly **48**: 47 named plus "Other Nations". The 9 currently in the database are **Serbia plus neighbours** and carry **Serbian names** — they will be renamed to the English list above |
 | 0.4 | **Day-level calendar slots** | `SeasonCalendar` has the days; it needs **named slots** for day 1 (international 20:45), day 2 (finance), day 4 (training), day 5 (cup 18:00), day 6 (form/morale + junior). With room to add more — the owner asked for space to grow |
 | 0.5 | **Knockout resolution: penalties** | 90 minutes, then a shootout. The engine produces a 90-minute score; a shootout is a **new concept** that must not leak into league results |
 | 0.6 | **Draw engine: seeded pots and byes** | Potted draws, one team per pot per group, and a bracket that handles a non-power-of-two field (256 is fine; 202 direct entrants is not) |

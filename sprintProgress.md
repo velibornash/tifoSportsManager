@@ -3858,3 +3858,54 @@ because the first one is the same class of error as the bug: a plausible number,
 **Tests: 13**, written as properties rather than examples — a win never lowers a rating, a loss never
 raises one, a match is zero-sum, an upset moves more than an expected result, the value ordering holds,
 and a null stage falls back to the *lowest* weight rather than the heaviest. **Full suite 683.**
+
+---
+
+## The 9 countries that are actually in the database, and the country-agnostic gap (2026-09-28)
+
+The owner asked where the 9 came from, and the answer is a list of Serbian names that have nothing to
+do with the 48:
+
+| id | name | iso_code | reputation | youth_rating |
+|---|---|---|---|---|
+| 1 | Serbia | SRB | 50 | 50 |
+| 2 | Bosna i Hercegovina | BIH | 55 | 60 |
+| 3 | Crna Gora | MNE | 50 | 55 |
+| 4 | Hrvatska | HRV | 70 | 75 |
+| 5 | Slovenija | SVN | 60 | 65 |
+| 6 | Severna Makedonija | MKD | 45 | 50 |
+| 7 | Nemačka | DEU | 95 | 95 |
+| 8 | Engleska | GBR | 95 | 90 |
+| 9 | Brazil | BRA | 90 | 85 |
+
+Only **Serbia** has a league system seeded — 31 leagues. The other eight are name rows with a rating
+and no football attached, which is why the earlier summary called them "all Serbian-region" and the
+owner corrected it: Serbia is one country and these are neighbours added while building.
+
+**Two things to fix when the country list lands:** they are **Serbian names** where the owner wants
+English, and three codes are **non-standard** — Croatia is `HRV` not `CRO`, Germany `DEU` not `GER`,
+England `GBR` not `ENG`. `ENG` is deliberate, since England, Scotland and Northern Ireland are
+separate football nations and all three are on the list.
+
+### 🔴 The system is not country-agnostic, and cannot be today
+
+Owner's requirement: *"ceo sistem mora da radi ISTO za bilo koju zemlju i da se bira iz korisnikovog
+polja country pri registraciji."*
+
+**There is no such field.** `RegisterRequestDTO` is `username`, `email`, `password` — nothing else.
+**`User` has no `country` column.** A user's country is *derived*: `/auth/me` resolves
+`countryIsoCode` and `countryName` from **the club they manage**, so you get a country as a
+consequence of picking a club, not by choosing one.
+
+Recorded as **0.4a–0.4e** and flagged as the most important architectural item in the section. It is
+cheap now and expensive to retrofit: every table built in Parts 1–7 needs a country scope, and one
+missed produces a Serbian league a manager in Qatar can browse and a transfer market that crosses
+borders for free. `DatabaseInitializer` seeding Serbian leagues is a known hardcoded assumption.
+
+### Also recorded
+
+- **The 48 nations** with English names and three-letter codes, plus the top division each will have.
+  Seeding is deferred to a separate 1-by-1 job at the end, per the owner.
+- **A page per competition** — cup, Champions, Masters, Challenge, and each national tournament — with
+  a **league table where one exists** and **no table for a cup**, results by round, and the schedule.
+  A cup must not render an empty table; that is the failure mode to avoid.
