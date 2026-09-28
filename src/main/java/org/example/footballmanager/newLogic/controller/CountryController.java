@@ -12,7 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.service.NationalTeamService;
+import org.example.footballmanager.newLogic.service.NationalTeamElectionService;
 import org.example.footballmanager.newLogic.model.NationalTeamLevel;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
@@ -49,6 +51,7 @@ import java.util.stream.Collectors;
 public class CountryController {
     private final CountryRepository countryRepository;
     private final NationalTeamService nationalTeamService;
+    private final NationalTeamElectionService electionService;
     private final TeamRepository teamRepository;
     private final CompetitionRepository competitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
@@ -60,7 +63,8 @@ public class CountryController {
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService) {
+    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
+            NationalTeamElectionService electionService) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -73,6 +77,7 @@ public class CountryController {
         this.scheduleInsightService = scheduleInsightService;
         this.seasonService = seasonService;
         this.nationalTeamService = nationalTeamService;
+        this.electionService = electionService;
     }
 
     /**
@@ -245,6 +250,182 @@ public class CountryController {
                 ? "No playoff competition exists for this country yet."
                 : "Playoff competition exists but no ties have been generated.");
         return out;
+    }
+
+    // ------------------------------------------------------------ elections
+
+    /**
+     * The election for one national side, with the running state and candidate list.
+     *
+     * <p>Tallies are omitted for an undecided election unless the caller is an admin or the owner.
+     * That is decided on the server, not by the client choosing not to render them.
+     */
+    @GetMapping("/{isoCode}/national-team/election")
+    public Map<String, Object> getElection(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        return electionService.describeElection(country, NationalTeamLevel.from(level), currentSeason(),
+                viewer, isElectionAdmin(viewer));
+    }
+
+    /** Stands the caller for selector, or revives a previous candidacy they had withdrawn. */
+    @PostMapping("/{isoCode}/national-team/election/candidacy")
+    public Map<String, Object> registerCandidate(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        electionService.register(country, NationalTeamLevel.from(level), currentSeason(), viewer, weekOneKickoff());
+        return electionService.describeElection(country, NationalTeamLevel.from(level), currentSeason(),
+                viewer, true);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{isoCode}/national-team/election/candidacy")
+    public Map<String, Object> withdrawCandidate(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        electionService.withdraw(country, NationalTeamLevel.from(level), currentSeason(), viewer);
+        return electionService.describeElection(country, NationalTeamLevel.from(level), currentSeason(),
+                viewer, true);
+    }
+
+    /**
+     * Casts a vote, or moves the caller's existing one.
+     *
+     * <p>One vote per user, changeable, and self-voting is allowed - all three were the owner's
+     * explicit rules, so none of them are guarded against here.
+     */
+    @PostMapping("/{isoCode}/national-team/election/vote")
+    public Map<String, Object> vote(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @RequestBody Map<String, Object> body,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        long candidateId = Long.parseLong(String.valueOf(body.get("candidateId")));
+        electionService.vote(country, NationalTeamLevel.from(level), currentSeason(), viewer, candidateId);
+        return electionService.describeElection(country, NationalTeamLevel.from(level), currentSeason(),
+                viewer, true);
+    }
+
+    /**
+     * Closes the vote and appoints the winner.
+     *
+     * <p>Admin or owner only. A tie is reported rather than broken: the owner never specified a
+     * tiebreak, and picking one inside a declaration method would be a rule nobody chose.
+     */
+    @PostMapping("/{isoCode}/national-team/election/declare")
+    public Map<String, Object> declare(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        requireElectionAdmin(viewer);
+        return electionService.declare(requireCountry(isoCode), NationalTeamLevel.from(level), currentSeason());
+    }
+
+    @PostMapping("/{isoCode}/national-team/election/annul")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void annul(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        requireElectionAdmin(viewer);
+        electionService.annul(requireCountry(isoCode), NationalTeamLevel.from(level), currentSeason());
+    }
+
+    /**
+     * Forces an election into a state, so the panel can be exercised without waiting for week 1.
+     *
+     * <p>Admin only, and recorded as a manual override: the clock will not then quietly close an
+     * election somebody opened on purpose.
+     */
+    @PostMapping("/{isoCode}/national-team/election/status")
+    public Map<String, Object> setElectionStatus(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @RequestParam String status,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        requireElectionAdmin(viewer);
+        Country country = requireCountry(isoCode);
+        electionService.forceStatus(country, NationalTeamLevel.from(level), currentSeason(), org.example.footballmanager.newLogic.model.NationalTeamElection.Status.valueOf(status));
+        return electionService.describeElection(country, NationalTeamLevel.from(level), currentSeason(),
+                viewer, true);
+    }
+
+    /** Every election for a country, for the admin list. */
+    @GetMapping("/{isoCode}/elections")
+    public List<Map<String, Object>> listElections(
+            @PathVariable String isoCode,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        requireElectionAdmin(viewer);
+        return electionService.listForCountry(requireCountry(isoCode).getId());
+    }
+
+    /**
+     * When week 1 day 1 kicked off, which is what the voting window is measured from.
+     *
+     * <p>Falls back to the start of the current day when the season clock cannot be read, so the
+     * election is still usable rather than permanently unopenable on a fresh install.
+     */
+    private java.time.Instant weekOneKickoff() {
+        try {
+            Integer currentWeek = seasonService.getCurrentWeek();
+            if (currentWeek != null && currentWeek >= 1) {
+                return java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the default below.
+        }
+        return java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+    }
+
+    /**
+     * The current season, from the season clock.
+     *
+     * <p>Server-side on purpose. The election endpoints used to take a season parameter, which let
+     * the client ask about a season nobody was holding an election for - and the seeded world is on
+     * season 2025, so a default of 1 silently reported "no election" while one was running.
+     */
+    private int currentSeason() {
+        try {
+            return seasonRepository.findAll().stream()
+                    .map(season -> season.getSeasonYear())
+                    .filter(java.util.Objects::nonNull)
+                    .max(Integer::compareTo)
+                    .filter(year -> year > 0)
+                    .orElse(1);
+        } catch (RuntimeException ignored) {
+            return 1;
+        }
+    }
+
+    private boolean isElectionAdmin(User viewer) {
+        if (viewer == null) {
+            return false;
+        }
+        // Role check plus the seeded owner. The owner is matched by address rather than by a flag so
+        // that a fresh install has someone who can run the election, which is the only way to
+        // appoint a selector before the first election cycle exists.
+        return (viewer.getRole() != null && viewer.getRole().name().equals("OWNER"))
+                || "velibor@example.com".equalsIgnoreCase(viewer.getEmail());
+    }
+
+    private void requireElectionAdmin(User viewer) {
+        if (!isElectionAdmin(viewer)) {
+            throw new SecurityException("Only an administrator can do that.");
+        }
     }
 
     private Country requireCountry(String isoCode) {

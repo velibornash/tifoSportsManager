@@ -38,94 +38,55 @@ public class NationalTeamService {
 
     private static final Logger log = LoggerFactory.getLogger(NationalTeamService.class);
 
-    private final NationalTeamAppointmentRepository appointments;
     private final TeamRepository teams;
     private final PlayerRepository players;
     private final MatchFixtureRepository fixtures;
     private final org.example.commonmanager.repository.UserRepository users;
+    private final NationalTeamElectionService elections;
+    private final NationalTeamAppointments appointments;
+    private final org.example.footballmanager.newLogic.repository.SeasonRepository seasons;
 
-    public NationalTeamService(NationalTeamAppointmentRepository appointments, TeamRepository teams,
+    public NationalTeamService(TeamRepository teams,
                                PlayerRepository players, MatchFixtureRepository fixtures,
-                               org.example.commonmanager.repository.UserRepository users) {
-        this.appointments = appointments;
+                               org.example.commonmanager.repository.UserRepository users,
+                               NationalTeamElectionService elections,
+                               NationalTeamAppointments appointments,
+                               org.example.footballmanager.newLogic.repository.SeasonRepository seasons) {
         this.teams = teams;
         this.players = players;
         this.fixtures = fixtures;
         this.users = users;
-    }
-
-    /**
-     * Puts the country's manager in charge of both national sides (owner, 2026-09-28).
-     *
-     * <p>Stands in until the elections run. Marked {@code elected = false} so the UI can say
-     * "provisional" rather than implying a vote that has not happened. Idempotent: an existing
-     * appointment is left alone, so a real election result is never overwritten by a reboot.
-     */
-    @Transactional
-    public void appointBaselineSelectors(Country country) {
-        if (country == null || country.getId() == null) {
-            return;
-        }
-        for (NationalTeamLevel level : NationalTeamLevel.values()) {
-            if (activeAppointment(country.getId(), level).isPresent()) {
-                continue;
-            }
-            // There is no manager column on Team: a manager is a User whose app_user.cteam_id points
-            // at the club, and the ids are the same space. So the country's selector is the first user
-            // whose club sits in this country.
-            java.util.Set<Long> clubIds = teams.findClubTeamsForOperations().stream()
-                    .filter(team -> team.getId() != null && team.getCountry() != null
-                            && country.getId().equals(team.getCountry().getId()))
-                    .map(Team::getId)
-                    .collect(java.util.stream.Collectors.toSet());
-            User manager = users.findAll().stream()
-                    .filter(u -> u.getCTeam() != null && u.getCTeam().getId() != null)
-                    .filter(u -> clubIds.contains(u.getCTeam().getId()))
-                    // Sorted by id, not left in findAll order: the owner must win, and repository
-                    // order is arbitrary. Without this, Kecko was appointed ahead of Velja.
-                    .sorted(Comparator.comparing(User::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                    .findFirst()
-                    .orElse(null);
-            if (manager == null) {
-                log.warn("No club manager found for {}; {} selector left unappointed.", country.getIsoCode(), level);
-                continue;
-            }
-            appoint(country, level, manager, false);
-            log.info("Appointed {} as {} selector for {} (provisional, pending elections).",
-                    manager.getUsername(), level, country.getIsoCode());
-        }
+        this.elections = elections;
+        this.appointments = appointments;
+        this.seasons = seasons;
     }
 
     public Optional<NationalTeamAppointment> activeAppointment(Long countryId, NationalTeamLevel level) {
-        return appointments.findByCountryIdAndLevelAndActiveTrue(countryId, level);
+        return appointments.activeAppointment(countryId, level);
     }
 
+
     /**
-     * Appoints a selector, standing the previous one down first.
+     * Appointments live in {@link NationalTeamAppointments}.
      *
-     * <p>The deactivation is done by mutating the existing row rather than by inserting a new inactive
-     * one, because the unique constraint allows only a single inactive row per country and level.
+     * <p>They were methods on this class until the election service needed to appoint a winner, which
+     * made NationalTeamService and NationalTeamElectionService depend on each other and the context
+     * would not start. Appointing is its own responsibility; the read side and the write side do not
+     * need to be one class.
      */
-    @Transactional
     public NationalTeamAppointment appoint(Country country, NationalTeamLevel level, User selector, boolean elected) {
-        activeAppointment(country.getId(), level).ifPresent(previous -> {
-            previous.setActive(false);
-            appointments.save(previous);
-        });
-        NationalTeamAppointment appointment = new NationalTeamAppointment();
-        appointment.setCountry(country);
-        appointment.setLevel(level);
-        appointment.setSelector(selector);
-        appointment.setElected(elected);
-        appointment.setActive(true);
-        return appointments.save(appointment);
+        return appointments.appoint(country, level, selector, elected);
+    }
+
+    public void appointBaselineSelectors(Country country) {
+        appointments.appointBaselineSelectors(country);
     }
 
     public boolean isSelector(Country country, NationalTeamLevel level, User viewer) {
         if (viewer == null || viewer.getId() == null) {
             return false;
         }
-        return activeAppointment(country.getId(), level)
+        return appointments.activeAppointment(country.getId(), level)
                 .map(appointment -> appointment.getSelector() != null
                         && viewer.getId().equals(appointment.getSelector().getId()))
                 .orElse(false);
@@ -153,7 +114,9 @@ public class NationalTeamService {
             out.put("pool", List.of());
             out.put("squadSize", 0);
             out.put("isSelector", false);
-            out.put("election", electionState(null));
+            out.put("election", Map.of("open", false, "stage", "NONE",
+                    "candidates", List.of(), "exists", false,
+                    "note", "This national team has not been created yet."));
             return out;
         }
 
@@ -185,7 +148,7 @@ public class NationalTeamService {
         out.put("lastMatch", lastMatch(team.getId()));
         out.put("nextMatch", nextMatch(team.getId()));
         out.put("ranking", ranking(country.getIsoCode()));
-        out.put("election", electionState(activeAppointment(country.getId(), level).orElse(null)));
+        out.put("election", electionState(country, level, viewer));
         return out;
     }
 
@@ -322,23 +285,38 @@ public class NationalTeamService {
     }
 
     /**
-     * Election state.
+     * Delegates to the election service.
      *
-     * <p>No election entity exists yet, so this always reports "none". The shape is the one the
-     * general tab already renders, and the client keeps the section visible but disabled rather than
-     * hiding it - the owner asked for it to go live when an election opens, and a section that only
-     * appears when it works is a section nobody can find.
+     * <p>This used to be a hardcoded "no election running". Now the panel reflects a real election,
+     * including for a team that does not exist yet - an election is about a country and a level, and
+     * can be contested before anybody is appointed.
      */
-    private Map<String, Object> electionState(NationalTeamAppointment appointment) {
-        Map<String, Object> election = new LinkedHashMap<>();
-        election.put("open", false);
-        election.put("stage", "NONE");
-        election.put("candidates", List.of());
-        election.put("opensAt", null);
-        election.put("closesAt", null);
-        election.put("electedAppointmentId", appointment == null ? null : appointment.getId());
-        election.put("note", "No election is running.");
-        return election;
+    private Map<String, Object> electionState(Country country, NationalTeamLevel level, User viewer) {
+        return elections.describeElection(country, level, currentSeasonYear(), viewer,
+                viewer != null && "velibor@example.com".equalsIgnoreCase(viewer.getEmail()));
+    }
+
+    /**
+     * The season the election belongs to.
+     *
+     * <p>Read from the season clock when it is available. Defaulting to 1 rather than 0 keeps a
+     * fresh install usable: an election created for season 0 would never match the one the admin
+     * screen lists.
+     */
+    private int currentSeasonYear() {
+        try {
+            // SeasonRepository only offers a year lookup, so the current season is the highest one
+            // that exists. A database with seasons 1 and 2 in it is on season 2.
+            return seasons.findAll().stream()
+                    .map(season -> season.getSeasonYear())
+                    .filter(java.util.Objects::nonNull)
+                    .max(Integer::compareTo)
+                    .filter(year -> year > 0)
+                    .orElse(1);
+        } catch (RuntimeException ignored) {
+            // Fall through to the default.
+        }
+        return 1;
     }
 
     private Map<String, Object> lastMatch(Long teamId) {

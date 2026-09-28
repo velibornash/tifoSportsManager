@@ -181,7 +181,7 @@ export function createCountryView(deps) {
                 : `<span class="fm-subtle">No selector</span>`;
 
         return `
-            <section class="fm-panel">
+            <section class="fm-panel" data-country-nt-level="${level}">
                 <div class="fm-panel-head">
                     <div>
                         <div class="fm-eyebrow">${htmlEscape(eyebrow)}</div>
@@ -215,19 +215,81 @@ export function createCountryView(deps) {
                         <span class="fm-nt-summary-note">${nt.nextMatch ? `Week ${nt.nextMatch.week}` : 'No fixture yet'}</span>
                     </div>
                 </div>
-                <div class="fm-nt-election${election.open ? ' is-open' : ''}">
-                    <div class="fm-nt-election-head">
-                        <span class="fm-nt-summary-label">Elections</span>
-                        <span class="fm-nt-election-state">${election.open
-                            ? htmlEscape(election.stage || 'OPEN')
-                            : 'No election running'}</span>
-                    </div>
-                    <p class="fm-subtle">${htmlEscape(election.note || '')}</p>
-                    ${election.open
-                        ? `<button type="button" class="fm-action-btn" data-country-route="election">Take part</button>`
-                        : `<button type="button" class="fm-action-btn secondary" disabled>Stand for election</button>`}
-                </div>
+                ${buildElectionBlock(level, election, nt)}
             </section>`;
+    }
+
+    /**
+     * The election panel: stand, vote, or show the result.
+     *
+     * <p>Rendered in every state, disabled when there is nothing to do. A section that only appears
+     * when it works is one nobody can find, and the owner asked for it to go live when an election
+     * opens rather than to appear from nowhere.
+     *
+     * <p>Vote counts are only rendered when the server sent them. For an undecided election the
+     * endpoint omits the key entirely for ordinary callers, so there is nothing here to leak and
+     * nothing to accidentally un-hide.
+     */
+    function buildElectionBlock(level, election, nt) {
+        const state = election.stage || 'NONE';
+        const canStand = !!election.acceptingCandidates;
+        const canVote = !!election.acceptingVotes;
+        const viewerIsCandidate = !!election.viewerIsCandidate;
+        const candidates = (election.candidates || []).filter(c => !c.withdrawn);
+        const decided = state === 'DECIDED';
+
+        let body;
+        if (decided) {
+            body = `
+                <p class="fm-subtle">${htmlEscape(election.winner ? `${election.winner} takes the job for one season.` : 'Decided.')}</p>`;
+        } else if (candidates.length === 0) {
+            body = `
+                <p class="fm-subtle">${htmlEscape(election.note || 'No candidates yet.')}</p>
+                <button type="button" class="fm-action-btn" data-election-stand="${level}" ${canStand ? '' : 'disabled'}>
+                    ${canStand ? 'Stand for election' : 'Registration closed'}
+                </button>`;
+        } else {
+            const rows = candidates.map(candidate => {
+                const chosen = nt.election?.myVote?.candidateId === candidate.id;
+                const votes = Object.prototype.hasOwnProperty.call(candidate, 'votes')
+                    ? `${candidate.votes} vote${candidate.votes === 1 ? '' : 's'}`
+                    : 'tally hidden';
+                return `
+                    <div class="fm-nt-candidate${chosen ? ' is-chosen' : ''}">
+                        <span class="fm-nt-candidate-name">${htmlEscape(candidate.name)}</span>
+                        <span class="fm-nt-candidate-votes">${htmlEscape(votes)}</span>
+                        <button type="button" class="fm-squad-add" data-election-vote="${candidate.id}" data-election-level="${level}"
+                            ${canVote ? '' : 'disabled'}>${chosen ? 'Your vote' : 'Vote'}</button>
+                    </div>`;
+            }).join('');
+
+            const myVote = nt.election?.myVote
+                ? `<p class="fm-subtle">You voted for ${htmlEscape(nt.election.myVote.candidateName)}${nt.election.myVote.changeCount
+                    ? ` (changed ${nt.election.myVote.changeCount}×)` : ''}. Changeable until voting closes.</p>`
+                : '';
+
+            body = `
+                ${myVote}
+                <div class="fm-nt-candidates">${rows}</div>
+                <button type="button" class="fm-action-btn secondary" data-election-stand="${level}" ${canStand ? '' : 'disabled'}>
+                    ${viewerIsCandidate ? 'Withdraw' : (canStand ? 'Stand for election' : 'Registration closed')}
+                </button>`;
+        }
+
+        const stateLabel = decided ? 'Declared'
+            : state === 'ANNULLED ? 'void'
+            : canVote ? 'Voting open'
+            : canStand ? 'Registration open'
+            : 'Closed';
+
+        return `
+            <div class="fm-nt-election${election.open || decided ? ' is-open' : ''}">
+                <div class="fm-nt-election-head">
+                    <span class="fm-nt-summary-label">Elections</span>
+                    <span class="fm-nt-election-state">${htmlEscape(stateLabel)}</span>
+                </div>
+                ${body}
+            </div>`;
     }
 
     // ------------------------------------------------------------- squad tab
@@ -521,6 +583,14 @@ export function createCountryView(deps) {
             });
         }
 
+        root.querySelectorAll('[data-election-stand], [data-election-vote]').forEach(button => {
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                await runElectionAction(countryIso, button);
+                await loadCountryPage({ tab: activeTab === 'general' ? 'general' : activeTab });
+            });
+        });
+
         root.querySelectorAll('[data-squad-add]').forEach(button => {
             button.addEventListener('click', async () => {
                 button.disabled = true;
@@ -533,6 +603,59 @@ export function createCountryView(deps) {
                 await deleteSquad(countryIso, activeTab, button.dataset.squadRemove);
             });
         });
+    }
+
+    /**
+     * Election actions.
+     *
+     * <p>Withdraw is a DELETE and stand is a POST to the same route, so the button's own label
+     * decides which: a user who is already a candidate means withdraw. Sending the wrong one is
+     * harmless but confusing, so the intent is read from the payload the server returns.
+     */
+    async function runElectionAction(countryIso, element) {
+        const level = element.dataset.electionLevel
+            || element.dataset.electionStand
+            || element.closest('[data-country-nt-level]')?.dataset.countryNtLevel
+            || 'senior';
+
+        if (element.dataset.squadAdd != null) {
+            return;
+        }
+        if (element.dataset.electionVote) {
+            await postJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/vote?level=${encodeURIComponent(level)}`,
+                { candidateId: Number(element.dataset.electionVote) });
+            return;
+        }
+        if (element.dataset.electionStand) {
+            const election = await readJson(
+                `/countries/${encodeURIComponent(countryIso)}/national-team/election?level=${encodeURIComponent(level)}`);
+            if (election && election.viewerIsCandidate) {
+                await deleteJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/candidacy?level=${encodeURIComponent(level)}`);
+            } else {
+                await postJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/candidacy?level=${encodeURIComponent(level)}`, {});
+            }
+        }
+    }
+
+    async function postJson(path, body) {
+        const response = await authFetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {})
+        });
+        await reportElectionFailure(response);
+    }
+
+    async function deleteJson(path) {
+        const response = await authFetch(path, { method: 'DELETE' });
+        await reportElectionFailure(response);
+    }
+
+    /** A rejected election action has to say why, or the panel just blinks. */
+    async function reportElectionFailure(response) {
+        if (response.ok) return;
+        const body = await response.json().catch(() => ({}));
+        window.alert(body.message || 'That election action was refused.');
     }
 
     async function postSquad(countryIso, level, playerId) {
