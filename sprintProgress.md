@@ -3506,3 +3506,10 @@ function, so all three are effectively orphaned assets.
 
 The fix is the same shape as S8.3 #7 — stop inferring from names, add a real field — but it touches
 the schema, so it is written up and left rather than done unattended.
+
+**One unreproduced full-suite failure, 2026-09-28.** Between the #6 commit and the run after it, one
+`mvn -o test` reported `BUILD FAILURE` while the immediately following runs passed 655/655. The
+failing run's output was not captured — the grep in use filtered to the aggregate line, which is
+precisely the line that was missing — so there is nothing to diagnose. Three subsequent full runs
+were clean. Recorded rather than dismissed: the honest position is "not reproduced and not
+understood", and if it recurs the first thing to do is capture the whole log.
