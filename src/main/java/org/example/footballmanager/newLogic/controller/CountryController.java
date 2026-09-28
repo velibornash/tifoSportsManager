@@ -12,7 +12,18 @@ import org.springframework.http.ResponseEntity;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.service.NationalTeamService;
+import org.example.footballmanager.newLogic.model.NationalTeamLevel;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.util.CupFixtureSeeder;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +48,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/countries")
 public class CountryController {
     private final CountryRepository countryRepository;
+    private final NationalTeamService nationalTeamService;
     private final TeamRepository teamRepository;
     private final CompetitionRepository competitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
@@ -48,7 +60,7 @@ public class CountryController {
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService) {
+    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -60,6 +72,7 @@ public class CountryController {
         this.seasonRepository = seasonRepository;
         this.scheduleInsightService = scheduleInsightService;
         this.seasonService = seasonService;
+        this.nationalTeamService = nationalTeamService;
     }
 
     /**
@@ -110,12 +123,11 @@ public class CountryController {
     }
 
     /**
-     * A national team and its squad (owner, 2026-09-28).
+     * A national team: squad, pool, selector, ranking, fixtures, election state (owner, 2026-09-28).
      *
-     * <p>Answers "who is the selector and what squad do they have" so the national-team screen has
-     * something real in it. The teams and squads are created by {@code NationalTeamSeeder}; until the
-     * elections exist, <b>the manager of the country is the selector</b> — provisional, and stated as
-     * such in the payload rather than pretended to be a vote.
+     * <p>Replaces a hand-rolled map that reported the viewer as selector. That made every user in a
+     * country believe they ran the national team and left nothing to check "is this viewer the
+     * selector" against, so the squad could not be restricted to them.
      */
     @GetMapping("/{isoCode}/national-team")
     public Map<String, Object> getNationalTeam(
@@ -123,53 +135,121 @@ public class CountryController {
             @RequestParam(defaultValue = "senior") String level,
             @org.springframework.security.core.annotation.AuthenticationPrincipal
             org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        return nationalTeamService.describe(country, NationalTeamLevel.from(level), viewer);
+    }
 
-        Country country = countryRepository.findByIsoCode(isoCode.toUpperCase(Locale.ROOT))
-                .orElseThrow(() -> new IllegalArgumentException("No such country: " + isoCode));
-        boolean youth = "u21".equalsIgnoreCase(level);
-        Team team = youth ? country.getU21NationalTeam() : country.getSeniorNationalTeam();
+    /**
+     * Puts a club player on the national roster.
+     *
+     * <p>Selector-only, and re-checked here rather than trusting the client. The client hides the
+     * button, but a hidden button is not a permission.
+     */
+    @PostMapping("/{isoCode}/national-team/squad")
+    public Map<String, Object> addToSquad(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @RequestBody Map<String, Object> body,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        Country country = requireCountry(isoCode);
+        long sourcePlayerId = Long.parseLong(String.valueOf(body.get("playerId")));
+        return nationalTeamService.addToSquad(country, NationalTeamLevel.from(level), sourcePlayerId, viewer);
+    }
+
+    /** Takes a national-roster row off the squad. The club player is untouched. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{isoCode}/national-team/squad/{playerId}")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void removeFromSquad(
+            @PathVariable String isoCode,
+            @PathVariable long playerId,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        nationalTeamService.removeFromSquad(requireCountry(isoCode), NationalTeamLevel.from(level), playerId, viewer);
+    }
+
+    /**
+     * The cup bracket for this country: every round, every tie.
+     *
+     * <p>Rounds that have not been drawn yet are reported as empty rather than omitted, so the cup
+     * page can show the shape of the tournament and which round is next instead of a list that
+     * silently grows.
+     */
+    @GetMapping("/{isoCode}/cup")
+    public Map<String, Object> getCup(@PathVariable String isoCode) {
+        Country country = requireCountry(isoCode);
+        Competition cup = competitionRepository.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.CUP)
+                .filter(c -> c.getCountry() == null || country.getId().equals(c.getCountry().getId()))
+                .findFirst()
+                .orElse(null);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("countryCode", country.getIsoCode());
-        out.put("countryName", country.getName());
-        out.put("level", youth ? "u21" : "senior");
-
-        if (team == null) {
+        if (cup == null) {
             out.put("exists", false);
-            out.put("squad", List.of());
+            out.put("rounds", List.of());
             return out;
         }
-
         out.put("exists", true);
-        out.put("teamId", team.getId());
-        out.put("teamName", team.getName());
+        out.put("competitionId", cup.getId());
+        out.put("name", cup.getName());
+        out.put("teamsPerCompetition", cup.getTeamsPerCompetition());
 
-        // Provisional until the elections exist. Saying so in the payload rather than in a comment is
-        // deliberate: a screen that renders "your manager is the selector" without qualification is
-        // telling the user something the system has not actually established.
-        out.put("selectorIsProvisional", true);
-        out.put("selectorName", viewer == null ? null
-                : (viewer.getDisplayName() != null && !viewer.getDisplayName().isBlank()
-                        ? viewer.getDisplayName() : viewer.getUsername()));
-
-        List<Map<String, Object>> squad = new ArrayList<>();
-        for (Player player : playerRepository.findByTeamId(team.getId())) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", player.getId());
-            row.put("name", player.getName());
-            row.put("position", player.getPosition() == null ? null : player.getPosition().name());
-            row.put("age", player.getAge());
-            row.put("rating", player.getRating());
-            row.put("form", player.getForm());
-            squad.add(row);
+        List<MatchFixture> all = matchFixtureRepository
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), 1);
+        Map<Integer, List<Map<String, Object>>> byRound = new LinkedHashMap<>();
+        for (int round : CupFixtureSeeder.CUP_WEEKS) {
+            byRound.put(round, new ArrayList<>());
         }
-        // Player.rating is an int, so it arrives back out of the map as Integer, not Double. Casting
-        // to Double threw ClassCastException at runtime and the endpoint answered 500.
-        squad.sort((a, b) -> Integer.compare(((Number) b.get("rating")).intValue(),
-                ((Number) a.get("rating")).intValue()));
-        out.put("squad", squad);
-        out.put("squadSize", squad.size());
+        for (MatchFixture fixture : all) {
+            List<Map<String, Object>> bucket = byRound.computeIfAbsent(
+                    fixture.getWeekNumber() == null ? 0 : fixture.getWeekNumber(), k -> new ArrayList<>());
+            Map<String, Object> tie = new LinkedHashMap<>();
+            tie.put("id", fixture.getId());
+            tie.put("home", fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getName());
+            tie.put("away", fixture.getAwayTeam() == null ? null : fixture.getAwayTeam().getName());
+            tie.put("played", fixture.isPlayed());
+            bucket.add(tie);
+        }
+        List<Map<String, Object>> rounds = new ArrayList<>();
+        for (int round : CupFixtureSeeder.CUP_WEEKS) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("week", round);
+            row.put("fixtures", byRound.getOrDefault(round, List.of()));
+            rounds.add(row);
+        }
+        out.put("rounds", rounds);
+        out.put("totalFixtures", all.size());
         return out;
+    }
+
+    /**
+     * Playoff ties for this country.
+     *
+     * <p>Empty until playoffs exist. Reported as an empty list so the link is live and the page says
+     * "none yet" rather than 404-ing at a section the general tab always offers.
+     */
+    @GetMapping("/{isoCode}/playoffs")
+    public Map<String, Object> getPlayoffs(@PathVariable String isoCode) {
+        Country country = requireCountry(isoCode);
+        List<Competition> playoffs = competitionRepository.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.LEAGUE)
+                .filter(c -> c.getName() != null && c.getName().toLowerCase().contains("playoff"))
+                .filter(c -> c.getCountry() == null || country.getId().equals(c.getCountry().getId()))
+                .toList();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("exists", !playoffs.isEmpty());
+        out.put("fixtures", List.of());
+        out.put("note", playoffs.isEmpty()
+                ? "No playoff competition exists for this country yet."
+                : "Playoff competition exists but no ties have been generated.");
+        return out;
+    }
+
+    private Country requireCountry(String isoCode) {
+        return countryRepository.findByIsoCode(String.valueOf(isoCode).toUpperCase(Locale.ROOT))
+                .orElseThrow(() -> new IllegalArgumentException("No such country: " + isoCode));
     }
 
     @GetMapping("/{isoCode}/leagues")

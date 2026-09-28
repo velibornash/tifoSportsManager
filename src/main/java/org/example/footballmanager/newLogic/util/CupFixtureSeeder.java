@@ -42,7 +42,7 @@ public class CupFixtureSeeder {
     private static final Logger log = LoggerFactory.getLogger(CupFixtureSeeder.class);
 
     /** Owner, 2026-09-28. Eight rounds, no week 6, final on week 11. See the class comment. */
-    static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 11};
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 11};
 
     /** Owner: ranks 203-310 enter in week 1; ranks 1-202 join the winners in week 2. */
     static final int ENTRY_ROUND_TEAMS = 108;
@@ -97,12 +97,13 @@ public class CupFixtureSeeder {
         // Idempotent by fixture count, not by a flag: if the draw exists, the fixtures are the record.
         long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
                 cup.getId(), SEED_SEASON, 1);
+        log.info("Cup {}: {} round-1 ties already drawn.", cup.getName(), existing);
         if (existing > 0) {
-            log.debug("Cup {} already has {} fixtures; leaving the draw alone.", cup.getName(), existing);
             return;
         }
 
         List<Team> ranked = rankedClubs();
+        log.info("Cup {}: {} clubs ranked, need {}.", cup.getName(), ranked.size(), MAIN_DRAW_TEAMS);
         if (ranked.size() < MAIN_DRAW_TEAMS) {
             log.warn("Only {} clubs available; a {}-team draw needs {}. Cup {} left empty.",
                     ranked.size(), MAIN_DRAW_TEAMS, MAIN_DRAW_TEAMS, cup.getName());

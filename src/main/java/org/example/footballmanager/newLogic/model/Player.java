@@ -20,6 +20,7 @@ public class Player {
     @Embedded
     private Skills skills;
 
+
     @ColumnDefault("6.0")
     private double talent;
 
@@ -134,6 +135,21 @@ public class Player {
     @Enumerated(EnumType.STRING)
     @Column(name = "preferred_foot", length = 8)
     private PreferredFoot preferredFoot;
+
+    /**
+     * The club player this row was copied from, when the row belongs to a national team.
+     *
+     * <p>National squads are copies so that calling a player up does not remove them from their club
+     * (see NationalTeamService.addToSquad). A copy needs a link back to its source, or the national
+     * roster is a set of names with no way to tell which club each came from, and squad editing
+     * cannot tell a national row from a club row. Null on every ordinary club player.
+     *
+     * <p>Declared last on purpose: {@code @AllArgsConstructor} grows by one parameter per field
+     * wherever it is placed, so inserting it mid-class silently reorders every positional argument
+     * in every caller.
+     */
+    @jakarta.persistence.Column(name = "source_player_id")
+    private Long sourcePlayerId;
 
 
     /** The role to actually use: the stored one, or a sensible default for his position. */

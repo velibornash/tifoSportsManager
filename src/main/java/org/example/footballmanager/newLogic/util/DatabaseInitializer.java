@@ -96,6 +96,7 @@ public class DatabaseInitializer {
     private final TransferActivitySeeder transferActivitySeeder;
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
+    private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
     private final PlayerRepository playerRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -171,6 +172,15 @@ public class DatabaseInitializer {
                 cupFixtureSeeder.seedIfMissing();
             } catch (RuntimeException e) {
                 log.warn("Could not draw the cup: {}", e.getMessage());
+            }
+            // The country's manager stands in as selector until the elections run. Recorded as an
+            // appointment rather than derived from the viewer, so "only the selector sees the squad"
+            // is a checkable fact instead of everyone appearing to run the team.
+            try {
+                nationalTeamService.appointBaselineSelectors(
+                        countryRepository.findByIsoCode("SRB").orElse(null));
+            } catch (RuntimeException e) {
+                log.warn("Could not appoint the baseline selector: {}", e.getMessage());
             }
             return;
         }

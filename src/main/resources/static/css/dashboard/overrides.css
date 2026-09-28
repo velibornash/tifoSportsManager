@@ -1494,3 +1494,269 @@
     .fm-page--country .fm-league-row { grid-template-columns: 1fr; gap: 4px; }
     .fm-page--country .fm-league-row-go { display: none; }
 }
+
+/* ============================================================================
+   Country tabs (owner, 2026-09-28)
+   Reuses the existing fm-player-tabs bar so the country page matches the club
+   screens rather than inventing a second tab style.
+   ========================================================================== */
+
+.fm-page--country .fm-country-tabs {
+    margin: 0;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(20, 27, 46, 0.9);
+    border: 1px solid rgba(120, 150, 210, 0.18);
+}
+
+/* Link rows: Cup, Playoffs. */
+.fm-page--country .fm-country-links {
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-page--country .fm-country-link-row {
+    display: grid;
+    grid-template-columns: 130px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 13px 20px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+    transition: background 120ms ease;
+}
+
+.fm-page--country .fm-country-link-row:hover,
+.fm-page--country .fm-country-link-row:focus-visible {
+    background: rgba(120, 160, 230, 0.1);
+    outline: none;
+}
+
+.fm-page--country .fm-country-link-label {
+    font-size: 15px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+.fm-page--country .fm-country-link-sub {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-country-link-go {
+    font-size: 12px;
+    color: #8fd0ff;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-country-select-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-country-select-control {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+/* National-team summary: ranking, last match, next match. */
+.fm-page--country .fm-nt-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(120, 150, 210, 0.12);
+}
+
+.fm-page--country .fm-nt-summary-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 20px;
+    background: rgba(16, 22, 38, 0.96);
+    min-width: 0;
+}
+
+.fm-page--country .fm-nt-summary-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+.fm-page--country .fm-nt-summary-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #eef3ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-nt-summary-note {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+/* Elections: always visible, disabled when nothing is running. */
+.fm-page--country .fm-nt-election {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 16px 20px 20px;
+    opacity: 0.62;
+}
+
+.fm-page--country .fm-nt-election.is-open {
+    opacity: 1;
+    border-top: 1px solid rgba(159, 230, 176, 0.3);
+}
+
+.fm-page--country .fm-nt-election-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.fm-page--country .fm-nt-election-state {
+    font-size: 12px;
+    color: #e5b567;
+}
+
+.fm-page--country .fm-nt-election.is-open .fm-nt-election-state {
+    color: #9fe6b0;
+}
+
+.fm-page--country .fm-country-inline-link {
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: #8fd0ff;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+/* Squad and pool rows, with the call-up / release control. */
+.fm-page--country .fm-squad-club {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-row:has(.fm-squad-add),
+.fm-page--country .fm-squad-row:has(.fm-squad-remove) {
+    grid-template-columns: 34px 46px 1fr 160px auto 56px 84px;
+}
+
+.fm-page--country .fm-squad-add,
+.fm-page--country .fm-squad-remove {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-add {
+    color: #0d1a12;
+    background: #7fd79b;
+    border: 1px solid #7fd79b;
+}
+
+.fm-page--country .fm-squad-remove {
+    color: #f0b4b4;
+    background: rgba(200, 80, 80, 0.16);
+    border: 1px solid rgba(220, 110, 110, 0.4);
+}
+
+.fm-page--country .fm-squad-add:disabled,
+.fm-page--country .fm-squad-remove:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Cup bracket. */
+.fm-page--country .fm-cup-round {
+    border-bottom: 1px solid rgba(120, 150, 210, 0.1);
+}
+
+.fm-page--country .fm-cup-round:last-child {
+    border-bottom: none;
+}
+
+.fm-page--country .fm-cup-round-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px 8px;
+}
+
+.fm-page--country .fm-cup-round-count {
+    font-size: 12px;
+    color: var(--fm-subtle, #93a1bd);
+}
+
+.fm-page--country .fm-cup-ties {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(120, 150, 210, 0.1);
+    padding-bottom: 1px;
+}
+
+.fm-page--country .fm-cup-tie {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    background: rgba(16, 22, 38, 0.96);
+    font-size: 13px;
+    color: #eef3ff;
+    min-width: 0;
+}
+
+.fm-page--country .fm-cup-tie span:not(.fm-cup-tie-sep) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-cup-tie-sep {
+    color: var(--fm-subtle, #93a1bd);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+    .fm-page--country .fm-nt-summary-grid { grid-template-columns: 1fr; }
+    .fm-page--country .fm-cup-ties { grid-template-columns: 1fr; }
+    .fm-page--country .fm-country-link-row { grid-template-columns: 1fr; gap: 4px; }
+    .fm-page--country .fm-country-link-go { display: none; }
+    .fm-page--country .fm-squad-row:has(.fm-squad-add),
+    .fm-page--country .fm-squad-row:has(.fm-squad-remove) {
+        grid-template-columns: 28px 40px 1fr auto;
+    }
+    .fm-page--country .fm-squad-club { display: none; }
+}

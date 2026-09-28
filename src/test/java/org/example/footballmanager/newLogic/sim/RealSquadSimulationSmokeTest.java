@@ -101,7 +101,10 @@ class RealSquadSimulationSmokeTest {
                 // personality and preferredFoot (Sprint 5.3), also appended last. An @AllArgsConstructor
                 // grows by one parameter per field wherever you put it, so "add it at the end" keeps
                 // the *order* stable but never avoids touching the call sites.
-                null, null);
+                null, null,
+                // sourcePlayerId (national-team call-ups, 2026-09-28). Null: these are club players,
+                // not copies on a national roster.
+                null);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

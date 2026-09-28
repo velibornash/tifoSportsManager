@@ -514,6 +514,14 @@ import {
 	                    await loadCountryPage();
 	                    break;
 
+	                case "countryCup":
+	                    await countryView.loadCupPage();
+	                    break;
+
+	                case "countryPlayoffs":
+	                    await countryView.loadPlayoffPage();
+	                    break;
+
 	                case "nationalTeam":
 	                    await countryView.loadNationalTeamPage('senior');
 	                    break;
