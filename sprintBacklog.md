@@ -6,6 +6,75 @@
 
 ---
 
+## ⚡ CURRENT STATE — read this first (updated 2026-09-29)
+
+The rest of this file is a chronological log and is kept for the reasoning. This is the truth.
+Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests that need a running app).
+
+### Shipped recently
+
+| Area | What exists |
+|---|---|
+| Clock | `GameClock` with explicit wrapping `currentDay` (1-7) and `currentHour` (0-23). Real time plus an accumulated offset, so it ticks 1 game second per real second and `advance hour` is permanent. |
+| Advance | `advance hour` / `advance day` / `advance week`. Counters wrap: hour 23→0 + day, day 7→1 + week, week 12→1 + season. |
+| Jobs | `DayJob` + `JobRunner` + `JobRun`. A job runs only if no DONE row exists for (season, week, day, key). Failed jobs are recorded and not auto-retried. |
+| Scheduler | `GameClockScheduler`, hourly. Advances the clock and checks what is due, so a job missed while the app was down is caught. On in prod, off in dev/test. |
+| Jobs registered | `day-opened`, `finance` (d2), `training` (d4), `recovery` — NOT built, see open — `matchday-cup` (d5), `matchday-league-a` (d3), `matchday-league-b` (d7), `week-rollover` (d7 23:00), `season-rollover` (w12 d7 23:00). |
+| Cup | Real draw (56 → 256 clubs, favourites vs non-favourites, non-favourite at home), `MatchFixture.dayNumber`, ties open to a pre-match view, day-5 matchday **verified playing real matches**. |
+| Country page | Four tabs — General, Calendar, National Team, U-21. Selector-only squad editing (release / call up, verified round trip). Elections: stand, vote, declare, annul. |
+| Formats | `MatchFormat` abstract base with `League`, `KnockoutCup`, `NationalSide`, `International`, `Tournament`. `CompetitionType` extended with `INTERNATIONAL`, `TOURNAMENT`. |
+
+### Open, in the order I would do them
+
+1. **League fixtures have no `day_number`.** The day-3 and day-7 matchday jobs are registered but
+   find nothing, because the round-robin generator assigns rounds per week and does not stamp which
+   of the two days each belongs to. Until this lands, a week plays no league football from the job
+   path.
+2. **Day 1 internationals.** `CompetitionType` and `MatchFormat` are ready; there is no
+   `INTERNATIONAL` competition and no draw. Needs the draw.
+3. **Zone-based morale and daily recovery.** No zone model exists in the codebase at all. Needs:
+   a `Zone` model, `Player.zoneLoad` written by the match engine, recovery/morale derived from it, and
+   `Player.lastPlayedAt`. A flat "recovery" job was written and deliberately deleted — see below.
+4. **Watch-match gate.** "Watch match" must be active only at kickoff and must populate stats on
+   click, with a cup source. The data is all in `/api/game-clock` now (`day`, `kickoffHour`, `hour`).
+5. **Simulate-all is week-based, should be day/hour accurate, and does not include cup.**
+6. **Cup ties in the schedule view.** The schedule shows the template, not the actual day's ties.
+7. **T1 engine defect.** A 1-1 with 38-4 shots and 9.5-0.9 xG. Needs a real event dump before
+   touching the maths.
+8. **Transfer activity feed.** `TransferActivitySeeder` works; there is no feed UI and no weekly AI
+   market loop driving it.
+
+### Questions for the owner
+
+- **Prod auto-advance rate** — ANSWERED: 12 in-game weeks is 12 real weeks, 1:1. Closed.
+- **International fixtures** — ANSWERED: shared base type with specifics underneath. Implemented as
+  `MatchFormat`. Whether they get their own `Competition` rows or live outside the competition model
+  is still open.
+- **Day 6 morale** — ANSWERED: zone compute, recovery daily. Blocked on the zone model.
+- Still open: should the manager's country be the only country whose country page is reachable, or
+  should all 48 be browsable? Only Serbia is seeded with clubs today.
+
+### Things deliberately NOT built, and why
+
+| Not built | Reason |
+|---|---|
+| `RecoveryJob` | No zone model exists. It would have had to fake a zone or do nothing — both are the failure shape below. |
+| Day-1 international matchday | `CompetitionType` had nowhere to select. Adding the enum value is half the job; the draw is the other half. |
+| A day-6 morale job | Same reason as recovery: morale is a function of zone load, which does not exist. |
+
+### 🔴 Standing rule, learned the hard way
+
+A scheduled job that **completes successfully while doing nothing** is the most dangerous failure
+shape there is, because it is indistinguishable from one that has not been wired yet. It has happened
+**five times** in the season engine: a self-invocation that bypassed the transaction proxy, `hours/24`
+instead of measuring the date, a timestamp-derived hour counter, a hardcoded `1` passed where a
+`SEED_SEASON` constant was changed, and a season-index/calendar-year mismatch.
+
+Therefore: **every new scheduled job gets a live check against a running app that proves it changed
+something.** A DONE status is not evidence of work. Unit tests are necessary and not sufficient.
+
+---
+
 ## How to read this
 
 | Field | Meaning |
@@ -555,172 +624,6 @@ to the best finisher on the pitch and a small sample runs high. The 400k-sample 
 > Deferred by owner decision: connect the system first, statistics later. Kept so the finding is
 > not lost. Partly self-correcting now - the stoppage work means the match genuinely plays 90+
 > minutes, which raised box fouls and the penalty rate with it.
-
-### S1.7c ORIGINAL — Box fouls are under-produced ⚠️ OPENED 2026-09-26
-
-Surfaced by S1.7b. The engine commits **1.655 box fouls per match**; real football is nearer
-2.5–3.5. S1.7b compensated by raising `PENALTY_FROM_BOX_FOUL` to 0.165, so 1 in 6 box fouls now
-converts to a penalty against a real 1 in 11. The penalty *rate* is right; the *box contact* that
-feeds it is not.
-
-Better to fix the cause than keep the compensation. `DisciplineService` decides `foulProb` before
-it knows where the foul is, so a tackle in the box is no more likely than one on the halfway line.
-
-**Verify:** box fouls/match lands in 2.0–3.5 over 200 matches, penalties/match stays in 0.20–0.30
-with `PENALTY_FROM_BOX_FOUL` able to come back down toward 0.09.
-
----
-
-### S1.8 — Implement substitutions (currently the biggest engine gap)
-
-> ⚠️ **Added 2026-09-26.** `sim/model/Player.java:112` has `isUnavailable() { return sentOff || injured || substituted; }` and a `substituted` flag — **but nothing ever sets it.** `backlog.md:489-492` states it plainly: *"there is no bench/slot/substitution-limit contract exists"*.
-
-Consequences today: the same 11 play 90 minutes regardless of fatigue, injuries or bookings. A red card means 10-vs-11 for the rest of the match with no recourse. **This is also why fatigue and injuries barely matter** — being tired is only a slightly slower player, never a lineup change.
-
-| # | Task |
-|---|---|
-| 1 | `SubstitutionSlot` model: bench of 9, 5 substitutions allowed, 3 substitution windows (S1.8a below) |
-| 2 | Pick the bench automatically from squad role, condition and tactics — or let the manager pre-select it (do both; auto is the default) |
-| 3 | **Manual substitution** UI in the viewer: click a player, click a substitute |
-| 4 | **Automatic substitution** on injury, on red card, and on fatigue threshold |
-| 5 | **Tactical substitution** — change shape mid-match. This is the single biggest immersion win available |
-| 6 | Substitution windows: 3 moments, max 5 players. (Optional: allow rolling substitutions if the squad depth is high — a nice modern rule) |
-| 7 | A substituted player cannot return (unless you adopt rolling subs) |
-| 8 | Feed the sub into stats: minutes played, and a rating that reflects entry minute |
-
-**Verify:** a full match shows 0–5 substitutions depending on injuries/fatigue; a red card forces an emergency sub; the tactical view can change shape at half time.
-
----
-
-### S1.9 — Fix the remaining calibration outliers [DEFERRED 2026-09-26]
-
-> Deferred by owner decision (2026-09-26): fix what is clearly broken, but connect the system
-> first and do the statistics afterwards. Only the clearly-broken were fixed (goal kicks
-> 35.9 -> 21.9 in S1.2). The rest is recorded in `sprintProgress.md` as a position, not a
-> scorecard, and is **no longer benchmarked against Premier League figures.**
->
-> Worth an eye: **no 0-0 in 100 matches.** At ~4 goals/match a goalless draw is genuinely rare
-> (~1.4%), so this may be nothing, but it is a behavioural signal rather than a calibration one.
-
-### S1.9 ORIGINAL — Fix the remaining calibration outliers
-
-| Metric | Now | Target | Approach |
-|---|---:|---:|---|
-| Interceptions | 36.1 | 12–16 | `BallPhysicsEngine` intercept gate is `pm + def > 18` with `prob = min(0.45, (0.25 + (pm+def−18)/30) × speedFactor)`. Tighten the probability, keep the gate. Interception needs the S1.4 interposition work first |
-| Red cards | 1.0 | 0.2 | `DisciplineService:68` `straightRed = rand < 0.004` with `foulProb` 0.16–0.22 → product ≈ 0.0008/duel × ~600 duels. **Will drop sharply once S1.4 cuts duels to ~120.** Re-measure before touching |
-| Fouls | 29.6 | 22 | Same — re-measure after S1.4 |
-| Nil-draws | 0 / 200 | ~6% | Should resolve once goals come down to 2.7–3.0. If not, check the finishing model for a floor |
-| Through balls | 13.2 | 5–10 | `THRU_FREQUENCY_GATE = 0.032` → try 0.022. Note THRU is only reachable from the final-2-row hard rule (`CleanDecisionEngine.java:141`) — see S1.10 |
-| Highest score | 10 | 7–8 | Should resolve with S1.1 |
-
-**Rule: re-measure S1.9 items after S1.4 lands.** Most of them are downstream of the duel count.
-
----
-
-### S1.10 — Persist replays [DONE 2026-09-26]
-
-`SimReplayStore` is an unbounded in-memory `ConcurrentHashMap` (`SimReplayStore.java:17-29`). A restart loses every replay; `Match.replayId` survives in the DB as a dangling id.
-
-| # | Task |
-|---|---|
-| 1 | Persist `SimReplayView` to disk (or a `replay_blob` table) on store |
-| 2 | Load on read, fall back to in-memory |
-| 3 | Bound the retention (keep last N matches per team, or TTL) |
-| 4 | Null out `Match.replayId` if the blob is gone, so the UI can say "replay expired" instead of hanging |
-
----
-
-### S1.11 — Wire THRU / CROSS / CENTER [ALREADY IMPLEMENTED 2026-09-26]
-
-> **This entry was stale when picked up.** The claim was that deliveries entered only via the
-> final-two-row hard rule. They are first-class options - `CleanDecisionEngine:1075` says so
-> explicitly ("ALL options compete. THRU / CROSS / CENTER are included on purpose") - and over
-> 3 matches they fire at CROSS 23/match, CENTER 23/match, THRU 8.7/match, which is the real
-> 20-30 band for crosses. Nothing to build; the entry needed correcting.
-
----
-
-### S1.10 — Persist replays
-
-Today `selectOptionWithPlaymaking` only ever sees `pass, carry, shot, clear` (`:126-127`). Deliveries enter **only** via the final-2-row hard rule (`:141`). So the tactical variety in the design docs does not exist in play.
-
-| # | Task | File:line |
-|---|---|---|
-| 1 | Add THRU / CROSS / CENTER as first-class options in `selectOptionWithPlaymaking`, each with its own gate and scorer | `CleanDecisionEngine.java:126-127,886-891` |
-| 2 | CROSS gate: carrier wide (`|col − 4.0| ≥ 2.0`) in the opponent half | — |
-| 3 | CENTER gate: 2+ attackers inside the box | — |
-| 4 | THRU gate: an attacker running behind the second-to-last defender line | — |
-| 5 | Remove the special-casing at `:141` once deliveries are first-class | `CleanDecisionEngine.java:141` |
-
-**Verify:** crosses and throughs appear across the whole pitch, not only in the final two rows. Cross count should rise toward 20–30/match.
-
----
-
-### Sprint 1 exit criteria — ✅ mechanics COMPLETE 2026-09-26 · statistics deferred by owner
-
-**Read this before the table.** The owner closed Sprint 1 as **mechanics** on 2026-09-26 and
-deferred every statistical target (see PRIORITY CHANGE at the foot of this document). The table is
-kept as a **record of where the numbers were left**, not as a gate. What mattered was that the
-mechanics exist and are not broken, and they now do.
-
-| Task | State | Note |
-|---|---|---|
-| S1.1 goal inflation chain | ✅ done | on-target probability, post clustering, mouth width, `POST_RADIUS` |
-| S1.2 restart inversion | 🟡 partial | goal kicks 40.7 → ~20, in a sane band. `desiredClearancePower` (item 2) was never built; the fix came from the launch speed alone |
-| S1.3 corner skew | ❌ not done | no corner-side/origin diagnostic was ever written. Ratio is only mildly asymmetric (~0.75–0.85) |
-| S1.4 duel count | 🟡 partial | `isPathBlocked` and `nearestOpponentBeatsHimToIt` are wired into pass scoring, so interposition exists. The duel **count** was never reduced to 100–150 — deferred |
-| S1.5 chase multiplier + press radius | ✅ done | `CHASE_SPRINT_MULTIPLIER = 1.18`, `PRESS_DRIB_DUEL_RADIUS = 0.38` (~5 m, just past the 0.35 separation wall) |
-| S1.6 injury model | ✅ done | `sim/engine/InjuryService.java` — fatigue-scaled, position-weighted, minute-windowed |
-| S1.7 penalties | ✅ done | `PenaltyEngine`, 76% model conversion, keeper-commits-first |
-| S1.7b penalty award rate | ✅ done | `PENALTY_FROM_BOX_FOUL` 0.06 → 0.165, 0.24/match |
-| S1.7c box fouls | ⏭️ deferred | the compensation constant stands; root cause unfixed |
-| S1.8 substitutions | ✅ engine, ❌ UI | `SubstitutionService` + bench + windows + role-aware selection. The **manager-facing UI is not built** |
-| S1.9 calibration outliers | ⏭️ deferred | |
-| S1.10 persist replays | ✅ done | |
-| S1.11 THRU/CROSS/CENTER | ✅ already implemented | entry was stale; deliveries are first-class options |
-
-**The three holes that were the point of this sprint are closed:** injuries, penalties and
-substitutions all exist and fire. A red card still means ten men for the rest of the match, which is
-correct football and is no longer a bug.
-
-**Where the numbers were left (200-match reference, kept as a record):**
-
-| Metric | Old target | **Measured** | Real PL | Status |
-|---|---:|---:|---:|---|
-| **Goals** | 2.6 – 3.1 | **2.8** | 2.7 | ✅ |
-| **Shots on target** | 8 – 10 | **8.9** | 8–9 | ✅ |
-| **Saves** | 3 – 6 | **5.1** | ~5.8 | ✅ |
-| **Shot conversion** | — | **34%** | ~32% | ✅ |
-| Shots | — | 32.3 | 25 | ✅ owner accepts 30–40 |
-| On-target % | 30 – 36% | 28% | 33% | ✅ accepted trade-off |
-| Pass accuracy | 75 – 82% | 81.5% | 80–86% | ✅ |
-| Possession | symmetric | 48.7 / 51.3 | 50 / 50 | ✅ |
-| Duels won | 100 – 150 | **373** | ~100 | ⏭️ deferred |
-| Interceptions | 12 – 18 | **27.7** | 12–16 | ⏭️ deferred |
-| Corners | 8 – 12, symmetric | **5.6** (2.2/3.3) | ~10 | ⏭️ deferred |
-| Goal kicks | 10 – 18 | 19.8 | 12–15 | ⚠️ high |
-| Fouls | 19 – 26 | 16.6 | 22 | ⚠️ low |
-| Yellow cards | — | 2.3 | 4–5 | ⚠️ low |
-| Red cards | 0.1 – 0.4 | 0.15 | 0.2 | ✅ |
-| Nil-draws | ≥ 2% | 1/50 = 2% | ~6% | ⚠️ low |
-
-> Note: these figures predate S4. The current engine measures **4.88 goals/match** over 100 matches
-> with corners ~14, and the owner has explicitly accepted that. See the Sprint 4 owner decisions.
-
-**Two deliberate non-changes, both recorded in the source:**
-
-1. **Shot volume is not a defect.** `SHOT_FREQUENCY_GATE = 0.30` carries a note that the owner
-   accepts "30-40 shots a match". Chasing a real 25 would contradict an explicit decision.
-2. **On-target % sits at 28% against a real 33%, and that is the coherent trade.** 32 attempts with
-   the same accuracy and the same goals as a real 25-shot match: more chances, no more scoring. The
-   extra volume surfaces as misses, not as goals. Raising SOT to 33% would put goals back near 3.3 and
-   break the metric that matters most.
-
-**Root cause of the whole mess, for the record:** `GoalkeeperEngine.trySave` never checked whether
-the ball was going between the posts, so 26% of off-target attempts were "saved". Until that was
-fixed the save statistics were a broken denominator and no shot-model calibration could be trusted.
-
----
 
 ## Open items carried out of Sprint 1 (review at the end, not now)
 

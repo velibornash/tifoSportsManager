@@ -1,4 +1,39 @@
-# Sprint Progress Log
+# TIFO Football Manager — Sprint Progress Log
+
+## ⚡ LATEST — 2026-09-29
+
+**`83d4919` The cup matchday plays, and cup ties open.** `buildRound` was passed a hardcoded `1` — the
+season index — while the day-5 matchday job asked for `BASE_SEASON_YEAR + (season - 1)`. Changing the
+`SEED_SEASON` constant was not enough because the value never came from it; that is why the previous
+attempt appeared to do nothing. Verified live: cup fixtures at season 2025, day 5, 54 ties, and the
+log line `54 CUP fixtures played for week 1 day 5`. A played tie carries a real `played_match_id`.
+
+**`801df69` MatchFormat.** A shared base for the formats with specifics underneath, per the owner:
+internationals and national-team matches are mostly the same thing. An enum could not do it — the
+differences are behaviour, not labels (a qualifier can be drawn, a tournament tie cannot).
+`CompetitionType` gains `INTERNATIONAL` and `TOURNAMENT`.
+
+**`362dee2` Clock counters wrap explicitly.** The hour, day, week and season were derived from the
+timestamp, which tied them to the wall clock, so a 23:00 job fired or not depending on what time the
+manager pressed the button. They are stored integers that wrap now.
+
+**`ec1e75b` Scheduler.** The season plays itself: hourly tick, advance and check. Off in dev/test.
+
+**`dd11682` Matchday jobs** and the `MatchFixture.dayNumber` they needed — a week has two league
+rounds and a fixture knew its week but not its day.
+
+**`258c9d3` P2 job framework**, **`0cc6876` P3 day jobs** and advance day/hour on the UI,
+**`7d87cff`** elections and the cup draw, **`f902916`** country tabs, **`8c2c905`** a syntax error
+that stopped the country page loading.
+
+### The rule that came out of all of it
+
+A job that completes successfully while doing nothing is the worst failure shape in a job system, and
+it has happened five times here. Every new scheduled job gets a live check that proves it changed
+something. See the standing rule in `sprintBacklog.md`.
+
+---
+
 
 Running log of completed work. Newest entry at the top.
 
