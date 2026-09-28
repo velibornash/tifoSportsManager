@@ -15,6 +15,7 @@ let seasonNumber = 1;
 let weekNumber = 1;
 let dayNumber = 1;
 let dayLabel = '';
+let gameTimeOffsetMs = 0;
 let phaseLabel = "Season in progress";
 
 async function syncWithServerTime() {
@@ -37,6 +38,11 @@ async function syncGameClock() {
         weekNumber = Number(data.weekNumber || 1);
         dayNumber = Number(data.day || 1);
         dayLabel = data.dayLabel || '';
+        // Render GAME time, not wall-clock time. Advancing the hour must be visible in the header;
+        // showing the real clock made the advance look like it had done nothing, which was the whole
+        // reason the game time was made an offset instead of a stored value.
+        const offsetSeconds = Number(data.advanceOffsetSeconds || 0);
+        gameTimeOffsetMs = offsetSeconds * 1000;
         phaseLabel = data.phase || "Season in progress";
     } catch (err) {
         console.warn("Game clock sync failed:", err);
@@ -44,7 +50,8 @@ async function syncGameClock() {
 }
 
 function updateLiveClock() {
-    const nowMs = Date.now() - serverOffsetMs;
+    // Real time, corrected for server drift, plus everything the owner has advanced.
+    const nowMs = Date.now() - serverOffsetMs + gameTimeOffsetMs;
     const now = new Date(nowMs);
 
     const timeStr = now.toLocaleTimeString('sr-RS', {

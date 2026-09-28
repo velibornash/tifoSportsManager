@@ -43,6 +43,22 @@ public class GameClock {
      */
     private Integer currentHour = 9;
 
+    /**
+     * Seconds the owner has advanced the game clock (owner, 2026-09-28).
+     *
+     * <p>Game time is {@code now() + advanceOffsetSeconds}, which is what makes both halves of the
+     * owner's requirement true at once: the clock ticks one game second per real second because only
+     * the offset is stored, and {@code advance hour} moves it forward permanently because it adds to
+     * the offset instead of overwriting a value the next tick would undo.
+     *
+     * <p>The alternative - storing the hour directly and rendering from the real clock - cannot work.
+     * Advancing writes a number, the next render reads the real time, and the jump is gone within a
+     * frame. A Long, not an int: at one hour per advance a 32-bit counter wraps in 2.5 million
+     * advances, which is a long time but not impossible on a heavily tested database.
+     */
+    @jakarta.persistence.Column(name = "advance_offset_seconds")
+    private Long advanceOffsetSeconds = 0L;
+
     public Integer getCurrentDay() {
         return currentDay;
     }
@@ -57,5 +73,13 @@ public class GameClock {
 
     public void setCurrentHour(Integer currentHour) {
         this.currentHour = currentHour;
+    }
+
+    public Long getAdvanceOffsetSeconds() {
+        return advanceOffsetSeconds;
+    }
+
+    public void setAdvanceOffsetSeconds(Long advanceOffsetSeconds) {
+        this.advanceOffsetSeconds = advanceOffsetSeconds;
     }
 }
