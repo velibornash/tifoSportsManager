@@ -3807,3 +3807,54 @@ tests, not smoke tests.
 The backlog entry is written and the questions are asked. **No implementation until the owner answers
 them**, because the answers change the data model — the ranking source in particular decides whether
 this is a stored table or a derived query, and that is not a decision to make by accident.
+
+---
+
+## Part 0 started — the rating engine (2026-09-28)
+
+All 14 questions answered, plus 8 follow-ups. Decisions recorded in the backlog; the two that
+corrected me rather than the document are worth naming:
+
+**Election timing was a typo and now reads properly.** Elections open **week 12 day 1** (candidates
+register), voting opens **week 1 day 1** and closes **week 1 day 7 at midday**, winner declared. New
+candidates may still register during week 1.
+
+**Cup entry tier — I had it backwards.** The cup you enter is decided by **the tier of the league you
+won**, not the tier you are currently in. Win league tier 2, get promoted into tier 1, and you still
+play **Champions Cup tier 2**, because tier 2 is what you won. My earlier reading — "climb the ranking
+to play a higher cup" — was wrong, and it is now recorded as a correction rather than quietly
+overwritten, because the wrong version is still plausible enough to be re-derived.
+
+**I also had the countries wrong** and the owner corrected it directly: Serbia is one country, and the
+9 in the database are Serbia plus neighbours added while building. The real set is almost all of
+Europe plus the football nations of the world, at least 48, ideally exactly 48 as 47 named plus "Other".
+
+### What is built: `RatingEngine`, `MatchValue`, `NationalStage`
+
+Pure arithmetic, no Spring and no entities, because a rating system is exactly the thing that goes
+subtly wrong in a way no integration test catches. All four of the owner's requirements fall out of the
+standard Elo formula — beating a stronger side is worth more and losing to a weaker one costs more,
+because `expected` is low when you are the underdog — so there is no separate "upset bonus" to drift
+out of step with the main maths.
+
+### The test caught a real bug, on the first run
+
+I wrote `MatchValue.CUP = 1.15`, **above** `LEAGUE = 1.00`, reasoning that a knockout is more
+consequential than a league game. It is not, and the owner had already said so: *international cup >
+league > cup > friendly*. A property test asserting that stated order failed immediately.
+
+That is the argument for writing the owner's order down as an assertion rather than as a comment. The
+comment is where the mistake lived — `CUP = 1.15` is defensible-looking, and only a test comparing it
+to its neighbour catches it.
+
+Now `INTERNATIONAL 1.35 / LEAGUE 1.00 / CUP 0.90 / FRIENDLY 0.70`.
+
+**Two further failures were my test being wrong, not the code** — I asserted the two sides'
+expectations sum to 0.5 when they are complements summing to 1.0, and I compared the qualification
+bonus against the base K rather than against an actual World Cup match's weight. Third time I had the
+Elo expectation backwards, I was checking the weaker side's rather than the favourite's. Recorded
+because the first one is the same class of error as the bug: a plausible number, wrong direction.
+
+**Tests: 13**, written as properties rather than examples — a win never lowers a rating, a loss never
+raises one, a match is zero-sum, an upset moves more than an expected result, the value ordering holds,
+and a null stage falls back to the *lowest* weight rather than the heaviest. **Full suite 683.**
