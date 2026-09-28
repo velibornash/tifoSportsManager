@@ -30,8 +30,24 @@ public class Country {
     @OneToMany(mappedBy = "country")
     @JsonIgnore
     private List<Team> clubs;
+    /**
+     * Ignored in JSON deliberately: {@code Team} holds a back-reference to {@code Country},
+     * so serialising this pair is a cycle. It stayed hidden while both columns were null in
+     * every country; the first real national team turned the country page into truncated JSON
+     * that the browser could not parse. Ignored here, at the Country side, so that
+     * {@code Team.country} stays serialisable for the pages that already read it.
+     */
     @OneToOne
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Team seniorNationalTeam;
+    /**
+     * Ignored in JSON deliberately: {@code Team} holds a back-reference to {@code Country},
+     * so serialising this pair is a cycle. It stayed hidden while both columns were null in
+     * every country; the first real national team turned the country page into truncated JSON
+     * that the browser could not parse. Ignored here, at the Country side, so that
+     * {@code Team.country} stays serialisable for the pages that already read it.
+     */
     @OneToOne
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Team u21NationalTeam;
 }

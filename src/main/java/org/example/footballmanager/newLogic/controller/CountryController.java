@@ -9,6 +9,9 @@ import org.example.footballmanager.newLogic.service.ScheduleInsightService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.Team;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -104,6 +107,69 @@ public class CountryController {
                 .sorted(Comparator.comparing(Country::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(CountrySummaryDTO::from)
                 .toList();
+    }
+
+    /**
+     * A national team and its squad (owner, 2026-09-28).
+     *
+     * <p>Answers "who is the selector and what squad do they have" so the national-team screen has
+     * something real in it. The teams and squads are created by {@code NationalTeamSeeder}; until the
+     * elections exist, <b>the manager of the country is the selector</b> — provisional, and stated as
+     * such in the payload rather than pretended to be a vote.
+     */
+    @GetMapping("/{isoCode}/national-team")
+    public Map<String, Object> getNationalTeam(
+            @PathVariable String isoCode,
+            @RequestParam(defaultValue = "senior") String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+
+        Country country = countryRepository.findByIsoCode(isoCode.toUpperCase(Locale.ROOT))
+                .orElseThrow(() -> new IllegalArgumentException("No such country: " + isoCode));
+        boolean youth = "u21".equalsIgnoreCase(level);
+        Team team = youth ? country.getU21NationalTeam() : country.getSeniorNationalTeam();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("countryCode", country.getIsoCode());
+        out.put("countryName", country.getName());
+        out.put("level", youth ? "u21" : "senior");
+
+        if (team == null) {
+            out.put("exists", false);
+            out.put("squad", List.of());
+            return out;
+        }
+
+        out.put("exists", true);
+        out.put("teamId", team.getId());
+        out.put("teamName", team.getName());
+
+        // Provisional until the elections exist. Saying so in the payload rather than in a comment is
+        // deliberate: a screen that renders "your manager is the selector" without qualification is
+        // telling the user something the system has not actually established.
+        out.put("selectorIsProvisional", true);
+        out.put("selectorName", viewer == null ? null
+                : (viewer.getDisplayName() != null && !viewer.getDisplayName().isBlank()
+                        ? viewer.getDisplayName() : viewer.getUsername()));
+
+        List<Map<String, Object>> squad = new ArrayList<>();
+        for (Player player : playerRepository.findByTeamId(team.getId())) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", player.getId());
+            row.put("name", player.getName());
+            row.put("position", player.getPosition() == null ? null : player.getPosition().name());
+            row.put("age", player.getAge());
+            row.put("rating", player.getRating());
+            row.put("form", player.getForm());
+            squad.add(row);
+        }
+        // Player.rating is an int, so it arrives back out of the map as Integer, not Double. Casting
+        // to Double threw ClassCastException at runtime and the endpoint answered 500.
+        squad.sort((a, b) -> Integer.compare(((Number) b.get("rating")).intValue(),
+                ((Number) a.get("rating")).intValue()));
+        out.put("squad", squad);
+        out.put("squadSize", squad.size());
+        return out;
     }
 
     @GetMapping("/{isoCode}/leagues")

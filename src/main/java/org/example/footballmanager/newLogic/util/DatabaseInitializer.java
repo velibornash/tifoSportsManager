@@ -94,6 +94,7 @@ public class DatabaseInitializer {
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
     private final TransferActivitySeeder transferActivitySeeder;
+    private final NationalTeamSeeder nationalTeamSeeder;
     private final PlayerRepository playerRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -157,6 +158,14 @@ public class DatabaseInitializer {
             applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();
+            // The national-team columns have been null for every country since the country page
+            // existed, so the panel rendered a hand-written name and a button to a placeholder. Runs on
+            // every boot and is a no-op once the teams exist.
+            try {
+                nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
+            } catch (RuntimeException e) {
+                log.warn("Could not seed national teams: {}", e.getMessage());
+            }
             return;
         }
 
