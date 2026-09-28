@@ -97,6 +97,8 @@ public class DatabaseInitializer {
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
+    private final InternationalFixtureSeeder internationalFixtureSeeder;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
     private final org.example.footballmanager.newLogic.service.NationalTeamElectionService electionService;
     private final PlayerRepository playerRepository;
@@ -119,6 +121,25 @@ public class DatabaseInitializer {
     private final org.example.footballtextmanager.repository.CSCountryRepository csCountryRepository;
     private final StadiumRepository stadiumRepository;
     private final org.example.footballmanager.newLogic.repository.JuniorRepository juniorRepository;
+
+    /**
+     * Widens the {@code competition.type} check constraint to every value the enum now carries.
+     *
+     * <p>The table shipped with a CHECK of {@code type IN ('LEAGUE','CUP')}, so adding INTERNATIONAL
+     * and TOURNAMENT to the enum was not enough - PostgreSQL rejected the insert and the application
+     * context failed to start. A check constraint is part of the schema, not something
+     * {@code ddl-auto=update} touches, so it is widened here and it is done idempotently: a fresh
+     * install and an existing one both end up with the same set of values.
+     */
+    private void widenCompetitionTypeConstraint() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE competition DROP CONSTRAINT IF EXISTS competition_type_check");
+            jdbcTemplate.execute("ALTER TABLE competition ADD CONSTRAINT competition_type_check "
+                    + "CHECK (type IN ('LEAGUE','CUP','INTERNATIONAL','TOURNAMENT'))");
+        } catch (RuntimeException e) {
+            log.warn("Could not widen the competition type constraint: {}", e.getMessage());
+        }
+    }
 
     /**
      * The current season, for opening this season's elections.
@@ -206,6 +227,12 @@ public class DatabaseInitializer {
                 leagueFixtureDayBackfill.backfill();
             } catch (RuntimeException e) {
                 log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
+            }
+            widenCompetitionTypeConstraint();
+            try {
+                internationalFixtureSeeder.seedIfMissing(SeasonService.BASE_SEASON_YEAR);
+            } catch (RuntimeException e) {
+                log.warn("Could not draw the internationals: {}", e.getMessage());
             }
             // The country's manager stands in as selector until the elections run. Recorded as an
             // appointment rather than derived from the viewer, so "only the selector sees the squad"

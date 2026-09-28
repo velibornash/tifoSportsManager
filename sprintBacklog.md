@@ -19,7 +19,7 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
 | Advance | `advance hour` / `advance day` / `advance week`. Counters wrap: hour 23→0 + day, day 7→1 + week, week 12→1 + season. |
 | Jobs | `DayJob` + `JobRunner` + `JobRun`. A job runs only if no DONE row exists for (season, week, day, key). Failed jobs are recorded and not auto-retried. |
 | Scheduler | `GameClockScheduler`, hourly. Advances the clock and checks what is due, so a job missed while the app was down is caught. On in prod, off in dev/test. |
-| Jobs registered | `day-opened`, `finance` (d2), `training` (d4), `matchday-league-a` (d3 19:00), `matchday-cup` (d5 18:00), `matchday-league-b` (d7 16:00), `week-rollover` (d7 23:00), `season-rollover` (w12 d7 23:00). All three matchdays **verified playing real matches**. |
+| Jobs registered | `day-opened`, `finance` (d2), `training` (d4), `matchday-international` (d1 20:00), `matchday-league-a` (d3 19:00), `matchday-cup` (d5 18:00), `matchday-league-b` (d7 16:00), `week-rollover` (d7 23:00), `season-rollover` (w12 d7 23:00). League and cup matchdays **verified playing real matches**; international waits on the 48-country seed. |
 | Cup | Real draw (56 → 256 clubs, favourites vs non-favourites, non-favourite at home), `MatchFixture.dayNumber`, ties open to a pre-match view, day-5 matchday **verified playing real matches**. |
 | Country page | Four tabs — General, Calendar, National Team, U-21. Selector-only squad editing (release / call up, verified round trip). Elections: stand, vote, declare, annul. |
 | Formats | `MatchFormat` abstract base with `League`, `KnockoutCup`, `NationalSide`, `International`, `Tournament`. `CompetitionType` extended with `INTERNATIONAL`, `TOURNAMENT`. |
@@ -32,8 +32,14 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
    logged "106 LEAGUE fixtures played for week 1 day 3". Note the split is 775 / 2015 rather than
    even - several leagues share week numbers, and the per-competition scoping helped but did not
    fully explain it. Not a blocker (both days have fixtures) but not understood yet.
-2. **Day 1 internationals.** `CompetitionType` and `MatchFormat` are ready; there is no
-   `INTERNATIONAL` competition and no draw. Needs the draw.
+2. ~~Day 1 internationals~~ — **MECHANISM BUILT 2026-09-29, blocked on world data.** An
+   `INTERNATIONAL` competition, `InternationalFixtureSeeder` drawing senior sides for week 6 day 1
+   20:45, and the `matchday-international` job are all in place and registered. It draws nothing today
+   because only **1 of 9** seeded countries has a squad — a country with no clubs has no players to
+   call up. It says so: "18 senior side(s) exist, 1 have a squad, so 0 tie(s) can be drawn." Unblocking
+   it is the 48-country seed, not more code. The owner's real structure — top 48, 8 groups of 6, 8
+   pots, worse-rated host, top two advance — is behind that and is **not** what is built; this is a
+   single round of pairings, which is all 9 countries can honestly support.
 3. **Zone-based morale and daily recovery.** No zone model exists in the codebase at all. Needs:
    a `Zone` model, `Player.zoneLoad` written by the match engine, recovery/morale derived from it, and
    `Player.lastPlayedAt`. A flat "recovery" job was written and deliberately deleted — see below.
@@ -61,7 +67,7 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
 | Not built | Reason |
 |---|---|
 | `RecoveryJob` | No zone model exists. It would have had to fake a zone or do nothing — both are the failure shape below. |
-| Day-1 international matchday | `CompetitionType` had nowhere to select. Adding the enum value is half the job; the draw is the other half. |
+| ~~Day-1 international matchday~~ | No longer blocked on code — built. Blocked on world data: 1 of 9 seeded countries has a squad. |
 | A day-6 morale job | Same reason as recovery: morale is a function of zone load, which does not exist. |
 
 ### 🔴 Standing rule, learned the hard way

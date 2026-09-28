@@ -46,4 +46,13 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     @Query("select t from Team t where t.type is null or t.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB order by t.id asc")
     List<Team> findClubTeamsForOperations();
+
+    /**
+     * Every team of one kind - club or national side.
+     *
+     * <p>findClubTeamsForOperations returns clubs only, which is right for club work and quietly
+     * wrong for anything national: asking it for national teams returns nothing, and "nothing" reads
+     * the same as "no squads have been seeded".
+     */
+    List<Team> findByType(org.example.footballmanager.newLogic.model.CompetitionTeamType type);
 }

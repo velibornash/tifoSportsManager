@@ -15,14 +15,21 @@ import org.springframework.context.annotation.Configuration;
  * and 7 are separate instances of the same job with different keys, because the done-flag is keyed on
  * (season, week, day, key) and a shared key would let the day-3 job suppress the day-7 round.
  *
- * <p><b>Day 1 internationals is deliberately absent.</b> {@code CompetitionType} is LEAGUE and CUP
- * only, so there is nothing for an international matchday to select and the job would have found no
- * competition and done nothing, silently, forever - which is worse than not having it. National-team
- * fixtures need an INTERNATIONAL competition type and a draw before that job can exist. Recorded in
- * the backlog.
+ * <p>Day 1 is internationals at 20:45, from the owner's schedule. It is registered now that
+ * {@code CompetitionType} has {@code INTERNATIONAL} and {@code InternationalFixtureSeeder} draws the
+ * pairings. With one seeded country holding a squad there is nothing for it to select yet, and it will
+ * find nothing until more countries are seeded - which is an honest "the world is not built" rather
+ * than a job that cannot work at all.
  */
 @Configuration
 public class MatchdayJobsConfig {
+
+    @Bean
+    public MatchdayJob internationalMatchday(CompetitionRepository competitions,
+                                             MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
+        return new MatchdayJob("matchday-international", CompetitionType.INTERNATIONAL,
+                1, 20, 40, competitions, fixtures, runner);
+    }
 
     @Bean
     public MatchdayJob leagueMatchdayFirst(CompetitionRepository competitions,

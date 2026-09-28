@@ -1,6 +1,32 @@
 # TIFO Football Manager — Sprint Progress Log
 
-## ⚡ LATEST — 2026-09-29
+## ⚡ LATEST — 2026-09-29 (later)
+
+**`410fea3` League fixtures get a day.** The top of the open list, and the reason a week played no
+league football from the job path. The generator stamps day 3 on a week's first round and day 7 on its
+reverse leg; `LeagueFixtureDayBackfill` stamped the 2790 that already existed, so no world reset is
+needed. It runs in its own transaction — the first version joined the boot transaction, logged
+"Stamped 2790", and left the table null. Verified: day-3 matchday logged "106 LEAGUE fixtures played
+for week 1 day 3". Uneven 775/2015 split recorded, not glossed.
+
+**Internationals mechanism built.** `CompetitionType.INTERNATIONAL`, an `Internationals` competition,
+a seeder drawing senior sides for week 6 day 1, and the `matchday-international` job registered. Two
+bugs on the way, both worth naming:
+
+- The `competition` table shipped with `CHECK (type IN ('LEAGUE','CUP'))`, so adding enum values was
+  not enough — PostgreSQL rejected the insert and the context failed to start. `ddl-auto=update` does
+  not touch check constraints. Widened idempotently on boot so a fresh install and an existing one end
+  up identical.
+- The seeder asked `findClubTeamsForOperations` for national teams. That returns clubs only, so it
+  found nothing and logged "0 national sides have a squad" — which read as a world problem and was
+  actually a wrong repository. Added `findByType`.
+
+It now says: "18 senior side(s) exist, 1 have a squad, so 0 tie(s) can be drawn." Honest, and it points
+at the real blocker: the 48-country seed, not more code.
+
+---
+
+## Earlier on 2026-09-29
 
 **`83d4919` The cup matchday plays, and cup ties open.** `buildRound` was passed a hardcoded `1` — the
 season index — while the day-5 matchday job asked for `BASE_SEASON_YEAR + (season - 1)`. Changing the
