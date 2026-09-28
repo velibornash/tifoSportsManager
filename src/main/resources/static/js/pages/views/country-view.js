@@ -132,21 +132,21 @@ export function createCountryView(deps) {
                         <section class="fm-panel">
                             <div class="fm-panel-head">
                                 <div>
-                                    <h3>${escapeHtml(calendarNote ? `Week ${calendarWeek} schedule` : 'This week')}</h3>
-                                    <p class="fm-subtle">${escapeHtml(calendarNote || 'What happens each day, for every club in the country.')}</p>
+                                    <h3>${htmlEscape(calendarNote ? `Week ${calendarWeek} schedule` : 'This week')}</h3>
+                                    <p class="fm-subtle">${htmlEscape(calendarNote || 'What happens each day, for every club in the country.')}</p>
                                 </div>
-                                <span class="fm-panel-action">${escapeHtml(countryTitle)}</span>
+                                <span class="fm-panel-action">${htmlEscape(countryTitle)}</span>
                             </div>
                             <div class="fm-week-grid">
                                 ${weekDays.map(day => `
                                     <div class="fm-week-day${day.matchDay ? ' is-match' : ''}">
                                         <div class="fm-week-day-head">
                                             <span class="fm-week-day-number">Day ${day.day}</span>
-                                            ${day.kickoff ? `<span class="fm-week-day-time">${escapeHtml(day.kickoff)}</span>` : ''}
+                                            ${day.kickoff ? `<span class="fm-week-day-time">${htmlEscape(day.kickoff)}</span>` : ''}
                                         </div>
-                                        <div class="fm-week-day-kind">${escapeHtml(day.label)}</div>
+                                        <div class="fm-week-day-kind">${htmlEscape(day.label)}</div>
                                         ${(day.events || []).map(event => `
-                                            <div class="fm-week-day-event">${escapeHtml(event.label)}</div>`).join('')}
+                                            <div class="fm-week-day-event">${htmlEscape(event.label)}</div>`).join('')}
                                     </div>`).join('')}
                             </div>
                         </section>

@@ -93,6 +93,7 @@ public class DatabaseInitializer {
     private final CompetitionRepository competitionRepository;
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
+    private final TransferActivitySeeder transferActivitySeeder;
     private final PlayerRepository playerRepository;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
@@ -168,6 +169,7 @@ public class DatabaseInitializer {
             Team ownerTeam = createOwnerUserIfNotExists();
             createSecondUserIfNotExists();
             seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        seedStandInTransferActivity();
             assignSquadNumbersIfMissing();
         } catch (Exception e) {
             // The stack trace matters. This catch used to log only e.getMessage() and call it a
@@ -235,6 +237,7 @@ public class DatabaseInitializer {
         restoreTacticsProfiles(tacticsSnapshots);
         progressListener.accept("Assigning squad numbers and juniors...");
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        seedStandInTransferActivity();
 
         assignSquadNumbersIfMissing();
         log.info("Inicijalizacija završena.");
@@ -242,10 +245,36 @@ public class DatabaseInitializer {
     }
 
     @Transactional
+
+    /**
+     * Puts some stand-in activity on the transfer market (owner, 2026-09-28).
+     *
+     * <p>Deliberately scaffolding, and recorded as such in the backlog. The real feature is the weekly
+     * AI transfer loop; {@code NegotiationService} is written and unwired, so the transfer screens
+     * have nothing to render and cannot be judged at all. Random clubs, random players, prices scaled
+     * off real player values, plus a couple of genuine offers on the manager's own players.
+     *
+     * <p>Best-effort and swallowed on purpose. A demo seeder failing must not stop a database
+     * initialise, and this runs after the owner and the juniors have already been created — losing
+     * those to a decorative step would be a bad trade.
+     */
+    private void seedStandInTransferActivity() {
+        try {
+            java.util.List<Team> humanTeams = teamRepository.findClubTeamsForOperations().stream()
+                    .filter(t -> t.getId() != null)
+                    .filter(Team::isHumanControlled)
+                    .toList();
+            transferActivitySeeder.seedIfMarketIsEmpty(humanTeams);
+        } catch (RuntimeException e) {
+            log.warn("Could not seed stand-in transfer activity: {}", e.getMessage());
+        }
+    }
+
     public void seedOwnerAfterReset() {
         Team ownerTeam = createOwnerUserIfNotExists();
         createSecondUserIfNotExists();
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        seedStandInTransferActivity();
         assignSquadNumbersIfMissing();
     }
 

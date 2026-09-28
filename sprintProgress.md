@@ -4130,3 +4130,53 @@ Rendered on the country page as seven columns (scrolling on a phone), with match
 manager reading it needs to know at a glance which days can be taken by something else. Verified live:
 day 1 International 20:45, day 2 Finance, day 3 League 19:00, day 4 Training, day 5 Cup 18:00,
 day 6 Form & morale, day 7 League 16:00.
+
+---
+
+## Transfer activity you can actually see — and a bug the owner found (2026-09-28)
+
+Owner: *"stavi da postoji jedan transfer (ili jedno šta god kad su druge stvari) da bi se videlo na
+screenu, nastaje po nasumičju."*
+
+`TransferActivitySeeder` puts **random** clubs' players on the market and creates real incoming offers
+on the manager's own players. Random on purpose, per the owner — and the reasoning is the same as
+always: hand-picked rows are a screenshot fixture and would hide exactly the layout problems a long
+club name or a nine-figure fee causes. Prices are scaled off real player values and rounded to 5,000,
+because a 2 million euro striker listed at 40,000 is how you make a manager stop trusting a screen.
+
+**Idempotent** — it only runs when the market is completely empty, so it never re-rolls a market the
+user has acted in.
+
+### The owner hit a bug I shipped, and it deserved catching
+
+The country page went to **"Could not load your country overview."**
+
+Cause: the schedule panel I added called `escapeHtml`, but that file's in-scope function is
+`htmlEscape`. A name that **exists elsewhere in the project**, so it looked right. Six uses of an
+undefined identifier inside a template string, which throws into the page's `catch` and renders the
+error card.
+
+Every check I had passed: `node --check` was clean, the endpoint returned 200 with the right payload,
+and the markup read correctly. **None of them can see an undefined identifier in a string.**
+
+So there is now `CountryPageRendersTest`: a real browser, a real login, the page's own text on screen —
+asserting the page does **not** render its error card, names the manager's country, shows all seven days
+with the right kind for each, and has **no uncaught page errors and no console errors**. Verified by
+reintroducing the exact bug: it fails with *"the country page rendered its error card"*.
+
+Two more of the same class, both found by running the app rather than by a test:
+
+- **Spring refused to start the seeder** — two constructors, neither default, no `@Autowired`. The
+  unit test passed throughout because it builds the seeder directly with a seeded `Random`, so **a unit
+  test that constructs a class cannot tell you anything about how that class is wired.**
+- **The first browser test failed with a timeout** because my navigation clicked through the sidebar and
+  then went back. Simplified to go straight to the page — the detour was testing navigation, not the
+  thing under test.
+
+And a correction to something I said earlier: I reported "the market shows 60 listed players" as though
+the market was alive. **It is not.** Those 60 are the *scouted-unlisted* stubs at €0 — players shown as
+scout reports, not anybody asking a price. There were **no real listings at all**, which is exactly why
+the seeder was needed.
+
+**Clean total 713, all green.** Two browser tests skip when nothing is on :8080, which is the correct
+answer and not a gap.
