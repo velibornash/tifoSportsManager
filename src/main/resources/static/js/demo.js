@@ -663,6 +663,54 @@ async function advanceWeekTest() {
     );
 }
 
+/**
+ * Advances the game clock by one day or one hour (owner, 2026-09-28).
+ *
+ * <p>These go through /api/game-clock/advance rather than /simulation/week/advance, because the
+ * clock is what makes scheduled jobs due. The response carries which jobs ran, so the button is not
+ * a blind "hope something happened" - the outcome is reported on screen.
+ */
+async function advanceClockTest(unit, buttonId, label) {
+    const status = document.getElementById('dashboard-season-flow-status');
+    try {
+        const response = await authFetch(`/api/game-clock/advance?unit=${unit}&amount=1`, { method: 'POST' });
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.message || `Could not advance (${response.status})`);
+        }
+        const data = await response.json();
+        const jobs = data.jobs || {};
+        const ran = jobs.ran ?? 0;
+        const failed = jobs.failed ?? 0;
+        if (status) {
+            status.className = 'fm-season-flow-status is-error';
+            status.textContent = failed > 0
+                ? `Advanced to day ${data.day} (${data.dayLabel}), hour ${data.hour}. `
+                  + `${ran} job(s) ran, ${failed} FAILED.`
+                : `Advanced to day ${data.day} (${data.dayLabel}), hour ${data.hour}. `
+                  + `${ran} job(s) ran, ${jobs.skipped ?? 0} already done.`;
+        }
+        if (typeof refreshGameClock === 'function') refreshGameClock();
+        return data;
+    } catch (err) {
+        if (status) {
+            status.className = 'fm-season-flow-status is-error';
+            status.textContent = err.message;
+        }
+    }
+}
+
+async function advanceDayTest() {
+    return advanceClockTest('day', 'advance-day-btn', '📆 Advance Day');
+}
+
+async function advanceHourTest() {
+    return advanceClockTest('hour', 'advance-hour-btn', '⏩ Advance Hour');
+}
+
+window.advanceDayTest = advanceDayTest;
+window.advanceHourTest = advanceHourTest;
+
 window.startRealisticDemoTest = startRealisticDemoTest;
 window.simulateCurrentRoundTest = simulateCurrentRoundTest;
 window.advanceWeekTest = advanceWeekTest;

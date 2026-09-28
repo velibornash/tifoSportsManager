@@ -443,6 +443,20 @@ public class SeasonService {
     }
 
     @Transactional
+    /**
+     * The week-scoped maintenance that used to be inline in advance-week (owner, 2026-09-28).
+     *
+     * <p>Extracted so {@code WeekRolloverJob} can call it through the service instead of the four
+     * pieces being copied into the job. These are protected because only the clock was supposed to
+     * call them; the job is now the caller, so there is one public entry point and no second copy
+     * of the logic.
+     */
+    public void applyWeekMaintenance() {
+        decrementInjuriesByWeek();
+        recoverFatigueForWeek();
+        expirePlayerContracts();
+    }
+
     public int settleWeeklyFinancesForAllClubs() {
         GameClock clock = getOrCreateClock();
         Integer season = clock.getCurrentSeason();

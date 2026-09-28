@@ -133,13 +133,17 @@ public class GameClockService {
         }
         GameClock clock = clock();
 
+        // The day is derived from the date the clock moves across, NOT from hours/24. Advancing one
+        // hour from 23:00 to 00:00 crosses midnight, so the day must advance - and hours/24 said
+        // zero, which left day 2 reading as 00:00 and the day counter stuck. That is the bug this
+        // now measures before and after instead of dividing.
+        java.time.LocalDate dayBefore = gameTime().atZone(GAME_ZONE).toLocalDate();
+
         clock.setAdvanceOffsetSeconds(offsetOf(clock) + (long) hours * SECONDS_PER_HOUR);
 
-        // The day moves by whole days advanced; the hour follows from the new timestamp. Advancing
-        // 24 hours moves the day by one and leaves the hour wherever the clock now reads, which is
-        // the same hour of day it read before - a day is a day, not a reset to midnight.
-        int carry = hours / HOURS_PER_DAY;
-        int day = (clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay()) + carry;
+        long carry = java.time.temporal.ChronoUnit.DAYS.between(
+                dayBefore, gameTime().atZone(GAME_ZONE).toLocalDate());
+        int day = (clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay()) + (int) carry;
         while (day > GameDay.LAST) {
             day -= GameDay.LAST;
             clock.setCurrentWeek((clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) + 1);
@@ -161,6 +165,23 @@ public class GameClockService {
         return result;
     }
 
+    /**
+     * A whole week, as seven day advances (owner, 2026-09-28).
+     *
+     * <p>The old advance-week did the week's work itself: injuries, fatigue, contracts, finance,
+     * training, youth, transfers. If it kept doing that, advancing a day and then advancing a week
+     * would apply the same week twice, and the jobs would be a second code path competing with it.
+     * So the week is now nothing but seven day advances, and every job fires from inside those.
+     */
+    @Transactional
+    public Map<String, Object> advanceWeek() {
+        Map<String, Object> last = null;
+        for (int day = 0; day < 7; day++) {
+            last = advanceDay();
+        }
+        return last == null ? snapshot() : last;
+    }
+
     /** One day is twenty-four hours; the counters carry on their own. */
     @Transactional
     public Map<String, Object> advanceDay() {
@@ -178,9 +199,14 @@ public class GameClockService {
         if (targetHour < 0 || targetHour > 23) {
             throw new IllegalArgumentException("Hour must be between 0 and 23.");
         }
-        GameClock clock = clock();
         int current = gameTime().atZone(GAME_ZONE).getHour();
-        return advanceHours(targetHour > current ? targetHour - current : 0);
+        if (targetHour <= current) {
+            // Already past it: a no-op returning the current state, not an error. This used to call
+            // advanceHours(0) and answer 500, so asking to go to an hour the day had already passed
+            // - which is a normal thing to do when positioning a test - blew up.
+            return snapshot();
+        }
+        return advanceHours(targetHour - current);
     }
 
     /**

@@ -163,6 +163,8 @@ function buildSeasonFlowPanel() {
                 <button id="start-realistic-demo-btn" data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
                 <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
                 ${isAdminUser() ? '<button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>' : ''}
+                ${isAdminUser() ? '<button id="advance-day-btn" data-label="📆 Advance Day" class="fm-action-btn secondary" onclick="advanceDayTest()">📆 Advance Day</button>' : ''}
+                ${isAdminUser() ? '<button id="advance-hour-btn" data-label="⏩ Advance Hour" class="fm-action-btn secondary" onclick="advanceHourTest()">⏩ Advance Hour</button>' : ''}
             </div>
             <div id="dashboard-season-flow-status" class="fm-season-flow-status is-${escapeHtml(statusTone)}">${escapeHtml(statusMessage)}</div>
         </div>`;
