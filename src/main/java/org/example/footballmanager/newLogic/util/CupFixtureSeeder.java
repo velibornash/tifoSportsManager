@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.service.SeasonService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -51,8 +52,15 @@ public class CupFixtureSeeder {
     static final int ENTRY_ROUND_TEAMS = 108;
     static final int MAIN_DRAW_TEAMS = 256;
 
-    /** The seeded world is season 1. */
-    static final int SEED_SEASON = 1;
+    /**
+     * The season the draw belongs to, as a CALENDAR year - 2026, not the season index 1.
+     *
+     * <p>The cup was written with season_year = 1, which is the season index, while every other
+     * fixture and the job runner use BASE_SEASON_YEAR + (season - 1) = 2026. So the day-5 matchday job
+     * asked for 2026 and found no cup fixtures, completed successfully, and played nothing - the most
+     * dangerous shape a silent failure can take.
+     */
+    static final int SEED_SEASON = SeasonService.BASE_SEASON_YEAR;
 
     /** Day 5 is the cup slot in the seven-day template. */
     private static final LocalDate SEASON_START = LocalDate.of(2026, 7, 1);
@@ -236,6 +244,9 @@ public class CupFixtureSeeder {
             fixture.setAwayTeam(favourite);
             fixture.setRoundNumber(roundNumber);
             fixture.setWeekNumber(week);
+            // Day 5 is the only cup day in the template, and the day-5 matchday job selects
+            // fixtures by day. Without this it would never find its own football.
+            fixture.setDayNumber(CUP_DAY);
             fixture.setSeasonYear(seasonYear);
             fixture.setPlayed(false);
             // The cup plays on day 5 of its week, so the date is derived from the week number rather

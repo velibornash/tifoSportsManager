@@ -23,6 +23,21 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
      * home-and-away-id method would force callers to invent a sentinel id for the side they do not
      * know.
      */
+    /**
+     * Unplayed fixtures for one day of one week (owner, 2026-09-28).
+     *
+     * <p>Day-precise, not week-precise. A week holds two league rounds, so asking for "week 3" would
+     * hand a day-3 job the day-7 round as well and it would play football that is two days early.
+     */
+    @Query("select f from MatchFixture f where f.seasonYear = :seasonYear and f.weekNumber = :weekNumber "
+            + "and f.dayNumber = :dayNumber and f.played = false")
+    List<MatchFixture> findUnplayedOnDay(@Param("seasonYear") Integer seasonYear,
+                                         @Param("weekNumber") Integer weekNumber,
+                                         @Param("dayNumber") Integer dayNumber);
+
+    List<MatchFixture> findBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+            Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
     @Query("select f from MatchFixture f where f.homeTeam.id = :teamId or f.awayTeam.id = :teamId")
     List<MatchFixture> findAllForTeam(@Param("teamId") Long teamId);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndPlayedFalse(Long competitionId, Integer seasonYear);

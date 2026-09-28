@@ -3357,3 +3357,42 @@ Auto-advance rate on prod. The hourly tick advances one game hour per real hour,
 takes 7 real days and a 12-week season takes 12 real weeks. That is realistic but slow for a live
 game. Options: hourly, or a configurable multiplier (`game.clock.minutes-per-game-hour`). Left at 1:1
 because the owner has not chosen, and it is one property to change.
+
+### Matchday jobs (owner, 2026-09-28) — PARTIAL, read this before trusting the calendar
+
+Eight jobs are registered. Two of the seven days have real football on them.
+
+| day | job | key | state |
+|---|---|---|---|
+| 1 | internationals 20:45 | — | **NOT BUILT** — see below |
+| 2 | finance 10:00 | `finance` | built |
+| 3 | league 19:00 | `matchday-league-a` | built, no fixtures to select |
+| 4 | training 10:00 | `training` | built |
+| 5 | cup 18:00 | `matchday-cup` | built, **does not yet play** |
+| 6 | form / morale | — | **NOT BUILT** |
+| 7 | league 16:00 | `matchday-league-b` | built, no fixtures to select |
+| 7 | week rollover 23:00 | `week-rollover` | built |
+| 12/7 | season rollover 23:00 | `season-rollover` | built |
+
+**Why day 1 has no job.** `CompetitionType` is LEAGUE and CUP only. An international matchday has
+nothing to select and would have found no competition and done nothing, silently, forever — which is
+worse than not existing. National-team fixtures need an INTERNATIONAL competition type and a draw
+first. That is the next real piece of work, not a small one.
+
+**The finding that blocked the league jobs.** `MatchFixture` knew its WEEK but not its DAY, and a
+week has two league rounds (day 3 at 19:00, day 7 at 16:00). A day-3 job therefore could not tell
+round A from round B and would have played the day-7 round four days early. `MatchFixture.dayNumber`
+has been added for exactly this, and `MatchFixtureRepository.findUnplayedOnDay` selects by day. Cup
+fixtures are stamped day 5. **League fixtures are not stamped yet**, which is why the two league
+matchday jobs are registered but find nothing — the round-robin generator assigns rounds per week and
+has to be taught to alternate day 3 / day 7.
+
+**The season_year mismatch, and why it is dangerous.** The cup draw wrote `season_year = 1` (the
+season index) while every other fixture and the job runner use `BASE_SEASON_YEAR + (season - 1)`.
+The day-5 matchday job asked for 2025, found no cup fixtures, returned SUCCESSFULLY and played
+nothing. A job that completes while doing nothing is the worst failure shape there is, and it is the
+fourth one in this area. `SEED_SEASON` is now `BASE_SEASON_YEAR`. The live check still shows cup
+fixtures at season 1, so this is NOT yet confirmed fixed — treat the day-5 matchday as unverified.
+
+**Rule that follows from all of it:** any new scheduled job gets a live check against a running app
+that proves it changed something, not just a green status. A DONE job is not evidence of work.
