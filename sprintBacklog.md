@@ -1883,7 +1883,7 @@ same viewer as your own match.
 | 1 | **Duplicate sidebar handlers** — `app.js` and `sidebar.js` both bind `#clubSidebar`, so `loadPage` fires twice per click | `app.js:8-36`; `sidebar.js:39-74` |
 | 2 | Consolidate `escapeHtml` (3 copies) and `authFetch` (2 copies) | `dashboard.js:70`; `pages.js:532`; `utils.js:4`; `clock.js:1-23` |
 | 3 | Mobile sidebar has **no `tacticEditor` entry** and uses different labels than desktop | `dashboard.html:31-92` vs `:95-133` |
-| 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | `pages-renderers.js:201-203` |
+| 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
 | 5 | `training-view.js` — merge the two ~450-line parallel implementations | `training-view.js:7-453,455-907` |
 | 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | — |
 | 7 | Club logo selection by name string compare — make it a team field | `dashboard.js:47` |

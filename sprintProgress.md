@@ -3414,3 +3414,26 @@ page out at the mobile default of **980px**, so every media query below 980 was 
 test was green, at the wrong width, measuring a tablet and reporting it as a phone. It only became
 trustworthy once the numbers were read rather than assumed — the 404-vs-406 gap between my predicted
 arithmetic and the measured 404 was what exposed it.
+
+---
+
+## S8.3 #4 — a dropped parameter that was only invisible by luck (2026-09-28)
+
+`bindScheduleInteractions` called `onLoadTeam(teamId, teamName, seasonYear)` with a bare Number.
+`loadLeagueTeam`'s real signature is `(teamId, teamName, options = {})`, so the season arrived as
+`options.seasonYear === undefined` and was lost **without raising an error**.
+
+**Why it was never seen.** Both live call sites pass an adapter that converts the positional value
+back into an object, so clicking a team name worked. The third call site passes no handlers at all,
+so it falls back to `window.loadLeagueTeam` — the broken path — but that page also renders no
+`.js-load-CTeam` markup, so there was nothing for the broken fallback to act on. The bug was latent
+rather than absent, and it stayed latent by coincidence: one refactor that added a team link to that
+page would have shipped "opens the right club, wrong season, no error".
+
+The fix is the contract, not the call: the binder now speaks in options objects everywhere, and the
+two adapters accept one. A second call site had the same shape with a literal `null`.
+
+`ScheduleInteractionContractTest` pins it — the caller must pass an object, every adapter must accept
+one, and the markup must still be writing and reading `data-season-year`, so the contract has
+something to carry. Verified by reverting to the old shape: it fails and names **both** call sites
+(`[seasonYear, null]`) rather than just the one that happened to be noticed.

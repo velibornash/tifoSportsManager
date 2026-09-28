@@ -218,7 +218,14 @@ export function bindScheduleInteractions(container, handlers = {}) {
             const teamId = Number(node.dataset.teamId ?? node.dataset.cTeamId);
             const teamName = node.dataset.teamName || 'Team';
             const seasonYear = node.dataset.seasonYear ? Number(node.dataset.seasonYear) : null;
-            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, seasonYear);
+            // Passed as an OPTIONS OBJECT, matching loadLeagueTeam's real signature
+            // (teamId, teamName, options = {}). It used to be passed positionally, which happened to
+            // work only because both live call sites supplied an adapter that converted it back. The
+            // default fallback is `window.loadLeagueTeam` itself, and handing that a Number where it
+            // expects an object meant options.seasonYear was undefined - the season silently vanished.
+            // Unreachable today only because the one call site that passes no handlers also renders
+            // no .js-load-CTeam markup, which is luck rather than a design.
+            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, { seasonYear });
         });
     });
 
@@ -229,7 +236,10 @@ export function bindScheduleInteractions(container, handlers = {}) {
             event.stopPropagation();
             const teamId = Number(node.dataset.openTeam);
             const teamName = node.dataset.openTeamName || 'Team';
-            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, null);
+            // Same contract as above: an options object, not null. `null` was a third positional
+            // argument of a shape that no longer exists, and the default fallback would have read
+            // a property off it.
+            if (teamId && typeof onLoadTeam === 'function') onLoadTeam(teamId, teamName, {});
         });
     });
 
@@ -1007,7 +1017,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     </div>`;
 
     bindScheduleInteractions(mainContent, {
-        loadLeagueTeam: (teamId, teamName, seasonYear) => loadLeagueTeam(teamId, teamName, { seasonYear: seasonYear ?? selectedSeason }),
+        loadLeagueTeam: (teamId, teamName, options = {}) => loadLeagueTeam(teamId, teamName, { seasonYear: options.seasonYear ?? selectedSeason }),
         loadMatch,
         loadFixture
     });
@@ -1112,7 +1122,7 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
         </div>`;
 
     bindScheduleInteractions(mainContent, {
-        loadLeagueTeam: (teamId, teamName, seasonYear) => loadLeagueTeam(teamId, teamName, { seasonYear: seasonYear ?? selectedSeason }),
+        loadLeagueTeam: (teamId, teamName, options = {}) => loadLeagueTeam(teamId, teamName, { seasonYear: options.seasonYear ?? selectedSeason }),
         loadMatch,
         loadFixture
     });
