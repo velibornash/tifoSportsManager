@@ -452,6 +452,12 @@ public class TeamController {
         row.put("awayTeamId", fixture.getAwayTeam().getId());
         row.put("homeTeam", fixture.getHomeTeam().getName());
         row.put("awayTeam", fixture.getAwayTeam().getName());
+        // Team.logoUrl was populated for every seeded club and read by nobody: the schedule carried
+        // names and ids but no crest, so the frontend had nothing to show for an opponent and fell
+        // back to a generic badge on every fixture. Null is legitimate here - most of the 310 clubs
+        // have no crest - and the frontend already has a default for it.
+        row.put("homeTeamLogoUrl", fixture.getHomeTeam().getLogoUrl());
+        row.put("awayTeamLogoUrl", fixture.getAwayTeam().getLogoUrl());
         row.put("opponentId", opponent != null ? opponent.getId() : null);
         row.put("opponentName", opponent != null ? opponent.getName() : "Unknown");
         row.put("isHome", isHome);

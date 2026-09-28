@@ -3437,3 +3437,39 @@ two adapters accept one. A second call site had the same shape with a literal `n
 one, and the markup must still be writing and reading `data-season-year`, so the contract has
 something to carry. Verified by reverting to the old shape: it fails and names **both** call sites
 (`[seasonYear, null]`) rather than just the one that happened to be noticed.
+
+---
+
+## S8.3 #7 and #8 — a field nobody read, and an image nobody shipped (2026-09-28)
+
+Two items from the same list, and both turned out to be the failure the owner's full-wiring rule is
+about. Neither was a bug in the sense of "something broke". Both were "we built this and nothing
+uses it".
+
+### #7 — `Team.logoUrl`, populated and unread
+
+`Team.logoUrl` **is** a field, and `DatabaseInitializer` seeds it for both managed clubs. But the
+name-compare hack the backlog described is long gone, replaced by a field that… also went unused:
+the dashboard read `currentUserTeamLogoUrl` from `/auth/me` for **your own** club and hardcoded
+`/images/default-team.png` for everyone else. So every opponent crest in the game was a generic
+badge, while the data to do better sat in the database.
+
+The gap was in the payload, not the view: `/teams/{id}/schedule` returns untyped maps and carried
+names and ids but no crest. Added `homeTeamLogoUrl` / `awayTeamLogoUrl`, and the next-match card now
+prefers them.
+
+**Null is the correct answer for most clubs** — only two of 310 have a crest — and the frontend
+already had a default, so the fallback is not a workaround here, it is the design. Verified live:
+Omladinac's fixtures return `/images/omladinac.png`, Sremac's return `/images/sremac_logo.jpg`, and
+the 20-odd rivals without a crest return `null` and fall back.
+
+### #8 — `default-stadium.png` referenced three times, never created
+
+A 404 on every stadium without an explicit image, in `stadium-view.js` (twice, one of them an
+`onerror` handler — so the fallback image was *itself* missing) and `fixture-view.js`. Wrote the
+asset: a dim stand above turf with a halfway line and centre circle, the two marks that read as
+"football" at a glance, and neutral enough not to pretend to be a real ground. Now 200.
+
+Worth noting the `onerror` case specifically. `onerror="this.src='/images/default-stadium.png'"` means
+a broken stadium image retried with another broken path, and the second failure had no handler — so
+the user got a browser's broken-image glyph rather than a placeholder, on every stadium in the game.

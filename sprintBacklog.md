@@ -1886,8 +1886,8 @@ same viewer as your own match.
 | 4 | `bindScheduleInteractions` fallback passes `seasonYear` positionally, silently dropping it | ✅ **fixed 2026-09-28** — contract unified to an options object; `ScheduleInteractionContractTest` |
 | 5 | `training-view.js` — merge the two ~450-line parallel implementations | `training-view.js:7-453,455-907` |
 | 6 | Delete the dead code in `pages.js` (`loadRecentLeagueMatches`, commented markup at `:428-433`) and `utils.js` (`resolveFixtureStadiumImage`, `emptyStateHtml`) | — |
-| 7 | Club logo selection by name string compare — make it a team field | `dashboard.js:47` |
-| 8 | Add `/images/default-stadium.png` or remove the reference | `fixture-view.js:34` |
+| 7 | Club logo selection by name string compare — make it a team field | ✅ **done 2026-09-28** — was already a `Team.logoUrl` field, but the *schedule* never sent it. Fixed |
+| 8 | Add `/images/default-stadium.png` or remove the reference | ✅ **done 2026-09-28** — asset written; 3 references, all were 404 |
 | 9 | Only SRB has a flag image; 8 other countries have `flagImagePath = null` | `DatabaseInitializer:372-374` |
 | 10 | `promote-reveal` uses `sessionStorage` — breaks on refresh and across devices. Move to a server-side reveal record | `academy.js:186-193` |
 

@@ -603,12 +603,12 @@ async function loadNextMatch() {
         const host = renderNextMatchCard(`
             <div class="match-info ${clickableClass}" data-fixture-id="${escapeHtml(nextMatch.fixtureId ?? '')}">
                 <div class="team-away-home">
-                    <img src="${nextMatch.isHome ? teamImagePath : '/images/default-team.png'}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
+                    <img src="${escapeHtml(nextMatch.homeTeamLogoUrl) || (nextMatch.isHome ? teamImagePath : '/images/default-team.png')}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
                     <span>${escapeHtml(nextMatch.homeTeam || 'Home')}</span>
                 </div>
                 <span class="vs">VS</span>
                 <div class="team-away-home" id="nextMatchHome">
-                    <img src="${nextMatch.isHome ? '/images/default-team.png' : teamImagePath}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
+                    <img src="${escapeHtml(nextMatch.awayTeamLogoUrl) || (nextMatch.isHome ? '/images/default-team.png' : teamImagePath)}" class="match-team-logo small" onerror="this.src='/images/default-team.png'">
                     <span>${escapeHtml(nextMatch.awayTeam || 'Away')}</span>
                 </div>
             </div>
