@@ -3141,3 +3141,46 @@ Also out of range on its own: **38 shots**, where the project's own target is 15
 
 **This is the owner's own report and is trusted over any reading of the numbers taken from a different
 match.** The figures above are as reported.
+
+---
+
+## 🟡 Transfer activity is not visible because nothing generates it (found 2026-09-28)
+
+Owner: *"takodje ne znam gde treba da se vide transfer izmene, Club-transfer nije to mesto, ja bar ne
+vidim"* — where should transfer activity be visible? Club → Transfers is not the place, I don't even see
+it.
+
+**Audited, and the answer is that there is nothing to see.** The page renders and is reachable from
+the sidebar on both desktop and mobile. The panels are all there. They are empty because the thing
+that would fill them does not run.
+
+| Panel on Club → Transfers | Why it is empty |
+|---|---|
+| **Incoming offers** | `TransferOffer` and `NegotiationService` are fully written — creating offers, countering, settling. **Nothing calls `NegotiationService`.** No AI club ever makes an offer, so the panel is permanently empty |
+| **Transfer market** | Working. Populated — 60 listed players in Serbia |
+| **My transfer desk** | Working. Budget, listed players, interest |
+| **The board** / **Weekly ledger** | Working |
+
+**So this is not a navigation problem and the fix is not a page.** Three separate pieces of work, and
+the first is the important one:
+
+| # | Task | Size |
+|---|---|---|
+| T1 | **Drive the weekly AI transfer loop** — AI clubs decide who they want, register interest, make offers, and settle. `NegotiationService` exists and is unwired, exactly like `RegistrationService` was this morning | Large, and the market becomes alive |
+| T2 | **A transfer news feed** — "Omladinac signed X from Y", "Sremac listed Z". No such feed exists anywhere; grep for `transferNews`/`activityFeed` finds nothing | Medium |
+| T3 | Decide **where** it goes. A dashboard ticker is the obvious home for news, and the club's own transfer page for anything addressed to you | Owner decision |
+
+> **T1 before T2.** A news feed with nothing in it is a worse thing than no news feed, because it
+> advertises that the market is dead. T1 is also the difference between a transfer market that is a
+> list of prices and one that is a market.
+
+**Note the pattern.** This is the third time in two days that a fully-written service turned out to be
+called by nothing: `RegistrationService` this morning, and now `NegotiationService`. Both were
+discovered by asking "what fills this screen" rather than "is this screen reachable". The backlog
+tracks wired-ness of the *gate* (S8.3 #6, `PlusFeatureService`) but nothing was checking whether the
+*engine* was switched on.
+
+**Suggested guard, if you want one:** a test that every `@Service` in the transfer/negotiation package
+has at least one caller, in the same spirit as `PlusGateHasCallersTest`. That test would have caught
+this and `RegistrationService` both.
+
