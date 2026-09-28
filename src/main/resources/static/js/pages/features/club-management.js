@@ -253,6 +253,17 @@ export function createClubManagementFeature(deps) {
         const teamId = Number(getTeamId() || 0);
         const teamName = getTeamName?.() || '';
 
+        // The market filter, bound here with the rest of the page because innerHTML replaced the
+        // select that was listening. Changing it reloads the market; it does not change what a
+        // manager is allowed to sign, only which country's clubs are listed.
+        const marketSelect = mainContent.querySelector('[data-market-country]');
+        if (marketSelect) {
+            marketSelect.addEventListener('change', () => {
+                transferMarketCountry = marketSelect.value || '';
+                loadTransfers();
+            });
+        }
+
         mainContent.querySelectorAll('[data-transfer-open]').forEach(button => {
             button.addEventListener('click', () => openTransferPlayer(button));
         });
@@ -337,21 +348,39 @@ export function createClubManagementFeature(deps) {
         });
     }
 
+    /**
+     * Which country's market is on screen.
+     *
+     * <p>A <b>filter, not a restriction</b> (owner, 2026-09-28): a player belongs to a league's country,
+     * not necessarily to a manager's nationality, and signing a foreigner is explicitly allowed. The
+     * country only decides what the market screen shows. Empty means "mine", which is the server's
+     * default anyway.
+     */
+    let transferMarketCountry = '';
+
     async function loadTransfers() {
         const teamId = getTeamId();
         console.log(`Loading transfers for ${teamId}`);
         const mainContent = document.getElementById('main-content');
         try {
-            const [marketResponse, overviewResponse, playersResponse] = await Promise.all([
-                authFetch(`/transfers?teamId=${encodeURIComponent(teamId)}`),
+            const marketQuery = transferMarketCountry
+                ? `&country=${encodeURIComponent(transferMarketCountry)}`
+                : '';
+            const [marketResponse, overviewResponse, playersResponse, catalogResponse] = await Promise.all([
+                authFetch(`/transfers?teamId=${encodeURIComponent(teamId)}${marketQuery}`),
                 authFetch(`/transfers/team/${encodeURIComponent(teamId)}?viewerTeamId=${encodeURIComponent(teamId)}`),
-                authFetch(`/teams/${encodeURIComponent(teamId)}/players`)
+                authFetch(`/teams/${encodeURIComponent(teamId)}/players`),
+                authFetch('/countries/catalog')
             ]);
-            const [transfers, myOverview, players] = await Promise.all([
+            const [transfers, myOverview, players, catalog] = await Promise.all([
                 marketResponse.json(),
                 overviewResponse.json(),
-                playersResponse.json()
+                playersResponse.json(),
+                catalogResponse.ok ? catalogResponse.json().catch(() => []) : []
             ]);
+            // Only countries with clubs can have anything listed in them, so the filter would
+            // otherwise offer 40 entries that are all guaranteed to be empty.
+            const marketCountries = (Array.isArray(catalog) ? catalog : []).filter(c => c.hasClubs);
 
             const orderedTransfers = [...transfers].sort((a, b) => new Date(b.listedAt || 0) - new Date(a.listedAt || 0));
             const listedPlayers = Array.isArray(myOverview?.listedPlayers) ? myOverview.listedPlayers : [];
@@ -385,6 +414,27 @@ export function createClubManagementFeature(deps) {
                             <div><strong>${formatMoney(averageAsking)}</strong><span>Avg asking</span></div>
                             <div><strong>${formatMoney(highestAsking)}</strong><span>Top asking</span></div>
                             <div><strong>${interestCount}</strong><span>Active interest</span></div>
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Transfer market</h3>
+                                <p class="fm-subtle">Browsing which country's clubs you buy from. Signing a player from anywhere is allowed.</p>
+                            </div>
+                            <label class="fm-market-filter">
+                                <span class="fm-detail-label">Market</span>
+                                <select data-market-country>
+                                    <option value="">My country</option>
+                                    ${marketCountries.map(c => `<option value="${escapeHtml(c.code)}"${c.code === transferMarketCountry ? ' selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="fm-market-hint fm-subtle">
+                            ${transferMarketCountry
+                                ? `Showing clubs registered in ${escapeHtml((marketCountries.find(c => c.code === transferMarketCountry) || {}).name || transferMarketCountry)}.`
+                                : 'Showing your own country. Pick another above to scout abroad.'}
                         </div>
                     </section>
 

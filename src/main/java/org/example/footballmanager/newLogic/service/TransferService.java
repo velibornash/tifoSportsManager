@@ -108,16 +108,38 @@ public class TransferService {
      * is which, so an unlisted player is reachable rather than merely existent.
      */
     @Transactional
-    public List<TransferDTO> getAllTransfers(Long viewerTeamId) {
+    /**
+     * The transfer market, scoped to the viewer's own country (owner, 2026-09-28).
+     *
+     * <p>It used to return <b>every listed player in the game</b>, which is a country system with no
+     * countries in it: a manager in Brazil browsed a worldwide market, and a domestic league's transfer
+     * market is a real thing with real rules and a real window.
+     *
+     * <p><b>The country filters the view; it does not restrict the game.</b> Nothing here stops a
+     * manager signing a player from another country — the owner was explicit that bringing a foreigner
+     * in is allowed. This is the market <i>on screen</i>, not the market they may shop in.
+     *
+     * <p>A null country shows an <b>empty</b> market rather than the whole world. Defaulting to
+     * everything is how a scope that was supposed to exist quietly disappears, and a manager whose own
+     * country cannot be read should see that something is wrong rather than be handed every player in
+     * the game as though it were normal.
+     */
+    public List<TransferDTO> getAllTransfers(Long viewerTeamId, String viewerCountryCode) {
+        if (viewerCountryCode == null || viewerCountryCode.isBlank()) {
+            return List.of();
+        }
         List<TransferDTO> out = new ArrayList<>();
         for (Transfer transfer : transferRepository
                 .findByStatusAndBuyerTeamIsNullOrderByListedAtDesc(TransferStatus.LISTED)) {
+            if (!inCountry(transfer.getSellerTeam(), viewerCountryCode)) {
+                continue;
+            }
             out.add(toTransferDto(transfer, viewerTeamId));
         }
 
         // Unlisted players are shown as scout reports: no asking price, and no pretending they are
         // for sale. The manager may still approach one.
-        for (Player player : scoutedUnlisted(viewerTeamId)) {
+        for (Player player : scoutedUnlisted(viewerTeamId, viewerCountryCode)) {
             Transfer stub = new Transfer();
             stub.setPlayer(player);
             stub.setSellerTeam(player.getTeam());
@@ -141,12 +163,14 @@ public class TransferService {
      * already has, and excluding the viewer's own squad which is on its own page.
      */
     @Transactional
-    public List<Player> scoutedUnlisted(Long viewerTeamId) {
+    public List<Player> scoutedUnlisted(Long viewerTeamId, String viewerCountryCode) {
         if (viewerTeamId == null) return List.of();
+        if (viewerCountryCode == null || viewerCountryCode.isBlank()) return List.of();
         return teamRepository.findClubTeamsForOperations().stream()
                 .filter(Objects::nonNull)
                 .filter(team -> team.getId() != null)
                 .filter(team -> !Objects.equals(team.getId(), viewerTeamId))
+                .filter(team -> inCountry(team, viewerCountryCode))
                 .flatMap(team -> playerRepository.findByTeamId(team.getId()).stream())
                 .filter(Objects::nonNull)
                 .filter(p -> p.getId() != null && p.getTeam() != null)
@@ -156,6 +180,20 @@ public class TransferService {
                         .orElse(true))
                 .limit(60)
                 .toList();
+    }
+
+    /**
+     * Whether a club belongs to the viewer's country.
+     *
+     * <p>Case-insensitive, and a club with no country is <b>not</b> in any country — so it is never
+     * shown. Treating "unknown" as "matches" would put every unassigned club in every market.
+     */
+    private boolean inCountry(Team team, String countryCode) {
+        if (team == null || team.getCountry() == null) {
+            return false;
+        }
+        String iso = team.getCountry().getIsoCode();
+        return iso != null && iso.equalsIgnoreCase(countryCode);
     }
 
     @Transactional

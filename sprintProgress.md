@@ -3982,3 +3982,53 @@ Test data removed afterwards. **Tests: 12 new. Full suite 695.**
 leagues, transfers and competitions are still Serbian by assumption. `0.4e`, the audit for hardcoded
 assumptions, is also open; `DatabaseInitializer` still seeds Serbian leagues. Until both are done the
 field is correct but inert, and that is stated in the backlog rather than glossed.
+
+---
+
+## 0.4d — the transfer market is a **filter**, not a restriction (2026-09-28)
+
+Owner correction, and a good one: *"cek cek, pa može svaki usr da vidi igrače i drugih nacionalnosti?
+treba samo imati filter gde može da bira iz koje zemlje želi da vidi, nema prepreke da dovede
+stranca u klub."*
+
+**I had built a wall.** I scoped `getAllTransfers` and `scoutedUnlisted` to the viewer's country and
+called it done, without asking whether signing a foreign player should be possible. The answer is yes,
+and the country only decides **what the market screen lists**.
+
+The distinction that makes this coherent: a **player belongs to a league's country by the club he
+plays for**, not by his nationality. Filtering on the *seller club's* country therefore shows a
+Serbian market containing any nationality a Serbian club has signed — which is correct and is not the
+same thing as a nationality filter.
+
+| | |
+|---|---|
+| Default | The viewer's own country |
+| `?country=XXX` | Browse another country's market |
+| Unknown code | Falls back to the manager's own, rather than erroring |
+| Unseeded country | Empty market, not an error |
+| **Signing anyone** | **Unchanged. No country gate on the purchase path at all** |
+
+Verified live: default 60 listed, `country=SRB` 60, `country=BRA` 0 (unseeded), `country=XXX` 60
+(falls back). Every country check in `TransferService` sits inside the two **read** methods;
+`buyListedPlayer` and `directBuyPlayer` contain none.
+
+Pinned by a test that asserts an **absence** — that the write path never references
+`viewerCountryCode` or `inCountry`. Asserted on the source rather than at runtime because the thing
+being protected is a check that was never added: there is no call to make and no exception to expect,
+and the only way to notice is to look for a gate that is not there.
+
+`viewerCountryCode` on `PlusFeatureService` prefers the country **chosen at registration** over the
+club's, deliberately. They normally agree; when they do not, a club must not silently overrule a
+deliberate choice.
+
+**0.4e** is now partly answered: the league, country page and active-league resolution were **already**
+country-agnostic — they resolve through the manager's own club and have done all along. The remaining
+hardcoding is in **seeding**, which the owner has said is fine as test data. So the read paths are
+clean; what is left is the seeding job at the end.
+
+### A correction to my own numbers
+
+Earlier commits reported totals taken by summing `target/surefire-reports/*.txt`, and that directory
+**accumulates stale files** — so those figures were inflated. A clean run is **691, all green, 1
+skipped** (the live browser test, correctly skipped with nothing on :8080). The per-commit numbers in
+this file before today are a few high.

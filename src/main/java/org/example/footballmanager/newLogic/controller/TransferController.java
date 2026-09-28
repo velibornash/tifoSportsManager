@@ -16,11 +16,14 @@ public class TransferController {
 
     private final TransferService transferService;
     private final TransferWindowService transferWindows;
+    private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
 
     public TransferController(TransferService transferService,
-                              TransferWindowService transferWindows) {
+                              TransferWindowService transferWindows,
+                              org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures) {
         this.transferService = transferService;
         this.transferWindows = transferWindows;
+        this.plusFeatures = plusFeatures;
     }
 
     /**
@@ -40,9 +43,38 @@ public class TransferController {
         return transferService.listPlayerForTransfer(playerId, request.getTeamId(), request.getPrice() == null ? 0.0 : request.getPrice());
     }
 
+    /**
+     * The transfer market, filtered by country (owner, 2026-09-28).
+     *
+     * <p><b>This is a filter, not a restriction.</b> Players belong to a <i>league's</i> country, not
+     * necessarily to a manager's nationality, and signing one is explicitly allowed — the owner was
+     * clear that "there is no obstacle to bringing a foreigner into the club". So the country only
+     * decides <b>which market is on screen</b>, never what a manager is allowed to buy. Cross-border
+     * business works exactly as before; the only thing scoped is the view.
+     *
+     * <p>Defaults to the viewer's own country, because a domestic market is what a manager wants
+     * first and it is what a domestic league's transfer rules are written around. Passing
+     * {@code ?country=XXX} browses another one, which is the point of the filter.
+     *
+     * <p>The default is read from the authenticated manager rather than trusted as a parameter: a
+     * country a caller silently falls back to should not be one they picked. An explicit choice is
+     * honoured, but only if it names a country we actually have — otherwise the filter would accept
+     * any string and return nothing with no explanation.
+     */
     @GetMapping
-    public List<TransferDTO> getAllTransfers(@RequestParam(required = false) Long teamId) {
-        return transferService.getAllTransfers(teamId);
+    public List<TransferDTO> getAllTransfers(
+            @RequestParam(required = false) Long teamId,
+            @RequestParam(required = false) String country,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User principal) {
+        String selected = plusFeatures.viewerCountryCode(principal);
+        if (country != null && !country.isBlank()) {
+            String requested = country.trim().toUpperCase(java.util.Locale.ROOT);
+            selected = org.example.footballmanager.newLogic.model.CountryCatalog.isKnown(requested)
+                    ? requested
+                    : selected;
+        }
+        return transferService.getAllTransfers(teamId, selected);
     }
 
     @GetMapping("/team/{teamId}")

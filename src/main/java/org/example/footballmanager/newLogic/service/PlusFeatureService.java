@@ -4,10 +4,12 @@ import org.example.commonmanager.model.User;
 import org.example.commonmanager.model.UserRole;
 import org.example.footballmanager.newLogic.model.Junior;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
@@ -158,6 +160,40 @@ public class PlusFeatureService {
         }
         Team team = teams.findByName(name).orElse(null);
         return team == null ? null : team.getId();
+    }
+
+    /**
+     * The country this manager plays in, as a three-letter code.
+     *
+     * <p>Prefers the country <b>chosen at registration</b> ({@code User.countryCode}) and falls back to
+     * the country of the club they hold, for an account created before that field existed.
+     *
+     * <p>The chosen value wins deliberately. They normally agree, but when they do not — a manager who
+     * registers for one country and is later handed a club in another — the answer that reflects what
+     * they asked for is the one that decides which league system, transfer market and national team
+     * they see. Otherwise the club silently overrules the choice they made.
+     *
+     * <p>Null when neither is known, and callers must treat that as "no country" rather than defaulting
+     * to one. A default here would be a quiet way to show a manager somebody else's country.
+     */
+    public String viewerCountryCode(User user) {
+        if (user == null) {
+            return null;
+        }
+        if (user.getCountryCode() != null && !user.getCountryCode().isBlank()) {
+            return user.getCountryCode().trim().toUpperCase(Locale.ROOT);
+        }
+        Long teamId = viewerTeamId(user);
+        if (teamId == null) {
+            return null;
+        }
+        return teams.findById(teamId)
+                .map(Team::getCountry)
+                .filter(Objects::nonNull)
+                .map(Country::getIsoCode)
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .orElse(null);
     }
 
     public boolean isOwnTeam(User user, Long teamId) {

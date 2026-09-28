@@ -858,3 +858,28 @@
     font-size: 11px;
     color: rgba(255, 255, 255, 0.5);
 }
+
+/* ── Transfer market filter (owner, 2026-09-28) ─────────────────────────────────────
+   The market is a FILTER: which country's clubs you are browsing. Signing anyone is
+   still allowed, and the hint above it says so, because a dropdown on a transfer page
+   otherwise reads as a restriction. */
+.fm-market-filter {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 170px;
+}
+
+.fm-market-filter select {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    color: var(--fm-legacy-text);
+    padding: 7px 10px;
+    font-size: 13px;
+}
+
+.fm-market-hint {
+    margin-bottom: 14px;
+    font-size: 12px;
+}

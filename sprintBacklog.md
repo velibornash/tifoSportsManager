@@ -2165,8 +2165,8 @@ one.
 | 0.4c2 | 🔴 **The club is actually linked on approval** | ✅ done — `approveRequest` now creates the `CTeam` the user is resolved through |
 | 0.4c3 | 🔴 **`POST /auth/register` did not exist** | ✅ added |
 | 0.4c4 | 🔴 **The admin queue and approve/reject did not exist** | ✅ added — `GET /admin/registration-requests`, `POST /admin/registration-requests/{id}/{approve,reject}` |
-| 0.4d | **Every** league, transfer, cup, national-team and international read scopes by that country | ⬜ **not done** — the field exists, nothing reads it yet |
-| 0.4e | Audit for hardcoded country or league assumptions | ⬜ **not done** — `DatabaseInitializer` still seeds Serbian leagues |
+| 0.4d | Reads scope by that country | 🟡 **transfer market done** — country-scoped with a **filter**, cross-border signing untouched. Leagues and competitions still resolve through the manager's own club |
+| 0.4e | Audit for hardcoded country or league assumptions | 🟡 seeding stays Serbian **by the owner's instruction** — it is test data. Read paths audited: league, country page and active-league resolution were already driven by the manager's own club |
 
 > **This is the single most important architectural item in the section**, and it is cheap to get
 > right now and expensive to retrofit. Every table that will be built in Parts 1–7 gets a country
