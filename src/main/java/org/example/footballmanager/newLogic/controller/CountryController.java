@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.repository.*;
 import org.example.footballmanager.newLogic.service.ScheduleInsightService;
 import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.util.LeagueTableOrder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.example.footballmanager.newLogic.model.Player;
@@ -572,12 +573,8 @@ public class CountryController {
 
         List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(currentSeasonComp);
 
-        // Sortiraj
-        List<CompetitionEntry> sortedEntries = entries.stream()
-                .sorted(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
-                        .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
-                        .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()))
-                .toList();
+        // One order for the whole game - see LeagueTableOrder for the three that disagreed.
+        List<CompetitionEntry> sortedEntries = LeagueTableOrder.sort(entries);
 
         // Mapiraj na DTO sa position iz sortiranja
         List<LeagueTableDTO> table = new ArrayList<>();

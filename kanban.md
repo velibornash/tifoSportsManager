@@ -112,11 +112,10 @@ mechanics come before statistics. `S1.0a` already warned the audit baseline was 
 | Task | State | Sprint |
 |---|---|---|
 | **Make AI-vs-AI fixtures inspectable** | not started | S7.2 |
-| **League table: three comparators, one implementation** — `MatchStatisticEngine:231-306`, `CountryController:109-112`, `SeasonService:745-753`. Also `ensureEntriesForSeasonCompetition` deletes and rebuilds all entries on membership drift | not started | S8.4 |
+| **League table: three comparators, one implementation** | not started | S8.4 |
 | **13 routed-but-unreachable pages** — **6 wired, 7 are not, and "wiring" was the wrong fix for most of them.** See the diagnosis below | partly done | S8.1 |
 | **Remaining frontend debt** | not started | S8.3 |
-| **Presentation and realism content** | not started | S8.5 |
-| **Freeze `demo/service/` as a reference module** | partial | S6.2 |
+| **Presentation and realism content** | not started | S8.5 || **Freeze `demo/service/` as a reference module** | partial | S6.2 |
 | **Documentation rewrite** | mostly done 2026-09-27 | S6.5 |
 | **Deployment infrastructure** | deferred until the instance goes up | S8.6 |
 
@@ -173,6 +172,41 @@ Kept so the next session does not redo them.
 | **The Training Setup screen had a state layer and no renderer** — the router's `trainingSetup` case called a function that was the setup screen wearing the wrong name, and its `render()` belonged to the reports screen in another scope. It is written now, against the CSS that survived and the backend's own `normalizeDtSkill` | the real module with a stubbed API: renders, saves the right body, runs the week, honours the 10-slot cap |
 | **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
 | **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
+
+### ✅ S8.4 — one league-table order, and a table that survives being read
+
+Two defects. The second is worse than the board described, and both are now closed.
+
+**One order, not three — and it was four.** `LeagueTableOrder` is the only comparator now, used by
+`CountryController.getLeagueTable`, `MatchPersistenceService`, `SeasonService.sortTable` and the
+playoff pairing. They agreed on points and goal difference and disagreed after that:
+
+- The playoff draw stopped at goal difference. Two runners-up level on points and difference were
+  ordered arbitrarily there while the table ordered them by goals scored — the exact
+  stronger-club-gets-the-easier-tie bug the playoff code's own comment says was already fixed once.
+- Only one of the four had a final tiebreak on team id, so a total tie was ordered by whatever order
+  the repository returned and the same table could render differently between two requests.
+- One of the four **writes** `position` and another **reads** it, so the number in the teams list
+  and the number in the table came from two different comparators.
+- Two of the four did `getGoalsScored() - getGoalsConceded()`, which unboxes. One was the endpoint
+  the manager reads, so a half-created entry threw instead of sorting.
+
+**The read path was deleting the season.** `ensureEntriesForSeasonCompetition` deleted every entry
+and rebuilt from zero on any membership drift — and the league table endpoint calls it *before it
+reads*. One club joining a division reset every other club's points, wins, draws, losses and goals,
+mid-season, for a manager who had done nothing but open the page. The difference is now applied as a
+difference: a new club gets a row at zero, a departed club loses its row, and every other row keeps
+its record.
+
+| Verified by | |
+|---|---|
+| `theOrderIsPointsThenGoalDifferenceThenGoalsScoredThenId` | every one of the four keys is load-bearing — a comparator that dropped goals scored would still pass the first three positions |
+| `aTotalTieIsBrokenStablyById` | the same table renders the same order whichever way the rows arrived |
+| `aNullSortsAsZero` | the two unboxing comparators threw here; one of them was the page the manager reads |
+| `aNewClubDoesNotWipeTheTable` | **proved against the old code**: restoring delete-and-rebuild gives `expected: <21> but was: <0>` |
+| `aDepartedClubLosesOnlyItsOwnRow` | the one case where losing a row is right, and nothing else moves |
+
+**732 tests green.** The kanban's file references were stale — `MatchStatisticEngine` does not exist.
 
 ### ✅ S7.1 — the guard that every fixture is played by the proposal engine
 

@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.*;
+import org.example.footballmanager.newLogic.util.LeagueTableOrder;
 import org.example.footballmanager.newLogic.model.event.*;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.MatchEventRepository;
@@ -147,10 +148,9 @@ public class MatchPersistenceService {
             }
         }
 
-        List<CompetitionEntry> sorted = new ArrayList<>(entries);
-        sorted.sort(Comparator.comparing(CompetitionEntry::getPoints, Comparator.reverseOrder())
-                .thenComparing(e -> e.getGoalsScored() - e.getGoalsConceded(), Comparator.reverseOrder())
-                .thenComparing(CompetitionEntry::getGoalsScored, Comparator.reverseOrder()));
+        // The position written here is the position the table endpoint reads back, so both come
+        // from one comparator. See LeagueTableOrder for the three that used to disagree.
+        List<CompetitionEntry> sorted = new ArrayList<>(LeagueTableOrder.sort(entries));
 
         for (int pos = 0; pos < sorted.size(); pos++) {
             sorted.get(pos).setPosition(pos + 1);

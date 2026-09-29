@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.*;
+import org.example.footballmanager.newLogic.util.LeagueTableOrder;
 import org.example.footballmanager.newLogic.repository.*;
 import org.example.footballmanager.newLogic.model.JuniorStatus;
 import org.springframework.stereotype.Service;
@@ -144,41 +145,62 @@ public class SeasonService {
                 });
     }
 
+    /**
+     * Make sure every club in the competition has a row in this season's table, and no club that
+     * left still has one.
+     *
+     * <p>It used to <b>delete every entry and rebuild from zero</b> whenever membership was not an
+     * exact set match. That made it a data-loss path on the read side, because the league table
+     * endpoint calls this before it reads: one team joining a division, or one leaving it, reset
+     * every other club's points, wins, draws, losses and goals to zero, mid-season, for a manager
+     * who had done nothing but open the page.
+     *
+     * <p>Now the difference is applied as a difference. A club that is new gets a row at zero. A club
+     * that is no longer in the competition loses its row, because its results do not belong to this
+     * table. Every other row is left exactly as it is, with its record intact.
+     */
     @Transactional
     public void ensureEntriesForSeasonCompetition(Competition competition, int seasonYear) {
         SeasonCompetition sc = ensureSeasonCompetition(competition, seasonYear);
         List<CompetitionEntry> existing = competitionEntryRepository.findBySeasonCompetition(sc);
         List<Team> currentLeagueTeams = teamRepository.findByCompetitionId(competition.getId());
 
-        if (!existing.isEmpty()) {
-            Set<Long> existingTeamIds = existing.stream()
-                    .map(CompetitionEntry::getTeam)
-                    .filter(Objects::nonNull)
-                    .map(Team::getId)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-            Set<Long> currentTeamIds = currentLeagueTeams.stream()
-                    .map(Team::getId)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
+        Set<Long> existingTeamIds = existing.stream()
+                .map(CompetitionEntry::getTeam)
+                .filter(Objects::nonNull)
+                .map(Team::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> currentTeamIds = currentLeagueTeams.stream()
+                .map(Team::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
 
-            if (existingTeamIds.size() == currentTeamIds.size() && existingTeamIds.equals(currentTeamIds)) {
-                return;
-            }
-
-            // Delete one by one to avoid batch update issues
-            for (CompetitionEntry entry : existing) {
-                if (entry.getId() != null) {
-                    competitionEntryRepository.deleteById(entry.getId());
-                }
-            }
-            existing = List.of();
-            log.warn("Rebuilding season entries for league {} season {} because membership drift was detected. Existing={}, current={}",
-                    competition.getName(), seasonYear, existingTeamIds.size(), currentTeamIds.size());
+        if (existingTeamIds.equals(currentTeamIds)) {
+            return;
         }
 
-        List<CompetitionEntry> entriesToCreate = new ArrayList<>(currentLeagueTeams.size());
+        // A club that has left the competition, and one whose row was left behind by a half-created
+        // entry, cannot be distinguished here and are treated the same: the row goes, because a
+        // result scored for a club that is not in this table is not this table's result.
+        List<CompetitionEntry> stale = existing.stream()
+                .filter(entry -> entry.getTeam() == null
+                        || entry.getTeam().getId() == null
+                        || !currentTeamIds.contains(entry.getTeam().getId()))
+                .toList();
+        for (CompetitionEntry entry : stale) {
+            if (entry.getId() != null) {
+                competitionEntryRepository.deleteById(entry.getId());
+            }
+        }
+
+        List<CompetitionEntry> entriesToCreate = new ArrayList<>();
         for (Team t : currentLeagueTeams) {
+            if (t.getId() == null || existingTeamIds.contains(t.getId())) {
+                // Already has a row, and that row carries the season so far. Recreating it here is
+                // what used to throw the season away.
+                continue;
+            }
             CompetitionEntry entry = new CompetitionEntry();
             entry.setSeasonCompetition(sc);
             entry.setTeam(t);
@@ -193,6 +215,10 @@ public class SeasonService {
         if (!entriesToCreate.isEmpty()) {
             competitionEntryRepository.saveAll(entriesToCreate);
         }
+        log.info("Season entries for {} season {} adjusted: {} removed, {} added. Records of {} "
+                        + "existing club(s) left untouched.",
+                competition.getName(), seasonYear, stale.size(), entriesToCreate.size(),
+                existingTeamIds.size() - stale.size());
     }
 
     @Transactional
@@ -336,13 +362,11 @@ public class SeasonService {
         // Pairing by league order instead gave the seventh whichever happened to be listed first,
         // so on a normal table - where the second of league B is the better side - the draw was
         // the wrong way round and the stronger club got the easier tie.
-        List<CompetitionEntry> ranked = new ArrayList<>(lowerRunners);
-        ranked.sort(Comparator.comparingInt(
-                (CompetitionEntry e) -> e.getPoints() == null ? 0 : e.getPoints()).reversed()
-                .thenComparing(Comparator.comparingInt(
-                        (CompetitionEntry e) -> (e.getGoalsScored() == null ? 0 : e.getGoalsScored())
-                                - (e.getGoalsConceded() == null ? 0 : e.getGoalsConceded()))
-                        .reversed()));
+        // The same comparator the table is drawn with. This stopped at goal difference, so two
+        // runners-up level on points and goal difference were ordered arbitrarily here while the
+        // table ordered them by goals scored - which is the same stronger-club-gets-the-easier-tie
+        // bug the comment above describes, reintroduced by a comparator one key short.
+        List<CompetitionEntry> ranked = new ArrayList<>(LeagueTableOrder.sort(lowerRunners));
         CompetitionEntry weaker = ranked.get(1);
         CompetitionEntry stronger = ranked.get(0);
 
@@ -972,13 +996,7 @@ public class SeasonService {
     }
 
     private List<CompetitionEntry> sortTable(List<CompetitionEntry> entries) {
-        return entries.stream()
-                .sorted(Comparator
-                        .comparingInt((CompetitionEntry e) -> safe(e.getPoints())).reversed()
-                        .thenComparing(Comparator.comparingInt((CompetitionEntry e) -> safe(e.getGoalsScored()) - safe(e.getGoalsConceded())).reversed())
-                        .thenComparing(Comparator.comparingInt((CompetitionEntry e) -> safe(e.getGoalsScored())).reversed())
-                        .thenComparing(e -> e.getTeam() != null ? e.getTeam().getId() : Long.MAX_VALUE))
-                .toList();
+        return LeagueTableOrder.sort(entries);
     }
 
     private int safe(Integer value) {
