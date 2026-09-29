@@ -20,9 +20,10 @@ import org.springframework.stereotype.Component;
  * app down, deploy over the kickoff - is caught by the next hourly check, because there is no DONE row
  * for it.
  *
- * <p><b>Runs before the day-5 matchday</b>, ordered 30 against the matchday's 40, and at 08:00 against
- * the matchday's 18:00. Drawing and playing in the same hour would mean the matchday sometimes finds
- * the round and sometimes does not, depending on the order two jobs happened to run in.
+ * <p><b>Day 2, three days before the tie is played on day 5.</b> The owner's reason: clubs need time to
+ * scout the opponent the draw hands them. The gap also means the draw and the matchday are days apart,
+ * so there is no ordering between them to get wrong - they used to be hours apart on the same day,
+ * which meant the matchday found the round only if the draw happened to run first.
  *
  * <p><b>Later rounds only draw once the round before has been played.</b> The entrants for round 4 are
  * the winners of round 3, and until round 3 has a result they are not knowable. The job therefore
@@ -35,6 +36,7 @@ public class CupDrawJob implements DayJob {
 
     public static final String KEY = "cup-draw";
 
+    /** 08:00 on day 2 - the earliest sensible hour on the first non-match day. */
     private static final int DRAW_HOUR = 8;
 
     private final CupFixtureSeeder seeder;
@@ -55,7 +57,11 @@ public class CupDrawJob implements DayJob {
 
     @Override
     public int day() {
-        return 5;
+        // Day 2, not day 5 (owner, 2026-09-29): the draw happens early in the week so clubs have
+        // three days to scout the opponent they have been given. Drawing on cup day itself would
+        // hand a manager his opposition the morning of the tie, which is not a draw anyone would
+        // call fair. The tie is still played on day 5 - only the draw moved.
+        return 2;
     }
 
     @Override
