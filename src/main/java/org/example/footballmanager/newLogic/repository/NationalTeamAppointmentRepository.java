@@ -15,4 +15,7 @@ public interface NationalTeamAppointmentRepository
     List<NationalTeamAppointment> findByCountryIdAndActiveTrue(Long countryId);
 
     long countByCountryIdAndLevelAndActiveTrue(Long countryId, NationalTeamLevel level);
+
+    /** Every appointment a country has made, active or not, for the legacy-country cleanup. */
+    List<NationalTeamAppointment> findByCountryId(Long countryId);
 }

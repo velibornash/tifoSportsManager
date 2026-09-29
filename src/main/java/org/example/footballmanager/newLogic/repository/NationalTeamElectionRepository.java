@@ -15,4 +15,7 @@ public interface NationalTeamElectionRepository
             Long countryId, NationalTeamLevel level, Integer seasonYear);
 
     List<NationalTeamElection> findByCountryIdAndStatusIn(Long countryId, List<NationalTeamElection.Status> statuses);
+
+    /** Every election a country has held, for the legacy-country cleanup. */
+    List<NationalTeamElection> findByCountryId(Long countryId);
 }

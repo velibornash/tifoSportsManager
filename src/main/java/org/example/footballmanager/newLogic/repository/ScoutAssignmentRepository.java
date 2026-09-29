@@ -32,4 +32,7 @@ public interface ScoutAssignmentRepository extends JpaRepository<ScoutAssignment
      */
     @Query("select count(a) from ScoutAssignment a where a.team.id = :teamId and a.active = true")
     long countActiveByTeam(@Param("teamId") Long teamId);
+
+    /** Scout assignments made on behalf of a country, for the legacy-country cleanup. */
+    List<ScoutAssignment> findByCountryId(Long countryId);
 }
