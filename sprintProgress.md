@@ -1,6 +1,21 @@
 # TIFO Football Manager — Sprint Progress Log
 
-## ⚡ LATEST — 2026-09-29 (later)
+## ⚡ LATEST — 2026-09-29 (latest)
+
+**`cbcf79c` Internationals mechanism.** Built and blocked on world data, not code: 1 of 9 seeded
+countries has a squad. Two bugs on the way — the `competition` table's `CHECK (type IN ('LEAGUE','CUP'))`
+stopped the context from starting when the enum grew, and the seeder asked a club-only repository for
+national teams and logged "0 have a squad" for a world that was merely unseeded.
+
+**Watch-match gate.** `/api/watch/status` replaces a whole-week boolean. The old gate made Watch open
+at 08:00 on a match day and shut on a day with a fixture on it. Now it is the kickoff hour of the
+current day, computed server-side, with a tooltip explaining the wait. Verified across all three
+states: not a match day, one hour before kickoff, and at kickoff. Leagues and cups both count, so
+there is one button rather than two that can disagree.
+
+---
+
+## Earlier on 2026-09-29
 
 **`410fea3` League fixtures get a day.** The top of the open list, and the reason a week played no
 league football from the job path. The generator stamps day 3 on a week's first round and day 7 on its

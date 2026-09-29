@@ -37,6 +37,16 @@ async function syncGameClock() {
         weekNumber = Number(data.weekNumber || 1);
         dayNumber = Number(data.day || 1);
         dayLabel = data.dayLabel || '';
+        // Publish the clock so the dashboard can gate "Watch Your Match" on the real kickoff hour
+        // instead of a week boolean. Set here because this is the one place the server clock is
+        // already being read every tick.
+        window.__fmWatchStatus = {
+            available: isWatchable(data),
+            reason: watchReason(data),
+            kickoffHour: data.kickoffHour,
+            day: data.day,
+            hour: data.hour
+        };
         phaseLabel = data.phase || "Season in progress";
     } catch (err) {
         console.warn("Game clock sync failed:", err);
@@ -93,3 +103,26 @@ setInterval(syncWithServerTime, 5 * 60 * 1000);
 setInterval(syncGameClock, 20 * 1000);
 updateLiveClock();
 setInterval(updateLiveClock, 1000);
+
+/**
+ * Whether the clock says a match can be watched right now (owner, 2026-09-29).
+ *
+ * <p>Mirrors the server rule exactly - a match day, and the hour at or past kickoff. The server
+ * remains the authority and /api/watch/status is what the button ultimately follows; this exists so
+ * the dashboard has the answer between ticks rather than rendering a stale enabled button.
+ */
+function isWatchable(clock) {
+    if (!clock || clock.matchDay !== true) return false;
+    if (clock.kickoffHour === null || clock.kickoffHour === undefined) return false;
+    return Number(clock.hour) >= Number(clock.kickoffHour);
+}
+
+function watchReason(clock) {
+    if (!clock) return 'The game clock is not available.';
+    if (clock.matchDay !== true) return 'Not a match day.';
+    if (clock.kickoffHour === null || clock.kickoffHour === undefined) return 'No kickoff on this day.';
+    if (Number(clock.hour) < Number(clock.kickoffHour)) {
+        return `Kickoff is at ${String(clock.kickoffHour).padStart(2, '0')}:00.`;
+    }
+    return 'Your match is ready to watch.';
+}

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.Locale;
 import java.util.List;
 import java.util.LinkedHashMap;
+import org.example.commonmanager.model.User;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -120,6 +121,62 @@ public class APIController {
                     return row;
                 })
                 .toList();
+    }
+
+    /**
+     * Whether the manager can watch a match right now (owner, 2026-09-29).
+     *
+     * <p>Replaces a whole-week boolean. "Watch" was disabled once the week was consumed, which meant
+     * it was available at 08:00 on a match day - seven hours before kickoff - and unavailable for the
+     * rest of the week even on a day with a fixture on it.
+     *
+     * <p>The owner's rule: when the clock reaches kickoff, Watch becomes active, and only clicking it
+     * populates the stats, even though the match was already generated. So the gate is the kickoff
+     * hour of the current day, and it is computed here rather than in the browser - a client that
+     * decides for itself will disagree with the clock.
+     *
+     * <p>Both leagues and cups are considered. The owner's position was "watch your match should also
+     * show cup ties, or a separate cup button" - this answers that by having one button that knows
+     * about both, which is less to click and cannot drift out of sync with two of them.
+     */
+    @GetMapping("/watch/status")
+    public Map<String, Object> watchStatus(@org.springframework.security.core.annotation.AuthenticationPrincipal
+                                           User viewer) {
+        Map<String, Object> clock = gameClockService.snapshot();
+        int day = ((Number) clock.getOrDefault("day", 1)).intValue();
+        int hour = ((Number) clock.getOrDefault("hour", 0)).intValue();
+        int week = ((Number) clock.getOrDefault("weekNumber", 1)).intValue();
+        Object kickoff = clock.get("kickoffHour");
+        boolean matchDay = Boolean.TRUE.equals(clock.get("matchDay"));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.putAll(clock);
+
+        if (!matchDay) {
+            out.put("available", false);
+            out.put("reason", "Not a match day. The next match day is day 3.");
+            return out;
+        }
+        if (kickoff == null) {
+            out.put("available", false);
+            out.put("reason", "No kickoff is defined for this day.");
+            return out;
+        }
+        int kickoffHour = ((Number) kickoff).intValue();
+        out.put("kickoffHour", kickoffHour);
+
+        if (hour < kickoffHour) {
+            out.put("available", false);
+            out.put("reason", "Kickoff is at " + String.format("%02d:00", kickoffHour)
+                    + ". It is now " + String.format("%02d:00", hour) + ".");
+            return out;
+        }
+
+        out.put("available", true);
+        out.put("reason", "Kickoff is " + String.format("%02d:00", kickoffHour) + " - your match is ready to watch.");
+        out.put("week", week);
+        out.put("day", day);
+        return out;
     }
 
     @GetMapping("/game-clock")

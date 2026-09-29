@@ -43,8 +43,14 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
 3. **Zone-based morale and daily recovery.** No zone model exists in the codebase at all. Needs:
    a `Zone` model, `Player.zoneLoad` written by the match engine, recovery/morale derived from it, and
    `Player.lastPlayedAt`. A flat "recovery" job was written and deliberately deleted — see below.
-4. **Watch-match gate.** "Watch match" must be active only at kickoff and must populate stats on
-   click, with a cup source. The data is all in `/api/game-clock` now (`day`, `kickoffHour`, `hour`).
+4. ~~Watch-match gate~~ — **GATE DONE 2026-09-29.** `/api/watch/status` decides availability from the
+   game day and the kickoff hour, and the dashboard button follows it with a tooltip saying why. The
+   old gate was a whole-week boolean, so Watch was open at 08:00 on a match day and shut on a day that
+   had a fixture on it. Verified: day 2 → "Not a match day"; day 3 hour 18 → "Kickoff is at 19:00. It
+   is now 18:00."; day 3 hour 19 → available. Leagues and cups are both considered, which answers the
+   owner's "or a separate cup button" with one button that cannot drift out of sync with two.
+   **Still open: clicking it populates stats on demand.** The gate is right; the click path is still
+   the old one.
 5. **Simulate-all is week-based, should be day/hour accurate, and does not include cup.**
 6. **Cup ties in the schedule view.** The schedule shows the template, not the actual day's ties.
 7. **T1 engine defect.** A 1-1 with 38-4 shots and 9.5-0.9 xG. Needs a real event dump before

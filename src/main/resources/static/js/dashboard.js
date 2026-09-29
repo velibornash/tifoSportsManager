@@ -138,14 +138,37 @@ function isWeekConsumed() {
     }
 }
 
+/**
+ * The server's answer on whether watching is available right now (owner, 2026-09-29).
+ *
+ * <p>Cached on window so the dashboard does not call it on every render, and deliberately tolerant:
+ * if the endpoint is unreachable the gate falls back to the old week rule rather than locking the
+ * manager out of watching entirely.
+ */
+function readWatchStatus() {
+    if (readWatchStatus._cached) return readWatchStatus._cached;
+    if (typeof window === 'undefined' || !window.__fmWatchStatus) return null;
+    readWatchStatus._cached = window.__fmWatchStatus;
+    return readWatchStatus._cached;
+}
+
 function buildSeasonFlowPanel() {
     const flash = readDashboardFlowFlash();
     const weekConsumed = isWeekConsumed();
+    // Gated on the server, not on a week boolean. The server knows the current game day and the
+    // kickoff hour for it; the browser used to guess with "is the week consumed", which made Watch
+    // available at 08:00 on a match day and unavailable on a day that had a fixture on it.
+    const watch = readWatchStatus();
+    const watchDisabled = watch && watch.available === false
+        ? ' disabled aria-disabled="true"'
+        : (weekConsumed ? ' disabled aria-disabled="true"' : '');
+    const watchTitle = watch && !watch.available ? ` title="${escapeHtml(watch.reason || '')}"` : '';
     const statusTone = flash?.tone || 'info';
-    const statusMessage = flash?.message || (weekConsumed
+    const statusMessage = flash?.message || (watch && !watch.available
+        ? (watch.reason || 'Your match is not available yet.')
+        : weekConsumed
         ? 'Current match week is already locked in. Use Advance Week to move forward and unlock the next replay/results cycle.'
         : 'Prepare the current week once, then either watch your match or open the live results desk before advancing.');
-    const watchDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
     const simulateDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
 
     return `
@@ -160,7 +183,7 @@ function buildSeasonFlowPanel() {
                 ${isAdminUser() ? '<span class="fm-season-flow-badge">Admin</span>' : ''}
             </div>
             <div class="dashboard-actions fm-season-flow-buttons">
-                <button id="start-realistic-demo-btn" data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
+                <button id="start-realistic-demo-btn"${watchTitle} data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
                 <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
                 ${isAdminUser() ? '<button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>' : ''}
                 ${isAdminUser() ? '<button id="advance-day-btn" data-label="📆 Advance Day" class="fm-action-btn secondary" onclick="advanceDayTest()">📆 Advance Day</button>' : ''}
