@@ -20,7 +20,7 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
-## `PENDING` — the zone model gets a writer, and `Zone` itself was wrong
+## `0056bc5` — the zone model gets a writer, and `Zone` itself was wrong
 
 **Task:** *"Zone-based morale and daily recovery — model only. `Zone`, `PlayerZoneLoad` and
 `RecoveryJob` exist, but the match engine never writes `lastPlayedAt` or the load table, so recovery
