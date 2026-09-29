@@ -36,9 +36,9 @@ class ScoutingReachTest {
     @Test
     @DisplayName("reach is the product of scout quality and country pipeline, not their sum")
     void reachIsMultiplicative() {
-        int brilliantScoutWeakCountry = ScoutingService.reach(scout(20), country(45));
-        int poorScoutRichCountry = ScoutingService.reach(scout(1), country(95));
-        int bothGood = ScoutingService.reach(scout(20), country(95));
+        int brilliantScoutWeakCountry = ScoutingService.reach(scout(20), country(1417));
+        int poorScoutRichCountry = ScoutingService.reach(scout(1), country(1583));
+        int bothGood = ScoutingService.reach(scout(20), country(1583));
 
         // A sum would let either extreme reach roughly the same place as a balanced pairing.
         // A product says neither factor rescues the other, which is the whole point.
@@ -54,7 +54,7 @@ class ScoutingReachTest {
     @Test
     @DisplayName("the best possible posting lands in the high nineties, not at 100")
     void bestCaseIsStrongButNotMaximal() {
-        int best = ScoutingService.reach(scout(20), country(95));
+        int best = ScoutingService.reach(scout(20), country(1583));
         // youthRating 95 against a floor of 40 over a span of 60 is 0.917, so the ceiling is ~92.
         // Pinning it stops someone "fixing" the scale to reach exactly 100 and flattening the top end.
         assertEquals(92, best, "the maximum posting should sit just below 100");
@@ -64,7 +64,7 @@ class ScoutingReachTest {
     @Test
     @DisplayName("a worthless posting is worth nothing")
     void worstCaseIsZero() {
-        assertEquals(0, ScoutingService.reach(scout(1), country(40)));
+        assertEquals(0, ScoutingService.reach(scout(1), country(1400)));
     }
 
     @Test
@@ -72,7 +72,7 @@ class ScoutingReachTest {
     void reachRisesWithBothFactors() {
         int previous = -1;
         for (int scouting = 1; scouting <= 20; scouting++) {
-            int reach = ScoutingService.reach(scout(scouting), country(70));
+            int reach = ScoutingService.reach(scout(scouting), country(1500));
             assertTrue(reach >= previous,
                     "a better scout must never produce less reach: " + scouting + " gave " + reach);
             previous = reach;
@@ -105,7 +105,7 @@ class ScoutingReachTest {
     void unratedScoutDefaultsToTheFloorNotZero() {
         StaffMember unrated = scout(0);
         unrated.setScouting(null);
-        int reach = ScoutingService.reach(unrated, country(90));
+        int reach = ScoutingService.reach(unrated, country(1567));
         // Defaulting to 0 would make an unrated scout literally blind. The honest reading of
         // "nobody has rated him" is "barely better than blind".
         assertTrue(reach >= 1, "an unrated scout should still see something, got " + reach);
@@ -115,7 +115,7 @@ class ScoutingReachTest {
     @Test
     @DisplayName("a missing country rating is treated as no pipeline, not as a crash")
     void missingInputsDegradeInsteadOfThrowing() {
-        assertEquals(0, ScoutingService.reach(scout(20), country(40)));
+        assertEquals(0, ScoutingService.reach(scout(20), country(1400)));
         Country noRating = new Country();
         noRating.setYouthRating(null);
         assertTrue(ScoutingService.reach(scout(20), noRating) >= 0);
@@ -127,7 +127,7 @@ class ScoutingReachTest {
     void ordinaryPostingIsMeaningful() {
         // A 12-attribute scout on a 70-rated country is the median case a seeded club will actually
         // produce. If this reads as noise on the screen, the scale is wrong.
-        int reach = ScoutingService.reach(scout(12), country(70));
+        int reach = ScoutingService.reach(scout(12), country(1500));
         assertTrue(reach >= 25 && reach <= 45,
                 "an ordinary posting should land in the middle of the scale, got " + reach);
     }
@@ -139,8 +139,8 @@ class ScoutingReachTest {
         team.setName("Sremac Berkasovo");
         StaffMember s = scout(15);
         s.setTeam(team);
-        assertEquals(ScoutingService.reach(scout(15), country(80)),
-                ScoutingService.reach(s, country(80)),
+        assertEquals(ScoutingService.reach(scout(15), country(1533)),
+                ScoutingService.reach(s, country(1533)),
                 "posting the same scout with or without his club must not change his reach");
     }
 }

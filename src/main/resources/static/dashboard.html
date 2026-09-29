@@ -14,10 +14,10 @@
 <div class="top-menu">
     <div class="menu-button desktop-only" onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">⚽ Club</div>
-    <div class="menu-button desktop-only" onclick="loadPage('trainingSetup')">🏋️ Training</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
-	    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
+	    <div class="menu-button desktop-only" onclick="loadPage('world')">🌍 World</div>
+    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
 	    <div id="admin-menu-button" class="menu-button desktop-only" data-admin-only hidden onclick="loadPage('admin')">&#128295; Admin</div>
     <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
          no way out of a session at all on a phone. This is the account corner: who you are, your
@@ -78,18 +78,10 @@
                 <div onclick="loadPage('staff'); closeMobileMenu()">Staff</div>
                 <div onclick="loadPage('finances'); closeMobileMenu()">Finances</div>
                 <div onclick="loadPage('transfers'); closeMobileMenu()">Transfers</div>
+                <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training</div>
+                <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
                 <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
                 <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
-            </div>
-        </div>
-
-        <div class="mobile-accordion">
-            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
-                🏋️ Training
-            </div>
-            <div class="accordion-content">
-                <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training Setup</div>
-                <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
             </div>
         </div>
 
@@ -187,6 +179,8 @@
                 <div onclick="loadPage('finances')">Finances</div>
                 <div onclick="loadPage('transfers')">Transfers</div>
                 <div onclick="loadPage('schedule')">Schedule</div>
+                <div onclick="loadPage('trainingSetup')">Training</div>
+                <div onclick="loadPage('trainingReports')">Training Reports</div>
             </div>
         </div>
     </div>

@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +53,10 @@ class ScoutingServiceTest {
     private Country serbia;
     /** Seeded with youthRating 50 — the weakest pipeline in the seed, used as the "poor country" case. */
     private Country macedonia;
+    /** Highest youthRating the world actually ships. */
+    private Country richest;
+    /** Lowest youthRating the world actually ships. */
+    private Country weakest;
 
     @BeforeEach
     void setUp() {
@@ -63,6 +68,18 @@ class ScoutingServiceTest {
         brazil = seeded("BRA");
         serbia = seeded("SRB");
         macedonia = seeded("MKD");
+        // Scouting reach is driven by the country rating, so this test needs a strong country and a
+        // weak one. Every country now ships level at 1500 and earns its rating from results (owner,
+        // 2026-09-29), so there is no seeded spread to lean on - the test sets the two ratings
+        // itself. That is deliberate: it is the reach calculation being tested, not the seed.
+        weakest = seeded("MKD");
+        richest = seeded("BRA");
+        // Both sit inside the 1400-1600 band ScoutingService normalises over, so "weak" is a thin
+        // pipeline and not a country that has bottomed the scale out at zero reach.
+        weakest.setYouthRating(1450);
+        richest.setYouthRating(1600);
+        countries.saveAndFlush(weakest);
+        countries.saveAndFlush(richest);
     }
 
     private Country seeded(String isoCode) {
@@ -105,7 +122,11 @@ class ScoutingServiceTest {
         assertNotNull(posted.getAssignmentId());
         assertEquals("Brazil", posted.getCountryName(), "the DTO must name the country");
         assertEquals(15, posted.getScoutScouting());
-        assertEquals(85, posted.getCountryYouthRating());
+        // Read the rating off the country rather than hard-coding it. The world used to ship nine
+        // hand-rated countries (Brazil 85, Serbia 70, Macedonia 50) and this asserted against those
+        // numbers. Countries now come from the catalogue, which derives a rating rather than carrying
+        // hand-set ones, so pinning the literal here only asserted the old seed (owner, 2026-09-29).
+        assertEquals(brazil.getYouthRating(), posted.getCountryYouthRating());
         assertTrue(posted.getReach() > 55, "a 15-attribute scout on Brazil should read well, got " + posted.getReach());
 
         ScoutingNetworkDTO network = scouting.networkFor(club.getId(), 1);
@@ -187,9 +208,9 @@ class ScoutingServiceTest {
         StaffMember average = scoutFor(club, 10);
         StaffMember good = scoutFor(club, 18);
 
-        int goodInRich = scouting.assignScout(club.getId(), good.getId(), brazil.getId(), 1).getReach();
+        int goodInRich = scouting.assignScout(club.getId(), good.getId(), richest.getId(), 1).getReach();
         int averageInRich = scouting.assignScout(club.getId(), average.getId(), serbia.getId(), 1).getReach();
-        int goodInWeak = scouting.assignScout(club.getId(), good.getId(), macedonia.getId(), 1).getReach();
+        int goodInWeak = scouting.assignScout(club.getId(), good.getId(), weakest.getId(), 1).getReach();
 
         // Brazil 85 vs Serbia 70 at different scout qualities, and Brazil vs North Macedonia at the
         // same one. The product model says the second comparison is the sharper of the two, because
@@ -236,7 +257,8 @@ class ScoutingServiceTest {
 
         List<ScoutAssignmentDTO> rows = scouting.networkFor(club.getId(), 1).getAssignments();
         assertEquals(1, rows.size());
-        assertEquals("Srbija", rows.get(0).getCountryName());
+        assertEquals("Serbia", rows.get(0).getCountryName(),
+                "the catalogue name is English, so the panel shows Serbia");
         assertEquals("SRB", rows.get(0).getCountryIsoCode());
         assertNotNull(rows.get(0).getReachLabel(), "reach must arrive with a readable label, not a bare number");
         assertFalse(rows.get(0).getReachLabel().isBlank());

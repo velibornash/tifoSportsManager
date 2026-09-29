@@ -54,7 +54,10 @@ public class WorldCatalogSeeder {
      * the next pass - the code is canonical, the row was not. The national teams on these rows go with
      * them; keeping them would leave four sides belonging to a country that no longer exists.
      */
-    private static final List<String> LEGACY_ISO_CODES = List.of("HRV", "GBR", "DEU");
+    /** Every country starts here; results move it. */
+    public static final int STARTING_RATING = 1500;
+
+    public static final List<String> LEGACY_ISO_CODES = List.of("HRV", "GBR", "DEU");
 
     private final CountryRepository countries;
     private final TeamRepository teams;
@@ -111,9 +114,13 @@ public class WorldCatalogSeeder {
             country.setIsoCode(entry.code());
             // A spread, derived from the code so it is stable across installs. Not real-world ratings -
             // a claim about which country is stronger than which is not something to invent here.
-            int spread = Math.floorMod(entry.code().hashCode(), 21) + 40;
-            country.setReputation(spread);
-            country.setYouthRating(spread);
+            // Every country starts level at 1500 and earns its rating from results (owner,
+            // 2026-09-29). The manager world is not a replica of the real one, so seeding a
+            // strength table here would be a claim about real countries that this game is not
+            // making - and it was doing damage, because a hash-derived 40-60 band made country
+            // strength nearly meaningless to scouting and youth recruitment.
+            country.setReputation(STARTING_RATING);
+            country.setYouthRating(STARTING_RATING);
             country.setState(entry.code().equals(ACTIVE_COUNTRY)
                     ? CountryState.ACTIVE : CountryState.SIMULATED);
             ensured.add(countries.save(country));

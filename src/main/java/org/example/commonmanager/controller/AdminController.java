@@ -22,6 +22,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
+    private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrityService;
     private final TransferService transferService;
     private final org.example.footballmanager.newLogic.service.RegistrationService registrationService;
     private final org.example.footballmanager.newLogic.repository.RegistrationRequestRepository registrationRequests;
@@ -97,6 +98,22 @@ public class AdminController {
         return ResponseEntity.accepted().body(toDatabaseJobResponse(
                 adminDatabaseAsyncService.startOrGetRunningJob("reset")
         ));
+    }
+
+    /**
+     * Is the world whole, and if not, put it back (owner, 2026-09-29).
+     *
+     * <p>Reachable because a reset or an interrupted start must not need a developer to fix. Reports
+     * on GET without changing anything, so it can be asked the question safely; POST repairs.
+     */
+    @GetMapping("/world-integrity")
+    public ResponseEntity<Map<String, Object>> worldIntegrity() {
+        return ResponseEntity.ok(worldIntegrityService.report());
+    }
+
+    @PostMapping("/world-integrity/repair")
+    public ResponseEntity<Map<String, Object>> repairWorld() {
+        return ResponseEntity.ok(worldIntegrityService.repair());
     }
 
     @GetMapping("/database-job/status")

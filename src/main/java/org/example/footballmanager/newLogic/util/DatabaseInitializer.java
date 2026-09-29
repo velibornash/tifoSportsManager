@@ -98,6 +98,26 @@ public class DatabaseInitializer {
     private final CupFixtureSeeder cupFixtureSeeder;
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
     private final WorldCatalogSeeder worldCatalogSeeder;
+    private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
+    private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
+
+    private org.springframework.transaction.support.TransactionTemplate requiresNew;
+
+    /**
+     * The transaction used for the seeding steps that must be able to fail without poisoning the boot.
+     *
+     * <p>Built here rather than injected: Spring Boot auto-configures a TransactionTemplate with
+     * REQUIRED propagation, which joins the caller's transaction - exactly what this exists to avoid,
+     * so injecting one would have made it silently a no-op.
+     */
+    @jakarta.annotation.PostConstruct
+    void configureIsolatedSeedingTransaction() {
+        org.springframework.transaction.support.TransactionTemplate template =
+                new org.springframework.transaction.support.TransactionTemplate(seedingTransactionManager);
+        template.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.requiresNew = template;
+    }
     private final InternationalFixtureSeeder internationalFixtureSeeder;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
@@ -186,6 +206,19 @@ public class DatabaseInitializer {
      * bypassed by the self-invocation from here. Putting the boundary on the listener is the only
      * placement that actually opens a session for the work underneath it.
      */
+    /**
+     * Countries have to exist before the pyramid reads them, on the bootstrap path as well as the
+     * normal one.
+     *
+     * <p>This used to be satisfied by the hard-coded list of nine inside the pyramid bootstrap. That
+     * list is gone, so without this a fresh install builds a Serbian pyramid against a world with no
+     * countries in it.
+     */
+    private void seedWorldBeforePyramid() {
+        worldCatalogSeeder.seedAll();
+        nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void ensureBaselineDataOnStartup() {
@@ -216,13 +249,19 @@ public class DatabaseInitializer {
             // the national sides have to exist before the selectors and elections reference them. This
             // ran after both, so 42 new countries existed with no national side and no bot squad -
             // which is exactly why the internationals had nothing to draw against.
+            // In their own transaction, so a failure rolls back the catalogue alone and leaves the boot
+            // transaction usable. Sharing it is what made the boot unrecoverable: the catalogue threw
+            // while dropping HRV, the catch swallowed it, later steps then reported success inside a
+            // transaction already marked rollback-only, and the commit threw UnexpectedRollbackException
+            // - taking 42 countries and 84 national sides back down with it.
             try {
-                worldCatalogSeeder.seedAll();
+                requiresNew.executeWithoutResult(status -> worldCatalogSeeder.seedAll());
             } catch (RuntimeException e) {
                 log.warn("Could not seed the world catalogue: {}", e.getMessage());
             }
             try {
-                nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
+                requiresNew.executeWithoutResult(
+                        status -> nationalTeamSeeder.seedIfMissing(countryRepository.findAll()));
             } catch (RuntimeException e) {
                 log.warn("Could not seed national teams: {}", e.getMessage());
             }
@@ -238,6 +277,22 @@ public class DatabaseInitializer {
             } catch (RuntimeException e) {
                 log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
             }
+            // The repair runs after every other seeding step, and it is the safety net. Each step
+            // above can be interrupted, and when one is the world is left plausible and wrong - a
+            // reset killed part-way through left nine legacy countries and no national teams, and
+            // nothing said so. This converges the world whether or not the earlier steps ran, so a
+            // process killed at any point repairs itself on the next start.
+            try {
+                Map<String, Object> integrity = worldIntegrity.repair();
+                if (Boolean.FALSE.equals(integrity.get("healthy"))) {
+                    log.warn("World is still not whole after repair: {}", integrity);
+                } else {
+                    log.info("World integrity OK: {}", integrity);
+                }
+            } catch (RuntimeException e) {
+                log.warn("World repair failed: {}", e.getMessage());
+            }
+
             widenCompetitionTypeConstraint();
             try {
                 internationalFixtureSeeder.seedIfMissing(SeasonService.BASE_SEASON_YEAR);
@@ -271,7 +326,9 @@ public class DatabaseInitializer {
 
         log.warn("Core football data missing on startup. Bootstrapping baseline Serbian pyramid.");
         try {
-            initSerbianFootballStructure();
+            seedWorldBeforePyramid();
+            seedWorldBeforePyramid();
+        initSerbianFootballStructure();
             ensureSidLeague();
             backfillClubCountries();
             backfillStadiumCeilings();
@@ -807,16 +864,13 @@ public class DatabaseInitializer {
 
     @Transactional
     public void initSerbianFootballStructure() {
-        // 1. Država – Srbija + još nekoliko (modularno)
-        createCountryIfNotExists("Srbija", "SRB", 65, 70);
-        createCountryIfNotExists("Bosna i Hercegovina", "BIH", 55, 60);
-        createCountryIfNotExists("Crna Gora", "MNE", 50, 55);
-        createCountryIfNotExists("Hrvatska", "HRV", 70, 75);
-        createCountryIfNotExists("Slovenija", "SVN", 60, 65);
-        createCountryIfNotExists("Severna Makedonija", "MKD", 45, 50);
-        createCountryIfNotExists("Nemačka", "DEU", 95, 95);
-        createCountryIfNotExists("Engleska", "GBR", 95, 90);
-        createCountryIfNotExists("Brazil", "BRA", 90, 85);
+        // No country is created here any more (owner, 2026-09-29).
+        //
+        // This used to create nine, with the old ISO codes and Serbian names - HRV, DEU and GBR among
+        // them. Those codes are not in the catalogue, so a reset put nine legacy countries into the
+        // world and the catalogue then added its own 48 on top: 51 countries, 102 national sides and
+        // two rows each for Croatia, England and Germany. The catalogue is the only place countries
+        // come from, and seedWorldBeforePyramid() runs it before this method.
 
         Country serbia = countryRepository.findByIsoCode("SRB").orElseThrow();
 

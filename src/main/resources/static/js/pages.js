@@ -510,6 +510,10 @@ import {
                     await loadFriendlies();
                     break;
 
+	                case "world":
+	                    await loadWorldPage();
+	                    break;
+
 	                case "country":
 	                    await loadCountryPage();
 	                    break;
@@ -661,6 +665,58 @@ import {
 
     async function openCountryLeague(leagueId, leagueName) {
         return countryView.openCountryLeague(leagueId, leagueName);
+    }
+
+    /**
+     * The world page: how big the game is, and every country in it (owner, 2026-09-29).
+     *
+     * <p>The hub the country page hangs off. A country is not a tab here - it is a row you click,
+     * which is why the existing Country page and its four tabs stay exactly as they are. The Sokker
+     * page the owner showed has this same shape, and it is the right one: the map is the index, a
+     * country is a page.
+     */
+    const WORLD_STARTING_RATING = 1500;
+
+    async function loadWorldPage() {
+        const mainContent = document.getElementById('main-content');
+        try {
+            const countriesRes = await authFetch('/countries');
+            const countries = countriesRes.ok ? await countriesRes.json() : [];
+
+            const rows = (Array.isArray(countries) ? countries : [])
+                .map(country => `
+                    <button type="button" class="fm-world-row" data-world-country="${escapeHtml(country.isoCode || '')}">
+                        <span class="fm-world-row-flag">${country.flagImagePath
+                            ? `<img src="${escapeHtml(country.flagImagePath)}" alt="" />` : ''}</span>
+                        <span class="fm-world-row-name">${escapeHtml(country.name || '')}</span>
+                        <span class="fm-world-row-state">${escapeHtml(country.state || 'SIMULATED')}</span>
+                    </button>`).join('');
+
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--world">
+                    <div class="fm-page-toolbar">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-page-title-block">
+                            <div class="fm-eyebrow">World</div>
+                            <h2>Every country in the game</h2>
+                            <div class="fm-subtle">${(Array.isArray(countries) ? countries : []).length} countries, all starting level at ${WORLD_STARTING_RATING}. A SIMULATED country has a national side but no club pyramid yet - activate it from Admin to play it.</div>
+                        </div>
+                    </div>
+                    <section class="fm-panel">
+                        <div class="fm-world-list">${rows || '<div class="fm-empty">No countries yet.</div>'}</div>
+                    </section>
+                </div>`;
+
+            mainContent.querySelectorAll('[data-world-country]').forEach(row => {
+                row.addEventListener('click', () => {
+                    setActiveLeagueContext({ countryIsoCode: row.dataset.worldCountry, backTarget: 'world' });
+                    loadPage('country');
+                });
+            });
+        } catch (err) {
+            console.error('Failed to load the world page:', err);
+            mainContent.innerHTML = '<div class="manager-card"><h2>Error</h2><p>Could not load the world.</p></div>';
+        }
     }
 
     async function loadCountryPage() {

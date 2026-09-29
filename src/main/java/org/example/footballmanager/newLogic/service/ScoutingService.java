@@ -44,15 +44,18 @@ import java.util.List;
 public class ScoutingService {
 
     /**
-     * The lowest {@code youthRating} treated as "no pipeline at all".
+     * The rating treated as "no pipeline at all".
      *
-     * <p>Seeded values run 45-95. Anchoring the scale at 40 rather than 45 leaves a little room below
-     * the observed floor so a future re-seed does not silently clamp every weak country to zero.
+     * <p>Countries start level at 1500 and earn their rating from results (owner, 2026-09-29), so the
+     * scale is Elo rather than the 40-100 band this was written against. Anchored at 1400/200, which
+     * is two hundred points either side of the start: comfortably wide for a season or two of results,
+     * and the midpoint - a country that has won nothing and lost nothing - reads as half a pipeline
+     * rather than a fully stocked one.
      */
-    private static final int YOUTH_RATING_FLOOR = 40;
+    private static final int YOUTH_RATING_FLOOR = 1400;
 
-    /** The width of the seeded {@code youthRating} band, so the factor lands in 0..1. */
-    private static final int YOUTH_RATING_SPAN = 60;
+    /** Half-width of the {@code youthRating} band either side of the starting rating. */
+    private static final int YOUTH_RATING_SPAN = 200;
 
     /** The best a {@link StaffMember#scouting} attribute can be. */
     private static final int MAX_SCOUTING = 20;
