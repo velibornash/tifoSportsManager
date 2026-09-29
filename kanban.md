@@ -72,7 +72,7 @@ years and every fixture reader will find nothing.
 
 | Task | State | Note |
 |---|---|---|
-| **Zone-based morale and daily recovery** | model only | `Zone`, `PlayerZoneLoad` and `RecoveryJob` exist, but the match engine never writes `lastPlayedAt` or the load table, so recovery correctly reports zero. Needs the engine to feed it. |
+| **Zone-based morale and daily recovery** | **the writer is wired, and `Zone` itself was wrong** — see the progress log. The `recovery` day-job's firing hour is a separate day/hour defect |
 | **Simulate-all is week-based** | not started | Should be day- and hour-accurate, and must include cup ties. |
 | **Cup ties in the schedule view** | not started | The schedule shows the week template, not the actual day's ties. All the data exists. |
 | Penalty shootouts | not started | Penalties are awarded but never taken. Also blocks cup progression: a level knockout tie has no winner, so round 2 cannot be drawn. |

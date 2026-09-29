@@ -20,6 +20,96 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `PENDING` — the zone model gets a writer, and `Zone` itself was wrong
+
+**Task:** *"Zone-based morale and daily recovery — model only. `Zone`, `PlayerZoneLoad` and
+`RecoveryJob` exist, but the match engine never writes `lastPlayedAt` or the load table, so recovery
+correctly reports zero. Needs the engine to feed it."*
+
+**`Player.rating` was the previous task's, and it turned up here too.** Not worth repeating.
+
+### The zone enum was self-inconsistent, and nobody could tell
+
+`Zone` has two numbers per constant, a `workRate()` keyed to the constant's **name**, and an `of()`
+that derives (third, lane) from a row and a column. Those three disagreed. The constants were declared
+lane-first while the constructor assigned the first argument to `third`, so **every name carried its
+third and lane swapped**: `DEFENSIVE_CENTRE` held (third 1, lane 0), which are the coordinates of a
+defensive *left*.
+
+Proved by running the enum, not by reading it:
+
+```
+Zone.of(1.5, 3.5) = MIDFIELD_LEFT      <- a keeper on his own goal line
+Zone.of(1.5, 1.5) = DEFENSIVE_LEFT
+Zone.of(7.5, 3.5) = MIDFIELD_RIGHT
+```
+
+`workRate()` then charged that keeper the busiest rate on the pitch. It survived **because the table was
+empty**: `of()` is only reached when a match has been played and a load row written, and `workRate()`
+only reads a row's own zone. With no writer anywhere, a keeper standing on his line was never classified
+at all. The declaration order is now (third, lane) and the reason is recorded on the constants.
+
+This is the second time in two days that a model was wrong in a way only the absence of data could
+hide. The pattern is the same as the retired `simulateQuickScore` claim: an empty table proves nothing,
+and a test over the arithmetic proves nothing about the arrival.
+
+### The writer
+
+`ZoneLoadRecorder` reads the load off the match that was played, from the positions the engine already
+records every tick — not from events, because a player who covered four zones for ninety minutes and a
+keeper who held one are different and that difference is invisible if you only follow the ball.
+
+- **Minutes** come from the tick count, forty ticks to a minute, the engine's own figure.
+- **Intensity** is the average speed while he was in that zone, normalised against the engine's own
+  full-pace ceiling — so a keeper waiting on his line scores near zero and a winger at full speed scores
+  one. Kept apart from minutes on purpose: a lot of ground slowly is not repeated sprinting.
+- **Zones are from the player's own perspective.** The engine's rows run from one fixed goal line, so an
+  away player's row is mirrored before it means "his own third", and his left is the pitch's right. Two
+  players on the same column at the same row land on opposite sides of their own pitch, which is the
+  whole reason for the rule — the loads have to be comparable between the two teams to be worth
+  recording.
+- `lastPlayedAt` is stamped at the same time. It had **zero writers** in the codebase.
+- Wired into `SimMatchService`, which `ProposalEngineIsTheOnlyFixtureProducerTest` establishes is the
+  only place a football match is produced. Both entry points pass the snapshots; the three-argument
+  `persist` still exists and every existing caller is untouched.
+- Best-effort: a failure to write a zone row logs a warning and never costs a match result.
+
+### Verified — a real matchday through the app's own endpoint
+
+| Check | Result |
+|---|---|
+| `POST /simulation/current-round/simulate-all` | 200 |
+| `player_zone_load` afterwards | **2,140 rows, 418 players, 19 matches** |
+| Minutes | every starter's zones sum to **exactly 90.0** — nothing double-counted, nothing lost |
+| Zones | all nine used; MIDFIELD_CENTRE and ATTACKING_CENTRE busiest by minutes, which is where the ball is |
+| Intensity | 0.01 to 1.00 across the range, and 0.12 for a holding midfielder against 0.55 for a attacking one |
+| `last_played_at` | 616 players stamped — exactly the ones who played |
+| Tests | 740 green |
+
+`ZoneLoadWiringTest` asserts the arrival rather than the arithmetic, which is what the area was
+missing: play a match, assert rows exist, assert recovery is now positive, assert the zones sum to a
+match.
+
+### Two things I got wrong
+
+1. The mirror test. I asserted an away player at row 1.5 was in his **defensive** third. Row 1 is the
+   *home* goal, so it is his attacking third — the code was right and the expectation was wrong. The
+   test now shows the mirroring where it is actually visible: the same column and row, home and away,
+   landing on opposite sides.
+2. A first pass declared `import ... Position as EnginePosition` — Kotlin syntax in a Java file — and
+   included a test asserting `90 * 40 == 3600`, which is arithmetic about nothing and would have been a
+   fake checkbox. Replaced with the real check, inside the test that has the data.
+
+### Not verified
+
+**I never saw the `recovery` day-job report a non-zero count in the running app.** It has run twice and
+completed `DONE`, but both times were before the zone data existed, and it is idempotent per
+day/hour so it does not re-run. Advancing the clock to day 3 and through hour 10 produced no new run,
+and `job_run` records its hours as 6 and 8 while `RecoveryJob` is configured for 10. That mismatch is a
+**day/hour scheduling defect and a separate task** — the kanban already carries "simulate-all is
+week-based, should be day- and hour-accurate". The read path is proven by the integration test; the
+scheduling is not proven at all.
+
 ---
 
 ## `48c9b8d` — the startup failure, and two boot-ordering bugs under it

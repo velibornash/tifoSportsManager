@@ -31,9 +31,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.example.footballmanager.newLogic.service.AttendanceService;
 import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.service.ZoneLoadRecorder;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +64,7 @@ public class SimMatchService {
     private final StaffMemberRepository staffMemberRepository;
     private final AttendanceService attendanceService;
     private final ObjectMapper objectMapper;
+    private final ZoneLoadRecorder zoneLoadRecorder;
 
     /** Simulate a full match between two DB teams using their real saved squads
      *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
@@ -91,7 +94,8 @@ public class SimMatchService {
         if (storeReplay) {
             replayId = replayStore.store(SimReplayView.build(orchestrator, homeName, awayName));
         }
-        return new SimMatchOutcome(outcome, replayId, fixture.getHomeTeam(), fixture.getAwayTeam());
+        return new SimMatchOutcome(outcome, replayId, fixture.getHomeTeam(), fixture.getAwayTeam(),
+                orchestrator.getRecorder().getSnapshots());
     }
 
     private List<Player> loadRealSquad(Team team, String side) {
@@ -154,8 +158,18 @@ public class SimMatchService {
         return SquadEnvironment.cohesionMatchFactor(team);
     }
 
-    @Transactional
+    /** The three-argument form, for a caller replaying a stored outcome and with no ticks to read. */
     public Long persist(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId) {
+        return persist(fixture, outcome, replayId, null);
+    }
+
+    /**
+     * @param simSnapshots the match's ticks, or null when there are none. Only the zone load reads
+     *        them, so every existing three-argument caller keeps working unchanged.
+     */
+    @Transactional
+    public Long persist(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId,
+                        List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> simSnapshots) {
         try {
             Match match = new Match();
             match.setHomeTeam(fixture.getHomeTeam());
@@ -193,6 +207,14 @@ public class SimMatchService {
             if (outcome != null) {
                 persistPlayerStats(match, outcome);
                 bumpCareerStats(outcome);
+            }
+            // Where he worked, not just what he did. The zone table, the recovery rules and the daily
+            // recovery job all existed with nothing writing them, so recovery reported zero for every
+            // player in the world. Best-effort: a missing zone row must never cost a match result.
+            try {
+                recordZoneLoad(match, simSnapshots);
+            } catch (RuntimeException e) {
+                log.warn("Could not record zone load for match {}: {}", match.getId(), e.getMessage());
             }
 
             fixture.setPlayed(true);
@@ -347,6 +369,35 @@ public class SimMatchService {
         }
     }
 
+    /**
+     * Reads the zone load off a played match and writes it.
+     *
+     * <p>The engine's player ids are either a real database id or a synthetic "HOME-1" label, depending
+     * on whether the club had a saved lineup. The mapping is resolved here from the same
+     * {@code parsePlayerId} the player stats use, and anything unresolvable is skipped rather than
+     * written against a player that does not exist.
+     */
+    private void recordZoneLoad(Match match,
+                                List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return;
+        }
+        Map<String, org.example.footballmanager.newLogic.model.Player> resolved = new HashMap<>();
+        for (org.example.footballmanager.newLogic.sim.recording.PlayerSnapshot snapshotPlayer
+                : snapshots.get(snapshots.size() - 1).getPlayers()) {
+            if (snapshotPlayer == null) {
+                continue;
+            }
+            Long dbId = parsePlayerId(snapshotPlayer.getId());
+            if (dbId == null) {
+                continue;
+            }
+            playerRepository.findById(dbId)
+                    .ifPresent(player -> resolved.put(snapshotPlayer.getId(), player));
+        }
+        zoneLoadRecorder.record(match, snapshots, resolved);
+    }
+
     private static int rating100(double rating10) {
         return (int) Math.round(Math.max(0.0, Math.min(10.0, rating10)) * 10.0);
     }
@@ -374,8 +425,14 @@ public class SimMatchService {
         competitionEntryRepository.saveAll(List.of(homeEntry, awayEntry));
     }
 
+    /**
+     * @param snapshots every tick of the match, carried so the zone load can be read off the match
+     *        that was played. They are already in memory - the recorder holds them until the run
+     *        returns - so this is a reference, not a copy.
+     */
     public record SimMatchOutcome(ProposalMatchOutcome outcome, long replayId,
-                                  Team homeTeam, Team awayTeam) {
+                                  Team homeTeam, Team awayTeam,
+                                  List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots) {
         public int homeGoals() { return outcome != null ? outcome.homeGoals() : 0; }
         public int awayGoals() { return outcome != null ? outcome.awayGoals() : 0; }
     }

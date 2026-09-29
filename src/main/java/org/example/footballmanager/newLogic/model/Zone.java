@@ -19,14 +19,26 @@ package org.example.footballmanager.newLogic.model;
  */
 public enum Zone {
 
+    /*
+     * The order of the two numbers is (third, lane), so the SECOND number varies down each row.
+     *
+     * It was the other way round. Every constant was written lane-first, and the constructor assigned
+     * the first argument to `third`, so the nine constants carried each name's third and lane
+     * swapped: DEFENSIVE_CENTRE had third 1, lane 0, which is the coordinates of a defensive LEFT.
+     *
+     * Nothing caught it because the zone table was empty. `of()` is only called when a match has been
+     * played and a load row written, and `workRate()` only reads a row's own zone - so with no writer
+     * anywhere, a keeper standing on his line was never classified at all, and when he finally was, the
+     * name said MIDFIELD_LEFT and the cost model charged him the busiest rate on the pitch.
+     */
     DEFENSIVE_LEFT(0, 0),
-    DEFENSIVE_CENTRE(1, 0),
-    DEFENSIVE_RIGHT(2, 0),
-    MIDFIELD_LEFT(0, 1),
+    DEFENSIVE_CENTRE(0, 1),
+    DEFENSIVE_RIGHT(0, 2),
+    MIDFIELD_LEFT(1, 0),
     MIDFIELD_CENTRE(1, 1),
-    MIDFIELD_RIGHT(2, 1),
-    ATTACKING_LEFT(0, 2),
-    ATTACKING_CENTRE(1, 2),
+    MIDFIELD_RIGHT(1, 2),
+    ATTACKING_LEFT(2, 0),
+    ATTACKING_CENTRE(2, 1),
     ATTACKING_RIGHT(2, 2);
 
     /** Third of the pitch, 0 own .. 2 opposition. */

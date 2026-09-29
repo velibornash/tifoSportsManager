@@ -313,8 +313,9 @@ public class SimulationController {
     private Long persistSimMatchToDB(MatchFixture fixture, SimMatchService.SimMatchOutcome sim) {
         long replayId = sim != null ? sim.replayId() : -1L;
         Long matchId = sim != null
-                ? simMatchService.persist(fixture, sim.outcome(), replayId)
-                : simMatchService.persist(fixture, null, replayId);
+                // The snapshots go with it, so the zone load can be read off the match that was played.
+                ? simMatchService.persist(fixture, sim.outcome(), replayId, sim.snapshots())
+                : simMatchService.persist(fixture, null, replayId, sim.snapshots());
         return matchId;
     }
 

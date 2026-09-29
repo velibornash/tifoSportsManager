@@ -51,7 +51,7 @@ public class AsyncSimulationRunner {
                         if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) return;
 
                         SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, false);
-                        simMatchService.persist(fixture, sim.outcome(), -1L);
+                        simMatchService.persist(fixture, sim.outcome(), -1L, sim.snapshots());
                     });
                     simulatedCount.incrementAndGet();
                     if (simulatedCount.get() % 10 == 0) {
