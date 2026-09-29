@@ -6,6 +6,10 @@
 
 ---
 
+> **📋 Open work is tracked in [`kanban.md`](kanban.md)** — same items, organised as tasks
+> rather than sprint entries. This file remains the detailed record of *why* each item is open.
+> History of past sessions is in [`sprintProgress.md`](sprintProgress.md).
+
 ## ⚡ CURRENT STATE — read this first (updated 2026-09-29)
 
 The rest of this file is a chronological log and is kept for the reasoning. This is the truth.
@@ -70,17 +74,17 @@ there and only the competition records and formats are missing.
    logged "106 LEAGUE fixtures played for week 1 day 3". Note the split is 775 / 2015 rather than
    even - several leagues share week numbers, and the per-competition scoping helped but did not
    fully explain it. Not a blocker (both days have fixtures) but not understood yet.
-2. ~~Day 1 internationals~~ — **MECHANISM BUILT 2026-09-29, blocked on world data.** An
-   `INTERNATIONAL` competition, `InternationalFixtureSeeder` drawing senior sides for week 6 day 1
-   20:45, and the `matchday-international` job are all in place and registered. It draws nothing today
-   because only **1 of 9** seeded countries has a squad — a country with no clubs has no players to
-   call up. It says so: "18 senior side(s) exist, 1 have a squad, so 0 tie(s) can be drawn." Unblocking
-   it is the 48-country seed, not more code. The owner's real structure — top 48, 8 groups of 6, 8
+2. ~~Day 1 internationals~~ — **WORKING 2026-09-29.** The blocker was the world, and the world is
+   now built on every path: "Internationals: 24 tie(s) drawn for week 6 day 1 from 48 playable national
+   sides (96 exist, 0 without a squad)." What remains is the competition *structure* — proper
+   qualifiers and a World Cup — which is tracked in kanban.md, not here. The owner's real structure — top 48, 8 groups of 6, 8
    pots, worse-rated host, top two advance — is behind that and is **not** what is built; this is a
    single round of pairings, which is all 9 countries can honestly support.
-3. **Zone-based morale and daily recovery.** No zone model exists in the codebase at all. Needs:
-   a `Zone` model, `Player.zoneLoad` written by the match engine, recovery/morale derived from it, and
-   `Player.lastPlayedAt`. A flat "recovery" job was written and deliberately deleted — see below.
+3. **Zone-based morale and daily recovery.** **The model now exists and the feed does not.** `Zone`,
+   `PlayerZoneLoad`, `Player.lastPlayedAt`, `ZoneLoadService` and a daily `RecoveryJob` are all in
+   place — so the earlier "no zone model exists at all" is out of date. What is missing is the match
+   engine writing the load, which is why recovery correctly reports zero. A flat "recovery" job was
+   written and deliberately deleted in favour of this — see below.
 4. ~~Watch-match gate~~ — **GATE DONE 2026-09-29.** `/api/watch/status` decides availability from the
    game day and the kickoff hour, and the dashboard button follows it with a tooltip saying why. The
    old gate was a whole-week boolean, so Watch was open at 08:00 on a match day and shut on a day that

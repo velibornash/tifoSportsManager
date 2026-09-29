@@ -4325,3 +4325,86 @@ does not know reads them as a bug:
   ubacis u raspored"*. True: 310 ranked clubs, 108 in the cup range, and a seven-day template with a
   day-5 cup slot.
 - **Velja as selector for senior and U-21** so the national team can actually be tested.
+
+---
+
+## 2026-09-29 — The world, and why resets kept losing it
+
+**The arc of this session:** the owner asked for a 48-country world, and four separate bugs each
+looked like "the world isn't there." All four were the same class of mistake — a second path into
+the world that did not do what the first one did.
+
+### 1. Ten empty squads, then the wrong number
+
+The owner reported 16 empty national squads. The count was stale: it predated the legacy-country
+cleanup, when there were 102 sides. The real figure was 10, across BIH, BRA, MKD, MNE and SVN.
+
+Not a stale count — a real bug. Those five were seeded *before* the bot squad existed, by a seeder
+that only filled national teams from clubs. They have no clubs, so their sides were born empty, and
+`ensureSenior`/`ensureU21` returned early on an existing team, so the squad logic was never reached.
+The empty sides were permanent, and the internationals had nothing to draw against in those five
+countries indefinitely. Fixed by topping up an existing side rather than skipping it.
+
+### 2. The crash: one transaction poisoning itself
+
+First restart after the fix died with `UnexpectedRollbackException: Transaction silently rolled back
+because it has been marked as rollback-only`.
+
+The cause was structural. `ensureBaselineDataOnStartup` was `@Transactional`, and every seeding step
+inside it caught its own exception to keep booting. A caught exception still marks the transaction
+rollback-only — so the catalogue threw while dropping HRV, the catch swallowed it, the remaining
+steps each reported success, and then the commit threw and discarded all of it. The log had already
+printed `healthy=true, countries=48, nationalSides=96` about three seconds earlier.
+
+**Worse, my first fix made it worse.** I removed `@Transactional` to stop the poisoning, which
+removed the session too, so `applyClubIdentity` could no longer resolve a lazy `Stadium` proxy and
+the app died on `LazyInitializationException` before seeding anything.
+
+The correct fix needs both: the transaction stays (lazy proxies need a session), and the steps that
+can fail run in their own `REQUIRES_NEW` so a failure rolls back only itself. One detail worth
+recording — Spring Boot auto-configures a `TransactionTemplate` with REQUIRED propagation, which
+joins the caller's transaction, so injecting one would have made the whole thing a silent no-op.
+
+### 3. A reset is two doors, and I only fixed one
+
+`Initialize DB` called `initSerbianFootballStructure()` directly, which is one step *inside* the
+boot path. The catalogue, 96 national sides, legacy cleanup, integrity repair, selector
+appointments and internationals all live in `ensureBaselineDataOnStartup()`. So Reset + Initialize
+gave 310 clubs, 2,790 fixtures and **1 country, 0 national teams** — and reported success.
+
+This is the same mistake as #2, in the same session, and the owner was right to keep pushing on it.
+
+### 4. Ratings: 1500 for everyone, and it broke scouting
+
+The owner settled it: every country starts at 1500 and earns its rating from results. The manager
+world is not a replica of the real one, so a strength table would be a claim the game is not making.
+
+The consequence was not obvious. `ScoutingService` normalised country strength over a hard-coded
+40/60 band, so on a 1500-based world every country clamped to **zero reach** — scouting was silently
+dead. Now normalised over 1400/200, where the midpoint reads as half a pipeline. The scouting tests
+now set their own ratings instead of assuming a seeded spread, so they test the calculation rather
+than the seed.
+
+### The world page was reporting its data source
+
+It read the country list and rendered whatever came back, so with one country in the database it
+said the world had one country and offered Serbia as a button. `GET /countries/world` now reports
+the whole catalogue and marks a short world as incomplete. Every country is clickable, simulated
+included, keyed on `ACTIVE` rather than on Serbia specifically — hard-coding today's state would
+break the moment a second country goes live.
+
+### Three things I got wrong, worth remembering
+
+- I removed a `@Transactional` that was load-bearing and shipped a `LazyInitializationException`.
+- I built a World page from a data source I never checked, so it reported the database rather than
+  the game.
+- I made a hash-derived 40-60 rating band and called the design question settled, which quietly
+  disabled a feature.
+
+### State at the end
+
+48 countries, 96 national sides, 48 senior sides each with a 25-player squad, no legacy rows, 24
+international ties drawn from 48 playable sides. Verified in tests and in the boot log; **not yet
+confirmed in the running app**, so it is in `kanban.md` under review.
+
+Full suite 722, 0 failures, 0 errors, 2 skipped (Playwright, no app running).
