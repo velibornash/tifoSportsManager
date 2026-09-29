@@ -7,7 +7,11 @@ sprint item (S1.4, S8.1, …) that is kept so the two files can be cross-checked
 **History lives in [`sprintProgress.md`](sprintProgress.md).** That is the running log of what was
 attempted, what broke and why. This file holds no history — if something is here, it is not done.
 
-Last updated **2026-09-29**.
+Last updated **2026-09-30**.
+
+**History lives in [`kanbanProgress.md`](kanbanProgress.md)** — one entry per task, each carrying the
+commit that landed it. This file holds state; that one holds what happened, including the fixes that
+were wrong the first time.
 
 ---
 
