@@ -42,6 +42,7 @@ public class NationalTeamSeeder {
 
     private final TeamRepository teams;
     private final PlayerRepository players;
+    private final BotSquadGenerator botSquads;
     private final Random random;
 
     /**
@@ -54,13 +55,16 @@ public class NationalTeamSeeder {
      * progress file nobody reads before writing the next seeder.
      */
     @org.springframework.beans.factory.annotation.Autowired
-    public NationalTeamSeeder(TeamRepository teams, PlayerRepository players) {
-        this(teams, players, new Random());
+    public NationalTeamSeeder(TeamRepository teams, PlayerRepository players,
+                             BotSquadGenerator botSquads) {
+        this(teams, players, botSquads, new Random());
     }
 
-    NationalTeamSeeder(TeamRepository teams, PlayerRepository players, Random random) {
+    NationalTeamSeeder(TeamRepository teams, PlayerRepository players,
+                      BotSquadGenerator botSquads, Random random) {
         this.teams = teams;
         this.players = players;
+        this.botSquads = botSquads;
         this.random = random;
     }
 
@@ -135,6 +139,11 @@ public class NationalTeamSeeder {
             eligible.addAll(players.findByTeamId(club.getId()));
         }
         if (eligible.isEmpty()) {
+            // A country with no clubs used to end up as a national side with a name and no players,
+            // which cannot be drawn against - that is why the internationals drew nothing. A bot squad
+            // makes every country in the map playable immediately, at no cost to a country that is
+            // never activated.
+            botSquads.ensureSquad(nationalTeam, country, youth);
             return;
         }
 

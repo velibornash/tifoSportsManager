@@ -97,6 +97,7 @@ public class DatabaseInitializer {
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
+    private final WorldCatalogSeeder worldCatalogSeeder;
     private final InternationalFixtureSeeder internationalFixtureSeeder;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
@@ -211,6 +212,15 @@ public class DatabaseInitializer {
             // The national-team columns have been null for every country since the country page
             // existed, so the panel rendered a hand-written name and a button to a placeholder. Runs on
             // every boot and is a no-op once the teams exist.
+            // Every country in the catalogue has to exist before anything reads all countries, and
+            // the national sides have to exist before the selectors and elections reference them. This
+            // ran after both, so 42 new countries existed with no national side and no bot squad -
+            // which is exactly why the internationals had nothing to draw against.
+            try {
+                worldCatalogSeeder.seedAll();
+            } catch (RuntimeException e) {
+                log.warn("Could not seed the world catalogue: {}", e.getMessage());
+            }
             try {
                 nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
             } catch (RuntimeException e) {

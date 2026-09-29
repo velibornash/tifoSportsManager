@@ -50,4 +50,28 @@ public class Country {
     @OneToOne
     @com.fasterxml.jackson.annotation.JsonIgnore
     private Team u21NationalTeam;
+
+    /**
+     * Played or merely represented (owner, 2026-09-29).
+     *
+     * <p>Defaults to SIMULATED so a country nobody has activated is cheap, and so adding a country
+     * cannot accidentally make the game simulate 48 pyramids. Serbia is flipped to ACTIVE by the
+     * seeder, which is the only place that should ever change it at boot - activation is otherwise an
+     * explicit act from the admin panel.
+     */
+    // A column DEFAULT, and not NOT NULL. ddl-auto=update adds the column to a table that already has
+    // nine rows, and a NOT NULL column with no default cannot be added to a table with data - the ALTER
+    // fails and the application context never starts. The default is how existing rows backfill.
+    @jakarta.persistence.Column(name = "country_state", length = 16,
+            columnDefinition = "varchar(16) default 'SIMULATED'")
+    @Enumerated(jakarta.persistence.EnumType.STRING)
+    private CountryState state = CountryState.SIMULATED;
+
+    public CountryState getState() {
+        return state;
+    }
+
+    public void setState(CountryState state) {
+        this.state = state;
+    }
 }
