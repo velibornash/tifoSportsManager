@@ -151,6 +151,18 @@ public class Player {
     @jakarta.persistence.Column(name = "source_player_id")
     private Long sourcePlayerId;
 
+    /**
+     * When this player last appeared in a match (owner, 2026-09-29).
+     *
+     * <p>Daily recovery needs to know who actually played. Without it, every player in the database
+     * recovers every day - including reserves who were not in the squad, who would tire from matches
+     * they never played in.
+     */
+    @jakarta.persistence.Column(name = "last_played_at")
+    private java.time.LocalDateTime lastPlayedAt;
+
+
+
 
     /** The role to actually use: the stored one, or a sensible default for his position. */
     @Transient
@@ -206,5 +218,13 @@ public class Player {
 
     public double movementModifier() {
         return skills.movementModifier((int) getCurrentFatigue());
+    }
+
+    public java.time.LocalDateTime getLastPlayedAt() {
+        return lastPlayedAt;
+    }
+
+    public void setLastPlayedAt(java.time.LocalDateTime lastPlayedAt) {
+        this.lastPlayedAt = lastPlayedAt;
     }
 }

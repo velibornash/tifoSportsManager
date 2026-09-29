@@ -71,8 +71,8 @@ public class CupFixtureSeeder {
      *  on every restart, which is not a cup. */
     private static final long DRAW_SEED = 20260928L;
 
-    private final CompetitionRepository competitions;
     private final MatchFixtureRepository fixtures;
+    private final CompetitionRepository competitions;
     private final TeamRepository teams;
     private final PlayerRepository players;
     private final Random random;
@@ -127,7 +127,7 @@ public class CupFixtureSeeder {
         // direct entrants make the 256 that carry the rest of the tournament.
         List<Team> firstKnockout = new ArrayList<>(ranked.subList(0, ENTRY_ROUND_TEAMS));
         List<Team> directEntrants = new ArrayList<>(ranked.subList(ENTRY_ROUND_TEAMS, MAIN_DRAW_TEAMS));
-        List<MatchFixture> round1 = buildRound(cup, firstKnockout, 1, CUP_WEEKS[0], SEED_SEASON);
+        List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, SEED_SEASON);
 
         // Round 2 onwards can only be wired once the earlier rounds are actually played, so the
         // seeding creates round 1 and leaves the bracket to be driven by results. A full 8-round
@@ -197,6 +197,101 @@ public class CupFixtureSeeder {
     }
 
     /**
+     * Draws one round from the clubs that survived the one before it.
+     *
+     * <p>Public so {@code CupDrawJob} can call it per round. The owner's requirement, from watching a
+     * reset leave the cup empty on the Oracle server: every round's draw should be a scheduled job, and
+     * a draw that did not happen gets caught by the next check because it is not marked done.
+     *
+     * <p>That is exactly what the job framework's done-flag is for. The alternative - drawing whatever
+     * rounds happen to be missing whenever anything asks - means a round can be drawn twice, and a
+     * half-drawn tournament is worse than an obviously empty one.
+     */
+    @Transactional
+    public int drawRoundForWeek(int week) {
+        Competition cup = competitions.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.CUP)
+                .findFirst()
+                .orElse(null);
+        if (cup == null) {
+            return 0;
+        }
+        int round = roundForWeek(week);
+        if (round <= 0) {
+            return 0;
+        }
+        long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
+                cup.getId(), SEED_SEASON, round);
+        if (existing > 0) {
+            return 0;
+        }
+        List<Team> survivors = survivorsOf(cup, round);
+        if (survivors.size() < 2) {
+            log.info("Cup {} round {}: {} survivor(s), nothing to pair.", cup.getName(), round, survivors.size());
+            return 0;
+        }
+        return drawRound(cup, round, survivors, SEED_SEASON).size();
+    }
+
+    /**
+     * The clubs still in the tournament at the start of a round: the previous round's winners.
+     *
+     * <p>Before round 1 it is the entry field - the owner's ranks 203-310. After that it is whoever won,
+     * which is only knowable once the previous round has actually been played. A round whose previous
+     * ties are unplayed yields no draw rather than a draw against teams that have not qualified.
+     */
+    private List<Team> survivorsOf(Competition cup, int round) {
+        if (round == 1) {
+            return rankedClubs().stream().limit(ENTRY_ROUND_TEAMS).toList();
+        }
+        int previousRound = round - 1;
+        List<MatchFixture> previous = fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), SEED_SEASON)
+                .stream()
+                .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == previousRound)
+                .toList();
+        if (previous.isEmpty() || previous.stream().anyMatch(f -> !f.isPlayed())) {
+            return List.of();
+        }
+        List<Team> winners = new ArrayList<>();
+        for (MatchFixture tie : previous) {
+            Team winner = winnerOf(tie);
+            if (winner != null) {
+                winners.add(winner);
+            }
+        }
+        return winners;
+    }
+
+    /** The winning side of a played tie, by goals. Null when it is not knowable. */
+    private Team winnerOf(MatchFixture tie) {
+        if (tie.getPlayedMatch() == null) {
+            return null;
+        }
+        int home = tie.getPlayedMatch().getHomeGoals();
+        int away = tie.getPlayedMatch().getAwayGoals();
+        if (home == away) {
+            // A knockout tie cannot be level. Cup ties go to penalties, so a level scoreline means the
+            // penalty shootout was not recorded; returning null keeps the club out rather than
+            // inventing a winner.
+            log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
+                    tie.getId(), home, away);
+            return null;
+        }
+        return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
+    }
+
+    /** The round number the calendar puts in a given week, or 0 if that week has no cup round. */
+    private int roundForWeek(int week) {
+        for (int i = 0; i < CUP_WEEKS.length; i++) {
+            if (CUP_WEEKS[i] == week) {
+                return i + 1;
+            }
+        }
+        return 0;
+    }
+
+    /**
      * One knockout round, drawn the way the owner specified.
      *
      * <p>The rule: split the remaining clubs by ranking. The better half are the favourites and the
@@ -206,8 +301,8 @@ public class CupFixtureSeeder {
      * at the start of the tournament.
      *
      */
-    private List<MatchFixture> buildRound(Competition cup, List<Team> entrants, int roundNumber,
-                                          int week, int seasonYear) {
+    private List<MatchFixture> drawRound(Competition cup, int roundNumber, List<Team> entrants,
+                                         int seasonYear) {
         List<Team> ranked = sortByStrength(new ArrayList<>(entrants), strengthOf(entrants));
 
         // The half is recomputed from whoever is left in this round, not fixed at the start of the
@@ -223,6 +318,7 @@ public class CupFixtureSeeder {
         Collections.shuffle(favourites, random);
         Collections.shuffle(nonFavourites, random);
 
+        int week = CUP_WEEKS[Math.min(roundNumber, CUP_WEEKS.length) - 1];
         int ties = Math.min(favourites.size(), nonFavourites.size());
         if (ties * 2 < ranked.size()) {
             // Odd count: the unpaired clubs from the larger half enter as byes rather than being

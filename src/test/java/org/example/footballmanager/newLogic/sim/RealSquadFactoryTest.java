@@ -134,8 +134,9 @@ class RealSquadFactoryTest {
                 // grows by one parameter per field wherever you put it, so "add it at the end" keeps
                 // the *order* stable but never avoids touching the call sites.
                 null, null,
-                // sourcePlayerId (national-team call-ups, 2026-09-28). Null: these are club players,
-                // not copies on a national roster.
+                // sourcePlayerId (national-team call-ups, 2026-09-28) and lastPlayedAt (zone
+                // recovery, 2026-09-29). Both null: these are club players who have not played.
+                null,
                 null);
     }
 

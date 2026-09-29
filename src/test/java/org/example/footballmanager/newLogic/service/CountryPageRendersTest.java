@@ -102,25 +102,37 @@ class CountryPageRendersTest {
                 assertTrue(calendarBody.contains(kind), "the week grid is missing the " + kind + " day");
             }
 
-            // The four country cards must be capped, not spread. The owner reported them still
-            // stretching after an earlier fix that had the wrong specificity and lost on source order.
-            Object cardWidth = page.evaluate(
-                    "() => { const g = document.querySelector('.fm-country-hero .fm-country-stat-grid');"
-                    + " if (!g) return null; const c = g.querySelector('div');"
-                    + " return { card: Math.round(c.getBoundingClientRect().width),"
-                    + "          grid: Math.round(g.getBoundingClientRect().width) }; }");
-            assertTrue(cardWidth != null, "the country stat cards were not found");
+            // The header facts must be present, and must not wrap.
+            //
+            // This used to measure four tall stat cards, which the page no longer has: the owner had
+            // them removed and the facts moved into a single strip beside the title. The measurement
+            // is kept because the thing that was wrong - cards stretching to fill a tall sibling - is
+            // still worth catching, but it is now checked against the facts strip, which is the
+            // element that replaced it.
+            Object facts = page.evaluate(
+                    "() => { const g = document.querySelector('.fm-country-facts');"
+                    + " if (!g) return null; const first = g.querySelector('.fm-country-fact');"
+                    + " return { count: g.querySelectorAll('.fm-country-fact').length,"
+                    + "          height: Math.round(g.getBoundingClientRect().height),"
+                    + "          firstHeight: first ? Math.round(first.getBoundingClientRect().height) : 0 }; }");
+            assertTrue(facts != null, "the country header facts were not found");
             @SuppressWarnings("unchecked")
-            Map<String, Object> widths = (Map<String, Object>) cardWidth;
-            int card = (Integer) widths.get("card");
-            int grid = (Integer) widths.get("grid");
-            assertTrue(card <= 150, "each card is " + card + "px wide inside a " + grid
-                    + "px grid - they are stretching again");
+            Map<String, Object> factMetrics = (Map<String, Object>) facts;
+            assertTrue(((Integer) factMetrics.get("count")) >= 5,
+                    "the header should carry the five country facts");
+            // A single line. They were a bare <dl> once and the browser put every dt and dd on its own
+            // row, which read as a column of ten loose words.
+            assertTrue(((Integer) factMetrics.get("height")) <= 60,
+                    "the facts strip is " + factMetrics.get("height")
+                            + "px tall - the facts have wrapped onto multiple lines again");
 
             // The season view, so weeks 6 and 12 are visible as deliberate rather than as a gap.
-            assertTrue(body.contains("Week 6") && body.contains("Week 12"),
+            // On calendarBody, not body: the season grid moved to the Calendar tab with the week
+            // strip, so asserting it on the default tab was checking for something that is no longer
+            // there. Same trap as the week grid, and the same fix.
+            assertTrue(calendarBody.contains("Week 6") && calendarBody.contains("Week 12"),
                     "the season grid should show all twelve weeks");
-            assertTrue(body.contains("no league football"),
+            assertTrue(calendarBody.contains("no league football"),
                     "weeks 6 and 12 must say they have no league football");
 
             assertTrue(!body.contains("Top-level squad hub placeholder"),

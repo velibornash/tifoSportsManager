@@ -3414,3 +3414,44 @@ Verified after a full `/admin/reset-db` + `/admin/initialize-db`:
 investigated from the database both times without asking whether the *calendar* was right. It was,
 and it was printed on the country page. When two artefacts disagree, check the one that is rendered
 for a human before assuming the other is derived correctly.
+
+### The cup draw is a job, not a boot step (owner, 2026-09-29, found on the Oracle server)
+
+The owner reset and initialised the database on the Oracle server and the cup came up **empty**. They
+identified the fix themselves: every round's draw should be a scheduled job, and a draw that was missed
+should be caught by the next check because it is not marked done.
+
+`CupDrawJob` does that. Day 5 at 08:00, ordered 30 against the matchday's 40, so the round is drawn
+before it is played — drawing and playing in the same hour would mean the matchday finds the round
+sometimes and not others, depending on the order two jobs happened to run in.
+
+The missed-draw case is the reason this is a job rather than something the boot listener does once. A
+draw that happens at boot is only correct if boot happens to be the right moment. A draw that is a
+scheduled job is correct whenever it runs, and a round missed because the app was down over it is
+picked up by the next hourly check, because there is no DONE row for it. That is the done-flag doing
+the job it was built for, and it is the first real consumer of it outside the day jobs.
+
+Verified live: advancing to day 5 hour 8 drew round 1 — **54 ties**. Advancing two further hours ran
+nothing and the tie count stayed at 54, so the draw does not repeat.
+
+**Later rounds only draw once the round before has been played.** Round 4's entrants are round 3's
+winners, and until round 3 has a result they are not knowable — the job draws nothing rather than
+drawing against teams that have not qualified. A tie that finishes level with no shootout recorded
+yields no winner, and the club is kept out of the next round rather than one of them being invented.
+**Penalty shootouts are therefore the next thing the cup needs**, and they are not built.
+
+### Zone model (owner, 2026-09-29) — model built, nothing feeds it yet
+
+`Zone` (nine zones: three thirds × three lanes, from the team's own perspective), `PlayerZoneLoad` (one
+row per player per zone per match, keeping `minutes` and `intensity` apart because a player can cover
+a lot of ground slowly or sprint repeatedly), `Player.lastPlayedAt`, and `ZoneLoadService` which turns
+that into daily recovery and a zone breakdown. `RecoveryJob` runs every day at 06:00.
+
+Nine zones rather than the engine's cells: recovery and form care about where a player operated, and
+sixty cells would make every query a join and every explanation unreadable without a better answer.
+Zones are from the team's perspective, so "defensive third" means the same thing to both sides.
+
+**It reports 0 players recovered, and that is honest rather than broken.** Nothing writes
+`player_zone_load` or stamps `lastPlayedAt` yet — the match engine has to do that. The job says "0"
+out loud instead of claiming success, which is the difference between this and the failures in the
+standing rule above.
