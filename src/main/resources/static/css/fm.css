@@ -1,0 +1,71 @@
+
+/* ---- World page (owner, 2026-09-29) --------------------------------------
+   Built from the classes the rest of the app already uses - fm-panel,
+   fm-squad, fm-badge - so the world page looks like the squad and country
+   tables rather than a page of its own. */
+.fm-world-flag {
+    width: 20px;
+    height: 14px;
+    object-fit: cover;
+    margin-right: 8px;
+    vertical-align: -2px;
+    border-radius: 2px;
+}
+.fm-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--fm-accent, #4da3ff);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+.fm-link:hover { text-decoration: underline; }
+.fm-world-row--active { background: rgba(77, 163, 255, 0.07); }
+.fm-stats {
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    padding: 14px 0 4px;
+}
+.fm-stat { display: flex; flex-direction: column; gap: 4px; }
+.fm-stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.6;
+}
+.fm-stat-value { font-size: 24px; font-weight: 600; }
+.fm-world-competitions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    padding: 12px 0;
+}
+.fm-competition {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--fm-border, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.fm-competition:disabled { cursor: not-allowed; opacity: 0.65; }
+.fm-competition-name { font-weight: 500; }
+.fm-hint {
+    font-size: 12px;
+    opacity: 0.6;
+    margin: 8px 0 0;
+}
+.fm-callout--warn {
+    border-left: 3px solid #e0a33a;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: rgba(224, 163, 58, 0.08);
+    border-radius: 0 6px 6px 0;
+}

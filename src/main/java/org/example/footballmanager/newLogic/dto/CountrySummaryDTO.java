@@ -14,6 +14,8 @@ public class CountrySummaryDTO {
     private Integer youthRating;
     private Long seniorNationalTeamId;
     private Long u21NationalTeamId;
+    /** ACTIVE or SIMULATED. The world page decides what is clickable from this, not from a guess. */
+    private String state;
 
     public static CountrySummaryDTO from(Country country) {
         CountrySummaryDTO dto = new CountrySummaryDTO();
@@ -22,6 +24,7 @@ public class CountrySummaryDTO {
         dto.setIsoCode(country.getIsoCode());
         dto.setFlagImagePath(country.getFlagImagePath());
         dto.setCurrencyCode(country.getCurrencyCode());
+        dto.setState(country.getState() == null ? null : country.getState().name());
         dto.setReputation(country.getReputation());
         dto.setYouthRating(country.getYouthRating());
         dto.setSeniorNationalTeamId(country.getSeniorNationalTeam() != null ? country.getSeniorNationalTeam().getId() : null);

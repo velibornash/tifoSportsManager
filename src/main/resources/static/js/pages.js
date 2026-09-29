@@ -675,41 +675,135 @@ import {
      * page the owner showed has this same shape, and it is the right one: the map is the index, a
      * country is a page.
      */
-    const WORLD_STARTING_RATING = 1500;
-
+    /**
+     * The world: what the game is, and every country in it (owner, 2026-09-29).
+     *
+     * <p>A hub, not a duplicate of the country page. A country is a row you click, which is why the
+     * country page and its tabs are untouched.
+     *
+     * <p>Every country in the catalogue is listed, and a SIMULATED one is clickable too. The rule is
+     * ACTIVE means playable, so a country that is simulated today and activated tomorrow starts
+     * working with no change here - hard-coding "only Serbia" would bake today's state into the
+     * page and quietly break the moment a second country goes live.
+     */
     async function loadWorldPage() {
         const mainContent = document.getElementById('main-content');
         try {
-            const countriesRes = await authFetch('/countries');
-            const countries = countriesRes.ok ? await countriesRes.json() : [];
+            const res = await authFetch('/countries/world');
+            if (!res.ok) throw new Error('World unavailable');
+            const world = await res.json();
+            const countries = Array.isArray(world.countries) ? world.countries : [];
 
-            const rows = (Array.isArray(countries) ? countries : [])
-                .map(country => `
-                    <button type="button" class="fm-world-row" data-world-country="${escapeHtml(country.isoCode || '')}">
-                        <span class="fm-world-row-flag">${country.flagImagePath
-                            ? `<img src="${escapeHtml(country.flagImagePath)}" alt="" />` : ''}</span>
-                        <span class="fm-world-row-name">${escapeHtml(country.name || '')}</span>
-                        <span class="fm-world-row-state">${escapeHtml(country.state || 'SIMULATED')}</span>
-                    </button>`).join('');
+            const rows = countries.map(country => {
+                const active = country.state === 'ACTIVE';
+                return `
+                    <tr class="fm-world-row${active ? ' fm-world-row--active' : ''}">
+                        <td class="sq-name">
+                            <button type="button" class="fm-link" data-world-country="${escapeHtml(country.isoCode || '')}">
+                                ${country.flagImagePath ? `<img class="fm-world-flag" src="${escapeHtml(country.flagImagePath)}" alt="" />` : ''}
+                                ${escapeHtml(country.name || '')}
+                            </button>
+                        </td>
+                        <td>${country.reputation ?? '-'}</td>
+                        <td>${active
+                            ? '<span class="fm-badge fm-badge--ok">Active</span>'
+                            : '<span class="fm-badge">Simulated</span>'}</td>
+                    </tr>`;
+            }).join('');
 
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--world">
                     <div class="fm-page-toolbar">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back to dashboard</button>
                         <div class="fm-page-title-block">
                             <div class="fm-eyebrow">World</div>
                             <h2>Every country in the game</h2>
-                            <div class="fm-subtle">${(Array.isArray(countries) ? countries : []).length} countries, all starting level at ${WORLD_STARTING_RATING}. A SIMULATED country has a national side but no club pyramid yet - activate it from Admin to play it.</div>
                         </div>
                     </div>
+
+                    ${!world.complete ? `<div class="fm-callout fm-callout--warn">
+                        The world holds ${countries.length} of ${world.expectedCountries} countries.
+                        Admin &rarr; World integrity will rebuild the missing ones.
+                    </div>` : ''}
+
                     <section class="fm-panel">
-                        <div class="fm-world-list">${rows || '<div class="fm-empty">No countries yet.</div>'}</div>
+                        <div class="fm-panel-head">
+                            <h3>General</h3>
+                        </div>
+                        <div class="fm-stats">
+                            <div class="fm-stat"><span class="fm-stat-label">Countries</span>
+                                <span class="fm-stat-value">${world.totalCountries}</span></div>
+                            <div class="fm-stat"><span class="fm-stat-label">Active</span>
+                                <span class="fm-stat-value">${world.activeCountries}</span></div>
+                            <div class="fm-stat"><span class="fm-stat-label">Human players</span>
+                                <span class="fm-stat-value">${world.users ?? '-'}</span></div>
+                            <div class="fm-stat"><span class="fm-stat-label">Starting rating</span>
+                                <span class="fm-stat-value">${world.startRating}</span></div>
+                        </div>
+                        <p class="fm-hint">Every country starts on ${world.startRating} and earns its rating
+                            from results. This world is not a replica of the real one.</p>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <h3>International competitions</h3>
+                        </div>
+                        <div class="fm-world-competitions">
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">Champions Cup</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">Masters Cup</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">Challenge Cup</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">NT Qualifiers</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">World Cup</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">U-21 Qualifiers</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                            <button type="button" class="fm-competition" disabled>
+                                <span class="fm-competition-name">U-21 World Cup</span>
+                                <span class="fm-badge">Not created yet</span>
+                            </button>
+                        </div>
+                        <p class="fm-hint">These competitions are not built yet. They are listed here so the
+                            shape of the world is visible, and each one turns into a link when it is created.</p>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <h3>Countries</h3>
+                        </div>
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad fm-world-table">
+                                <thead>
+                                    <tr>
+                                        <th class="sq-name">Country</th>
+                                        <th>Rating</th>
+                                        <th>State</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows || '<tr><td colspan="3">No countries yet.</td></tr>'}</tbody>
+                            </table>
+                        </div>
                     </section>
                 </div>`;
 
-            mainContent.querySelectorAll('[data-world-country]').forEach(row => {
-                row.addEventListener('click', () => {
-                    setActiveLeagueContext({ countryIsoCode: row.dataset.worldCountry, backTarget: 'world' });
+            mainContent.querySelectorAll('[data-world-country]').forEach(link => {
+                link.addEventListener('click', () => {
+                    setActiveLeagueContext({ countryIsoCode: link.dataset.worldCountry, backTarget: 'world' });
                     loadPage('country');
                 });
             });

@@ -69,6 +69,18 @@ public class NationalTeamSeeder {
     }
 
     @Transactional
+    /**
+     * How many national sides exist, for reporting after a repair.
+     *
+     * <p>Deliberately counts rows rather than returning what the last seed created, because a repair
+     * that finds nothing to do is the common case and reporting "0 sides created" reads like a
+     * failure when the world is in fact complete.
+     */
+    public int totalSides() {
+        return (int) teams.findByType(
+                org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM).size();
+    }
+
     public void seedIfMissing(List<Country> countries) {
         int made = 0;
         for (Country country : countries) {

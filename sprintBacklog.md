@@ -24,6 +24,44 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
 | Country page | Four tabs — General, Calendar, National Team, U-21. Selector-only squad editing (release / call up, verified round trip). Elections: stand, vote, declare, annul. |
 | Formats | `MatchFormat` abstract base with `League`, `KnockoutCup`, `NationalSide`, `International`, `Tournament`. `CompetitionType` extended with `INTERNATIONAL`, `TOURNAMENT`. |
 
+### World and international competitions — named, not yet built (2026-09-29)
+
+The owner has settled what these competitions are, so they are recorded here rather than
+rediscovered later. **None of them exists yet.** The World page already lists them, disabled,
+so the shape of the world is visible and each one becomes a link when it is created.
+
+**Club competitions — international, three tiers:**
+
+| Competition | Places | Status |
+|---|---|---|
+| Champions Cup | winners only | Not built |
+| Masters Cup | 2nd and 3rd | Not built |
+| Challenge Cup | 4th places | Not built |
+
+Each needs a competition record, a draw, and a per-tier league link. `Kup Srbije` is a
+*domestic* knockout and is unrelated to these three — it stays as it is.
+
+**National-team competitions — senior and U-21, each with its own qualifiers:**
+
+| Competition | Level | Status |
+|---|---|---|
+| NT Qualifiers | Senior | Not built |
+| World Cup | Senior | Not built |
+| U-21 Qualifiers | U-21 | Not built |
+| U-21 World Cup | U-21 | Not built |
+
+Senior and U-21 are separate competitions with separate qualification phases, not tabs on one
+competition. `InternationalFixtureSeeder` already draws senior sides, so the mechanism is
+there and only the competition records and formats are missing.
+
+**Not yet built, and worth deciding before it is wired into the UI:**
+
+- **Online-user presence.** The World page would like to show who is online. There is no
+  such system — no session registry, no last-seen column. A truthful "users online" number
+  needs that built first; the current "Human players" figure is a registered-account count.
+- **Elo.** Every country starts at 1500 and nothing moves it yet. The rating column is real
+  but flat until a rating engine reads results.
+
 ### Open, in the order I would do them
 
 1. ~~League fixtures have no `day_number`~~ — **DONE 2026-09-29.** The generator stamps day 3 on the

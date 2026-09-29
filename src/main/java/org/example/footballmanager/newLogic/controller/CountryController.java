@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.example.footballmanager.newLogic.model.CountryCatalog;
+import org.example.footballmanager.newLogic.util.WorldCatalogSeeder;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 
 import java.util.Locale;
@@ -50,6 +51,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/countries")
 public class CountryController {
     private final CountryRepository countryRepository;
+
     private final NationalTeamService nationalTeamService;
     private final NationalTeamElectionService electionService;
     private final TeamRepository teamRepository;
@@ -62,8 +64,11 @@ public class CountryController {
     private final SeasonRepository seasonRepository;
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
+    private final org.example.commonmanager.repository.UserRepository humanUserRepository;
 
-    public CountryController(CountryRepository countryRepository, CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
+    public CountryController(CountryRepository countryRepository,
+            org.example.commonmanager.repository.UserRepository humanUserRepository,
+            CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
             NationalTeamElectionService electionService) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
@@ -76,6 +81,7 @@ public class CountryController {
         this.seasonRepository = seasonRepository;
         this.scheduleInsightService = scheduleInsightService;
         this.seasonService = seasonService;
+        this.humanUserRepository = humanUserRepository;
         this.nationalTeamService = nationalTeamService;
         this.electionService = electionService;
     }
@@ -94,6 +100,33 @@ public class CountryController {
      * <p>Public on purpose: it must be readable by an unauthenticated visitor, and it exposes nothing
      * but a list of country names.
      */
+    /**
+     * The world: every country, its state, and how big it is.
+     *
+     * <p>Built for the World page. The page previously read the country list and rendered whatever
+     * came back, so when the database held one country the page claimed the world had one country -
+     * a page that reports the data source rather than describing the game. This endpoint reports the
+     * whole catalogue and marks what is playable, so a SIMULATED country is visibly not a club
+     * pyramid instead of silently missing.
+     */
+    @GetMapping("/world")
+    public Map<String, Object> worldOverview() {
+        List<CountrySummaryDTO> all = getAllCountries();
+        long active = all.stream().filter(c -> "ACTIVE".equals(c.getState())).count();
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("countries", all);
+        out.put("totalCountries", all.size());
+        out.put("expectedCountries", CountryCatalog.all().size());
+        out.put("activeCountries", active);
+        // A world that is short of the catalogue is broken, not interesting, so it is surfaced rather
+        // than rendered as a smaller world.
+        out.put("complete", all.size() == CountryCatalog.all().size());
+        out.put("startRating", WorldCatalogSeeder.STARTING_RATING);
+        out.put("users", humanUserRepository.countByRoleIsNotNull());
+        return out;
+    }
+
     @GetMapping("/catalog")
     public List<Map<String, Object>> getCountryCatalog() {
         Set<String> seeded = countryRepository.findAll().stream()

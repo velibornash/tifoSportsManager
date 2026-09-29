@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,6 +24,7 @@ public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrityService;
+    private final org.example.footballmanager.newLogic.service.WorldRepairService worldRepairService;
     private final TransferService transferService;
     private final org.example.footballmanager.newLogic.service.RegistrationService registrationService;
     private final org.example.footballmanager.newLogic.repository.RegistrationRequestRepository registrationRequests;
@@ -98,6 +100,19 @@ public class AdminController {
         return ResponseEntity.accepted().body(toDatabaseJobResponse(
                 adminDatabaseAsyncService.startOrGetRunningJob("reset")
         ));
+    }
+
+    /**
+     * Re-seeds national teams, and re-draws the cup, on demand (owner, 2026-09-29).
+     *
+     * <p>Both are idempotent - seeding tops up only what is missing, and the cup draw skips rounds
+     * that already have ties - so running one is a repair, not a wipe. That is why they are exposed
+     * rather than left to a reset: a world can be repaired without throwing away a season.
+     */
+    @PostMapping("/world-reseed")
+    public ResponseEntity<Map<String, Object>> reseedWorld(
+            @RequestParam(defaultValue = "national-teams") String what) {
+        return ResponseEntity.ok(worldRepairService.repair(what));
     }
 
     /**
