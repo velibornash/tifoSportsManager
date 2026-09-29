@@ -93,13 +93,15 @@ public class BotSquadGenerator {
             player.setName(name(country, position, index, random));
             player.setAge(ageFor(position, random, youth));
             player.setPosition(position);
-            // Rating is 0-100 here, not the 0-1000 scale used elsewhere in the game.
-            player.setRating(BASE_SKILL * 8);
             player.setForm(6.0);
             player.setPlayerValue(0.0);
             player.setNationality(country.getIsoCode());
             player.setTeam(nationalTeam);
             player.setSkills(skillsFor(position, random));
+            // After the skills, not before: the rating is derived from them. This was
+            // BASE_SKILL * 8, which made every bot in the world read exactly 96 and handed each of
+            // them a free +6 of OVR over a human of identical ability.
+            player.setRating(player.careerRating());
             players.save(player);
             made++;
         }

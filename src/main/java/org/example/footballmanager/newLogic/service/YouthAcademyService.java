@@ -468,9 +468,6 @@ public class YouthAcademyService {
         player.setPersonality(junior.getPersonality());
         player.setPreferredFoot(junior.getPreferredFoot());
         player.setForm(round2(4.5 + random.nextDouble() * 3.2));
-        player.setRating(50);
-        player.setHeight(round2(1.72 + random.nextDouble() * 0.24));
-        player.setWeight(round2(65 + random.nextDouble() * 20));
         player.setEarnings(500 + random.nextInt(2500));
 
         // The position he was signed for. Legacy rows predate the column and are rolled here, once,
@@ -483,6 +480,9 @@ public class YouthAcademyService {
         SkillBuild skillBuild = createSkillsetFromBudget(budget, position == Position.GK);
         Skills skills = skillBuild.skills;
         player.setSkills(skills);
+        // After the position and the skills, both of which it is derived from. This was a hardcoded
+        // 50, so a graduate's OVR depended on his class rather than on what he can do.
+        player.setRating(player.careerRating());
 
         double value = estimateJuniorMarketValue(junior, position, skills);
         player.setPlayerValue(value);

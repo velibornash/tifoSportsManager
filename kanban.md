@@ -62,7 +62,7 @@ years and every fixture reader will find nothing.
 | **U-21 Qualifiers + U-21 World Cup** | not started | Separate competitions from the senior ones, with their own qualification phases — not tabs on one competition. |
 | Admin: activate a country | not started | The activation panel was asked for. `CountryState` is `ACTIVE`/`SIMULATED` and the World page already keys off it, so the page needs no change. |
 | Bot league tier standards | not started | Tier 1 at average skill 12, then 11, 10 by tier. Bot squads are all skill 12 today. |
-| `Player.rating` = skill × 8 | wrong | A skill-12 bot reads as rating 96. Conversion needs calibrating. |
+| `Player.rating` = skill × 8 | **done, but not a conversion** — see below. Three writers, three scales, and the OVR formula read all three as one | — |
 
 ### The day/hour engine
 
@@ -115,6 +115,7 @@ mechanics come before statistics. `S1.0a` already warned the audit baseline was 
 | **League table: three comparators, one implementation** | not started | S8.4 |
 | **13 routed-but-unreachable pages** — **6 wired, 7 are not, and "wiring" was the wrong fix for most of them.** See the diagnosis below | partly done | S8.1 |
 | **Remaining frontend debt** | not started | S8.3 |
+| **Test fixtures still use calendar years as season values** — `WeeklyFinanceServiceTest`, `StaffSponsorServiceTest`, `PlayerContractServiceTest` and others pass 2024/2025/2026 into `seasonYear` and `expirySeason`. They are self-consistent so they pass under either scheme, which is the problem: **they do not pin the season semantics at all**. Left alone rather than rewritten blind | not started | — |
 | **Presentation and realism content** | not started | S8.5 || **Freeze `demo/service/` as a reference module** | partial | S6.2 |
 | **Documentation rewrite** | mostly done 2026-09-27 | S6.5 |
 | **Deployment infrastructure** | deferred until the instance goes up | S8.6 |
@@ -172,6 +173,52 @@ Kept so the next session does not redo them.
 | **The Training Setup screen had a state layer and no renderer** — the router's `trainingSetup` case called a function that was the setup screen wearing the wrong name, and its `render()` belonged to the reports screen in another scope. It is written now, against the CSS that survived and the backend's own `normalizeDtSkill` | the real module with a stubbed API: renders, saves the right body, runs the week, honours the 10-slot cap |
 | **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
 | **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
+
+### ✅ `Player.rating` — one meaning, derived from skills
+
+The board said *"a skill-12 bot reads as rating 96, conversion needs calibrating"*. Rescaling would
+have treated the symptom. The column had **three writers on three scales**, and `PlayerDTO.calculateOverall`
+read it three times as if it were one number:
+
+| Writer | Wrote | When |
+|---|---|---|
+| `BotSquadGenerator` | `BASE_SKILL * 8` = **96** | once, at seeding |
+| `YouthAcademyService` | **50**, hardcoded | per graduate |
+| `SimMatchService.bumpCareerStats` | **the last match's rating** | every match, overwriting |
+
+**Verified in the database:** 2 350 players at exactly 96, 5 250 at 0, none in the match range. The
+formula only applied its bonus when `rating > 0`, so two players of identical ability sat about six
+OVR points apart — decided by which seeder created the row. And `form` was already carrying "how he
+has been playing lately", written weekly by `MoraleService` and already in the formula.
+
+- `Player.careerRating()` is now the one definition: a 1-100 career rating from
+  `Skills.getRatingScore(position)`, the same function the OVR formula normalises, so the two cannot
+  drift. All three writers use it, and the match engine no longer writes it at all — the per-match
+  rating lives on `MatchPlayerStats`, where it already was.
+- The unbounded `(rating - 62) / 5.5` term is bounded to ±1.5, and the defender and keeper role terms
+  that read the same column twice more no longer do. Even a rating of 1000 now moves OVR by ≤2.
+- The per-position maxima were duplicated between `Player` and `PlayerDTO`, and **four of the five
+  agreed on a maximum skill of 17 while the defender's was hand-tweaked to 93.6 where 17 gives 98.6**.
+  One definition now; a defender's OVR drops very slightly as a result.
+- `PlayerRatingBackfill` recomputes the column on boot, own transaction, and only writes rows that do
+  not already match — so a settled world is left alone and a re-boot does no work.
+
+| Verified by | |
+|---|---|
+| `ratingRisesWithAbility` | at every position — this caught the first attempt, which clamped every keeper to 100 because I assumed a max skill of 4.5 |
+| `ratingIsBounded` | a player with no skills is 1, not 0 — 0 is what the OVR formula reads as "never rated" |
+| `identicalAbilityGivesIdenticalOverall` | computes the old +6.2 term explicitly, because the fixed formula can no longer demonstrate its own defect |
+| `theRatingTermIsBounded` | rating 1000 and rating 1 both move OVR by ≤2 |
+| `theBackfillConverges` / `theBackfillIsSafeToRunTwice` | only stale rows move, and a second run is a no-op |
+
+**Two existing tests encoded the old behaviour and were corrected, not worked around.**
+`SimMatchPersistWiringTest` asserted that the match rating (80) lands on the player — that *was* the
+bug. My first correction asserted `assertNotEquals(80, …)`, which is unsound: that test player's
+derived rating also happens to be 80, so it would have passed or failed by coincidence. The assertion
+that is actually sound is that persist leaves the player's rating untouched.
+
+**Not verified against the running app** — it is down, and every OVR in the game shifts once. The
+boot log will say how many rows moved and what the old values were.
 
 ### ✅ S8.4 — one league-table order, and a table that survives being read
 

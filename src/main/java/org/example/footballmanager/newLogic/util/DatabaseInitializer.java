@@ -98,6 +98,7 @@ public class DatabaseInitializer {
     private final CupFixtureSeeder cupFixtureSeeder;
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
     private final SeasonNumberBackfill seasonNumberBackfill;
+    private final PlayerRatingBackfill playerRatingBackfill;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
     private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
@@ -272,6 +273,13 @@ public class DatabaseInitializer {
                 leagueFixtureDayBackfill.backfill();
             } catch (RuntimeException e) {
                 log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
+            }
+            // Player.rating had three writers meaning three different things, so the stored column
+            // does not match the skills it is supposed to be derived from.
+            try {
+                playerRatingBackfill.backfill();
+            } catch (RuntimeException e) {
+                log.warn("Could not recompute player ratings: {}", e.getMessage());
             }
             // Rows written while a season was a calendar year. Every reader now asks the clock, so
             // until these are rewritten a played world looks like a world with no football in it.

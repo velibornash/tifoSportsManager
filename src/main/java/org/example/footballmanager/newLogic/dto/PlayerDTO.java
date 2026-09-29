@@ -111,26 +111,32 @@ public class PlayerDTO {
         double skillBase = player.getSkills().getRatingScore(position);
         double normalizedSkill = Math.max(0.0, Math.min(1.0, skillBase / getMaxSkillScore(position)));
         double formBoost = (Math.max(1.0, Math.min(10.0, player.getForm())) - 5.5) * 1.8;
-        double recentRatingBoost = player.getRating() > 0 ? (player.getRating() - 62.0) / 5.5 : 0.0;
+
+        // The rating terms are bounded, and they have to be. The rating is a CAREER rating derived
+        // from the same skills that already produced normalizedSkill, so an unbounded (rating - 62) / 5.5
+        // was not measuring anything the skill term had not already measured - it was handing out
+        // free points. In a world seeded with BASE_SKILL * 8 that was +6.2 to every bot in the
+        // country, on top of the same bonus inside the defender and keeper role terms.
+        //
+        // What is left of it is a small, capped nudge for consistency between the stored rating and
+        // the computed one, which can happen if a player's skills have moved since he was rated.
+        double ratingNudge = player.getRating() > 0
+                ? Math.max(-1.5, Math.min(1.5, (player.getRating() - 100.0 * normalizedSkill) / 20.0))
+                : 0.0;
 
         double roleContribution = switch (position) {
             case ATT, WNG -> Math.min(12.0, player.getTotalGoals() * 0.65 + player.getTotalAssists() * 0.4);
             case MID -> Math.min(9.0, player.getTotalGoals() * 0.25 + player.getTotalAssists() * 0.55);
-            case DEF -> Math.min(8.0, Math.max(0.0, player.getRating() - 58.0) / 5.0 + Math.max(0.0, player.getForm() - 6.0));
-            case GK -> Math.min(9.0, Math.max(0.0, player.getRating() - 55.0) / 4.5 + Math.max(0.0, player.getForm() - 5.5) * 1.2);
+            case DEF -> Math.min(8.0, Math.max(0.0, player.getForm() - 6.0));
+            case GK -> Math.min(9.0, Math.max(0.0, player.getForm() - 5.5) * 1.2);
         };
 
-        double overall = 50.0 + normalizedSkill * 28.0 + formBoost + recentRatingBoost + roleContribution;
+        double overall = 50.0 + normalizedSkill * 28.0 + formBoost + ratingNudge + roleContribution;
         return (int) Math.round(Math.max(45.0, Math.min(99.0, overall)));
     }
 
+    /** Shared with {@link Player#careerRating()} so the two cannot drift apart. */
     private static double getMaxSkillScore(Position position) {
-        return switch (position) {
-            case GK -> 76.5;
-            case DEF -> 93.6;
-            case MID -> 108.8;
-            case ATT -> 102.0;
-            case WNG -> 93.5;
-        };
+        return Player.maxRatingScore(position);
     }
 }

@@ -270,8 +270,11 @@ public class SimMatchService {
             if (dbPlayer == null) continue;
             dbPlayer.setTotalGoals(dbPlayer.getTotalGoals() + po.goals());
             dbPlayer.setTotalAssists(dbPlayer.getTotalAssists() + po.assists());
-            int rating = rating100(po.rating());
-            if (rating > 0) dbPlayer.setRating(rating);
+            // The match rating is NOT written back onto the player. This column is a career rating
+            // derived from his skills (Player.careerRating); overwriting it with one match's rating
+            // made his displayed OVR depend on how the last match went, and is why a bot that had
+            // played once stopped reading 96. The per-match rating lives on MatchPlayerStats, which
+            // is written above, and "how he is playing lately" is form, which MoraleService owns.
 
             // Morale and form finally move on what happened (Sprint 2.6). This is the one place
             // where every player's line for the match is already in hand, so it is the only place

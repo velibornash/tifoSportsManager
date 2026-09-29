@@ -227,4 +227,53 @@ public class Player {
     public void setLastPlayedAt(java.time.LocalDateTime lastPlayedAt) {
         this.lastPlayedAt = lastPlayedAt;
     }
+
+    /**
+     * The player's career rating: what he is worth, on a 1-100 scale, derived from his skills and
+     * his position (owner decision, 2026-09-29).
+     *
+     * <p>There were three writers of the {@code rating} column and they meant three different
+     * things. The bot seeder wrote a skill proxy as {@code BASE_SKILL * 8}, the academy wrote a
+     * hardcoded 50, and the match engine overwrote it with <em>the last match's</em> rating on every
+     * match. {@code PlayerDTO.calculateOverall} then read that one column three times, as a career
+     * value — so a player's displayed OVR depended on which seeder created his row and on whether he
+     * had played since. In a freshly seeded world: 2 350 players at 96 and 5 250 at 0, and identical
+     * ability six OVR points apart.
+     *
+     * <p>It is one thing now, and it is computed rather than stored-and-guessed. The
+     * {@code rating} column is kept, because it is read by queries and rendered, and is expected to
+     * hold this value; {@code PlayerRatingBackfill} brings existing rows onto it.
+     *
+     * <p>Deliberately built on {@code getRatingScore}, which is already the position-weighted skill
+     * sum the OVR formula normalises, so the two cannot drift apart. "How he has been playing lately"
+     * is {@code form}, which {@code MoraleService} writes weekly and which OVR already reads.
+     */
+    public int careerRating() {
+        if (skills == null) return 1;
+        Position position = getPositionEnum() != null ? getPositionEnum() : Position.MID;
+        double normalised = skills.getRatingScore(position) / maxRatingScore(position);
+        return (int) Math.round(Math.max(1.0, Math.min(100.0, normalised * 100.0)));
+    }
+
+    /**
+     * The rating score a player of this position would score at the maximum for every skill he
+     * trains on. Shared with the OVR formula, which already had its own copy of these numbers — a
+     * second copy is how the two would drift.
+     *
+     * <p>The maximum is 17, not 20. The visible skills run 1-20 but a player at 20 across the board
+     * is not reachable, and the existing OVR normaliser already assumed 17: four of its five
+     * per-position maxima were exactly 17 times the weight sum. The fifth, the defender's, was 93.6
+     * where 17 gives 98.6 — hand-tweaked and out of step with the other four. It is 98.6 now, which
+     * lowers a defender's OVR slightly, and that is the point of having one definition.
+     */
+    public static double maxRatingScore(Position position) {
+        double maxSkill = 17.0;
+        return switch (position) {
+            case GK -> (2.0 + 1.0 + 1.0 + 0.5) * maxSkill;
+            case DEF -> (1.5 + 1.5 + 1.0 + 1.0 + 0.8) * maxSkill;
+            case MID -> (1.0 + 1.2 + 2.0 + 1.5 + 0.7) * maxSkill;
+            case ATT -> (2.0 + 1.5 + 2.0 + 0.5) * maxSkill;
+            case WNG -> (2.0 + 1.5 + 2.0) * maxSkill;
+        };
+    }
 }

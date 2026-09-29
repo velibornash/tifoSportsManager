@@ -74,6 +74,10 @@ class SimMatchPersistWiringTest extends BaseTest {
 
         ProposalMatchOutcome outcome = syntheticOutcome(home.getId(), away.getId(), homePlayers, awayPlayers);
 
+        // What the seeder would have written, captured so the assertion below can tell "persist left
+        // it alone" from "persist wrote something else".
+        int ratingBeforeTheMatch = homePlayers.get(9).careerRating();
+
         Long matchId = simMatchService.persist(fixture, outcome, -1L);
         assertNotNull(matchId);
 
@@ -101,11 +105,20 @@ class SimMatchPersistWiringTest extends BaseTest {
                 .filter(s -> s.getGoals() == 2).findFirst().orElseThrow();
         assertEquals(80, scorer.getRating());
 
-        // 3. Career bumps: scorer got +2 goals, +1 assist; rating set
+        // 3. Career bumps: scorer got +2 goals, +1 assist.
+        //
+        // The match rating is NOT written onto the player. It used to be, and this test asserted it
+        // was - which is how one match's rating ended up in the column the OVR formula reads as a
+        // career value. The match's rating lives on MatchPlayerStats, asserted two lines above; the
+        // player's own rating is derived from his skills and moves when he trains.
         Player dbScorer = playerRepository.findById(scorer.getPlayer().getId()).orElseThrow();
         assertEquals(2, dbScorer.getTotalGoals());
         assertEquals(1, dbScorer.getTotalAssists());
-        assertEquals(80, dbScorer.getRating());
+        // "Not 80" is not a usable assertion here: this scorer's derived career rating happens to be
+        // 80 too, so it would pass or fail by coincidence. The sound one is that persist changed
+        // nothing - it used to write the match's 80 onto the player, and now must not write at all.
+        assertEquals(ratingBeforeTheMatch, dbScorer.getRating(),
+                "persist must leave the player's own career rating exactly as it found it");
 
         // 4. League table entries created for both teams
         assertTrue(entryRepository.findByTeam(home).size() == 1);
@@ -197,6 +210,8 @@ class SimMatchPersistWiringTest extends BaseTest {
         p.setTeam(team);
         p.setTotalGoals(0);
         p.setTotalAssists(0);
+        // As a seeder does: the career rating is derived from the skills, never from a match.
+        p.setRating(p.careerRating());
         return p;
     }
 
@@ -214,7 +229,8 @@ class SimMatchPersistWiringTest extends BaseTest {
         f.setHomeTeam(home);
         f.setAwayTeam(away);
         f.setCompetition(competition);
-        f.setSeasonYear(2026);
+        // A season is a number counted from 1. This was 2026, the calendar-year scheme.
+        f.setSeasonYear(1);
         f.setRoundNumber(8);
         f.setWeekNumber(8);
         f.setMatchDate(LocalDateTime.now().plusDays(1));
