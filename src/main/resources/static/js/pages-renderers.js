@@ -393,6 +393,9 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'Staff', page: 'staff' },
         { label: 'Finances', page: 'finances' },
         { label: 'Transfers', page: 'transfers' },
+        // The club's own played matches. It rendered the club action row already, so it belongs in
+        // it - it was a route with no way in, not a page without a home.
+        { label: 'Results', page: 'results' },
         // Training lives in the Club area, so it belongs in the Club action row. It was only ever
         // added to the sidebar, and the sidebar is not rendered, which left both training pages
         // unreachable from every club screen.
@@ -405,6 +408,28 @@ export function buildTrainingActionsHtml(currentPage = '') {
     return buildActionRowHtml([
         { label: 'Training Setup', page: 'trainingSetup', variant: 'primary', currentPages: ['training', 'trainingSetup'] },
         { label: 'Training Reports', page: 'trainingReports' },
+    ], currentPage);
+}
+
+/**
+ * The league area's own action row.
+ *
+ * <p>The league pages had no navigation of their own - they were reached from the top bar and then
+ * had nowhere to go, so league matches, the top scorers and the top assists existed as routes with
+ * no way in.
+ *
+ * <p>Only pages backed by a real endpoint belong here. `cup`, `international`, `upcoming`,
+ * `friendlies`, `coaches` and `events` are all routed but all fetch from `/demo/...`, which is
+ * DummyDataController: fake data, every route hardcoded to team 1. A menu entry on one of those is a
+ * fabricated table, or an error card, in the manager's navigation.
+ */
+export function buildLeagueActionsHtml(currentPage = '') {
+    return buildActionRowHtml([
+        { label: 'Table', page: 'leagueTable', variant: 'primary' },
+        { label: 'Schedule', page: 'leagueSchedule' },
+        { label: 'Matches', page: 'leagueMatches' },
+        { label: 'Top Scorers', page: 'topScorers' },
+        { label: 'Top Assists', page: 'topAssists' },
     ], currentPage);
 }
 
@@ -957,6 +982,10 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                 </select>
             </label>` : ''}
         </div>
+
+        <section class="fm-panel fm-club-hero">
+            ${buildLeagueActionsHtml('leagueTable')}
+        </section>
 
         <div class="fm-grid-top">
             <section class="fm-panel fm-panel--league-table">

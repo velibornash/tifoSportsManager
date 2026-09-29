@@ -1,7 +1,7 @@
 ﻿// pages.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
@@ -283,6 +283,10 @@ import {
         getTeamId: () => currentUserTeamId,
         renderMatches: (...args) => renderMatches(...args),
         renderFixtures: (...args) => renderFixtures(...args),
+        // For the results page's own error state, so a failed load reads as a failed load rather
+        // than as the router's generic API Error card.
+        htmlEscape,
+        buildClubActionsHtml,
     });
     const clubManagementFeature = createClubManagementFeature({
         authFetch,
@@ -388,7 +392,8 @@ import {
         goBackSmart,
         renderPlayers: (...args) => renderPlayers(...args),
         loadLeagueTeam: (...args) => leagueView.loadLeagueTeam(...args),
-        loadLeagueTeamPlayer: (...args) => leagueView.loadLeagueTeamPlayer(...args)
+        loadLeagueTeamPlayer: (...args) => leagueView.loadLeagueTeamPlayer(...args),
+        buildLeagueActionsHtml
     });
     const clubView = createClubView({
         authFetch, getTeamId: () => currentUserTeamId, buildClubActionsHtml,

@@ -113,13 +113,48 @@ mechanics come before statistics. `S1.0a` already warned the audit baseline was 
 |---|---|---|
 | **Regression test that every fixture uses the proposal engine** | not started | S7.1 |
 | **Make AI-vs-AI fixtures inspectable** | not started | S7.2 |
-| **13 routed-but-unreachable pages** — all 13 have a router case and **no menu entry**. Navigation only; the router is done. **The desktop sidebar is no longer one of the two places to add them** — it was removed as dead (`9dd11ef`), so an entry in it is an entry nobody can see | not started | S8.1 |
 | **League table: three comparators, one implementation** — `MatchStatisticEngine:231-306`, `CountryController:109-112`, `SeasonService:745-753`. Also `ensureEntriesForSeasonCompetition` deletes and rebuilds all entries on membership drift | not started | S8.4 |
+| **13 routed-but-unreachable pages** — **6 wired, 7 are not, and "wiring" was the wrong fix for most of them.** See the diagnosis below | partly done | S8.1 |
 | **Remaining frontend debt** | not started | S8.3 |
 | **Presentation and realism content** | not started | S8.5 |
 | **Freeze `demo/service/` as a reference module** | partial | S6.2 |
 | **Documentation rewrite** | mostly done 2026-09-27 | S6.5 |
 | **Deployment infrastructure** | deferred until the instance goes up | S8.6 |
+
+#### S8.1 — the 13 routes are not 13 features, and 7 of them point at fake data
+
+The backlog called this "navigation only". It is not, and the reason matters: **seven of the thirteen
+fetch from `/demo/...`, which is `DummyDataController`** — fake data, with every route hardcoded to
+team 1 (`/demo/cups/1`, `/demo/matches/teams/1/upcoming`, `/demo/events/teams/1`, …). The frontend
+calls them with the logged-in manager's team id, so they 404 — and they `await response.json()`
+without checking `ok`, so the throw escapes to the router and the page becomes a generic "API Error"
+card. A menu entry on one of those is a fabricated table, or an error card, in the manager's
+navigation.
+
+| Route | Fetches | Real? | Now |
+|---|---|---|---|
+| `results` | `/teams/{id}/matches` | yes | **wired** — Club action row |
+| `topScorers` · `playerStats` | `/stats/leagues/{id}/topscorers` | yes | **wired** — League action row. `playerStats` is a second name for the same screen, so it needs no entry of its own |
+| `topAssists` · `teamStats` | `/stats/leagues/{id}/topassists` | yes | **wired**, same as above |
+| `leagueMatches` | `/countries/leagues/{id}/matches` | yes | **wired** — League action row |
+| `training` | — | works since `9dd11ef` | alias of `trainingSetup`; no entry needed |
+| `upcoming` | `/demo/matches/teams/{id}/upcoming` | **fake** | open — `/teams/{id}/schedule` is the real equivalent |
+| `friendlies` | `/demo/matches/teams/{id}/friendlies` | **fake** | open — `/api/season/friendlies/{id}/week` exists |
+| `coaches` | `/demo/.../coaches` | **fake** | open — `/teams/{id}/coaches` exists |
+| `events` | `/demo/events/teams/1` | **fake** | open — no equivalent found |
+| `cup` | `/demo/cups/{id}` | **fake** | open — the real cup now exists and renders on the country page |
+| `international` | `/demo/internationals/{id}` | **fake** | open — no equivalent found |
+| `analytics` | redirects to `zox-match-preview.html` | — | open, and the backlog itself calls that page broken (S8.1 item 3) |
+
+**Owner decision needed on the 7.** Repointing to the real endpoint turns each into a working page
+and is a one-line change per page; deleting the route removes dead surface. The three with a real
+equivalent (`upcoming`, `friendlies`, `coaches`) are cheap either way. `events`, `international` and
+`analytics` have no equivalent and need a decision, not a line edit.
+
+**Also done here:** `loadResults` and `loadTopScorersAndAssists` checked `response.ok` — a menu
+entry pointed at a page that renders a generic error card is worse than no entry. A manager in no
+league used to get a blank page with no way out, and now gets a sentence and the action row.
+
 
 ---
 
@@ -139,6 +174,17 @@ Kept so the next session does not redo them.
 | **The Training Setup screen had a state layer and no renderer** — the router's `trainingSetup` case called a function that was the setup screen wearing the wrong name, and its `render()` belonged to the reports screen in another scope. It is written now, against the CSS that survived and the backend's own `normalizeDtSkill` | the real module with a stubbed API: renders, saves the right body, runs the week, honours the 10-slot cap |
 | **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
 | **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
+
+### ✅ S8.1: the league area gets a navigation, and the reachable 6 of the 13 get menu entries
+
+| Done | Verified by |
+|---|---|
+| **The league area had no navigation of its own** — it was reached from the top bar and then had nowhere to go, so league matches, the top scorers and the top assists were routes with no way in. `buildLeagueActionsHtml` now gives it Table / Schedule / Matches / Top Scorers / Top Assists | rendered at 1280 and 390: correct routes, current page highlighted, no horizontal overflow |
+| **`results` wired** — it renders the Club action row already, so it belonged in it | 13 club buttons, including Results |
+| **`topScorers` and `topAssists` wired** — `playerStats` and `teamStats` are second names for the same two screens, so they need no entries of their own | route names confirmed against the router |
+| **The 7 that fetch `/demo/...` were left unwired on purpose** — `DummyDataController` is fake data hardcoded to team 1, so a menu entry would be a fabricated table or an error card | endpoint table below |
+| **`loadResults` and `loadTopScorersAndAssists` now check `response.ok`** | both render a real message in the SPA shell, with the action row, instead of throwing to the router |
+| **A manager in no league got a blank page** — `ensureCurrentLeagueId()` returning null did `return` with the page untouched | now a sentence and a way onward |
 
 ### Earlier
 

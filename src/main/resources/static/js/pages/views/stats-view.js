@@ -5,8 +5,30 @@ export function createStatsView(deps) {
     const {
         authFetch, getTeamId, ensureCurrentLeagueId,
         getLeagueSeasonYear, getSeasonYear,
-        goBackSmart, renderPlayers, loadLeagueTeam, loadLeagueTeamPlayer
+        goBackSmart, renderPlayers, loadLeagueTeam, loadLeagueTeamPlayer,
+        // The league area had no navigation of its own, so this page was a route with no way in and
+        // no way onward. Passed in rather than imported, like every other action row.
+        buildLeagueActionsHtml
     } = deps;
+
+    function renderTopListsError(message) {
+        const mainContent = document.getElementById("main-content");
+        if (!mainContent) return;
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--league">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">League stats</div>
+                            <h2>Top Lists</h2>
+                            <p class="fm-subtle">${htmlEscape(message)}</p>
+                        </div>
+                        ${buildLeagueActionsHtml('topScorers')}
+                    </div>
+                </section>
+            </div>`;
+    }
 
     async function loadPlayerStats() {
         const teamId = getTeamId();
@@ -40,10 +62,14 @@ export function createStatsView(deps) {
 
     async function loadTopScorersAndAssists(mode = "both") {
         try {
-            const teamId = getTeamId();
-            console.log(`Loading top scorers for ${teamId}`);
+            getTeamId();
             const leagueId = await ensureCurrentLeagueId();
-            if (!leagueId) return;
+            if (!leagueId) {
+                // This returned with the page untouched, so a menu entry into it produced a blank
+                // screen with no explanation and no way out.
+                renderTopListsError('This club is not in a league yet, so there are no league stats to show.');
+                return;
+            }
             const seasonParam = getLeagueSeasonYear() || getSeasonYear()
                 ? `?seasonYear=${getLeagueSeasonYear() || getSeasonYear()}`
                 : '';
@@ -52,8 +78,6 @@ export function createStatsView(deps) {
                 authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
                 authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`)
             ]);
-            console.log(`Response status: ${scorersRes.status}`);
-            console.log(`Response status: ${assistsRes.status}`);
             const scorers = await scorersRes.json();
             const assists = await assistsRes.json();
             const leagueTeams = leagueTeamsRes.ok ? await leagueTeamsRes.json() : [];
@@ -154,12 +178,7 @@ export function createStatsView(deps) {
 
         } catch (err) {
             console.error("Error loading top lists:", err);
-            document.getElementById("main-content").innerHTML = `
-                <div class="manager-card">
-                    <button data-nav-back="dashboard">Back</button>
-                    <h2>Error</h2>
-                    <p>Could not load top lists. Check connection or backend.</p>
-                </div>`;
+            renderTopListsError(`Could not load the top lists: ${err.message}`);
         }
     }
 
