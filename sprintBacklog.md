@@ -3455,3 +3455,34 @@ Zones are from the team's perspective, so "defensive third" means the same thing
 `player_zone_load` or stamps `lastPlayedAt` yet — the match engine has to do that. The job says "0"
 out loud instead of claiming success, which is the difference between this and the failures in the
 standing rule above.
+
+### 48-country seed — sizing, before building (owner, 2026-09-29)
+
+Measured the existing world before writing any code, because the shape decides the implementation.
+
+Serbia today: **31 leagues × 10 teams = 310 clubs, ~4,700 players, 2,790 league fixtures.** It is a
+five-tier pyramid built by `createLeagueIfNotExists(country, tier, name, divisionLevel, teamsCount,
+season)`, and that method is already country-parameterised — so the *code* generalises to 48 countries
+almost for free.
+
+The *volume* does not. At the same pyramid:
+
+| | 1 country (today) | 48 countries |
+|---|---|---|
+| leagues | 31 | ~1,490 |
+| clubs | 310 | ~14,900 |
+| players | ~4,700 | ~226,000 |
+| league fixtures / season | 2,790 | ~134,000 |
+
+134k fixtures is a real world, not a toy, and it changes three things: seed time, the time the
+matchday jobs take, and how the 3 matchday jobs behave on week 1. It is also the thing that makes the
+internationals work — 48 national sides with squads is what unblocks them.
+
+**Open question for the owner, because it is a scale decision and not an implementation one:** should
+every one of the 48 countries get the full five-tier pyramid, or a smaller pyramid (e.g. tiers 1-3,
+~12 leagues) with the top countries tiered deeper? The tiered version is what a real world looks like —
+it is also the version that makes club quality differences, scouting ranges and transfer values mean
+something across the map rather than being uniform.
+
+Not started deliberately: seeding 48 countries is a long, slow operation and starting it on a guessed
+size wastes it.
