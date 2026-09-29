@@ -41,6 +41,16 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     long countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
             Integer seasonYear, Integer weekNumber, Integer dayNumber);
 
+    /**
+     * Every fixture on a day, played or not.
+     *
+     * <p>For the watch screen. Filtering to unplayed made a manager whose match the matchday job had
+     * already run see "no fixture on day 3" - the opposite of what they want, since the whole point of
+     * clicking Watch is to see the result of a match that has been generated.
+     */
+    List<MatchFixture> findBySeasonYearAndWeekNumberAndDayNumber(
+            Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
     @Query("select f from MatchFixture f where f.homeTeam.id = :teamId or f.awayTeam.id = :teamId")
     List<MatchFixture> findAllForTeam(@Param("teamId") Long teamId);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndPlayedFalse(Long competitionId, Integer seasonYear);

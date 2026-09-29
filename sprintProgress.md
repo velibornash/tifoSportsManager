@@ -1,6 +1,23 @@
 # TIFO Football Manager — Sprint Progress Log
 
-## ⚡ LATEST — 2026-09-29 (latest)
+## ⚡ LATEST — 2026-09-29 (latest, watch complete)
+
+**`d7ad025` + this — Watch Your Match is now whole.** The gate (`/api/watch/status`) decides from the
+game day and the kickoff hour instead of a week boolean that made Watch open at 08:00 on a match day
+and shut on days that had a fixture. The click (`/api/watch/my-match`) returns the manager's own
+fixture for the current day and its statistics, read from the match the matchday job already generated
+— "only clicking it populates the stats", which was the owner's actual requirement. Leagues and cups
+come out of one query so they cannot drift apart.
+
+One bug on the way, and it was the wrong kind: the query filtered to *unplayed* fixtures, so a manager
+whose match the job had already run saw "no fixture on day 3". The entire point of clicking Watch is
+to see the result of a match that has been generated, so the filter excluded exactly the case that
+matters. Verified both ways: played league tie returns matchId 1, unplayed cup tie returns null
+rather than a fake 0-0.
+
+---
+
+## Earlier on 2026-09-29
 
 **`cbcf79c` Internationals mechanism.** Built and blocked on world data, not code: 1 of 9 seeded
 countries has a squad. Two bugs on the way — the `competition` table's `CHECK (type IN ('LEAGUE','CUP'))`

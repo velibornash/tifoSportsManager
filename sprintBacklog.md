@@ -49,8 +49,10 @@ Test suite: **722 passing, 0 failures, 2 skipped** (the 2 are Playwright tests t
    had a fixture on it. Verified: day 2 → "Not a match day"; day 3 hour 18 → "Kickoff is at 19:00. It
    is now 18:00."; day 3 hour 19 → available. Leagues and cups are both considered, which answers the
    owner's "or a separate cup button" with one button that cannot drift out of sync with two.
-   **Still open: clicking it populates stats on demand.** The gate is right; the click path is still
-   the old one.
+   The click side is done too: `/api/watch/my-match` returns the manager's own fixture for the
+   current day and its statistics, read from the match the job already generated. Verified for a
+   played league tie (matchId 1) and for an unplayed cup tie (matchId null, which is the honest answer
+   rather than a fake 0-0). Leagues and cups come from one query, so they cannot disagree.
 5. **Simulate-all is week-based, should be day/hour accurate, and does not include cup.**
 6. **Cup ties in the schedule view.** The schedule shows the template, not the actual day's ties.
 7. **T1 engine defect.** A 1-1 with 38-4 shots and 9.5-0.9 xG. Needs a real event dump before
