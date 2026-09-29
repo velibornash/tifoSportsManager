@@ -238,16 +238,20 @@ public class SeasonService {
                 // each round was its own week, which made an 18-round season 18 weeks long and
                 // put the mid-season window in the wrong place entirely. Two rounds share a week
                 // now, except in weeks 5 and 6 where a friendly takes the second slot.
-                int week = SeasonCalendar.weekOfRound(round + 1);
-                fixture.setWeekNumber(week > 0 ? week : round + 1);
+                // The calendar decides both the week AND the day. Previously this computed its own
+                // week and the return-leg loop then copied it, so week 1 collected round 1, round 2
+                // and both of their return legs - four rounds in a week, a club playing four times.
+                // That was the real cause of the 775/2015 day split, not the day labelling.
+                LeagueSlotSchedule.Placement placement = LeagueSlotSchedule.forRound(round + 1);
+                if (placement == null) {
+                    // More rounds than the calendar schedules. Skipped rather than guessed, because a
+                    // guessed week is how this went wrong in the first place.
+                    continue;
+                }
+                fixture.setWeekNumber(placement.week());
                 // Only a relative offset is kept: the season is twelve weeks and has no months in
                 // it, so this is used for ordering only and never shown to a manager.
-                // Day 3, 19:00 - the first league round of the week. The reverse leg in this same
-                // week becomes day 7. A week holds exactly two rounds, which is why the generator's
-                // "two rounds share a week" comment is what makes the day split possible at all;
-                // without a day stamped here the day-3 matchday job has nothing of its own to play
-                // and would either find nothing or steal the day-7 round.
-                fixture.setDayNumber(GameDay.LEAGUE_FIRST_DAY);
+                fixture.setDayNumber(placement.day());
                 fixture.setMatchDate(startDate.plusWeeks(fixture.getWeekNumber() - 1L));
                 fixture.setPlayed(false);
                 fixtures.add(fixture);
@@ -263,11 +267,18 @@ public class SeasonService {
             reverse.setAwayTeam(base.getHomeTeam());
             reverse.setCompetition(competition);
             reverse.setSeasonYear(seasonYear);
+            // The return leg asks the calendar where IT goes. Copying the first leg's week is what
+            // stacked four rounds into one week; a return leg belongs in its own round slot, which
+            // for a double round-robin is the second half of the season.
             reverse.setRoundNumber(base.getRoundNumber() + rounds);
-            reverse.setWeekNumber(base.getWeekNumber());
-            // Day 7, 16:00 - the second league round of the same week.
-            reverse.setDayNumber(GameDay.LEAGUE_SECOND_DAY);
-            reverse.setMatchDate(base.getMatchDate());
+            LeagueSlotSchedule.Placement returnPlacement =
+                    LeagueSlotSchedule.forRound(base.getRoundNumber() + rounds);
+            if (returnPlacement == null) {
+                continue;
+            }
+            reverse.setWeekNumber(returnPlacement.week());
+            reverse.setDayNumber(returnPlacement.day());
+            reverse.setMatchDate(startDate.plusWeeks(returnPlacement.week() - 1L));
             reverse.setPlayed(false);
             fixtures.add(reverse);
         }

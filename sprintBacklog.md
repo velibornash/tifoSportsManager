@@ -3374,3 +3374,43 @@ and the result once played. The cup page renders every tie as a button, and it s
 rather than inventing a scoreline.
 
 A reset was NOT needed - the fix was a code path, not the data.
+
+### The 775/2015 split was a scheduling bug, not a labelling one (owner, 2026-09-29)
+
+The owner spotted it immediately by comparing the Country tab's calendar against the generated
+fixtures: "the generator is wrong, you have a good schedule in the Calendar tab." Correct, and it was
+not the day labelling.
+
+`Okružna liga Grupa 1` (10 teams) has 18 rounds over **5** weeks, and week 1 held rounds 1, 2, 10 and
+11 — where 10 and 11 are the *return legs* of 1 and 2. A club was scheduled to play four times in one
+week, and a fixture's return leg was in the same week as the fixture itself.
+
+The cause was one line in the generator:
+
+```java
+reverse.setRoundNumber(base.getRoundNumber() + rounds);
+reverse.setWeekNumber(base.getWeekNumber());      // copies the first leg's week
+```
+
+The first half was mapped onto the calendar correctly — two rounds a week. The return legs then
+*copied* the week of the leg they reversed, so week 1 collected round 1, round 2, and both returns.
+The 775/2015 ratio followed from my day-stamping rule: a week with 2 rounds splits 50/50, and a week
+with 4 splits 25/75. Week 5 came out 5/5 precisely because it was one of the well-formed weeks.
+
+**The fix is what the owner asked for: lock the schedule into a template and fill it in order.**
+`LeagueSlotSchedule` reads `SeasonCalendar.roundsIn(week)` — which the Calendar tab already renders —
+and maps each round to its (week, day). The generator asks the calendar where each round goes instead
+of computing its own, and the return leg asks where *it* goes rather than copying. Rounds the calendar
+does not schedule are skipped rather than guessed, because a guessed week is how this broke.
+
+Verified after a full `/admin/reset-db` + `/admin/initialize-db`:
+
+- every league week holds exactly 2 rounds, 5 fixtures each, split 5/5 on day 3 and day 7
+- league totals **1395 / 1395** — exactly even
+- weeks 6, 11 and 12 carry no league football, as the calendar says
+- round 1 → week 1 day 3, round 2 → week 1 day 7, round 3 → week 2 day 3, and so on
+
+**Lesson worth keeping:** the 775/2015 was flagged twice as "not a blocker, not understood" and
+investigated from the database both times without asking whether the *calendar* was right. It was,
+and it was printed on the country page. When two artefacts disagree, check the one that is rendered
+for a human before assuming the other is derived correctly.
