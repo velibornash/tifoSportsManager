@@ -39,11 +39,12 @@ The owner rebuilt and restarted these; they have not been looked at in the runni
 |---|---|---|
 | World page | 48 countries listed, all clickable, competitions shown disabled, human-player count populated | `b80b4a0` |
 | World integrity in Admin | Country / side / squad counts on page load; the three repair buttons | `b80b4a0` |
-| Training under Club | Training and Training Reports in the Club submenu, no top-level Training button | static edit |
 | World in the header | Between Serbia and Community | static edit |
 
-**Known to need a hard reload:** the sidebar changes are static HTML, so a cached
-`dashboard.html` will still show the old top-level Training button.
+**Needs a restart, not a reload:** the season-number change and the menus below are code, not
+static HTML, and `SeasonNumberBackfill` only runs on boot. The log must show
+`Season numbers: rewrote N row(s)`. A boot without that line means the world still holds calendar
+years and every fixture reader will find nothing.
 
 ---
 
@@ -74,16 +75,19 @@ The owner rebuilt and restarted these; they have not been looked at in the runni
 
 ### Match engine realism
 
+**Defer until last, and re-baseline before touching anything.** The numbers in these rows were
+measured against code that has since changed, and `sprintProgress.md` records the owner decision that
+mechanics come before statistics. `S1.0a` already warned the audit baseline was stale.
+
 | Task | State | Sprint |
 |---|---|---|
-| **Goal inflation chain** — 4 fixes: on-target probability, aim clustering at the posts, goal mouth width 9 m → 7.4 m, `POST_RADIUS` | not started | S1.1 |
-| **Restart inversion** — 40 goal kicks / 19 throw-ins / 5 corners is backwards | not started | S1.2 |
-| **Corner skew** — 0.6 HOME / 4.4 AWAY | not started | S1.3 |
-| **Duel count 598/match → ~120** — interposition requirement, lane-strict reception, context-dependent radius | not started | S1.4 |
-| **Bounded chase multiplier + press radius** | not started | S1.5 |
-| **Injury model into the proposal engine** | not started | S1.6 |
-| **Box fouls under-produced** | deferred 2026-09-26 | S1.7c |
 | **T1 engine defect** — a 1-1 with 38-4 shots and 9.5-0.9 xG. Needs a real event dump before it can be diagnosed | not started | — |
+| **Goal mouth width 9 m → 7.4 m and `POST_RADIUS`** — the rest of S1.1 landed as `562785f` | not started | S1.1 |
+| **Restart inversion, part 2** — goal kicks landed as `744dc71` (35.9 → 21.9). **Throw-ins are the open half: 75.5 against a real 35–45**, and they come from passes leaving the pitch sideways, not from clearances | not started | S1.2 |
+| **Corner skew** — measure it again before acting. The 0.6 HOME / 4.4 AWAY split predates the day-stamping work; the current total is 6.4 | not started | S1.3 |
+| **Duel count** — landed as `e4c3b1c` (373 → 268, real ~100). Whether to push further is a numbers decision, not a mechanics one | partly done | S1.4 |
+| **Box fouls under-production** | deferred 2026-09-26 | S1.7c |
+
 
 ### Clubs, academy and transfer market
 
@@ -109,7 +113,7 @@ The owner rebuilt and restarted these; they have not been looked at in the runni
 |---|---|---|
 | **Regression test that every fixture uses the proposal engine** | not started | S7.1 |
 | **Make AI-vs-AI fixtures inspectable** | not started | S7.2 |
-| **13 routed-but-unreachable pages** — all 13 have a router case and **no menu entry**. Navigation only; the router is done | not started | S8.1 |
+| **13 routed-but-unreachable pages** — all 13 have a router case and **no menu entry**. Navigation only; the router is done. **The desktop sidebar is no longer one of the two places to add them** — it was removed as dead (`9dd11ef`), so an entry in it is an entry nobody can see | not started | S8.1 |
 | **League table: three comparators, one implementation** — `MatchStatisticEngine:231-306`, `CountryController:109-112`, `SeasonService:745-753`. Also `ensureEntriesForSeasonCompetition` deletes and rebuilds all entries on membership drift | not started | S8.4 |
 | **Remaining frontend debt** | not started | S8.3 |
 | **Presentation and realism content** | not started | S8.5 |
@@ -119,9 +123,24 @@ The owner rebuilt and restarted these; they have not been looked at in the runni
 
 ---
 
-## ✅ Done this session
+## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `9dd11ef` — seasons, menus and the training setup screen
+
+| Done | Verified by |
+|---|---|
+| **A season is a number counted from 1** — `BASE_SEASON_YEAR` (2025) deleted and all twelve `BASE_SEASON_YEAR + (season - 1)` sites removed. The season is twelve weeks, so four run in a year and no calendar year can name one | 722 tests green |
+| **The cup page reads the season the world is in** — it asked for a literal `1` while the seeder wrote the world's own season. This was the "0 ties across 8 rounds" against a log saying 54 drawn: two artefacts, two hardcoded answers | The database, not the log: 2 868 fixtures at `season_year = 2025` |
+| **`SeasonNumberBackfill`** — rewrites `season_year >= 1000` to 1 across the nine football tables, own transaction, idempotent | runs on boot; **not yet run against a live world** |
+| **The mobile menu could not be opened at all** — the scrim carries `mobile-only`, and the responsive utility force-showed every `.mobile-only` element, so a full-viewport div at z-index 1190 sat over the top bar and ate every tap | real mouse clicks at 390×844: click the hamburger, drawer opens, all 11 entries hit-testable |
+| **The desktop Club sidebar was never rendered** — `.sidebar` is fixed at `left: -260px` and nothing ever applied `.active` to it, so all twelve Club entries were invisible. Removed, with bindings that also fired `loadPage` twice per click | `left: -260px`, `right: -9px`, outside the viewport, measured |
+| **The Training Setup screen had a state layer and no renderer** — the router's `trainingSetup` case called a function that was the setup screen wearing the wrong name, and its `render()` belonged to the reports screen in another scope. It is written now, against the CSS that survived and the backend's own `normalizeDtSkill` | the real module with a stubbed API: renders, saves the right body, runs the week, honours the 10-slot cap |
+| **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
+| **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
+
+### Earlier
 
 | Done | Verified by |
 |---|---|
@@ -133,6 +152,7 @@ Kept so the next session does not redo them.
 | **Every country starts at 1500** | `STARTING_RATING` |
 | **Scouting band moved to 1400/200** — the old 40/60 band clamped every country to zero reach on a 1500-based world | `ScoutingReachTest` |
 | **National teams, cup, coaching, and page routing** | 722 tests green |
+| **Injuries, fatigue persistence, weekly recovery, substitutions, conditional substitutions, penalty kicks, penalty rate, replay persistence** — all landed under the S1 sprint | see `sprintProgress.md` |
 
 ---
 
