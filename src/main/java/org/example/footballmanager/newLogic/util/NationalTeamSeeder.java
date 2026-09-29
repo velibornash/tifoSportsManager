@@ -90,6 +90,12 @@ public class NationalTeamSeeder {
 
     private boolean ensureSenior(Country country) {
         if (country.getSeniorNationalTeam() != null) {
+            // The team exists but may be EMPTY. Five countries - BIH, BRA, MKD, MNE, SVN - had their
+            // sides created before there was a bot squad, by a seeder that only ever filled squads
+            // from clubs, and they have no clubs. Returning here made those empty sides permanent:
+            // the squad logic below was never reached for them, and the internationals still had
+            // nothing to draw against. An existing side is topped up, not skipped.
+            squadsFor(country.getSeniorNationalTeam(), country, false);
             return false;
         }
         Team nt = new Team();
@@ -106,6 +112,7 @@ public class NationalTeamSeeder {
 
     private boolean ensureU21(Country country) {
         if (country.getU21NationalTeam() != null) {
+            squadsFor(country.getU21NationalTeam(), country, true);
             return false;
         }
         Team nt = new Team();
