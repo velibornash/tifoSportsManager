@@ -111,7 +111,6 @@ mechanics come before statistics. `S1.0a` already warned the audit baseline was 
 
 | Task | State | Sprint |
 |---|---|---|
-| **Regression test that every fixture uses the proposal engine** | not started | S7.1 |
 | **Make AI-vs-AI fixtures inspectable** | not started | S7.2 |
 | **League table: three comparators, one implementation** — `MatchStatisticEngine:231-306`, `CountryController:109-112`, `SeasonService:745-753`. Also `ensureEntriesForSeasonCompetition` deletes and rebuilds all entries on membership drift | not started | S8.4 |
 | **13 routed-but-unreachable pages** — **6 wired, 7 are not, and "wiring" was the wrong fix for most of them.** See the diagnosis below | partly done | S8.1 |
@@ -174,6 +173,32 @@ Kept so the next session does not redo them.
 | **The Training Setup screen had a state layer and no renderer** — the router's `trainingSetup` case called a function that was the setup screen wearing the wrong name, and its `render()` belonged to the reports screen in another scope. It is written now, against the CSS that survived and the backend's own `normalizeDtSkill` | the real module with a stubbed API: renders, saves the right body, runs the week, honours the 10-slot cap |
 | **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
 | **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
+
+### ✅ S7.1 — the guard that every fixture is played by the proposal engine
+
+`ProposalEngineIsTheOnlyFixtureProducerTest`, 5 tests. The whole task was 1-2 days and is now done;
+it exists because the audit that produced it was **retracted** — it claimed AI-vs-AI league matches
+came from a Poisson dice roll, and that was wrong. The real paths already ran the proposal engine.
+
+So this is not a test that the engine works. It is a test that **nothing has grown beside it**.
+
+| Test | What it locks |
+|---|---|
+| `onlyOneSiteConstructsAMatch` | exactly one production site builds a football `Match`, and it is `SimMatchService`. The other `matchRepository.save` calls are named and allowed, with the reason: a fixture is *played* when its Match row is born, and the rest update a row that already exists |
+| `onlyTheTwoKnownEntryPointsSimulate` | `simMatchService.simulate` is entered from `SimulationController` and `AsyncSimulationRunner` and nowhere else |
+| `noDiceRollEntryPointExists` | the retracted `simulateQuickScore` stays gone, by name |
+| `aRealEngineRunReachesTheDatabase` | a real run persists with a full 90+ minutes, 22 player rows, possession summing to 100, a replay, and a played fixture pointing at the match that played it. The half the retracted audit never established |
+| `theSameFixtureProducesTheSameMatch` | a fixture is seeded by its own id, so it cannot be re-rolled — which is what makes the engine's output worth trusting for a league table |
+
+Both structural scans strip comments first, because the retracted audit counted a mention. American
+football and basketball are outside the scan on purpose: they have their own engines, and a scan
+that included them would report their code as a violation.
+
+Also fixed: `SimMatchPersistWiringTest` was building fixtures with `seasonYear = 2026`, the
+calendar-year scheme this project no longer uses.
+
+**727 tests green, 5:24.** The class costs about 110 s because it runs the engine three times. Worth
+it for the one guard the backlog asked to exist.
 
 ### ✅ S8.1: the league area gets a navigation, and the reachable 6 of the 13 get menu entries
 
