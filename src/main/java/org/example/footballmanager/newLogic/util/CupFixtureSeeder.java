@@ -52,16 +52,6 @@ public class CupFixtureSeeder {
     static final int ENTRY_ROUND_TEAMS = 108;
     static final int MAIN_DRAW_TEAMS = 256;
 
-    /**
-     * The season the draw belongs to, as a CALENDAR year - 2026, not the season index 1.
-     *
-     * <p>The cup was written with season_year = 1, which is the season index, while every other
-     * fixture and the job runner use BASE_SEASON_YEAR + (season - 1) = 2026. So the day-5 matchday job
-     * asked for 2026 and found no cup fixtures, completed successfully, and played nothing - the most
-     * dangerous shape a silent failure can take.
-     */
-    static final int SEED_SEASON = SeasonService.BASE_SEASON_YEAR;
-
     /** Day 5 is the cup slot in the seven-day template. */
     private static final LocalDate SEASON_START = LocalDate.of(2026, 7, 1);
     private static final int CUP_DAY = 5;
@@ -70,6 +60,24 @@ public class CupFixtureSeeder {
     /** A fixed seed so the draw is the same on every boot. A random draw would reshuffle the cup
      *  on every restart, which is not a cup. */
     private static final long DRAW_SEED = 20260928L;
+
+    private final SeasonService seasons;
+
+    /**
+     * The season the draw belongs to, read from the clock rather than written here.
+     *
+     * <p>This was a constant, and it was wrong twice. It was 1 - the season number - while the rest
+     * of the world used a calendar year, so the day-5 matchday job asked for a season with no cup
+     * fixtures in it, completed successfully and played nothing. Changing the constant did not help,
+     * because the call sites never came from it. It was then moved onto the calendar year to make
+     * the two agree, which fixed the job and left the country page reading a season the seeder had
+     * never written - "0 ties across 8 rounds" over a bracket the log had just reported as drawn.
+     * A season is a number counted from 1 now, everywhere, and this asks the clock which one it is
+     * so there is no second answer to keep in step.
+     */
+    private int seedSeason() {
+        return seasons.getActiveSeasonYear();
+    }
 
     private final MatchFixtureRepository fixtures;
     private final CompetitionRepository competitions;
@@ -81,16 +89,17 @@ public class CupFixtureSeeder {
      *  NationalTeamSeeder; a unit test cannot catch it because it never goes through Spring. */
     @org.springframework.beans.factory.annotation.Autowired
     public CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
-                            TeamRepository teams, PlayerRepository players) {
-        this(competitions, fixtures, teams, players, new Random(DRAW_SEED));
+                            TeamRepository teams, PlayerRepository players, SeasonService seasons) {
+        this(competitions, fixtures, teams, players, seasons, new Random(DRAW_SEED));
     }
 
     CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
-                     TeamRepository teams, PlayerRepository players, Random random) {
+                     TeamRepository teams, PlayerRepository players, SeasonService seasons, Random random) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.teams = teams;
         this.players = players;
+        this.seasons = seasons;
         this.random = random;
     }
 
@@ -106,7 +115,7 @@ public class CupFixtureSeeder {
         }
 
         // Idempotent by fixture count, not by a flag: if the draw exists, the fixtures are the record.
-        long existing = fixtures.countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(SEED_SEASON, CUP_WEEKS[0], CUP_DAY);
+        long existing = fixtures.countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(seedSeason(), CUP_WEEKS[0], CUP_DAY);
         log.info("Cup {}: {} round-1 ties already drawn.", cup.getName(), existing);
         if (existing > 0) {
             return;
@@ -127,7 +136,7 @@ public class CupFixtureSeeder {
         // direct entrants make the 256 that carry the rest of the tournament.
         List<Team> firstKnockout = new ArrayList<>(ranked.subList(0, ENTRY_ROUND_TEAMS));
         List<Team> directEntrants = new ArrayList<>(ranked.subList(ENTRY_ROUND_TEAMS, MAIN_DRAW_TEAMS));
-        List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, SEED_SEASON);
+        List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, seedSeason());
 
         // Round 2 onwards can only be wired once the earlier rounds are actually played, so the
         // seeding creates round 1 and leaves the bracket to be driven by results. A full 8-round
@@ -221,7 +230,7 @@ public class CupFixtureSeeder {
             return 0;
         }
         long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
-                cup.getId(), SEED_SEASON, round);
+                cup.getId(), seedSeason(), round);
         if (existing > 0) {
             return 0;
         }
@@ -230,7 +239,7 @@ public class CupFixtureSeeder {
             log.info("Cup {} round {}: {} survivor(s), nothing to pair.", cup.getName(), round, survivors.size());
             return 0;
         }
-        return drawRound(cup, round, survivors, SEED_SEASON).size();
+        return drawRound(cup, round, survivors, seedSeason()).size();
     }
 
     /**
@@ -246,7 +255,7 @@ public class CupFixtureSeeder {
         }
         int previousRound = round - 1;
         List<MatchFixture> previous = fixtures
-                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), SEED_SEASON)
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seedSeason())
                 .stream()
                 .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == previousRound)
                 .toList();

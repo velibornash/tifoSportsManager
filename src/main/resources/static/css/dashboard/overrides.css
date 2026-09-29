@@ -465,6 +465,19 @@
         display: inline-flex !important;
     }
 
+    /* The scrim is the one .mobile-only element that must stay hidden until it is active.
+       It carries the class, so the utility above force-showed it on every phone: a full-viewport
+       div at z-index 1190, permanently on top, swallowing every tap - including the hamburger,
+       which is only z-index 10 inside the bar. The mobile menu could not be opened at all.
+       ID selectors so these win against the .mobile-only utility above, which is !important. */
+    #mobileOverlay {
+        display: none !important;
+    }
+
+    #mobileOverlay.active {
+        display: block !important;
+    }
+
     .top-menu {
         gap: 4px;
         padding: 6px 8px;

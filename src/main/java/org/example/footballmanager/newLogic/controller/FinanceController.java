@@ -10,6 +10,7 @@ import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.service.BoardExpectationService;
 import org.example.footballmanager.newLogic.service.FinanceLedgerService;
+import org.example.footballmanager.newLogic.service.SeasonService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,6 +43,7 @@ public class FinanceController {
     private final FinanceLedgerEntryRepository ledger;
     private final FinanceLedgerService ledgerService;
     private final BoardExpectationService board;
+    private final SeasonService seasonService;
 
     /** The full picture: balance, wage bill, budget health, and the ledger itself. */
     @GetMapping
@@ -123,7 +125,16 @@ public class FinanceController {
         return ResponseEntity.ok(out);
     }
 
+    /**
+     * The season a ledger entry belongs to.
+     *
+     * <p>This returned {@code java.time.Year.now().getValue()} - the real wall-clock year - while
+     * every other season reader in the codebase asked the game clock. So a ledger row was filed
+     * under whatever year the manager happened to be playing in, and reading it back asked the
+     * world for its season. A season is twelve weeks and four of them run in a year, so the two
+     * answers could not agree.
+     */
     private Integer currentSeasonYear() {
-        return java.time.Year.now().getValue();
+        return seasonService.getActiveSeasonYear();
     }
 }

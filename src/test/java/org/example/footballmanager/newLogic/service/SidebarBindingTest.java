@@ -60,8 +60,8 @@ class SidebarBindingTest {
         }
 
         assertTrue(offenders.isEmpty(),
-                () -> "These files bind sidebar elements: " + offenders + ". sidebar.js already binds "
-                        + "#clubSidebar, so a second binder means every click fires twice. For "
+                () -> "These files bind sidebar elements: " + offenders + ". sidebar.js owns the "
+                        + "sidebar handlers, so a second binder means every click fires twice. For "
                         + "toggleAccordion that is not a double render - it is a no-op, because the "
                         + "function reads the open state and then writes the opposite, so the "
                         + "accordion opens and closes again in the same tick and appears dead.");
@@ -84,13 +84,21 @@ class SidebarBindingTest {
         // as the JS: each header was bound BOTH by an inline onclick and by an addEventListener, and
         // toggleAccordion is not idempotent, so two bindings cancel out.
         //
-        // "A real accordion" means a header inside an `.accordion` wrapper. The class is also used to
-        // style ten flat mobile navigation buttons that call loadPage directly, so counting every
-        // `.accordion-header` makes a class-reuse look like eight missing handlers. It is not.
+        // "A real accordion" means a header that is IMMEDIATELY FOLLOWED BY its content panel. Two
+        // things get confused with one otherwise. The `.accordion-header` class also styles flat
+        // navigation buttons that call loadPage directly, and in the mobile drawer every leaf item
+        // is wrapped in `<div class="mobile-accordion">` even though it expands nothing - so
+        // matching on the wrapper class alone counts six leaves as six accordions, and demands a
+        // toggle handler they have no use for. The panel is what makes a header a toggle.
+        //
+        // Both wrapper classes are accepted, so this is the same hazard in the only place it can still
+        // happen rather than a weaker check. The handler half of the pattern already accepted
+        // toggleMobileAccordion.
         String html = Files.readString(APP_HTML, StandardCharsets.UTF_8);
 
         Matcher wrapped = Pattern
-                .compile("<div class=\"accordion\">\\s*<div class=\"accordion-header\"([^>]*)>")
+                .compile("<div class=\"(?:mobile-)?accordion\">\\s*<div class=\"accordion-header\"([^>]*)>"
+                        + "\\s*[^<]*</div>\\s*<div class=\"accordion-content\">")
                 .matcher(html);
         int[] counts = {0, 0};
         while (wrapped.find()) {

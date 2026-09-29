@@ -17,7 +17,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SeasonService {
 
-    public static final int BASE_SEASON_YEAR = 2025;
+    // A season is a NUMBER, counted from 1, and `season_year` on every table carries that number.
+    //
+    // This used to be a calendar year: BASE_SEASON_YEAR = 2025, and callers asked for
+    // BASE_SEASON_YEAR + (season - 1). The offset is gone, because a manager's season is twelve
+    // weeks and roughly four run in a year (SeasonCalendar), so a calendar year cannot name one.
+    // It was also the cause of the cup page reporting "0 ties across 8 rounds" over a bracket the
+    // seeder had just reported as drawn - two artefacts that disagreed, each with a hardcoded
+    // season index, and the fix that had gone in before moved the seeder onto the year rather than
+    // removing the offset. One number, written once, is the only thing that cannot drift.
+    //
     // Re-exported from SeasonCalendar, which is the single definition of the season shape. These
     // used to be 18 / 19 / 20, which described a twenty-week season with a round per week. The
     // playoff and friendly generators below hang off them, so repointing them here moves that
@@ -71,9 +80,10 @@ public class SeasonService {
             clock.setCurrentHour(9);
         }
         if (clock.getCurrentSeason() != null && clock.getCurrentSeason() > 1000) {
-            // Legacy format stored calendar year (e.g. 2025). Convert to Season index (Season 1 starts at BASE_SEASON_YEAR).
-            int normalized = clock.getCurrentSeason() - BASE_SEASON_YEAR + 1;
-            clock.setCurrentSeason(Math.max(1, normalized));
+            // A calendar year means this clock predates the season-number scheme. Every such world
+            // was still on its first season, so it maps to 1 - not to an arithmetic guess that would
+            // need the year it came from, which is the constant this change exists to delete.
+            clock.setCurrentSeason(1);
         }
         if (clock.getCurrentSeason() == null || clock.getCurrentSeason() < 1) {
             clock.setCurrentSeason(1);
@@ -87,9 +97,17 @@ public class SeasonService {
         return gameClockRepository.save(clock);
     }
 
+    /**
+     * The season the world is in, as a NUMBER counted from 1.
+     *
+     * <p>Named for the {@code season_year} column it is compared against on fixtures, elections,
+     * finance and every competition table. It is a season number, not a calendar year, and the
+     * difference is the whole point: the season is twelve weeks, so four of them run in a year and a
+     * year cannot identify one.
+     */
     public int getActiveSeasonYear() {
         GameClock clock = getOrCreateClock();
-        return BASE_SEASON_YEAR + (clock.getCurrentSeason() - 1);
+        return clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
     }
 
     public int getCurrentWeek() {
@@ -108,7 +126,7 @@ public class SeasonService {
         return seasonRepository.findBySeasonYear(year).orElseGet(() -> {
             Season season = new Season();
             season.setSeasonYear(year);
-            season.setDescription("Season " + (year - BASE_SEASON_YEAR + 1));
+            season.setDescription("Season " + year);
             return seasonRepository.save(season);
         });
     }

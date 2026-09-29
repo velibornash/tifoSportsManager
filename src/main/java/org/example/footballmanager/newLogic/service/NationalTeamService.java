@@ -297,16 +297,15 @@ public class NationalTeamService {
     }
 
     /**
-     * The season the election belongs to.
+     * The season the election belongs to: the highest season in the table.
      *
-     * <p>Read from the season clock when it is available. Defaulting to 1 rather than 0 keeps a
-     * fresh install usable: an election created for season 0 would never match the one the admin
-     * screen lists.
+     * <p>Defaulting to 1 rather than 0 keeps a fresh install usable: an election created for
+     * season 0 would never match the one the admin screen lists.
      */
     private int currentSeasonYear() {
         try {
-            // SeasonRepository only offers a year lookup, so the current season is the highest one
-            // that exists. A database with seasons 1 and 2 in it is on season 2.
+            // The season repository only offers a lookup by value, so the world is on the highest
+            // season that exists. A database with seasons 1 and 2 in it is on season 2.
             return seasons.findAll().stream()
                     .map(season -> season.getSeasonYear())
                     .filter(java.util.Objects::nonNull)

@@ -85,7 +85,7 @@ public class APIController {
         Map<String, Object> snapshot = gameClockService.snapshot();
         return jobRunner.runDue(
                 Integer.parseInt(String.valueOf(
-                        SeasonService.BASE_SEASON_YEAR + (asInt(snapshot.get("seasonNumber"), 1) - 1))),
+                        asInt(snapshot.get("seasonNumber"), 1))),
                 asInt(snapshot.get("weekNumber"), 1),
                 asInt(snapshot.get("day"), 1),
                 asInt(snapshot.get("hour"), 0));
@@ -110,7 +110,7 @@ public class APIController {
     public List<Map<String, Object>> jobRuns(
             @RequestParam(defaultValue = "1") int week,
             @RequestParam(defaultValue = "1") int season) {
-        int seasonYear = SeasonService.BASE_SEASON_YEAR + (season - 1);
+        int seasonYear = season;
         return jobRunRepository.findBySeasonYearAndWeekNumberOrderByDayNumberAscRanAtHourAsc(seasonYear, week)
                 .stream()
                 .map(run -> {
@@ -163,7 +163,7 @@ public class APIController {
         Map<String, Object> clock = gameClockService.snapshot();
         int day = ((Number) clock.getOrDefault("day", 1)).intValue();
         int week = ((Number) clock.getOrDefault("weekNumber", 1)).intValue();
-        int season = SeasonService.BASE_SEASON_YEAR + (asInt(clock.get("seasonNumber"), 1) - 1);
+        int season = asInt(clock.get("seasonNumber"), 1);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("day", day);

@@ -97,6 +97,7 @@ public class DatabaseInitializer {
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
+    private final SeasonNumberBackfill seasonNumberBackfill;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
     private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
@@ -163,18 +164,13 @@ public class DatabaseInitializer {
     }
 
     /**
-     * The current season, for opening this season's elections.
+     * The current season, from the game clock.
      *
-     * <p>The highest season year that exists, so a database carrying seasons 1 and 2 is on season 2.
-     * Falls back to 1 so a fresh install still opens an election.
+     * <p>It used to be the highest season row in the table, which is a guess about the world rather
+     * than a reading of it. The clock is the one place the season is decided.
      */
     private int currentSeasonYear() {
-        return seasonRepository.findAll().stream()
-                .map(season -> season.getSeasonYear())
-                .filter(java.util.Objects::nonNull)
-                .max(Integer::compareTo)
-                .filter(year -> year > 0)
-                .orElse(1);
+        return seasonService.getActiveSeasonYear();
     }
 
     /**
@@ -277,6 +273,15 @@ public class DatabaseInitializer {
             } catch (RuntimeException e) {
                 log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
             }
+            // Rows written while a season was a calendar year. Every reader now asks the clock, so
+            // until these are rewritten a played world looks like a world with no football in it.
+            // Before the day backfill: a fixture's day and its season are independent, but doing the
+            // season first means the day pass sees a consistent world either way.
+            try {
+                seasonNumberBackfill.backfill();
+            } catch (RuntimeException e) {
+                log.warn("Could not rewrite calendar years into season numbers: {}", e.getMessage());
+            }
             // The repair runs after every other seeding step, and it is the safety net. Each step
             // above can be interrupted, and when one is the world is left plausible and wrong - a
             // reset killed part-way through left nine legacy countries and no national teams, and
@@ -295,7 +300,7 @@ public class DatabaseInitializer {
 
             widenCompetitionTypeConstraint();
             try {
-                internationalFixtureSeeder.seedIfMissing(SeasonService.BASE_SEASON_YEAR);
+                internationalFixtureSeeder.seedIfMissing(seasonService.getActiveSeasonYear());
             } catch (RuntimeException e) {
                 log.warn("Could not draw the internationals: {}", e.getMessage());
             }
@@ -874,8 +879,8 @@ public class DatabaseInitializer {
 
         Country serbia = countryRepository.findByIsoCode("SRB").orElseThrow();
 
-        // 2. Kreiraj tekuću sezonu (2025)
-        Season currentSeason = createSeasonIfNotExists(2025, "2025/2026 Season");
+        // 2. The current season. A season is a number counted from 1 - twelve weeks, four to a year.
+        Season currentSeason = createSeasonIfNotExists(1, "Season 1");
 
         // 3. Kreiraj lige ako ne postoje
         Competition tier1 = createLeagueIfNotExists(serbia, 1, "Superliga Srbije", 1, 10, currentSeason);
@@ -917,8 +922,8 @@ public class DatabaseInitializer {
         // 6. Dodaj Kup Srbije (nacionalni kup)
         createCupCompetitionIfNotExists(serbia, "Kup Srbije", 64, currentSeason);
 
-        // 7. Generate double round-robin fixtures for all Serbian leagues (season year = 2025)
-        int seasonYear = 2025;
+        // 7. Generate double round-robin fixtures for all Serbian leagues, on the current season
+        int seasonYear = currentSeasonYear();
         competitionRepository.findAll().stream()
                 .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
                 .filter(c -> c.getType() == CompetitionType.LEAGUE)

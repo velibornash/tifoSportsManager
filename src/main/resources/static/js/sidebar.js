@@ -18,64 +18,23 @@ function toggleAccordion(header) {
 }
 // Koristi istu funkciju i za mobilni (možeš preimenovati ili zadržati alias)
 const toggleMobileAccordion = toggleAccordion;
-// Zatvori sidebar
-function closeSidebar(sidebarId) {document.getElementById(sidebarId)?.classList.remove('active');}
-// Generalni handler za klik na linkove unutar sidebar-a
-function handleSidebarLinkClick(e, sidebarId) {
-    e.stopPropagation();
 
-    // Zatvori accordion-e osim trenutnog
-    if (!e.target.classList.contains('accordion-header')) {
-        document.querySelectorAll('.accordion').forEach(acc => acc.classList.remove('open'));
-    }
-
-    // Zatvori sidebar na desktop-u
-    if (window.innerWidth > 768) {
-        closeSidebar(sidebarId);
-    }
-}
-// Dodaj listener-e za SVAKI sidebar
-const sidebars = ['clubSidebar'];
-sidebars.forEach(id => {
-    const sidebar = document.getElementById(id);
-    if (!sidebar) return;
-
-    // Accordion content linkovi
-    sidebar.querySelectorAll(".accordion-content > div").forEach(div => {
-        div.addEventListener('click', async e => {
-            handleSidebarLinkClick(e, id);
-            const onclick = div.getAttribute('onclick');
-            if (onclick?.includes('loadPage')) {
-                const page = onclick.match(/loadPage\('([^']+)'\)/)?.[1];
-                if (page) await loadPage(page);
-            }
-        });
-    });
-
-    // Direktni linkovi van accordion-a
-    sidebar.querySelectorAll(".sidebar-content > div:not(.accordion)").forEach(div => {
-        div.addEventListener('click', async e => {
-            handleSidebarLinkClick(e, id);
-            const onclick = div.getAttribute('onclick');
-            if (onclick?.includes('loadPage')) {
-                const page = onclick.match(/loadPage\('([^']+)'\)/)?.[1];
-                if (page) await loadPage(page);
-            }
-        });
-    });
-
-    // Accordion headers are deliberately NOT bound here.
-    //
-    // Every .accordion-header in both sidebars already carries an inline `onclick="toggleAccordion(this)"`
-    // (or toggleMobileAccordion), and toggleAccordion is not idempotent: it reads the open state and
-    // then writes the opposite. Binding it a second time meant every desktop header click toggled
-    // twice - open, then closed again in the same tick - so all three groups were inert. `after=0px`
-    // is what a working accordion that has just closed looks like, which is why this survived as long
-    // as it did: from the outside, a collapsed panel and a dead panel are the same picture.
-    //
-    // The inline handler is kept as the single path because it is the only one that covers
-    // #mobileSidebar, which is not in the `sidebars` list below.
-});
+// There is deliberately no link binding here any more.
+//
+// The desktop #clubSidebar was removed: `.sidebar` is fixed at left:-260px and nothing ever
+// applied `.active` to it, so the whole Club tree rendered off-screen and desktop navigation is
+// now the top bar plus the in-page action strip from buildClubActionsHtml.
+//
+// What used to be bound is worth remembering, because it is the reason nothing is:
+//  - Every .accordion-header in #mobileSidebar carries an inline `onclick="toggleMobileAccordion(this)"`,
+//    and toggleAccordion is not idempotent - it reads the open state and writes the opposite. Binding it
+//    a second time made every header click toggle twice - open, then closed again in the same tick - so
+//    the panels were inert. `max-height: 0px` is what a working accordion that has just closed looks
+//    like, which is why this survived as long as it did: from the outside, a collapsed panel and a dead
+//    panel are the same picture.
+//  - The entries carried inline `onclick="loadPage(...)"` as well, so a JS listener ran loadPage a
+//    second time and every navigation was fired twice.
+// The inline handler is the single path for both, so it stays the only one.
 
 // Blokiraj skrol glavnog sadržaja kad je sidebar otvoren
 function disableBodyScroll() {
@@ -116,7 +75,5 @@ window.toggleAccordion = toggleAccordion;
 window.toggleMobileAccordion = toggleMobileAccordion;
 window.closeMobileMenu = closeMobileMenu;
 window.toggleMobileMenu = toggleMobileMenu;
-window.closeSidebar = closeSidebar;
-window.handleSidebarLinkClick = handleSidebarLinkClick;
 window.disableBodyScroll = disableBodyScroll;
 window.enableBodyScroll = enableBodyScroll;

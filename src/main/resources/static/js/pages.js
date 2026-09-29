@@ -458,7 +458,7 @@ import {
 
                 case "training":
                 case "trainingSetup":
-                    await loadTrainingReports();
+                    await loadTrainingSetup();
                     break;
                 case "trainingReports":
                     await loadTrainingReportsPage();
@@ -609,6 +609,10 @@ import {
 
     async function loadTrainingReports() {
         return trainingView.loadTrainingReports();
+    }
+
+    async function loadTrainingSetup() {
+        return trainingView.loadTrainingSetup();
     }
 
     async function loadTrainingReportsPage() {
@@ -981,7 +985,7 @@ import {
     window.loadFinances = loadFinances;
     window.loadTransfers = loadTransfers;
     window.loadCoaches = loadCoaches;
-    window.loadTrainingSetup = loadTrainingReports;
+    window.loadTrainingSetup = loadTrainingSetup;
     window.loadTrainingReports = loadTrainingReports;
     window.loadTrainingReportsPage = loadTrainingReportsPage;
     window.loadClubProfile = loadClubProfile;

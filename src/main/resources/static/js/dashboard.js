@@ -63,9 +63,12 @@ function getCurrentLeagueName() {
 }
 
 function formatSeasonLabel(seasonYear) {
-    const startYear = Number(seasonYear);
-    if (!Number.isFinite(startYear)) return 'Current season';
-    return `${startYear}/${String((startYear + 1) % 100).padStart(2, '0')}`;
+    // A season is a number counted from 1, not a calendar year. This used to render "2025/26",
+    // which cannot be a season at all: a manager's season is twelve weeks, so four of them run in
+    // a year and no two of them share a year.
+    const season = Number(seasonYear);
+    if (!Number.isFinite(season)) return 'Current season';
+    return String(season);
 }
 
 function buildDashboardSubtitle() {
@@ -931,6 +934,15 @@ async function revealMatchResult(matchId) {
 }
 
 async function loadHomeTeamStats() {
+    // Resolve the nodes before the fetch, not after it. A navigation can replace the dashboard
+    // while the league table is in flight, and re-querying the document afterwards returned null
+    // and threw on the first write. A dashboard that is no longer on screen has nothing to fill
+    // in, so a missing node means there is simply no work left to do.
+    const heading = document.querySelector('.team-name-wrapper h1');
+    const subtitle = document.querySelector('.team-subtitle');
+    const statValues = document.querySelectorAll('.stat-value');
+    if (!heading || !subtitle || statValues.length < 4) return;
+
     try {
         const leagueId = getCurrentLeagueId();
         const seasonParam = currentSeasonYear ? `?seasonYear=${currentSeasonYear}` : '';
@@ -939,17 +951,16 @@ async function loadHomeTeamStats() {
 
         const table = await response.json();
 
-        const currentName = currentUserTeamName || document.querySelector('.team-name-wrapper h1')?.textContent?.trim() || 'Unknown';
+        const currentName = currentUserTeamName || heading.textContent?.trim() || 'Unknown';
         const entry = table.find(t => t.name === currentName);
         if (!entry) {
             console.warn('Team not found in league table:', currentName);
             return;
         }
 
-        document.querySelector('.team-name-wrapper h1').textContent = entry.name;
-        document.querySelector('.team-subtitle').innerHTML = buildDashboardSubtitle();
+        heading.textContent = entry.name;
+        subtitle.innerHTML = buildDashboardSubtitle();
 
-        const statValues = document.querySelectorAll('.stat-value');
         statValues[0].textContent = entry.position || '?';
         statValues[1].textContent = entry.points || '0';
         statValues[2].textContent = `${entry.wins || 0}-${entry.draws || 0}-${entry.losses || 0}`;
@@ -958,17 +969,6 @@ async function loadHomeTeamStats() {
         console.error('Error loading team stats:', err);
     }
 }
-
-window.toggleSidebar = function(id) {
-    const sidebars = document.querySelectorAll('.sidebar');
-    sidebars.forEach(sb => {
-        if (sb.id === id) {
-            sb.classList.toggle('active');
-        } else {
-            sb.classList.remove('active');
-        }
-    });
-};
 
 window.loadDashboard = loadDashboard;
 window.resetDatabase = resetDatabase;

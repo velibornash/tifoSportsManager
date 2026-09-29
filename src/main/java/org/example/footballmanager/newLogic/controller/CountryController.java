@@ -213,9 +213,16 @@ public class CountryController {
      * <p>Rounds that have not been drawn yet are reported as empty rather than omitted, so the cup
      * page can show the shape of the tournament and which round is next instead of a list that
      * silently grows.
+     *
+     * <p>The season is derived from the clock, never assumed. This asked for a literal season
+     * number while {@link CupFixtureSeeder} wrote every cup fixture against the world's own season,
+     * so the page reported "0 ties across 8 rounds" over a bracket the seeder had just reported as
+     * 54 ties drawn - two artefacts, two hardcoded answers, and neither reading the clock.
      */
     @GetMapping("/{isoCode}/cup")
-    public Map<String, Object> getCup(@PathVariable String isoCode) {
+    public Map<String, Object> getCup(@PathVariable String isoCode,
+                                      @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+        int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         Country country = requireCountry(isoCode);
         Competition cup = competitionRepository.findAll().stream()
                 .filter(c -> c.getType() == CompetitionType.CUP)
@@ -235,7 +242,7 @@ public class CountryController {
         out.put("teamsPerCompetition", cup.getTeamsPerCompetition());
 
         List<MatchFixture> all = matchFixtureRepository
-                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), 1);
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), activeSeasonYear);
         Map<Integer, List<Map<String, Object>>> byRound = new LinkedHashMap<>();
         for (int round : CupFixtureSeeder.CUP_WEEKS) {
             byRound.put(round, new ArrayList<>());
@@ -484,23 +491,18 @@ public class CountryController {
     }
 
     /**
-     * The current season, from the season clock.
+     * The current season, from the game clock.
      *
      * <p>Server-side on purpose. The election endpoints used to take a season parameter, which let
-     * the client ask about a season nobody was holding an election for - and the seeded world is on
-     * season 2025, so a default of 1 silently reported "no election" while one was running.
+     * the client ask about a season nobody was holding an election for, and a default of 1 then
+     * reported "no election" while one was running.
+     *
+     * <p>This guessed the season from the highest row in the season table. It now asks the clock,
+     * like every other reader. Three copies of "which season is it" is how the country page and the
+     * cup seeder came to disagree about the same bracket in the first place.
      */
     private int currentSeason() {
-        try {
-            return seasonRepository.findAll().stream()
-                    .map(season -> season.getSeasonYear())
-                    .filter(java.util.Objects::nonNull)
-                    .max(Integer::compareTo)
-                    .filter(year -> year > 0)
-                    .orElse(1);
-        } catch (RuntimeException ignored) {
-            return 1;
-        }
+        return seasonService.getActiveSeasonYear();
     }
 
     private boolean isElectionAdmin(User viewer) {

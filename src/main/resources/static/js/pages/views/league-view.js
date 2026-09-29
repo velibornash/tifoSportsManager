@@ -70,8 +70,11 @@ export function createLeagueView(deps) {
             const selectedSeason = seasonYear || getLeagueSeasonYear() || getSeasonYear() || seasons[seasons.length - 1]?.seasonYear || null;
             const seasonObj = { value: selectedSeason };
             if (deps.setLeagueSeasonYear) deps.setLeagueSeasonYear(selectedSeason);
+            // A season is the number on the row. This used to derive the display number by
+            // subtracting the first season's calendar year, which is the offset that has been
+            // removed everywhere else - so a season 1 league was labelled "Season 2025".
             const selectedSeasonNumber = seasons.find(s => s.seasonYear === selectedSeason)?.seasonNumber
-                || (selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : 1);
+                || (selectedSeason ? Math.max(1, selectedSeason) : 1);
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
 
             const [tableResponse, teamsResponse, scheduleResponse, scorersResponse, assistsResponse, milestonesResponse, seasonSummaryResponse] = await Promise.all([
@@ -214,7 +217,7 @@ export function createLeagueView(deps) {
             if (!response.ok) throw new Error("Failed to load league matches");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
-            const seasonNumber = selectedSeason ? Math.max(1, selectedSeason - 2025 + 1) : null;
+            const seasonNumber = selectedSeason ? Math.max(1, selectedSeason) : null;
             const titleBase = `${getCurrentLeagueName()} Results`;
             renderLeagueMatchesView(results, seasonNumber ? `${titleBase} - Season ${seasonNumber}` : titleBase, { backTarget, caller: 'leagueMatches' });
         } catch (err) {

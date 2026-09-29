@@ -393,6 +393,11 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'Staff', page: 'staff' },
         { label: 'Finances', page: 'finances' },
         { label: 'Transfers', page: 'transfers' },
+        // Training lives in the Club area, so it belongs in the Club action row. It was only ever
+        // added to the sidebar, and the sidebar is not rendered, which left both training pages
+        // unreachable from every club screen.
+        { label: 'Training Setup', page: 'trainingSetup', currentPages: ['training', 'trainingSetup'] },
+        { label: 'Training Reports', page: 'trainingReports' },
     ], currentPage);
 }
 

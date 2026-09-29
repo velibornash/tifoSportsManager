@@ -32,7 +32,8 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class SimulationController {
 
-    private static final int DEFAULT_SEASON_YEAR = 2025;
+    /** A season is a number counted from 1, matching `game_clock.current_season`. */
+    private static final int DEFAULT_SEASON_YEAR = 1;
 
     private final UserRepository userRepository;
     private final TeamRepository teamRepository;
@@ -82,9 +83,7 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> simulateCurrentRound(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
-        int seasonYear = clock.getCurrentSeason() != null
-                ? SeasonService.BASE_SEASON_YEAR + (clock.getCurrentSeason() - 1)
-                : DEFAULT_SEASON_YEAR;
+        int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
                 .filter(f -> Objects.equals(f.getSeasonYear(), seasonYear))
@@ -221,7 +220,7 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> advanceWeek(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
-        int seasonYear = SeasonService.BASE_SEASON_YEAR + ((clock.getCurrentSeason() != null ? clock.getCurrentSeason() : 1) - 1);
+        int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         // Only check user's league fixtures — other leagues can continue in background
         String userTeamName = resolveUserTeamName(user);
@@ -332,9 +331,7 @@ public class SimulationController {
 
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
-        int seasonYear = clock.getCurrentSeason() != null
-                ? SeasonService.BASE_SEASON_YEAR + (clock.getCurrentSeason() - 1)
-                : DEFAULT_SEASON_YEAR;
+        int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
                 .filter(fixture -> Objects.equals(fixture.getSeasonYear(), seasonYear))
@@ -410,9 +407,7 @@ public class SimulationController {
     private Map<String, Object> buildFallbackFeed(User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
-        int seasonYear = clock.getCurrentSeason() != null
-                ? SeasonService.BASE_SEASON_YEAR + (clock.getCurrentSeason() - 1)
-                : DEFAULT_SEASON_YEAR;
+        int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
                 .filter(fixture -> Objects.equals(fixture.getSeasonYear(), seasonYear))

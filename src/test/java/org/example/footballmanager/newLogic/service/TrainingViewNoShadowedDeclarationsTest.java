@@ -7,7 +7,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,30 +46,52 @@ class TrainingViewNoShadowedDeclarationsTest {
     void noFunctionIsDeclaredTwice() throws IOException {
         String code = stripComments(Files.readString(VIEW, StandardCharsets.UTF_8));
 
-        // Declarations at the same indentation are the same scope. Anything nested deeper is
-        // legitimately a different scope and is not counted.
+        // Scope is the chain of ENCLOSING declarations, not the indentation. Indentation was the
+        // first proxy here and it was wrong in both directions: two declarations nested in sibling
+        // functions sit at the same indentation and are not a shadowing pair, which is exactly what
+        // the two training screens produced when the setup screen got its own render(). The
+        // declaration a function is nested inside is the scope that matters, and a stack of
+        // enclosing declarations by indentation recovers it precisely for consistently formatted
+        // code. It still catches the original defect: render / renderGraph / openPlayerGraph were
+        // each declared twice directly inside createTrainingView, so they shared a scope path.
         //
         // Indentation is matched with [ \t] and never \s: \s also matches newlines, so a greedy
         // \s+ can swallow the blank line above a declaration and the ^ anchor quietly stops
         // meaning anything. The first version of this test did exactly that and passed while a
         // shadowed copy was sitting right in front of it.
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        record Decl(int indent, String name) {}
+        List<Decl> ordered = new ArrayList<>();
         Matcher decls = Pattern
                 .compile("^([ \\t]+)(?:async[ \\t]+)?function[ \\t]+([A-Za-z0-9_]+)[ \\t]*\\(", Pattern.MULTILINE)
                 .matcher(code);
         while (decls.find()) {
-            counts.merge(decls.group(1) + "::" + decls.group(2), 1, Integer::sum);
+            ordered.add(new Decl(decls.group(1).length(), decls.group(2)));
+        }
+
+        Deque<String> enclosing = new ArrayDeque<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Decl decl : ordered) {
+            while (!enclosing.isEmpty() && enclosing.peek().startsWith(pad(decl.indent))) {
+                enclosing.pop();
+            }
+            StringBuilder scope = new StringBuilder();
+            for (String outer : enclosing) {
+                scope.append(outer).append(" > ");
+            }
+            scope.append(decl.name());
+            counts.merge(scope.toString(), 1, Integer::sum);
+            enclosing.push(pad(decl.indent) + decl.name());
         }
 
         Map<String, Integer> shadowed = new LinkedHashMap<>();
-        counts.forEach((key, n) -> {
+        counts.forEach((scope, n) -> {
             if (n > 1) {
-                shadowed.put(key.substring(key.indexOf("::") + 2), n);
+                shadowed.put(scope, n);
             }
         });
 
         assertTrue(shadowed.isEmpty(),
-                () -> "These functions are declared more than once at the same scope in "
+                () -> "These functions are declared more than once in the same scope in "
                         + VIEW.getFileName() + ": " + shadowed + ". JavaScript lets the later "
                         + "declaration win, so every earlier copy is unreachable - valid syntax, no "
                         + "warning, no linter, and dead code. Delete the earlier one rather than "
@@ -88,6 +114,11 @@ class TrainingViewNoShadowedDeclarationsTest {
                 "the caller of openPlayerGraph must remain");
         assertTrue(Pattern.compile("function openPlayerGraph\\s*\\(").matcher(code).find(),
                 "openPlayerGraph must still be declared exactly once");
+    }
+
+    /** Pads an indent so a stack of them can be compared by prefix, longest-first. */
+    private String pad(int indent) {
+        return " ".repeat(indent);
     }
 
     private String stripComments(String src) {

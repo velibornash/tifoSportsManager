@@ -215,8 +215,7 @@ public class GameClockService {
     }
 
     private int seasonYearOf(GameClock clock) {
-        return SeasonService.BASE_SEASON_YEAR
-                + ((clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) - 1);
+        return clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
     }
 
     /** Runs whatever is due for the position the clock has just arrived at. */

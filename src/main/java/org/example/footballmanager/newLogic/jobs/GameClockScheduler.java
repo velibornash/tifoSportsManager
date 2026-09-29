@@ -66,7 +66,7 @@ public class GameClockScheduler {
             // Then check regardless. A job missed while the app was down is caught here rather than
             // being lost for good, which is the whole reason for the check.
             var snapshot = clockService.snapshot();
-            int seasonYear = SeasonService.BASE_SEASON_YEAR + (asInt(snapshot.get("seasonNumber"), 1) - 1);
+            int seasonYear = asInt(snapshot.get("seasonNumber"), 1);
             var result = jobRunner.runDue(
                     seasonYear,
                     asInt(snapshot.get("weekNumber"), 1),

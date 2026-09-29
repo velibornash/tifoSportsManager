@@ -4,17 +4,377 @@ import { htmlEscape } from './utils.js';
 export function createTrainingView(deps) {
     const { authFetch, getTeamId, buildTrainingActionsHtml, buildPlayerProfileHeroHtml } = deps;
 
-    /**
-     * The training reports screen.
-     *
-     * <p>Delegates rather than carrying a second implementation. This used to be a 280-line copy of
-     * {@link loadTrainingReportsPage} that called {@code render()} four times - but render is
-     * defined inside that other function, so it was never in scope here and the page threw
-     * "ReferenceError: render is not defined" the moment the main menu touched it. Two copies of a
-     * screen is how that happened; one copy cannot.
-     */
+    // Shared by the setup screen and the reports screen. Declared at factory scope on purpose:
+    // when each screen carried its own copy they drifted, and a screen that reaches for a helper
+    // owned by another function is the exact thing that produced "render is not defined" before.
+    const skillLabel = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
+    const colorByIntDelta = (delta) => {
+        if (delta > 0) return "#4caf50";
+        if (delta < 0) return "#f44336";
+        return "#b7bec9";
+    };
+
     async function loadTrainingReports() {
         return loadTrainingReportsPage();
+    }
+
+    // The group -> skill options below mirror TrainingProgressionService.normalizeDtSkill exactly.
+    // It silently substitutes a default for anything it does not recognise, so a screen offering a
+    // different list would let a manager pick something the engine then ignores.
+    const TRAINING_GROUPS = ['GK', 'DEF', 'MID', 'ATT'];
+    const SKILLS_BY_GROUP = {
+        GK: ['goalkeeper', 'pace', 'defending', 'technique', 'passing'],
+        DEF: ['defending', 'pace', 'technique', 'passing'],
+        MID: ['playmaker', 'pace', 'defending', 'technique', 'passing'],
+        ATT: ['shooting', 'pace', 'defending', 'technique', 'passing']
+    };
+    const DEFAULT_GROUP_SKILL = { GK: 'goalkeeper', DEF: 'defending', MID: 'playmaker', ATT: 'shooting' };
+    const ROLE_OPTIONS = ['GK', 'DEF', 'MID', 'ATT'];
+    const ADVANCED_SLOTS = 10;
+
+    /**
+     * The training setup screen: what each positional group trains, who trains as an advanced slot,
+     * and the button that runs the week.
+     *
+     * <p>This screen had listeners and state but no renderer for a long time, so the router's
+     * "trainingSetup" case fell through to the reports screen and both buttons opened the same
+     * thing. Its own render() is defined here rather than shared with the reports screen on
+     * purpose - a screen reaching into another function's scope is what broke the previous pair.
+     */
+    async function loadTrainingSetup() {
+        const mainContent = document.getElementById("main-content");
+        const teamId = getTeamId();
+
+        const emptyState = (message) => `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">Training ground</div>
+                            <h2>Training Setup</h2>
+                            <p class="fm-subtle">${htmlEscape(message)}</p>
+                        </div>
+                        ${buildTrainingActionsHtml('trainingSetup')}
+                    </div>
+                </section>
+            </div>`;
+
+        const playersRes = await authFetch(`/teams/${teamId}/players`);
+        if (!playersRes.ok) {
+            mainContent.innerHTML = emptyState('Could not load player data for the training setup page.');
+            return;
+        }
+        const players = await playersRes.json();
+
+        const setupRes = await authFetch(`/training/setup/team/${teamId}`).catch(() => null);
+        const setup = setupRes && setupRes.ok ? await setupRes.json() : null;
+
+        const state = {
+            groupSkills: {},
+            advanced: [],
+            general: [],
+            busy: false,
+            message: '',
+            messageIsError: false
+        };
+        TRAINING_GROUPS.forEach(group => {
+            const saved = setup?.groupSkills?.[group];
+            state.groupSkills[group] = SKILLS_BY_GROUP[group].includes(saved)
+                ? saved
+                : DEFAULT_GROUP_SKILL[group];
+        });
+
+        const allIds = new Set(players.map(p => p.id));
+        state.advanced = (Array.isArray(setup?.advancedAssignments) ? setup.advancedAssignments : [])
+            .map(a => ({
+                playerId: Number(a.playerId),
+                role: ROLE_OPTIONS.includes(String(a.role || '').toUpperCase()) ? String(a.role).toUpperCase() : 'MID'
+            }))
+            .filter(a => allIds.has(a.playerId))
+            .slice(0, ADVANCED_SLOTS);
+        // One player cannot hold two slots, so the pool is whoever is not already taken.
+        const taken = new Set(state.advanced.map(a => a.playerId));
+        state.general = players.filter(p => !taken.has(p.id)).map(p => p.id);
+
+        const playerById = new Map(players.map(p => [p.id, p]));
+        const playerName = id => {
+            const p = playerById.get(id);
+            return p ? `${p.name} (${p.position}, OVR ${p.overall ?? '-'})` : `Player ${id}`;
+        };
+        // Position -> training group. WNG and the other wide roles start with no group letter, so
+        // they fall to MID, which is where the default group skill points them anyway.
+        const groupForPosition = position => {
+            const code = String(position || '').toUpperCase();
+            return TRAINING_GROUPS.find(group => code.startsWith(group)) || 'MID';
+        };
+
+        function moveToAdvanced(playerId, role) {
+            const index = state.advanced.findIndex(a => a.playerId === playerId);
+            if (index >= 0) {
+                state.advanced[index].role = ROLE_OPTIONS.includes(role) ? role : state.advanced[index].role;
+                return;
+            }
+            if (state.advanced.length >= ADVANCED_SLOTS) {
+                state.message = `All ${ADVANCED_SLOTS} advanced slots are taken. Remove one first.`;
+                state.messageIsError = true;
+                return;
+            }
+            state.general = state.general.filter(id => id !== playerId);
+            state.advanced.push({ playerId, role: ROLE_OPTIONS.includes(role) ? role : 'MID' });
+        }
+
+        function moveToGeneral(playerId) {
+            state.advanced = state.advanced.filter(a => a.playerId !== playerId);
+            if (!state.general.includes(playerId)) state.general.push(playerId);
+        }
+
+        async function saveSetup() {
+            const res = await authFetch(`/training/setup/team/${teamId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    teamId,
+                    groupSkills: state.groupSkills,
+                    advancedAssignments: state.advanced.map(a => ({ playerId: a.playerId, role: a.role }))
+                })
+            });
+            return res.ok;
+        }
+
+        function renderAdvancedRow(entry, index) {
+            return `
+                <div class="training-player-card">
+                    <div class="training-player-main">
+                        <strong>${htmlEscape(playerName(entry.playerId))}</strong>
+                        <small>Advanced slot ${index + 1}</small>
+                    </div>
+                    <select class="adv-role-select" data-adv-role="${entry.playerId}" aria-label="Role for advanced slot ${index + 1}">
+                        ${ROLE_OPTIONS.map(role => `<option value="${role}"${role === entry.role ? ' selected' : ''}>${role}</option>`).join('')}
+                    </select>
+                    <button type="button" class="mini-btn" data-remove-adv="${entry.playerId}">Remove</button>
+                </div>`;
+        }
+
+        function render() {
+            const freeSlots = ADVANCED_SLOTS - state.advanced.length;
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club training-setup-card">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Training ground</div>
+                                <h2>Training Setup</h2>
+                                <p class="fm-subtle">Pick the skill each positional group trains, and who trains in an advanced slot. The advanced slot overrides the group skill for that player.</p>
+                            </div>
+                            ${buildTrainingActionsHtml('trainingSetup')}
+                        </div>
+                        <div class="fm-medical-stat-grid team-summary-grid">
+                            <div><strong>${players.length}</strong><span>Players</span></div>
+                            <div><strong>${state.advanced.length}/${ADVANCED_SLOTS}</strong><span>Advanced slots</span></div>
+                            <div><strong>${freeSlots}</strong><span>Free slots</span></div>
+                            <div><strong>${TRAINING_GROUPS.length}</strong><span>Training groups</span></div>
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Group training</h3>
+                                <p class="training-note">The skill every player in that group works on unless he holds an advanced slot.</p>
+                            </div>
+                            <span class="fm-panel-action">4 groups</span>
+                        </div>
+                        <div class="training-grid">
+                            ${TRAINING_GROUPS.map(group => `
+                                <div class="training-block">
+                                    <div class="training-group-row">
+                                        <span class="group-tag">${group}</span>
+                                        <select class="group-skill-select" data-group="${group}" aria-label="Skill trained by ${group}">
+                                            ${SKILLS_BY_GROUP[group].map(skill => `<option value="${skill}"${skill === state.groupSkills[group] ? ' selected' : ''}>${skillLabel(skill)}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>`).join('')}
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Advanced slots</h3>
+                                <p class="training-note">Up to ${ADVANCED_SLOTS} players train on their own advanced assignment instead of the group skill.</p>
+                            </div>
+                            <span class="fm-panel-action">${state.advanced.length} of ${ADVANCED_SLOTS}</span>
+                        </div>
+                        <div class="quick-add-wrap">
+                            <div class="training-group-row">
+                                <span class="group-tag">Add</span>
+                                <select id="quick-player-select" aria-label="Player to add to advanced training">
+                                    <option value="">Select a player…</option>
+                                    ${state.general.map(id => `<option value="${id}">${htmlEscape(playerName(id))}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="training-actions">
+                                <select id="quick-role-select" class="adv-role-select" style="max-width:110px" aria-label="Role for the new advanced slot">
+                                    ${ROLE_OPTIONS.map(role => `<option value="${role}"${role === 'MID' ? ' selected' : ''}>${role}</option>`).join('')}
+                                </select>
+                                <button type="button" class="fm-action-btn secondary" id="quick-add-advanced"${state.busy ? ' disabled' : ''}>Add to advanced</button>
+                            </div>
+                        </div>
+                        <div class="training-pools">
+                            <div class="training-dropzone">
+                                ${state.advanced.length === 0
+                                    ? '<div class="training-empty">No advanced slots filled.</div>'
+                                    : state.advanced.map(renderAdvancedRow).join('')}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Squad</h3>
+                                <p class="training-note">Everyone not in an advanced slot. They train on their group's skill.</p>
+                            </div>
+                            <span class="fm-panel-action">${state.general.length} players</span>
+                        </div>
+                        <div class="training-pools">
+                            <div class="training-dropzone">
+                                ${state.general.length === 0
+                                    ? '<div class="training-empty">The whole squad is in advanced training.</div>'
+                                    : state.general.map(id => `
+                                        <div class="training-player-card">
+                                            <div class="training-player-main">
+                                                <strong>${htmlEscape(playerName(id))}</strong>
+                                                <small>Group: ${htmlEscape(skillLabel(state.groupSkills[groupForPosition(playerById.get(id)?.position)]))}</small>
+                                            </div>
+                                            <span></span>
+                                            <button type="button" class="mini-btn" data-add-adv="${id}">Make advanced</button>
+                                        </div>`).join('')}
+                            </div>
+                        </div>
+                    </section>
+
+                    ${state.message ? `<section class="fm-panel"><div class="fm-empty" style="color:${state.messageIsError ? '#f44336' : '#6fcf97'}">${htmlEscape(state.message)}</div></section>` : ''}
+
+                    <section class="fm-panel">
+                        <div class="training-actions">
+                            <button type="button" class="fm-action-btn secondary" id="save-training-setup"${state.busy ? ' disabled' : ''}>Save Setup</button>
+                            <button type="button" class="fm-action-btn" id="run-training-week"${state.busy ? ' disabled' : ''}>Run Weekly Training</button>
+                        </div>
+                        <p class="training-note">Running the week saves the setup first, so what you see here is what gets trained. One run per week.</p>
+                    </section>
+                </div>`;
+
+            // Every render replaces the markup, so the listeners went with the old nodes. Binding
+            // them here rather than once at the end of load means a re-render cannot leave a screen
+            // that looks alive and does nothing - which is what a click that changes nothing looks
+            // like from the outside.
+            bindUi();
+        }
+
+        function bindUi() {
+            mainContent.querySelectorAll('.group-skill-select').forEach(sel => {
+                sel.addEventListener('change', () => {
+                    state.groupSkills[sel.getAttribute('data-group')] = sel.value;
+                });
+            });
+            mainContent.querySelectorAll('[data-adv-role]').forEach(sel => {
+                sel.addEventListener('change', () => {
+                    const row = state.advanced.find(a => a.playerId === Number(sel.getAttribute('data-adv-role')));
+                    if (row) row.role = sel.value;
+                });
+            });
+            mainContent.querySelectorAll('[data-remove-adv]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.message = '';
+                    moveToGeneral(Number(btn.getAttribute('data-remove-adv')));
+                    render();
+                });
+            });
+            mainContent.querySelectorAll('[data-add-adv]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.message = '';
+                    const playerId = Number(btn.getAttribute('data-add-adv'));
+                    // A player's own positional group is the sensible default advanced role.
+                    moveToAdvanced(playerId, groupForPosition(playerById.get(playerId)?.position));
+                    render();
+                });
+            });
+
+            const quickAddBtn = mainContent.querySelector('#quick-add-advanced');
+            if (quickAddBtn) {
+                quickAddBtn.addEventListener('click', () => {
+                    const playerId = Number(mainContent.querySelector('#quick-player-select')?.value || 0);
+                    const role = (mainContent.querySelector('#quick-role-select')?.value || 'MID').toUpperCase();
+                    if (!playerId) return;
+                    state.message = '';
+                    moveToAdvanced(playerId, ROLE_OPTIONS.includes(role) ? role : 'MID');
+                    render();
+                });
+            }
+
+            const saveBtn = mainContent.querySelector('#save-training-setup');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    state.busy = true;
+                    state.message = '';
+                    render();
+                    let ok = false;
+                    try {
+                        ok = await saveSetup();
+                    } catch (err) {
+                        state.message = `Could not save the setup: ${err.message}`;
+                        state.messageIsError = true;
+                    }
+                    state.busy = false;
+                    if (ok) {
+                        state.message = 'Setup saved.';
+                        state.messageIsError = false;
+                    }
+                    render();
+                });
+            }
+
+            const runBtn = mainContent.querySelector('#run-training-week');
+            if (runBtn) {
+                runBtn.addEventListener('click', async () => {
+                    state.busy = true;
+                    state.message = 'Saving the setup and running the week…';
+                    state.messageIsError = false;
+                    render();
+                    try {
+                        await saveSetup();
+                        const res = await authFetch(`/training/weekly/team/${teamId}/run`, { method: 'POST' });
+                        if (!res.ok) throw new Error(`Training run failed (${res.status})`);
+                        const report = await res.json();
+                        state.busy = false;
+                        // The reports screen reads this and opens the week that was just trained.
+                        if (Number.isFinite(report.seasonNumber) && Number.isFinite(report.weekNumber)) {
+                            sessionStorage.setItem('training_report_focus', `${report.seasonNumber}|${report.weekNumber}`);
+                        }
+                        await loadTrainingReportsPage();
+                        return;
+                    } catch (err) {
+                        state.busy = false;
+                        // The backend refuses a second run in the same week, which is the guard that
+                        // stopped the button being an unlimited skill-point exploit. Say so rather
+                        // than reporting a failure.
+                        if (err.code === 'TRAINING_ALREADY_RUN') {
+                            state.message = 'This week has already been trained. Open Training Reports to see it.';
+                            state.messageIsError = false;
+                        } else {
+                            state.message = `Could not run the week: ${err.message}`;
+                            state.messageIsError = true;
+                        }
+                        render();
+                    }
+                });
+            }
+        }
+
+        render();
     }
 
     async function loadTrainingReportsPage() {
@@ -50,12 +410,6 @@ export function createTrainingView(deps) {
         let selectedReport = null;
         let selectedPlayerGraph = null;
 
-        const colorByIntDelta = (delta) => {
-            if (delta > 0) return "#4caf50";
-            if (delta < 0) return "#f44336";
-            return "#b7bec9";
-        };
-        const skillLabel = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
         const skillShortLabel = (skill) => {
             switch ((skill || "").toLowerCase()) {
                 case "goalkeeper": return "GK";
@@ -476,5 +830,5 @@ export function createTrainingView(deps) {
         await render();
     }
 
-    return { loadTrainingReports, loadTrainingReportsPage };
+    return { loadTrainingReports, loadTrainingReportsPage, loadTrainingSetup };
 }
