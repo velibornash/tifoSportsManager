@@ -174,6 +174,48 @@ Kept so the next session does not redo them.
 | **Training was in neither visible navigation** — `buildClubActionsHtml` never had it, and the sidebar that did was off-screen | both entry points verified; no horizontal overflow at 390px |
 | **`loadHomeTeamStats` null-dereferenced** — it wrote into the dashboard after awaiting the league table, so a navigation mid-flight made every write fail. Nodes are resolved before the fetch now | the reported console error |
 
+### ✅ The startup failure, and the two boot-ordering bugs under it
+
+`NonUniqueResultException: Query did not return a unique result: 3 results were returned` on
+`GET /countries/leagues/1/table` and `GET /teams/1/schedule`. Three defects, each hiding the next.
+
+**1. `season_competition` had no unique constraint**, and `findByCompetitionAndSeasonYear` returns an
+`Optional` — so two rows for one league and season did not degrade, they threw, and the league table
+and the club schedule both went down. The duplicates were not ancient: rewriting 2025 → 1 means
+anything that creates a season row *between* those two moments asks for season 1, finds nothing, and
+creates a row beside the one it should have reused. One league had three, each with its own ten table
+entries. Collapse, then the constraint.
+
+**2. The constraint check I first wrote made the app unbootable.** It caught the "already exists"
+error — which does not work: a failed statement inside a transaction marks it rollback-only whether or
+not you catch it, so the catch swallowed the error and the commit threw `UnexpectedRollbackException`.
+It is the same trap the world catalogue fell into. It now looks in `INFORMATION_SCHEMA` first and only
+then alters, and nothing fails.
+
+**3. The backfills were in the wrong branch.** All three sat inside the *"baseline already exists"*
+early-return, so a fresh Reset + Initialize — which goes through the pyramid and the world build below
+— never ran them. Proof from a clean world: **4,650 club players with no rating at all**, while the
+2,400 national-squad players were fine, because the seeder that creates them writes a rating. They now
+sit next to the integrity repair, which is the one thing that runs whichever door the world came in by.
+
+| Verified on a real Reset + Initialize | |
+|---|---|
+| `World integrity OK` | `healthy=true` — 48 countries, 96 sides, 48 squads, 310 clubs, no legacy rows |
+| `PlayerRatingBackfill` | `recomputed 4750 of 7150` — and the spread it reports is `{0=4750}`, so the 4,750 are exactly the unrated ones |
+| Player ratings afterwards | 7,200 derived, range 9–97, **none at 0** |
+| `GET /countries/leagues/1/table` | 200 |
+| `GET /teams/1/schedule` | 200 |
+| `GET /countries/SRB/cup` | 200, and **54 ties in round 1** — the bracket the owner saw as "0 ties across 8 rounds" |
+| Duplicate (competition, season) rows | 0, with the constraint in place |
+
+`SidebarAccordionOpensTest` re-pointed at the mobile drawer. It is a live Playwright test that logs in
+as the owner, because a collapsed panel and a dead panel look identical from outside and only a real
+click can tell them apart. It walked the `.accordion-content` panels rather than the headers: most
+headers in the drawer are leaf nav buttons wearing the class, and their `nextElementSibling` is null.
+Its leftover `PROBE` printlns are gone.
+
+**738 tests green, 0 startup errors.**
+
 ### ✅ `Player.rating` — one meaning, derived from skills
 
 The board said *"a skill-12 bot reads as rating 96, conversion needs calibrating"*. Rescaling would

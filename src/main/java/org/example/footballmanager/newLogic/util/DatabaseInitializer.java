@@ -188,6 +188,12 @@ public class DatabaseInitializer {
     public void sanitizeLegacySchemaOnStartup() {
         resetService.sanitizeLegacyLineupOrderSchema();
         resetService.migrateTickStateMinuteColumn();
+        // Before anything can create a season row. Rewriting calendar years into season numbers
+        // happens further down, and a world that still holds 2025 will have a seeder ask for season 1,
+        // find nothing, and create a second row beside the one it should have reused. That is how one
+        // league came to have three season competitions - and findByCompetitionAndSeasonYear throws on
+        // that rather than degrading, so the league table and the club schedule both went down.
+        resetService.enforceOneSeasonCompetitionPerSeason();
     }
 
     /**
@@ -267,6 +273,31 @@ public class DatabaseInitializer {
             } catch (RuntimeException e) {
                 log.warn("Could not draw the cup: {}", e.getMessage());
             }
+            // The repair runs after every other seeding step, and it is the safety net. Each step
+            // above can be interrupted, and when one is the world is left plausible and wrong - a
+            // reset killed part-way through left nine legacy countries and no national teams, and
+            // nothing said so. This converges the world whether or not the earlier steps ran, so a
+            // process killed at any point repairs itself on the next start.
+            try {
+                Map<String, Object> integrity = worldIntegrity.repair();
+                if (Boolean.FALSE.equals(integrity.get("healthy"))) {
+                    log.warn("World is still not whole after repair: {}", integrity);
+                } else {
+                    log.info("World integrity OK: {}", integrity);
+                }
+            } catch (RuntimeException e) {
+                log.warn("World repair failed: {}", e.getMessage());
+            }
+
+            // The backfills live here, not in the "baseline already exists" branch above, and that
+            // placement was a bug of its own: a fresh Reset + Initialize goes through the pyramid and
+            // the world build below, so a backfill sitting above never ran for a new world. Proof: a
+            // freshly initialised world came up with 4,650 club players whose rating had never been
+            // computed, while the 2,400 national-squad players - who are written by the seeder that
+            // creates them - were fine.
+            //
+            // This is the same place the integrity repair runs, and for the same reason: it is after
+            // every seeding step, so it converges the world whichever door it came in by.
             // League fixtures seeded before MatchFixture.dayNumber existed have a week but no day, so
             // the day-3 and day-7 matchday jobs select nothing and the season plays no league football.
             try {
@@ -283,27 +314,10 @@ public class DatabaseInitializer {
             }
             // Rows written while a season was a calendar year. Every reader now asks the clock, so
             // until these are rewritten a played world looks like a world with no football in it.
-            // Before the day backfill: a fixture's day and its season are independent, but doing the
-            // season first means the day pass sees a consistent world either way.
             try {
                 seasonNumberBackfill.backfill();
             } catch (RuntimeException e) {
                 log.warn("Could not rewrite calendar years into season numbers: {}", e.getMessage());
-            }
-            // The repair runs after every other seeding step, and it is the safety net. Each step
-            // above can be interrupted, and when one is the world is left plausible and wrong - a
-            // reset killed part-way through left nine legacy countries and no national teams, and
-            // nothing said so. This converges the world whether or not the earlier steps ran, so a
-            // process killed at any point repairs itself on the next start.
-            try {
-                Map<String, Object> integrity = worldIntegrity.repair();
-                if (Boolean.FALSE.equals(integrity.get("healthy"))) {
-                    log.warn("World is still not whole after repair: {}", integrity);
-                } else {
-                    log.info("World integrity OK: {}", integrity);
-                }
-            } catch (RuntimeException e) {
-                log.warn("World repair failed: {}", e.getMessage());
             }
 
             widenCompetitionTypeConstraint();

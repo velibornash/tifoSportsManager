@@ -28,13 +28,22 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * why this test exists rather than a source check: a source check cannot see that a control opens
  * zero pixels.
  *
+ * <p>It used to click {@code #clubSidebar}, which was rendered at {@code left: -260px} and never
+ * reached the screen - all twelve Club entries were invisible, which is why nothing noticed that the
+ * navigation was gone. That sidebar was removed, and the same hazard now lives in the mobile drawer,
+ * which is the one accordion surface the app has. So this checks the drawer, at phone width.
+ *
+ * <p>It walks the {@code .accordion-content} panels rather than the headers: in the drawer most
+ * {@code .accordion-header} elements are leaf navigation buttons wearing the class, and
+ * {@code nextElementSibling} on one of those is null.
+ *
  * <p>Needs the application running, so it skips rather than fails when it is not.
  */
 class SidebarAccordionOpensTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void desktopAccordionsOpenOnASingleClick() throws Exception {
+    void drawerAccordionsOpenOnASingleClick() throws Exception {
         Playwright pw;
         Browser browser;
         try {
@@ -45,7 +54,8 @@ class SidebarAccordionOpensTest {
             assumeTrue(false, "no chromium: " + e.getMessage());
             return;
         }
-        BrowserContext ctx = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 900));
+        // Phone width: the drawer is the only accordion surface the app has now.
+        BrowserContext ctx = browser.newContext(new Browser.NewContextOptions().setViewportSize(390, 844));
         Page page = ctx.newPage();
         // The rest of the suite runs with no application up, so this has to skip rather than fail when
         // :8080 is closed. A test that reports ERR_CONNECTION_REFUSED as an error teaches people to
@@ -63,14 +73,12 @@ class SidebarAccordionOpensTest {
         page.waitForTimeout(5000);
         page.navigate("http://localhost:8080/dashboard.html");
         page.waitForTimeout(4000);
-        System.out.println("PROBE url=" + page.url());
-        System.out.println("PROBE headers=" + page.locator("#clubSidebar .accordion-header").count());
-
         Object raw = page.evaluate(JS);
         List<Map<String, Object>> out = (List<Map<String, Object>>) raw;
-        out.forEach(m -> System.out.println("PROBE " + m));
 
-        assertFalse(out.isEmpty(), "no accordion headers found in #clubSidebar");
+        assertFalse(out.isEmpty(),
+                "no accordion panel found in #mobileSidebar - if the drawer has no expandable panel "
+                        + "at all, this is testing nothing and should be deleted rather than passed");
         for (Map<String, Object> row : out) {
             assertTrue(Boolean.TRUE.equals(row.get("opened")),
                     "accordion '" + row.get("header") + "' did not open on a single click: " + row);
@@ -80,5 +88,29 @@ class SidebarAccordionOpensTest {
         pw.close();
     }
 
-    private static final String JS = "() => { const out = []; document.querySelectorAll('#clubSidebar .accordion-header').forEach(h => { const c = h.nextElementSibling; h.click(); const after = c.style.maxHeight || '(unset)'; out.push({ header: (h.textContent||'').trim().slice(0,30), after: after, opened: after !== '0px' && after !== '(unset)' }); }); return out; }";
+    /**
+     * One click per panel, and the panel's own header is what gets clicked.
+     *
+     * <p>Going through the content panels is deliberate. In the drawer most {@code .accordion-header}
+     * elements are leaf navigation buttons that expand nothing, and taking their
+     * {@code nextElementSibling} yields null - a test that threw on those would report a broken
+     * selector rather than a broken accordion.
+     */
+    private static final String JS = """
+            () => {
+              const out = [];
+              document.querySelectorAll('#mobileSidebar .accordion-content').forEach(c => {
+                const h = c.previousElementSibling;
+                if (!h) return;
+                h.click();
+                const after = c.style.maxHeight || '(unset)';
+                out.push({
+                  header: (h.textContent || '').trim().slice(0, 30),
+                  after: after,
+                  opened: after !== '0px' && after !== '(unset)'
+                });
+              });
+              return out;
+            }
+            """;
 }
