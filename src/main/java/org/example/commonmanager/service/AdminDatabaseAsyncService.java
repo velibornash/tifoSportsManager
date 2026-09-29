@@ -97,8 +97,18 @@ public class AdminDatabaseAsyncService {
                 // BB/AF re-init is NOT called — they stay cleared until user clicks Initialize
             }
             case "initialize" -> {
-                // Build football pyramid from scratch (data should be absent after reset)
-                databaseInitializer.initSerbianFootballStructure();
+                // The whole world, not just the pyramid.
+                //
+                // This called initSerbianFootballStructure() directly, which is only one of the ways
+                // the world is built. The catalogue, the 96 national sides, the legacy-row cleanup,
+                // the integrity repair, the selector appointments and the internationals all live in
+                // ensureBaselineDataOnStartup() - the boot listener. Calling the pyramid step on its
+                // own therefore built 310 clubs in a world with no countries, and nothing said so:
+                // the panel reported success and the country page came up empty.
+                //
+                // Going through the same entry point as boot means an initialized database and a
+                // booted one are the same world, whichever door you came in by.
+                databaseInitializer.ensureBaselineDataOnStartup();
                 databaseInitializer.seedOwnerAfterReset();
                 startupInitializer.run();
                 bbDataInitializer.initBasketballData();
