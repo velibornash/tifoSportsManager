@@ -144,7 +144,12 @@ class PresenceRegistryTest extends BaseTest {
     @Transactional
     @DisplayName("a blank or missing account is never counted")
     void rubbishInputIsIgnored() {
+        // Asserted as "the count did not move" rather than "the count is zero". The full suite runs
+        // integration tests through this same filter on the same H2 world, so by the time this method
+        // runs somebody else is legitimately online — and my first version asserted zero, failed with
+        // `expected: <0> but was: <1>`, and was testing the world rather than the blank input.
         presence.forget();
+        long before = presence.onlineCount();
 
         presence.markSeen(null);
         presence.markSeen("");
@@ -153,8 +158,8 @@ class PresenceRegistryTest extends BaseTest {
         assertEquals(0, presence.tracked(), "the registry tracked an account with no identity");
         assertFalse(presence.isOnline(null));
         assertFalse(presence.isOnline(""));
-        assertEquals(0, presence.onlineCount(),
-                "blank input produced an online row, so something is counting a non-account");
+        assertEquals(before, presence.onlineCount(),
+                "blank input moved the online count, so something is counting a non-account");
     }
 
     @Test
