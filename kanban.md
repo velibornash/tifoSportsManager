@@ -394,6 +394,21 @@ it for the one guard the backlog asked to exist.
 
 ---
 
+## 🐛 Bugs found while working, not yet fixed
+
+Kept out of the task tables on purpose — none of them is a feature, and each one was found by
+touching the app rather than by reading it.
+
+| Bug | What happens | Why it is not fixed yet |
+|---|---|---|
+| **`POST /admin/reset-db` deadlocks** | Reset while the background league simulation is still running fails with `ERROR: deadlock detected / Process waits for AccessExclusiveLock`. The job reports `status: failed`. The world survived intact — no data loss — but the reset does not happen. | Found during `61c2a51`. It is a reset-vs-simulation contention problem, and fixing it means changing the reset path, which that task did not touch. Worth looking at together with the simulate-all scheduling below, because both are "two writers, one database". |
+
+**Open question for that session:** the reset should either wait for a running simulation, or the
+simulation should be cancellable and waited on. Neither is obvious from the outside, and the two
+`AdvanceWeekAsyncService` / `RoundSimulationAsyncService` paths are the reason it happens at all.
+
+---
+
 ## 🔴 Standing rules
 
 **Never hand back a half-built world.** Every seeding path must end in a world that passes the
