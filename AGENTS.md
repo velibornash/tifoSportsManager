@@ -42,8 +42,11 @@ TIFO Sports Manager is a multi-sport club management simulation game. The backen
 # Build (skip tests)
 mvn clean package -DskipTests
 
-# Run locally (dev profile, requires PostgreSQL on localhost:5432)
-mvn spring-boot:run
+# Run locally from a SHELL (dev profile, requires PostgreSQL on localhost:5432)
+# Use ./run-app.sh, NOT `mvn spring-boot:run` - see the browser rule below.
+./run-app.sh
+
+# Running main() from the IDE is fine and opens the browser normally.
 
 # Run all tests (uses H2 in-memory via test profile)
 mvn test
@@ -84,6 +87,26 @@ mvn test -Dtest=TifoUITest
 | `test` | `@ActiveProfiles("test")` in test classes | H2 in-memory (`jdbc:h2:mem:testdb`) |
 
 The JWT secret and expiration for tests are hardcoded in `src/test/resources/application-test.properties`.
+
+## 🔴 Standing rule: never start the app from a shell without `--app.open-browser=false`
+
+`BrowserLauncher` opens `http://localhost:8080/login.html` on every startup. That is correct when the
+owner runs `main()` from the IDE, and wrong for any shell start — the page pops up over the terminal,
+every time.
+
+**The application cannot tell the two cases apart.** An IDE start and a shell start are the same JVM
+with the same properties, so from inside the app they are indistinguishable. The default therefore
+cannot be right for both; it stays `true` for the IDE, and **every shell start must opt out.**
+
+- Shell start → **`./run-app.sh`**, never `mvn spring-boot:run` directly
+- `./run-app.sh --with-browser` if a browser is genuinely wanted for one run
+- Playwright is unaffected — it launches its own dedicated Chrome and never used this launcher
+
+Do not "fix" this by flipping the default off. It was briefly opt-in before, and the owner's IDE
+start silently did nothing with no explanation, which is the confusing case this launcher exists to
+avoid.
+
+---
 
 ## Backend Architecture
 
