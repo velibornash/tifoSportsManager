@@ -1093,3 +1093,97 @@ Verified in the browser rather than inferred: back button at `top: 10` and reach
 1553, and it navigates. Brazil shows its notice, Croatia shows its 31 leagues, the Country button returns
 to Serbia, and the mobile drawer lists World. Desktop measured `position: static`, `padding-top: 0` and no
 list cap, so the change does not leak off the World page.
+
+## `PENDING` — a knockout tie can be settled from the spot
+
+### The board was half right, and the half that was right was the important half
+
+"Penalty shootouts | not started | Penalties are awarded but never taken." The first clause is stale:
+`PenaltyEngine` is wired into the orchestrator, selects a taker, resolves it against a keeper and records
+it. A penalty in open play is taken today.
+
+The second clause is exactly right and the reason is a **shootout**, which nothing took. A cup tie that
+finished level had no winner, and `CupFixtureSeeder.winnerOf` said so:
+
+```
+Cup tie 41 finished level at 1-1 with no shootout recorded; no winner taken.
+```
+
+and returned null. The club dropped out. The next round was drawn from a short list. **Every level tie
+cost a knockout round a team**, so a competition could not get past its first rounds — and the warning
+was a `log.warn` in a file nobody was reading, which is the quietest way for a competition to be broken.
+
+### What it does now
+
+`PenaltyShootout` takes the two squads and the scoreline. Five kicks each, then sudden death, and it
+**stops the moment the tie is decided** — a side two up with kicks left cannot be caught, and a shootout
+that keeps kicking and then awards the result to whoever happened to be ahead at the end of five is a
+different and much worse rule. The side that loses the toss kicks first, and therefore kicks last, which
+is the whole of what the coin is worth.
+
+It is refused for a match that is not level. A shootout settles a tie; running one for a match somebody
+won in normal time would replace a real result with a coin toss, and that is the failure mode a shootout
+makes possible.
+
+**The result is stored apart from the scoreline**, in `Match.homePenaltyGoals` / `awayPenaltyGoals`. A tie
+that finished 1-1 and was won 4-3 from the spot is a **1-1 match**. Folding the kicks into the goal
+columns would report it as 5-4 to the league table, to the replay and to the scoreline on the page, and
+the goals would stop meaning goals. `null` there means "no shootout", which is a different fact from
+"0-0 on penalties", and both are different from a league draw.
+
+`winnerOf` now reads those columns, and warns only when a tie is genuinely undecidable. It does not coin
+toss: a cup that invents a winner is worse than a cup that is one team short and says why.
+
+Only `CUP` ties are settled. That is the entirety of this game's model of knockouts — `Competition` has
+no format column, so a cup tie is a knockout and a league match is not. A group stage would need a real
+flag, and pretending otherwise would settle league draws from the spot.
+
+### The bias the shootout found, which is not about the shootout
+
+The test's first question was the obvious one — is the toss actually a coin flip? — and it came back **the
+same side every time**. That is not a test artefact, and the measurement is worth keeping:
+
+| first draw from a freshly seeded `java.util.Random`, seeds 1..2000 | one way | the other |
+|---|---|---|
+| `nextBoolean()` | **2000** | 0 |
+| `nextInt(2)` | **2000** | 0 |
+| `nextDouble() < 0.5` | **2000** | 0 |
+| `nextInt(65536) & 1` | 1001 | 999 |
+| `nextLong() & 1` | 1018 | 982 |
+| `nextInt() & 1` | 1000 | 1000 |
+
+A **narrow** first draw takes the top bits of the freshly scrambled seed, and for a small seed those are
+always the same. So any code that seeds a `Random` and immediately asks a yes/no question gets a
+constant — and the shootout's toss was the engine's *first* draw after seeding, which is the worst possible
+place for it. Had one side kicked first in every tie, the whole cup would have been decided by which
+letter a fixture id started with.
+
+The fix is a **wide draw and the low bit**: `(random.nextInt() & 1) == 0`.
+
+**What this means for the rest of the engine is not established and is the next thing to look at.** Six
+call sites seed it — `SimMatchService` and the four diagnostic/viewer launchers. Whether the engine's own
+first decision after seeding is a narrow draw I have not checked, and it is worth checking, because a
+constant coin flip inside a match engine is a considerably larger problem than a constant coin flip in a
+cup. It is on the board.
+
+### Two of my own mistakes, both caught by the tests
+
+**The chance formula had a floor of 0.5**, which sounds like a safety margin and is a bug: it clamped
+every weak pairing to exactly 0.5, so a poor taker and a poor taker became indistinguishable and an
+average shootout converted **exactly 50%** of its kicks. Rewritten as a shift away from 0.76 — the figure
+anyone watching a shootout would give you — with a floor of 0.55 and a ceiling of 0.95. The floor above
+0.5 keeps the taker relevant; the ceiling below 1.0 keeps the keeper relevant.
+
+**The kick-count assertion had it backwards.** I asserted "at least ten kicks", which is the same mistake
+as a shootout that keeps kicking after the result: it assumes the full five rounds are always taken. An
+early finish at eight is correct, and the test now says *at most* ten unless it went to sudden death, and
+also checks that the two sides alternate.
+
+### Tests
+
+**11 new, all green.** They are about the rules rather than about "it produced a winner", because a
+shootout with the wrong rules still produces a winner: it is refused for a level-only tie, it always
+produces a winner and never a draw across 400 seeds, it reaches sudden death about a quarter of the time
+and decides in ninety minutes the rest, it stops early, both toss orders occur, the keeper never takes,
+the strongest men go first, the chance moves with both men and never reaches certainty, an average
+shootout converts 62-85%, and a side with no squad gets no result rather than a coin toss.

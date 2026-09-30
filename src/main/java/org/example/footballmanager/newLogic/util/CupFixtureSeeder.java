@@ -272,7 +272,19 @@ public class CupFixtureSeeder {
         return winners;
     }
 
-    /** The winning side of a played tie, by goals. Null when it is not knowable. */
+    /**
+     * The winning side of a played tie. Null only when it genuinely is not knowable.
+     *
+     * <p>This used to return null for <i>every</i> level tie, on the reasoning that "a knockout tie
+     * cannot be level, so a level scoreline means the shootout was not recorded". True as far as it went,
+     * and it meant every level tie dropped a club from the competition and the next round was drawn
+     * short. Now a level cup tie is settled from the spot when the match is persisted, and the result
+     * lives in the match's own penalty columns.
+     *
+     * <p>The scoreline is not touched by the shootout, and that is deliberate: a tie that finished 1-1
+     * and was won 4-3 on penalties is a 1-1 match, and folding the kicks into the goals would report it
+     * as 5-4 to the table, the replay and the scoreline on the page.
+     */
     private Team winnerOf(MatchFixture tie) {
         if (tie.getPlayedMatch() == null) {
             return null;
@@ -280,12 +292,17 @@ public class CupFixtureSeeder {
         int home = tie.getPlayedMatch().getHomeGoals();
         int away = tie.getPlayedMatch().getAwayGoals();
         if (home == away) {
-            // A knockout tie cannot be level. Cup ties go to penalties, so a level scoreline means the
-            // penalty shootout was not recorded; returning null keeps the club out rather than
-            // inventing a winner.
-            log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
-                    tie.getId(), home, away);
-            return null;
+            Integer homePens = tie.getPlayedMatch().getHomePenaltyGoals();
+            Integer awayPens = tie.getPlayedMatch().getAwayPenaltyGoals();
+            if (homePens == null || awayPens == null || homePens.equals(awayPens)) {
+                // Genuinely undecidable: the tie was never settled. Kept as a warning rather than a
+                // coin toss, because a cup that invents a winner is worse than a cup that is one team
+                // short and says so.
+                log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
+                        tie.getId(), home, away);
+                return null;
+            }
+            return homePens > awayPens ? tie.getHomeTeam() : tie.getAwayTeam();
         }
         return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
     }

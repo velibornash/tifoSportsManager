@@ -23,6 +23,7 @@ import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.service.NationalRatingService;
+import org.example.footballmanager.newLogic.sim.engine.PenaltyShootout;
 import org.example.footballmanager.newLogic.service.SquadEnvironment;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
@@ -193,6 +194,26 @@ public class SimMatchService {
             match.setStarted(true);
             match.setFinished(true);
                         match.setReplayId(replayId);
+
+            // A knockout tie that finished level is settled from the spot. It used to be left level,
+            // and the cup's winner lookup returned null for it, logged "no shootout recorded", and
+            // dropped the club — so every level tie cost a knockout round a team and the competition
+            // could not get past its first rounds.
+            //
+            // Only for a CUP. That is the whole of this game's knowledge of knockouts: Competition has
+            // no format column, so a cup tie is taken to be a knockout and a league match is not. A
+            // group stage would need a real flag, and pretending otherwise here would settle league
+            // draws from the spot.
+            if (isKnockoutTie(match) && match.getHomeGoals() == match.getAwayGoals()) {
+                try {
+                    settleFromTheSpot(match);
+                } catch (RuntimeException e) {
+                    // The tie stays level and the cup drops a club, which is the old behaviour and is
+                    // better than losing the match record because a shootout threw.
+                    log.warn("Could not settle the level cup tie {} from the spot: {}",
+                            match.getId(), e.getMessage());
+                }
+            }
 
             // A result the manager has not asked to see yet stays hidden, and a manager's own match is
             // the only one that can be: nobody is waiting to discover how a bot's game went.
@@ -412,6 +433,41 @@ public class SimMatchService {
      * hidden row for the manager whether it is read from the dashboard, the club schedule or the league
      * table - so the decision belongs with the match and {@code MatchDTO} decides only who may see it.
      */
+    /** Is this a cup tie, which in this game means a knockout tie? */
+    private static boolean isKnockoutTie(Match match) {
+        return match.getCompetition() != null
+                && match.getCompetition().getType() == CompetitionType.CUP;
+    }
+
+    /**
+     * Runs the shootout and writes it onto the match.
+     *
+     * <p>Only the match, not the replay. The shootout happens after the final whistle, so the ticks are
+     * already recorded and there is nothing to animate; the kicks go into the match's own columns, which
+     * is where the cup's winner lookup and the match page read them from.
+     */
+    private void settleFromTheSpot(Match match) {
+        // The squad that played it, built the same way the match was built — through the real lineup
+        // template, or the real squad behind it. A shootout taken by a synthetic stand-in squad would
+        // be decided by men who were never on the pitch, which is the sort of thing that looks right in
+        // the data and is nonsense in the fiction.
+        List<Player> home = loadRealSquad(match.getHomeTeam(), "HOME");
+        List<Player> away = loadRealSquad(match.getAwayTeam(), "AWAY");
+        if (home == null || away == null) {
+            return;
+        }
+
+        PenaltyShootout.Result shootout =
+                PenaltyShootout.run(home, away, match.getHomeGoals(), match.getAwayGoals());
+        if (shootout.winningTeam() == null) {
+            return;
+        }
+        match.setHomePenaltyGoals(shootout.homeScored());
+        match.setAwayPenaltyGoals(shootout.awayScored());
+        log.info("Cup tie {} finished level and was settled {}-{} on penalties ({}).",
+                match.getId(), shootout.homeScored(), shootout.awayScored(), shootout.winningTeam());
+    }
+
     private static boolean isHumanClub(org.example.footballmanager.newLogic.model.Team team) {
         return team != null && team.isHumanControlled();
     }

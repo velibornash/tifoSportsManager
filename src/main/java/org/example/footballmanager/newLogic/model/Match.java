@@ -34,6 +34,21 @@ public class Match {
 
     private int homeGoals;
     private int awayGoals;
+
+    /**
+     * A knockout tie that finished level and was settled from the spot: kicks taken by each side.
+     *
+     * <p>Null means no shootout, and the two cases are different facts. A league match drawn 2-2 has no
+     * shootout and never will. A cup tie drawn 2-2 has one, and without recording it the tie has no
+     * winner — which is how a knockout round stopped being drawable: the winner lookup returned null,
+     * the club dropped out of the competition, and the next round came up short.
+     *
+     * <p>Separate columns rather than added to the scoreline. A cup tie that finished 1-1 and was won 4-3
+     * on penalties is a 1-1 match, and writing the shootout into the goal columns would report it as a
+     * 5-4 win to anyone reading the table, the replay or the scoreline on the page.
+     */
+    private Integer homePenaltyGoals;
+    private Integer awayPenaltyGoals;
     private double possessionHome;
     private double possessionAway;
     private LocalDateTime matchDate;

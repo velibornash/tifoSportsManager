@@ -77,7 +77,8 @@ years and every fixture reader will find nothing.
 | **Simulate-all is week-based** | not started | Should be day- and hour-accurate, and must include cup ties. |
 | **`advanceWeek` never changes the day** | **this is why the promotion ladder has never run — see below.** It bumps the week counter, adds one day of game time, and dispatches jobs for the day it was *already* on |
 | **Cup ties in the schedule view** | not started | The schedule shows the week template, not the actual day's ties. All the data exists. |
-| Penalty shootouts | not started | Penalties are awarded but never taken. Also blocks cup progression: a level knockout tie has no winner, so round 2 cannot be drawn. |
+| **Penalty shootouts** | **done** — see below. The board's note was half wrong: penalties *are* taken, by `PenaltyEngine`. What was missing was the **shootout** after a drawn tie | — |
+| **A freshly seeded `Random` answers the first narrow draw with a constant** | **found by the shootout, likely wider than the shootout** — measured over seeds 1-2000 below | — |
 
 ### Match engine realism
 
@@ -166,6 +167,49 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — a knockout tie can be settled from the spot
+
+The board said "penalties are awarded but never taken, which also blocks cup progression: a level
+knockout tie has no winner, so round 2 cannot be drawn". **The first half was stale** — `PenaltyEngine`
+is fully wired and a penalty in open play is taken. The second half was exactly right, and the reason is
+that nobody took a **shootout**: `CupFixtureSeeder.winnerOf` returned null for a level tie, logged *"no
+shootout recorded"*, and dropped the club. So every level tie cost a knockout round a team.
+
+Now:
+
+- **`PenaltyShootout`** — five kicks each, then sudden death, stopping the moment the tie is decided
+  rather than after ninety minutes of kicking. The side that loses the toss kicks first and therefore
+  kicks last. A shootout is refused for a match that is not level, because running one would overwrite a
+  real result with a coin toss.
+- **The result goes in its own two columns** on the match, and the scoreline is untouched. A tie that
+  finished 1-1 and was won 4-3 on penalties is a **1-1 match**; folding the kicks into the goals would
+  report it as 5-4 to the table, the replay and the page.
+- **`winnerOf`** reads those columns, and warns only when a tie is genuinely undecidable. It invents no
+  winner.
+- Only for a `CUP`. That is the whole of this game's knowledge of knockouts — `Competition` has no
+  format column — so a league draw is never settled from the spot.
+
+### The bias the shootout found, which is not about the shootout
+
+The toss is a coin flip, so it is the first thing the test checked — and it came back **the same side,
+every time**. Not a test artefact:
+
+| first draw from a freshly seeded `java.util.Random`, seeds 1..2000 | one way | the other |
+|---|---|---|
+| `nextBoolean()` | **2000** | 0 |
+| `nextInt(2)` | **2000** | 0 |
+| `nextDouble() < 0.5` | **2000** | 0 |
+| `nextInt(65536) & 1` | 1001 | 999 |
+| `nextLong() & 1` | 1018 | 982 |
+| `nextInt() & 1` | 1000 | 1000 |
+
+A **narrow** first draw reads the top bits of the freshly scrambled seed, and for a small seed those are
+always identical. So any code that seeds a fresh `Random` and then immediately asks a yes/no question
+gets a constant. Six call sites seed the engine (`SimMatchService` and the diagnostic and viewer
+launchers); whether the engine's own first decision is one of these is **not checked** and is the next
+thing to look at, because a constant coin flip in a match engine is a much bigger problem than a constant
+coin flip in a cup.
 
 ### `9e3c5c3` — three World page bugs the owner reported
 
