@@ -166,7 +166,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — the rating column finally means something
+### `a0d34f8` — the rating column finally means something
 
 `RatingEngine` had existed since 2026-09-28 with **no caller at all** — not a stub, not a disabled
 path, nothing. Every country was written at 1500 by the catalogue seeder and nothing could ever move

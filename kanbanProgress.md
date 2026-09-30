@@ -616,7 +616,7 @@ had tier 2 stronger than tier 1. A tier system where that is possible is worse t
 - Postgres, legacy and exact columns agreeing, 12.12 → 8.12 down the five divisions
 - Omladinac 9.96 and Sremac 6.38, unchanged; the national sides and cup entrants untouched
 
-## `PENDING` — the rating column finally means something
+## `a0d34f8` — the rating column finally means something
 
 ### A well-written piece of arithmetic that nothing called
 
