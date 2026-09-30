@@ -168,7 +168,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — a knockout tie can be settled from the spot
+### `2a9cf8f` — a knockout tie can be settled from the spot
 
 The board said "penalties are awarded but never taken, which also blocks cup progression: a level
 knockout tie has no winner, so round 2 cannot be drawn". **The first half was stale** — `PenaltyEngine`

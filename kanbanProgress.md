@@ -1094,7 +1094,7 @@ Verified in the browser rather than inferred: back button at `top: 10` and reach
 to Serbia, and the mobile drawer lists World. Desktop measured `position: static`, `padding-top: 0` and no
 list cap, so the change does not leak off the World page.
 
-## `PENDING` — a knockout tie can be settled from the spot
+## `2a9cf8f` — a knockout tie can be settled from the spot
 
 ### The board was half right, and the half that was right was the important half
 
