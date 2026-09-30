@@ -615,3 +615,94 @@ had tier 2 stronger than tier 1. A tier system where that is possible is worse t
   3=10.13, 4=9.14, 5=8.12}`
 - Postgres, legacy and exact columns agreeing, 12.12 → 8.12 down the five divisions
 - Omladinac 9.96 and Sremac 6.38, unchanged; the national sides and cup entrants untouched
+
+## `PENDING` — the rating column finally means something
+
+### A well-written piece of arithmetic that nothing called
+
+`RatingEngine` has been in the codebase since 2026-09-28: standard Elo, a 400-point scale, K driven by
+`MatchValue` for clubs and by `NationalStage` for countries, a qualification bonus, a tier offset for
+club start ratings. Every comment in it explains a decision, and the decisions are all sound. It had
+**zero callers**. Not a stub — nobody referenced it, so every country in the world was written at
+`STARTING_RATING` by the catalogue seeder and stayed there forever, and the World page's rating column
+was real data that could only ever read 1500.
+
+Measuring first, as the standing rules ask: 48 countries, **1 distinct reputation value**.
+
+### Replay, not increment
+
+The obvious implementation is `rating += delta` in the matchday job. It is the wrong one here:
+
+- **It cannot fix a world that has already played.** Postgres holds 24 played internationals, all scored
+  with every country level. An incremental job leaves the column exactly as flat as it is now, and the
+  only way to see a change would be to reset the world — which is the complaint, not a solution.
+- **It needs an "already rated" flag**, and a flag is a place for a re-run, a restored backup or a
+  replayed fixture to rate a match twice. Nothing catches the second application.
+- **Drift has no floor.** Each write is a rounding, and a rounding is permanent, so over a season the
+  column stops being a function of the results.
+
+A replay from 1500 has none of those failure modes. It is a pure function of the match table, so it is
+idempotent by construction, it repairs a bad write, and it answers identically on every machine. The
+table is 24 rows today and a few thousand at worst, so the cost of re-reading it is nothing.
+
+Order matters and is therefore pinned in the query: `ORDER BY matchDate, id`. Each result is scored
+against what the two countries were rated *at the time*, so the same results fed in a different order
+give different numbers, and the two matches of one matchday share a date and would otherwise come back
+in whatever order the database felt like.
+
+Senior and under-21 are kept in separate columns (`Country.seniorNationalTeam` /
+`u21NationalTeam`, never a name match — matching on "Serbia U-21" is how a youth side ends up rated as a
+senior one). A twenty-year-old's result is not evidence about the senior national team.
+
+The K is `nationalK(INTERNATIONAL, OTHER)`. There is no World Cup or qualifying competition in the world
+yet — one competition called "Internationals", no stage — so the stage is honestly `OTHER` rather than
+the code claiming a knockout that has not happened. When those competitions land, only the stage changes.
+
+### The bug, and it is the same one for the third time
+
+First version joined the boot transaction, logged `replayed 24 international(s) over 48 side(s). Senior
+range 1506.0–1494.0` — and the database still read 1500 for all 48 countries. The boot transaction is
+long and does a great deal afterwards; a rating written inside somebody else's transaction is a rating
+that may never have happened. `LeagueFixtureDayBackfill` carries a long comment about exactly this, and
+`BotLeagueStandardBackfill` in the previous commit got it right by opening its own transaction. This one
+did not, and the log said everything was fine.
+
+`recomputeDurably()` now owns its transaction, and the boot calls that. The log and the table can no
+longer disagree. There are deliberately two entry points: `recompute()` joins the caller's transaction
+for a caller that commits anyway (the matchday job, and the tests), and `recomputeDurably()` is the
+boot path. Same computation, and it is free to call both because the replay is a pure function.
+
+### A test that passed while testing nothing, twice over
+
+`theRatingColumnStopsBeingFlat` read the seeded world and asserted the column had moved. It failed,
+because **H2's seeded world draws its international fixtures but does not play them** — the table is
+empty there. The real bug report is about Postgres, which has 24 played internationals. Rewritten to
+build its own history, and the second version of that still failed: the fixture saved countries without
+a `seniorNationalTeam`, so the matches it built had null sides, the replay had nothing to rate, and the
+service was correct. Two failures, both in the test, and the second one is the same trap as the
+`REQUIRES_NEW` backfill test in the previous commit — with the twist that here the fix is the opposite:
+`recompute()` joins the caller's transaction, so a `@Transactional` test *can* build a history it will
+see.
+
+The seeded world still has its own assertion (`theWorldIsLevelUntilSomethingIsPlayed`) so the flat
+column cannot come back unnoticed without anyone noticing it is expected.
+
+### The range is small, and that is the honest answer
+
+1494 to 1506, because every country has played exactly one international and one result against a level
+opponent is worth about six points. It would have been easy to pick a bigger K to make the column look
+impressive on one fixture. That is the move that makes a rating system look like it works before it
+does, and the number will spread as the calendar fills.
+
+Bonus: Serbia had `reputation = 50` — a `TeamFactory` value on the 0-100 scale sitting in a 1500-scale
+column. The replay overwrote it with a real figure, 1500, because Serbia drew its one match.
+
+### Verified
+
+- **776 tests green** (766 before, plus 10 `NationalRatingServiceTest`)
+- live boot: `National Elo: replayed 24 international(s) over 48 side(s). Senior range 1506.0–1494.0`
+- Postgres: 13 countries at 1506 (won), 13 at 1494 (lost), 22 at 1500 (did not play) — and the
+  distribution is checked against the actual match results
+- `GET /countries/world` → 48 countries, 3 distinct reputation values
+- idempotence and the no-ratchet property both pinned: three consecutive replays leave the column
+  byte-identical

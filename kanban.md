@@ -60,7 +60,7 @@ years and every fixture reader will find nothing.
 | Task | State | Note |
 |---|---|---|
 | Verify the 48-country world in the running app | pending | 48 countries / 96 sides / 48 squads proven in tests and in the boot log, **not yet confirmed in the running app** |
-| **Elo ratings** | not started | Every country starts at 1500 and nothing moves it. `RatingEngine` computes without persisting. The World page rating column is real but flat until this lands. |
+| **Elo ratings** | **done** — see below. `RatingEngine` had zero callers; the column now replays from match history | — |
 | **Online-user presence** | not started | The World page shows registered accounts, not people online. There is no session registry or last-seen column. Do not label the number "online" until this exists. |
 | **Champions Cup / Masters Cup / Challenge Cup** | not started | International club competitions. Champions = winners, Masters = 2nd and 3rd, Challenge = 4th. Each needs a record, a draw and a per-tier league link. |
 | **NT Qualifiers + World Cup (senior)** | mechanism only | `InternationalFixtureSeeder` draws senior sides already. Only the competition records and formats are missing. |
@@ -165,6 +165,37 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — the rating column finally means something
+
+`RatingEngine` had existed since 2026-09-28 with **no caller at all** — not a stub, not a disabled
+path, nothing. Every country was written at 1500 by the catalogue seeder and nothing could ever move
+them, so the World page's rating column was real data that could only read 1500.
+
+| | Before | After |
+|---|---|---|
+| Distinct values across 48 countries | **1** | **3** (1506 / 1500 / 1494) |
+| `GET /countries/world` reputation column | flat | 1506 Australia, China, England… / 1494 United States, Uruguay… |
+
+**It replays the match history instead of incrementing on each result.** The obvious implementation is
+`rating += delta` in the matchday job, and it is the wrong one here for three reasons. It cannot fix a
+world that has already played — 24 internationals are on the database now, all scored with every country
+level, so an incremental job leaves the column flat and the owner has to reset to see anything. It needs
+an "already rated" flag, and a flag is somewhere for a re-run or a restored backup to rate a match twice.
+And drift has no floor, because every write is a rounding and a rounding is permanent. A replay from
+1500 has none of those failure modes: it is a pure function of the match table, so it is idempotent by
+construction, it repairs a bad write, and it gives the same answer on every machine.
+
+Senior and under-21 are rated separately, because a twenty-year-old's result is not evidence about the
+senior national team. Pooling them would let a youth tournament move a country's senior standing.
+
+**The range is deliberately narrow right now** — 1494 to 1506 — and that is honest rather than broken.
+Each country has played exactly one international, and one result against a level opponent is worth
+about six points. The column spreads as the calendar fills; it is not supposed to be dramatic after one
+fixture.
+
+Bonus: Serbia had `reputation = 50`, a `TeamFactory` value on the 0-100 scale sitting in a 1500-scale
+column. The replay overwrote it with a real figure. It is now 1500 because Serbia drew its one match.
 
 ### `26a000c` — the pyramid has a gradient
 

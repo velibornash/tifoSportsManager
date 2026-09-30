@@ -26,6 +26,19 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
 
     List<Match> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);
 
+    /**
+     * Every played international, in the order it was played.
+     *
+     * <p>Elo is a replay, so the order is the whole point — feeding the same results in a different
+     * order produces different ratings, because each match is scored against what the two countries
+     * were rated <i>at the time</i>. The id tiebreak matters for the two matches of one matchday,
+     * which share a date and would otherwise come out in whatever order the database returned them.
+     */
+    @Query("SELECT m FROM Match m WHERE m.played = true AND m.competition.type = :type "
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<Match> findPlayedByCompetitionTypeOrderByMatchDateAscIdAsc(
+            @Param("type") org.example.footballmanager.newLogic.model.CompetitionType type);
+
     @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam WHERE (m.homeTeam.id = :homeId OR m.awayTeam.id = :awayId) AND m.played = true ORDER BY m.matchDate DESC")
     List<Match> findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(@Param("homeId") Long homeId, @Param("awayId") Long awayId);
 

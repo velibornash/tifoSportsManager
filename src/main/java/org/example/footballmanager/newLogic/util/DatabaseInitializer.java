@@ -100,6 +100,7 @@ public class DatabaseInitializer {
     private final SeasonNumberBackfill seasonNumberBackfill;
     private final PlayerRatingBackfill playerRatingBackfill;
     private final BotLeagueStandardBackfill botLeagueStandardBackfill;
+    private final org.example.footballmanager.newLogic.service.NationalRatingService nationalRatingService;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
     private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
@@ -224,6 +225,21 @@ public class DatabaseInitializer {
     }
 
     /**
+     * Recomputes every country's rating from the internationals on the database.
+     *
+     * <p>A replay rather than an increment, so it is idempotent, repairs a bad write, and gives the
+     * owner a moved column on the world he already has instead of after a reset. Cheap enough to run on
+     * both boot paths: the table is 24 rows today.
+     */
+    private void applyNationalRatings() {
+        try {
+            nationalRatingService.recomputeDurably();
+        } catch (RuntimeException e) {
+            log.warn("Could not recompute national Elo ratings: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Puts every bot club's squad on its division's standard.
      *
      * <p>One method called from both boot paths, because the standards are a <i>convergence</i> step,
@@ -262,6 +278,10 @@ public class DatabaseInitializer {
             applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();
+            // Every country reads 1500 and always has. RatingEngine existed since 2026-09-28 with no
+            // caller, so the World page's rating column was real data that could only ever be 1500.
+            // Replayed from the match history, so the 24 internationals already on the database count.
+            applyNationalRatings();
             // The 300-odd bot clubs already in this world were seeded by the old generator, which
             // drew every skill uniformly and ignored the division — so tier 1 and tier 5 measured
             // within 0.05 of each other. The backfill used to sit only on the create-the-world path,

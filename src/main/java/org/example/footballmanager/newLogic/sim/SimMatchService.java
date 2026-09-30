@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
@@ -21,6 +22,7 @@ import org.example.footballmanager.newLogic.model.StaffMember;
 import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
+import org.example.footballmanager.newLogic.service.NationalRatingService;
 import org.example.footballmanager.newLogic.service.SquadEnvironment;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.recording.SimReplayView;
@@ -65,6 +67,7 @@ public class SimMatchService {
     private final AttendanceService attendanceService;
     private final ObjectMapper objectMapper;
     private final ZoneLoadRecorder zoneLoadRecorder;
+    private final NationalRatingService nationalRatingService;
 
     /** Simulate a full match between two DB teams using their real saved squads
      *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
@@ -231,6 +234,19 @@ public class SimMatchService {
             fixture.setPlayed(true);
             fixture.setPlayedMatch(match);
             matchFixtureRepository.save(fixture);
+
+            // An international changes two countries' ratings, and the World page reads them. Doing
+            // it here means the column is right the moment the matchday finishes rather than at the
+            // next restart. A replay, not an increment, so running it for every match of a matchday is
+            // harmless - and if it throws, the match is still saved and the next boot catches up.
+            if (match.getCompetition() != null
+                    && match.getCompetition().getType() == CompetitionType.INTERNATIONAL) {
+                try {
+                    nationalRatingService.recompute();
+                } catch (RuntimeException e) {
+                    log.warn("Could not recompute national Elo after match {}: {}", match.getId(), e.getMessage());
+                }
+            }
 
             updateLeagueTable(match, outcome != null ? outcome.homeGoals() : 0, outcome != null ? outcome.awayGoals() : 0);
 
