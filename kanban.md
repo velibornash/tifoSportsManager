@@ -166,7 +166,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — the manager does not see their own result until they ask for it
+### `61c2a51` — the manager does not see their own result until they ask for it
 
 The matchday job fires at 19:00 whether or not anyone is watching, so a manager's result exists the
 moment the job finishes. `SimMatchService` marked every result revealed, which made **Watch your

@@ -413,7 +413,7 @@ it hadn't, the injection had.
 The real backend — the app was down for most of that commit. Everything was checked against the
 database and against the real modules with a stubbed API.
 
-## `PENDING` — the manager does not see their own result until they ask for it
+## `61c2a51` — the manager does not see their own result until they ask for it
 
 **The owner's complaint was two bugs wearing one coat.** The results were showing, and the fixture
 dates were wrong. They were separate, and the second was hiding the first.
