@@ -790,12 +790,34 @@ Average skill **12** for tier 1 and for national teams, then **−1 per tier bel
 
 **U21 = 10.**
 
+### Simulated countries: clubs and ratings, players lazily
+
+The owner's decision (2026-09-30): **no players for simulated clubs to begin with.** Seed the clubs and
+their ratings and a standing table; generate players when the league is activated, or on the fly for the
+names in a match against a human side. Everything else is just a result.
+
+The point of the static table is to keep the cost off the database at match time, so a simulated
+country is seeded as a **fixture of the world rather than a simulation of it**: divisions, clubs,
+ratings, and a standing position. No players, no fixtures, no matches. It holds that table until
+somebody activates its league, at which point the ordinary builder takes over.
+
 ### State at commit time
 
-`InternationalClubCupsTest` 9/9 green. The per-tier / per-country selection is implemented and
-compiles. **Not yet done:** seeding the 46 SIMULATED countries with full club pyramids and fixed
-tables; activating `InternationalClubCupDraw` in the matchday jobs; the progressive knockout with
-final and 3rd place; and deleting the three global cup rows an earlier wrong version created.
+Green: `InternationalClubCupsTest` 9/9, `CupDrawSeedingTest` 7/7, `SimulatedWorldSeederTest` 6/6.
+
+**Still to do, in this order:**
+
+1. Wire `SimulatedWorldSeeder` into `ensureBaselineDataOnStartup()` and **prove it against the live
+   database** — not just the tests. Standing rule: a job is not done until it has been seen to change data.
+2. **Lazy lineup generation.** Clubs-and-ratings-only leaves a bot club with no players, so a cup match
+   against a human side has no lineup to show. This is a real gap, not a nicety.
+3. Activate `InternationalClubCupDraw` in the matchday jobs; today only the national cup is drawn.
+4. Progressive knockout through to final and 3rd place.
+5. Delete the three global cup rows the first wrong version created.
+
+**Cost note:** the whole world's simulated half is ~14,300 clubs. Serbia at activation produced 7,750
+players for 310 clubs, so seeding players for all of it would be ~370k rows — which is exactly what
+skipping them avoids.
 
 
 ---

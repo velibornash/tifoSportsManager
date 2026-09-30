@@ -14,6 +14,9 @@ public interface SeasonCompetitionRepository extends JpaRepository<SeasonCompeti
     Optional<SeasonCompetition> findByCompetitionAndSeasonYear(Competition league, Integer seasonYear);
     List<SeasonCompetition> findBySeasonYear(Integer seasonYear);
 
+    /** The season competitions of one competition, newest season first. */
+    List<SeasonCompetition> findByCompetitionOrderBySeasonYearDesc(Competition competition);
+
     @Query("""
             select distinct sc.seasonYear
             from SeasonCompetition sc

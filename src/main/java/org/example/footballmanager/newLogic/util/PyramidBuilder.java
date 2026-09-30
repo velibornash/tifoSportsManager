@@ -11,6 +11,8 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PromotionRuleRepository;
 import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import java.util.Comparator;
 import org.example.footballmanager.newLogic.util.players.PlayerFactory;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.slf4j.Logger;
@@ -57,19 +59,25 @@ public class PyramidBuilder {
     private final PlayerFactory playerFactory;
     private final SquadNumberAssigner squadNumbers;
     private final SeasonService seasons;
+    private final org.example.footballmanager.newLogic.repository.CompetitionEntryRepository entries;
+    private final org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository seasonCompetitions;
 
     public PyramidBuilder(CompetitionRepository competitions,
                           org.example.footballmanager.newLogic.repository.TeamRepository teams,
                           PromotionRuleRepository promotionRules,
                           PlayerFactory playerFactory,
                           SquadNumberAssigner squadNumbers,
-                          SeasonService seasons) {
+                          SeasonService seasons,
+                          org.example.footballmanager.newLogic.repository.CompetitionEntryRepository entries,
+                          org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository seasonCompetitions) {
         this.competitions = competitions;
         this.teams = teams;
         this.promotionRules = promotionRules;
         this.playerFactory = playerFactory;
         this.squadNumbers = squadNumbers;
         this.seasons = seasons;
+        this.entries = entries;
+        this.seasonCompetitions = seasonCompetitions;
     }
 
     /** What one pyramid cost, so the panel can show the owner what the button did. */
@@ -177,6 +185,124 @@ public class PyramidBuilder {
     }
 
     /** Ten clubs with a squad each, then the table rows and the fixture list. */
+    /**
+     * The average skill of a tier, which is what a seeded country's strength is written down as.
+     *
+     * <p>Tier 1 and national teams are 12, then one lower per tier below (owner's scale, 2026-09-30).
+     * U21 is 10.
+     *
+     * <p>For a <b>simulated</b> country there are no players at all, so this number is never summed
+     * into a squad — it is carried on the club's reputation instead, which is the one quality column a
+     * club has when it has no players to average.
+     */
+    public static final int TIER_1_SKILL = 12;
+    public static final int U21_SKILL = 10;
+
+    public static int tierSkill(int tier) {
+        return TIER_1_SKILL - (tier - 1);
+    }
+
+    /**
+     * A country's pyramid built as a <b>fixture of the world, not a simulation of it</b>.
+     *
+     * <p>A simulated country is seeded with its divisions, its clubs and their ratings, and a standing
+     * table — and nothing else. It plays no matches and holds those positions until its league is
+     * activated, at which point {@link #build} takes over and it starts simulating for real.
+     *
+     * <p>The two things {@link #build} does that this deliberately skips, and why:
+     *
+     * <ul>
+     *   <li><b>No players.</b> 46 countries x 25 players a club is 370k rows for a team that has never
+     *       kicked a ball. Names are generated lazily, and only for a club that actually turns up
+     *       against a human one.</li>
+     *   <li><b>No fixtures.</b> A schedule for a league that will not be played is a thousand empty
+     *       rows per division and thirty-one divisions per country.</li>
+     * </ul>
+     *
+     * <p>The table is filled by <b>reputation descending</b>, so the standing is stable across boots and
+     * the draw downstream is the same every time — which is the reason the owner wanted the draw to be
+     * reproducible.
+     */
+    public Result buildStatic(Country country, int seasonYear) {
+        List<Competition> existing = competitions
+                .findByCountryIsoCodeAndType(country.getIsoCode(), CompetitionType.LEAGUE);
+        if (!existing.isEmpty()) {
+            log.info("{} already has {} league division(s); not building a second pyramid.",
+                    country.getName(), existing.size());
+            return new Result(existing.size(), 0, 0, true);
+        }
+
+        int divisions = 0;
+        int clubs = 0;
+
+        for (int tier = 1; tier <= DIVISIONS_PER_TIER.length; tier++) {
+            for (int division = 1; division <= DIVISIONS_PER_TIER[tier - 1]; division++) {
+                Competition league = createDivision(country, tier, division, seasonYear);
+                divisions++;
+                clubs += fillStaticDivision(league, country, seasonYear, tier);
+            }
+        }
+
+        log.info("Static pyramid for {}: {} division(s), {} club(s), no players, no fixtures.",
+                country.getName(), divisions, clubs);
+        return new Result(divisions, clubs, 0, false);
+    }
+
+    /** Ten clubs with ratings and a standing table. No squads, no schedule. */
+    private int fillStaticDivision(Competition league, Country country, int seasonYear, int tier) {
+        List<Team> made = new ArrayList<>();
+        for (int index = 0; index < CLUBS_PER_DIVISION; index++) {
+            String name = clubName(country, league, index);
+            Optional<Team> existingClub = teams.findAllByNameIgnoreCase(name).stream().findFirst();
+            Team team = existingClub.orElse(null);
+            if (team == null) {
+                team = new Team();
+                team.setName(name);
+                team.setCountry(country);
+                team.setCompetition(league);
+                team.setHumanControlled(false);
+                team.setReputation(reputationFor(tier));
+                team.setBudget(2_000_000.0 + (6 - tier) * 1_500_000.0);
+                team = teams.save(team);
+            }
+            made.add(team);
+        }
+
+        seasons.ensureEntriesForSeasonCompetition(league, seasonYear);
+
+        // The standing table, strongest first, with the position written onto each row. This is what the
+        // international cup qualification reads, so it has to exist even though nothing was played.
+        made.sort(Comparator.comparingDouble((Team t) -> t.getReputation() == null ? 0 : t.getReputation())
+                .reversed()
+                .thenComparing(Team::getName));
+        for (int position = 1; position <= made.size(); position++) {
+            CompetitionEntry entry = entries.findBySeasonCompetitionAndTeam(
+                            seasonCompetitions.findByCompetitionAndSeasonYear(league, seasonYear)
+                                    .orElseThrow(),
+                            made.get(position - 1))
+                    .orElseThrow();
+            entry.setPosition(position);
+            entry.setWins(0);
+            entry.setDraws(0);
+            entry.setLosses(0);
+            entry.setPoints(0);
+            entries.save(entry);
+        }
+        return made.size();
+    }
+
+    /**
+     * A club's reputation from its tier's skill, on the economy's 0-100 scale.
+     *
+     * <p>The tiers have to stay ordered and stay apart, because with no players reputation is the whole
+     * of a club's quality and a tier-5 club that out-rated a tier-1 one would be an upset in the draw
+     * rather than in a match.
+     */
+    private double reputationFor(int tier) {
+        int skill = tierSkill(tier);
+        return 30.0 + skill * 3.0;
+    }
+
     private int fillDivision(Competition league, Country country, int seasonYear) {
         List<Team> made = new ArrayList<>();
         for (int index = 0; index < CLUBS_PER_DIVISION; index++) {

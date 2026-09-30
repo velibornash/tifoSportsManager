@@ -33,6 +33,16 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
      */
     List<Team> findAllByNameIgnoreCase(String name);
 
+    /**
+     * Every club of one country, by its ISO prefix.
+     *
+     * <p>Club names are {@code <ISO> <short division> FCnn}, so the ISO code is a prefix and this is
+     * an indexed query. The alternative — {@code findAll()} then filtering in Java — is what made the
+     * first run of the simulated-world test take fifteen minutes: it drags the whole world's clubs into
+     * memory once per assertion, and there are fourteen thousand of them.
+     */
+    List<Team> findByNameStartingWithIgnoreCase(String prefix);
+
     long countByCompetition(Competition league);
 
     List<Team> findAllByTypeOrderByIdAsc(CompetitionTeamType type);
