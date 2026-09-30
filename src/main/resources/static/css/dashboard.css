@@ -2088,6 +2088,12 @@ button.training-week-item {
     overflow-x: auto;
 }
 
+/* An international cup that exists, as opposed to a disabled row saying it does not. */
+.fm-competition.is-real {
+    cursor: default;
+    border-color: rgba(111, 207, 151, 0.28);
+}
+
 /*
  * The world list is 48 rows, which on a phone made the page about 3,000px tall — and the only way off
  * the page is a button at the top of it. Measured after scrolling, that button sat at top: -1095: still

@@ -61,6 +61,7 @@ public class CountryController {
     private final CompetitionRepository competitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PresenceRegistry presenceRegistry;
+    private final org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups;
     private final PlayerRepository playerRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final MatchRepository matchRepository;
@@ -74,7 +75,8 @@ public class CountryController {
             org.example.commonmanager.repository.UserRepository humanUserRepository,
             CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
             NationalTeamElectionService electionService,
-            PresenceRegistry presenceRegistry) {
+            PresenceRegistry presenceRegistry,
+            org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -90,6 +92,7 @@ public class CountryController {
         this.nationalTeamService = nationalTeamService;
         this.electionService = electionService;
         this.presenceRegistry = presenceRegistry;
+        this.internationalClubCups = internationalClubCups;
     }
 
     /**
@@ -138,6 +141,15 @@ public class CountryController {
         out.put("onlinePlayers", presenceRegistry.onlineCount());
         // Stated on the page, not buried: "online" is meaningless without the window that defines it.
         out.put("onlineWindowMinutes", PresenceRegistry.ONLINE_WINDOW.toMinutes());
+
+        // The three international club cups, with the clubs that have actually qualified for each. The
+        // World page used to render all seven international competitions as a disabled row saying "Not
+        // created yet", which is a claim about the database being empty — and three of them were not.
+        //
+        // Entry is decided by the *finished* season, so on a world part-way through season one there is
+        // nothing to qualify from yet and the counts are honestly zero rather than invented.
+        out.put("clubCups", internationalClubCups.summarise(Math.max(1, out.get("currentSeason") == null
+                ? 1 : (int) out.get("currentSeason") - 1)));
         return out;
     }
 

@@ -736,6 +736,30 @@ import {
      * working with no change here - hard-coding "only Serbia" would bake today's state into the
      * page and quietly break the moment a second country goes live.
      */
+    /**
+     * One of the three international club cups.
+     *
+     * <p>These three used to be a hard-coded disabled row reading "Not created yet", which is a claim
+     * about the database being empty. They exist, they have entrants, and the number is what decides
+     * between "no club has finished a season yet" and "not created".
+     */
+    function clubCupRow(name, cups) {
+        const found = Array.isArray(cups) ? cups.find(cup => cup && cup.name === name) : null;
+        if (!found) {
+            return `<button type="button" class="fm-competition" disabled>
+                        <span class="fm-competition-name">${escapeHtml(name)}</span>
+                        <span class="fm-badge">Unavailable</span>
+                    </button>`;
+        }
+        const qualified = Number(found.qualified || 0);
+        return `<div class="fm-competition is-real">
+                    <span class="fm-competition-name">${escapeHtml(name)}</span>
+                    <span class="fm-badge ${qualified > 0 ? 'fm-badge--ok' : ''}">${
+                        qualified > 0 ? `${qualified} qualified` : 'No club has finished a season'
+                    }</span>
+                </div>`;
+    }
+
     async function loadWorldPage() {
         const mainContent = document.getElementById('main-content');
         try {
@@ -803,18 +827,9 @@ import {
                             <h3>International competitions</h3>
                         </div>
                         <div class="fm-world-competitions">
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">Champions Cup</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">Masters Cup</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">Challenge Cup</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
+                            ${clubCupRow('Champions Cup', world.clubCups)}
+                            ${clubCupRow('Masters Cup', world.clubCups)}
+                            ${clubCupRow('Challenge Cup', world.clubCups)}
                             <button type="button" class="fm-competition" disabled>
                                 <span class="fm-competition-name">NT Qualifiers</span>
                                 <span class="fm-badge">Not created yet</span>

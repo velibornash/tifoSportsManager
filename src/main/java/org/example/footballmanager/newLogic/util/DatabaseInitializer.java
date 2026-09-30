@@ -100,6 +100,7 @@ public class DatabaseInitializer {
     private final SeasonNumberBackfill seasonNumberBackfill;
     private final PlayerRatingBackfill playerRatingBackfill;
     private final BotLeagueStandardBackfill botLeagueStandardBackfill;
+    private final InternationalClubCups internationalClubCups;
     private final org.example.footballmanager.newLogic.service.NationalRatingService nationalRatingService;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
@@ -278,6 +279,14 @@ public class DatabaseInitializer {
             applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();
+            // The three international club cups. The World page listed them as "Not created yet" for
+            // as long as the page existed, which was a claim about the database being empty and was
+            // true of the competitions — there were no records, only markup.
+            try {
+                internationalClubCups.ensureCompetitionsDurably();
+            } catch (RuntimeException e) {
+                log.warn("Could not create the international club cups: {}", e.getMessage());
+            }
             // Every country reads 1500 and always has. RatingEngine existed since 2026-09-28 with no
             // caller, so the World page's rating column was real data that could only ever be 1500.
             // Replayed from the match history, so the 24 internationals already on the database count.
