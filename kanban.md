@@ -167,7 +167,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — a week is a week, and now a week takes as long as a week
+### `274d3ff` — a week is a week, and now a week takes as long as a week
 
 `GameClockService.advanceWeek()` bumped the week counter, added exactly one day of game time, and
 dispatched the job runner **once** — for the day the clock was already on. So the day never changed, and

@@ -929,7 +929,7 @@ an unactivated country acquires neither divisions nor a season from being in the
 Not claimed: a live rollover. It cannot be produced on the running app until the day/hour trigger is
 fixed, and saying otherwise would be the shape of thing this log keeps refusing to write.
 
-## `PENDING` — a week is a week, and now a week takes as long as a week
+## `274d3ff` — a week is a week, and now a week takes as long as a week
 
 ### One method, and everything it cost
 
