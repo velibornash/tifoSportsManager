@@ -1188,7 +1188,7 @@ and decides in ninety minutes the rest, it stops early, both toss orders occur, 
 the strongest men go first, the chance moves with both men and never reaches certainty, an average
 shootout converts 62-85%, and a side with no squad gets no result rather than a coin toss.
 
-## `PENDING` — the first draw after seeding, which was not a coin flip
+## `3ea6dd9` — the first draw after seeding, which was not a coin flip
 
 ### It was not just the shootout
 
