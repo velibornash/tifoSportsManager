@@ -167,7 +167,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — the promotion ladder now covers every country, and we know why it has never run
+### `8fc9876` — the promotion ladder now covers every country, and we know why it has never run
 
 The ladder itself was **fine**. `applyPromotionRelegationForLeague` computes a safe zone, a playoff band
 and a relegation band from the division's size and the number of divisions below it, and for a ten-club

@@ -858,7 +858,7 @@ asserted the global online count was zero and failed with `expected: <0> but was
 integration tests in the same H2 world go through the same JWT filter and somebody else is legitimately
 online. It was testing the world, not the blank input — now it asserts the count did not *move*.
 
-## `PENDING` — the promotion ladder covers every country, and we now know why it has never run
+## `8fc9876` — the promotion ladder covers every country, and we now know why it has never run
 
 ### The ladder was right; the country was a literal
 
