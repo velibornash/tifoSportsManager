@@ -167,7 +167,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — three World page bugs the owner reported
+### `9e3c5c3` — three World page bugs the owner reported
 
 All three verified in a real browser at iPhone 14 size and at 1440x900.
 

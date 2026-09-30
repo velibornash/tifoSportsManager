@@ -993,7 +993,7 @@ one describes something that was true of the running app: 168 offers and not 1, 
 season wrapping after week 12 with week-12-day-7 actually offered, and the end position independent of the
 press hour.
 
-## `PENDING` — three World page bugs the owner reported
+## `9e3c5c3` — three World page bugs the owner reported
 
 The owner sent three messages in a row, and none of them was a Java defect. That is worth noting before
 the details: nothing here is reachable from a Spring test, and the third one is a bug that every
