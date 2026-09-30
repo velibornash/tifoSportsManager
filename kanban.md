@@ -66,7 +66,7 @@ years and every fixture reader will find nothing.
 | **NT Qualifiers + World Cup (senior)** | mechanism only | `InternationalFixtureSeeder` draws senior sides already. Only the competition records and formats are missing. |
 | **U-21 Qualifiers + U-21 World Cup** | not started | Separate competitions from the senior ones, with their own qualification phases — not tabs on one competition. |
 | Admin: activate a country | not started | The activation panel was asked for. `CountryState` is `ACTIVE`/`SIMULATED` and the World page already keys off it, so the page needs no change. |
-| Bot league tier standards | not started | Tier 1 at average skill 12, then 11, 10 by tier. Bot squads are all skill 12 today. |
+| **Bot league tier standards** | **done** — see below. The note here was wrong: bot squads were *not* all skill 12, they were a uniform 1-17 draw | — |
 | `Player.rating` = skill × 8 | **done, but not a conversion** — see below. Three writers, three scales, and the OVR formula read all three as one | — |
 
 ### The day/hour engine
@@ -165,6 +165,55 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — the pyramid has a gradient
+
+Measured on the live database before this task, average of the eight skills per player:
+
+| Tier | Clubs | Average skill | Min | Max |
+|---|---|---|---|---|
+| 1 | 9 | **8.61** | 3.6 | 13.9 |
+| 2 | 20 | **8.71** | 4.6 | 12.5 |
+| 3 | 40 | **8.57** | 4.1 | 12.8 |
+| 4 | 80 | **8.56** | 3.5 | 13.4 |
+| 5 | 159 | **8.57** | 2.9 | 14.0 |
+
+Five divisions inside a 0.15 band, and **tier 2 was the strongest in the country**. The note in this
+table said "bot squads are all skill 12" — they were not 12, and they were not uniform either: the
+generator drew every skill uniformly from 1-17 with no reference to the division, so every tier got the
+same average *and* the same 2.9-to-14.0 spread. A flat pyramid means promotion and relegation decide a
+table on reputation and tiebreaks rather than on football.
+
+After, straight out of Postgres on the same world:
+
+| Tier | Clubs | Legacy column | Exact column |
+|---|---|---|---|
+| 1 | 9 | **12.12** | 12.12 |
+| 2 | 20 | **11.04** | 11.04 |
+| 3 | 40 | **10.13** | 10.13 |
+| 4 | 80 | **9.14** | 9.14 |
+| 5 | 159 | **8.12** | 8.12 |
+
+Tiers 4 and 5 continue the step to 9 and 8. Leaving them where the old draw put them would have made a
+fifth-tier side a third-tier side, which is the same flattening one row lower. 4,620 players across 308
+clubs re-standardised on boot; Omladinac (9.96) and Sremac (6.38) untouched, because
+`Team.humanControlled` is the gate and one of them is the manager's own hand-written squad.
+
+**Three things the number on its own would not have told you:**
+
+- **A tier is a player average and the position redistributes within it.** A tier-1 keeper is 15 at
+  goalkeeping and 9 at playmaker, and both are a 12 player — the bonus is paid for out of the attribute
+  he will never use. The old code gave all eight skills the same value, so every player in the world
+  was equally competent at everything and the engine had no reason to prefer a real keeper.
+- **A squad needs a spine.** Twenty-five men all exactly on the tier number is a squad with no
+  goalkeeper and no substitute, so each man draws a depth offset of −2…+2, weighted so roughly a
+  quarter sit above their own standard.
+- **Value and wage now follow the tier** (exponentially, the way wages actually are). The old code
+  invented a value between 1m and 51m for every club in the world, so a fifth-tier side could outbid a
+  top-flight one and the transfer market had no opinion about divisions.
+
+Squads are 25 (was 15) and have three keepers, because a season of injuries and five substitutions
+needs names to spend them on.
 
 ### `61c2a51` — the manager does not see their own result until they ask for it
 

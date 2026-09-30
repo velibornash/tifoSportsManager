@@ -12,6 +12,7 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.util.players.BotLeagueStandard;
 import org.example.footballmanager.newLogic.util.players.PlayerFactory;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +55,7 @@ class SidLeagueSeedingTest {
         teams = mock(TeamRepository.class);
         competitions = mock(CompetitionRepository.class);
         users = mock(UserRepository.class);
-        factory = new PlayerFactory(players);
+        factory = new PlayerFactory(players, new BotLeagueStandard());
     }
 
     @Test

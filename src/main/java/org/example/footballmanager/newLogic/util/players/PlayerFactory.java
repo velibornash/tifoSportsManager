@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.util.players;
 
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
+import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.model.Skills;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
@@ -13,12 +14,20 @@ import java.util.*;
 @Component
 public class PlayerFactory {
 
+    private static final int BOT_SQUAD_SIZE = 25;
+    private static final int BOT_KEEPERS = 3;
+    private static final int BOT_DEFENDERS = 8;
+    private static final int BOT_MIDFIELDERS = 7;
+    private static final int BOT_ATTACKERS = 4;
+
     private  final PlayerRepository playerRepository;
+    private final BotLeagueStandard leagueStandard;
     private  final Random random = new Random();
 
     @Autowired
-    public PlayerFactory(PlayerRepository playerRepository) {
+    public PlayerFactory(PlayerRepository playerRepository, BotLeagueStandard leagueStandard) {
         this.playerRepository = playerRepository;
+        this.leagueStandard = leagueStandard;
     }
 
     /**
@@ -182,6 +191,22 @@ public class PlayerFactory {
         return players;
     }
 
+    /**
+     * A bot club's squad, built to its division's standard.
+     *
+     * <p>Was a uniform 1-17 draw on all seven football skills, which ignored the division entirely. On
+     * the live world that produced tier 1 → 8.61 and tier 5 → 8.57: five divisions of one standard,
+     * with the same 2.9-to-14.0 spread in each, so the pyramid was flat and promotion decided a table
+     * on reputation instead of on football. The division's tier now sets the level and the position
+     * shapes the man within it — see {@link BotLeagueStandard}.
+     *
+     * <p><b>25 men, not 15.</b> Fifteen cannot field a bench, and a season of injuries and five
+     * substitutions needs names to spend them on. Three keepers, because a keeper sent off or injured
+     * with no replacement ends the match in a forfeit.
+     *
+     * <p>Seeded from the club's own name, so a given club is the same club on every machine and every
+     * reset — a side that re-rolls its players between installs is impossible to debug.
+     */
     public List<Player> createRandomTeamPlayers(String teamName, Team team) {
 
         List<Player> existingPlayers = playerRepository.findByTeamId(team.getId());
@@ -191,44 +216,102 @@ public class PlayerFactory {
             return existingPlayers;
         }
 
+        Integer tier = team.getCompetition() != null ? team.getCompetition().getTier() : null;
+        Random squadRandom = new Random(team.getName() == null
+                ? team.getId()
+                : team.getName().hashCode());
+
         List<Player> players = new ArrayList<>();
-        Set<Integer> gkIndexes = new HashSet<>(List.of(random.nextInt(11), 11 + random.nextInt(4)));
+        for (int index = 0; index < BOT_SQUAD_SIZE; index++) {
+            Position position = botPositionFor(index);
+            Skills skills = leagueStandard.skillsForTier(
+                    tier, position, leagueStandard.squadOffset(squadRandom), squadRandom);
 
-        for (int i = 0; i < 15; i++) {
-
-            String name = NameGenerator.fullName();
-            Position position = gkIndexes.contains(i)
-                    ? Position.GK
-                    : Position.values()[1 + random.nextInt(3)];
-
-            Player newPlayer = createPlayer(
-                    name,
-                    18 + random.nextInt(15),
-                    team,
-                    1000000 + random.nextInt(50000000),
-                    50000 + random.nextInt(1000000),
-                    160 + random.nextInt(40),
-                    Math.round((55 + random.nextDouble() * 40) * 100.0) / 100.0,
-                    Math.round((4 + random.nextDouble() * 6) * 100.0) / 100.0,
-                    5 + random.nextInt(6),
-                    1 + random.nextInt(10),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    1 + random.nextInt(17),
-                    position, null
-            );
+            Player newPlayer = new Player();
+            newPlayer.setName(NameGenerator.fullName());
+            newPlayer.setAge(18 + squadRandom.nextInt(15));
+            newPlayer.setTeam(team);
+            newPlayer.setPosition(position);
+            newPlayer.setForm(4 + squadRandom.nextInt(7));
+            newPlayer.setHeight((170 + squadRandom.nextInt(20)) / 100.0);
+            newPlayer.setWeight(Math.round((65 + squadRandom.nextDouble() * 25) * 10.0) / 10.0);
+            newPlayer.setSkills(skills);
+            newPlayer.setTalent(talentForTier(tier, squadRandom));
+            // Value and wage follow the tier, not a random number. The old code invented a value
+            // between 1m and 51m for every club in the world, so a fifth-tier side could outbid a
+            // top-flight one and the transfer market had no opinion about divisions.
+            newPlayer.setPlayerValue(valueForSkills(skills, squadRandom));
+            newPlayer.setEarnings(wageForSkills(skills, squadRandom));
+            // After the skills, because the rating is derived from them.
+            newPlayer.setRating(newPlayer.careerRating());
 
             players.add(newPlayer);
         }
 
         playerRepository.saveAll(players);
 
-        System.out.println("→ Kreirani random igrači za tim: " + teamName);
+        System.out.println("→ " + teamName + ": " + players.size() + " igrača, tier "
+                + (tier == null ? "?" : tier) + " standard (prosjek "
+                + leagueStandard.skillAverageForTier(tier) + ")");
         return players;
+    }
+
+    /** 3 GK, 8 DEF, 7 MID, 4 ATT, 3 WNG = 25, walked in order so every bot squad is the same shape. */
+    private Position botPositionFor(int index) {
+        if (index < BOT_KEEPERS) {
+            return Position.GK;
+        }
+        if (index < BOT_KEEPERS + BOT_DEFENDERS) {
+            return Position.DEF;
+        }
+        if (index < BOT_KEEPERS + BOT_DEFENDERS + BOT_MIDFIELDERS) {
+            return Position.MID;
+        }
+        if (index < BOT_KEEPERS + BOT_DEFENDERS + BOT_MIDFIELDERS + BOT_ATTACKERS) {
+            return Position.ATT;
+        }
+        return Position.WNG;
+    }
+
+    /**
+     * Transfer value, from the man's own skills.
+     *
+     * <p>Exponential rather than linear, because football wages are: the step from a solid professional
+     * to an excellent one costs several times what the step from a semi-professional to a solid one
+     * does, and a linear scale would make every good player in the world cost about the same.
+     */
+    private double valueForSkills(Skills skills, Random random) {
+        double best = bestFootballSkill(skills);
+        double base = 25_000.0 * Math.pow(1.28, best);
+        return Math.round((base * (0.85 + random.nextDouble() * 0.3)) / 50_000.0) * 50_000.0;
+    }
+
+    private double wageForSkills(Skills skills, Random random) {
+        double best = bestFootballSkill(skills);
+        double base = 900.0 * Math.pow(1.22, best);
+        return Math.round(base * (0.9 + random.nextDouble() * 0.2));
+    }
+
+    /** The strongest of the eight football skills — what a club actually pays for. */
+    private double bestFootballSkill(Skills skills) {
+        int best = BotLeagueStandard.MIN_SKILL;
+        for (SkillName skill : BotLeagueStandard.FOOTBALL_SKILLS.keySet()) {
+            best = Math.max(best, skills.visibleInt(skill));
+        }
+        return best;
+    }
+
+    /**
+     * Potential on the 1-10 scale, a band above the player's current standard.
+     *
+     * <p>A tier-1 player is a 12 today and might reach 15; a fifth-tier 8 might reach 11. Without
+     * this a fifth-tier academy produced men who were already as good as a top-flight first team, and
+     * no amount of correct development below it would have held up.
+     */
+    private double talentForTier(Integer tier, Random random) {
+        int current = leagueStandard.skillAverageForTier(tier);
+        double ceiling = Math.min(10.0, (current + 3 + random.nextInt(2)) / 2.0);
+        return Math.max(1.0, Math.round(ceiling * 10.0) / 10.0);
     }
 
 

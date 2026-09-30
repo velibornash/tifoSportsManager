@@ -99,6 +99,7 @@ public class DatabaseInitializer {
     private final LeagueFixtureDayBackfill leagueFixtureDayBackfill;
     private final SeasonNumberBackfill seasonNumberBackfill;
     private final PlayerRatingBackfill playerRatingBackfill;
+    private final BotLeagueStandardBackfill botLeagueStandardBackfill;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
     private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
@@ -222,6 +223,22 @@ public class DatabaseInitializer {
         nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
     }
 
+    /**
+     * Puts every bot club's squad on its division's standard.
+     *
+     * <p>One method called from both boot paths, because the standards are a <i>convergence</i> step,
+     * not a creation step: a world that already exists is the one that most needs it, and the version
+     * that only ran while creating the world left the manager's own world flat. Idempotent, so calling
+     * it on every boot is safe.
+     */
+    private void applyBotLeagueStandards() {
+        try {
+            botLeagueStandardBackfill.backfill();
+        } catch (RuntimeException e) {
+            log.warn("Could not apply the bot league tier standards: {}", e.getMessage());
+        }
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void ensureBaselineDataOnStartup() {
@@ -245,6 +262,11 @@ public class DatabaseInitializer {
             applyManagerIdentities();
             backfillClubCountries();
             backfillStadiumCeilings();
+            // The 300-odd bot clubs already in this world were seeded by the old generator, which
+            // drew every skill uniformly and ignored the division — so tier 1 and tier 5 measured
+            // within 0.05 of each other. The backfill used to sit only on the create-the-world path,
+            // which is exactly the path a world someone has been playing never takes.
+            applyBotLeagueStandards();
             // The national-team columns have been null for every country since the country page
             // existed, so the panel rendered a hand-written name and a button to a placeholder. Runs on
             // every boot and is a no-op once the teams exist.
@@ -305,6 +327,7 @@ public class DatabaseInitializer {
             } catch (RuntimeException e) {
                 log.warn("Could not stamp the day onto league fixtures: {}", e.getMessage());
             }
+            applyBotLeagueStandards();
             // Player.rating had three writers meaning three different things, so the stored column
             // does not match the skills it is supposed to be derived from.
             try {

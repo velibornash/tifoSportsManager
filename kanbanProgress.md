@@ -513,3 +513,105 @@ background league simulation was still running. The world survived intact, so th
 reset-vs-simulation contention problem, not data loss, and fixing it would have meant changing the
 reset path during a feature that does not touch it. It is written up in `kanban.md` for the next
 session that has room.
+
+## `PENDING` — the pyramid gets a gradient
+
+### The number in the board was wrong in a way that mattered
+
+The task line said "Tier 1 at average skill 12, then 11, 10 by tier. Bot squads are all skill 12
+today." Neither half was true, and the second half being wrong is what made the first half sound
+reasonable. So before writing anything I measured the live database:
+
+| Tier | Clubs | Avg skill | Min | Max |
+|---|---|---|---|---|
+| 1 | 9 | 8.61 | 3.6 | 13.9 |
+| 2 | 20 | 8.71 | 4.6 | 12.5 |
+| 3 | 40 | 8.57 | 4.1 | 12.8 |
+| 4 | 80 | 8.56 | 3.5 | 13.4 |
+| 5 | 159 | 8.57 | 2.9 | 14.0 |
+
+Not "all 12". A **uniform 1-17 draw on every skill, with no reference to the division at all** — so
+every tier landed on the same average *and* the same spread, and tier 2 came out as the strongest
+division in the country. The practical cost is not that the numbers are ugly: it is that promotion
+and relegation were deciding the table on reputation and tiebreaks instead of on football, because
+there was no football gradient to decide it with.
+
+### The standard, and the two things a number cannot carry
+
+`BotLeagueStandard` turns a tier into a player average: 12, 11, 10, 9, 8. Tiers 4 and 5 continue the
+step rather than sitting where the old draw left them, because a fifth-tier side at the third-tier
+number is the same flattening one row down. Out-of-range tiers clamp to the top flight — a league row
+with a null tier must still produce a playable club, and competitive is the safe direction to fail in.
+
+**A tier is a player average, and the position redistributes within it.** The eight skills are handed
+out so their mean is the tier number, then the position's own attribute goes up by three and an
+attribute the player will never use comes down by three. A tier-1 keeper is 15 at goalkeeping and 9 at
+playmaker, and both are a 12 player. The old code wrote the same value into all eight columns, so
+every player in the world was equally competent at everything — including the goalkeepers, which is the
+one place a flat profile is a functional bug rather than an aesthetic one.
+
+**A squad needs a spine.** Twenty-five men all sitting exactly on the tier number is a squad with no
+goalkeeper, no substitute and no reason to pick anybody, so each man draws a depth offset in −2…+2,
+weighted about a quarter above the standard. The club still averages the tier; the *squad* has a shape.
+
+Value and wage follow the skills exponentially rather than linearly, because football wages are: the
+step from solid to excellent costs several times what the step from semi-professional to solid does.
+The old code invented a value between 1m and 51m per club regardless of division, so a fifth-tier
+side could outbid a top-flight one and the transfer market had no opinion about tiers at all.
+
+### The backfill, and why it is a separate class
+
+Fixing the generator fixes every world built from now on and none of the ones already in existence,
+and the owner is looking at an existing world. So `BotLeagueStandardBackfill` runs on boot and puts the
+300-odd clubs already there onto their standards. It is seeded from the club name, so a given club is
+re-standardised to the same squad on every machine and every run, and it is idempotent — it runs on
+every boot.
+
+**It had to move onto both boot paths.** It went in beside the other backfills, which are all after
+the "world already exists, nothing to create" early return — so on the owner's world, the exact world
+that needed it, it never ran. The first restart proved it: no log line at all. The backfills are
+convergence steps, not creation steps, and the one world guaranteed to need convergence is the one that
+already exists.
+
+**Human clubs are never touched.** `Team.humanControlled` is the gate, not the club name: Omladinac
+and Sremac have hand-written skill rows for named players, and Omladinac is the manager's own team. A
+backfill keyed on anything else would eventually re-roll the one squad in the game the owner has
+actually watched. Verified on the live world — 9.96 and 6.38, unchanged.
+
+### The bug I introduced and only found by looking at the database
+
+The first version wrote skills with `setExact`, which fills only the `*_exact` double columns. The
+legacy integer columns were left at whatever they were — and `getExact` prefers the exact value, so
+every test passed, the boot log reported a healthy `{1=12.21, 2=11.09, 3=10.15, 4=9.1, 5=8.12}`, and
+`getSkills()` returned 0 for all 4,620 players. `Skills` stores each skill twice; `setSkill` writes
+both, `setExact` writes one. I found it by running the same query I had used to measure the "before"
+and getting `0.00` for every tier — which is the argument for measuring against the database rather
+than against the log.
+
+`bothSkillColumnsAreWritten` now pins it: for every tier and every man, the stored column and the
+exact value must agree, or the player is two different players depending on which method you ask.
+
+### The test that passed while proving nothing
+
+`BotLeagueStandardBackfillTest` first built two clubs, called the backfill and asserted they had moved.
+They had not: the backfill runs in `REQUIRES_NEW` — the only reason it survives the boot transaction —
+so anything an `@Transactional` test inserts is invisible to it, and three of the four tests were
+passing **because** the backfill had correctly ignored rows it could not see. A test that passes
+because the code under test did nothing is worse than no test.
+
+Rewritten against the seeded world, which is the thing the owner is looking at anyway. Two of its reads
+then died on `LazyInitializationException`, because the tests are deliberately not `@Transactional` (a
+long-lived test transaction would be reading a stale world) and `Team.competition` is a lazy proxy.
+The reads now own their session via `readInTransaction`.
+
+The ordering assertion is the one that matters and it is the one that would have caught the original
+state on its own: **every tier must be at least 0.8 stronger than the tier below it.** The old world
+had tier 2 stronger than tier 1. A tier system where that is possible is worse than no tier system.
+
+### Verified
+
+- **766 tests green** (765 before, plus 10 `BotLeagueStandardTest` and 4 `BotLeagueStandardBackfillTest`)
+- live boot: `re-standardised 4620 player(s) across 308 club(s). Average by tier: {1=12.12, 2=11.04,
+  3=10.13, 4=9.14, 5=8.12}`
+- Postgres, legacy and exact columns agreeing, 12.12 → 8.12 down the five divisions
+- Omladinac 9.96 and Sremac 6.38, unchanged; the national sides and cup entrants untouched
