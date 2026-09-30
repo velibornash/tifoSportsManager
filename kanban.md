@@ -166,7 +166,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — the pyramid has a gradient
+### `26a000c` — the pyramid has a gradient
 
 Measured on the live database before this task, average of the eight skills per player:
 

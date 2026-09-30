@@ -514,7 +514,7 @@ reset-vs-simulation contention problem, not data loss, and fixing it would have 
 reset path during a feature that does not touch it. It is written up in `kanban.md` for the next
 session that has room.
 
-## `PENDING` — the pyramid gets a gradient
+## `26a000c` — the pyramid gets a gradient
 
 ### The number in the board was wrong in a way that mattered
 
