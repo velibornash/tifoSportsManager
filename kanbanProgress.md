@@ -707,7 +707,7 @@ column. The replay overwrote it with a real figure, 1500, because Serbia drew it
 - idempotence and the no-ratchet property both pinned: three consecutive replays leave the column
   byte-identical
 
-## `PENDING` — a country is active when it has football in it
+## `dfa946d` — a country is active when it has football in it
 
 ### A flag that nothing read
 

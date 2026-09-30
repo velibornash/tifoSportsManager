@@ -166,7 +166,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — a country is active when it has football in it
+### `dfa946d` — a country is active when it has football in it
 
 `CountryState` was set once for Serbia by the catalogue seeder, styled one way on the World page, and
 read by nothing that did any work. So the activation panel the owner asked for would have been a switch
