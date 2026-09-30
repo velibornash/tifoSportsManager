@@ -78,7 +78,7 @@ years and every fixture reader will find nothing.
 | **`advanceWeek` never changes the day** | **this is why the promotion ladder has never run — see below.** It bumps the week counter, adds one day of game time, and dispatches jobs for the day it was *already* on |
 | **Cup ties in the schedule view** | not started | The schedule shows the week template, not the actual day's ties. All the data exists. |
 | **Penalty shootouts** | **done** — see below. The board's note was half wrong: penalties *are* taken, by `PenaltyEngine`. What was missing was the **shootout** after a drawn tie | — |
-| **A freshly seeded `Random` answers the first narrow draw with a constant** | **found by the shootout, likely wider than the shootout** — measured over seeds 1-2000 below | — |
+| ~~A freshly seeded `Random` answers the first narrow draw with a constant~~ | **done** — fixed at the source in `SimulationRandom.seed()`, not at the call site. The engine seeds from `fixture.getId()` and its first narrow draw was constant across all 500 consecutive ids | — |
 
 ### Match engine realism
 

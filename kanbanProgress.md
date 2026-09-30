@@ -1187,3 +1187,74 @@ produces a winner and never a draw across 400 seeds, it reaches sudden death abo
 and decides in ninety minutes the rest, it stops early, both toss orders occur, the keeper never takes,
 the strongest men go first, the chance moves with both men and never reaches certainty, an average
 shootout converts 62-85%, and a side with no squad gets no result rather than a coin toss.
+
+## `PENDING` — the first draw after seeding, which was not a coin flip
+
+### It was not just the shootout
+
+The shootout's toss was fixed with a wide draw and a low bit, and that left the question the board entry
+was actually asking: **is the engine's own first decision after seeding one of these?** So it was
+measured, and the answer is yes.
+
+`SimMatchService.simulate` seeds from the fixture id:
+
+```java
+SimulationRandom.seed(fixture != null && fixture.getId() != null
+        ? fixture.getId() : System.nanoTime());
+```
+
+So the seeds are small consecutive database ids — 1, 2, 3, 4 — which is the worst case and the only case
+that matters. The first draw of each kind, across seeds 1..500:
+
+| first draw after seeding | one way | the other |
+|---|---|---|
+| `nextInt(2)` | **0** | **500** |
+| `nextBoolean()` | **500** | **0** |
+| `nextDouble() < 0.5` | **0** | **500** |
+
+Every one of them constant. Whatever the engine asks first, it gets the same answer for every match in
+the world, and the answer is a function of which number a fixture id happens to be.
+
+### Fixed at the source, because the call site is one of many
+
+The obvious place to fix it is wherever the bad draw happens. The better place is the one function every
+consumer goes through:
+
+```java
+public static void seed(long seed) {
+    Random random = new Random(seed);
+    random.nextDouble();   // a fresh Random does not mix its first output
+    RNG.set(random);
+}
+```
+
+One value, discarded, wide so it is a different part of the stream. The same three measurements after it:
+
+| first draw after seeding | one way | the other |
+|---|---|---|
+| `nextInt(2)` | 252 | 248 |
+| `nextBoolean()` | 248 | 252 |
+| `nextDouble() < 0.5` | 252 | 248 |
+
+The shootout's own `(nextInt() & 1)` is left in place. It is redundant now, and redundant in the right
+direction: if the discarded value is ever removed, the shootout is still correct.
+
+**This changes every seeded run.** A replay regenerated from the same seed will now differ from the one
+that was stored. It is still deterministic — same seed, same match, which is all
+`ProposalMatchExporter` and the viewer launchers actually promise — and the difference is a match that
+is not decided by a constant. Stored replays are tick snapshots and are not re-simulated, so nothing that
+has already been played changes.
+
+### Five tests, one of which is about the JDK
+
+The fix is invisible once made: `seed()` discards a value, nothing in the code says why, and the natural
+tidy-up is to delete the line and put the bias back. So the measurements are the tests.
+
+The fifth is the interesting one. It asserts that **a bare `java.util.Random` still shows the constant**,
+which is the platform behaviour the workaround is written against. If a future JDK changes the mixing,
+that test fails on purpose and the workaround gets re-measured rather than trusted or deleted. My first
+version of it had the assertion inverted and failed immediately — 500 trues is the *problem*, not the fix
+working.
+
+Determinism is pinned too, because the fix must not cost reproducibility: the same seed gives the same
+sequence, and two different seeds still diverge.
