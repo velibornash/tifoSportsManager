@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.commonmanager.util.JwtUtil;
+import org.example.footballmanager.newLogic.service.PresenceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,10 +26,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
+    private final PresenceRegistry presence;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil,
+                                   UserDetailsService userDetailsService,
+                                   PresenceRegistry presence) {
         this.jwtUtil = jwtUtil;
         this.userDetailsService = userDetailsService;
+        this.presence = presence;
     }
 
     @Override
@@ -71,6 +76,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                    // A successful authentication is the one moment every authenticated request passes
+                    // through, which makes it the only honest place to answer "is anyone online".
+                    // Throttled to a write a minute per account inside the registry — the SPA polls the
+                    // clock, so this is otherwise a database write per request.
+                    presence.markSeen(username);
                     log.debug("[JWT] Authenticated user '{}' for {} {}", username, request.getMethod(), path);
                 } else {
                     log.warn("[JWT] Token validation failed for user '{}' on {} {}", username, request.getMethod(), path);

@@ -744,13 +744,17 @@ import {
                                 <span class="fm-stat-value">${world.totalCountries}</span></div>
                             <div class="fm-stat"><span class="fm-stat-label">Active</span>
                                 <span class="fm-stat-value">${world.activeCountries}</span></div>
-                            <div class="fm-stat"><span class="fm-stat-label">Human players</span>
-                                <span class="fm-stat-value">${world.users ?? '-'}</span></div>
+                            <div class="fm-stat"><span class="fm-stat-label">Registered players</span>
+                                <span class="fm-stat-value">${world.registeredPlayers ?? '-'}</span></div>
+                            <div class="fm-stat"><span class="fm-stat-label">Online now</span>
+                                <span class="fm-stat-value">${world.onlinePlayers ?? '-'}</span></div>
                             <div class="fm-stat"><span class="fm-stat-label">Starting rating</span>
                                 <span class="fm-stat-value">${world.startRating}</span></div>
                         </div>
                         <p class="fm-hint">Every country starts on ${world.startRating} and earns its rating
-                            from results. This world is not a replica of the real one.</p>
+                            from results. This world is not a replica of the real one.
+                            Online means a request in the last ${world.onlineWindowMinutes ?? 5} minutes &mdash;
+                            registered players is every account that has ever signed in.</p>
                     </section>
 
                     <section class="fm-panel">

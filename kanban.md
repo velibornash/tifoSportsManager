@@ -61,7 +61,7 @@ years and every fixture reader will find nothing.
 |---|---|---|
 | Verify the 48-country world in the running app | pending | 48 countries / 96 sides / 48 squads proven in tests and in the boot log, **not yet confirmed in the running app** |
 | **Elo ratings** | **done** — see below. `RatingEngine` had zero callers; the column now replays from match history | — |
-| **Online-user presence** | not started | The World page shows registered accounts, not people online. There is no session registry or last-seen column. Do not label the number "online" until this exists. |
+| **Online-user presence** | **done** — see below. Registered and online are now two numbers, each labelled for what it is | — |
 | **Champions Cup / Masters Cup / Challenge Cup** | not started | International club competitions. Champions = winners, Masters = 2nd and 3rd, Challenge = 4th. Each needs a record, a draw and a per-tier league link. |
 | **NT Qualifiers + World Cup (senior)** | mechanism only | `InternationalFixtureSeeder` draws senior sides already. Only the competition records and formats are missing. |
 | **U-21 Qualifiers + U-21 World Cup** | not started | Separate competitions from the senior ones, with their own qualification phases — not tabs on one competition. |
@@ -165,6 +165,28 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — the World page stopped implying 48 people are at their desks
+
+The "Human players" stat was `countByRoleIsNotNull()` — **registered accounts**, every one of them
+counted since the day it registered. The board's note was the instruction: *"Do not label the number
+'online' until this exists."* It did not exist, so the honest choices were to build it or to stop
+implying it. This is the building half, and the number is now two numbers:
+
+| | Before | After |
+|---|---|---|
+| World page stat | "Human players" — 2 | **Registered players** — 2 |
+| | *(no such number)* | **Online now** — 1, with the window stated: *a request in the last 5 minutes* |
+
+`User.lastSeenAt`, stamped on the one moment every authenticated request passes through — the JWT filter.
+**Wall-clock time, never the game clock:** the owner can advance the game a week in one admin click, and
+a presence system driven by it would report every account in the world as online the moment he moved it.
+
+**The writes are throttled to once a minute per account.** The SPA polls the clock, so one manager with
+the page open is a request every few seconds, and the filter is on the hot path of all of them. Writing
+`last_seen_at` per request would be a database write per request for a column read once per page view.
+The in-memory map is the live truth; the column is a durable shadow of it, and a restart empties the map
+and honestly drops the count to zero until people come back.
 
 ### `dfa946d` — a country is active when it has football in it
 

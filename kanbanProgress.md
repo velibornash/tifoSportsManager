@@ -783,3 +783,70 @@ alreadyBuilt: false}`. Then straight out of Postgres:
 this session, so it is not claimed here. A clean run is done once the next task lands, and both entries
 record the result together — the standing rule is that a job is shown to have changed data, and a test
 run is no different.
+
+## `PENDING` — the World page stopped implying everyone is at their desk
+
+### A label doing work the number was not doing
+
+The World page's stat read `humanUserRepository.countByRoleIsNotNull()` and rendered as **"Human
+players"**. That is the number of accounts that have ever registered, unchanged since the day they did,
+presented as though it described people. The board already knew: *"The World page shows registered
+accounts, not people online. There is no session registry or last-seen column. Do not label the number
+'online' until this exists."*
+
+So there were two honest moves — build the thing, or stop implying it. This is the building half, and it
+leaves **two numbers, each labelled for what it is**: `registeredPlayers` and `onlinePlayers`. The
+legacy `users` key is gone rather than left as a third name for one of them.
+
+### One hook, and it is the only place that could be one
+
+`JwtAuthenticationFilter` is the single point every authenticated request passes through, so it is the
+only honest place to answer "is anyone here". Stamping from a controller would have meant twenty
+endpoints each remembering to do it, and the number would silently count whoever happened to be on a
+particular page.
+
+**Wall-clock, never the game clock.** Everything uses `LocalDateTime.now()`. The owner can advance the
+season a week in one admin click, and a presence system driven by the game clock would report all 48
+accounts as online the moment he moved it — a number that moves when a button is pressed is not a
+measurement of anything.
+
+**A JWT is not a session, and that is the whole problem.** A stateless token stays valid long after a
+browser is closed, so "holds a valid token" and "is at the keyboard" are different questions. Presence
+is a **wall-clock window** — five minutes since the last request — not a flag. An account stamped an
+hour ago is offline, which is pinned by a test, because a presence system whose number can only grow is
+not a presence system.
+
+### Throttled, because the filter is on the hot path
+
+The SPA polls the game clock, so one manager with the page open generates a request every few seconds,
+and there is no way to add a filter hook that is not on the hot path of every request. Writing
+`last_seen_at` per request would be a database write per request from a filter, for a column read once
+per page view.
+
+So the in-memory map is the live truth and the column is a durable shadow refreshed at most once a
+minute per account. Two consequences, both intended: a burst of fifty requests writes once (pinned by a
+test, and the account stays online throughout — a throttle that stopped *recording* presence would be
+worse than one that stopped *writing* it), and a restart empties the map so the count honestly drops to
+zero until people come back.
+
+`isOnline` checks the map **and** the column. It did not at first, and the two answers disagreed: the
+page would say three people are online while telling one of them they were offline — after every
+restart, and for up to a minute after any account's first request.
+
+### A test that passed while asserting the wrong thing
+
+`writesAreThrottled` compared the post-burst column against the value from *before* the first request —
+which is null — so it asserted "the column is non-null after fifty requests" and nothing about throttling
+at
+all. A throttle that never throttles passes that. It now marks once, reads the stamp, bursts fifty
+times, and asserts the stamp is **unchanged**, which is the only version of this assertion that can fail.
+
+### Verified live
+
+`GET /countries/world` on the running app: `registeredPlayers: 2`, `onlinePlayers: 1`,
+`onlineWindowMinutes: 5`, and the legacy `users` key gone. The one online account is the one making the
+requests, and `app_user.last_seen_at` holds the matching timestamp — so the filter really is stamping, and
+the number really is derived rather than hard-coded.
+
+**Tests: 7 new, all green.** The full-suite run follows in the same pass as the activation task, and both
+entries are updated together with the result.

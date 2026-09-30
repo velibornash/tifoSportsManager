@@ -79,6 +79,18 @@ public class User implements UserDetails {
     private LocalDateTime communityLastViewedAt;
 
     /**
+     * The last time this account made an authenticated request (owner, 2026-09-30).
+     *
+     * <p><b>Wall-clock time, deliberately — not the game clock.</b> "Online" has to mean a person is
+     * at their desk, and a game clock the owner can advance a week in one click would report 48 managers
+     * online the moment he moved it. The World page reads this to answer who is actually here.
+     *
+     * <p>Written at most once a minute per account; see {@code PresenceRegistry}. It is null until the
+     * account has made a request, which is why a null here means "never seen" rather than "offline".
+     */
+    private LocalDateTime lastSeenAt;
+
+    /**
      * The nation this manager plays in, chosen at registration (owner, 2026-09-28).
      *
      * <p>This is the field the whole country-agnostic system hangs off. It used to not exist: a user's

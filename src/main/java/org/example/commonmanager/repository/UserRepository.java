@@ -20,6 +20,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * this session.
      */
     long countByRoleIsNotNull();
+
+    /**
+     * Accounts seen since a moment in time — the basis of the World page's "online" number.
+     *
+     * <p>Counts the column, not sessions, because there is no session registry: a JWT is stateless and
+     * stays valid long after a browser is closed, so "has a valid token" and "is at the keyboard" are
+     * different questions and only the second one is worth putting a number next to.
+     */
+    long countByLastSeenAtAfter(java.time.LocalDateTime moment);
     Optional<User> findByEmail(String email);
     Optional<User> findByUsername(String username);
 

@@ -15,6 +15,7 @@ import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.service.NationalTeamService;
+import org.example.footballmanager.newLogic.service.PresenceRegistry;
 import org.example.footballmanager.newLogic.service.NationalTeamElectionService;
 import org.example.footballmanager.newLogic.model.NationalTeamLevel;
 import org.example.footballmanager.newLogic.model.Competition;
@@ -59,6 +60,7 @@ public class CountryController {
     private final TeamRepository teamRepository;
     private final CompetitionRepository competitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
+    private final PresenceRegistry presenceRegistry;
     private final PlayerRepository playerRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final MatchRepository matchRepository;
@@ -71,7 +73,8 @@ public class CountryController {
     public CountryController(CountryRepository countryRepository,
             org.example.commonmanager.repository.UserRepository humanUserRepository,
             CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
-            NationalTeamElectionService electionService) {
+            NationalTeamElectionService electionService,
+            PresenceRegistry presenceRegistry) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -86,6 +89,7 @@ public class CountryController {
         this.humanUserRepository = humanUserRepository;
         this.nationalTeamService = nationalTeamService;
         this.electionService = electionService;
+        this.presenceRegistry = presenceRegistry;
     }
 
     /**
@@ -125,7 +129,15 @@ public class CountryController {
         // than rendered as a smaller world.
         out.put("complete", all.size() == CountryCatalog.all().size());
         out.put("startRating", WorldCatalogSeeder.STARTING_RATING);
-        out.put("users", humanUserRepository.countByRoleIsNotNull());
+        // <b>Two numbers, both labelled for what they are.</b> This used to be one number called
+        // "users" and rendered as "Human players", and it was `countByRoleIsNotNull()` — registered
+        // accounts, every one of which has been counted since the day they registered. The owner's note
+        // on this was "do not label the number 'online' until this exists", so the registered count
+        // keeps its own name and the online count is a separate, honestly-derived figure.
+        out.put("registeredPlayers", presenceRegistry.registeredCount());
+        out.put("onlinePlayers", presenceRegistry.onlineCount());
+        // Stated on the page, not buried: "online" is meaningless without the window that defines it.
+        out.put("onlineWindowMinutes", PresenceRegistry.ONLINE_WINDOW.toMinutes());
         return out;
     }
 
