@@ -465,7 +465,7 @@ public class SeasonService {
             transferService.simulateWeeklyMarketActivity();
             return;
         }
-        performPromotionRelegationAndNewSeason(superLiga);
+        performPromotionRelegationAndNewSeason();
     }
 
     /**
@@ -596,9 +596,9 @@ public class SeasonService {
     }
 
     @Transactional
-    public void performPromotionRelegationAndNewSeason(Competition superLiga) {
+    public void performPromotionRelegationAndNewSeason() {
         int endingSeasonYear = getActiveSeasonYear();
-        applyPromotionRelegation(superLiga, endingSeasonYear);
+        applyPromotionRelegation(endingSeasonYear);
         agePlayersAndJuniorsOneYear();
 
         GameClock clock = getOrCreateClock();
@@ -610,13 +610,37 @@ public class SeasonService {
         int nextSeasonYear = getActiveSeasonYear();
         ensureActiveSeasonEntity();
 
-        for (Competition league : findSerbianLeagues()) {
-            ensureEntriesForSeasonCompetition(league, nextSeasonYear);
-            ensureDoubleRoundRobinSchedule(league, nextSeasonYear);
-            resetCompetitionEntriesForSeason(league, nextSeasonYear);
-        }
+        int divisionsOpened = openNewSeasonForEveryCountry(nextSeasonYear);
 
-        log.info("Season rollover complete. New season year={}, week=1", nextSeasonYear);
+        log.info("Season rollover complete. New season year={}, week=1, {} division(s) opened across {} country/countries.",
+                nextSeasonYear, divisionsOpened, allLeagueCompetitionsByCountry().size());
+    }
+
+    /**
+     * Opens the new season's table rows and fixture list for <b>every country's</b> divisions.
+     *
+     * <p>This was {@code findSerbianLeagues()}. A country the owner activated got a full 31-division
+     * pyramid, played season one, and then had no season two at all: no table rows, no fixtures, nothing
+     * for the day-3 and day-7 matchday jobs to select from. Everything the activation built correctly was
+     * quietly dropped on the floor one season later, and the country went silent.
+     *
+     * <p>Takes the season number rather than reading the clock, so it is callable — and testable — without
+     * moving the world a season forward.
+     *
+     * @return how many divisions were opened
+     */
+    @Transactional
+    public int openNewSeasonForEveryCountry(int seasonYear) {
+        int opened = 0;
+        for (List<Competition> countryLeagues : allLeagueCompetitionsByCountry().values()) {
+            for (Competition league : countryLeagues) {
+                ensureEntriesForSeasonCompetition(league, seasonYear);
+                ensureDoubleRoundRobinSchedule(league, seasonYear);
+                resetCompetitionEntriesForSeason(league, seasonYear);
+                opened++;
+            }
+        }
+        return opened;
     }
 
     @Transactional
@@ -658,10 +682,32 @@ public class SeasonService {
     }
 
     @Transactional
-    public void applyPromotionRelegation(Competition superLiga, int seasonYear) {
-        List<Competition> serbianLeagues = findSerbianLeagues();
+    /**
+     * Runs the promotion ladder for <b>every country that has one</b>.
+     *
+     * <p>The old signature took a {@code superLiga} and never used it. That unused parameter is what hid
+     * the bug underneath: the country was hard-coded to Serbia one method call away, so a caller could
+     * hand in Croatia's top flight and get Serbia's ladder, and there was no type or argument that made
+     * that visible. It is gone, and the method says which countries it is working on.
+     */
+    public void applyPromotionRelegation(int seasonYear) {
+        int countriesLaddered = 0;
+        for (List<Competition> leagues : allLeagueCompetitionsByCountry().values()) {
+            if (applyPromotionRelegationForCountry(leagues, seasonYear) > 0) {
+                countriesLaddered++;
+            }
+        }
+        if (countriesLaddered > 0) {
+            log.info("Season {}: promotion and relegation ran for {} country ladder(s).",
+                    seasonYear, countriesLaddered);
+        }
+    }
+
+    /** One country's ladder. Returns how many clubs changed division. */
+    private int applyPromotionRelegationForCountry(List<Competition> countryLeagues, int seasonYear) {
+        List<Competition> serbianLeagues = countryLeagues;
         if (serbianLeagues.isEmpty()) {
-            return;
+            return 0;
         }
 
         Map<Integer, List<Competition>> leaguesByTier = serbianLeagues.stream()
@@ -726,10 +772,14 @@ public class SeasonService {
             teamRepository.saveAll(updatedTeams);
         }
 
-        for (Competition league : serbianLeagues) {
-            long leagueCount = teamRepository.countByCompetition(league);
-            log.info("Promotion/relegation applied for season {}. League {} now has {} teams.", seasonYear, league.getName(), leagueCount);
+        // Per-division logging for thirty-one divisions times every country is a wall of text that
+        // buries the one line that matters, so the count goes up and the detail goes down.
+        int moved = updatedTeams.size();
+        if (moved > 0) {
+            log.info("Season {}: {} club(s) changed division across {} division(s).",
+                    seasonYear, moved, serbianLeagues.size());
         }
+        return moved;
     }
 
     private void applyPromotionRelegationForLeague(Competition parentLeague,
@@ -951,8 +1001,40 @@ public class SeasonService {
         return findSerbianLeagues();
     }
 
+    /**
+     * Serbia's divisions, in ladder order.
+     *
+     * <p>Kept under its own name because several callers genuinely mean Serbia — the playoff resolution
+     * below only knows how to find a tier-2 league in the same country as the top flight, and the
+     * playoff tie is resolved against "the top flight" as a single competition. Those are Serbia-shaped
+     * assumptions and are called out rather than spread.
+     */
     private List<Competition> findSerbianLeagues() {
         return competitionRepository.findByCountryIsoCodeAndTypeOrderByTierAscDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE);
+    }
+
+    /**
+     * Every league division in the world, grouped by country, each country's own ladder in order.
+     *
+     * <p>This is what the season rollover and the promotion ladder now work from. Both used to call
+     * {@link #findSerbianLeagues()}, which meant that a country the owner activated built a full
+     * 31-division pyramid, played one season, and then stopped: the rollover created the new season's
+     * table rows and fixture lists for Serbia's divisions only, so Croatia's thirty-one divisions had
+     * no season two and went silent.
+     */
+    private Map<String, List<Competition>> allLeagueCompetitionsByCountry() {
+        Map<String, List<Competition>> byCountry = new TreeMap<>();
+        for (Competition league : competitionRepository.findAll()) {
+            if (league.getType() != CompetitionType.LEAGUE || league.getCountry() == null) {
+                continue;
+            }
+            byCountry.computeIfAbsent(league.getCountry().getIsoCode(), key -> new ArrayList<>()).add(league);
+        }
+        byCountry.values().forEach(leagues -> leagues.sort(
+                Comparator.comparing((Competition c) -> c.getTier() == null ? Integer.MAX_VALUE : c.getTier())
+                        .thenComparing(c -> c.getDivisionLevel() == null ? Integer.MAX_VALUE : c.getDivisionLevel())
+                        .thenComparing(Competition::getId)));
+        return byCountry;
     }
 
     private Map<String, Object> toPlayoffResultSummary(MatchFixture fixture, Set<Long> nextSeasonSuperLigaTeamIds) {

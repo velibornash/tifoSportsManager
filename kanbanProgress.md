@@ -857,3 +857,74 @@ The one failure the clean run found was in this task rather than the activation 
 asserted the global online count was zero and failed with `expected: <0> but was: <1>`, because the
 integration tests in the same H2 world go through the same JWT filter and somebody else is legitimately
 online. It was testing the world, not the blank input — now it asserts the count did not *move*.
+
+## `PENDING` — the promotion ladder covers every country, and we now know why it has never run
+
+### The ladder was right; the country was a literal
+
+`applyPromotionRelegationForLeague` computes a safe zone, a playoff band and a relegation band from the
+division's size and how many divisions sit below it. Ten clubs with two below it is 6 safe, 7-8 playoff,
+9-10 relegated — and the `PromotionRule` rows for Superliga say exactly that, which is a nice surprise:
+the description and the implementation agree. The engine derives the bands from tiers and never reads
+that table, so the table is a description, not a source. Worth knowing before somebody wires the engine
+to read it, because wiring it up would be a second implementation of the same geometry.
+
+The bug was `findSerbianLeagues()`, which reads a literal `"SRB"`, reached from three places: the ladder,
+the season-two builder, and indirectly the `SeasonRolloverJob`. Croatia could be activated into a complete
+31-division pyramid, play twelve weeks, and then have **no season two** — no table rows, no fixtures,
+nothing for the day-3 and day-7 matchday jobs to select from. A country the owner switched on would go
+silent a season later, and nothing in the log would say why.
+
+### The unused parameter is what hid it
+
+`applyPromotionRelegation(Competition superLiga, int seasonYear)` took a top flight and never referenced
+it. A caller could pass Croatia's top flight and get Serbia's ladder, and the signature said nothing
+about it. Same shape in `performPromotionRelegationAndNewSeason`. Both parameters are gone; the ladder
+now loops over `allLeagueCompetitionsByCountry()` and says in its own log line how many country ladders
+ran.
+
+`openNewSeasonForEveryCountry(seasonYear)` is extracted so it takes the season number rather than reading
+the clock. That is not style: it makes the new-season step callable — and testable — without moving the
+whole world a season forward, which is the only reason the "does Croatia get a season two" assertion can
+be written at all.
+
+### Then the live run, which is where the real problem turned up
+
+Advancing the clock to the end of the season produced: week 12 → 1, season 2, **and no rollover**. The
+`job_run` table is unambiguous:
+
+- 13 recorded job runs
+- 13 of them at day 3
+- **0 at day 7**
+- `season-rollover` has never run, not once
+
+`SeasonRolloverJob` fires at `week = WEEKS_PER_SEASON, day = 7`. `GameClockService.advanceWeek()` bumps
+the week counter, adds one day of game time to the offset, and dispatches jobs **for the day the clock was
+already sitting on**. It never advances the day. The week goes up, the day stays 3, and everything pinned
+to day 5 or day 7 is skipped permanently. The day-7 league matchday has never fired either, which is the
+same defect that has been refusing to let the week advance past "5 unplayed fixture(s) in your league".
+
+**The promotion ladder therefore has never run in the running app, for any country.** What this commit
+does is make it correct for every country and give it a test that would have caught the country bug. What
+it does not do is make it happen — the trigger is unreachable, and the trigger is the day/hour engine's
+business, not a promotion fix's. It is on the board under the day/hour table with the evidence.
+
+### Two of my own tests were wrong about the world again
+
+`PromotionLadderTest` was written against Croatia, which exists on the live Postgres world because I
+activated it there — and not in H2, so four of five tests failed with "Croatia has no pyramid" while
+blaming the fixture. The fix is `ensureCroatia()`: activate once, no-op after, called by every test, so
+each is self-sufficient. This is the third order-dependence this session, after the activation tests and
+the presence registry, and the shape is always the same — shared H2 world, a test that assumes it is
+alone in it.
+
+### Tests
+
+**5 new, all green.** `PromotionLadderTest` walks all 31 of Croatia's divisions after a rollover and
+asserts each has one table row per club and a non-empty fixture list, which is the assertion that failed
+loudest when fixtures were scheduled for the top flight only. It also pins that opening the new season
+twice adds no fixtures, that the bottom tier stays full (16 municipal divisions, nowhere to go), and that
+an unactivated country acquires neither divisions nor a season from being in the catalogue.
+
+Not claimed: a live rollover. It cannot be produced on the running app until the day/hour trigger is
+fixed, and saying otherwise would be the shape of thing this log keeps refusing to write.

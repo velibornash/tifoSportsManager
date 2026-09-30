@@ -75,6 +75,7 @@ years and every fixture reader will find nothing.
 |---|---|---|
 | **Zone-based morale and daily recovery** | **the writer is wired, and `Zone` itself was wrong** — see the progress log. The `recovery` day-job's firing hour is a separate day/hour defect |
 | **Simulate-all is week-based** | not started | Should be day- and hour-accurate, and must include cup ties. |
+| **`advanceWeek` never changes the day** | **this is why the promotion ladder has never run — see below.** It bumps the week counter, adds one day of game time, and dispatches jobs for the day it was *already* on |
 | **Cup ties in the schedule view** | not started | The schedule shows the week template, not the actual day's ties. All the data exists. |
 | Penalty shootouts | not started | Penalties are awarded but never taken. Also blocks cup progression: a level knockout tie has no winner, so round 2 cannot be drawn. |
 
@@ -165,6 +166,53 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — the promotion ladder now covers every country, and we know why it has never run
+
+The ladder itself was **fine**. `applyPromotionRelegationForLeague` computes a safe zone, a playoff band
+and a relegation band from the division's size and the number of divisions below it, and for a ten-club
+division with two below it that is 6 safe, 7-8 playoff, 9-10 relegated — exactly what the
+`PromotionRule` rows describe. The `PromotionRule` table is a faithful description of the ladder; the
+engine derives the bands from tiers and does not read that table, which is worth knowing before anyone
+wires it up as if it were the source.
+
+**The country was hard-coded in three places**, all of them now fixed:
+
+| Was | Now |
+|---|---|
+| `findSerbianLeagues()` — the country read as a literal `"SRB"` inside the ladder | `allLeagueCompetitionsByCountry()`, every country grouped into its own ladder |
+| `performPromotionRelegationAndNewSeason` built season two for `findSerbianLeagues()` only | `openNewSeasonForEveryCountry(seasonYear)` — extracted so it takes the season number and is callable without moving the world a season forward |
+| `applyPromotionRelegation(Competition superLiga, …)` accepted a top flight and **never used it** | the parameter is gone; the method says which countries it is working on |
+
+That unused `superLiga` parameter is what hid the bug. A caller could hand in Croatia's top flight and
+get Serbia's ladder, and nothing in the signature said so. The season rollover had the same shape: a
+country the owner activated got a full 31-division pyramid, played one season, and then had **no season
+two** — no table rows, no fixtures, nothing for the matchday jobs to select. Everything activation built
+correctly was dropped on the floor twelve weeks later.
+
+### The bigger finding: the rollover job can never fire
+
+Proving this live meant advancing the clock to the end of the season, and the clock went 12 → 1 with
+season 2 and **no rollover at all**. `job_run` says why:
+
+| | |
+|---|---|
+| Job runs recorded | **13** |
+| ...at day 3 | **13** |
+| ...at day 7 | **0** |
+| `season-rollover` runs, ever | **0** |
+
+`SeasonRolloverJob` fires at `week = WEEKS_PER_SEASON, day = 7`. `GameClockService.advanceWeek()` bumps
+the week counter, adds exactly one day of game time, and dispatches jobs **for the day the clock was
+already on** — it never advances the day. So the week goes up, the day stays 3, and every job pinned to
+day 5 or 7 is skipped forever. The league matchday jobs are on day 3 and day 7; the day-7 half has never
+run either, which is the other half of the "5 unplayed fixtures" the week advance kept refusing to move
+past.
+
+**So the promotion ladder has never executed in the running app, for any country — this fix makes it
+correct but does not make it happen.** Turning `advanceWeek` into a real seven-day step is a day/hour
+engine change with a calendar decision attached (what happens to a day whose jobs have not fired), so it
+is written up above as its own task rather than quietly done inside a promotion fix.
 
 ### `a5cdbc9` — the World page stopped implying 48 people are at their desks
 

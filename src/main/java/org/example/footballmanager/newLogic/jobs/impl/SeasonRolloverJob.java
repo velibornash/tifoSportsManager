@@ -64,15 +64,19 @@ public class SeasonRolloverJob implements DayJob {
 
     @Override
     public void run(JobContext context) {
-        Competition topFlight = competitions.findByName("Superliga Srbije")
-                .orElseGet(() -> competitions.findByCountryIsoCodeAndType("SRB", null)
-                        .stream().findFirst().orElse(null));
-        if (topFlight == null) {
-            log.warn("Season {} closed but no top-flight competition was found; nothing promoted.",
+        // The guard used to be "did we find Superliga Srbije" — a Serbia-shaped question asked before a
+        // country-agnostic job. A world with no Serbia would have skipped the rollover for every country
+        // in it, including the ones it had just built pyramids for. The question now is the real one:
+        // is there any league at all to roll over?
+        boolean anyLeague = competitions.findAll().stream()
+                .anyMatch(league -> league.getType()
+                        == org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE);
+        if (!anyLeague) {
+            log.warn("Season {} closed but the world holds no league divisions; nothing promoted.",
                     context.seasonYear());
             return;
         }
-        seasons.performPromotionRelegationAndNewSeason(topFlight);
+        seasons.performPromotionRelegationAndNewSeason();
         log.info("Season {} closed: promotion, relegation and the new season are done.",
                 context.seasonYear());
     }
