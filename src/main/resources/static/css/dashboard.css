@@ -1449,6 +1449,60 @@ button.training-week-item {
     justify-content: space-between;
 }
 
+/*
+ * The page toolbar carries the only way out of a long page, so on a phone it stays put.
+ *
+ * The owner reported "back to dashboard does nothing" on the World page. It did do something — it was
+ * at top: -1095 after 1200px of scroll, on a page with 48 country rows in it. Tapping the top of the
+ * screen did not hit it, so from a manager's point of view the button was dead. Measured rather than
+ * assumed, because the same button works perfectly on a desktop where the page fits.
+ */
+@media (max-width: 900px) {
+    /*
+     * `position: fixed`, not `sticky`, and that is an empirical choice worth recording.
+     *
+     * `sticky` is the obvious tool and it silently does nothing in this app's shell. The shell puts
+     * `overflow: hidden auto` on <body> and <html>; the page is actually scrolled by <html>, and <body>
+     * has `scrollHeight === clientHeight`, so it is a scroll container that cannot scroll. A sticky
+     * element is confined to its nearest scroll container's scrollport, so it never leaves <body> and
+     * never moves. Verified: at scroll 700 with `position: sticky` the button measured top: -587, and
+     * the same button with `position: fixed` measured top: 0.
+     *
+     * Scoped to the world page rather than to `.fm-page-toolbar` generally, because a fixed bar on
+     * every page in the game is a change nobody asked for and would need its own review.
+     */
+    .fm-page--world .fm-page-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        padding: 10px 14px;
+        /* Solid, not a gradient fading to transparent. The fading version let the page title and the
+           competition hint scroll up *through* the bar and collide with the button text, which looked
+           worse than the bar it replaced. The colour is the page's own body background, taken from the
+           rule at the foot of this file, so it cannot drift from it. */
+        background: #071018;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+    }
+
+    /* The bar itself must not eat taps meant for the content behind it; the button must still work. */
+    .fm-page--world .fm-page-toolbar > * {
+        pointer-events: auto;
+    }
+
+    .fm-page--world .fm-page-toolbar .back-to-dashboard {
+        flex: 0 0 auto;
+    }
+
+    /* Room for the fixed bar, so the title underneath is not hidden by it and the first panel does
+       not start underneath the button. */
+    .fm-page--world {
+        padding-top: 78px;
+    }
+}
+
 .fm-grid-top {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
@@ -2032,6 +2086,35 @@ button.training-week-item {
 .fm-squad-wrap {
     width: 100%;
     overflow-x: auto;
+}
+
+/*
+ * The world list is 48 rows, which on a phone made the page about 3,000px tall — and the only way off
+ * the page is a button at the top of it. Measured after scrolling, that button sat at top: -1095: still
+ * working, entirely out of reach, so from a manager's point of view the back button was dead.
+ *
+ * The fix is not a stickier button. It is not making the page 3,000px tall in the first place: the list
+ * scrolls inside its own panel and the page stays about a screen and a half, so the button at the top
+ * is always about a swipe away. `position: sticky` is left in place above for anything else that
+ * genuinely needs it — though note that it is a no-op in this app's shell, because <body> carries
+ * `overflow: hidden auto` and never scrolls, which makes it the sticky root while <html> does the
+ * scrolling. Worth knowing before anyone tries it a second time.
+ */
+@media (max-width: 900px) {
+    .fm-page--world .fm-squad-wrap {
+        max-height: 58vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* The table header stays put inside that panel, so a manager reading row 40 can still see which
+       column they are looking at. */
+    .fm-page--world .fm-world-table thead th {
+        position: sticky;
+        top: 0;
+        background: #0b101a;
+        z-index: 2;
+    }
 }
 
 .fm-badge-deck {

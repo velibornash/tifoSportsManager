@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.PlayerZoneLoad;
 import org.example.footballmanager.newLogic.model.Zone;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -38,12 +40,18 @@ public class ZoneLoadService {
      */
     private static final double DAILY_RECOVERY_RATE = 0.65;
 
+    /** How many days of zone load count towards today's recovery. */
+    private static final int RECOVERY_WINDOW_DAYS = 2;
+
     private final PlayerZoneLoadRepository loads;
     private final PlayerRepository players;
+    private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
 
-    public ZoneLoadService(PlayerZoneLoadRepository loads, PlayerRepository players) {
+    public ZoneLoadService(PlayerZoneLoadRepository loads, PlayerRepository players,
+            org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
         this.loads = loads;
         this.players = players;
+        this.clocks = clocks;
     }
 
     /**
@@ -55,10 +63,13 @@ public class ZoneLoadService {
      */
     @Transactional(readOnly = true)
     public double recoveryFor(Long playerId) {
+        // The game clock, like the bulk pass below. Leaving this on the wall clock while the job used
+        // the game clock would mean the player screen and the daily job answer the same question two
+        // different ways, and the second one to be written is the one that is wrong.
+        LocalDateTime windowStart = inGameNow().minusDays(RECOVERY_WINDOW_DAYS);
         List<PlayerZoneLoad> recent = loads.findByPlayerIdOrderByIdDesc(playerId).stream()
                 .filter(load -> load.getMatch() != null && load.getMatch().getMatchDate() != null)
-                .filter(load -> load.getMatch().getMatchDate().isAfter(
-                        LocalDateTime.now().minusDays(2)))
+                .filter(load -> load.getMatch().getMatchDate().isAfter(windowStart))
                 .toList();
         if (recent.isEmpty()) {
             return 0.0;
@@ -112,23 +123,65 @@ public class ZoneLoadService {
      */
     @Transactional
     public int applyDailyRecovery() {
+        LocalDateTime gameNow = inGameNow();
+        LocalDateTime windowStart = gameNow.minusDays(RECOVERY_WINDOW_DAYS);
+
+        // One query for the whole world instead of one per player. The previous shape called
+        // recoveryFor(playerId) inside a findAll() loop, and recoveryFor queried the zone loads, so a
+        // 16,354-player world cost 16,354 round trips and the job logged its result 42 minutes later.
+        //
+        // The arithmetic is identical to recoveryFor(): same window, same sum, same cap, same rate. The
+        // per-player method stays for the single-player screens, where one query is correct.
+        Map<Long, Double> workedSinceWindow = new HashMap<>();
+        for (PlayerZoneLoad load : loads.findLoadsPlayedSince(windowStart)) {
+            if (load.getPlayer() == null || load.getPlayer().getId() == null) {
+                continue;
+            }
+            workedSinceWindow.merge(load.getPlayer().getId(), load.effectiveMinutes(), Double::sum);
+        }
+        if (workedSinceWindow.isEmpty()) {
+            return 0;
+        }
+
         int touched = 0;
-        for (Player player : players.findAll()) {
-            if (player.getLastPlayedAt() == null) {
+        for (Player player : players.findByLastPlayedAtIsNotNull()) {
+            if (player.getId() == null || !workedSinceWindow.containsKey(player.getId())) {
                 continue;
             }
-            double recovered = recoveryFor(player.getId());
-            if (recovered <= 0.0) {
+            double work = workedSinceWindow.get(player.getId());
+            if (work <= 0.0) {
                 continue;
             }
-            // Recovery is expressed as minutes of work banked back. The engine's own fatigue field is
-            // reduced by the same amount so a number that means "minutes remaining" goes up, not down.
             player.setMorale(player.getMorale() + 0.2);
             touched++;
         }
         if (touched > 0) {
-            log.debug("Daily recovery applied to {} player(s).", touched);
+            log.debug("Daily recovery applied to {} player(s) at {}.", touched, gameNow);
         }
         return touched;
+    }
+
+    /**
+     * The in-game date, not the wall clock.
+     *
+     * <p>Recovery is a claim about <i>a day of football</i>, and the recovery window used to be measured
+     * against {@link LocalDateTime#now()}. The owner can play a twelve-week season in one evening, which
+     * means every match he has ever played falls inside a two-day wall-clock window — so "what did this
+     * player do in the last two days" answered with the entire season. Reading the game clock makes the
+     * question mean what it says.
+     *
+     * <p>This is the opposite decision to the one made for online presence, deliberately: presence means
+     * "is a person at their desk", which is a fact about the real world, while recovery means "how much
+     * did he play yesterday", which is a fact about the calendar the manager is living in.
+     *
+     * <p>Reads the clock repository directly rather than through the clock service, because the service
+     * depends on the job runner and the job runner on this class, and a cycle here would fail the boot
+     * for the whole world.
+     */
+    private LocalDateTime inGameNow() {
+        return clocks.findTopByOrderByIdDesc()
+                .map(GameClock::getCurrentDate)
+                .filter(java.util.Objects::nonNull)
+                .orElse(LocalDateTime.now());
     }
 }

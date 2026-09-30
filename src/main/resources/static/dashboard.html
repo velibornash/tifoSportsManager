@@ -15,7 +15,7 @@
     <div class="menu-button desktop-only" onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">⚽ Club</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
-	    <div id="country-menu-button" class="menu-button desktop-only" onclick="loadPage('country')">&#127758; Country</div>
+	    <div id="country-menu-button" class="menu-button desktop-only" onclick="showMyCountry()">&#127758; Country</div>
 	    <div class="menu-button desktop-only" onclick="loadPage('world')">🌍 World</div>
     <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
 	    <div id="admin-menu-button" class="menu-button desktop-only" data-admin-only hidden onclick="loadPage('admin')">&#128295; Admin</div>
@@ -92,10 +92,16 @@
         </div>
 
 	        <div class="mobile-accordion">
-	            <div id="country-mobile-button" class="accordion-header" onclick="closeMobileMenu(); loadPage('country')">
+	            <div id="country-mobile-button" class="accordion-header" onclick="closeMobileMenu(); showMyCountry()">
                 &#127758; Country
             </div>
         </div>
+
+	        <div class="mobile-accordion">
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('world')">
+	                &#127757; World
+	            </div>
+	        </div>
 
 	        <div class="mobile-accordion">
 	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('chat')">

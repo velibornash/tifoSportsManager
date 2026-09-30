@@ -523,8 +523,11 @@ export function createCountryView(deps) {
     // ------------------------------------------------------------------ page
 
     async function loadCountryPage(options) {
-        const { tab = 'general', level: forcedLevel } = options || {};
+        const { tab = 'general', level: forcedLevel, simulatedCountry = '' } = options || {};
         const mainContent = document.getElementById('main-content');
+        // Resolved by the host, which prefers an explicit choice from the World page over the manager's
+        // own country. It used to ask for the manager's own country directly, so every country in the
+        // world showed the manager's own side.
         const countryIsoCode = getCurrentUserCountryIsoCode();
         if (!countryIsoCode) {
             mainContent.innerHTML = buildEmptyState('Country data is not available for this manager yet.');
@@ -532,6 +535,26 @@ export function createCountryView(deps) {
         }
 
         const countryIso = String(countryIsoCode).toUpperCase();
+        if (simulatedCountry && String(simulatedCountry).toUpperCase() === countryIso) {
+            // Said plainly, and above the page: a represented country has its national sides and
+            // nothing else. An empty divisions table with no explanation is indistinguishable from a
+            // broken page, and the manager cannot tell which one they are looking at.
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--country">
+                    <div class="fm-page-toolbar">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back to dashboard</button>
+                        <div class="fm-page-title-block">
+                            <div class="fm-eyebrow">Country</div>
+                            <h2>${htmlEscape(countryIso)} is represented, not played</h2>
+                        </div>
+                    </div>
+                    <div class="fm-callout">
+                        It has national sides, and no club divisions. A country is given its own five-tier
+                        pyramid from Admin &rarr; Activate a country.
+                    </div>
+                </div>`;
+            return;
+        }
 
         try {
             const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs] =

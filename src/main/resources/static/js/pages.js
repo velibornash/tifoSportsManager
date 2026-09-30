@@ -55,6 +55,44 @@ import {
 	    let activeLeagueCountryIsoCode = '';
 	    let activeLeagueBackTarget = 'dashboard';
 
+	    /**
+	     * The country the manager is *looking at*, as opposed to the country he plays in.
+	     *
+	     * <p>Clicking a country in the World page used to land on the manager's own country every time.
+	     * The World page set the league context, and the country page then asked
+	     * {@code getCurrentUserCountryIsoCode()} — the manager's own country — and ignored the context
+	     * entirely. So Croatia, Japan and Brazil all showed Serbia. The two functions disagreed about what
+	     * the click meant, and the one that was consulted was the wrong one.
+	     *
+	     * <p>It is separate state rather than the league context because the Country menu button has to
+	     * mean "my country": if the world click reused the league context, opening Country after looking at
+	     * Croatia would keep showing Croatia, and the manager would have no way back to their own side.
+	     * So the World page sets this, and the Country button clears it.
+	     */
+	    let selectedCountryIsoCode = '';
+
+	    /** Reads the country to show: an explicit choice first, then the manager's own. */
+	    function resolveCountryIsoCode() {
+	        return (selectedCountryIsoCode || currentUserCountryIsoCode || '').toUpperCase();
+	    }
+
+	    function setSelectedCountry(isoCode) {
+	        selectedCountryIsoCode = isoCode ? String(isoCode).toUpperCase() : '';
+	    }
+
+	    /**
+	     * The Country menu button: the manager's own country, always.
+	     *
+	     * <p>It clears the World page's selection first. Without that, looking at Croatia from the world
+	     * list would follow you to the Country button, and there would be no way back to your own side
+	     * except reloading the page.
+	     */
+	    function showMyCountry() {
+	        setSelectedCountry('');
+	        setActiveLeagueContext({ countryIsoCode: currentUserCountryIsoCode || '', backTarget: 'dashboard' });
+	        loadPage('country');
+	    }
+
 	    function setActiveLeagueContext({ leagueId = null, leagueName = '', countryIsoCode = '', backTarget = 'dashboard', seasonYear } = {}) {
 	        activeLeagueId = normalizeLeagueId(leagueId);
 	        activeLeagueName = leagueName || '';
@@ -378,7 +416,7 @@ import {
         authFetch,
         loadPage: (...args) => loadPage(...args),
         setActiveLeagueContext,
-        getCurrentUserCountryIsoCode: () => currentUserCountryIsoCode,
+        getCurrentUserCountryIsoCode: () => resolveCountryIsoCode(),
         getActiveLeagueCountryIsoCode: () => activeLeagueCountryIsoCode,
         getCurrentUserCountryName: () => currentUserCountryName,
         getSeasonYear: () => currentSeasonYear,
@@ -520,7 +558,10 @@ import {
 	                    break;
 
 	                case "country":
-	                    await loadCountryPage();
+                    // Options passed through: the world page marks a simulated country so the page
+                    // can say what that means instead of showing an empty divisions table that
+                    // reads as a broken page.
+                    await loadCountryPage(options);
 	                    break;
 
 	                case "countryCup":
@@ -708,7 +749,7 @@ import {
                 return `
                     <tr class="fm-world-row${active ? ' fm-world-row--active' : ''}">
                         <td class="sq-name">
-                            <button type="button" class="fm-link" data-world-country="${escapeHtml(country.isoCode || '')}">
+                            <button type="button" class="fm-link" data-world-country="${escapeHtml(country.isoCode || '')}" data-world-state="${escapeHtml(country.state || '')}">
                                 ${country.flagImagePath ? `<img class="fm-world-flag" src="${escapeHtml(country.flagImagePath)}" alt="" />` : ''}
                                 ${escapeHtml(country.name || '')}
                             </button>
@@ -816,8 +857,14 @@ import {
 
             mainContent.querySelectorAll('[data-world-country]').forEach(link => {
                 link.addEventListener('click', () => {
-                    setActiveLeagueContext({ countryIsoCode: link.dataset.worldCountry, backTarget: 'world' });
-                    loadPage('country');
+                    const iso = String(link.dataset.worldCountry || '').toUpperCase();
+                    // A simulated country has no clubs, so its page is the national-team record and
+                    // nothing else. Saying so is better than showing an empty divisions table that reads
+                    // as a broken page.
+                    const isSimulated = link.dataset.worldState !== 'ACTIVE';
+                    setSelectedCountry(iso);
+                    setActiveLeagueContext({ countryIsoCode: iso, backTarget: 'world' });
+                    loadPage('country', { simulatedCountry: isSimulated ? iso : '' });
                 });
             });
         } catch (err) {
@@ -826,8 +873,16 @@ import {
         }
     }
 
-    async function loadCountryPage() {
-        return countryView.loadCountryPage();
+    /**
+     * Forwards its options.
+     *
+     * <p>It used to take none and drop whatever the router passed, so the world page's
+     * "this country is represented, not played" note never arrived even though the router had set it
+     * and the view had code to render it. The option existed in three of the four places between the
+     * click and the screen, which is the most annoying shape a dropped argument can have.
+     */
+    async function loadCountryPage(options) {
+        return countryView.loadCountryPage(options);
     }
 
     async function loadNationalTeam(level = 'senior') {
@@ -1028,24 +1083,9 @@ import {
     window.showStadiumModal = showStadiumModal;
     window.goBackSmart = goBackSmart;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    // The dashboard's nav items are inline onclick handlers, so the two functions that are not part of
+    // the page router's own surface are published rather than threaded through six dependency
+    // objects. showMyCountry is one: the Country button means the manager's own country, and it has to
+    // clear the World page's selection to mean it.
+    window.showMyCountry = showMyCountry;
+    window.setSelectedCountry = setSelectedCountry;

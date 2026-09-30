@@ -14,6 +14,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAndSortingRepository<Player, Long> {
+
+    /**
+     * Players who have actually played — the only ones daily recovery has anything to say about.
+     *
+     * <p>Added with the bulk recovery job. It used to be {@code findAll()} with a null check inside the
+     * loop, which loaded the whole world — 16,354 players — to throw most of it away, once a day, for
+     * every day the job fired on.
+     */
+    List<Player> findByLastPlayedAtIsNotNull();
     List<Player> findByTeamId(Long teamId);
     List<Player> findByTeamIdAndPosition(Long teamId, Position position);
     Optional<Player> findByIdAndTeamId(Long id, Long teamId);
