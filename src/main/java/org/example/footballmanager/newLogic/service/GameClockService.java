@@ -48,6 +48,7 @@ public class GameClockService {
 
     private static final int SECONDS_PER_HOUR = 3600;
     private static final int HOURS_PER_DAY = 24;
+    private static final int DAYS_PER_WEEK = 7;
 
     /**
      * The zone the game clock reads its hour in.
@@ -168,50 +169,47 @@ public class GameClockService {
     }
 
     /**
-     * One whole day, finishing the current day first (owner, 2026-09-28).
+     * One whole day (owner, 2026-09-28).
      *
-     * <p>Every remaining hour of the day is offered to the runner before the date rolls, so a job at
-     * 23:00 is evaluated on the day it belongs to rather than on the next one.
+     * <p>This used to walk the remaining hours of the day through the runner <i>and then</i> call
+     * {@code advanceHours} over the same range, so every hour of the day was offered twice — 48 runner
+     * calls for a day that has 24. The pre-loop was there to make sure a job at 23:00 was evaluated on
+     * the day it belonged to, and the worry is not real: {@code advanceHour} dispatches <b>after</b>
+     * incrementing the hour but <b>before</b> rolling the day, so the step from 22:00 to 23:00 offers
+     * (today, 23) and only the step past 23:00 moves the day. The pre-loop was belt and braces on a
+     * belt that was already fastened.
+     *
+     * <p>So this is now {@code advanceHours(24)}, the same shape as {@link #advanceWeek()}, and a day
+     * offers 24 positions rather than 48.
      */
     @Transactional
     public Map<String, Object> advanceDay() {
-        GameClock clock = clock();
-        int seasonYear = seasonYearOf(clock);
-        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
-        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        int from = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
-
-        for (int hour = from; hour < HOURS_PER_DAY; hour++) {
-            jobRunner.runDue(seasonYear, week, day, hour);
-        }
-        return advanceHours(HOURS_PER_DAY - from);
+        return advanceHours(HOURS_PER_DAY);
     }
 
     /**
-     * A whole week: the week counter up by one, wrapping the season at the end (owner, 2026-09-28).
+     * A whole week, as 168 real hours (owner, 2026-09-28).
      *
-     * <p>Deliberately not seven advance-day calls. The owner specified the week counter moving, and
-     * composing it from days made the end of a week depend on the hour the button was pressed.
+     * <p><b>This used to move the week counter and one day of game time, and dispatch jobs once.</b> The
+     * consequences were not subtle and none of them were reported:
+     *
+     * <ul>
+     *   <li>the day-of-week never changed, so the clock sat on whatever day it started on for ever;</li>
+     *   <li>only that one day was ever offered to the job runner, so every job pinned to day 5 or 7 was
+     *       skipped permanently — including the day-7 league matchday and the season rollover;</li>
+     *   <li>{@code job_run} held thirteen runs, all of them at day 3, and
+     *       {@code season-rollover} had never run at all, so the promotion ladder had never executed
+     *       for any country.</li>
+     * </ul>
+     *
+     * <p>It is now {@code advanceHours(168)}, which is the same stepping {@code advanceDay} already used
+     * and the one that cannot skip a trigger. The owner's requirement — the week counter goes up by one —
+     * still holds, and the end position still does not depend on the hour the button was pressed, because
+     * 168 hours lands on the same hour and day of the next week whatever hour that started from.
      */
     @Transactional
     public Map<String, Object> advanceWeek() {
-        GameClock clock = clock();
-        int week = (clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) + 1;
-        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
-        if (week > SeasonService.WEEKS_PER_SEASON) {
-            week = 1;
-            season += 1;
-        }
-        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        int hour = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
-
-        clock.setCurrentWeek(week);
-        clock.setCurrentSeason(season);
-        clock.setAdvanceOffsetSeconds(offsetOf(clock) + (long) HOURS_PER_DAY * SECONDS_PER_HOUR);
-        clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
-        clocks.save(clock);
-
-        return afterMove(clock, hour);
+        return advanceHours(HOURS_PER_DAY * DAYS_PER_WEEK);
     }
 
     private int seasonYearOf(GameClock clock) {

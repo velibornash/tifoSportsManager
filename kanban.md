@@ -167,6 +167,46 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
+### `PENDING` — a week is a week, and now a week takes as long as a week
+
+`GameClockService.advanceWeek()` bumped the week counter, added exactly one day of game time, and
+dispatched the job runner **once** — for the day the clock was already on. So the day never changed, and
+every job pinned to day 5 or day 7 was skipped for ever.
+
+It is now `advanceHours(168)`, the same stepping `advanceDay` already used and the one that cannot skip a
+trigger. `advanceDay` lost a redundant pre-loop on the way: it offered every remaining hour to the runner
+*and then* called `advanceHours` over the same range, so a day cost 48 runner calls for 24 hours. The
+pre-loop existed to make sure a 23:00 job fired on its own day, and that worry was unfounded —
+`advanceHour` dispatches after the hour increment and before the day rolls.
+
+The owner's requirement still holds: **the week counter goes up by one, and the end position does not
+depend on the hour the button was pressed**, because 168 hours lands on the same day and hour of the next
+week whatever hour it started from. Pinned by a test that presses at 00:00, 05:00, 12:00 and 23:00.
+
+**Live: days 1, 2 and 3 of a week are now reached for the first time.** `job_run` had never held a row
+at day 1 or day 2. It is still grinding towards day 7, and that is the next item.
+
+### The new blocker: a week now takes as long as a week
+
+Making the clock honest exposed that the jobs behind it are priced for a village, not a world of **716
+clubs and 16,354 players**. `RecoveryJob` alone logged:
+
+> `Recovery: 7408 player(s) recovered on season 2 week 12 day 1` — **42 minutes**
+
+And this is the same defect behind the other half of the board: the week advance kept refusing with *"Still
+5 unplayed fixture(s) in your league"* because the day-3 matchday is now doing two matchdays' worth of
+work across 31 divisions per country. So the fix is right and the button is unusable, and the honest
+answer is not to put the clock back.
+
+Three things are on the table and they are a decision, not a bug:
+
+1. **Make the expensive jobs incremental.** `RecoveryJob` walks every player in the world on every day it
+   fires. It should walk the players who *played* since the last run, or the day it has not processed.
+2. **Move the week's work off the request thread.** There is already a background simulation runner; the
+   week advance could hand the world over to it and return, the way simulate-all does.
+3. **Decide what "Advance Week" means to the owner** — a calendar step, or a week of football. Right now
+   it is the second, and it takes hours.
+
 ### `8fc9876` — the promotion ladder now covers every country, and we know why it has never run
 
 The ladder itself was **fine**. `applyPromotionRelegationForLeague` computes a safe zone, a playoff band

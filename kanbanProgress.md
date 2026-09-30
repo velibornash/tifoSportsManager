@@ -928,3 +928,67 @@ an unactivated country acquires neither divisions nor a season from being in the
 
 Not claimed: a live rollover. It cannot be produced on the running app until the day/hour trigger is
 fixed, and saying otherwise would be the shape of thing this log keeps refusing to write.
+
+## `PENDING` — a week is a week, and now a week takes as long as a week
+
+### One method, and everything it cost
+
+`GameClockService.advanceWeek()` did three things: bumped the week counter, added exactly one day of game
+time, and dispatched the runner once — for the day the clock was *already sitting on*. The day never
+changed. Every job pinned to day 5 or day 7 was therefore skipped permanently, and `job_run` recorded
+thirteen runs, thirteen of them at day 3, and none at all at day 7.
+
+Now it is `advanceHours(168)`. `advanceHour` already knew how to roll hour → day → week → season, and
+`advanceDay` already composed from hours; `advanceWeek` was the one that had opted out, and opting out is
+what made the season rollover and the day-7 matchday unreachable.
+
+**The owner's requirement is still met.** They wanted the week counter to move, and the old comment said
+composing the week from days made the end position depend on the hour the button was pressed. 168 hours
+is exactly seven days, so it lands on the same day and hour of the next week whether it started at 00:00
+or 23:00. That is pinned by pressing the button at four different hours and asserting the same week.
+
+### `advanceDay` was paying twice, and the belt was already fastened
+
+Writing the test surfaced it: `advanceDay` offered every remaining hour of the day to the runner in an
+explicit loop and *then* called `advanceHours` over the same range. 48 runner calls for a 24-hour day.
+
+The pre-loop was there so a job at 23:00 would be evaluated on the day it belonged to rather than the next
+one. `advanceHour` dispatches **after** incrementing the hour and **before** rolling the day, so the step
+from 22:00 to 23:00 offers (today, 23) and only the step past 23:00 moves the day. The pre-loop was belt
+and braces on a belt that was already fastened, and it was doubling the cost of every day.
+
+My first version of the test asserted 24 and failed with 48, and the honest reading of that failure is
+"the method is wrong", not "the assertion is wrong". It is now `advanceHours(24)`, the same shape as the
+week.
+
+### Built directly rather than through Spring
+
+The subject is which clock positions the runner is offered, and that is decided entirely inside
+`GameClockService`. A full-context test would also run 168 hours of real matchday simulation across 31
+divisions per country and would then be asserting on *that* — slow, and a failure would be ambiguous
+between "the clock skipped a trigger" and "a job threw". So the test constructs the service with mocked
+repositories and a runner that records and returns, and asserts on the offers.
+
+### Live: the day counter moves, and the cost of that is the next problem
+
+Days 1, 2 and 3 of week 12 have now been reached. `job_run` had never held a row at day 1 or day 2 — every
+week in the world's history has the same single day-3 row. The clock is still grinding towards day 7 and
+has not yet reached it, and the reason is the finding this commit is really about:
+
+> `Recovery: 7408 player(s) recovered on season 2 week 12 day 1` — **42 minutes**
+
+`RecoveryJob` walks **every player in the world** on every day it fires. The world is 716 clubs and 16,354
+players, and with Croatia activated it is twice the size it was. So the clock is now honest and the button
+is unusable, and the answer is not to put the clock back — it is that the jobs are priced for a village.
+
+On the board as its own item, with three options rather than one guess: make the expensive jobs incremental
+(recover the players who played since the last run), move the week's work off the request thread the way
+simulate-all already does, and settle what "Advance Week" is supposed to mean to the owner — a calendar
+step, or a week of football.
+
+### Tests
+
+**5 new, all green, in under three seconds** — which is the point of building the service directly. Each
+one describes something that was true of the running app: 168 offers and not 1, every day 1-7 reached, the
+season wrapping after week 12 with week-12-day-7 actually offered, and the end position independent of the
+press hour.
