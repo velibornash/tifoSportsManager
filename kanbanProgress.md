@@ -1259,7 +1259,7 @@ working.
 Determinism is pinned too, because the fix must not cost reproducibility: the same seed gives the same
 sequence, and two different seeds still diverge.
 
-## `PENDING` — the three international club cups, and who is allowed in them
+## `0ecc3af` — the three international club cups, and who is allowed in them
 
 ### "Not created yet" was true, and it was not the interesting part
 

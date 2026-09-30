@@ -62,7 +62,7 @@ years and every fixture reader will find nothing.
 | Verify the 48-country world in the running app | pending | 48 countries / 96 sides / 48 squads proven in tests and in the boot log, **not yet confirmed in the running app** |
 | **Elo ratings** | **done** — see below. `RatingEngine` had zero callers; the column now replays from match history | — |
 | **Online-user presence** | **done** — see below. Registered and online are now two numbers, each labelled for what it is | — |
-| **Champions Cup / Masters Cup / Challenge Cup** | not started | International club competitions. Champions = winners, Masters = 2nd and 3rd, Challenge = 4th. Each needs a record, a draw and a per-tier league link. |
+| **Champions Cup / Masters Cup / Challenge Cup** | **the competitions and the entry rule are done** — see below. **The draw is not wired**: `CupFixtureSeeder` still seeds only the first CUP row | — |
 | **NT Qualifiers + World Cup (senior)** | mechanism only | `InternationalFixtureSeeder` draws senior sides already. Only the competition records and formats are missing. |
 | **U-21 Qualifiers + U-21 World Cup** | not started | Separate competitions from the senior ones, with their own qualification phases — not tabs on one competition. |
 | **Admin: activate a country** | **done** — see below. The flag existed and nothing read it; activation now builds the football | — |
@@ -167,6 +167,55 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `0ecc3af` — the three international club cups, and who is allowed in them
+
+The World page listed Champions, Masters and Challenge as a disabled row reading **"Not created yet"** since
+the page was written. The competitions were missing — and so was the rule that says who may enter them,
+which is the part that turns "a competition exists" into "a competition means something".
+
+**The owner's bands are the whole design:** Champions for the winners, Masters for the second and third,
+Challenge for the fourth. Every division in the world sends a club to all three, so a **fifth-division
+champion reaches the Champions Cup exactly as a first-division one does** — the rule is about the place in
+*your* division, not the strength of it.
+
+**Entry is decided by the season that has finished**, not the one in progress: a club that wins its
+division in week 12 does not enter the same season's Champions Cup by winning it in week 12. A world
+part-way through season one has nothing to qualify from, so the counts are honestly zero rather than
+invented — "no club has finished a season" is a real state, and it is now distinguishable from broken.
+
+Live, with Croatia active so the world has 62 divisions:
+
+| Cup | Qualified | id |
+|---|---|---|
+| Champions Cup | **62** — one per division | 68 |
+| Masters Cup | **124** — the second and third of each | 69 |
+| Challenge Cup | **62** — the fourth of each | 70 |
+
+Positions come from `LeagueTableOrder`, the one comparator in the codebase, not from the stored `position`
+column: a table is only ordered when it is read, and a test now proves a club whose stored position says
+*first* is **not** entered for the Champions Cup.
+
+**Not done, and said so:** the **draw**. `CupFixtureSeeder` seeds only the first CUP row it finds, so these
+three have qualified clubs and no fixture list. It is written up as not done rather than left for someone
+to discover from a "Not created yet" badge on a page that now says they exist.
+
+### `3ea6dd9` — the first draw after seeding, which was not a coin flip
+
+`SimMatchService` seeds the engine from `fixture.getId()` — small consecutive database ids. The **first**
+draw of each kind across seeds 1..500 was constant: `nextInt(2)` gave 0 one way and 500 the other,
+`nextBoolean()` the reverse, `nextDouble() < 0.5` the first again. A narrow first draw takes the top bits
+of the freshly scrambled seed, and for a small seed those are always identical. So whatever the engine
+asks first, it gets the same answer for every match in the world, decided by which number a fixture id
+happens to be.
+
+Fixed in `SimulationRandom.seed()` rather than at a call site, because the call site is one of however
+many there are: **discard one wide value.** The same three measurements become 252/248, 248/252, 252/248.
+Found by the penalty shootout's toss, which was the engine's first draw after seeding.
+
+This changes every seeded run — a replay regenerated from the same seed now differs from the stored one.
+It is still deterministic, which is all the exporter and the viewer launchers promise, and stored replays
+are tick snapshots that are not re-simulated.
 
 ### `2a9cf8f` — a knockout tie can be settled from the spot
 
