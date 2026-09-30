@@ -5,6 +5,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity(name = "Competition")
+@Table(indexes = {
+        @Index(name = "ix_competition_country_type", columnList = "country_id,type"),
+        @Index(name = "ix_competition_tier", columnList = "type,tier")
+})
 @Getter
 @Setter
 public class Competition {

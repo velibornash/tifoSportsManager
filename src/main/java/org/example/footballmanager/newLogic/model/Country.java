@@ -9,6 +9,9 @@ import lombok.Setter;
 import java.util.List;
 
 @Entity(name = "Country")
+@Table(indexes = {
+        @Index(name = "ix_country_state", columnList = "country_state")
+})
 @Getter
 @Setter
 public class Country {

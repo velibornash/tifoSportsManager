@@ -101,6 +101,7 @@ public class DatabaseInitializer {
     private final PlayerRatingBackfill playerRatingBackfill;
     private final BotLeagueStandardBackfill botLeagueStandardBackfill;
     private final InternationalClubCups internationalClubCups;
+    private final SimulatedWorldSeeder simulatedWorldSeeder;
     private final org.example.footballmanager.newLogic.service.NationalRatingService nationalRatingService;
     private final WorldCatalogSeeder worldCatalogSeeder;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
@@ -282,6 +283,20 @@ public class DatabaseInitializer {
             // The three international club cups. The World page listed them as "Not created yet" for
             // as long as the page existed, which was a claim about the database being empty and was
             // true of the competitions — there were no records, only markup.
+            // The 46 simulated countries. A country that is in the world but not activated still needs
+            // clubs, ratings and a standing position, or the international field is thirty-two clubs
+            // instead of forty-eight. Seeded as a static world — no players, no fixtures, no matches —
+            // and before the cups, because the cup qualification reads these tables.
+            //
+            // Its own transaction: 46 countries is the biggest single write on this boot, and letting a
+            // failure in it roll back the club identities, ratings and elections above it would undo
+            // work that has nothing to do with it.
+            try {
+                requiresNew.executeWithoutResult(status ->
+                        simulatedWorldSeeder.seedAllSimulated(currentSeasonYear()));
+            } catch (RuntimeException e) {
+                log.warn("Could not seed the simulated countries: {}", e.getMessage());
+            }
             try {
                 internationalClubCups.ensureCompetitionsDurably();
             } catch (RuntimeException e) {
@@ -422,6 +437,14 @@ public class DatabaseInitializer {
             // said "no Session" and the summary said something that had nothing to do with it.
             // A seeding failure that is only visible as a missing club is a failure nobody debugs.
             log.error("Startup initialization failed — the database may be partially seeded", e);
+            // NOT rethrown, deliberately: this method is also the boot listener, and throwing here
+            // takes down an application that has a partly-built but otherwise usable world. Boot
+            // stays resilient.
+            //
+            // The cost of staying resilient is that whoever asked for a rebuild cannot tell it failed,
+            // which is the bug that was reported. That is fixed at the caller instead —
+            // AdminDatabaseAsyncService verifies the world after this returns and fails the job if
+            // nothing was built. Resilience here, honesty there.
         }
     }
 
@@ -951,7 +974,25 @@ public class DatabaseInitializer {
         // two rows each for Croatia, England and Germany. The catalogue is the only place countries
         // come from, and seedWorldBeforePyramid() runs it before this method.
 
-        Country serbia = countryRepository.findByIsoCode("SRB").orElseThrow();
+        // Self-heals rather than throwing.
+        //
+        // This was `orElseThrow()`, and a single missing country row took the whole bootstrap with
+        // it: every league below is created from `serbia`, so the exception escaped before the first
+        // one existed. The catch in the caller logged it and returned normally, so the admin job
+        // reported "completed successfully" on a database with no leagues in it at all — which is
+        // exactly the report that sent us looking here.
+        //
+        // The catalogue is the only source of countries, so re-running it is the correct repair
+        // rather than a guess, and it is idempotent.
+        Country serbia = countryRepository.findByIsoCode("SRB").orElseGet(() -> {
+            log.warn("Serbia is missing from the world; re-seeding the country catalogue before "
+                    + "building the pyramid.");
+            seedWorldBeforePyramid();
+            return countryRepository.findByIsoCode("SRB").orElseThrow(
+                    () -> new IllegalStateException(
+                            "The country catalogue did not produce Serbia, so no league can be built. "
+                                    + "This is a seeding failure, not a missing club."));
+        });
 
         // 2. The current season. A season is a number counted from 1 - twelve weeks, four to a year.
         Season currentSeason = createSeasonIfNotExists(1, "Season 1");

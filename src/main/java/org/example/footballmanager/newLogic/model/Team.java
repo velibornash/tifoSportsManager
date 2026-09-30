@@ -15,6 +15,10 @@ import java.util.OptionalDouble;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity(name = "Team")
+@Table(indexes = {
+        @Index(name = "ix_team_name_prefix", columnList = "name"),
+        @Index(name = "ix_team_competition", columnList = "competition_id")
+})
 @Getter @Setter
 public class Team {
     @Id

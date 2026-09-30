@@ -829,6 +829,8 @@ touching the app rather than by reading it.
 
 | Bug | What happens | Why it is not fixed yet |
 |---|---|---|
+| **`initialize-db` reported success on a world with no leagues** | Owner reset the database, pressed initialise, and got "no leagues at all" with the panel saying it had worked. Two causes stacked. `initSerbianFootballStructure()` began with `findByIsoCode("SRB").orElseThrow()`, and **every** league below it is built from that country — so one missing row escaped before the first league existed. The caller caught it, logged it, and returned normally, and the job reported success off that return. | **Fixed** (`5c1a0e0`-ish, see log). Serbia's lookup now re-seeds the catalogue and self-heals; the job verifies league and club counts afterwards and fails loudly. The boot path deliberately still swallows, because throwing there would take down an app that has a usable partial world — resilience at boot, honesty at the job. The reset/initialise popup being identical is cosmetic and was left alone. |
+|---|---|---|
 | **`POST /admin/reset-db` deadlocks** | Reset while the background league simulation is still running fails with `ERROR: deadlock detected / Process waits for AccessExclusiveLock`. The job reports `status: failed`. The world survived intact — no data loss — but the reset does not happen. | Found during `61c2a51`. It is a reset-vs-simulation contention problem, and fixing it means changing the reset path, which that task did not touch. Worth looking at together with the simulate-all scheduling below, because both are "two writers, one database". |
 
 **Open question for that session:** the reset should either wait for a running simulation, or the

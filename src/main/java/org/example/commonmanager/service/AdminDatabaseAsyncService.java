@@ -27,6 +27,8 @@ public class AdminDatabaseAsyncService {
     private final BbDataInitializer bbDataInitializer;
     private final AfDataInitializer afDataInitializer;
     private final DatabaseInitializer databaseInitializer;
+    private final org.example.footballmanager.newLogic.repository.CompetitionRepository competitionRepository;
+    private final org.example.footballmanager.newLogic.repository.TeamRepository teamRepository;
 
     private final AtomicLong jobSequence = new AtomicLong(0L);
     private final AtomicReference<AdminDatabaseSnapshot> currentSnapshot = new AtomicReference<>(
@@ -113,9 +115,40 @@ public class AdminDatabaseAsyncService {
                 startupInitializer.run();
                 bbDataInitializer.initBasketballData();
                 afDataInitializer.initAmericanFootballData();
+                verifyFootballWorldWasBuilt();
             }
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
+    }
+
+    /**
+     * Fails the job if the rebuild produced no football.
+     *
+     * <p>Reported by the owner as: reset, then initialise, then "no leagues at all" — with the panel
+     * saying it had worked. It had not. {@code ensureBaselineDataOnStartup()} catches its own seeding
+     * failures on purpose, because it is also the boot listener and must not take the application down
+     * over a partial world. The side effect is that it returns normally whether or not it built
+     * anything, and the job reported success off that return.
+     *
+     * <p>So the job stops taking its word for it. Two counts and an exception: a reset that leaves the
+     * world empty is a failed reset, and saying so is the whole difference between a five-minute
+     * diagnosis and an evening of wondering which button was pressed.
+     *
+     * <p>Deliberately not asserting a club <em>count</em>. A small world is a legitimate world, and a
+     * check that fails on a legitimately small one is a check that gets disabled.
+     */
+    private void verifyFootballWorldWasBuilt() {
+        long leagues = competitionRepository.count();
+        long clubs = teamRepository.count();
+
+        if (leagues == 0 || clubs == 0) {
+            throw new IllegalStateException(
+                    "Initialize reported success but the world is empty: "
+                            + leagues + " league(s) and " + clubs + " club(s) in the database. "
+                            + "The rebuild did not complete. See the startup log for "
+                            + "'Startup initialization failed' and the reason it was swallowed.");
+        }
+        log.info("Initialize verified: {} league(s), {} club(s) in the rebuilt world.", leagues, clubs);
     }
 
     private int stepsFor(String action) {
