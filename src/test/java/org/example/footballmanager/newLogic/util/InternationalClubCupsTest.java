@@ -51,40 +51,84 @@ class InternationalClubCupsTest extends BaseTest {
     }
 
     @Test
-    @DisplayName("the three cups exist, and are international club competitions")
+    @DisplayName("there is a cup for every tier, not three cups for the world")
     void theCupsExist() {
-        for (InternationalClubCups.Cup cup : InternationalClubCups.CUPS) {
-            Competition competition = find(cup.name());
-            assertNotNull(competition, cup.name() + " was not created");
+        // Per tier, and that is the correction that changed the shape of the feature (owner,
+        // 2026-09-30). Tier 1's Champions Cup is contested by tier 1's divisions; tier 5's is a
+        // different competition with sixteen times as many clubs in it.
+        assertEquals(15, InternationalClubCups.cups().size(),
+                "five tiers and three cups is fifteen competitions, not three");
+        for (InternationalClubCups.Cup cup : InternationalClubCups.cups()) {
+            Competition competition = find(cup.fullName());
+            assertNotNull(competition, cup.fullName() + " was not created");
             assertEquals(CompetitionType.CUP, competition.getType());
             // INTERNATIONAL is the whole difference from a national cup: the entrants come from many
             // countries, and this is the only column that says so.
             assertEquals(CompetitionScope.INTERNATIONAL, competition.getScope(),
-                    cup.name() + " is scoped as a national cup, so nothing distinguishes it from one");
+                    cup.fullName() + " is scoped as a national cup, so nothing distinguishes it from one");
+            assertEquals(cup.tier(), competition.getTier(),
+                    cup.fullName() + " is not filed under its own tier, so a tier-1 and a tier-5 "
+                            + "Champions Cup are the same competition as far as the world is concerned");
         }
+    }
+
+    @Test
+    @DisplayName("a tier's cups only ever draw from that tier's divisions")
+    void aCupStaysInItsTier() {
+        Country lowTier = countries.save(country("ZZ Low", "ZZL"));
+        Country highTier = countries.save(country("ZZ High", "ZZH"));
+
+        Competition topLeague = competitions.save(league("ZZ High League", highTier, 1, 10));
+        Competition bottomLeague = competitions.save(league("ZZ Low League", lowTier, 5, 10));
+        fillTable(topLeague, highTier, 10);
+        fillTable(bottomLeague, lowTier, 10);
+
+        InternationalClubCups.Cup champions = InternationalClubCups.cups().stream()
+                .filter(cup -> cup.tier() == 1 && InternationalClubCups.CHAMPIONS.equals(cup.name()))
+                .findFirst()
+                .orElseThrow();
+
+        List<Team> qualified = cups.qualifiedFor(champions, 1);
+
+        assertEquals(1, from(qualified, highTier),
+                "the tier-1 Champions Cup left out the tier-1 division");
+        assertEquals(0, from(qualified, lowTier),
+                "a fifth-tier club was drawn into the tier-1 Champions Cup — the exact mistake the "
+                        + "per-tier structure exists to prevent");
+        assertEquals(0, cups.qualifiedFor(bottomLeague == null ? champions : champions, 1)
+                .stream().filter(t -> t.getCountry() != null
+                        && lowTier.getId().equals(t.getCountry().getId())).count());
     }
 
     @Test
     @DisplayName("the owner's bands: winners, second and third, fourth")
     void theBandsAreTheOwners() {
-        assertEquals(1, bandOf(InternationalClubCups.CHAMPIONS).placesFrom());
-        assertEquals(1, bandOf(InternationalClubCups.CHAMPIONS).placesTo(), "Champions is the winners");
-        assertEquals(2, bandOf(InternationalClubCups.MASTERS).placesFrom());
-        assertEquals(3, bandOf(InternationalClubCups.MASTERS).placesTo(), "Masters is the second and third");
-        assertEquals(4, bandOf(InternationalClubCups.CHALLENGE).placesFrom());
-        assertEquals(4, bandOf(InternationalClubCups.CHALLENGE).placesTo(), "Challenge is the fourth");
+        // The bands are the owner's and they are the same at every tier.
+        for (int tier = 1; tier <= 5; tier++) {
+            InternationalClubCups.Cup champions = bandOf(tier, InternationalClubCups.CHAMPIONS);
+            assertEquals(1, champions.placesFrom());
+            assertEquals(1, champions.placesTo(), "Champions is the winners");
+
+            InternationalClubCups.Cup masters = bandOf(tier, InternationalClubCups.MASTERS);
+            assertEquals(2, masters.placesFrom());
+            assertEquals(3, masters.placesTo(), "Masters is the second and third");
+
+            InternationalClubCups.Cup challenge = bandOf(tier, InternationalClubCups.CHALLENGE);
+            assertEquals(4, challenge.placesFrom());
+            assertEquals(4, challenge.placesTo(), "Challenge is the best of the fourth-placed");
+        }
     }
 
     @Test
     @DisplayName("a division of ten puts one club in each of the three cups")
     void oneDivisionContributesToEveryCup() {
         Country country = countries.save(country("ZZ Cup", "ZZC"));
-        Competition league = competitions.save(league("ZZ Cup League", country, 10));
+        Competition league = competitions.save(league("ZZ Cup League", country, 1, 10));
         fillTable(league, country, 10);
 
-        List<Team> champions = cups.qualifiedFor(bandOf(InternationalClubCups.CHAMPIONS), 1);
-        List<Team> masters = cups.qualifiedFor(bandOf(InternationalClubCups.MASTERS), 1);
-        List<Team> challenge = cups.qualifiedFor(bandOf(InternationalClubCups.CHALLENGE), 1);
+        List<Team> champions = cups.qualifiedFor(bandOf(1, InternationalClubCups.CHAMPIONS), 1);
+        List<Team> masters = cups.qualifiedFor(bandOf(1, InternationalClubCups.MASTERS), 1);
+        List<Team> challenge = cups.qualifiedFor(bandOf(1, InternationalClubCups.CHALLENGE), 1);
 
         // Filtered by the country, not by a name prefix: the qualifier is about a club belonging to this
         // division's country, and a test that depended on how the name is built would be testing the
@@ -100,11 +144,11 @@ class InternationalClubCupsTest extends BaseTest {
     @DisplayName("the clubs in the three cups do not overlap")
     void noClubIsInTwoCups() {
         Country country = countries.save(country("ZZ Overlap", "ZZO"));
-        Competition league = competitions.save(league("ZZ Overlap League", country, 10));
+        Competition league = competitions.save(league("ZZ Overlap League", country, 1, 10));
         fillTable(league, country, 10);
 
         Set<Long> all = new HashSet<>();
-        for (InternationalClubCups.Cup cup : InternationalClubCups.CUPS) {
+        for (InternationalClubCups.Cup cup : InternationalClubCups.cups()) {
             for (Team team : cups.qualifiedFor(cup, 1)) {
                 assertTrue(all.add(team.getId()),
                         team.getName() + " qualifies for two cups, so it would have to be drawn twice");
@@ -118,7 +162,7 @@ class InternationalClubCupsTest extends BaseTest {
         // The stored `position` column is written by the table's own read path and can be stale. Reading
         // entry through it would qualify a club that finished fourth for the Champions Cup.
         Country country = countries.save(country("ZZ Stale", "ZZS"));
-        Competition league = competitions.save(league("ZZ Stale League", country, 4));
+        Competition league = competitions.save(league("ZZ Stale League", country, 1, 4));
         List<Team> table = fillTable(league, country, 4);
 
         // Deliberately wrong: the column says the last-placed club won.
@@ -127,7 +171,7 @@ class InternationalClubCupsTest extends BaseTest {
         lastEntry.setPosition(1);
         entries.save(lastEntry);
 
-        List<Team> champions = cups.qualifiedFor(bandOf(InternationalClubCups.CHAMPIONS), 1);
+        List<Team> champions = cups.qualifiedFor(bandOf(1, InternationalClubCups.CHAMPIONS), 1);
         assertTrue(champions.stream().noneMatch(t -> t.getId().equals(table.get(3).getId())),
                 "a club whose stored position says first was entered for the Champions Cup on the "
                         + "strength of a column that does not mean what it says");
@@ -149,16 +193,16 @@ class InternationalClubCupsTest extends BaseTest {
     @DisplayName("creating them twice does not create them twice")
     void creationIsIdempotent() {
         long before = competitions.findAll().stream()
-                .filter(c -> InternationalClubCups.CUPS.stream()
-                        .anyMatch(cup -> cup.name().equals(c.getName())))
+                .filter(c -> InternationalClubCups.cups().stream()
+                        .anyMatch(cup -> cup.fullName().equals(c.getName())))
                 .count();
 
         cups.ensureCompetitionsDurably();
         cups.ensureCompetitionsDurably();
 
         long after = competitions.findAll().stream()
-                .filter(c -> InternationalClubCups.CUPS.stream()
-                        .anyMatch(cup -> cup.name().equals(c.getName())))
+                .filter(c -> InternationalClubCups.cups().stream()
+                        .anyMatch(cup -> cup.fullName().equals(c.getName())))
                 .count();
         assertEquals(before, after,
                 "a second run created more cups; this runs on every boot, so a non-idempotent seeder "
@@ -192,9 +236,9 @@ class InternationalClubCupsTest extends BaseTest {
                 .orElse(null);
     }
 
-    private InternationalClubCups.Cup bandOf(String name) {
-        return InternationalClubCups.CUPS.stream()
-                .filter(cup -> cup.name().equals(name))
+    private InternationalClubCups.Cup bandOf(int tier, String name) {
+        return InternationalClubCups.cups().stream()
+                .filter(cup -> cup.tier() == tier && cup.name().equals(name))
                 .findFirst()
                 .orElseThrow();
     }
@@ -242,13 +286,13 @@ class InternationalClubCupsTest extends BaseTest {
         return table;
     }
 
-    private Competition league(String name, Country country, int teamsPerDivision) {
+    private Competition league(String name, Country country, int tier, int teamsPerDivision) {
         Competition competition = new Competition();
         competition.setName(name);
         competition.setType(CompetitionType.LEAGUE);
         competition.setScope(CompetitionScope.NATIONAL);
         competition.setCountry(country);
-        competition.setTier(1);
+        competition.setTier(tier);
         competition.setDivisionLevel(1);
         competition.setTeamsPerCompetition(teamsPerDivision);
         return competition;

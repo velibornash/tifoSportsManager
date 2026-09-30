@@ -61,6 +61,18 @@ public class CupFixtureSeeder {
      *  on every restart, which is not a cup. */
     private static final long DRAW_SEED = 20260928L;
 
+    /**
+     * When a cup tie in a given week is played.
+     *
+     * <p>Derived from the week number and the cup's own day, rather than invented per tie, so every tie in
+     * a round lands on the same day. Shared with the international cups, which have their own week map
+     * but the same day and hour — two date rules would mean two answers to "when does the cup play".
+     */
+    public static LocalDateTime matchDateFor(int week) {
+        LocalDate day5 = SEASON_START.plusWeeks(week - 1L).plusDays(CUP_DAY - 1L);
+        return LocalDateTime.of(day5, java.time.LocalTime.of(CUP_HOUR, 0));
+    }
+
     private final SeasonService seasons;
 
     /**
@@ -132,10 +144,19 @@ public class CupFixtureSeeder {
         cup.setTeamsPerCompetition(MAIN_DRAW_TEAMS);
         competitions.save(cup);
 
-        // Week 1: the weakest of the entrants, drawn into 54 ties. Winner of each tie plus the 202
-        // direct entrants make the 256 that carry the rest of the tournament.
-        List<Team> firstKnockout = new ArrayList<>(ranked.subList(0, ENTRY_ROUND_TEAMS));
-        List<Team> directEntrants = new ArrayList<>(ranked.subList(ENTRY_ROUND_TEAMS, MAIN_DRAW_TEAMS));
+        // Week 1: the WEAKEST 108, drawn into 54 ties. The winners plus the 202 direct entrants make
+        // the 256 that carry the rest of the tournament.
+        //
+        // This took `subList(0, 108)` — which, on a list sorted descending, is the *strongest* 108.
+        // The line above it has said "ranks 203-310 enter in week 1" since before this session, and the
+        // code did the exact opposite of it: the best clubs in the country were made to survive an extra
+        // round while the weakest 108 were given a free walk to round 2. The owner's rule is the bottom
+        // of the table qualifying through a preliminary, which is both what makes a preliminary and what
+        // stops a league finishing seventh from outranking a league finishing first.
+        int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+        List<Team> firstKnockout = new ArrayList<>(
+                ranked.subList(directEntrantCount, ranked.size()));
+        List<Team> directEntrants = new ArrayList<>(ranked.subList(0, directEntrantCount));
         List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, seedSeason());
 
         // Round 2 onwards can only be wired once the earlier rounds are actually played, so the
@@ -250,8 +271,13 @@ public class CupFixtureSeeder {
      * ties are unplayed yields no draw rather than a draw against teams that have not qualified.
      */
     private List<Team> survivorsOf(Competition cup, int round) {
+        List<Team> ranked = rankedClubs();
         if (round == 1) {
-            return rankedClubs().stream().limit(ENTRY_ROUND_TEAMS).toList();
+            // The bottom 108, for the same reason the seeder draws the bottom 108: the preliminary is
+            // for the clubs that have to earn their place, and taking the top 108 here inverted the
+            // whole competition while the comment said otherwise.
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            return new ArrayList<>(ranked.subList(directEntrantCount, ranked.size()));
         }
         int previousRound = round - 1;
         List<MatchFixture> previous = fixtures
@@ -268,6 +294,18 @@ public class CupFixtureSeeder {
             if (winner != null) {
                 winners.add(winner);
             }
+        }
+
+        if (round == 2) {
+            // Round 2 is the 256: the 202 direct entrants plus the 54 first-round winners. It used to
+            // be the 54 winners alone, so the strongest clubs in the country — the ones that had not
+            // played a match — were simply not in the competition from round 2 onwards. The direct
+            // entrants are named here rather than in the seed method because this is where a round's
+            // field is decided: whoever is left, plus whoever came straight through.
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            winners.addAll(ranked.subList(0, directEntrantCount));
+            log.info("Cup {} round 2: {} first-round winner(s) join {} direct entrants for {}.",
+                    cup.getName(), winners.size() - directEntrantCount, directEntrantCount, winners.size());
         }
         return winners;
     }
@@ -327,22 +365,39 @@ public class CupFixtureSeeder {
      * at the start of the tournament.
      *
      */
+    /**
+     * Splits the entrants into the two halves of a draw.
+     *
+     * <p>The owner's rule, and it is the whole of how a cup is seeded: <b>sort the entrants descending,
+     * halve them, and pair one from the top half against one from the bottom half at random.</b> The
+     * favourite never meets a favourite, the weakest club never draws another weak club, and because
+     * the pairing inside each half is random the draw is still a draw.
+     *
+     * <p>It is one function for every round, including the first. The entry round holds 108 clubs, so
+     * the split is 54 against 54 and the same code that draws a final draws the first tie of the cup.
+     * That is deliberate: a special case for round 1 is a second seeding rule that will eventually
+     * disagree with the first.
+     *
+     * <p>The halves are recomputed from whoever is left in this round, not fixed at the start of the
+     * tournament, so a promoted club and a giant-killed one are re-seeded on what they have actually
+     * done rather than on what they were ranked before the draw.
+     *
+     * @return the top half, strongest first, and the bottom half
+     */
+    public List<List<Team>> splitForDraw(List<Team> rankedDescending) {
+        int half = rankedDescending.size() / 2;
+        return List.of(
+                new ArrayList<>(rankedDescending.subList(0, half)),
+                new ArrayList<>(rankedDescending.subList(half, rankedDescending.size())));
+    }
+
     private List<MatchFixture> drawRound(Competition cup, int roundNumber, List<Team> entrants,
                                          int seasonYear) {
         List<Team> ranked = sortByStrength(new ArrayList<>(entrants), strengthOf(entrants));
 
-        // The half is recomputed from whoever is left in this round, not fixed at the start of the
-        // tournament. Round 1 is not a special case: it draws the 108 entry-round clubs, and the
-        // same split puts the stronger 54 against the weaker 54, which carries the seeding into
-        // round 2 when the direct entrants arrive.
-        int half = ranked.size() / 2;
-        List<Team> favourites = new ArrayList<>(ranked.subList(0, half));
-        List<Team> nonFavourites = new ArrayList<>(ranked.subList(half, ranked.size()));
-
-        // One random from each half, so the favourite is never paired with another favourite and a
-        // weak club never draws another weak club.
-        Collections.shuffle(favourites, random);
-        Collections.shuffle(nonFavourites, random);
+        List<List<Team>> halves = splitForDraw(ranked);
+        List<Team> favourites = halves.get(0);
+        List<Team> nonFavourites = halves.get(1);
 
         int week = CUP_WEEKS[Math.min(roundNumber, CUP_WEEKS.length) - 1];
         int ties = Math.min(favourites.size(), nonFavourites.size());
@@ -372,8 +427,7 @@ public class CupFixtureSeeder {
             fixture.setPlayed(false);
             // The cup plays on day 5 of its week, so the date is derived from the week number rather
             // than invented per tie: one rule, and every tie in a round lands on the same day.
-            LocalDate day5 = SEASON_START.plusWeeks(week - 1L).plusDays(CUP_DAY - 1L);
-            fixture.setMatchDate(LocalDateTime.of(day5, java.time.LocalTime.of(CUP_HOUR, 0)));
+            fixture.setMatchDate(matchDateFor(week));
             made.add(fixtures.save(fixture));
         }
         log.info("Cup {} round {}: {} ties for week {} (day {}), favourites vs non-favourites, "

@@ -737,6 +737,69 @@ it for the one guard the backlog asked to exist.
 
 ---
 
+## 🌍 International club cups — agreed specification (owner, 2026-09-30)
+
+Written down here because this was got wrong twice before it was got right, and the wrong versions
+were both plausible-looking. If this section and the code ever disagree, the code is the bug.
+
+### The world is 48 countries, and "active" and "in the world" are different things
+
+48 countries: Serbia + 46 others + Other. Two are **ACTIVE** (Serbia, Croatia) and 46 are
+**SIMULATED**. Never conflate the two:
+
+- **ACTIVE** countries have a full playable club pyramid and simulate every round.
+- **SIMULATED** countries get clubs, random ratings and a **fixed table**, and **do not play matches**.
+  They exist so the international field is complete and cheap — they hold their positions until their
+  league is activated, at which point they start simulating and take over their own table.
+
+### The cups are per tier, and a country enters its tier once per cup
+
+A cup belongs to one tier and is contested only between that tier's countries. Tier 1's Champions Cup
+never meets tier 5's. Within a tier, each country contributes:
+
+| Cup | Who, per country, per tier | Field |
+|---|---|---|
+| **Champions Cup** | the **better** of the divisions' winners | 48 |
+| **Masters Cup** | the **best two** of the pool of every 2nd- and 3rd-placed club | 96 |
+| **Challenge Cup** | the **best one** of the pool of every 4th-placed club | 48 |
+
+Tier 1 has **one** division per country, so it degenerates to exactly the straightforward case the
+owner started from: winner → CC, 2nd and 3rd → MC, 4th → ChC. One rule covers both cases.
+
+Lower tiers have several divisions per country and each is a mini-table, which is why the pools are
+taken across all of a country's divisions in that tier rather than from one division. A country with
+sixteen divisions must not enter its own cup sixteen times.
+
+The Challenge Cup is the same size as the Champions Cup (48) on purpose.
+
+### Format (unchanged from the owner's original spec)
+
+- **Champions**: 8 groups of 6, single round-robin, **top 2** advance.
+- **Masters**: 16 groups of 6, single round-robin, **winner only** advances.
+- **Challenge**: same as Champions — 8 groups of 6, top 2.
+- Group stage is 5 matchdays. **Week 6 is the national-team pause.**
+- Then round of 16 → quarter-final → semi-final → **3rd place** → final.
+
+### Ratings for seeded material
+
+Average skill **12** for tier 1 and for national teams, then **−1 per tier below**:
+
+| Tier | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Avg skill | 12 | 11 | 10 | 9 | 8 |
+
+**U21 = 10.**
+
+### State at commit time
+
+`InternationalClubCupsTest` 9/9 green. The per-tier / per-country selection is implemented and
+compiles. **Not yet done:** seeding the 46 SIMULATED countries with full club pyramids and fixed
+tables; activating `InternationalClubCupDraw` in the matchday jobs; the progressive knockout with
+final and 3rd place; and deleting the three global cup rows an earlier wrong version created.
+
+
+---
+
 ## 🐛 Bugs found while working, not yet fixed
 
 Kept out of the task tables on purpose — none of them is a feature, and each one was found by

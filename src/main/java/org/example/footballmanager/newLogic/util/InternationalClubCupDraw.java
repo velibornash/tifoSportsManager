@@ -1,0 +1,445 @@
+package org.example.footballmanager.newLogic.util;
+
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.SeasonCompetition;
+import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
+/**
+ * The international club cups: a group stage and a knockout bracket (owner, 2026-09-30).
+ *
+ * <h2>The format, as specified</h2>
+ *
+ * <pre>
+ *   Champions Cup    one club per league          -> 8 groups of 6, single round robin, 5 matchdays
+ *   Masters Cup      2nd and 3rd of every league   -> 16 groups of 6, same, 5 matchdays
+ *   Challenge Cup    4th of every league           -> 8 groups of 6, same, 5 matchdays
+ * </pre>
+ *
+ * <p><b>Who goes through differs, and that is the whole difference between them.</b> The top two from
+ * each Champions group reach the knockouts; only the winner of each Masters group does; the Challenge
+ * Cup is the same as the Champions. From the knockout stage they are identical: 1/8, 1/4, 1/2, a final
+ * and a third-place play-off.
+ *
+ * <p><b>Week 6 is a national-team pause</b>, so it carries no club match. The five group matchdays
+ * therefore fill weeks 1-5 exactly and the knockouts take weeks 7-11, which is ten weeks of a
+ * twelve-week season with two left over.
+ *
+ * <h2>The group draw is mine, and it is the one choice here that was not specified</h2>
+ *
+ * <p>Ranked clubs are dealt into groups in a <b>serpentine</b>, so group strength is spread rather than
+ * bunched: the strongest club goes to group A, the second to group B, and so on round by round, reversing
+ * direction on each pass. Dealing the top eight into one group each and the next eight into one group
+ * each would make every knockout tie decided before it started, and putting the eight strongest into a
+ * single group would decide the Champions Cup in the group stage alone.
+ *
+ * <h2>Where a club's group is recorded</h2>
+ *
+ * <p>On its fixtures, as a group code. Not in a table of its own: a group's membership is fully
+ * determined by who appears in its five matchdays, and a second record of it would be a second thing to
+ * fall out of step with the fixtures. The knockouts read a club's group by looking at the fixture it
+ * played in the group stage, which is the same fact from the same place.
+ */
+@Service
+public class InternationalClubCupDraw {
+
+    private static final Logger log = LoggerFactory.getLogger(InternationalClubCupDraw.class);
+
+    /** Teams per group. The owner: 8 groups of 6, and 16 groups of 6 for the Masters Cup. */
+    public static final int GROUP_SIZE = 6;
+
+    /** Single round robin, so 5 matchdays. */
+    public static final int GROUP_MATCHDAYS = GROUP_SIZE - 1;
+
+    /** The cup plays on the one cup day in the week. */
+    public static final int CUP_DAY = 5;
+    public static final int CUP_HOUR = 18;
+
+    /**
+     * Five group matchdays, then five knockout rounds, and week 6 skipped because it is a national-team
+     * pause. Week 12 is left clear.
+     */
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10, 11};
+
+    /** How many from each group reach the knockouts, by cup. */
+    public static final int CHAMPIONS_QUALIFY_PER_GROUP = 2;
+    public static final int MASTERS_QUALIFY_PER_GROUP = 1;
+    public static final int CHALLENGE_QUALIFY_PER_GROUP = 2;
+
+    /** The knockout stages, in order, with the round number each is stored as. */
+    public static final int ROUND_LAST_SIXTEEN = 6;
+    public static final int ROUND_QUARTER_FINAL = 7;
+    public static final int ROUND_SEMI_FINAL = 8;
+    public static final int ROUND_THIRD_PLACE = 9;
+    public static final int ROUND_FINAL = 10;
+
+    private final CompetitionRepository competitions;
+    private final MatchFixtureRepository fixtures;
+    private final CompetitionEntryRepository entries;
+    private final SeasonCompetitionRepository seasonCompetitions;
+    private final TransactionTemplate requiresNew;
+
+    public InternationalClubCupDraw(CompetitionRepository competitions,
+                                     MatchFixtureRepository fixtures,
+                                     CompetitionEntryRepository entries,
+                                     SeasonCompetitionRepository seasonCompetitions,
+                                     org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        this.competitions = competitions;
+        this.fixtures = fixtures;
+        this.entries = entries;
+        this.seasonCompetitions = seasonCompetitions;
+        this.requiresNew = new TransactionTemplate(transactionManager);
+        this.requiresNew.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /** One competition's field, and what it produced. */
+    public record DrawResult(String cup, int groups, int clubs, int groupFixtures, int knockoutFixtures) {
+    }
+
+    /**
+     * Creates the group stage for a cup, if it does not have one.
+     *
+     * <p>Committed on its own, for the same reason the cups themselves are: the boot transaction has lost
+     * three writes in this codebase and there is no reason to give it a fourth.
+     */
+    public DrawResult ensureGroupStage(Competition cup, List<Team> entrants, int qualifyPerGroup,
+                                      int seasonYear) {
+        return requiresNew.execute(status -> buildGroupStage(cup, entrants, qualifyPerGroup, seasonYear));
+    }
+
+    /**
+     * The smallest field that is worth a group stage.
+     *
+     * <p>Below this a group stage is a formality: eight groups of six needs 48 clubs, and the tiers of
+     * this world do not all have them — a tier with two divisions has two clubs in its Champions Cup.
+     * Rather than pad it or drop clubs, a field this size goes straight to a knockout, which is what a
+     * competition with four entrants is.
+     *
+     * <p><b>This threshold is mine, not the owner's.</b> The owner specified "8 groups of 6, top two
+     * through" for a 48-club Champions Cup; the per-tier structure means most fields are smaller, and
+     * what counts as "too small for groups" is the one judgement call left to make.
+     */
+    public static final int MIN_FIELD_FOR_GROUPS = 8;
+
+    /** How many groups a field is split into: as close to six as the field allows. */
+    public int groupCountFor(int entrants) {
+        if (entrants < GROUP_SIZE) {
+            return Math.max(1, entrants);
+        }
+        return (int) Math.ceil(entrants / (double) GROUP_SIZE);
+    }
+
+    @Transactional
+    DrawResult buildGroupStage(Competition cup, List<Team> entrants, int qualifyPerGroup, int seasonYear) {
+        SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
+
+        long existing = fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear)
+                .stream()
+                .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() <= GROUP_MATCHDAYS)
+                .count();
+        if (existing > 0) {
+            log.info("{}: {} group-stage fixture(s) already drawn.", cup.getName(), existing);
+            return new DrawResult(cup.getName(), 0, entrants.size(), (int) existing, 0);
+        }
+
+        if (entrants.size() < MIN_FIELD_FOR_GROUPS) {
+            // Too few clubs for a group stage to mean anything. The competition is real and the clubs
+            // are real; it simply starts at the knockout, and the log says so rather than drawing two
+            // groups of one and calling it a group stage.
+            log.info("{}: {} club(s) is too small a field for a group stage; it starts at the knockout.",
+                    cup.getName(), entrants.size());
+            ensureTableRows(cup, sc, entrants);
+            return new DrawResult(cup.getName(), 0, entrants.size(), 0, 0);
+        }
+
+        List<List<Team>> groups = dealIntoGroups(entrants);
+        List<MatchFixture> made = new ArrayList<>();
+        Map<Team, String> groupOf = new LinkedHashMap<>();
+
+        for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
+            String code = groupCode(groupIndex);
+            List<Team> group = groups.get(groupIndex);
+            for (Team team : group) {
+                groupOf.put(team, code);
+            }
+            made.addAll(drawGroup(cup, sc, group, code, seasonYear));
+        }
+
+        ensureTableRows(cup, sc, entrants);
+
+        cup.setTeamsPerCompetition(entrants.size());
+        competitions.save(cup);
+
+        log.info("{}: {} group(s) of {} for {} club(s), {} group-stage fixture(s), top {} of each group "
+                        + "reach the knockouts.",
+                cup.getName(), groups.size(), GROUP_SIZE, entrants.size(), made.size(), qualifyPerGroup);
+        return new DrawResult(cup.getName(), groups.size(), entrants.size(), made.size(), 0);
+    }
+
+    /**
+     * Deals ranked clubs into groups, strongest first, in a serpentine.
+     *
+     * <p>Public because the shape of the groups is the part worth arguing about, and an argument is much
+     * easier against a method than against a loop buried in a seeder.
+     */
+    public List<List<Team>> dealIntoGroups(List<Team> rankedDescending) {
+        int groupCount = Math.max(1, rankedDescending.size() / GROUP_SIZE);
+        List<List<Team>> groups = new ArrayList<>();
+        for (int i = 0; i < groupCount; i++) {
+            groups.add(new ArrayList<>());
+        }
+        for (int index = 0; index < rankedDescending.size(); index++) {
+            // Reversing direction on every pass is the serpentine: without it the eight strongest clubs
+            // all land in the same group and the Champions Cup is decided in the group stage.
+            int pass = index / groupCount;
+            int offset = index % groupCount;
+            int group = pass % 2 == 0 ? offset : groupCount - 1 - offset;
+            groups.get(group).add(rankedDescending.get(index));
+        }
+        return groups;
+    }
+
+    /** The matchdays of one group, in the round-robin circle method. */
+    private List<MatchFixture> drawGroup(Competition cup, SeasonCompetition sc, List<Team> group,
+                                          String groupCode, int seasonYear) {
+        List<Team> ring = new ArrayList<>(group);
+        if (ring.size() % 2 != 0) {
+            ring.add(null); // a bye, which is what an odd group needs rather than a dropped club
+        }
+        int size = ring.size();
+        List<MatchFixture> made = new ArrayList<>();
+
+        // A group of one has no matchdays, and a group of two has one. The full six-team group has
+        // five, which is where GROUP_MATCHDAYS comes from.
+        int matchdays = Math.max(0, size - 1);
+        for (int matchday = 0; matchday < matchdays; matchday++) {
+            for (int i = 0; i < size / 2; i++) {
+                Team home = ring.get(i);
+                Team away = ring.get(size - 1 - i);
+                if (home == null || away == null) {
+                    continue;
+                }
+                made.add(fixtures.save(fixture(cup, sc, home, away, matchday + 1,
+                        weekFor(1 + matchday), groupCode, seasonYear)));
+            }
+            // Rotate, keeping the first team fixed.
+            Team last = ring.remove(size - 1);
+            ring.add(1, last);
+        }
+        return made;
+    }
+
+    /**
+     * Draws the knockout rounds from the finished group stage.
+     *
+     * <p>No-op until every group fixture is played, because a knockout drawn from a half-played group
+     * stage would send a club into the quarter-finals that has not earned it.
+     */
+    public DrawResult ensureKnockouts(Competition cup, int qualifyPerGroup, int seasonYear) {
+        return requiresNew.execute(status -> buildKnockouts(cup, qualifyPerGroup, seasonYear));
+    }
+
+    @Transactional
+    DrawResult buildKnockouts(Competition cup, int qualifyPerGroup, int seasonYear) {
+        SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
+        List<MatchFixture> groupFixtures = fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear)
+                .stream()
+                .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() <= GROUP_MATCHDAYS)
+                .toList();
+        if (groupFixtures.isEmpty()) {
+            return new DrawResult(cup.getName(), 0, 0, 0, 0);
+        }
+        if (groupFixtures.stream().anyMatch(f -> !f.isPlayed())) {
+            long outstanding = groupFixtures.stream().filter(f -> !f.isPlayed()).count();
+            log.info("{}: {} group-stage fixture(s) unplayed; no knockout drawn yet.",
+                    cup.getName(), outstanding);
+            return new DrawResult(cup.getName(), 0, 0, groupFixtures.size(), 0);
+        }
+
+        List<Team> qualifiers = qualifiers(cup, sc, groupFixtures, qualifyPerGroup);
+        log.info("{}: {} club(s) through from the group stage.", cup.getName(), qualifiers.size());
+
+        // Straight knockout from here, and the same split the national cup uses: sort descending, halve,
+        // and pair one from each half. Two of these tie and two survive, so it is a genuine 1/8.
+        int made = 0;
+        int round = ROUND_LAST_SIXTEEN;
+        List<Team> alive = qualifiers;
+        while (alive.size() > 2 && round <= ROUND_SEMI_FINAL) {
+            List<List<Team>> halves = splitInHalf(alive);
+            List<Team> upper = new ArrayList<>(halves.get(0));
+            List<Team> lower = new ArrayList<>(halves.get(1));
+            java.util.Collections.shuffle(upper, new Random(cup.getId() * 31L + round));
+            java.util.Collections.shuffle(lower, new Random(cup.getId() * 31L + round + 1));
+
+            for (int i = 0; i < Math.min(upper.size(), lower.size()); i++) {
+                fixtures.save(fixture(cup, sc, lower.get(i), upper.get(i), round, weekFor(round), null, seasonYear));
+                made++;
+            }
+            // The next round cannot be drawn until this one is played, so it stops here.
+            log.info("{}: round {} drawn, {} tie(s); the next round waits for results.",
+                    cup.getName(), round, made);
+            return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+        }
+
+        // Two finalists: the final and a third-place play-off between the losing semi-finalists.
+        if (alive.size() == 2) {
+            fixtures.save(fixture(cup, sc, alive.get(1), alive.get(0), ROUND_FINAL, weekFor(ROUND_FINAL), null, seasonYear));
+            made++;
+        }
+        return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+    }
+
+    /**
+     * Who is through from each group, best first.
+     *
+     * <p>The group a club was in is read back off the fixtures it played, which is the same fact the
+     * draw wrote and cannot disagree with it. A separate table of group membership would be a second
+     * record of something the fixtures already say exactly.
+     */
+    private List<Team> qualifiers(Competition cup, SeasonCompetition sc, List<MatchFixture> groupFixtures,
+                                  int qualifyPerGroup) {
+        Map<String, Set<Team>> membersByGroup = new LinkedHashMap<>();
+        for (MatchFixture fixture : groupFixtures) {
+            if (fixture.getGroupCode() == null) {
+                continue;
+            }
+            membersByGroup.computeIfAbsent(fixture.getGroupCode(), key -> new LinkedHashSet<>())
+                    .add(fixture.getHomeTeam());
+            membersByGroup.computeIfAbsent(fixture.getGroupCode(), key -> new LinkedHashSet<>())
+                    .add(fixture.getAwayTeam());
+        }
+
+        List<Team> qualifiers = new ArrayList<>();
+        for (Set<Team> members : membersByGroup.values()) {
+            List<Team> ranked = new ArrayList<>(members);
+            ranked.sort(rankingWithin(sc));
+            qualifiers.addAll(ranked.subList(0, Math.min(qualifyPerGroup, ranked.size())));
+        }
+        // The knockout is seeded on the same ranking, strongest first.
+        qualifiers.sort(rankingWithin(sc));
+        return qualifiers;
+    }
+
+    /**
+     * Orders clubs by their group-stage record, strongest first.
+     *
+     * <p>The one comparator in the codebase, {@link LeagueTableOrder}, orders <i>entries</i>. A group is
+     * a subset of a competition's clubs, so a club is ordered by looking its own entry up rather than by
+     * having a second ranking of its own - which is what a club with two records and one rule would
+     * become.
+     */
+    private java.util.Comparator<Team> rankingWithin(SeasonCompetition sc) {
+        java.util.Comparator<CompetitionEntry> byRecord = LeagueTableOrder.comparator();
+        return (left, right) -> byRecord.compare(entryFor(sc, left), entryFor(sc, right));
+    }
+
+    private CompetitionEntry entryFor(SeasonCompetition sc, Team team) {
+        return entries.findBySeasonCompetitionAndTeam(sc, team).orElseGet(() -> {
+            CompetitionEntry empty = new CompetitionEntry();
+            empty.setTeam(team);
+            empty.setPoints(0);
+            empty.setWins(0);
+            empty.setDraws(0);
+            empty.setLosses(0);
+            empty.setGoalsScored(0);
+            empty.setGoalsConceded(0);
+            empty.setPosition(0);
+            return empty;
+        });
+    }
+
+    /** The owner's national-cup split, reused: sort descending, halve, and pair across. */
+    public List<List<Team>> splitInHalf(List<Team> rankedDescending) {
+        int half = rankedDescending.size() / 2;
+        return List.of(
+                new ArrayList<>(rankedDescending.subList(0, half)),
+                new ArrayList<>(rankedDescending.subList(half, rankedDescending.size())));
+    }
+
+    /** The table rows a cup's group stage is read from. */
+    private void ensureTableRows(Competition cup, SeasonCompetition sc, List<Team> entrants) {
+        for (Team team : entrants) {
+            if (entries.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
+                CompetitionEntry entry = new CompetitionEntry();
+                entry.setSeasonCompetition(sc);
+                entry.setTeam(team);
+                entry.setPoints(0);
+                entry.setWins(0);
+                entry.setDraws(0);
+                entry.setLosses(0);
+                entry.setGoalsScored(0);
+                entry.setGoalsConceded(0);
+                entry.setPosition(0);
+                entries.save(entry);
+            }
+        }
+    }
+
+    private SeasonCompetition ensureSeasonCompetition(Competition cup, int seasonYear) {
+        return seasonCompetitions.findByCompetitionAndSeasonYear(cup, seasonYear)
+                .orElseGet(() -> {
+                    SeasonCompetition sc = new SeasonCompetition();
+                    sc.setCompetition(cup);
+                    sc.setSeasonYear(seasonYear);
+                    sc.setFinished(false);
+                    return seasonCompetitions.save(sc);
+                });
+    }
+
+    private MatchFixture fixture(Competition cup, SeasonCompetition sc, Team home, Team away, int round,
+                                 int week, String groupCode, int seasonYear) {
+        MatchFixture fixture = new MatchFixture();
+        fixture.setCompetition(cup);
+        fixture.setHomeTeam(home);
+        fixture.setAwayTeam(away);
+        fixture.setRoundNumber(round);
+        fixture.setWeekNumber(week);
+        fixture.setDayNumber(CUP_DAY);
+        fixture.setSeasonYear(seasonYear);
+        fixture.setGroupCode(groupCode);
+        fixture.setPlayed(false);
+        fixture.setMatchDate(CupFixtureSeeder.matchDateFor(week));
+        return fixture;
+    }
+
+    private int weekFor(int stage) {
+        int index = Math.min(stage, CUP_WEEKS.length) - 1;
+        return CUP_WEEKS[Math.max(0, index)];
+    }
+
+    static String groupCode(int index) {
+        return "G" + (char) ('A' + index);
+    }
+
+    /** All three cups and how many of each qualify from a group. */
+    public static int qualifyPerGroupFor(String cupName) {
+        return switch (cupName) {
+            case InternationalClubCups.MASTERS -> MASTERS_QUALIFY_PER_GROUP;
+            case InternationalClubCups.CHAMPIONS -> CHAMPIONS_QUALIFY_PER_GROUP;
+            case InternationalClubCups.CHALLENGE -> CHALLENGE_QUALIFY_PER_GROUP;
+            default -> CHAMPIONS_QUALIFY_PER_GROUP;
+        };
+    }
+}

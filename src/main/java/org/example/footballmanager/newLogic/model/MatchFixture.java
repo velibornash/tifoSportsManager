@@ -44,6 +44,15 @@ public class MatchFixture {
     @jakarta.persistence.Column(name = "day_number")
     private Integer dayNumber;
     private LocalDateTime matchDate;
+    /**
+     * The group this fixture belongs to, for a competition with a group stage.
+     *
+     * <p>Null for a straight knockout — the national cup, and every league fixture. It is recorded here
+     * rather than in a table of its own because a group's membership is already fully determined by who
+     * appears in its fixtures, and a second record of that would be a second thing to fall out of step.
+     */
+    private String groupCode;
+
     private boolean played;
 
     @ManyToOne(fetch = FetchType.LAZY)
