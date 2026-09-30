@@ -587,13 +587,27 @@ async function loadNextMatch() {
         if (!response.ok) throw new Error(`Failed to load schedule: ${response.status}`);
 
         const schedule = await response.json();
+        // Ordered by the season calendar, not the wall clock. The two agree most of the time, which
+        // is why this looked right until it did not: a cup tie and a league round can share a date,
+        // and the wall clock alone has no way to say which of them is the next matchday. Season, then
+        // week, then day is the order the fixtures were generated in, so it is the order a manager
+        // means by "next". The timestamp is the tiebreaker, and also the only key when the calendar
+        // columns are missing on an old row.
+        const calendarOrder = (a, b) => {
+            for (const key of ['seasonYear', 'week', 'day']) {
+                const left = Number(a?.[key]);
+                const right = Number(b?.[key]);
+                const leftRank = Number.isFinite(left) ? left : Number.MAX_SAFE_INTEGER;
+                const rightRank = Number.isFinite(right) ? right : Number.MAX_SAFE_INTEGER;
+                if (leftRank !== rightRank) return leftRank - rightRank;
+            }
+            const leftTime = parseDashboardDate(a.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            const rightTime = parseDashboardDate(b.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            return leftTime - rightTime;
+        };
         const nextMatch = (Array.isArray(schedule) ? schedule : [])
             .filter(match => !match.played)
-            .sort((a, b) => {
-                const left = parseDashboardDate(a.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                const right = parseDashboardDate(b.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                return left - right;
-            })[0];
+            .sort(calendarOrder)[0];
 
         if (!nextMatch) {
             renderNextMatchEmpty('Schedule updating', 'Your next fixture will appear here as soon as the current season calendar is ready.');
@@ -603,8 +617,11 @@ async function loadNextMatch() {
         const teamImagePath = getCurrentTeamImagePath();
         const clickableClass = nextMatch.fixtureId ? 'clickable' : '';
         const venueLabel = nextMatch.stadium || 'Venue TBD';
+        // The type is here because a manager reads a fixture card to answer "what is this?", and
+        // "Premier League" alone does not say whether missing it costs three points.
         const detailBits = [
             nextMatch.competitionName || 'Competition',
+            nextMatch.competitionType || null,
             nextMatch.round ? `Round ${nextMatch.round}` : null,
             nextMatch.isHome ? 'Home' : 'Away'
         ].filter(Boolean).join(' · ');
@@ -628,6 +645,7 @@ async function loadNextMatch() {
             </div>
             <div class="match-date">
                 ${escapeHtml(formatDashboardDate(nextMatch.matchDate))}<br>
+                ${nextMatch.seasonDayLabel ? `${escapeHtml(nextMatch.seasonDayLabel)}<br>` : ''}
                 ${escapeHtml(venueLabel)}<br>
                 ${escapeHtml(detailBits)}<br>
                 ${ovrLine ? `${escapeHtml(ovrLine)}<br>` : ''}
@@ -860,23 +878,20 @@ async function loadRecentMatches() {
             if (isHiddenResult) {
                 html += `
             <div class="match-row recent-match is-hidden-result" data-match-id="${match.id}">
-                <div class="match-date-small">${match.matchDate || 'N/A'}</div>
+                <div class="match-date-small">${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</div>
                 <div class="match-teams">
                     <span class="team-home">${homeTeamLabel}</span>
                     <span class="score fm-hidden-score">Result hidden</span>
                     <span class="team-away">${awayTeamLabel}</span>
                 </div>
-                <div class="fm-recent-match-actions">
-                    <button type="button" class="fm-action-btn secondary js-open-hidden-report" data-match-id="${match.id}">Open report</button>
-                    <button type="button" class="fm-action-btn secondary js-watch-hidden-match" data-match-id="${match.id}" data-replay-id="${match.replayId || match.id}">Watch match</button>
-                </div>
+                ${TifoReveal.hiddenResultActions(match.id, match.replayId)}
             </div>`;
                 return;
             }
 
             html += `
             <div class="match-row recent-match is-clickable" data-match-id="${match.id}">
-                <div class="match-date-small">${match.matchDate || 'N/A'}</div>
+                <div class="match-date-small">${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</div>
                 <div class="match-teams">
                     <span class="team-home">${homeTeamLabel}</span>
                     <span class="match-score-stack">
@@ -897,27 +912,11 @@ async function loadRecentMatches() {
                 }
             });
         });
-        list.querySelectorAll('.js-open-hidden-report').forEach(button => {
-            button.addEventListener('click', async event => {
-                event.preventDefault();
-                const matchId = Number(button.dataset.matchId);
-                if (!matchId) return;
-                await revealMatchResult(matchId);
-                if (typeof window.loadMatch === 'function') {
-                    await window.loadMatch(matchId, 'match', { initialTab: 'report' });
-                }
-            });
-        });
-        list.querySelectorAll('.js-watch-hidden-match').forEach(button => {
-            button.addEventListener('click', async event => {
-                event.preventDefault();
-                const matchId = Number(button.dataset.matchId);
-                const replayId = Number(button.dataset.replayId || matchId);
-                if (!matchId) return;
-                await revealMatchResult(matchId);
-                window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(replayId)}`;
-            });
-        });
+        // One implementation, shared with the club schedule and the league results. Three copies of
+        // "reveal then navigate" is three places for them to disagree, and they already did: the
+        // dashboard revealed through its own helper and opened the report tab, the other two surfaces
+        // had no buttons at all and leaked the score instead.
+        TifoReveal.bindHiddenResultActions(list, window.loadMatch);
     } catch (err) {
         console.error('Error loading recent matches:', err);
         document.getElementById('recent-matches-list').innerHTML =
@@ -926,11 +925,7 @@ async function loadRecentMatches() {
 }
 
 async function revealMatchResult(matchId) {
-    try {
-        await authFetch(`/matches/${matchId}/reveal`, { method: 'POST' });
-    } catch (error) {
-        console.warn(`Result reveal skipped for match ${matchId}:`, error);
-    }
+    return TifoReveal.revealMatch(matchId);
 }
 
 async function loadHomeTeamStats() {

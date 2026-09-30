@@ -31,7 +31,8 @@ The one exception is work with a number attached — a count either meets its ta
 
 ## 🔄 In progress
 
-*Nothing. The last session closed out everything it started.*
+*Nothing. The result-hiding task is done and verified live; the next session starts on the World
+queue (bot league tier standards).*
 
 ---
 
@@ -164,6 +165,45 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — the manager does not see their own result until they ask for it
+
+The matchday job fires at 19:00 whether or not anyone is watching, so a manager's result exists the
+moment the job finishes. `SimMatchService` marked every result revealed, which made **Watch your
+match** a formality and handed the owner the season before he had decided to look at it. The dashboard
+had reveal UI; the club schedule and the league results had none, so the same match showed a score in
+one place and nothing in another.
+
+| Surface | Was | Now |
+|---|---|---|
+| Dashboard recent | "Open report" / "Watch match", revealed through its own copy of the helper | **Show results** → details on Goals, **Watch your match** → viewer |
+| Club schedule | the score, in full | no score, no W/D/L chip, no click-through; both buttons |
+| League results | the score, in full | no score; both buttons |
+| `GET /matches/{id}` | viewer ignored, so a direct fetch read the result | viewer-aware |
+
+One implementation (`reveal-ui.js`) now serves all three, and the mask lives in `MatchDTO` rather
+than in each renderer — a fourth screen was written during this task and read the real score out of
+the DTO while rendering nothing. `Match.homeResultRevealed` / `awayResultRevealed` stay per-side, so
+each manager is masked on his own flag.
+
+**The calendar is its own fact from the date.** A played `Match` carried only a wall-clock date, so
+"which day of the season was that?" had no answer once the fixture was gone: `Match.dayNumber` is new,
+copied from the fixture, and `MatchDTO.seasonDayLabel` reads `Season 1 · Day 7 · 23:59` next to the
+real time. Unknowns are left out rather than printed as `Day 0`. The next-match card now sorts by
+season → week → day instead of by wall clock, which is the order the fixtures were generated in and
+the order "next" means to a manager. Competition type (`League` / `Cup` / `International`) is on the
+match header and on every fixture card.
+
+**Verified live** (team 1, week 2, new code): a simulated match came back `homeGoals: null`,
+`resultHidden: true`, `dayNumber: 7`, `seasonDayLabel: "Season 1 · Day 7 · 23:59"`, `replayId: 14`;
+`POST /matches/234/reveal` flipped it to `0-0`, `resultHidden: false`. A match persisted before the
+change degrades to `Season 1 · 23:59` and a visible score, which is the intended fallback. 752 tests
+green (9 new DTO, 3 new persistence).
+
+**Found while testing, not fixed here:** `POST /admin/reset-db` dies on a Postgres deadlock
+(`AccessExclusiveLock`) when the background league simulation is still running. The world survived
+intact. It is a reset-vs-simulation contention problem of its own, and fixing it here would have
+meant changing the reset path during a feature that does not touch it.
 
 ### `9dd11ef` — seasons, menus and the training setup screen
 

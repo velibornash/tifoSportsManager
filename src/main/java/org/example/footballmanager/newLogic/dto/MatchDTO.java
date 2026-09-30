@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.Match;
 import java.time.LocalDateTime;
 
@@ -14,9 +15,19 @@ public class MatchDTO {
     private Long id;
     private String homeTeam;
     private String awayTeam;
-    private int homeGoals;
-    private int awayGoals;
+    // Boxed, not primitive. A hidden result has no score to report, and "0" is a very convincing lie -
+    // a 0-0 that was never played looks exactly like a goalless draw. Null means "not yours yet".
+    private Integer homeGoals;
+    private Integer awayGoals;
     private String matchDate;
+    /** The game's own clock, e.g. "Season 1 · Day 3 · 18:00". Null when the calendar slot is unknown. */
+    private String seasonDayLabel;
+    private Integer seasonNumber;
+    private Integer dayNumber;
+    private Integer weekNumber;
+    private String competitionName;
+    /** League, Cup, Friendly, International - the owner asked for this on the match header. */
+    private String competitionType;
     private boolean resultHidden;
     private boolean resultRevealed;
     private Long replayId;
@@ -46,17 +57,55 @@ public class MatchDTO {
 
         boolean resultHidden = match.isPlayed() && (viewerIsHome || viewerIsAway) && !resultRevealed;
 
+        // The mask lives here, not in the renderers. Three screens read this DTO and a fourth was
+        // written today; masking at each one means the next screen that forgets leaks the score over
+        // the wire even if it renders nothing.
+        Integer homeGoals = resultHidden ? null : match.getHomeGoals();
+        Integer awayGoals = resultHidden ? null : match.getAwayGoals();
+
+        Competition competition = match.getCompetition();
+
         return new MatchDTO(
                 match.getId(),
                 match.getHomeTeam() != null ? match.getHomeTeam().getName() : "TBD",
                 match.getAwayTeam() != null ? match.getAwayTeam().getName() : "TBD",
-                match.getHomeGoals(),
-                match.getAwayGoals(),
+                homeGoals,
+                awayGoals,
                 formattedDate,
+                buildSeasonDayLabel(match.getSeasonYear(), match.getDayNumber(), match.getMatchDate()),
+                match.getSeasonYear(),
+                match.getDayNumber(),
+                match.getWeekNumber(),
+                competition != null ? competition.getName() : null,
+                competition != null && competition.getType() != null ? competition.getType().name() : null,
                 resultHidden,
                 resultRevealed,
                 match.getReplayId()
         );
+    }
+
+    /**
+     * "Season 1 · Day 3 · 18:00" - the in-game slot, not the wall clock.
+     *
+     * <p>The owner wants both: the real time the match was played and the season it belongs to. They
+     * are different facts, and the season one is the one the game's own calendar is built on.
+     *
+     * <p>The hour comes from the match date because that is the slot the fixture was placed in; the
+     * season and day come from the fixture's own columns. Anything unknown is left out rather than
+     * rendered as a zero, so a missing day does not read as "Day 0".
+     */
+    static String buildSeasonDayLabel(Integer seasonNumber, Integer dayNumber, LocalDateTime matchDate) {
+        if (seasonNumber == null) {
+            return null;
+        }
+        StringBuilder label = new StringBuilder("Season ").append(seasonNumber);
+        if (dayNumber != null) {
+            label.append(" · Day ").append(dayNumber);
+        }
+        if (matchDate != null) {
+            label.append(" · ").append(String.format("%02d:%02d", matchDate.getHour(), matchDate.getMinute()));
+        }
+        return label.toString();
     }
 
 }

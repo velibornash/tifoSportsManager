@@ -178,6 +178,7 @@ public class SimMatchService {
             match.setSeasonYear(fixture.getSeasonYear());
             match.setRoundNumber(fixture.getRoundNumber());
             match.setWeekNumber(fixture.getWeekNumber());
+            match.setDayNumber(fixture.getDayNumber());
             match.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : LocalDateTime.now());
             match.setHomeGoals(outcome != null ? outcome.homeGoals() : 0);
             match.setAwayGoals(outcome != null ? outcome.awayGoals() : 0);
@@ -188,9 +189,19 @@ public class SimMatchService {
             match.setPlayed(true);
             match.setStarted(true);
             match.setFinished(true);
-            match.setReplayId(replayId);
-            match.setHomeResultRevealed(true);
-            match.setAwayResultRevealed(true);
+                        match.setReplayId(replayId);
+
+            // A result the manager has not asked to see yet stays hidden, and a manager's own match is
+            // the only one that can be: nobody is waiting to discover how a bot's game went.
+            //
+            // This used to set both to true, which meant the whole reveal model - the columns, the
+            // DTO's resultHidden, the reveal endpoint, the Watch button - was present and inert. The
+            // matchday job fires at 19:00 whether or not anyone is watching, so the result exists the
+            // moment the job finishes; hiding it is the only thing that makes "Watch your match" a
+            // decision rather than a formality.
+            boolean involvesManager = isHumanClub(fixture.getHomeTeam()) || isHumanClub(fixture.getAwayTeam());
+            match.setHomeResultRevealed(!involvesManager);
+            match.setAwayResultRevealed(!involvesManager);
 
             match.setHomeLineup(loadLineup(fixture.getHomeTeam()));
             match.setAwayLineup(loadLineup(fixture.getAwayTeam()));
@@ -377,6 +388,18 @@ public class SimMatchService {
      * {@code parsePlayerId} the player stats use, and anything unresolvable is skipped rather than
      * written against a player that does not exist.
      */
+    /**
+     * Whether a team is the one a manager actually plays as.
+     *
+     * <p>Deliberately a property of the match rather than of who is looking at it. An AI-vs-AI result
+     * has no audience waiting for it, and a result the scheduler produced at 19:00 has to be the same
+     * hidden row for the manager whether it is read from the dashboard, the club schedule or the league
+     * table - so the decision belongs with the match and {@code MatchDTO} decides only who may see it.
+     */
+    private static boolean isHumanClub(org.example.footballmanager.newLogic.model.Team team) {
+        return team != null && team.isHumanControlled();
+    }
+
     private void recordZoneLoad(Match match,
                                 List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots) {
         if (snapshots == null || snapshots.isEmpty()) {

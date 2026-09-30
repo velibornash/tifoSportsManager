@@ -238,7 +238,11 @@ public class TeamController {
 
     @GetMapping("/{teamId}/schedule")
     public ResponseEntity<List<Map<String, Object>>> getSchedule(@PathVariable Long teamId,
-                                                                 @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+                                                                 @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
+                                                                 @AuthenticationPrincipal User user) {
+        // Who is asking, because this is the surface where a manager is most likely to see his own
+        // result by accident: the schedule is the page a manager opens to see what is next.
+        Long viewerTeamId = user != null && user.getTifoCTeam() != null ? user.getTifoCTeam().getId() : null;
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.notFound().build();
@@ -269,7 +273,7 @@ public class TeamController {
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .map(fixture -> {
                     Long opponentId = resolveOpponentId(fixture, teamId);
-                    return toScheduleRow(teamId, fixture, headToHeadByOpponent.get(opponentId), snapshots);
+                    return toScheduleRow(teamId, fixture, headToHeadByOpponent.get(opponentId), snapshots, viewerTeamId);
                 })
                 .toList();
 
@@ -432,10 +436,27 @@ public class TeamController {
         return ALLOWED_STYLES.contains(style) ? style : "BALANCED";
     }
 
+    /** "Season 1 · Day 3 · 18:00", matching MatchDTO so both surfaces read the same. */
+    private String buildSeasonDayLabel(MatchFixture fixture) {
+        if (fixture.getSeasonYear() == null) {
+            return null;
+        }
+        StringBuilder label = new StringBuilder("Season ").append(fixture.getSeasonYear());
+        if (fixture.getDayNumber() != null) {
+            label.append(" \u00b7 Day ").append(fixture.getDayNumber());
+        }
+        if (fixture.getMatchDate() != null) {
+            label.append(" \u00b7 ").append(String.format("%02d:%02d",
+                    fixture.getMatchDate().getHour(), fixture.getMatchDate().getMinute()));
+        }
+        return label.toString();
+    }
+
     private Map<String, Object> toScheduleRow(Long teamId,
                                               MatchFixture fixture,
                                               Map<String, Object> h2hSummary,
-                                              Map<Long, ScheduleInsightService.TeamSnapshot> snapshots) {
+                                              Map<Long, ScheduleInsightService.TeamSnapshot> snapshots,
+                                              Long viewerTeamId) {
         Match playedMatch = fixture.getPlayedMatch();
         boolean isHome = Objects.equals(fixture.getHomeTeam().getId(), teamId);
         Team opponent = isHome ? fixture.getAwayTeam() : fixture.getHomeTeam();
@@ -461,8 +482,24 @@ public class TeamController {
         row.put("opponentId", opponent != null ? opponent.getId() : null);
         row.put("opponentName", opponent != null ? opponent.getName() : "Unknown");
         row.put("isHome", isHome);
-        row.put("homeGoals", playedMatch != null ? playedMatch.getHomeGoals() : 0);
-        row.put("awayGoals", playedMatch != null ? playedMatch.getAwayGoals() : 0);
+        // Whether the manager has asked to see this result. The same rule MatchDTO applies, because a
+        // schedule row and a match row are one fact in two shapes and must not disagree: a score that
+        // shows on one surface and not the other is worse than one that shows on neither.
+        boolean viewerIsInThisMatch = viewerTeamId != null
+                && Objects.equals(viewerTeamId, teamId)
+                && playedMatch != null;
+        boolean resultRevealed = true;
+        if (viewerIsInThisMatch) {
+            resultRevealed = isHome ? playedMatch.isHomeResultRevealed() : playedMatch.isAwayResultRevealed();
+        }
+        boolean resultHidden = playedMatch != null && viewerIsInThisMatch && !resultRevealed;
+
+        // A hidden result publishes no score at all rather than a zero. Zero is a real result - it is
+        // what a 0-0 reads as - so masking to zero would show a goalless draw that never happened.
+        row.put("homeGoals", resultHidden ? null : (playedMatch != null ? playedMatch.getHomeGoals() : 0));
+        row.put("awayGoals", resultHidden ? null : (playedMatch != null ? playedMatch.getAwayGoals() : 0));
+        row.put("resultHidden", resultHidden);
+        row.put("resultRevealed", resultRevealed);
         row.put("played", fixture.isPlayed());
         row.put("round", fixture.getRoundNumber() != null ? fixture.getRoundNumber() : 1);
         row.put("week", fixture.getWeekNumber() != null ? fixture.getWeekNumber() : fixture.getRoundNumber());
@@ -471,6 +508,17 @@ public class TeamController {
         // The id as well as the name: the schedule screen needs it to send you to the right league,
         // and a name alone cannot be clicked safely when two divisions can share one.
         row.put("competitionId", fixture.getCompetition() != null ? fixture.getCompetition().getId() : null);
+        // League / Cup / Friendly, so a fixture says what kind of match it is without a trip to its
+        // league page. Two divisions can share a name; they do not share a type.
+        row.put("competitionType", fixture.getCompetition() != null && fixture.getCompetition().getType() != null
+                ? fixture.getCompetition().getType().name() : null);
+        // The game's own calendar, next to the wall-clock date. The owner asked for both: these are
+        // different facts, and only this one is what the season is actually built on.
+        row.put("day", fixture.getDayNumber());
+        row.put("seasonDayLabel", buildSeasonDayLabel(fixture));
+        // Without the replay id a hidden row's "Watch your match" has nothing to open - the fixture id
+        // and the replay id are not the same number, and guessing costs the manager the button.
+        row.put("replayId", playedMatch != null ? playedMatch.getReplayId() : null);
         row.put("matchDate", formatDateTime(fixture.getMatchDate()));
         row.put("stadium", resolveStadiumName(fixture));
         // The picture comes from the ground's own field rather than from matching its name. The name

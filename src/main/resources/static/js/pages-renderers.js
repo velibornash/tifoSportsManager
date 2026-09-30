@@ -1,4 +1,5 @@
 import { backButtonHtml } from './ui/components.js';
+import { hiddenResultActions, bindHiddenResultActions } from './reveal-ui.js';
 
 function htmlEscape(value) {
     return String(value ?? '')
@@ -156,6 +157,24 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
         ? `<div class="fx-h2h"><strong>${safe(h2h.summary || 'H2H')}</strong>${h2h.lastMeetingSummary ? `<span>${safe(h2h.lastMeetingSummary)}</span>` : ''}</div>`
         : '';
 
+    if (resultHidden) {
+        // No score, no W/D/L badge and no click-through to the match: any one of them alone gives the
+        // result away, and the badge is the quietest leak of the three.
+        return `
+        <div class="${classes.join(' ')}" data-caller="${safe(matchCaller)}" data-back-target="${safe(backTarget)}">
+            <div class="fx-topline">
+                <span class="fx-date">${safe(match?.seasonDayLabel || match?.matchDate || 'TBD')}</span>
+                <span class="fx-venue">${safe(venue)}</span>
+            </div>
+            <div class="fx-main">
+                <span class="fx-home">${safe(match?.homeTeam || 'Home')}</span>
+                <span class="fx-score pending fm-hidden-score">Result not shown yet</span>
+                <span class="fx-away">${safe(match?.awayTeam || 'Away')}</span>
+            </div>
+            ${hiddenResultActions(match?.id, match?.replayId)}
+        </div>`;
+    }
+
     return `
         <div class="${classes.join(' ')}"
              data-match-id="${match?.played && match?.id ? match.id : ''}"
@@ -163,7 +182,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
              data-back-target="${safe(backTarget)}"
              data-fixture-id="${!match?.played && allowFixtureClick ? fixtureId : ''}">
             <div class="fx-topline">
-                <span class="fx-date">${safe(match?.matchDate || 'TBD')}</span>
+                <span class="fx-date">${safe(match?.seasonDayLabel || match?.matchDate || 'TBD')}</span>
                 <!-- The ground, linked to the club that plays there. It was a plain span, so the
                      only way to get from a fixture to a stadium was to already know the club. -->
                 <span class="fx-venue">${match?.stadiumOwnerTeamId
@@ -176,6 +195,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
                 <span class="fx-score ${match?.played ? '' : 'pending'}">${match?.played ? `${match?.homeGoals ?? 0} – ${match?.awayGoals ?? 0}` : safe(pendingLabel)}</span>
                 <span class="fx-away ${match?.awayTeamId ? 'js-load-CTeam' : ''}" data-CTeam-id="${match?.awayTeamId || ''}" data-CTeam-name="${safe(match?.awayTeam || 'Away')}" data-season-year="${seasonYear}">${safe(match?.awayTeam || 'Away')}</span>
             </div>
+            ${match?.competitionType ? `<div class="fx-competition-type">${safe(match.competitionType)}</div>` : ''}
             ${playedBadge ? `<div class="fx-result-chip">${buildResultBadgeHtml(playedBadge.label, playedBadge.className)}</div>` : ''}
             ${showInsights ? `
                 <div class="fx-insights">
@@ -696,6 +716,7 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
     html += `</div></section></div>`;
     mainContent.innerHTML = html;
     bindScheduleInteractions(mainContent);
+    bindHiddenResultActions(mainContent);
 }
 
 export function renderLeagueMatchesView(matches, title = 'League Results', { loadMatch, backTarget = 'dashboard', caller = 'leagueMatches' } = {}) {
@@ -716,6 +737,20 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
             let badgeClass = '';
             let badgeText = '';
 
+            if (match.resultHidden === true) {
+                html += `
+                <div class="match-row recent-match is-hidden-result" data-match-id="${match.id}">
+                    <div style="font-size:0.9em; color:#aaa;">${htmlEscape(match.seasonDayLabel || match.matchDate || 'N/A')}${match.competitionType ? ` <span style="color:#7a7a7a;">· ${htmlEscape(match.competitionType)}</span>` : ''}</div>
+                    <div class="match-teams">
+                        <span class="CTeam-home">${match.homeTeam}</span>
+                        <span class="score fm-hidden-score">Result not shown yet</span>
+                        <span class="CTeam-away">${match.awayTeam}</span>
+                    </div>
+                    ${hiddenResultActions(match.id, match.replayId)}
+                </div>`;
+                return;
+            }
+
             if (match.homeGoals !== null && match.awayGoals !== null) {
                 if (match.homeGoals > match.awayGoals) {
                     badgeClass = 'win';
@@ -731,11 +766,11 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
 
             html += `
             <div class="match-row" data-match-id="${match.id}" data-caller="${caller}">
-                <div style="font-size:0.9em; color:#aaa;">${match.matchDate || 'N/A'}</div>
+                <div style="font-size:0.9em; color:#aaa;">${htmlEscape(match.seasonDayLabel || match.matchDate || 'N/A')}${match.competitionType ? ` <span style="color:#7a7a7a;">· ${htmlEscape(match.competitionType)}</span>` : ''}</div>
                 <div class="match-teams">
-                    <span class="CTeam-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${match.homeTeam}</span></span>
+                    <span class="CTeam-home"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${homeEsc}')">${htmlEscape(match.homeTeam)}</span></span>
                     <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
-                    <span class="CTeam-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${match.awayTeam}</span></span>
+                    <span class="CTeam-away"><span class="cs-clickable" onclick="event.stopPropagation(); openTeamByName('${awayEsc}')">${htmlEscape(match.awayTeam)}</span></span>
                 </div>
                 ${badgeText ? `<span class="result-badge ${badgeClass}">${badgeText}</span>` : ''}
             </div>`;
@@ -744,6 +779,7 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
 
     html += `</div></div>`;
     mainContent.innerHTML = html;
+    bindHiddenResultActions(mainContent, loadMatch);
 
     mainContent.onclick = (e) => {
         const row = e.target.closest('.match-row');

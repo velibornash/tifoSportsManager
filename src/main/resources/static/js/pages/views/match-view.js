@@ -35,9 +35,15 @@ export function createMatchView(deps) {
                 return;
             }
 
-            const [events, lineupsPayload] = await Promise.all([
+            // The events carry the score and the date but not what kind of match it was, so the
+            // header pulls the one record that does. It is one extra request in parallel, not a
+            // second round trip.
+            const [events, lineupsPayload, matchMeta] = await Promise.all([
                 response.json(),
                 authFetch(`/match-stats/lineups/${matchId}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .catch(() => null),
+                authFetch(`/matches/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null)
             ]);
@@ -62,6 +68,14 @@ export function createMatchView(deps) {
                 hour: '2-digit', minute: '2-digit'
             });
 
+            // "Premier League · League" reads worse than "Premier League" when the type is already
+            // implied, but the owner asked to see what kind of match it is, so it is shown and the
+            // fallback keeps the header tidy for a match with no competition on it.
+            const competitionHeading = matchMeta?.competitionName
+                ? `<div style="text-align:center; margin-bottom:6px; color:#8fd18f; font-weight:600;">${htmlEscape(matchMeta.competitionName)}${matchMeta.competitionType ? ` <span style="color:#aaa; font-weight:400;">· ${htmlEscape(matchMeta.competitionType)}</span>` : ''}</div>`
+                : '';
+            const seasonDayLabel = matchMeta?.seasonDayLabel || null;
+
             let backTarget = 'results';
             if (caller === 'match' || caller === 'results') backTarget = 'results';
             else if (caller === 'leagueMatches') backTarget = 'leagueMatches';
@@ -75,6 +89,7 @@ export function createMatchView(deps) {
                     <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget}')">&#8592; Back</button>
                 </div>
                 <h2 style="text-align:center;">Match Details</h2>
+                ${competitionHeading}
                 <div class="fm-match-scoreline" style="font-size:1.3em; margin:20px 0; font-weight:bold;">
                     <div class="fm-match-score-team">
                         <div class="fm-match-score-name">${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${htmlEscape(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
@@ -88,6 +103,7 @@ export function createMatchView(deps) {
                 </div>
                 <div style="text-align:center; color:#aaa; margin-bottom:25px;">
                     &#128197; ${formattedDate}
+                    ${seasonDayLabel ? `<div style="margin-top:4px; font-size:0.9em;">${htmlEscape(seasonDayLabel)}</div>` : ''}
                 </div>
                 <div id="match-buttons-container" class="fm-match-actions">
                     <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
@@ -371,6 +387,7 @@ export function createMatchView(deps) {
             }
 
             if (initialTab === 'report') void showMatchReport();
+            else if (initialTab === 'goals') showGoals();
             else void showPreview();
 
             document.getElementById("view-preview").addEventListener("click", () => void showPreview());
@@ -443,7 +460,11 @@ export function createMatchView(deps) {
                 })();
             });
             document.getElementById("view-report").addEventListener("click", () => void showMatchReport());
-            document.getElementById("view-goals").addEventListener("click", () => {
+            document.getElementById("view-goals").addEventListener("click", showGoals);
+            // Named so `initialTab: 'goals'` can open it. It was an anonymous arrow, which is why
+            // "Show results" could only ever land on the preview or the report and the owner asked
+            // for the goals.
+            function showGoals() {
                 const goals = events.filter(e => e.eventType === "GoalEvent");
                 if (goals.length === 0) {
                     infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">No goals in this match.</p>`;
@@ -473,7 +494,7 @@ export function createMatchView(deps) {
                 });
                 html2 += `</ul>`;
                 infoDiv.innerHTML = html2;
-            });
+            }
         } catch (err) {
             console.error("Error loading match:", err);
             document.getElementById("main-content").innerHTML = `<div class="team-card"><p>Error loading match: ${err.message}</p></div>`;

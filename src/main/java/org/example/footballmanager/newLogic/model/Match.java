@@ -40,6 +40,10 @@ public class Match {
     private Integer seasonYear;
     private Integer roundNumber;
     private Integer weekNumber;
+    // The calendar day this match was played on, copied from its fixture. Without it the only date a
+    // match carried was the wall-clock one, so "which day of the season was that?" had no answer for a
+    // played match - the fixture knew, the match did not.
+    private Integer dayNumber;
     @ManyToOne(fetch = FetchType.LAZY)
     private Competition competition;
 

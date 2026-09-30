@@ -8,7 +8,9 @@ import org.example.footballmanager.newLogic.model.MatchPlayerStats;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.service.MatchDetailService;
+import org.example.commonmanager.model.User;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,22 +27,30 @@ public class MatchController {
     private final MatchRepository matchRepository;
     private final MatchDetailService matchDetailService;
     private final MatchPlayerStatsRepository playerStatsRepository;
+    private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
 
     @Autowired
     public MatchController(
             MatchRepository matchRepository,
             MatchDetailService matchDetailService,
-            MatchPlayerStatsRepository playerStatsRepository
+            MatchPlayerStatsRepository playerStatsRepository,
+            org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures
     ) {
         this.matchRepository = matchRepository;
         this.matchDetailService = matchDetailService;
         this.playerStatsRepository = playerStatsRepository;
+        this.plusFeatures = plusFeatures;
     }
 
     @GetMapping("/{matchId}")
-    public ResponseEntity<MatchDTO> getMatch(@PathVariable Long matchId) {
+    public ResponseEntity<MatchDTO> getMatch(@PathVariable Long matchId,
+                                             @AuthenticationPrincipal User user) {
+        // Viewer-aware for the same reason the lists are: this DTO also carries the score, and a
+        // detail fetch that ignored the viewer was a way to read a result the manager had not asked
+        // for. The mask lives in the DTO, so passing the viewer is all it takes.
+        Long viewerTeamId = plusFeatures.viewerTeamId(user);
         return matchRepository.findById(matchId)
-                .map(MatchDTO::from)
+                .map(match -> MatchDTO.from(match, viewerTeamId))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

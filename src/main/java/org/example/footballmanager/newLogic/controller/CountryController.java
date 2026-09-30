@@ -24,6 +24,7 @@ import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.util.CupFixtureSeeder;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -599,7 +600,8 @@ public class CountryController {
     }
     @GetMapping("/leagues/{leagueId}/matches")
     public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId,
-                                           @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+                                           @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
+                                           @AuthenticationPrincipal User user) {
         Competition league = competitionRepository.findById(leagueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liga nije pronađena"));
         int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
@@ -623,9 +625,12 @@ public class CountryController {
                 .filter(Match::isPlayed)
                 .toList();
 
-        // Mapiraj u DTO
+        // The viewer, so his own result can stay hidden here too. This called the no-viewer form, which
+        // means the DTO could never decide anybody was involved - so a league table of results showed
+        // the manager his own scoreline before he had asked for it.
+        Long viewerTeamId = user != null && user.getTifoCTeam() != null ? user.getTifoCTeam().getId() : null;
         return matches.stream()
-                .map(MatchDTO::from)
+                .map(m -> MatchDTO.from(m, viewerTeamId))
                 .collect(Collectors.toList());
     }
 

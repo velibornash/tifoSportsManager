@@ -412,3 +412,104 @@ it hadn't, the injection had.
 
 The real backend — the app was down for most of that commit. Everything was checked against the
 database and against the real modules with a stubbed API.
+
+## `PENDING` — the manager does not see their own result until they ask for it
+
+**The owner's complaint was two bugs wearing one coat.** The results were showing, and the fixture
+dates were wrong. They were separate, and the second was hiding the first.
+
+### The result was never actually hidden
+
+`SimMatchService` had one line that decided everything:
+
+```java
+boolean involvesManager = isHumanClub(fixture.getHomeTeam()) || isHumanClub(fixture.getAwayTeam());
+match.setHomeResultRevealed(!involvesManager);
+match.setAwayResultRevealed(!involvesManager);
+```
+
+That code was already correct. It was written in the previous session and never ran, because the
+matches in the database were simulated by the **old** process — before this line existed. So the first
+diagnosis was wrong in a way worth recording: the rule was not missing, the code that applied it was
+not loaded. A restart and a fresh round is what proved the rule was fine.
+
+**A hidden score is `null`, never `0`.** This is the whole reason the mask belongs in the DTO. A
+0-0 that has not been played is indistinguishable from a goalless draw, and the fixture list
+publishes a score column for every row, so a masked row that reported `0` would have invented a
+result. `MatchDTO.homeGoals`/`awayGoals` changed from `int` to `Integer` for exactly this.
+
+**Masking in the renderer would have leaked on the fourth screen.** While building the schedule card I
+rendered from `match.homeGoals` — the schedule already masked those to null, so the card looked right
+in isolation and was only right by luck. The league results list is the one that proves the point: it
+read `match.homeGoals` straight off `MatchDTO` and printed the real score with a `resultHidden` flag
+sitting right there, unused. Two renderers, two rules, already disagreeing. The mask now happens once,
+in `MatchDTO.from`, and `GET /matches/{id}` passes the viewer too — it ignored them, so a direct fetch
+was a way to read a result the manager had not asked for.
+
+**`resultHidden` alone is not a mask.** The league row also prints a `W`/`D`/`L` chip, and the
+schedule card a `fx-result-chip`. A 1-0 with no `W` still tells you the result, so both chips are
+suppressed along with the score, and the click-through to the match goes with them — a row that will
+not open is the clearest possible statement that there is nothing to open yet.
+
+### Two buttons, because they are two questions
+
+**Watch your match** opens the match in the viewer; you watch it happen. **Show results** reveals it
+and opens the details on the goals. The dashboard already had this pair but called them "Watch match"
+and "Open report", and "Open report" landed on the **report** tab — the owner asked for goals, so
+`showGoals` was extracted from an anonymous arrow into a named function that `initialTab` can call.
+That arrow was also the reason `initialTab: 'goals'` was impossible before.
+
+**One implementation, three surfaces.** The dashboard had its own `revealMatchResult` and its own two
+`forEach` blocks. The club schedule and the league results had nothing at all. Three copies of
+"reveal, then navigate" is three places for them to disagree, and two of the three were already blank.
+`reveal-ui.js` now owns the buttons and the binding, and the dashboard's local helper delegates to it.
+Binding is marked per button (`dataset.revealBound`) because these lists are re-rendered wholesale —
+a second bind must not stack a second handler, and a button that looks alive and does nothing is the
+exact failure this feature exists to remove.
+
+**A failed reveal does not block the navigation.** `revealMatch` catches and warns, then the match
+opens anyway. The manager pressed the button; the score is already computed; the worst case is that
+the row stays masked until a reload, which is a far smaller failure than a dead button.
+
+### The calendar is a separate fact from the date
+
+`Match` had `seasonYear`, `roundNumber`, `weekNumber` and `matchDate` — and no `dayNumber`, because
+`MatchFixture` had one and the match was built from the fixture without copying it. So a played match
+could not say which day of the season it was on, and `Season 1 · Day 3 · 18:00` had no source for the
+middle of it. `Match.dayNumber` is new, copied in `SimMatchService.persist`, and `ddl-auto=update`
+adds the column on boot.
+
+**The label omits what it does not know.** A match played before this commit has no `dayNumber`, and
+printing `Day 0` would be a lie about a matchday. It renders `Season 1 · 23:59` instead, and the live
+check below confirms that is exactly what happened to the old rows.
+
+**"Next match" sorted by the wall clock.** It filtered `!played` and took the first, which looked
+right and mostly was — until a cup tie and a league round share a date, where the wall clock has no
+way to say which is the next matchday. Season → week → day is the order the fixtures were generated
+in, so it is the order a manager means by "next"; the timestamp is the tiebreaker and the only key
+when the calendar columns are missing.
+
+### Verified live, not just in tests
+
+Team 1, week 2, after a restart onto the new code:
+
+- simulated match → `homeGoals: null`, `awayGoals: null`, `resultHidden: true`, `dayNumber: 7`,
+  `seasonDayLabel: "Season 1 · Day 7 · 23:59"`, `replayId: 14`, `competitionType: LEAGUE`
+- `POST /matches/234/reveal` → `{revealed: true}`; the same GET then returned `0-0`, `resultHidden: false`
+- the schedule row for the same match carried `day: 3`, `week: 1`, `seasonDayLabel`,
+  `competitionType`, `replayId` — the last one matters, because a hidden row's **Watch your match**
+  has nothing to open without it and the fixture id is not the replay id
+- a match persisted before the change → visible score, `seasonDayLabel: "Season 1 · 23:59"`
+
+**752 tests green** (740 before, plus 9 `MatchDTORevealTest` and 3 in `SimMatchPersistWiringTest`).
+The persistence tests pin both directions: a manager's match persists unrevealed, an AI-vs-AI match
+persists revealed, and the calendar is copied. The AI case is not a formality — the league table and
+the cup draw read those, and a masked AI result would only ever make those two screens look broken.
+
+### Not fixed, because it is not this task
+
+`POST /admin/reset-db` died on a Postgres deadlock — `AccessExclusiveLock` on a relation while the
+background league simulation was still running. The world survived intact, so this is a
+reset-vs-simulation contention problem, not data loss, and fixing it would have meant changing the
+reset path during a feature that does not touch it. It is written up in `kanban.md` for the next
+session that has room.

@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -123,6 +124,93 @@ class SimMatchPersistWiringTest extends BaseTest {
         // 4. League table entries created for both teams
         assertTrue(entryRepository.findByTeam(home).size() == 1);
         assertTrue(entryRepository.findByTeam(away).size() == 1);
+    }
+
+    @Test
+    @Transactional
+    void persistHidesAManagersResultUntilTheyAskForIt() {
+        // The owner, 2026-09-29: the matchday job fires whether or not anyone is watching, so a
+        // manager's result exists the moment the job finishes. Persist used to mark every result
+        // revealed, which made "Watch your match" a formality and handed over the season early.
+        Country country = countryRepository.save(country());
+        Competition competition = competitionRepository.save(competition(country));
+
+        Team home = team("Manager FC", country, competition);
+        home.setHumanControlled(true);
+        home = teamRepository.save(home);
+        Team away = teamRepository.save(team("Opponent United", country, competition));
+
+        List<Player> homePlayers = playerRepository.saveAll(starters("Mgr", home));
+        List<Player> awayPlayers = playerRepository.saveAll(starters("Opp", away));
+        lineupRepository.save(lineupWith(home, homePlayers));
+        lineupRepository.save(lineupWith(away, awayPlayers));
+
+        MatchFixture fixture = fixtureRepository.save(fixture(home, away, competition));
+        ProposalMatchOutcome outcome = syntheticOutcome(home.getId(), away.getId(), homePlayers, awayPlayers);
+
+        Long matchId = simMatchService.persist(fixture, outcome, -1L);
+        Match match = matchRepository.findById(matchId).orElseThrow();
+
+        assertFalse(match.isHomeResultRevealed(), "the manager has not watched this yet");
+        assertFalse(match.isAwayResultRevealed(), "the manager has not watched this yet");
+        // The result is stored, not withheld. Hiding it is a display decision; the match itself is real.
+        assertTrue(match.isPlayed());
+        assertEquals(2, match.getHomeGoals());
+    }
+
+    @Test
+    @Transactional
+    void persistLeavesAnAiMatchRevealed() {
+        // Nothing to hide: neither side is played by a person, so nobody is waiting to watch it. A
+        // league table and a cup draw both read these, and a masked AI result would only ever make
+        // those two screens look broken.
+        Country country = countryRepository.save(country());
+        Competition competition = competitionRepository.save(competition(country));
+        Team home = teamRepository.save(team("AI Home", country, competition));
+        Team away = teamRepository.save(team("AI Away", country, competition));
+
+        List<Player> homePlayers = playerRepository.saveAll(starters("AIH", home));
+        List<Player> awayPlayers = playerRepository.saveAll(starters("AIA", away));
+        lineupRepository.save(lineupWith(home, homePlayers));
+        lineupRepository.save(lineupWith(away, awayPlayers));
+
+        MatchFixture fixture = fixtureRepository.save(fixture(home, away, competition));
+        ProposalMatchOutcome outcome = syntheticOutcome(home.getId(), away.getId(), homePlayers, awayPlayers);
+
+        Long matchId = simMatchService.persist(fixture, outcome, -1L);
+        Match match = matchRepository.findById(matchId).orElseThrow();
+
+        assertTrue(match.isHomeResultRevealed());
+        assertTrue(match.isAwayResultRevealed());
+    }
+
+    @Test
+    @Transactional
+    void persistCopiesTheFixtureCalendarOntoTheMatch() {
+        // A played match used to carry no day of the season at all - only the wall-clock date - so
+        // "which day of the season was that?" had no answer once the fixture was gone.
+        Country country = countryRepository.save(country());
+        Competition competition = competitionRepository.save(competition(country));
+        Team home = teamRepository.save(team("Cal Home", country, competition));
+        Team away = teamRepository.save(team("Cal Away", country, competition));
+
+        List<Player> homePlayers = playerRepository.saveAll(starters("CalH", home));
+        List<Player> awayPlayers = playerRepository.saveAll(starters("CalA", away));
+        lineupRepository.save(lineupWith(home, homePlayers));
+        lineupRepository.save(lineupWith(away, awayPlayers));
+
+        MatchFixture fixture = fixtureRepository.save(fixture(home, away, competition));
+        fixture.setSeasonYear(1);
+        fixture.setDayNumber(3);
+        fixture.setMatchDate(LocalDateTime.of(2026, 2, 20, 18, 0));
+        fixtureRepository.save(fixture);
+
+        ProposalMatchOutcome outcome = syntheticOutcome(home.getId(), away.getId(), homePlayers, awayPlayers);
+        Long matchId = simMatchService.persist(fixture, outcome, -1L);
+        Match match = matchRepository.findById(matchId).orElseThrow();
+
+        assertEquals(1, match.getSeasonYear());
+        assertEquals(3, match.getDayNumber(), "the match must remember its day of the season");
     }
 
     @Test
