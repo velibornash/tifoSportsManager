@@ -992,3 +992,104 @@ step, or a week of football.
 one describes something that was true of the running app: 168 offers and not 1, every day 1-7 reached, the
 season wrapping after week 12 with week-12-day-7 actually offered, and the end position independent of the
 press hour.
+
+## `PENDING` — three World page bugs the owner reported
+
+The owner sent three messages in a row, and none of them was a Java defect. That is worth noting before
+the details: nothing here is reachable from a Spring test, and the third one is a bug that every
+behavioural test in the suite would have passed.
+
+### 1. World was missing from the mobile menu
+
+The desktop bar is `desktop-only` and the mobile drawer is `mobile-only`. World was in the first and not
+the second, so the page was reachable on a desktop and unreachable on a phone. Confirmed by reading the
+drawer contents in the browser, not by eye: the accordion headers were Dashboard, Club, League, Serbia,
+Community Chat, Admin, Sports Lobby, profile, sign out.
+
+### 2. Clicking a country showed Serbia
+
+The World page did set the context — `setActiveLeagueContext({ countryIsoCode: ... })` — and then
+`loadCountryPage` asked `getCurrentUserCountryIsoCode()`, which is **the manager's own country**, and
+never looked at the context. Two functions disagreed about what the click meant, and the one that was
+consulted was the wrong one. Croatia, Japan and Brazil all rendered as Serbia.
+
+The fix resolves the country as *an explicit choice, else the manager's own*. It is separate state from
+the league context on purpose: if the World click reused the league context, then looking at Croatia
+would follow you to the Country menu button, and there would be no way back to your own side except
+reloading. So the World page sets the choice and the Country button clears it.
+
+A represented country now says so — *"BRA is represented, not played. It has national sides, and no club
+divisions. A country is given its own five-tier pyramid from Admin → Activate a country."* — because an
+empty divisions table with no explanation is indistinguishable from a broken page.
+
+**Getting that note onto the screen took three edits, not one.** The router passed the option, the view
+had the code to render it, and the wrapper in between took no arguments and passed none:
+
+```js
+async function loadCountryPage() {          // options arrive here and die
+    return countryView.loadCountryPage();
+}
+```
+
+The option existed in three of the four places between the click and the screen. My first browser run
+still showed the full Brazil page, and the reason was in that wrapper rather than in the view.
+
+### 3. The back button worked and could not be reached
+
+This is the one that made me stop and measure, because "does not work" is a claim and I would otherwise
+have gone looking for a broken handler.
+
+The click handler fires. The navigation happens. It works on a desktop. On a phone the page is **3,227px
+tall** — 48 country rows — and after 1,200px of scroll the button measured:
+
+```
+top: -1095   reachable: false   scrollY: 1200
+```
+
+So the button was working perfectly, entirely out of the viewport, and tapping the top of the screen did
+not hit it. From a manager's point of view: dead.
+
+`position: sticky` is the obvious fix and it **silently does nothing in this app's shell**. Walking the
+ancestors explains it:
+
+```
+.fm-page-toolbar   overflow visible
+.fm-page--world    overflow visible
+#main-content      overflow visible
+.dashboard-content overflow visible
+BODY               overflow hidden auto   scrollHeight 3227  clientHeight 3227   <- not a scroller
+HTML               overflow hidden auto   scrollHeight 3227  clientHeight  844   <- the real scroller
+```
+
+`<body>` has `overflow: hidden auto` and `scrollHeight === clientHeight`, so it is a scroll container that
+cannot scroll. A sticky element is confined to its nearest scroll container's scrollport, so it never
+leaves `<body>` and never moves. Verified by setting `position: fixed` on the same element in the console
+at the same scroll position:
+
+| | button `top` at scroll 700 |
+|---|---|
+| `position: sticky` | **-587** |
+| `position: fixed` | **0** |
+
+So the bar is `fixed`, and it is **scoped to the World page** rather than to `.fm-page-toolbar` generally,
+because a fixed bar on every page in the game is a change nobody asked for and would need its own review.
+The bar carries `pointer-events: none` with its children re-enabled, so a bar across the top of the page
+does not swallow taps meant for the content behind it. And the 48-row list is capped at `58vh` with its
+own scroll, which takes the page from 3,227px to 1,553px — the real fix, because the exit control should
+not need to be a fixed overlay at all on a page a screen and a half tall.
+
+The first version of the bar faded to transparent at the bottom, and the page title and the competition
+hint scrolled up *through* it and collided with the button text. Solid, with a shadow, and 78px of
+clearance underneath.
+
+### Tests
+
+**4 new, all green.** They are assertions about text files, which is the only kind that reaches a menu
+entry, a dropped argument and a CSS positioning decision. The third one is the argument for this whole
+approach: a test asserting "the back button is on the page" passes throughout, on desktop and phone, and
+proves nothing about whether a manager can tap it.
+
+Verified in the browser rather than inferred: back button at `top: 10` and reachable at scroll 0, 400 and
+1553, and it navigates. Brazil shows its notice, Croatia shows its 31 leagues, the Country button returns
+to Serbia, and the mobile drawer lists World. Desktop measured `position: static`, `padding-top: 0` and no
+list cap, so the change does not leak off the World page.

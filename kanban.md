@@ -167,6 +167,31 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
+### `PENDING` — three World page bugs the owner reported
+
+All three verified in a real browser at iPhone 14 size and at 1440x900.
+
+| Reported | Cause |
+|---|---|
+| World not in the mobile menu | The desktop bar is `desktop-only` and the drawer is `mobile-only`, so the entry simply did not exist on a phone |
+| Clicking a country goes to Serbia | The World page set the league context; the country page then asked for **the manager's own country** and ignored it. Croatia, Japan and Brazil all rendered as Serbia |
+| Back to dashboard does not work | It worked. On a phone the page was **3,227px tall** and after 1,200px of scroll the button measured `top: -1095` — entirely off-screen |
+
+**The country is now resolved as "an explicit choice, else the manager's own."** Separate state from the
+league context, because the Country menu button has to keep meaning *my country*: if the World click
+reused the league context, looking at Croatia would follow you to the Country button with no way back. A
+represented country now says so plainly, instead of showing an empty divisions table that reads as a
+broken page.
+
+**The back button is the one worth writing down.** The click handler fired and the navigation happened —
+on a desktop. `position: sticky` is the obvious fix and it **silently does nothing in this shell**:
+`<body>` carries `overflow: hidden auto` with `scrollHeight === clientHeight`, so it is a scroll container
+that cannot scroll, and a sticky element is confined to its scrollport. Measured at scroll 700: sticky gave
+`top: -587`, `fixed` gave `top: 0`. The bar is therefore `fixed`, **scoped to the World page** rather than
+to every page, with `pointer-events: none` on the bar so it does not swallow taps, and the 48-row list is
+capped so the page is 1,553px instead of 3,227px. Back button now measures `top: 10`, reachable at scroll
+0, 400 and 1553, and navigates.
+
 ### `274d3ff` — a week is a week, and now a week takes as long as a week
 
 `GameClockService.advanceWeek()` bumped the week counter, added exactly one day of game time, and
