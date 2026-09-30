@@ -1258,3 +1258,65 @@ working.
 
 Determinism is pinned too, because the fix must not cost reproducibility: the same seed gives the same
 sequence, and two different seeds still diverge.
+
+## `PENDING` — the three international club cups, and who is allowed in them
+
+### "Not created yet" was true, and it was not the interesting part
+
+The World page rendered Champions Cup, Masters Cup and Challenge Cup as a disabled row reading "Not
+created yet". The competitions were indeed absent. But creating three competition rows would have made
+the badge untrue and the page still meaningless — a competition nobody may enter is a name.
+
+So the rule came with them, and it is the owner's: **Champions for the winners, Masters for the second
+and third, Challenge for the fourth.** That is a better shape than it first looks. Every division in the
+world sends a club to all three, so the **fifth-division champion reaches the Champions Cup exactly as
+the first-division champion does** — the rule is about the place in *your* division, not the strength of
+it. It also means the three cups together cover every club that has a table, which is what makes them
+worth having rather than three parallel listings of the same elite.
+
+**Entry comes from the season that has finished.** A club that wins its division in week 12 does not
+enter the same season's Champions Cup by winning it in week 12 — the entry is decided by the table
+everyone has already played. And a world part-way through season one has no finished table to read, so
+the counts are honestly zero rather than invented. "No club has finished a season" is a real state and it
+is now distinguishable from "broken", which the old badge could not manage.
+
+Live, with Croatia active so the world has 62 divisions:
+
+| Cup | Qualified |
+|---|---|
+| Champions Cup | **62** — one per division |
+| Masters Cup | **124** — the second and third of each |
+| Challenge Cup | **62** — the fourth of each |
+
+### The table order is read, not remembered
+
+Entry goes through `LeagueTableOrder`, the one comparator in the codebase, rather than the stored
+`position` column. A table is only ordered when it is read, and that column is written by whatever last
+read the table — so a club whose stored position says *first* can be the one that finished fourth. There
+is a test for exactly that: it sets a fourth-placed club's stored position to 1 and asserts it is not
+entered for the Champions Cup while the real winner is.
+
+### Two mistakes, both mine, both found by looking rather than reasoning
+
+**The read endpoint was writing.** `summarise()` called `ensureCompetitions()`, so a `GET` on the world
+page issued an `INSERT` — into an endpoint that is transactional read-only. The whole page failed with
+`cannot execute INSERT in a read-only transaction`. A read that writes is wrong twice over: it breaks, and
+it makes the page work only if the page happens to be the thing that runs first. The competitions are
+created on boot; `summarise()` is read-only; and a cup that is somehow missing is reported missing rather
+than conjured by a page view. There is a test that reading the cups creates nothing.
+
+**Then the cups were created inside the boot transaction and vanished.** They were gone from the database
+even though the World page cheerfully reported 62, 124 and 62 qualified — the counts came from the
+divisions, the competitions themselves were not there. That is **the third write in this codebase lost to
+the boot transaction**, after the league-fixture day stamp and the national Elo replay, both of which now
+write in `REQUIRES_NEW`. `ensureCompetitionsDurably()` does the same, and the pattern is now familiar
+enough that the next step should be to find why that transaction does not survive rather than to keep
+adding `REQUIRES_NEW` calls around it.
+
+### Not done
+
+**The draw.** `CupFixtureSeeder` seeds only the first CUP row it finds, so these three have qualified
+clubs and no fixture list. Wiring it means generalising the seeder from "the cup" to "a named cup" rather
+than reaching for the first one — a real change to code every national cup already depends on. It is
+written up as not done rather than left for someone to discover from a "Not created yet" badge on a page
+that now says these competitions exist.
