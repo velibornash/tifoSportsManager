@@ -779,10 +779,12 @@ alreadyBuilt: false}`. Then straight out of Postgres:
   survives the activation, which is the point of having built it first
 - `Croatia | ACTIVE`, Serbia unchanged
 
-**Tests: 8 new, all green.** The full-suite run was interrupted part-way through by something outside
-this session, so it is not claimed here. A clean run is done once the next task lands, and both entries
-record the result together — the standing rule is that a job is shown to have changed data, and a test
-run is no different.
+**Tests: 8 new, all green. Full suite: 791 green, exit 0.**
+
+The first attempt at a full run was interrupted part-way through by something outside this session, and it
+was deliberately not recorded as a pass. A test run is no different from a seeding job: the standing rule
+is that a job is shown to have changed something rather than having logged that it did. The clean run came
+after the presence task landed and covered both.
 
 ## `a5cdbc9` — the World page stopped implying everyone is at their desk
 
@@ -848,5 +850,10 @@ times, and asserts the stamp is **unchanged**, which is the only version of this
 requests, and `app_user.last_seen_at` holds the matching timestamp — so the filter really is stamping, and
 the number really is derived rather than hard-coded.
 
-**Tests: 7 new, all green.** The full-suite run follows in the same pass as the activation task, and both
-entries are updated together with the result.
+**Tests: 7 new, all green. Full suite: 791 green, exit 0** — one clean run covering this and the
+activation task, which is what both entries now record.
+
+The one failure the clean run found was in this task rather than the activation one. `rubbishInputIsIgnored`
+asserted the global online count was zero and failed with `expected: <0> but was: <1>`, because the
+integration tests in the same H2 world go through the same JWT filter and somebody else is legitimately
+online. It was testing the world, not the blank input — now it asserts the count did not *move*.

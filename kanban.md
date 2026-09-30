@@ -188,6 +188,8 @@ the page open is a request every few seconds, and the filter is on the hot path 
 The in-memory map is the live truth; the column is a durable shadow of it, and a restart empties the map
 and honestly drops the count to zero until people come back.
 
+**7 new tests green. Full suite: 791 green, exit 0** — a clean run covering this and `dfa946d` together.
+
 ### `dfa946d` — a country is active when it has football in it
 
 `CountryState` was set once for Serbia by the catalogue seeder, styled one way on the World page, and
@@ -215,6 +217,11 @@ interrupted, and the second call heals exactly that.
 **The flag is written last, always.** It is a claim that the rest of the transaction succeeded. Written
 first, an activation that died halfway through 7,750 rows would leave a country marked ACTIVE over a
 third of a pyramid, and every reader would believe it was playable.
+
+**8 new tests green. Full suite: 791 green, exit 0** — the same clean run, recorded in both entries. The
+first attempt at it was interrupted part-way through and was **not** counted: a test run is no different
+from a seeding job, and the standing rule is that a job is shown to have changed something rather than
+having logged that it did.
 
 ### `a0d34f8` — the rating column finally means something
 
