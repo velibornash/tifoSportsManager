@@ -166,7 +166,7 @@ league used to get a blank page with no way out, and now gets a sentence and the
 
 Kept so the next session does not redo them.
 
-### `PENDING` — the World page stopped implying 48 people are at their desks
+### `a5cdbc9` — the World page stopped implying 48 people are at their desks
 
 The "Human players" stat was `countByRoleIsNotNull()` — **registered accounts**, every one of them
 counted since the day it registered. The board's note was the instruction: *"Do not label the number

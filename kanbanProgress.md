@@ -784,7 +784,7 @@ this session, so it is not claimed here. A clean run is done once the next task 
 record the result together — the standing rule is that a job is shown to have changed data, and a test
 run is no different.
 
-## `PENDING` — the World page stopped implying everyone is at their desk
+## `a5cdbc9` — the World page stopped implying everyone is at their desk
 
 ### A label doing work the number was not doing
 
