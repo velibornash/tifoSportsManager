@@ -65,7 +65,7 @@ years and every fixture reader will find nothing.
 | **Champions Cup / Masters Cup / Challenge Cup** | not started | International club competitions. Champions = winners, Masters = 2nd and 3rd, Challenge = 4th. Each needs a record, a draw and a per-tier league link. |
 | **NT Qualifiers + World Cup (senior)** | mechanism only | `InternationalFixtureSeeder` draws senior sides already. Only the competition records and formats are missing. |
 | **U-21 Qualifiers + U-21 World Cup** | not started | Separate competitions from the senior ones, with their own qualification phases — not tabs on one competition. |
-| Admin: activate a country | not started | The activation panel was asked for. `CountryState` is `ACTIVE`/`SIMULATED` and the World page already keys off it, so the page needs no change. |
+| **Admin: activate a country** | **done** — see below. The flag existed and nothing read it; activation now builds the football | — |
 | **Bot league tier standards** | **done** — see below. The note here was wrong: bot squads were *not* all skill 12, they were a uniform 1-17 draw | — |
 | `Player.rating` = skill × 8 | **done, but not a conversion** — see below. Three writers, three scales, and the OVR formula read all three as one | — |
 
@@ -165,6 +165,34 @@ league used to get a blank page with no way out, and now gets a sentence and the
 ## ✅ Done
 
 Kept so the next session does not redo them.
+
+### `PENDING` — a country is active when it has football in it
+
+`CountryState` was set once for Serbia by the catalogue seeder, styled one way on the World page, and
+read by nothing that did any work. So the activation panel the owner asked for would have been a switch
+for a label. It now builds the football.
+
+`POST /admin/countries/{iso}/activate`, behind the existing `/admin/**` role guard — it writes 7,750
+player rows, which is not something any authenticated user should do to the world by accident.
+
+**Live: Croatia, from nothing to a league system in 65 seconds.**
+
+| | Croatia after activation |
+|---|---|
+| Divisions | **31** (1 + 2 + 4 + 8 + 16) |
+| Clubs | **310**, ten per division |
+| Players | **7,750**, twenty-five per club, at least two keepers |
+| Table rows | **310** — one per club |
+| Fixtures | **2,790**, on two matchdays, and **0 of 31 divisions with an empty fixture list** |
+| Strength | tier 1 **12.19** → tier 5 **8.11** |
+
+Serbia is untouched, because activation asks the database which divisions a country has rather than
+trusting the flag. A country can hold a pyramid and still read SIMULATED if a previous activation was
+interrupted, and the second call heals exactly that.
+
+**The flag is written last, always.** It is a claim that the rest of the transaction succeeded. Written
+first, an activation that died halfway through 7,750 rows would leave a country marked ACTIVE over a
+third of a pyramid, and every reader would believe it was playable.
 
 ### `a0d34f8` — the rating column finally means something
 

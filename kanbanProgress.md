@@ -706,3 +706,80 @@ column. The replay overwrote it with a real figure, 1500, because Serbia drew it
 - `GET /countries/world` → 48 countries, 3 distinct reputation values
 - idempotence and the no-ratchet property both pinned: three consecutive replays leave the column
   byte-identical
+
+## `PENDING` — a country is active when it has football in it
+
+### A flag that nothing read
+
+`CountryState.ACTIVE` / `SIMULATED` was set once for Serbia by the catalogue seeder, styled one way on
+the World page via `fm-world-row--active`, and read by **nothing that did any work**. The board even
+noted "the World page already keys off it, so the page needs no change" — true, and the reason it was
+worth building: the display was finished and the behaviour was absent. A button that flipped that flag
+would have been a switch for a label, which is the exact shape of thing this codebase keeps finding.
+
+So activation builds the football: 31 divisions, 310 clubs, 7,750 players, a table and a fixture list per
+division. `GET /admin/countries` lists every country with its state and division count for the panel;
+`POST /admin/countries/{iso}/activate` does the work, behind the `/admin/**` role guard that was already
+there — it writes 7,750 player rows and is not something an authenticated user should do by accident.
+
+### Reuses the season machinery rather than a second fixture writer
+
+`SeasonService` already has `ensureSeasonCompetition`, `ensureEntriesForSeasonCompetition` and
+`ensureDoubleRoundRobinSchedule`, and the calendar inside the last one is what decides a week and a day.
+Writing fixtures here would have been a second opinion about it, which is precisely how four rounds once
+ended up in one week. `PyramidBuilder` creates the divisions and the clubs and asks `SeasonService` for
+the rest.
+
+The calendar dates round one from the **current** game date, so a division created mid-season starts
+playing this week instead of being born six weeks in the past and never being selected.
+
+**Serbia is deliberately not migrated onto this.** `DatabaseInitializer` seeds it with real club names,
+the Šid municipal league and two hand-authored squads, and every test in the suite runs through it. The
+shape is the same; the content is not, and that is the reason they are two methods rather than one with
+a flag.
+
+### A bug the test was built to find, and did
+
+The first version scheduled fixtures for the top flight only. So thirty of thirty-one divisions had
+clubs and table rows and **no fixture list at all** — a league that never plays a match and looks
+complete from the outside, which is the same shape of lie as an active country with no pyramid. The
+assertion that caught it walks all thirty-one divisions and asks each one for its fixtures, because
+"the pyramid exists" is true of a table and false of a football league.
+
+Two name-collision bugs died before that one, and both came from the same root:
+
+- `findByName` on `Team` **throws** on a duplicate rather than returning the first, and the repo says so
+  in its own comment: two clubs may share a name, so anything resolving from a string must use
+  `findAllByNameIgnoreCase`.
+- Trimming "First Division A" and "First Division B" to "First" made two divisions of one tier generate
+  the same ten club names. Division names carry the country for the same reason — two competitions in
+  different countries are not allowed to share a name, and the lookup key is name plus ISO.
+
+### The tests were order-dependent, which is a test bug with a nasty shape
+
+Each method activated **Austria**. They share one H2 world, so whichever ran second found 31 divisions
+already there, took the idempotent branch, and reported `clubs = 0` while reporting `divisions = 31` —
+and the first test asserted `31 divisions` and `310 clubs` separately, so it read as a service bug
+rather than a fixture bug. Every method now activates its own country (ARG, AUS, BEL, BIH, BRA, BUL, CAN),
+which is also closer to what the panel actually does.
+
+The reads are wrapped in a helper that owns its session, because `Team.country` and
+`Competition.country` are lazy proxies and the tests are deliberately not `@Transactional` — activation
+commits in its own transaction, so a long-lived test transaction would be asserting against a world that
+had not been written yet.
+
+### Verified live
+
+`POST /admin/countries/CRO/activate` on the running app: 65 seconds, `{divisions: 31, clubs: 310,
+alreadyBuilt: false}`. Then straight out of Postgres:
+
+- 31 divisions / 310 clubs / 7,750 players / 310 table rows / 2,790 fixtures on two matchdays
+- **0 of 31 divisions with an empty fixture list**
+- tier 1 → 5 averages **12.19 / 11.13 / 10.08 / 9.15 / 8.11** — the gradient from the previous commit
+  survives the activation, which is the point of having built it first
+- `Croatia | ACTIVE`, Serbia unchanged
+
+**Tests: 8 new, all green.** The full-suite run was interrupted part-way through by something outside
+this session, so it is not claimed here. A clean run is done once the next task lands, and both entries
+record the result together — the standing rule is that a job is shown to have changed data, and a test
+run is no different.

@@ -173,6 +173,85 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             </article>`;
     }
 
+    /**
+     * The activation list.
+     *
+     * <p>Loading the countries and activating one are separated deliberately. This panel is the one
+     * place in the admin where a click writes 7,750 rows, so the list is cheap to read and the button
+     * is the expensive part — with the size stated on the button rather than discovered afterwards.
+     */
+    async function showCountryActivation() {
+        const host = document.getElementById('fm-activation');
+        if (!host) return;
+        try {
+            const res = await authFetch('/admin/countries');
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const rows = await res.json();
+            if (!Array.isArray(rows) || rows.length === 0) {
+                host.innerHTML = '<p class="fm-subtle">No countries found.</p>';
+                return;
+            }
+            const active = rows.filter(row => row.active);
+            const dormant = rows.filter(row => !row.active);
+            host.innerHTML = `
+                <p class="fm-subtle">${active.length} active, ${dormant.length} represented.
+                    A represented country plays its national sides only.</p>
+                <div class="fm-activation-list">
+                    ${dormant.map(row => activationRow(row)).join('')}
+                </div>`;
+            host.querySelectorAll('.js-activate-country').forEach(button => {
+                button.addEventListener('click', () => activateCountry(button));
+            });
+        } catch (err) {
+            host.innerHTML = `<p style="color:#f44336;">Could not load the countries: ${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function activationRow(row) {
+        const hasFootball = row.divisions > 0;
+        return `
+            <div class="fm-activation-row${row.active ? ' is-active' : ''}">
+                <span class="fm-activation-name">${escapeHtml(row.name)}</span>
+                <span class="fm-subtle">${escapeHtml(row.isoCode)}</span>
+                <span class="fm-subtle">${hasFootball ? `${row.divisions} divisions` : 'no divisions'}</span>
+                <button type="button" class="fm-action-btn ${row.active ? 'secondary' : ''} js-activate-country"
+                        data-iso="${escapeHtml(row.isoCode)}"
+                        title="${row.active
+                            ? 'Already active. This tops up anything missing and changes nothing else.'
+                            : 'Builds 31 divisions, 310 clubs and about 7,750 players.'}">
+                    ${row.active ? 'Top up' : 'Activate'}
+                </button>
+            </div>`;
+    }
+
+    async function activateCountry(button) {
+        const iso = button?.dataset?.iso;
+        if (!iso) return;
+        const warning = `Activate ${iso.toUpperCase()}?\n\nThis builds a five-tier pyramid: 31 divisions, 310 clubs and about 7,750 players. It takes a while.`;
+        if (!window.confirm(warning)) return;
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Building...';
+        try {
+            const res = await authFetch(`/admin/countries/${encodeURIComponent(iso)}/activate`, { method: 'POST' });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Activation failed: ${body.message || body.error || res.status}`);
+                return;
+            }
+            const what = body.alreadyBuilt
+                ? `${body.name} already had a pyramid - topped up, nothing duplicated.`
+                : `${body.name}: ${body.divisions} divisions, ${body.clubs} clubs.`;
+            window.alert(what);
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+        } finally {
+            button.disabled = false;
+            button.textContent = original;
+            await showCountryActivation();
+        }
+    }
+
     async function loadAdmin() {
         const mainContent = document.getElementById('main-content');
         const refusal = guard();
@@ -268,6 +347,19 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
+                            <h3>Activate a country</h3>
+                            <p class="fm-subtle">A country is represented by its national sides. Activating
+                                one gives it a real five-tier club pyramid: 31 divisions, 310 clubs and
+                                about 7,750 players, built to that tier's strength standard.</p>
+                        </div>
+                        <span class="fm-panel-action">Owner only</span>
+                    </div>
+                    <div id="fm-activation"><p class="fm-subtle">Reading...</p></div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
                             <h3>Coming next</h3>
                             <p class="fm-subtle">Registration approvals and further admin tooling land here.</p>
                         </div>
@@ -279,6 +371,8 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                     </div>
                 </section>
             </div>`;
+
+        void showCountryActivation();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

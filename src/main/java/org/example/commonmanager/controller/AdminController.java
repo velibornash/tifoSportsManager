@@ -3,6 +3,7 @@ package org.example.commonmanager.controller;
 import lombok.RequiredArgsConstructor;
 import org.example.commonmanager.service.AdminDatabaseAsyncService;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
+import org.example.footballmanager.newLogic.service.CountryActivationService;
 import org.example.footballmanager.newLogic.service.TransferService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,6 +26,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
+    private final org.example.footballmanager.newLogic.service.CountryActivationService countryActivationService;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrityService;
     private final org.example.footballmanager.newLogic.service.WorldRepairService worldRepairService;
     private final TransferService transferService;
@@ -121,6 +125,30 @@ public class AdminController {
      * <p>Reachable because a reset or an interrupted start must not need a developer to fix. Reports
      * on GET without changing anything, so it can be asked the question safely; POST repairs.
      */
+    /**
+     * Every country, its state, and whether it holds a pyramid.
+     *
+     * <p>Under {@code /admin}, so the existing {@code hasAnyRole("ADMIN", "OWNER", "DEV")} guard covers
+     * it. Activating a country writes 31 divisions and about 7,750 player rows, which is not something
+     * an authenticated user should be able to do to the world by accident.
+     */
+    @GetMapping("/countries")
+    public ResponseEntity<List<CountryActivationService.CountryRow>> countries() {
+        return ResponseEntity.ok(countryActivationService.overview());
+    }
+
+    /**
+     * Gives a country its five-tier pyramid and marks it active.
+     *
+     * <p>Idempotent, and the state flag is written only once the football is there — a country marked
+     * ACTIVE over a half-built pyramid is worse than one that stayed SIMULATED, because every reader
+     * would believe it was playable.
+     */
+    @PostMapping("/countries/{isoCode}/activate")
+    public ResponseEntity<CountryActivationService.Result> activateCountry(@PathVariable String isoCode) {
+        return ResponseEntity.ok(countryActivationService.activate(isoCode));
+    }
+
     @GetMapping("/world-integrity")
     public ResponseEntity<Map<String, Object>> worldIntegrity() {
         return ResponseEntity.ok(worldIntegrityService.report());
