@@ -58,6 +58,20 @@ function getCurrentLeagueId() {
     return Number.isFinite(leagueId) && leagueId > 0 ? leagueId : null;
 }
 
+/**
+ * A club with no competition has no league table.
+ *
+ * <p>Says so, rather than leaving the previous manager's table or a spinner. A world that is still
+ * being built looks like this, so the wording points at the cause instead of at the club.
+ */
+function setLeagueStatsUnavailable() {
+    document.querySelectorAll('.stat-value').forEach(el => { el.textContent = '—'; });
+    const subtitle = document.querySelector('.stat-subtitle');
+    if (subtitle && !subtitle.textContent.trim()) {
+        subtitle.textContent = 'No league yet';
+    }
+}
+
 function getCurrentLeagueName() {
     return currentUserCompetitionName || 'League';
 }
@@ -940,6 +954,16 @@ async function loadHomeTeamStats() {
 
     try {
         const leagueId = getCurrentLeagueId();
+        // No league means no table, and this used to ask for one anyway: the id went into the URL as
+        // the string "null" and the server replied 500 "For input string: null". So a manager whose
+        // club is not in a competition - which is every manager on a freshly rebuilt world, and
+        // exactly what the owner hit - saw a stack trace instead of being told they have no league.
+        //
+        // Asked for nothing, and says why.
+        if (leagueId === null) {
+            setLeagueStatsUnavailable();
+            return;
+        }
         const seasonParam = currentSeasonYear ? `?seasonYear=${currentSeasonYear}` : '';
         const response = await authFetch(`/countries/leagues/${leagueId}/table${seasonParam}`);
         if (!response.ok) throw new Error('Failed to load league table');

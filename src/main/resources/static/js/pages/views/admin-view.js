@@ -13,6 +13,7 @@
 
 import { authFetch, isAdminSession, getSessionRole } from '../../auth.js';
 import { buildEmptyState } from './utils.js';
+import { escapeHtml } from '../../ui/escape.js';
 import { backButtonHtml } from '../../ui/components.js';
 
 export function createAdminView({ getTeamId, getTeamName, getUsername }) {
