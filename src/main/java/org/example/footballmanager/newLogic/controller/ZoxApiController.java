@@ -43,10 +43,11 @@ public class ZoxApiController {
     public ResponseEntity<Map<String, Object>> getMatchPreview(@PathVariable Long matchId) {
         Match match = matchRepository.findById(matchId).orElse(null);
         if (match == null) {
-            var fixture = fixtures.findById(matchId).orElse(null);
-            return fixture == null
-                    ? ResponseEntity.notFound().build()
-                    : ResponseEntity.ok(previewForFixture(fixture));
+            // Not a fallback to the fixture table, and the reason is worth stating: a fixture id and a
+            // match id are both small integers over separate tables, so "not found in matches, so it
+            // must be a fixture" is a guess, and the guess resolved a dashboard link to somebody else's
+            // played match. A caller that means a fixture calls /fixture-preview/{fixtureId}.
+            return ResponseEntity.notFound().build();
         }
 
         String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
@@ -155,6 +156,21 @@ public class ZoxApiController {
         preview.put("played", false);
         preview.put("fixtureId", fixture.getId());
         return preview;
+    }
+
+    /**
+     * The same preview, for a match that has not been played.
+     *
+     * <p>A separate path from {@link #getMatchPreview} because the two ids are not interchangeable.
+     * Fixture and Match rows live in separate tables with overlapping ids, so resolving one against the
+     * other is a guess - and a guess here opened a different club's game.
+     */
+    @GetMapping("/fixture-preview/{fixtureId}")
+    public ResponseEntity<Map<String, Object>> getFixturePreview(@PathVariable Long fixtureId) {
+        var fixture = fixtures.findById(fixtureId).orElse(null);
+        return fixture == null
+                ? ResponseEntity.notFound().build()
+                : ResponseEntity.ok(previewForFixture(fixture));
     }
 
     @GetMapping("/post-match-report/{matchId}")

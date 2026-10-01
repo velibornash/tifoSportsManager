@@ -98,12 +98,22 @@ function parseDashboardDate(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/**
+ * When a fixture is, in the game's own terms.
+ *
+ * <p><b>No calendar.</b> This printed "1. 10. 2026. - 17:16" - a wall-clock date the owner does not have
+ * any use for, because there is no calendar in this game: there is a season, a week, a day and an hour,
+ * and the season is twelve weeks so no month or year can name one.
+ *
+ * <p>So it prints the day and the kickoff hour, which is the whole of what exists. The hour comes from
+ * the schedule template (day 3 is 19:00, day 7 is 16:00); the minute is dropped because a fixture now
+ * carries a template hour and a zero minute, and printing ":00" on every one of them is noise.
+ */
 function formatDashboardDate(value) {
     const parsed = parseDashboardDate(value);
-    if (!parsed) return value || 'Date TBD';
-    const date = parsed.toLocaleDateString('sr-RS');
-    const time = parsed.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
-    return `${date} - ${time}`;
+    if (!parsed) return 'Date TBD';
+    const hour = String(parsed.getHours()).padStart(2, '0');
+    return `${hour}:00`;
 }
 
 function renderNextMatchCard(bodyHtml) {
@@ -677,7 +687,9 @@ async function loadNextMatch() {
                 // not before, because a Match row is born when a match is *played* and this one has not
                 // been.
                 if (typeof window.loadMatch === 'function') {
-                    window.loadMatch(Number(nextMatch.fixtureId), 'dashboard', { initialTab: 'preview' });
+                    // `fixture: true` - this is a fixture id and the two id spaces overlap.
+                    window.loadMatch(Number(nextMatch.fixtureId), 'dashboard',
+                        { initialTab: 'preview', fixture: true });
                 } else if (typeof window.loadFixture === 'function') {
                     window.loadFixture(Number(nextMatch.fixtureId));
                 }

@@ -24,6 +24,14 @@ export function createMatchView(deps) {
         // 'report', and landed a manager who had just asked to see his result on the pre-match screen.
         // Three tabs, one list, and an unknown request is refused rather than defaulted into the one tab
         // nobody should land on by accident.
+        // Which id space this id belongs to, and it is **not guessed**.
+        //
+        // A fixture and a Match are separate tables with overlapping ids - fixture 15 and match 15 are
+        // both 15 - so a caller that does not say which it holds gets whichever the server finds first.
+        // That is how "Next match" on the dashboard, which holds a fixture id, opened a different club's
+        // already-played game. Callers now pass `fixture: true`, and the two spaces have two endpoints.
+        const isFixture = options.fixture === true;
+
         const MATCH_TABS = ['preview', 'goals', 'report'];
         const requestedTab = String(options.initialTab || '').toLowerCase();
         const initialTab = MATCH_TABS.includes(requestedTab) ? requestedTab : 'preview';
@@ -34,7 +42,7 @@ export function createMatchView(deps) {
             return;
         }
         try {
-            const response = await authFetch(`/matches/${matchId}/detail`);
+            const response = await authFetch(isFixture ? '/nonexistent' : `/matches/${matchId}/detail`);
             console.log(`Status: ${response.status}`);
 
             // A 404 here is not "no such match". An unplayed fixture has no Match row, so the events
@@ -54,7 +62,7 @@ export function createMatchView(deps) {
                 authFetch(`/match-stats/lineups/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null),
-                authFetch(`/matches/${matchId}`)
+                authFetch(isFixture ? `/matches/by-fixture/${matchId}` : `/matches/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null)
             ]);
@@ -80,10 +88,11 @@ export function createMatchView(deps) {
             const awayTeamId = lineupsPayload?.awayTeamId || null;
 
             const matchDate = parseMatchDate(first.matchDate || matchMeta?.matchDate);
-            const formattedDate = matchDate.toLocaleString('en-US', {
-                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
+            // Time only, no date - there is no calendar in this game (owner, 2026-10-01). The season
+            // label underneath carries Season/Week/Day, and that is the whole of when a match is.
+            const formattedDate = Number.isNaN(matchDate?.getTime?.())
+                ? ''
+                : `${String(matchDate.getHours()).padStart(2, '0')}:${String(matchDate.getMinutes()).padStart(2, '0')}`;
 
             // "Premier League · League" reads worse than "Premier League" when the type is already
             // implied, but the owner asked to see what kind of match it is, so it is shown and the
@@ -292,7 +301,8 @@ export function createMatchView(deps) {
                 }
                 infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading preview...</p>`;
                 try {
-                    const response2 = await authFetch(`/api/zox/match-preview/${matchId}`);
+                    const response2 = await authFetch(
+                        isFixture ? `/api/zox/fixture-preview/${matchId}` : `/api/zox/match-preview/${matchId}`);
                     if (!response2.ok) throw new Error(`Preview unavailable (${response2.status})`);
                     cachedMatchPreview = await response2.json();
                     renderMatchPreview(cachedMatchPreview);

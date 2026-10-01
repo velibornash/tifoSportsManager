@@ -55,15 +55,36 @@ public class MatchController {
         // detail fetch that ignored the viewer was a way to read a result the manager had not asked
         // for. The mask lives in the DTO, so passing the viewer is all it takes.
         Long viewerTeamId = plusFeatures.viewerTeamId(user);
-        Optional<MatchDTO> played = matchRepository.findById(matchId)
-                .map(match -> MatchDTO.from(match, viewerTeamId));
-        if (played.isPresent()) {
-            return ResponseEntity.ok(played.get());
-        }
-        // Not played yet. The same DTO with a null score, so a caller can render the pre-match screen
-        // without knowing whether the id belongs to a match or to the fixture that will become one.
-        return matchFixtureRepository.findById(matchId)
-                .map(fixture -> MatchDTO.unplayed(matchId, fixture))
+        return matchRepository.findById(matchId)
+                .map(match -> MatchDTO.from(match, viewerTeamId))
+                .map(ResponseEntity::ok)
+                // An unplayed fixture has its own endpoint, and deliberately so. Resolving one id against
+                // the other is how a dashboard link to "my next match" opened a different club's played
+                // match: fixture 15 and match 15 are both 15, and looking in the match table first found
+                // somebody else's game. **Two id spaces, two endpoints, never one guess.**
+                // See /matches/by-fixture/{fixtureId}.
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * The match a fixture describes, before it is played.
+     *
+     * <p><b>This endpoint exists because ids must never be ambiguous</b>, and they were: a fixture and a
+     * match are separate id spaces that overlap, so "Next match" on the dashboard - which holds a fixture
+     * id - was resolving against the match table first and could open a completely different, already
+     * played game. The owner was explicit about this: *"matches have their own ID and there must NEVER be
+     * confusion about which match it is."*
+     *
+     * <p>So the two spaces have separate paths. A caller that has a fixture id comes here; a caller that
+     * has a match id goes to {@code /matches/{id}}. Nothing anywhere resolves one against the other.
+     *
+     * <p>The score is null, and null means "has not happened". It is not 0, because a 0-0 that was never
+     * played is indistinguishable from a goalless draw.
+     */
+    @GetMapping("/by-fixture/{fixtureId}")
+    public ResponseEntity<MatchDTO> getFixtureAsMatch(@PathVariable Long fixtureId) {
+        return matchFixtureRepository.findById(fixtureId)
+                .map(fixture -> MatchDTO.unplayed(fixtureId, fixture))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

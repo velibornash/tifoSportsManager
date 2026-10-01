@@ -296,7 +296,7 @@ public class SeasonService {
                 // Only a relative offset is kept: the season is twelve weeks and has no months in
                 // it, so this is used for ordering only and never shown to a manager.
                 fixture.setDayNumber(placement.day());
-                fixture.setMatchDate(startDate.plusWeeks(fixture.getWeekNumber() - 1L));
+                fixture.setMatchDate(kickoffFor(startDate, placement));
                 fixture.setPlayed(false);
                 fixtures.add(fixture);
             }
@@ -329,6 +329,31 @@ public class SeasonService {
         matchFixtureRepository.saveAll(fixtures);
         log.info("Generated double round-robin schedule for league {} season {} with {} fixtures",
                 competition.getName(), seasonYear, fixtures.size());
+    }
+
+    /**
+     * When a fixture is kicked off: the week offset, and the hour the schedule template says.
+     *
+     * <p>The hour used to be inherited from {@code clock.getCurrentDate()}, which is wall-clock time
+     * advanced by the offset - so <b>every fixture in the world carried the minute the world happened to
+     * be created</b>. The owner saw 17:16 on a league fixture and asked where it came from, and the
+     * answer was "when I seeded it". The template says day 3 is 19:00 and day 7 is 16:00, and that is
+     * what a fixture now carries.
+     *
+     * <p>The week offset is still kept because the column is what the schedule is ordered by. It is
+     * still not a calendar - there is no date in this game, only a season, a week, a day and an hour.
+     */
+    private LocalDateTime kickoffFor(LocalDateTime startDate, LeagueSlotSchedule.Placement placement) {
+        LocalDateTime weekStart = startDate.plusWeeks(placement.week() - 1L);
+        Integer kickoffHour = org.example.footballmanager.newLogic.model.GameDay
+                .of(placement.day())
+                .kickoffHour();
+        // A day with no fixture has no kickoff hour and the schedule says so. Falling back to the start
+        // date's own time would put the wall-clock stamp straight back.
+        if (kickoffHour == null) {
+            kickoffHour = 12;
+        }
+        return weekStart.withHour(kickoffHour).withMinute(0).withSecond(0).withNano(0);
     }
 
     @Transactional

@@ -295,7 +295,8 @@ export function bindScheduleInteractions(container, handlers = {}) {
             const backTarget = node.dataset.backTarget || 'leagueTable';
             if (!fixtureId) return;
             if (typeof onLoadMatch === 'function') {
-                onLoadMatch(fixtureId, 'schedule', { initialTab: 'preview' });
+                // `fixture: true` - this node came from a fixture row, and the ids overlap.
+                onLoadMatch(fixtureId, 'schedule', { initialTab: 'preview', fixture: true });
             } else if (typeof onLoadFixture === 'function') {
                 onLoadFixture(fixtureId, { backTarget });
             }
