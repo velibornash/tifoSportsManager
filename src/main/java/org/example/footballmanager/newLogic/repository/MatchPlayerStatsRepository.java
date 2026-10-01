@@ -15,6 +15,24 @@ public interface MatchPlayerStatsRepository extends JpaRepository<MatchPlayerSta
     List<MatchPlayerStats> findByPlayerIdIn(List<Long> playerIds);
 
     /**
+     * A player's stat lines, most recent match first, for the profile's Matches tab.
+     *
+     * <p>Ordered through {@code Match} because the season, week and day live there rather than on the
+     * stat row. Most recent first because that is how a manager reads his own team: the last match is
+     * the one being argued about. Ordering is on the season first so a season-two match does not sort
+     * above a season-one one just because it happened later in the wall clock.
+     *
+     * <p>A stat row with no match is skipped by the join rather than producing an empty row: a half-written
+     * line is not something to render as a match that never happened.
+     */
+    @Query("""
+            SELECT s FROM MatchPlayerStats s
+            WHERE s.player.id = :playerId AND s.match IS NOT NULL
+            ORDER BY s.match.seasonYear DESC, s.match.weekNumber DESC, s.match.dayNumber DESC, s.match.id DESC
+            """)
+    List<MatchPlayerStats> findByPlayerIdNewestFirst(@Param("playerId") Long playerId);
+
+    /**
      * Every stat line a player produced in one week of one season.
      *
      * <p>Goes through {@code Match} rather than carrying a week on the stat row, because the stat

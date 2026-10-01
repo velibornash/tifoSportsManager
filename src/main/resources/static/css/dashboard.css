@@ -4693,3 +4693,129 @@ body {
     color: #dfe6eb;
     font-size: 0.82rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Player profile · Matches tab
+
+   One row per appearance. The icons (goal, assist, cards) and their colours
+   come from the shared lineup-badge classes above, so a goal here looks
+   exactly as it does on the match page - this file only lays the row out.
+
+   The row is a button because it opens that match, so it carries role=button
+   and a tabindex and is reachable by keyboard.
+   --------------------------------------------------------------------------- */
+.fm-matches-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-matches-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.fm-matches-row:hover,
+.fm-matches-row:focus-visible {
+    background: rgba(255, 255, 255, 0.06);
+    outline: none;
+}
+
+.fm-matches-main {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+/* W / D / L, coloured, and wide enough not to shift the row as it changes. */
+.fm-matches-result {
+    flex: 0 0 20px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 12px;
+    border-radius: 4px;
+    padding: 1px 0;
+}
+
+.fm-matches-result.is-w { background: rgba(102, 187, 106, 0.18); color: #81c784; }
+.fm-matches-result.is-d { background: rgba(255, 214, 79, 0.18);  color: #ffe082; }
+.fm-matches-result.is-l { background: rgba(239, 83, 80, 0.18);   color: #ffb4ad; }
+
+.fm-matches-teams {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.fm-matches-team {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-matches-score {
+    font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-matches-competition {
+    font-size: 11px;
+    opacity: 0.55;
+    white-space: nowrap;
+}
+
+.fm-matches-side {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+/* Minutes, with the apostrophe as a small suffix so 84' reads as minutes. */
+.fm-matches-minutes {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    min-width: 30px;
+    text-align: right;
+    opacity: 0.85;
+}
+
+.fm-matches-minutes small {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* The number inside is formatRatingBadge's own span, which carries the colour and the bold. */
+.fm-matches-rating {
+    display: inline-flex;
+    justify-content: flex-end;
+    min-width: 26px;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+}
+
+/* Narrow screens: the row stacks rather than squeezing the team names away. */
+@media (max-width: 560px) {
+    .fm-matches-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .fm-matches-side {
+        align-self: flex-end;
+    }
+}

@@ -3,8 +3,9 @@ import {
     htmlEscape, getImageFilename, formatBudget, formatDateTimeLabel, formatFormBadge,
     formatRatingBadge, formatPlayerSkill, getPlayerConditionPercent, getPlayerPositionInfo,
     formatTransferMoney, getTransferInterestedTeams, getPendingJuniorReveal,
-    fetchPlayerRatingSummary, buildEmptyState, delay
+    fetchPlayerRatingSummary, buildEmptyState, delay, buildLineupEventBadges
 } from './utils.js';
+import { escapeHtml } from '../../ui/escape.js';
 
 /**
  * The talent figure, when this viewer is entitled to see it.
@@ -32,7 +33,7 @@ function renderTalentCell(player) {
 }
 
 export function createPlayerView(deps) {
-    const { authFetch, getTeamId, goBackSmart } = deps;
+    const { authFetch, getTeamId, goBackSmart, loadMatch } = deps;
 
     let _callerPage = 'firstTeam';
 
@@ -41,6 +42,28 @@ export function createPlayerView(deps) {
     }
 
     // --- Transfer helpers ---
+
+    /**
+     * The player's match log.
+     *
+     * <p>A failure returns an empty list and says so in the console, rather than pretending the player
+     * has never played. Same reasoning as fetchPlayerRatingSummary: a tab that quietly shows "no
+     * appearances" for a player with a season's worth of them is worse than a visible error.
+     */
+    async function fetchPlayerMatches(playerId) {
+        try {
+            const response = await authFetch(`/match-stats/player/${playerId}/matches`);
+            if (!response.ok) {
+                console.error(`Match log for player ${playerId} returned ${response.status}.`);
+                return [];
+            }
+            const payload = await response.json();
+            return Array.isArray(payload) ? payload : [];
+        } catch (err) {
+            console.error(`Match log for player ${playerId} failed.`, err);
+            return [];
+        }
+    }
 
     async function fetchPlayerTransferStatus(playerId) {
         try {
@@ -298,7 +321,8 @@ export function createPlayerView(deps) {
         const {
             backLabel = 'Back', eyebrow = 'Player overview', teamName = 'Club squad',
             ratingSummary = {}, transferStatus = null, revealPayload = null,
-            placeholderPrefix = 'This tab is prepared', showReveal = false
+            placeholderPrefix = 'This tab is prepared', showReveal = false,
+            playerMatches = []
         } = options;
         const revealActive = showReveal && !!revealPayload;
         const positionInfo = getPlayerPositionInfo(player.position);
@@ -393,7 +417,7 @@ export function createPlayerView(deps) {
                                 ${renderTalentCell(player)}
                             </div>
                         </section>
-                        ${renderPlaceholder('Matches', 'player-by-player match log can be wired later')}
+                        ${buildPlayerMatchesPanelHtml(playerMatches)}
                         ${buildPlayerTransferPanelHtml(player, transferStatus, { placeholderPrefix })}
                         ${renderPlaceholder('History', 'career timeline UI is ready for later API expansion')}
                     </div>
@@ -446,8 +470,77 @@ export function createPlayerView(deps) {
             </div>`;
     }
 
+    /**
+     * The Matches tab: every match this player has a stat line for, most recent first.
+     *
+     * <p>This was a placeholder reading "player-by-player match log can be wired later". Each row is one
+     * {@code MatchPlayerStats} row joined to its match, so minutes, rating and the impact icons are the
+     * numbers the engine recorded — not anything recomputed here.
+     *
+     * <p>The result is shown from the player's own side: 3-4 reads as a defeat for a player whose team was
+     * at home and 4-3 for one whose team was away. The endpoint sends `wasHome` because the two id spaces
+     * make it unsafe to infer that from the team's current id — a player who has since transferred would
+     * otherwise be shown the wrong side of his own history.
+     *
+     * <p>Rows carry the **match** id and are wired with `fixture: false`. A fixture and a match are
+     * separate tables with overlapping numbers, and a stat line can only exist for a match that was played.
+     */
+    function buildPlayerMatchesPanelHtml(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return `
+                <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="matches">
+                    <div class="fm-panel-head"><h3>Matches</h3></div>
+                    <div class="fm-empty">No appearances yet.</div>
+                </section>`;
+        }
+
+        const items = rows.map(row => {
+            const homeGoals = Number(row.homeGoals || 0);
+            const awayGoals = Number(row.awayGoals || 0);
+            const wasHome = row.wasHome === true;
+            const scored = homeGoals - awayGoals;
+            // The result from this player's side. A 3-4 is a defeat for the home side and a win for the
+            // away side, and showing it the wrong way round is worse than not showing it at all.
+            const outcome = wasHome
+                ? (scored > 0 ? 'W' : scored === 0 ? 'D' : 'L')
+                : (scored < 0 ? 'W' : scored === 0 ? 'D' : 'L');
+            const minutes = Number(row.minutesPlayed || 0);
+            const rating = Number(row.rating || 0);
+            const when = `Season ${row.seasonYear ?? '-'} · Day ${row.dayNumber ?? '-'}`;
+            const competition = row.competitionName ? `<span class="fm-matches-competition">${escapeHtml(row.competitionName)}</span>` : '';
+
+            return `
+                <li class="fm-matches-row" data-match-id="${row.matchId}" role="button" tabindex="0"
+                    aria-label="Open match ${escapeHtml(row.homeTeamName)} against ${escapeHtml(row.awayTeamName)}">
+                    <div class="fm-matches-main">
+                        <span class="fm-matches-result is-${outcome.toLowerCase()}">${outcome}</span>
+                        <span class="fm-matches-teams">
+                            <span class="fm-matches-team">${escapeHtml(row.homeTeamName)}</span>
+                            <span class="fm-matches-score">${homeGoals}–${awayGoals}</span>
+                            <span class="fm-matches-team">${escapeHtml(row.awayTeamName)}</span>
+                        </span>
+                        ${competition}
+                    </div>
+                    <div class="fm-matches-side">
+                        <span class="fm-matches-minutes" title="Minutes played">${minutes}<small>'</small></span>
+                        ${buildLineupEventBadges(row)}
+                        <span class="fm-matches-rating" title="Match rating">${formatRatingBadge(rating)}</span>
+                    </div>
+                </li>`;
+        }).join('');
+
+        return `
+            <section class="fm-panel fm-player-tab-panel is-active" data-player-tab-panel="matches">
+                <div class="fm-panel-head">
+                    <h3>Matches</h3>
+                    <span class="fm-panel-action">${rows.length} appearance${rows.length === 1 ? '' : 's'}</span>
+                </div>
+                <ul class="fm-matches-list">${items}</ul>
+            </section>`;
+    }
+
     function initPlayerProfilePage(options = {}) {
-        const { onBack, onTransferAction } = options;
+        const { onBack, onTransferAction, onOpenMatch } = options;
         const page = document.querySelector('.fm-player-page');
         if (!page) return;
 
@@ -455,6 +548,23 @@ export function createPlayerView(deps) {
         if (backButton && typeof onBack === 'function') {
             backButton.addEventListener('click', onBack);
         }
+
+        // A match row opens that match. `fixture: false` is explicit on purpose: this is a Match id,
+        // because a stat line can only exist for a match that was played, and the two id spaces overlap.
+        const openMatchRow = row => {
+            const matchId = Number(row?.dataset?.matchId);
+            if (!Number.isFinite(matchId) || typeof onOpenMatch !== 'function') return;
+            onOpenMatch(matchId);
+        };
+        page.querySelectorAll('.fm-matches-row').forEach(row => {
+            row.addEventListener('click', () => openMatchRow(row));
+            row.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openMatchRow(row);
+                }
+            });
+        });
 
         const tabs = page.querySelectorAll('[data-player-tab]');
         const panels = page.querySelectorAll('[data-player-tab-panel]');
@@ -621,10 +731,11 @@ export function createPlayerView(deps) {
 
         const mainContent = document.getElementById("main-content");
         console.log(`Loading player for team ${teamId} and player ${playerId}`);
-        const [response, ratingSummary, transferStatus] = await Promise.all([
+        const [response, ratingSummary, transferStatus, playerMatches] = await Promise.all([
             authFetch(`/teams/${teamId}/players/${playerId}`),
             fetchPlayerRatingSummary(playerId, authFetch),
-            fetchPlayerTransferStatus(playerId)
+            fetchPlayerTransferStatus(playerId),
+            fetchPlayerMatches(playerId)
         ]);
         console.log(`Response status: ${response.status}`);
         if (!response.ok) {
@@ -646,14 +757,18 @@ export function createPlayerView(deps) {
         mainContent.innerHTML = buildPlayerProfileHtml(player, {
             backLabel, eyebrow: 'Player overview', teamName: teamLabel,
             ratingSummary, transferStatus, revealPayload, showReveal: true,
-            placeholderPrefix: 'This tab UI is ready'
+            placeholderPrefix: 'This tab UI is ready',
+            playerMatches
         });
         initPlayerProfilePage({
             onBack: () => goBackSmart(backTarget),
             onTransferAction: (action, button) => handlePlayerTransferAction(action, button, {
                 playerId,
                 reloadCurrent: () => loadPlayer(playerId, callerPage, { pushHistory: false })
-            })
+            }),
+            onOpenMatch: typeof loadMatch === 'function'
+                ? (matchId) => loadMatch(matchId, callerPage || 'firstTeam', { fixture: false })
+                : null
         });
         if (revealPayload) await runJuniorRevealAnimation(revealPayload);
     }

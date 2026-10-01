@@ -355,7 +355,10 @@ import {
         getNavigationDeps: () => ({ pushNavState })
     });
     const playerView = createPlayerView({
-        authFetch, getTeamId: () => currentUserTeamId, goBackSmart
+        authFetch, getTeamId: () => currentUserTeamId, goBackSmart,
+        // Opens a Match from the player's match log. `fixture: false` is set at the call site, because a
+        // stat line only exists for a match that was played and the two id spaces overlap.
+        loadMatch: (...args) => loadMatch(...args)
     });
     const formationsView = createFormationsView({
         authFetch, getTeamId: () => currentUserTeamId, buildClubActionsHtml
