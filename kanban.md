@@ -801,6 +801,18 @@ country is seeded as a **fixture of the world rather than a simulation of it**: 
 ratings, and a standing position. No players, no fixtures, no matches. It holds that table until
 somebody activates its league, at which point the ordinary builder takes over.
 
+### CONFIRMED LIVE on the Oracle instance (2026-10-01)
+
+```
+Static pyramid for Other Nations: 31 division(s), 310 club(s), no players, no fixtures.
+Simulated world: 47 country/countries seeded (0 already had a pyramid),
+                 1457 division(s), 14570 club(s). No players, no fixtures.
+```
+
+47 x 31 = 1457 divisions, 1457 x 10 = 14,570 clubs. The arithmetic checks out exactly, "Other" is
+included as the 48th, and **no players and no fixtures were created** — which is the whole point of
+the static world. First run of the seeding on a real server, and it finished clean.
+
 ### State at commit time
 
 Green: `InternationalClubCupsTest` 9/9, `CupDrawSeedingTest` 7/7, `SimulatedWorldSeederTest` 6/6.
@@ -819,6 +831,36 @@ Green: `InternationalClubCupsTest` 9/9, `CupDrawSeedingTest` 7/7, `SimulatedWorl
 players for 310 clubs, so seeding players for all of it would be ~370k rows — which is exactly what
 skipping them avoids.
 
+
+---
+
+## 🔍 `dataFixSuggestions.md` — read, and one finding is already in doubt
+
+The analysis is at the repo root and its Section 1 is the part that matters: correctness bugs where
+code reports success while doing nothing, which is the failure shape this project has been bitten by
+repeatedly and has a standing rule about.
+
+**Its §1.1 claims `RecoveryJob` writes zero rows and still reports DONE** — `applyDailyRecovery()`
+mutates `player.setMorale(...)`, counts it, and never calls `playerRepository.save(player)`, so the
+morale is discarded and a green `job_run` row is written anyway.
+
+**That finding is probably wrong, and it needs checking rather than fixing.** The method is
+`@Transactional` and the players come from `players.findByLastPlayedAtIsNotNull()` **inside** that
+transaction, so they are managed and Hibernate dirty-checks them at commit. A missing `save()` on a
+managed entity is not a lost write. The analysis was done by reading source, which its own
+"Measurement gaps" section admits is the weak part.
+
+The failure mode to watch for is the opposite one: adding an explicit `saveAll` on top of dirty
+checking is harmless, but "fixing" this by adding saves would be fixing nothing and would hide the
+real question.
+
+**How to settle it cheaply:** run the recovery, then read a player's morale before and after in the
+database. That is the standing rule applied — a green `job_run` row is not evidence, and neither is
+this document.
+
+The rest of Section 1 (§1.2 simulate-all silently dropping a league, §1.3 `@Transactional` on the
+wrong method in `NationalTeamSeeder`, §1.4 dead `MatchPersistenceService`, §1.5 a `*Repository`
+whose `save()` is a no-op) has not been verified yet.
 
 ---
 
