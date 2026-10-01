@@ -99,6 +99,21 @@ public class AdminController {
         ));
     }
 
+    /**
+     * Builds the simulated nations — every country that is not activated, with its divisions, clubs,
+     * ratings and a standing table.
+     *
+     * <p>Its own button, because it is not "Initialise". Init is the Serbian structure a manager plays
+     * in; this is the other forty-six countries, and it is the longest write in the admin panel by a
+     * wide margin. It is idempotent, so it tops up a half-built world rather than duplicating it.
+     */
+    @PostMapping("/seed-other-nations")
+    public ResponseEntity<Map<String, Object>> seedOtherNations() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("seed-other-nations")
+        ));
+    }
+
     @PostMapping("/reset-db")
     public ResponseEntity<Map<String, Object>> resetDatabase() {
         return ResponseEntity.accepted().body(toDatabaseJobResponse(

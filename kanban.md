@@ -842,6 +842,27 @@ simulation should be cancellable and waited on. Neither is obvious from the outs
 
 ---
 
+## 🟢 Admin tools — what each one does (owner, 2026-10-01)
+
+Starting the application now starts the application. No seeding, no backfills, no repair, no catalogue —
+nothing writes to the database on boot. This was the reported problem: the world's seeding ran on every
+boot, before the app was usable, so a cold start on a small server looked like a hang, and there was no
+way to look at a world before it was changed underneath you.
+
+| Button | What it does |
+|---|---|
+| **Reset DB** | Clears the football data. Keeps user accounts and tactic editor setups. Rebuilds nothing. |
+| **Initialize DB** | The **Serbian** structure: 31 divisions, fixture list, players, owner. |
+| **Repair world** | Checks the world and rebuilds anything missing: countries, national squads, legacy rows. |
+| **Re-seed national teams** | A 25-player squad for any national side that has none. Existing squads untouched. |
+| **Seed other nations** | Every country that is **not** activated: divisions, clubs, ratings, standing table. No players, no matches. Idempotent. |
+| **Re-draw the cup** | Any cup round that never got drawn. Existing rounds left alone. |
+
+"Initialize" used to mean "build the entire world" — catalogue, 48 countries, national sides, cup draw,
+every backfill — behind a label that said none of that. Split in two.
+
+---
+
 ## 🔴 Standing rules
 
 **Never hand back a half-built world.** Every seeding path must end in a world that passes the

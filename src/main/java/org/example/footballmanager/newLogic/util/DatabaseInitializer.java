@@ -174,7 +174,7 @@ public class DatabaseInitializer {
      * <p>It used to be the highest season row in the table, which is a guess about the world rather
      * than a reading of it. The clock is the one place the season is decided.
      */
-    private int currentSeasonYear() {
+    public int currentSeasonYear() {
         return seasonService.getActiveSeasonYear();
     }
 
@@ -257,7 +257,25 @@ public class DatabaseInitializer {
         }
     }
 
-    @EventListener(ApplicationReadyEvent.class)
+    /**
+     * Builds the baseline world — ONCE, and only when something explicitly asks for it.
+     *
+     * <p><b>Deliberately not an {@code @EventListener} any more</b> (owner, 2026-10-01). Starting the
+     * application is now exactly that: it starts the application. No country catalogue, no pyramid, no
+     * national sides, no backfills, no repair — nothing that writes to the database.
+     *
+     * <p>This used to run on every boot, which was the reported problem and not a small one: the
+     * world's seeding is tens of thousands of writes and it ran before the application was usable, so
+     * a cold start on a small server looked like a hang, and there was no way to start the app and
+     * look at a world before it was changed underneath you. Worse, on the owner's Oracle instance it
+     * had failed silently for a whole season — the catch below swallows seeding failures so a boot
+     * with a partial world still comes up, which is right for resilience and catastrophic for
+     * "why are there no leagues", because the failure was never visible from the outside.
+     *
+     * <p>Reachable from the admin tools, which is where a rebuild belongs: <b>Initialise</b> builds the
+     * Serbian structure, <b>Repair world</b> tops up anything missing, <b>Re-seed national teams</b>
+     * fills empty squads, and <b>Seed other nations</b> builds the simulated half of the world.
+     */
     @Transactional
     public void ensureBaselineDataOnStartup() {
         if (countryRepository.count() > 0
@@ -965,6 +983,27 @@ public class DatabaseInitializer {
     }
 
     @Transactional
+    /**
+     * The Serbian structure on its own: the catalogue, the pyramid, the schedule, the squads and the
+     * owner.
+     *
+     * <p>What "Initialise" now means. It used to mean "build the entire world", which put the country
+     * catalogue, forty-six simulated nations, the national sides and the cup draw behind one button
+     * whose label said none of that.
+     */
+    public void buildSerbianStructure() {
+        seedWorldBeforePyramid();
+        initSerbianFootballStructure();
+        ensureSidLeague();
+        backfillClubCountries();
+        backfillStadiumCeilings();
+        Team ownerTeam = createOwnerUserIfNotExists();
+        createSecondUserIfNotExists();
+        seedInitialJuniorsForOwnerIfMissing(ownerTeam);
+        seedStandInTransferActivity();
+        assignSquadNumbersIfMissing();
+    }
+
     public void initSerbianFootballStructure() {
         // No country is created here any more (owner, 2026-09-29).
         //

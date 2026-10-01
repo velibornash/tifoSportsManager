@@ -747,6 +747,10 @@ async function resetDatabase() {
     await startAdminDatabaseJob('/admin/reset-db', 'Database reset and rebuild in progress...');
 }
 
+async function seedOtherNations() {
+    await startAdminDatabaseJob('/admin/seed-other-nations', 'Seeding the other nations in progress...');
+}
+
 async function initializeDatabase() {
     const confirmInit = confirm('Initialize database now? This may take a few seconds.');
     if (!confirmInit) return;
@@ -992,5 +996,6 @@ async function loadHomeTeamStats() {
 window.loadDashboard = loadDashboard;
 window.resetDatabase = resetDatabase;
 window.initializeDatabase = initializeDatabase;
+window.seedOtherNations = seedOtherNations;
 window.loadRecentMatches = loadRecentMatches;
 window.loadHomeTeamStats = loadHomeTeamStats;

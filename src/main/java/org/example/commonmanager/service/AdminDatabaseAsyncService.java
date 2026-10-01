@@ -27,6 +27,7 @@ public class AdminDatabaseAsyncService {
     private final BbDataInitializer bbDataInitializer;
     private final AfDataInitializer afDataInitializer;
     private final DatabaseInitializer databaseInitializer;
+    private final org.example.footballmanager.newLogic.util.SimulatedWorldSeeder simulatedWorldSeeder;
     private final org.example.footballmanager.newLogic.repository.CompetitionRepository competitionRepository;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teamRepository;
 
@@ -110,13 +111,22 @@ public class AdminDatabaseAsyncService {
                 //
                 // Going through the same entry point as boot means an initialized database and a
                 // booted one are the same world, whichever door you came in by.
-                databaseInitializer.ensureBaselineDataOnStartup();
+                // The Serbian structure only: pyramid, schedules, squads, owner. This used to call
+                // ensureBaselineDataOnStartup(), which is the *whole world* builder — the country
+                // catalogue, all 48 countries, the national sides, the cup draw and every backfill —
+                // so "Initialise" was a synonym for "build everything" and there was no way to build
+                // only Serbia. On a small server that is the difference between a rebuild that
+                // finishes and one that appears to hang.
+                //
+                // The other half of the world has its own button now: seedOtherNations().
+                databaseInitializer.buildSerbianStructure();
                 databaseInitializer.seedOwnerAfterReset();
                 startupInitializer.run();
                 bbDataInitializer.initBasketballData();
                 afDataInitializer.initAmericanFootballData();
                 verifyFootballWorldWasBuilt();
             }
+            case "seed-other-nations" -> seedOtherNations();
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
     }
@@ -151,10 +161,27 @@ public class AdminDatabaseAsyncService {
         log.info("Initialize verified: {} league(s), {} club(s) in the rebuilt world.", leagues, clubs);
     }
 
+    /**
+     * Builds the simulated half of the world: every country that is not activated, its divisions, its
+     * clubs, their ratings and a standing table.
+     *
+     * <p>A separate button because it is a different decision from Initialise. Init is "give me
+     * Serbia to play in"; this is "fill in the rest of the world", which is forty-six countries and
+     * several minutes of writes and which nobody should be forced into by pressing the other button.
+     *
+     * <p>Idempotent — a country that already has divisions is counted and left alone — so running it
+     * twice is harmless and running it on a half-built world tops it up.
+     */
+    private void seedOtherNations() {
+        int seasonYear = databaseInitializer.currentSeasonYear();
+        simulatedWorldSeeder.seedAllSimulated(seasonYear);
+    }
+
     private int stepsFor(String action) {
         return switch (String.valueOf(action).toLowerCase()) {
             case "reset" -> 3;
             case "initialize" -> 4;
+            case "seed-other-nations" -> 2;
             default -> 1;
         };
     }
@@ -163,6 +190,7 @@ public class AdminDatabaseAsyncService {
         return switch (String.valueOf(action).toLowerCase()) {
             case "reset" -> "Clearing database (preserves user + tactics).";
             case "initialize" -> "Database initialization in progress.";
+            case "seed-other-nations" -> "Seeding the simulated nations in progress.";
             default -> "Database job in progress.";
         };
     }

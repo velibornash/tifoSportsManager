@@ -139,6 +139,23 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+        if (action === 'seed-other-nations') {
+            // A job, not a repair: this one takes minutes, so it goes through the polling job path the
+            // reset and initialise buttons use rather than runRepair(), which expects a reply now.
+            const confirmSeed = window.confirm(
+                'Seed the other nations?\n\n' +
+                'This builds every country that is not activated: its divisions, clubs, ratings and a ' +
+                'standing table. No players are generated and no matches are played.\n\n' +
+                'It takes a few minutes and it is the longest job in this panel. Countries that already ' +
+                'exist are left alone, so it is safe to run twice.');
+            if (!confirmSeed) return;
+            if (typeof window.seedOtherNations === 'function') {
+                await window.seedOtherNations();
+            } else {
+                window.alert('This admin action is not available right now.');
+            }
+            return;
+        }
         if (action === 'redraw-cup') {
             await runRepair(button, {
                 confirmText: 'Re-draw the cup?\n\nRounds that already have ties are left alone, so this only fills in rounds that never got drawn.',
@@ -291,13 +308,13 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                     <div class="community-tool-grid">
                         ${toolCard({
                             title: 'Reset DB',
-                            body: 'Clears local data and rebuilds the usable football baseline so login and dashboard boot work again.',
+                            body: 'Clears the football data. Your user accounts and tactic editor setups are kept. It does not rebuild anything — press Initialize DB or Seed other nations afterwards.',
                             action: 'reset',
                             label: 'Reset DB'
                         })}
                         ${toolCard({
                             title: 'Initialize DB',
-                            body: 'Runs the full initializer again and rebuilds the football structure.',
+                            body: 'Builds the Serbian structure: all 31 divisions, the fixture list and the players. Takes a minute or two. The other 46 countries are a separate button.',
                             action: 'initialize',
                             label: 'Initialize DB',
                             variant: ''
@@ -333,6 +350,13 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             body: 'Gives a 25-player squad to any national side that has none. Existing squads are untouched.',
                             action: 'reseed-national-teams',
                             label: 'Re-seed national teams',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Seed other nations',
+                            body: 'Builds every country that is not activated: divisions, clubs, ratings and a standing table. No players, no matches. Safe to run twice.',
+                            action: 'seed-other-nations',
+                            label: 'Seed other nations',
                             variant: ''
                         })}
                         ${toolCard({
