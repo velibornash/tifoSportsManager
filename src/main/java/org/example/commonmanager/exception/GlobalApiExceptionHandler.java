@@ -116,6 +116,37 @@ public class GlobalApiExceptionHandler {
      * <p>This is why {@code @PreAuthorize} was chosen over throwing from inside the controller body: both
      * arrive here, and both need this.
      */
+    /**
+     * A refusal that already carries its own status.
+     *
+     * <p>Controllers throw {@code ResponseStatusException} to say "404, not found" or "403, not yours", and
+     * the catch-all below was flattening all of them into a <b>500</b>. So a deliberate refusal read as a
+     * broken server: a cup tie belonging to another country came back 500 rather than 404, and the reason
+     * was logged as an unhandled exception.
+     *
+     * <p>The same failure as {@code IllegalArgumentException} below, and as the security exceptions — a
+     * catch-all that owns every exception ends up owning the exceptions that already knew what they were.
+     */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleResponseStatus(
+            org.springframework.web.server.ResponseStatusException ex, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        if (status.is5xxServerError()) {
+            log.error("{} {} failed with {}", request.getMethod(), request.getRequestURI(), status);
+        } else {
+            log.warn("Refused {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getReason());
+        }
+        return ResponseEntity.status(status).body(new ApiErrorResponseDTO(
+                status.value(),
+                status.is5xxServerError() ? "INTERNAL_SERVER_ERROR" : "REQUEST_REFUSED",
+                ex.getReason() != null ? ex.getReason() : status.getReasonPhrase(),
+                request.getRequestURI(),
+                LocalDateTime.now()));
+    }
+
     @ExceptionHandler({
             org.springframework.security.authorization.AuthorizationDeniedException.class,
             org.springframework.security.access.AccessDeniedException.class,

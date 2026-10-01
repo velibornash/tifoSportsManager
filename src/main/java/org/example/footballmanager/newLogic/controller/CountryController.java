@@ -320,7 +320,30 @@ public class CountryController {
                                              @PathVariable long fixtureId) {
         Country country = requireCountry(isoCode);
         MatchFixture fixture = matchFixtureRepository.findById(fixtureId)
-                .orElseThrow(() -> new IllegalArgumentException("No such cup tie: " + fixtureId));
+                // 404, not 400. "No such tie" is a failed lookup, and this line threw
+                // IllegalArgumentException, which the exception handler quite reasonably maps to a client
+                // error - so asking for a tie that does not exist looked like a malformed request.
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No such cup tie: " + fixtureId));
+
+        // **The country in the path has to mean something.** `requireCountry(isoCode)` used to be called
+        // and its result thrown away, so the country was checked for existence and then ignored: the tie was
+        // loaded by id alone and any manager could read any country's cup tie by guessing an id. The check
+        // ran, and did nothing, which is worse than not having it because the code reads as though it were
+        // scoped.
+        //
+        // A tie belongs to the country of its competition. A tie whose competition has no country cannot be
+        // shown under any country's path either - there is nothing to prove it is being asked for properly.
+        String pathIso = country.getIsoCode() == null ? null : country.getIsoCode().toUpperCase(Locale.ROOT);
+        Competition cup = fixture.getCompetition();
+        String tieIso = cup == null || cup.getCountry() == null || cup.getCountry().getIsoCode() == null
+                ? null : cup.getCountry().getIsoCode().toUpperCase(Locale.ROOT);
+        if (tieIso == null || !tieIso.equals(pathIso)) {
+            // Not found rather than forbidden: telling a caller that the tie exists but is not theirs is
+            // the same information as the score they were asking for.
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "No such cup tie in " + country.getName() + ": " + fixtureId);
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("fixtureId", fixture.getId());
