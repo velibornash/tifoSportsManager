@@ -83,15 +83,43 @@ export function formatMilestoneAttendanceValue(value) {
     return numeric > 0 ? numeric.toLocaleString() : '—';
 }
 
+/**
+ * @param meta plain text, escaped as usual - or an object `{ club, icons }`, where `club` is escaped
+ *   and `icons` is markup this file built itself. **Never pass caller markup in `meta`.** It used to take
+ *   one string and escape all of it, which is right and is why the icons have to arrive as a pair of
+ *   parts: a pre-joined "<span>⚽</span> · club" string would render as visible tags.
+ */
 export function buildMilestoneCardHtml(title, value, meta, extraClass = '') {
     const safeValue = value == null || value === '' ? '—' : htmlEscape(String(value));
-    const safeMeta = meta == null || meta === '' ? 'No milestone logged yet.' : htmlEscape(String(meta));
+    const safeMeta = meta == null || meta === ''
+        ? 'No milestone logged yet.'
+        : typeof meta === 'object'
+            ? `${safeTeam(meta.club)} · ${meta.icons}`
+            : htmlEscape(String(meta));
     return `
         <article class="fm-milestone-card ${extraClass}">
             <div class="fm-milestone-kicker">${htmlEscape(String(title || 'Milestone'))}</div>
             <div class="fm-milestone-value">${safeValue}</div>
             <div class="fm-milestone-meta">${safeMeta}</div>
         </article>`;
+}
+
+/**
+ * A count shown as repeated icons - "⚽ ⚽ ⚽" for three goals - reusing the badge classes the match
+ * lineup already uses, so a goal looks the same wherever it appears in the app.
+ */
+function iconCount(badgeClass, icon, count) {
+    const total = Math.max(0, Number(count) || 0);
+    if (total === 0) return '0';
+    return Array.from({ length: total }, () => (
+        `<span class="fm-badge fm-badge-icon ${badgeClass}" aria-hidden="true">${icon}</span>`
+    )).join('');
+}
+
+/** A club name, escaped. This file's milestone board used to interpolate the name raw. */
+function safeTeam(value) {
+    const name = String(value ?? '').trim();
+    return name ? htmlEscape(name) : 'No team';
 }
 
 export function buildMilestoneBoardHtml(milestones) {
@@ -106,12 +134,12 @@ export function buildMilestoneBoardHtml(milestones) {
             ${buildMilestoneCardHtml(
                 'Top scorer',
                 scorer?.playerName || '—',
-                scorer?.playerName ? `${scorer.teamName || 'No team'} · ${Number(scorer.value || 0)} goals` : 'No goals filed yet.'
+                scorer?.playerName ? { club: scorer.teamName, icons: iconCount('fm-badge-goal', '⚽', scorer.value) } : 'No goals filed yet.'
             )}
             ${buildMilestoneCardHtml(
                 'Top assist',
                 assist?.playerName || '—',
-                assist?.playerName ? `${assist.teamName || 'No team'} · ${Number(assist.value || 0)} assists` : 'No assists filed yet.'
+                assist?.playerName ? { club: assist.teamName, icons: iconCount('fm-badge-ast', '🅰️', assist.value) } : 'No assists filed yet.'
             )}
             ${buildMilestoneCardHtml(
                 'Biggest win',

@@ -16,6 +16,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,6 +31,7 @@ public class LeagueMilestoneService {
     private final PlayerRepository playerRepository;
 
     private final Map<Long, String> clubNames = new HashMap<>();
+    private final Map<Long, Set<Long>> clubPlayerIds = new HashMap<>();
 
     public LeagueMilestonesDTO buildLeagueMilestones(Competition league, int seasonYear) {
         List<Match> playedMatches = matchRepository
@@ -59,13 +62,19 @@ public class LeagueMilestoneService {
                 .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
                 .toList();
 
-        List<GoalEvent> seasonGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear);
-
-        List<GoalEvent> scoringGoals = seasonGoals.stream()
+        // **These goals must be this club's goals.** It used to read every goal in the season, in every
+        // competition, by every club in the world - the league call - so OFK Omladinac's Club Milestones
+        // named the top scorer of the entire planet. The matches beside it were already filtered to the
+        // club, which is why the biggest win and the attendance were right and only the two leaders were
+        // not. It is the same "league page answered a club question" mistake as the club page showing the
+        // league table.
+        List<GoalEvent> scoringGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear).stream()
                 .filter(goal -> goal.scorerName() != null)
+                .filter(goal -> playsForClub(goal.scorerId(), team))
                 .toList();
-        List<GoalEvent> assistGoals = seasonGoals.stream()
+        List<GoalEvent> assistGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear).stream()
                 .filter(goal -> goal.assistantName() != null && goal.assistantId() != null)
+                .filter(goal -> playsForClub(goal.assistantId(), team))
                 .toList();
 
         return LeagueMilestonesDTO.builder()
@@ -252,6 +261,38 @@ public class LeagueMilestoneService {
         candidate.goalMargin = Math.abs(teamGoals - opponentGoals);
         candidate.roundNumber = match.getRoundNumber();
         return candidate;
+    }
+
+    /**
+     * Does this player belong to this club?
+     *
+     * <p>Used by the club milestones, where the answer decides whose goal counts. A player who has since
+     * transferred is credited to the club they now play for, which is the same rule the league top scorers
+     * use — and it is a rule, not an accident, so it is written once here rather than re-decided at each
+     * call site.
+     *
+     * <p>The club's own players are read once per call, not once per goal: the milestone leader is a
+     * handful of players and the world holds every player of every club in every country.
+     */
+    private boolean playsForClub(long playerId, Team team) {
+        if (playerId <= 0 || team == null || team.getId() == null) {
+            return false;
+        }
+        Set<Long> clubPlayerIds = clubPlayerIds(team.getId());
+        return clubPlayerIds.contains(playerId);
+    }
+
+    /** Memoised per club, so a season of goals does not re-read the same squad for every one of them. */
+    private Set<Long> clubPlayerIds(Long clubId) {
+        return clubPlayerIds.computeIfAbsent(clubId, id -> {
+            Set<Long> ids = new HashSet<>();
+            for (Player player : playerRepository.findByTeamId(id)) {
+                if (player.getId() != null) {
+                    ids.add(player.getId());
+                }
+            }
+            return ids;
+        });
     }
 
     /**

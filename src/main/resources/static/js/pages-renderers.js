@@ -904,7 +904,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     <tr>
                         <th class="ps-pos">#</th>
                         <th class="ps-name">Player</th>
-                        <th class="ps-val">${type === 'goals' ? 'Gls' : 'Ast'}</th>
+                        <th class="ps-val" title="${type === 'goals' ? 'Goals' : 'Assists'}">${type === 'goals' ? '⚽' : '🅰️'}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -928,6 +928,18 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         return numeric > 0 ? numeric.toLocaleString() : '—';
     }
 
+    /**
+     * A count shown as repeated icons - "⚽ ⚽ ⚽" for three goals - using the same badge classes as the
+     * match lineup, so a goal looks identical wherever it appears.
+     */
+    function iconCount(badgeClass, icon, count) {
+        const total = Math.max(0, Number(count) || 0);
+        if (total === 0) return '0';
+        return Array.from({ length: total }, () => (
+            `<span class="fm-badge fm-badge-icon ${badgeClass}" aria-hidden="true">${icon}</span>`
+        )).join('');
+    }
+
     function milestoneCardHtml(title, value, meta, extraClass = '') {
         return `
             <article class="fm-milestone-card ${extraClass}">
@@ -949,12 +961,14 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                 ${milestoneCardHtml(
                     'Top scorer',
                     scorer?.playerName ? safe(scorer.playerName) : '—',
-                    scorer?.playerName ? `${safe(scorer.teamName || 'No CTeam')} · ${Number(scorer.value || 0)} goals` : 'No goals filed yet.'
+                    // The icons the rest of the app already uses for a goal and an assist, rather than
+                    // the words "goals" and "assists" - a manager reads the symbol everywhere else.
+                    scorer?.playerName ? `${safe(scorer.teamName || 'No CTeam')} · ${iconCount('fm-badge-goal', '⚽', Number(scorer.value || 0))}` : 'No goals filed yet.'
                 )}
                 ${milestoneCardHtml(
                     'Top assist',
                     assist?.playerName ? safe(assist.playerName) : '—',
-                    assist?.playerName ? `${safe(assist.teamName || 'No CTeam')} · ${Number(assist.value || 0)} assists` : 'No assists filed yet.'
+                    assist?.playerName ? `${safe(assist.teamName || 'No CTeam')} · ${iconCount('fm-badge-ast', '🅰️', Number(assist.value || 0))}` : 'No assists filed yet.'
                 )}
                 ${milestoneCardHtml(
                     'Biggest win',
