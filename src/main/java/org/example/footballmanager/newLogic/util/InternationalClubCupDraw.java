@@ -260,12 +260,37 @@ public class InternationalClubCupDraw {
         return requiresNew.execute(status -> buildKnockouts(cup, qualifyPerGroup, seasonYear));
     }
 
+    /**
+     * Draws as much of the knockout as the results so far allow, and stops where it must.
+     *
+     * <p><b>One round per call is not the bug; starting at the last sixteen every time is.</b> A
+     * knockout cannot be drawn in one pass — the quarter-finals do not exist until the last sixteen have
+     * been played, so this has to be re-entered as the cup progresses. What it used to do was walk in at
+     * round one, draw it, and `return` from inside the loop, which meant rounds two and three were
+     * unreachable for ever and the tournament stopped at the first knockout round however many times this
+     * was called.
+     *
+     * <p>So it now <b>starts from the results rather than from the beginning</b>: it walks the rounds in
+     * order, and at each one asks what is already there.
+     *
+     * <ul>
+     *   <li>round not drawn yet, and its entrants are known &rarr; draw it, then stop;</li>
+     *   <li>round drawn but not finished &rarr; stop, the results are not in;</li>
+     *   <li>round drawn and finished &rarr; carry the winners into the next one;</li>
+     *   <li>two clubs left &rarr; this is the final, and the losing semi-finalists get the third-place
+     *       play-off, because a knockout with no third-place match is not the format the owner wrote.</li>
+     * </ul>
+     *
+     * <p>It draws at most one round per call and that is deliberate: the caller is the cup-draw job, which
+     * runs on the cup matchday, and a round cannot be drawn before the one before it has been played.
+     */
     @Transactional
     DrawResult buildKnockouts(Competition cup, int qualifyPerGroup, int seasonYear) {
         SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
-        List<MatchFixture> groupFixtures = fixtures
-                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear)
-                .stream()
+        List<MatchFixture> allFixtures = fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear);
+
+        List<MatchFixture> groupFixtures = allFixtures.stream()
                 .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() <= GROUP_MATCHDAYS)
                 .toList();
         if (groupFixtures.isEmpty()) {
@@ -280,35 +305,180 @@ public class InternationalClubCupDraw {
 
         List<Team> qualifiers = qualifiers(cup, sc, groupFixtures, qualifyPerGroup);
         log.info("{}: {} club(s) through from the group stage.", cup.getName(), qualifiers.size());
-
-        // Straight knockout from here, and the same split the national cup uses: sort descending, halve,
-        // and pair one from each half. Two of these tie and two survive, so it is a genuine 1/8.
-        int made = 0;
-        int round = ROUND_LAST_SIXTEEN;
-        List<Team> alive = qualifiers;
-        while (alive.size() > 2 && round <= ROUND_SEMI_FINAL) {
-            List<List<Team>> halves = splitInHalf(alive);
-            List<Team> upper = new ArrayList<>(halves.get(0));
-            List<Team> lower = new ArrayList<>(halves.get(1));
-            java.util.Collections.shuffle(upper, new Random(cup.getId() * 31L + round));
-            java.util.Collections.shuffle(lower, new Random(cup.getId() * 31L + round + 1));
-
-            for (int i = 0; i < Math.min(upper.size(), lower.size()); i++) {
-                fixtures.save(fixture(cup, sc, lower.get(i), upper.get(i), round, weekFor(round), null, seasonYear));
-                made++;
-            }
-            // The next round cannot be drawn until this one is played, so it stops here.
-            log.info("{}: round {} drawn, {} tie(s); the next round waits for results.",
-                    cup.getName(), round, made);
-            return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+        if (qualifiers.size() < 2) {
+            return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), 0);
         }
 
-        // Two finalists: the final and a third-place play-off between the losing semi-finalists.
+        int made = 0;
+        // Reassigned each round as winners are carried forward, so it cannot be effectively final - and
+        // the lambdas below close over it.
+        List<Team> alive = qualifiers;
+
+        for (int round = ROUND_LAST_SIXTEEN; round <= ROUND_SEMI_FINAL; round++) {
+            // Both captured below, and a for-loop variable is not effectively final. Two copies rather
+            // than restructuring the loop into an array iteration for the sake of a lambda.
+            final int stage = round;
+            final List<Team> aliveHere = alive;
+            List<MatchFixture> thisRound = allFixtures.stream()
+                    .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == stage)
+                    .toList();
+
+            if (!thisRound.isEmpty() && thisRound.stream().anyMatch(f -> !f.isPlayed())) {
+                long outstanding = thisRound.stream().filter(f -> !f.isPlayed()).count();
+                log.info("{}: round {} drawn with {} tie(s) still unplayed; nothing further.",
+                        cup.getName(), stage, outstanding);
+                return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+            }
+
+            if (thisRound.isEmpty()) {
+                // Two clubs at this point means the previous round was a semi-final, so this is the final
+                // and the losers of that semi-final are the third-place contestants.
+                if (aliveHere.size() == 2) {
+                    return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(),
+                            made + drawFinalAndThirdPlace(cup, sc, aliveHere, seasonYear));
+                }
+                if (aliveHere.size() < 2) {
+                    return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+                }
+                made += drawOneKnockoutRound(cup, sc, aliveHere, stage, seasonYear);
+                log.info("{}: round {} drawn, {} tie(s) in total; the next round waits for results.",
+                        cup.getName(), stage, made);
+                return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+            }
+
+            // This round is finished: the winners go into the next one, and a tie with no winner stops
+            // the bracket rather than inventing one.
+            List<Team> winners = new ArrayList<>();
+            List<MatchFixture> undecided = new ArrayList<>();
+            for (MatchFixture tie : thisRound) {
+                Team winner = winnerOf(tie);
+                if (winner == null) {
+                    undecided.add(tie);
+                } else {
+                    winners.add(winner);
+                }
+            }
+            if (!undecided.isEmpty()) {
+                log.warn("{}: round {} has {} tie(s) with no recorded winner; the bracket stops here.",
+                        cup.getName(), round, undecided.size());
+                return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+            }
+            alive = winners;
+        }
+
+        // Past the last round the loop covers, and the two survivors are the finalists. This has to be
+        // here rather than inside the loop: the loop stops at the semi-final, so on the run that plays
+        // the semi-finals it exits with two clubs alive and would otherwise return having drawn nothing.
+        // That is the same class of bug as the one this method was rewritten to fix, one level up.
         if (alive.size() == 2) {
-            fixtures.save(fixture(cup, sc, alive.get(1), alive.get(0), ROUND_FINAL, weekFor(ROUND_FINAL), null, seasonYear));
-            made++;
+            made += drawFinalAndThirdPlace(cup, sc, alive, seasonYear);
+        } else if (alive.size() > 2) {
+            log.warn("{}: {} club(s) survived the semi-finals, which is not a bracket; nothing drawn.",
+                    cup.getName(), alive.size());
         }
         return new DrawResult(cup.getName(), 0, qualifiers.size(), groupFixtures.size(), made);
+    }
+
+    /**
+     * The final, plus the third-place play-off between the clubs that lost their semi-finals.
+     *
+     * <p>The third place is not decoration. The owner's format says "round of 16 &rarr; quarter-final &rarr;
+     * semi-final &rarr; <b>3rd place</b> &rarr; final", and a knockout that silently drops a round is a
+     * different tournament from the one that was specified.
+     *
+     * <p>Both ties are drawn at once because both are decided by the same semi-final, so neither exists
+     * without the other.
+     */
+    private int drawFinalAndThirdPlace(Competition cup, SeasonCompetition sc, List<Team> finalists,
+                                       int seasonYear) {
+        int made = 0;
+        // Strongest-listed first, so the finalist seeded first hosts. Deterministic on purpose.
+        List<Team> seeded = new ArrayList<>(finalists);
+        Team home = seeded.get(0);
+        Team away = seeded.get(1);
+
+        fixtures.save(fixture(cup, sc, home, away, ROUND_FINAL, weekFor(ROUND_FINAL), null, seasonYear));
+        made++;
+
+        List<Team> semiLosers = losingSemiFinalists(cup, sc, seasonYear);
+        if (semiLosers.size() == 2) {
+            fixtures.save(fixture(cup, sc, semiLosers.get(0), semiLosers.get(1),
+                    ROUND_THIRD_PLACE, weekFor(ROUND_THIRD_PLACE), null, seasonYear));
+            made++;
+            log.info("{}: final and third place drawn ({} and {}).", cup.getName(), home.getName(), away.getName());
+        } else {
+            // Better a third-place match that cannot be named than one invented from the wrong round.
+            log.warn("{}: final drawn, but {} losing semi-finalist(s) found so no third-place tie was made.",
+                    cup.getName(), semiLosers.size());
+        }
+        return made;
+    }
+
+    /** The two clubs that went out of the semi-final, which is who plays for third place. */
+    private List<Team> losingSemiFinalists(Competition cup, SeasonCompetition sc, int seasonYear) {
+        List<Team> losers = new ArrayList<>();
+        for (MatchFixture tie : fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear)) {
+            if (tie.getRoundNumber() == null || tie.getRoundNumber() != ROUND_SEMI_FINAL || !tie.isPlayed()) {
+                continue;
+            }
+            Team winner = winnerOf(tie);
+            if (winner == null) {
+                continue;
+            }
+            losers.add(winner == tie.getHomeTeam() ? tie.getAwayTeam() : tie.getHomeTeam());
+        }
+        return losers;
+    }
+
+    /** One knockout round: the owner's split — rank, halve, shuffle each half, pair across. */
+    private int drawOneKnockoutRound(Competition cup, SeasonCompetition sc, List<Team> ranked,
+                                     int round, int seasonYear) {
+        List<List<Team>> halves = splitInHalf(ranked);
+        if (halves.get(0).isEmpty() || halves.get(1).isEmpty()) {
+            // An odd field cannot be halved without dropping somebody. Said rather than done.
+            log.warn("{}: round {} has {} club(s), which cannot be halved; nothing drawn.",
+                    cup.getName(), round, ranked.size());
+            return 0;
+        }
+        List<Team> upper = new ArrayList<>(halves.get(0));
+        List<Team> lower = new ArrayList<>(halves.get(1));
+        java.util.Collections.shuffle(upper, new Random(cup.getId() * 31L + round));
+        java.util.Collections.shuffle(lower, new Random(cup.getId() * 31L + round + 1));
+
+        int made = 0;
+        for (int i = 0; i < Math.min(upper.size(), lower.size()); i++) {
+            // The non-favourite hosts, which is the owner's rule and the reason the split exists.
+            fixtures.save(fixture(cup, sc, lower.get(i), upper.get(i), round, weekFor(round), null, seasonYear));
+            made++;
+        }
+        return made;
+    }
+
+    /**
+     * The winner of a played tie, or null when there is genuinely none.
+     *
+     * <p>Same rule as the national cup's: a level tie is decided by the shootout columns, and a tie that
+     * is level <i>and</i> has no shootout recorded stops the bracket instead of being settled by a coin
+     * toss. A cup that invents a winner is worse than a cup that is one club short and says so.
+     */
+    private Team winnerOf(MatchFixture tie) {
+        if (tie.getPlayedMatch() == null) {
+            return null;
+        }
+        int home = tie.getPlayedMatch().getHomeGoals();
+        int away = tie.getPlayedMatch().getAwayGoals();
+        if (home == away) {
+            Integer homePens = tie.getPlayedMatch().getHomePenaltyGoals();
+            Integer awayPens = tie.getPlayedMatch().getAwayPenaltyGoals();
+            if (homePens == null || awayPens == null || homePens.equals(awayPens)) {
+                log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
+                        tie.getId(), home, away);
+                return null;
+            }
+            return homePens > awayPens ? tie.getHomeTeam() : tie.getAwayTeam();
+        }
+        return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
     }
 
     /**
