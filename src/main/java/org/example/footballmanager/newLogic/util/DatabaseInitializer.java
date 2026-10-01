@@ -999,6 +999,20 @@ public class DatabaseInitializer {
         backfillStadiumCeilings();
         Team ownerTeam = createOwnerUserIfNotExists();
         createSecondUserIfNotExists();
+        // The manager stands in as selector until the elections run.
+        //
+        // This was in the boot path, and the boot path no longer seeds anything. So after
+        // Initialise DB nobody was appointed, and the national-team page opened for the owner with
+        // "you are not the selector" on a side that had no selector at all. The owner reported it as
+        // the page not opening, which is close enough — the page opened and was useless.
+        //
+        // It belongs here, next to the owner it appoints.
+        try {
+            nationalTeamService.appointBaselineSelectors(
+                    countryRepository.findByIsoCode("SRB").orElse(null));
+        } catch (RuntimeException e) {
+            log.warn("Could not appoint the baseline selector: {}", e.getMessage());
+        }
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         seedStandInTransferActivity();
         assignSquadNumbersIfMissing();
