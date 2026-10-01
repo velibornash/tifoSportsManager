@@ -283,11 +283,22 @@ export function bindScheduleInteractions(container, handlers = {}) {
         });
     });
 
+    // An unplayed match opens the match view on its Preview tab, not the fixture sheet (owner,
+    // 2026-10-01). Both used to exist and a manager met two different surfaces for one thing: "the
+    // fixture I am about to play" and "the match before kickoff" were the same fixture.
+    //
+    // `loadFixture` is still the fallback, because a caller that supplied neither loader is then simply
+    // doing nothing, and a card that used to open something should not stop opening anything.
     container.querySelectorAll('.js-load-fixture').forEach(node => {
         node.addEventListener('click', () => {
             const fixtureId = Number(node.dataset.fixtureId);
             const backTarget = node.dataset.backTarget || 'leagueTable';
-            if (fixtureId && typeof onLoadFixture === 'function') onLoadFixture(fixtureId, { backTarget });
+            if (!fixtureId) return;
+            if (typeof onLoadMatch === 'function') {
+                onLoadMatch(fixtureId, 'schedule', { initialTab: 'preview' });
+            } else if (typeof onLoadFixture === 'function') {
+                onLoadFixture(fixtureId, { backTarget });
+            }
         });
     });
 }

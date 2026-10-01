@@ -32,6 +32,40 @@ public class MatchDTO {
     private boolean resultRevealed;
     private Long replayId;
 
+    /**
+     * The same DTO for a fixture — a match that has not been played.
+     *
+     * <p>A {@code Match} row is born when a match is played, so a seeded world holds 2,790 fixtures and
+     * 155 matches. Anything that wants to show "the match before kickoff" therefore had nothing to load,
+     * and the next match on the dashboard had to go somewhere else entirely.
+     *
+     * <p><b>The goals are null and stay null.</b> A 0-0 that was never played is indistinguishable from
+     * a goelless draw, and the DTO already makes that point about hidden results; the same argument
+     * applies harder here, because nothing about a fixture has been decided at all.
+     */
+    public static MatchDTO unplayed(Long id, org.example.footballmanager.newLogic.model.MatchFixture fixture) {
+        MatchDTO dto = new MatchDTO();
+        dto.setId(id);
+        dto.setHomeTeam(fixture.getHomeTeam() != null ? fixture.getHomeTeam().getName() : null);
+        dto.setAwayTeam(fixture.getAwayTeam() != null ? fixture.getAwayTeam().getName() : null);
+        dto.setHomeGoals(null);
+        dto.setAwayGoals(null);
+        dto.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate().toString() : null);
+        dto.setSeasonNumber(fixture.getSeasonYear());
+        dto.setWeekNumber(fixture.getWeekNumber());
+        dto.setDayNumber(fixture.getDayNumber());
+        if (fixture.getCompetition() != null) {
+            dto.setCompetitionName(fixture.getCompetition().getName());
+            dto.setCompetitionType(fixture.getCompetition().getType() == null
+                    ? null : fixture.getCompetition().getType().name());
+        }
+        // Nothing is hidden about a match that has not happened, and nothing has been revealed either.
+        dto.setResultHidden(false);
+        dto.setResultRevealed(false);
+        dto.setReplayId(null);
+        return dto;
+    }
+
     public static MatchDTO from(Match match) {
         return from(match, null);
     }

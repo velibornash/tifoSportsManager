@@ -6,12 +6,15 @@ import org.example.footballmanager.newLogic.dto.MatchEventFlatDTO;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.service.MatchDetailService;
 import org.example.commonmanager.model.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.ResponseEntity;
+
+import java.util.Optional;
 import org.springframework.web.bind.annotation.*;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -25,6 +28,7 @@ import java.util.Map;
 public class MatchController {
 
     private final MatchRepository matchRepository;
+    private final org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository;
     private final MatchDetailService matchDetailService;
     private final MatchPlayerStatsRepository playerStatsRepository;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
@@ -34,9 +38,11 @@ public class MatchController {
             MatchRepository matchRepository,
             MatchDetailService matchDetailService,
             MatchPlayerStatsRepository playerStatsRepository,
-            org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures
+            org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures,
+            org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository
     ) {
         this.matchRepository = matchRepository;
+        this.matchFixtureRepository = matchFixtureRepository;
         this.matchDetailService = matchDetailService;
         this.playerStatsRepository = playerStatsRepository;
         this.plusFeatures = plusFeatures;
@@ -49,8 +55,15 @@ public class MatchController {
         // detail fetch that ignored the viewer was a way to read a result the manager had not asked
         // for. The mask lives in the DTO, so passing the viewer is all it takes.
         Long viewerTeamId = plusFeatures.viewerTeamId(user);
-        return matchRepository.findById(matchId)
-                .map(match -> MatchDTO.from(match, viewerTeamId))
+        Optional<MatchDTO> played = matchRepository.findById(matchId)
+                .map(match -> MatchDTO.from(match, viewerTeamId));
+        if (played.isPresent()) {
+            return ResponseEntity.ok(played.get());
+        }
+        // Not played yet. The same DTO with a null score, so a caller can render the pre-match screen
+        // without knowing whether the id belongs to a match or to the fixture that will become one.
+        return matchFixtureRepository.findById(matchId)
+                .map(fixture -> MatchDTO.unplayed(matchId, fixture))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

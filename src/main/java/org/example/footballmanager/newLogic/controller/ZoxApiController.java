@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.springframework.http.ResponseEntity;
@@ -21,13 +22,32 @@ import java.util.stream.Collectors;
 public class ZoxApiController {
 
     private final MatchRepository matchRepository;
+    private final MatchFixtureRepository fixtures;
     private final MatchPlayerStatsRepository statsRepository;
     private final ObjectMapper objectMapper;
 
+    /**
+     * The pre-match screen, for a fixture or for a match that has been played.
+     *
+     * <p><b>An id can be either, and that is the whole point of the change.</b> There are 2,790 fixtures
+     * and 155 matches in a seeded world, because a {@code Match} row is born when a match is <i>played</i>
+     * — so "the preview for the next match" had nothing to fetch, which is why the next match on the
+     * dashboard and an unplayed fixture in the club schedule both had to go somewhere else entirely.
+     *
+     * <p>A fixture therefore resolves to the same payload with the fixture's own teams and competition and
+     * <b>nothing invented</b>: no score, no form, no absences, no player ratings. Which is the honest
+     * answer for a match that has not been played, and is why this endpoint already returned placeholders
+     * for most of its fields.
+     */
     @GetMapping("/match-preview/{matchId}")
     public ResponseEntity<Map<String, Object>> getMatchPreview(@PathVariable Long matchId) {
         Match match = matchRepository.findById(matchId).orElse(null);
-        if (match == null) return ResponseEntity.notFound().build();
+        if (match == null) {
+            var fixture = fixtures.findById(matchId).orElse(null);
+            return fixture == null
+                    ? ResponseEntity.notFound().build()
+                    : ResponseEntity.ok(previewForFixture(fixture));
+        }
 
         String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
         String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
@@ -81,8 +101,60 @@ public class ZoxApiController {
         preview.put("homeLineup", List.of());
         preview.put("awayLineup", List.of());
         preview.put("matchDate", match.getMatchDate() != null ? match.getMatchDate().toString() : null);
+        preview.put("played", true);
 
         return ResponseEntity.ok(preview);
+    }
+
+    /**
+     * The same shape as a played match's preview, filled only with what a fixture actually knows.
+     *
+     * <p>Every uncertain field is null rather than a default, because the defaults on the played-match
+     * path are placeholders for numbers nobody computed — and a screen that opens on a fixture must not
+     * show a 70% rating or a 25% draw probability as though it had been worked out.
+     */
+    private Map<String, Object> previewForFixture(org.example.footballmanager.newLogic.model.MatchFixture fixture) {
+        String homeTeam = fixture.getHomeTeam() != null ? fixture.getHomeTeam().getName() : "Home";
+        String awayTeam = fixture.getAwayTeam() != null ? fixture.getAwayTeam().getName() : "Away";
+        boolean home = true;
+
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("homeTeamName", homeTeam);
+        preview.put("awayTeamName", awayTeam);
+        preview.put("homeTeamRating", null);
+        preview.put("awayTeamRating", null);
+        preview.put("homeRecentForm", null);
+        preview.put("awayRecentForm", null);
+        preview.put("expectedResult", null);
+        preview.put("homeWinProbability", null);
+        preview.put("drawProbability", null);
+        preview.put("awayWinProbability", null);
+        preview.put("expectedHomeGoals", null);
+        preview.put("expectedAwayGoals", null);
+        preview.put("homeFormation", fixture.getHomeTeam() != null ? fixture.getHomeTeam().getFormation() : null);
+        preview.put("awayFormation", fixture.getAwayTeam() != null ? fixture.getAwayTeam().getFormation() : null);
+        preview.put("homeFormationFitness", null);
+        preview.put("awayFormationFitness", null);
+        preview.put("homeBenchQuality", null);
+        preview.put("awayBenchQuality", null);
+        preview.put("homeAvailabilityScore", null);
+        preview.put("awayAvailabilityScore", null);
+        preview.put("homePositionMismatches", null);
+        preview.put("awayPositionMismatches", null);
+        preview.put("homePlayStyle", null);
+        preview.put("awayPlayStyle", null);
+        preview.put("analysisText", null);
+        preview.put("predictionReasons", List.of());
+        preview.put("homeInsights", List.of());
+        preview.put("awayInsights", List.of());
+        preview.put("homeAbsentees", List.of());
+        preview.put("awayAbsentees", List.of());
+        preview.put("homeLineup", List.of());
+        preview.put("awayLineup", List.of());
+        preview.put("matchDate", fixture.getMatchDate() != null ? fixture.getMatchDate().toString() : null);
+        preview.put("played", false);
+        preview.put("fixtureId", fixture.getId());
+        return preview;
     }
 
     @GetMapping("/post-match-report/{matchId}")

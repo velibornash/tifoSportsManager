@@ -669,7 +669,16 @@ async function loadNextMatch() {
         const clickable = host?.querySelector('[data-fixture-id]');
         if (clickable && nextMatch.fixtureId) {
             clickable.addEventListener('click', () => {
-                if (typeof window.loadFixture === 'function') {
+                // The match view on its Preview tab, not the fixture sheet (owner, 2026-10-01).
+                //
+                // It went to the fixture view, which is a different page showing a fixture card rather
+                // than the pre-match screen - so "my next match" and "the match I am about to play" were
+                // two different surfaces. The Preview tab is now loadable from a fixture id, which it was
+                // not before, because a Match row is born when a match is *played* and this one has not
+                // been.
+                if (typeof window.loadMatch === 'function') {
+                    window.loadMatch(Number(nextMatch.fixtureId), 'dashboard', { initialTab: 'preview' });
+                } else if (typeof window.loadFixture === 'function') {
                     window.loadFixture(Number(nextMatch.fixtureId));
                 }
             });

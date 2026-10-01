@@ -37,18 +37,20 @@ export function createMatchView(deps) {
             const response = await authFetch(`/matches/${matchId}/detail`);
             console.log(`Status: ${response.status}`);
 
-            if (!response.ok) {
-                const text = await response.text();
-                console.error(`Error ${response.status}: ${text}`);
-                mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p></div>`;
-                return;
+            // A 404 here is not "no such match". An unplayed fixture has no Match row, so the events
+            // endpoint legitimately has nothing to return - and the page it opens is the pre-match
+            // screen, which is the whole point of routing an unplayed match here. The detail fetch is
+            // tolerated and the header is built from the match/fixture metadata instead.
+            const eventsOk = response.ok;
+            if (!eventsOk) {
+                console.info(`No events for ${matchId}: it has not been played yet.`);
             }
 
             // The events carry the score and the date but not what kind of match it was, so the
             // header pulls the one record that does. It is one extra request in parallel, not a
             // second round trip.
             const [events, lineupsPayload, matchMeta] = await Promise.all([
-                response.json(),
+                eventsOk ? response.json() : Promise.resolve([]),
                 authFetch(`/match-stats/lineups/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null),
@@ -58,20 +60,26 @@ export function createMatchView(deps) {
             ]);
             console.log("MATCH EVENTS:", events);
 
-            if (events.length === 0) {
-                mainContent.innerHTML = `<div class="team-card"><p>No data available for this match.</p></div>`;
+            // No events and no metadata means there is genuinely nothing to show. No events *with*
+            // metadata means an unplayed match, which has a header and a preview and is not an error.
+            if (events.length === 0 && !matchMeta) {
+                mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p></div>`;
                 return;
             }
 
-            const first = events[0];
-            const homeTeamName = first.homeTeam || "Home";
-            const awayTeamName = first.awayTeam || "Away";
-            const homeGoals = first.homeGoals ?? 0;
-            const awayGoals = first.awayGoals ?? 0;
+            // The event is the richer record when there is one; the metadata is the only record when the
+            // match has not been played. Either way the score is null rather than 0, because a 0-0 that
+            // was never played is indistinguishable from a goelless draw.
+            const first = events[0] || {};
+            const homeTeamName = first.homeTeam || matchMeta?.homeTeam || "Home";
+            const awayTeamName = first.awayTeam || matchMeta?.awayTeam || "Away";
+            const homeGoals = first.homeGoals ?? matchMeta?.homeGoals ?? null;
+            const awayGoals = first.awayGoals ?? matchMeta?.awayGoals ?? null;
+            const played = homeGoals !== null && awayGoals !== null;
             const homeTeamId = lineupsPayload?.homeTeamId || null;
             const awayTeamId = lineupsPayload?.awayTeamId || null;
 
-            const matchDate = parseMatchDate(first.matchDate);
+            const matchDate = parseMatchDate(first.matchDate || matchMeta?.matchDate);
             const formattedDate = matchDate.toLocaleString('en-US', {
                 weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
                 hour: '2-digit', minute: '2-digit'
@@ -97,17 +105,17 @@ export function createMatchView(deps) {
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
                     <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget}')">&#8592; Back</button>
                 </div>
-                <h2 style="text-align:center;">Match Details</h2>
+                <h2 style="text-align:center;">${played ? 'Match Details' : 'Match Preview'}</h2>
                 ${competitionHeading}
                 <div class="fm-match-scoreline" style="font-size:1.3em; margin:20px 0; font-weight:bold;">
                     <div class="fm-match-score-team">
                         <div class="fm-match-score-name">${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${htmlEscape(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
-                        <div>${homeGoals}</div>
+                        <div>${played ? homeGoals : '–'}</div>
                     </div>
                     <div class="fm-match-score-separator" style="font-size:1.6em;">-</div>
                     <div class="fm-match-score-team">
                         <div class="fm-match-score-name">${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${htmlEscape(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
-                        <div>${awayGoals}</div>
+                        <div>${played ? awayGoals : '–'}</div>
                     </div>
                 </div>
                 <div style="text-align:center; color:#aaa; margin-bottom:25px;">
@@ -173,7 +181,8 @@ export function createMatchView(deps) {
                 const awayBenchQuality = Number(previewPayload?.awayBenchQuality ?? 0);
                 const homeAvailabilityScore = Number(previewPayload?.homeAvailabilityScore ?? 0);
                 const awayAvailabilityScore = Number(previewPayload?.awayAvailabilityScore ?? 0);
-                const analysis = htmlEscape(String(previewPayload?.analysisText || 'No extra preview analysis available.'));
+                const analysis = htmlEscape(String(previewPayload?.analysisText || ''));
+                const playedOnce = previewPayload?.played !== false;
 
                 // Semantic classes, not inline styles.
                 //
@@ -183,40 +192,48 @@ export function createMatchView(deps) {
                 // just could not be styled as a set. `fm-mpv-*` is styled in dashboard.css.
                 const renderInsights = items => items.length
                     ? items.map(item => `<div class="fm-mpv-row"><span>${htmlEscape(String(item.label || 'Insight'))}</span><strong>${htmlEscape(String(item.value || 'N/A'))}</strong></div>`).join('')
-                    : `<div class="fm-mpv-empty">No extra insight available.</div>`;
+                    : `<div class="fm-mpv-empty">Nothing known yet.</div>`;
 
                 const renderAbsentees = items => items.length
                     ? items.map(item => `<span class="fm-mpv-chip">${htmlEscape(String(item))}</span>`).join('')
                     : `<span class="fm-mpv-empty">No absences reported.</span>`;
 
-                const pct = value => Number(value || 0).toFixed(0);
-                const fixed1 = value => Number(value || 0).toFixed(1);
+                // Null is "not known yet", and it must read as absent rather than as a number.
+                //
+                // `Number(null || 0).toFixed(0)` is "0", so an unplayed match opened straight into this
+                // screen and reported a 0% formation fitness, a 0.00 xG and a 92% fit for nobody - the
+                // defaults the endpoint uses when it has no data, rendered as if it had some. The owner
+                // expects an unplayed match to look empty; empty is the honest version of that.
+                const pct = value => (value === null || value === undefined ? null : Number(value).toFixed(0));
+                const fixed1 = value => (value === null || value === undefined ? null : Number(value).toFixed(1));
+                const withUnit = (value, unit) => (value === null ? '' : `${value}${unit}`);
+                const numberOr = (value, fallback) => (value === null || value === undefined ? fallback : Number(value));
 
                 infoDiv.innerHTML = `
                     <div class="fm-mpv">
                         <header class="fm-mpv-band">
                             <span class="fm-mpv-band-kicker">Match preview</span>
-                            <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} <span>${htmlEscape(String(previewPayload?.homeFormation || '4-3-3'))}</span> v <span>${htmlEscape(String(previewPayload?.awayFormation || '4-3-3'))}</span> ${htmlEscape(awayTeamName)}</h3>
+                            <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} <span>${htmlEscape(String(previewPayload?.homeFormation || '–'))}</span> v <span>${htmlEscape(String(previewPayload?.awayFormation || '–'))}</span> ${htmlEscape(awayTeamName)}</h3>
                         </header>
 
                         <div class="fm-mpv-row-3">
                             <section class="fm-mpv-card fm-mpv-card--home">
                                 <h4 class="fm-mpv-label">Home edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(homeTeamName)}</div>
-                                <div class="fm-mpv-sub">Fit ${pct(homeFormationFitness * 100)}% &middot; Bench ${fixed1(homeBenchQuality)}</div>
+                                <div class="fm-mpv-sub">${[withUnit(pct(homeFormationFitness * 100), '%'), withUnit(fixed1(homeBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
                             </section>
                             <section class="fm-mpv-card fm-mpv-card--pred">
                                 <h4 class="fm-mpv-label">Prediction</h4>
-                                <div class="fm-mpv-prediction">${homeWin > draw && homeWin > awayWin ? 'Home win' : awayWin > homeWin ? 'Away win' : 'Draw'}</div>
-                                <div class="fm-mpv-probs">
-                                    <span>${pct(homeWin)}%</span><span>${pct(draw)}%</span><span>${pct(awayWin)}%</span>
-                                </div>
-                                <div class="fm-mpv-sub">xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}</div>
+                                <div class="fm-mpv-prediction">${previewPayload?.expectedResult
+                                    || (playedOnce ? 'Home win' : 'Not predicted')}</div>
+                                <div class="fm-mpv-probs">${[pct(homeWin), pct(draw), pct(awayWin)].every(v => v === null)
+                                    ? '' : `<span>${pct(homeWin)}%</span><span>${pct(draw)}%</span><span>${pct(awayWin)}%</span>`}</div>
+                                <div class="fm-mpv-sub">${expectedHomeGoals === null ? '' : `xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}`}</div>
                             </section>
                             <section class="fm-mpv-card fm-mpv-card--away">
                                 <h4 class="fm-mpv-label">Away edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(awayTeamName)}</div>
-                                <div class="fm-mpv-sub">Fit ${pct(awayFormationFitness * 100)}% &middot; Bench ${fixed1(awayBenchQuality)}</div>
+                                <div class="fm-mpv-sub">${[withUnit(pct(awayFormationFitness * 100), '%'), withUnit(fixed1(awayBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
                             </section>
                         </div>
 
@@ -226,25 +243,25 @@ export function createMatchView(deps) {
                                 <div class="fm-mpv-vs">
                                     <div>
                                         <div class="fm-mpv-sub">${htmlEscape(homeTeamName)}</div>
-                                        <strong>${htmlEscape(String(previewPayload?.homeFormation || '4-3-3'))}</strong>
-                                        <div class="fm-mpv-sub">Fit ${pct(homeFormationFitness * 100)}%</div>
-                                        <div class="fm-mpv-sub">Bench ${fixed1(homeBenchQuality)}</div>
+                                        <strong>${htmlEscape(String(previewPayload?.homeFormation || '–'))}</strong>
+                                        <div class="fm-mpv-sub">${withUnit(pct(homeFormationFitness * 100), '% fit')}</div>
+                                        <div class="fm-mpv-sub">${withUnit(fixed1(homeBenchQuality), ' bench')}</div>
                                     </div>
                                     <div class="fm-mpv-vs-right">
                                         <div class="fm-mpv-sub">${htmlEscape(awayTeamName)}</div>
-                                        <strong>${htmlEscape(String(previewPayload?.awayFormation || '4-3-3'))}</strong>
-                                        <div class="fm-mpv-sub">Fit ${pct(awayFormationFitness * 100)}%</div>
-                                        <div class="fm-mpv-sub">Bench ${fixed1(awayBenchQuality)}</div>
+                                        <strong>${htmlEscape(String(previewPayload?.awayFormation || '–'))}</strong>
+                                        <div class="fm-mpv-sub">${withUnit(pct(awayFormationFitness * 100), '% fit')}</div>
+                                        <div class="fm-mpv-sub">${withUnit(fixed1(awayBenchQuality), ' bench')}</div>
                                     </div>
                                 </div>
-                                <div class="fm-mpv-rule">Availability ${pct(homeAvailabilityScore)}% vs ${pct(awayAvailabilityScore)}%</div>
-                                <div class="fm-mpv-sub">Position mismatches ${Number(previewPayload?.homePositionMismatches ?? 0)} : ${Number(previewPayload?.awayPositionMismatches ?? 0)}</div>
-                                <div class="fm-mpv-sub fm-mpv-sub--faint">${htmlEscape(String(previewPayload?.homePlayStyle || 'BALANCED'))} vs ${htmlEscape(String(previewPayload?.awayPlayStyle || 'BALANCED'))}</div>
+                                <div class="fm-mpv-rule">${pct(homeAvailabilityScore) === null ? '' : `Availability ${pct(homeAvailabilityScore)}% vs ${pct(awayAvailabilityScore)}%`}</div>
+                                <div class="fm-mpv-sub">${previewPayload?.homePositionMismatches === null ? '' : `Position mismatches ${numberOr(previewPayload?.homePositionMismatches, 0)} : ${numberOr(previewPayload?.awayPositionMismatches, 0)}`}</div>
+                                <div class="fm-mpv-sub fm-mpv-sub--faint">${previewPayload?.homePlayStyle ? `${htmlEscape(String(previewPayload.homePlayStyle))} vs ${htmlEscape(String(previewPayload.awayPlayStyle || ''))}` : ''}</div>
                             </section>
                             <section class="fm-mpv-card">
                                 <h4 class="fm-mpv-label">Why this prediction</h4>
                                 <ul class="fm-mpv-list">${predictionReasons.map(reason => `<li>${htmlEscape(String(reason))}</li>`).join('')}</ul>
-                                <div class="fm-mpv-sub">${analysis}</div>
+                                <div class="fm-mpv-sub">${previewPayload?.analysisText ? analysis : ''}</div>
                             </section>
                         </div>
 
