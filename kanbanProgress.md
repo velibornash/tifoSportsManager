@@ -454,6 +454,51 @@ errors before `javap` was asked.
 `hibernate.generate_statistics=true` is now set for the test profile, so a future counter-based guard is
 not silently comparing zeroes.
 
+## `3465f26` — a rival's squad, returned as raw entities
+
+**Task (C2):** *"returns raw `Player` entities for any `teamId`, with no ownership or country check. Leaks
+every rival's squad including skills, contracts and injuries."*
+
+`GET /countries/teams/{teamId}/players` was `playerRepository.findByTeamId(teamId)` — raw entities, any
+`teamId`, no check at all. A raw `Player` carries `skills`, `talent`, `earnings`, the whole injury record and
+`personality`.
+
+**Talent is the one that matters.** It is the number `PlusFeatureService` exists to withhold — a scouting
+subscription pays for exactly that information — and here it travelled with no entitlement check whatsoever.
+
+It now does what `TeamController.getPlayers` does: the same `PlayerDTO`, the same `PlusFeatureService` gate. So
+there is one rule for what a viewer may see about a player rather than one per controller. A rival's talent is
+`null`, exactly as from the endpoint this now mirrors. Nothing called it; the route stays because it is public
+surface and narrowing costs nothing.
+
+Verified both ways: restoring `findAll()` fails with *"a stranger can read a rival's exact scouting value"*.
+
+### Injury left as-is — deliberately, and it is a question for the owner
+
+`PlayerDTO` carries `injured` and `injuryDaysRemaining`, so this endpoint discloses them — **and so does
+`TeamController.getPlayers`**, the sibling the board calls correct. The board lists injuries among what C2
+leaks; it does not say the correct sibling hides them.
+
+Both fields are read by the player's own profile page, so narrowing them means changing a shared DTO with other
+consumers. **Whether a rival should be able to see that a player is out for three weeks is a product decision,
+so it is reported rather than decided here.**
+
+### Two of my assertions were wrong before the code was
+
+- **"The talent key should be absent."** `PlayerDTO` always serialises the field and sends `null` — the shape is
+  a contract with the frontend. The assertion is now on the **value** being null and on `9.87` never appearing.
+- **"An anonymous caller gets 401."** The security config redirects to `/login.html`, so it is a **302**. The
+  point is that no squad is disclosed, not which code says so.
+
+### Not a product bug
+
+A player with no `Skills` makes `PlayerDTO.from` throw on `getRatingScore(position)`. That reads exactly like a
+bug and is not one: every real player is given skills by the seeder, so it was an incomplete fixture.
+
+Also worth knowing: **`CountryController` has an explicit constructor, not a Lombok-generated one**, so adding
+the two dependencies was a manual edit there — and C1's test, which builds a controller by hand, needed the new
+arguments.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
