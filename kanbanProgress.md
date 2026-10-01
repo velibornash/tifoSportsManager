@@ -406,6 +406,54 @@ There are **two `UserRole` enums** in this codebase — `commonmanager` and `new
 the wrong one on the first attempt. Not consolidated here; it is the same duplicate-definition hazard as
 `buildMilestoneBoardHtml`.
 
+## `5db4cf6` — the public country catalog, and a test that passed against the unfixed code four times
+
+**Task (C1):** the board's item — *"`GET /countries/catalog` is `permitAll` and calls
+`teamRepository.findAll()`"* — described as "an unauthenticated 14,880-row load, each with EAGER
+`Country.clubs` and two EAGER `@OneToOne`. The endpoint is narrowed to names-and-flags; the query defeats
+that."
+
+### Why it stays public, and what actually changed
+
+`register.js` calls this endpoint **before anyone has logged in** — a registration form needs the country
+codes. So `permitAll` is correct by design and the fix is to make it cheap, not to lock it down.
+
+It answered "which countries have clubs" with `teamRepository.findAll()`: every club in the world, as
+entities, each mapped to its country. Locally 406 rows; **14,880 at the scale this project targets**, on an
+endpoint anyone can repeat. A projection returning distinct ISO codes now answers it, loading no `Team` and
+no `Country` at all. Verified live: **45ms, 4KB, 48 countries**, `seeded` and `hasClubs` correct.
+
+**The board's own diagnosis was slightly wrong**, and worth correcting: `Country.clubs` is LAZY. The two
+`@OneToOne` national sides have no `fetch` attribute and so **are** eager. A projection makes the question
+moot anyway.
+
+### The test: four attempts, all of which passed against the unfixed code
+
+This is the part worth keeping.
+
+- **SQL statement count** — the wrong metric. The entity load and the projection each issue **exactly one
+  query**, so the count is identical and the test was green against the code it was written to catch.
+- **Hibernate's entity-load counter** — reads 0 inside `@Transactional`, because rows the test itself saved
+  are already in the persistence context, and 0 outside it, because each test rolls back. **This is the
+  comparing-two-zeroes failure this repository has already recorded once — and the test guarding against it
+  had to be caught by the same failure first.**
+- **Counting managed entities** — the probe fetched ids as `Team` entities, which put them in the session,
+  so it counted its own setup: all 300 clubs reported against code that loads none.
+
+A **mock** on `TeamRepository` asks the question directly — `verify(never()).findAll()` and
+`verify(atLeastOnce()).findDistinctIsoCodesOfCountriesWithClubs()` — and cannot be fooled by a statistics
+switch being off. Verified both directions: reintroducing `findAll()` fails it.
+
+Mock rather than spy because the injected repository is already a JDK proxy and Mockito cannot wrap it
+(`NotAMockException: $Proxy177`). **Lombok orders `@RequiredArgsConstructor` parameters by fully-qualified
+type name, not by field declaration order** — reading the argument order off the source cost three compile
+errors before `javap` was asked.
+
+### Also
+
+`hibernate.generate_statistics=true` is now set for the test profile, so a future counter-based guard is
+not silently comparing zeroes.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
