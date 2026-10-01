@@ -168,6 +168,62 @@ guard can fail by rewriting the rebuild into an add — it failed with `expected
 
 **Still open:** the Matches tab remains a stub — *"player-by-player match log can be wired later"*.
 
+## `91f5250` — the player Matches tab, and a rating scale that disagreed with itself
+
+**Task:** owner, from the app: *"sredi Matches tab da se u listi pojave mecevi koje je odigrao, mec je
+klikabilan i vodi na mec, pored imena dva tima i rezultata stoji broj minuta, ucinak u tom mecu ako ga ima
+(ikonice lopte, asistencije, kartona) i rating"*.
+
+**It was a stub saying "player-by-player match log can be wired later."** The data was never missing:
+`MatchPlayerStats` carries `minutesPlayed`, `rating`, `goals`, `assists`, `yellowCards` and `redCards` per
+match. Nothing joined it to the match, so there was nothing to render.
+
+New `GET /match-stats/player/{id}/matches` — one row per appearance, most recent first, ordered through
+`Match` because the season, week and day live there rather than on the stat row.
+
+### Three decisions worth recording
+
+**The result is shown from the player's own side.** 3–4 is a defeat for the home side and a win for the
+away side. The endpoint sends `wasHome` rather than letting the frontend infer it from the team's current
+id — a player who has since transferred would otherwise be shown the wrong side of his own history, which
+is the same id-inference mistake as the fixture/match collision, in a quieter form.
+
+**Rows are wired with `fixture: false`.** A stat line can only exist for a match that was played, and a
+fixture and a Match are separate tables with overlapping numbers, so the id is never inferred.
+
+**The impact icons reuse `buildLineupEventBadges`** rather than new markup, so a goal here looks exactly as
+it does on the match page — including the rule that two yellows with no red become a red.
+
+### The rating scale: my bug, caught by the owner
+
+The first version rendered **`100`** while the hero on the same page read **`MATCH RATING 10.0`**.
+`MatchPlayerStats.rating` is stored **0–100**; every rating the app shows is **1–10**. The lineup already
+normalised it in `toLineupDto` — values above 10 are divided by 10, then clamped to 1.0–10.0 — and the new
+endpoint skipped that step entirely.
+
+The owner's question was "rejting treba da je 10.0 a ne 100?" and the answer was yes.
+
+Fixed **at the source**, not by dividing in the frontend: the conversion is now a named
+`ratingOutOfTen(int)` that both the lineup and the match log call. **A second copy of a scale rule is how
+the two drift apart in the first place** — which is exactly what happened the first time.
+
+### Verification
+
+Browser, Club → First team → Ivica Tomić → Matches:
+
+```
+L  OFK Omladinac 3–4 OFK Mladost Niš  Superliga Srbije  84'  ⚽ 🅰️ 🟨 🟥  10.0
+```
+
+Clicking the row opens **Match Details · OFK Omladinac 3 - 4 OFK Mladost Niš**. Zero console errors.
+
+`escapeHtml` is imported from `ui/escape.js`, the single copy, per AGENTS.md — rather than adding another.
+
+### Not done
+
+**No test on the row order or on `wasHome`.** The endpoint is verified live and in the browser, but neither
+rule is protected against a regression. Worth adding before anyone changes the query.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
