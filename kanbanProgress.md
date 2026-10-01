@@ -601,6 +601,47 @@ That is five this session: C1 (statement count), C1 (Hibernate counter), C1 (ses
 colliding), and this one. **The pattern is the same each time — the assertion was written before checking what
 the code actually requires to be true for the behaviour to exist.**
 
+## A5 measured and reclassified — the board described a bug that is not there, and described it backwards
+
+**No code changed.** This is the fourth board item whose description does not survive contact with the code
+(C1, C5, and now A5), and it is the one where acting on the description would have been actively harmful.
+
+### What the board claims
+
+*"advanceWeek() is 168 independent transactions. Self-invocation bypasses the proxy, so advanceHour's own
+@Transactional is inert. A crash at step 100 leaves the clock five days on with 100 hours of jobs applied and 68
+not, and no reconciliation."*
+
+### What the code does
+
+**It is not 168 transactions.** `advanceWeek()` and `advanceHours(int)` are both `@Transactional`, so the whole
+168-hour loop is **one** transaction. Self-invocation *is* bypassing the inner `@Transactional` — that part is
+true — but the outer one covers the same range, so nothing is lost.
+
+**The crash consequence is backwards.** A crash rolls the **clock back**; it does not leave it five days on. What
+survives is the *jobs*, because each job body runs in `PROPAGATION_REQUIRES_NEW` (`JobRunner:61-62`).
+
+So the real residual risk is **jobs committed ahead of a clock that never moved** — not a clock stranded ahead of
+its jobs.
+
+### And that arrangement is deliberate, with tests
+
+- `JobRunnerTest.failureIsContained` asserts *"a broken job must not freeze the season"*.
+- `JobRunnerTest.failureIsNotRetriedBlindly` asserts a FAILED job is not re-run, because *"a half-applied job must
+  not run twice"*.
+
+**Making the week atomic would roll back 167 good hours over one bad job** and contradict both. Had this been
+"fixed" as written, the season would have frozen on the first failure.
+
+### What is genuinely open, and is not a transaction rewrite
+
+On a hard crash, DONE job records that committed ahead of a clock which rolled back are re-evaluated on the retry
+and skipped. That is self-healing **provided** the DONE key includes season/week/day/hour. **Not yet verified** —
+and that is a five-minute test, not a re-architecture.
+
+The board's own A1/A2 lesson is the standing instruction here: **measure the source-reading claim before editing
+the code it points at.** Four times now the reading has been wrong.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
