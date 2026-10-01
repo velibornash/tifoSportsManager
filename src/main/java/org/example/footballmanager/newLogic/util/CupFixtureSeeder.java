@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -96,24 +97,17 @@ public class CupFixtureSeeder {
     private final CompetitionRepository competitions;
     private final TeamRepository teams;
     private final PlayerRepository players;
-    private final Random random;
 
     /** Two constructors, so Spring is told which one. Same trap as TransferActivitySeeder and
      *  NationalTeamSeeder; a unit test cannot catch it because it never goes through Spring. */
     @org.springframework.beans.factory.annotation.Autowired
     public CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
                             TeamRepository teams, PlayerRepository players, SeasonService seasons) {
-        this(competitions, fixtures, teams, players, seasons, new Random(DRAW_SEED));
-    }
-
-    CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
-                     TeamRepository teams, PlayerRepository players, SeasonService seasons, Random random) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.teams = teams;
         this.players = players;
         this.seasons = seasons;
-        this.random = random;
     }
 
     @Transactional
@@ -128,7 +122,8 @@ public class CupFixtureSeeder {
         }
 
         // Idempotent by fixture count, not by a flag: if the draw exists, the fixtures are the record.
-        long existing = fixtures.countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(seedSeason(), CUP_WEEKS[0], CUP_DAY);
+        long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+                cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
         log.info("Cup {}: {} round-1 ties already drawn.", cup.getName(), existing);
         if (existing > 0) {
             return;
@@ -423,8 +418,25 @@ public class CupFixtureSeeder {
         List<Team> ranked = sortByStrength(new ArrayList<>(entrants), strengthOf(entrants));
 
         List<List<Team>> halves = splitForDraw(ranked);
-        List<Team> favourites = halves.get(0);
-        List<Team> nonFavourites = halves.get(1);
+
+        // **The pairing inside each half is shuffled, and this is the whole of what makes it a draw.**
+        //
+        // It used to pair `favourites.get(i)` with `nonFavourites.get(i)` — index against index. Since
+        // `ranked` is sorted strongest first, the strongest club in the country met the weakest club in
+        // the country, in every round, for ever. DRAW_SEED was declared, assigned to a Random and never
+        // read; three javadocs on this class described a shuffle the code did not perform. The
+        // international club cups have always used Collections.shuffle, which is why they were random
+        // and the national cup was not.
+        //
+        // The seed is derived from the cup and the round rather than taken from a shared Random, so the
+        // same cup in the same round draws the same ties on every boot — which is the one property a
+        // reproducible draw has to keep, and the reason the field `random` was never the right thing to
+        // shuffle with in the first place.
+        Random drawRandom = new Random(DRAW_SEED + cup.getId() * 1000L + roundNumber);
+        List<Team> favourites = new ArrayList<>(halves.get(0));
+        List<Team> nonFavourites = new ArrayList<>(halves.get(1));
+        Collections.shuffle(favourites, drawRandom);
+        Collections.shuffle(nonFavourites, drawRandom);
 
         int week = CUP_WEEKS[Math.min(roundNumber, CUP_WEEKS.length) - 1];
         int ties = Math.min(favourites.size(), nonFavourites.size());

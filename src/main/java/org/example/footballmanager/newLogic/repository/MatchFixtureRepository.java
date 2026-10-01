@@ -42,6 +42,18 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
             Integer seasonYear, Integer weekNumber, Integer dayNumber);
 
     /**
+     * How many unplayed fixtures one competition already has in a week.
+     *
+     * <p>This exists because {@code countBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse} counts
+     * across <b>every</b> competition, so the cup seeder's idempotency guard saw another country's
+     * round-1 ties and refused to draw its own. One cup drew and every other cup after it was left
+     * empty, silently, in a world of forty-eight countries. The guard has to be scoped to the cup it is
+     * protecting.
+     */
+    long countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+            Long competitionId, Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
+    /**
      * Every fixture on a day, played or not.
      *
      * <p>For the watch screen. Filtering to unplayed made a manager whose match the matchday job had

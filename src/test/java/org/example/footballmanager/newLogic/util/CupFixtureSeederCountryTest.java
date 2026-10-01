@@ -23,9 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,7 +44,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CupFixtureSeederCountryTest extends BaseTest {
 
-    private static final long SEED = 20260928L;
     /** MAIN_DRAW_TEAMS is 256, so a country needs at least that many clubs for any draw at all. */
     private static final int CLUBS_PER_COUNTRY = 260;
 
@@ -57,6 +56,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
 
     private CupFixtureSeeder seeder;
     private java.util.Map<Long, Integer> indexById;
+    private java.util.Map<Long, Integer> ratingById;
     private Country serbia;
     private Country hungary;
 
@@ -64,7 +64,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
     void setUp() {
         // The real SeasonService, not a mock: the seeder reads the active season from it, and a stub
         // returning a different number would draw into a season the test never inspects.
-        seeder = new CupFixtureSeeder(competitions, fixtures, teams, players, seasonService, new Random(SEED));
+        seeder = new CupFixtureSeeder(competitions, fixtures, teams, players, seasonService);
     }
 
     /**
@@ -209,6 +209,146 @@ class CupFixtureSeederCountryTest extends BaseTest {
         assertEquals(0, mainDraw,
                 "40 clubs were assembled into a main draw that requires " + CupFixtureSeeder.MAIN_DRAW_TEAMS
                         + ". Every tie in it is a fixture that should not exist.");
+    }
+
+    /**
+     * **B1.** The pairing must not be by list index.
+     *
+     * <p>It used to be: the draw paired {@code favourites.get(i)} with {@code nonFavourites.get(i)} over
+     * a list sorted strongest first, so rank 0 met rank n-1 in every round, for ever. DRAW_SEED was
+     * declared, assigned to a Random and never read, and three javadocs described a shuffle the code did
+     * not perform.
+     *
+     * <p><b>The assertion is about order rather than about one unlucky tie.</b> Index pairing leaves the
+     * favourites in strictly descending strength, because they are walked in the order they were sorted.
+     * A shuffle does not. So this asks whether the away sides come out in descending strength, which is
+     * exactly what the bug produced and nothing a shuffle produces.
+     *
+     * <p>Asserting "the strongest club did not meet the weakest" instead would be a coin flip: with 54
+     * ties a shuffle puts them together once in fifty-four draws, so the test would be red or green for
+     * no reason. It also could not use several cups, because {@code drawRoundForWeek} resolves its target
+     * through {@code nationalCup()}, which returns the lowest-id domestic cup — see the note on the
+     * board about only one country's cup ever being drawn.
+     */
+    @Test
+    @Transactional
+    @DisplayName("the draw is not a pairing by list index")
+    void theDrawIsNotPairedByListIndex() {
+        serbia = aCountry("Serbia", "RS");
+        ratingById = new java.util.HashMap<>();
+        for (int i = 0; i < CLUBS_PER_COUNTRY; i++) {
+            Team club = aClub(serbia, "RS", String.format("RS-%03d", i), 40 + i);
+            ratingById.put(club.getId(), 40 + i);
+        }
+        Competition cup = aCup(serbia, "Serbian Cup");
+
+        List<MatchFixture> round1 = drawAndRead(cup);
+        assertFalse(round1.isEmpty(), "no ties were drawn");
+
+        // The away sides are the favourites. Walked by index they would be strictly descending.
+        List<Integer> awayStrengths = round1.stream()
+                .map(f -> ratingById.get(f.getAwayTeam().getId()))
+                .toList();
+        assertEquals(awayStrengths.size(), new java.util.HashSet<>(awayStrengths).size(),
+                "the same club appears as the favourite twice");
+
+        boolean descending = true;
+        for (int i = 1; i < awayStrengths.size(); i++) {
+            if (awayStrengths.get(i) >= awayStrengths.get(i - 1)) {
+                descending = false;
+                break;
+            }
+        }
+        assertFalse(descending,
+                "the favourites came out in strictly descending strength, which is what pairing by list "
+                        + "index produces: " + awayStrengths.subList(0, Math.min(12, awayStrengths.size()))
+                        + "...");
+    }
+
+    /**
+     * A seeded draw must still be reproducible: the same cup in the same round draws the same ties.
+     *
+     * <p>This is the property that made a shared {@code Random} the wrong tool. Shuffling from one
+     * instance gives different answers depending on how many times it has already been used, so the draw
+     * would change between boots — which for a cup is worse than not shuffling at all.
+     */
+    @Test
+    @Transactional
+    @DisplayName("the same cup and round draws the same ties every time")
+    void theDrawIsReproducible() {
+        serbia = aCountry("Serbia", "RS");
+        for (int i = 0; i < CLUBS_PER_COUNTRY; i++) {
+            aClub(serbia, "RS", String.format("RS-%03d", i), 40 + i);
+        }
+        Competition cup = aCup(serbia, "Serbian Cup");
+
+        List<String> firstDraw = pairingsOf(drawAndRead(cup));
+
+        // Wipe the round and draw again from the same state.
+        fixtures.deleteAll(fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                cup.getId(), SEASON()));
+        List<String> secondDraw = pairingsOf(drawAndRead(cup));
+
+        assertFalse(firstDraw.isEmpty(), "the first draw produced no ties to compare");
+        assertEquals(firstDraw, secondDraw,
+                "two draws of the same cup in the same round disagreed, so the draw is not reproducible");
+    }
+
+    /**
+     * The shuffle must not damage the seeding rule it exists inside.
+     *
+     * <p>Every tie is one favourite against one non-favourite with the non-favourite at home — the
+     * owner's rule. And because the favourites are drawn from the stronger half and the non-favourites
+     * from the weaker one, that has a consequence worth asserting directly: <b>the away side is stronger
+     * than the home side in every single tie.</b> That is true regardless of how the two halves are
+     * shuffled, so it catches a fix that randomised the halves as well as one that did not shuffle at all.
+     *
+     * <p>An earlier version of this test computed the "favourites" from the order the clubs were created
+     * rather than from their strength, so it asserted the opposite of the truth and failed on correct
+     * code. Creation order is index order; strength order is descending rating, which here runs the other
+     * way, because club i is created with rating 40+i.
+     */
+    @Test
+    @Transactional
+    @DisplayName("shuffling keeps a favourite against a non-favourite, with the non-favourite at home")
+    void theSeedingRuleSurvivesTheShuffle() {
+        serbia = aCountry("Serbia", "RS");
+        ratingById = new java.util.HashMap<>();
+        for (int i = 0; i < CLUBS_PER_COUNTRY; i++) {
+            Team club = aClub(serbia, "RS", String.format("RS-%03d", i), 40 + i);
+            ratingById.put(club.getId(), 40 + i);
+        }
+
+        Competition cup = aCup(serbia, "Serbian Cup");
+        List<MatchFixture> round1 = drawAndRead(cup);
+        assertFalse(round1.isEmpty(), "no ties were drawn");
+
+        for (MatchFixture f : round1) {
+            Integer homeRating = ratingById.get(f.getHomeTeam().getId());
+            Integer awayRating = ratingById.get(f.getAwayTeam().getId());
+            assertNotNull(homeRating, f.getHomeTeam().getName() + " is not one of this test's clubs");
+            assertNotNull(awayRating, f.getAwayTeam().getName() + " is not one of this test's clubs");
+            assertTrue(awayRating > homeRating,
+                    "the away side is not the stronger one in " + f.getHomeTeam().getName() + " ("
+                            + homeRating + ") v " + f.getAwayTeam().getName() + " (" + awayRating + "): "
+                            + "the favourite must be the away side and it must be stronger than the "
+                            + "non-favourite hosting it");
+        }
+    }
+
+    private List<MatchFixture> drawAndRead(Competition cup) {
+        seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
+        return fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        cup.getId(), SEASON()).stream()
+                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
+                .toList();
+    }
+
+    private List<String> pairingsOf(List<MatchFixture> round) {
+        return round.stream()
+                .map(f -> f.getHomeTeam().getId() + "v" + f.getAwayTeam().getId())
+                .sorted()
+                .toList();
     }
 
     private int SEASON() {
