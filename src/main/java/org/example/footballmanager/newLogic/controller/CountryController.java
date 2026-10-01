@@ -11,6 +11,8 @@ import org.example.footballmanager.newLogic.util.LeagueTableOrder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.dto.PlayerDTO;
+import org.example.footballmanager.newLogic.model.MatchPlayerStats;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.commonmanager.model.User;
@@ -70,13 +72,17 @@ public class CountryController {
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
     private final org.example.commonmanager.repository.UserRepository humanUserRepository;
+    private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
+    private final org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
 
     public CountryController(CountryRepository countryRepository,
             org.example.commonmanager.repository.UserRepository humanUserRepository,
             CompetitionRepository competitionRepository, CompetitionEntryRepository competitionEntryRepository, TeamRepository teamRepository, PlayerRepository playerRepository, SeasonCompetitionRepository seasonCompetitionRepository, MatchRepository matchRepository, MatchFixtureRepository matchFixtureRepository, SeasonRepository seasonRepository, ScheduleInsightService scheduleInsightService, SeasonService seasonService, NationalTeamService nationalTeamService,
             NationalTeamElectionService electionService,
             PresenceRegistry presenceRegistry,
-            org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups) {
+            org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups,
+            org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures,
+            org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -93,6 +99,8 @@ public class CountryController {
         this.electionService = electionService;
         this.presenceRegistry = presenceRegistry;
         this.internationalClubCups = internationalClubCups;
+        this.plusFeatures = plusFeatures;
+        this.matchPlayerStatsRepository = matchPlayerStatsRepository;
     }
 
     /**
@@ -781,8 +789,52 @@ public class CountryController {
                 .toList();
     }
 
+    /**
+     * A club's players, for whoever is asking.
+     *
+     * <p><b>This used to return raw {@code Player} entities for any {@code teamId} with no ownership or
+     * country check</b> — so any logged-in manager could read any rival's entire squad, and a raw entity
+     * carries {@code skills}, {@code talent}, {@code earnings}, the full injury record and
+     * {@code personality}. {@code talent} is the number this codebase goes to real lengths to withhold: it
+     * is the whole reason {@code PlusFeatureService} exists.
+     *
+     * <p>It now does exactly what {@code TeamController.getPlayers} does — the same {@link PlayerDTO} and
+     * the same {@code PlusFeatureService} entitlement — so there is one rule for "what may this viewer see
+     * about this player" instead of one per controller. A rival's talent comes back null, exactly as it does
+     * from the team endpoint this now mirrors.
+     *
+     * <p>Nothing calls this endpoint; it existed beside the team one and answered a strictly larger
+     * question. It is kept because the route is public API surface and narrowing it costs nothing.
+     */
     @GetMapping("/teams/{teamId}/players")
-    public List<Player> getPlayers(@PathVariable Long teamId) {
-        return playerRepository.findByTeamId(teamId);
+    public ResponseEntity<List<PlayerDTO>> getPlayers(
+            @PathVariable Long teamId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.commonmanager.model.User viewer) {
+        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
+        Map<Long, List<MatchPlayerStats>> statsByPlayerId = teamPlayers.isEmpty()
+                ? Map.of()
+                : matchPlayerStatsRepository.findByPlayerIdIn(teamPlayers.stream().map(Player::getId).toList())
+                        .stream()
+                        .filter(stats -> stats.getPlayer() != null)
+                        .collect(Collectors.groupingBy(stats -> stats.getPlayer().getId()));
+
+        Long viewerTeamId = plusFeatures.viewerTeamId(viewer);
+        List<PlayerDTO> players = teamPlayers.stream()
+                .map(player -> {
+                    List<MatchPlayerStats> stats = statsByPlayerId.get(player.getId());
+                    List<MatchPlayerStats> safeStats = stats == null ? List.of() : stats;
+                    double averageRating10 = safeStats.stream()
+                            .mapToInt(MatchPlayerStats::getRating)
+                            .average()
+                            .orElse(0.0) / 10.0;
+                    Double rounded = safeStats.isEmpty()
+                            ? null
+                            : Math.round(averageRating10 * 10.0) / 10.0;
+                    return PlayerDTO.from(player, safeStats.size(), rounded,
+                            plusFeatures.talentOrNull(player, viewer, viewerTeamId));
+                })
+                .toList();
+        return ResponseEntity.ok(players);
     }
 }

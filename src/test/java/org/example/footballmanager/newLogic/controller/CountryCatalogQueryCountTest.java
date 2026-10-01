@@ -78,6 +78,8 @@ class CountryCatalogQueryCountTest extends BaseTest {
     @Autowired private org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
     @Autowired private org.example.footballmanager.newLogic.service.NationalTeamElectionService electionService;
     @Autowired private org.example.commonmanager.repository.UserRepository humanUserRepository;
+    @Autowired private org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
+    @Autowired private org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
 
     private boolean worldFilled = false;
 
@@ -224,7 +226,8 @@ class CountryCatalogQueryCountTest extends BaseTest {
                 competitionRepository, competitionEntryRepository, teams,
                 playerRepository, seasonCompetitionRepository, matchRepository, matchFixtureRepository,
                 seasonRepository, scheduleInsightService, seasonService,
-                nationalTeamService, electionService, presenceRegistry, internationalClubCups);
+                nationalTeamService, electionService, presenceRegistry, internationalClubCups,
+                plusFeatures, matchPlayerStatsRepository);
 
         List<Map<String, Object>> catalog = counting.getCountryCatalog();
 
