@@ -336,6 +336,35 @@ superior"* or *"matured game, capitalising on counter-attacks"* without reading 
 4. The post-match prose is cosmetic next to #1 and **should not be touched until #1 is settled** — a
    wrong number dressed up is worse than a missing one.
 
+### The nightly league-table repair — half landed, and the honest half
+
+Owner, 2026-10-01: *"when you click Watch match or Show results it should lead to the Goals or Report
+section, not Preview"*, and *"when and how is the league table updated — on production there should be a
+job that updates the table at 1 AM the day after the league match, and locally a button. Don't forget the
+top scorers and assists on the league page."*
+
+**Done:** `LeagueTableReconciliationService` + `LeagueTableReconcileJob` at **01:00 on days 4 and 8** — the
+day *after* the two league matchdays, not instead of them, because the incremental write in
+`SimMatchService.persist` means the table is already correct when a manager watches his own match. A rebuild
+from the match table is a pure function of that table, so it repairs drift and double-application rather
+than adding a fourth way for the table to be wrong.
+
+**Also answered: the top scorers and assists already update.** `StatsController` derives them on read from
+`GoalEvent` rows, so they are correct the instant a match is persisted. No staleness there and nothing to fix.
+
+**Not done, and both halves are on the board rather than in the commit:**
+
+1. **The local button.** It needs an admin action and a button beside Reset / Initialize / Repair world.
+   Half a feature is worse than none, so it is not half-shipped.
+2. **No test yet.** `reconcile` is covered by nothing. The shape it needs is the one the two rating
+   services got: build a table, corrupt it the way a double-apply would, reconcile, and read back through
+   a fresh transaction.
+
+**One thing to decide before the button:** "Activate this country" currently leads to a page with a single
+sentence and no data. The owner suggested putting something on it — ranking points, the national squad, the
+clubs entering the Champions Cup and the other continental tournaments. That is the honest place for it:
+every one of those is a fact about a country that is not active, and the World page already has most of it.
+
 ### Why B1 is blocked rather than fixed — and this is the interesting part
 
 B1's fix is six lines and I wrote it. I did not commit it, because **I could not make a test that
