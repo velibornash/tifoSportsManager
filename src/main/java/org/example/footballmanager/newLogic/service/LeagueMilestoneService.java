@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,6 +26,9 @@ public class LeagueMilestoneService {
 
     private final MatchRepository matchRepository;
     private final GoalEventRepository goalEventRepository;
+    private final PlayerRepository playerRepository;
+
+    private final Map<Long, String> clubNames = new HashMap<>();
 
     public LeagueMilestonesDTO buildLeagueMilestones(Competition league, int seasonYear) {
         List<Match> playedMatches = matchRepository
@@ -84,7 +89,7 @@ public class LeagueMilestoneService {
             String key = playerId > 0 ? "id:" + playerId : "name:" + safe(playerName);
             LeaderAccumulator accumulator = counts.computeIfAbsent(key, ignored -> new LeaderAccumulator());
             accumulator.playerName = safe(playerName);
-            accumulator.teamName = resolveTeamName(goal);
+            accumulator.teamName = resolveTeamName(playerId);
             accumulator.value += 1;
         }
 
@@ -249,8 +254,35 @@ public class LeagueMilestoneService {
         return candidate;
     }
 
-    private String resolveTeamName(GoalEvent goal) {
-        return goal.teamSide() != null ? goal.teamSide() : "No Team";
+    /**
+     * The club a milestone leader plays for.
+     *
+     * <p>This used to return {@code goal.teamSide()}, which is the string {@code "HOME"} or {@code "AWAY"},
+     * so the club milestones' top scorer was credited to a side of the pitch rather than to a club. The
+     * team the player belongs to is the answer; the side they happened to be playing on is not.
+     */
+    private String resolveTeamName(long playerId) {
+        return clubNameOf(playerId);
+    }
+
+    /**
+     * The club name for one player, memoised.
+     *
+     * <p>Deliberately not {@code playerRepository.findAll()}: a milestone leader is a handful of players,
+     * and the world holds every player of every club in every country. Loading them all to answer that
+     * question is the same mistake as the one this method was written to fix.
+     */
+    private String clubNameOf(long playerId) {
+        String cached = clubNames.get(playerId);
+        if (cached != null) {
+            return cached;
+        }
+        String name = playerRepository.findById(playerId)
+                .map(Player::getTeam)
+                .map(Team::getName)
+                .orElse("Unknown club");
+        clubNames.put(playerId, name);
+        return name;
     }
 
     private double resolveReputation(Team team) {

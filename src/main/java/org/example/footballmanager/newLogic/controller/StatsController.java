@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.dto.TopAssistDTO;
 import org.example.footballmanager.newLogic.dto.TopScorerDTO;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionEntry;
+import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.model.event.GoalEvent;
@@ -38,6 +39,7 @@ public class StatsController {
     private final CompetitionEntryRepository competitionEntryRepository;
     private final GoalEventRepository goalEventRepository;
     private final TeamRepository teamRepository;
+    private final PlayerRepository playerRepository;
     private final SeasonService seasonService;
     private final LeagueMilestoneService leagueMilestoneService;
 
@@ -47,6 +49,7 @@ public class StatsController {
                            CompetitionEntryRepository competitionEntryRepository,
                            GoalEventRepository goalEventRepository,
                            TeamRepository teamRepository,
+                           PlayerRepository playerRepository,
                            SeasonService seasonService,
                            LeagueMilestoneService leagueMilestoneService) {
         this.competitionRepository = competitionRepository;
@@ -54,6 +57,7 @@ public class StatsController {
         this.competitionEntryRepository = competitionEntryRepository;
         this.goalEventRepository = goalEventRepository;
         this.teamRepository = teamRepository;
+        this.playerRepository = playerRepository;
         this.seasonService = seasonService;
         this.leagueMilestoneService = leagueMilestoneService;
     }
@@ -92,25 +96,33 @@ public class StatsController {
 
         List<GoalEvent> seasonGoals = goalEventRepository
                 .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(leagueId, activeSeasonYear).stream()
-                .filter(g -> g.scorerName() != null
-                        && teamIds.contains(g.scorerId()))
+                .filter(g -> g.scorerName() != null)
                 .toList();
 
-        Map<String, Integer> goalsByName = new HashMap<>();
-        Map<Long, Integer> goalsById = new HashMap<>();
+        // **A scorer is a player; teamIds are clubs.** This used to read
+        // `teamIds.contains(g.scorerId())`, which compares two unrelated id spaces and so can never
+        // legitimately match - the league top scorers were empty for ever even with the goals fetched
+        // correctly. Player 2409 belongs to team 1, and no team 2409 exists.
+        //
+        // Players are resolved once, in one read, rather than a query per goal.
+        Map<Long, Player> scorers = playersById(seasonGoals.stream().map(GoalEvent::scorerId).toList());
+
+        Map<Long, Integer> goalsByPlayer = new HashMap<>();
         for (GoalEvent g : seasonGoals) {
-            goalsByName.merge(g.scorerName(), 1, Integer::sum);
-            goalsById.merge(g.scorerId(), 1, Integer::sum);
+            Player scorer = scorers.get(g.scorerId());
+            if (playsFor(scorer, teamIds)) {
+                goalsByPlayer.merge(g.scorerId(), 1, Integer::sum);
+            }
         }
 
-        List<TopScorerDTO> result = goalsByName.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        List<TopScorerDTO> result = goalsByPlayer.entrySet().stream()
+                .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed())
                 .limit(10)
                 .map(e -> new TopScorerDTO(
-                        e.getKey(),
+                        scorers.get(e.getKey()).getName(),
                         e.getValue(),
-                        "Team"
-                ))
+                        // The real club, not the literal "Team" this used to send on every row.
+                        scorers.get(e.getKey()).getTeam().getName()))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
@@ -132,28 +144,46 @@ public class StatsController {
 
         List<GoalEvent> assistGoals = goalEventRepository
                 .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(leagueId, activeSeasonYear).stream()
-                .filter(g -> g.assistantName() != null
-                        && g.assistantId() != null
-                        && teamIds.contains(g.assistantId()))
+                .filter(g -> g.assistantName() != null && g.assistantId() != null)
                 .toList();
 
-        Map<String, Integer> assistsByName = new HashMap<>();
-        Map<Long, Integer> assistsById = new HashMap<>();
+        // Same player-id-versus-team-id mistake as the scorers above, and the same correction.
+        Map<Long, Player> assistants = playersById(assistGoals.stream().map(GoalEvent::assistantId).toList());
+
+        Map<Long, Integer> assistsByPlayer = new HashMap<>();
         for (GoalEvent g : assistGoals) {
-            assistsByName.merge(g.assistantName(), 1, Integer::sum);
-            assistsById.merge(g.assistantId(), 1, Integer::sum);
+            if (playsFor(assistants.get(g.assistantId()), teamIds)) {
+                assistsByPlayer.merge(g.assistantId(), 1, Integer::sum);
+            }
         }
 
-        List<TopAssistDTO> result = assistsByName.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        List<TopAssistDTO> result = assistsByPlayer.entrySet().stream()
+                .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed())
                 .limit(10)
                 .map(e -> new TopAssistDTO(
-                        e.getKey(),
+                        assistants.get(e.getKey()).getName(),
                         e.getValue(),
-                        "Team"
-                ))
+                        assistants.get(e.getKey()).getTeam().getName()))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
+    }
+
+    /** One bulk read of the players behind a set of goals, instead of a query per goal. */
+    private Map<Long, Player> playersById(List<Long> playerIds) {
+        List<Long> wanted = playerIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (wanted.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Player> byId = new HashMap<>();
+        for (Player player : playerRepository.findAllById(wanted)) {
+            byId.put(player.getId(), player);
+        }
+        return byId;
+    }
+
+    /** Does this player count for this league's tables? A goal by a foreigner does not. */
+    private boolean playsFor(Player player, List<Long> teamIds) {
+        return player != null && player.getTeam() != null && teamIds.contains(player.getTeam().getId());
     }
 }
