@@ -119,9 +119,21 @@ export function createMatchView(deps) {
                 </div>
             </div>`;
 
+            // The bottom Back button was never wired to anything.
+            //
+            // There are two of them: the top one carries an inline onclick and works, and this one was
+            // given a dataset and a display style and then nothing else - no listener, no onclick. So
+            // clicking it did exactly nothing, silently, with no console error, which is why it read as
+            // "the button is not there" rather than as a bug. It was reported as a cup problem and it
+            // was not one: this button has been dead on every match view.
+            //
+            // The listener is attached here, at render, rather than through the inline attribute so the
+            // two buttons cannot drift apart again - the top one had the target baked into its markup
+            // and this one did not, which is exactly the shape that produced the bug.
             const backButton = document.getElementById('back-button');
             backButton.dataset.target = backTarget;
             backButton.style.display = 'inline-block';
+            backButton.addEventListener('click', () => goBackSmart(backTarget));
 
             const infoDiv = document.getElementById("match-info");
             let cachedMatchPreview = null;
