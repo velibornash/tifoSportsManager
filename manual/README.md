@@ -62,3 +62,64 @@ cp src/main/resources/static/js/<file>.js target/classes/static/js/<file>.js
 The browser also caches these aggressively. `agent-browser close --all` before a capture run is the
 cheapest way to guarantee a clean cache — a stale cached bundle will make a fix look like it did not
 work.
+
+---
+
+## Notes for the next iteration
+
+Recorded 2026-10-01, after the first pass. **Owner instructions — these are the requested changes,
+not findings.**
+
+1. **Screenshot the first squad separately, so the players are visible.** On the club page the squad
+   sits in the *lower* part of the page, and a plain viewport screenshot only catches the top.
+2. **Every numbered section must start on a new page.**
+3. **An image must not break across two pages.**
+4. **Screenshot the top scorers once they are populated.**
+
+### What was learned doing them, so the next pass does not rediscover it
+
+**1 — the squad shot is already solved and sitting in temp.** It needs scroll-then-crop, not an
+element screenshot, the same way the visual movement editor did. The working crop is:
+
+```
+agent-browser eval  // find the section holding >0 .league-player-card, scroll it to ~70px from top
+                   // window.scrollBy(0, r.top-70); record getBoundingClientRect()
+agent-browser screenshot _squad-vp.png      # viewport, then crop in PIL to that rect
+```
+
+Saved as `desktop-jpg/05b-first-team-squad.jpg` (1196×712) and not yet copied into `manual/img/`.
+It shows all 13 players with name, position, age, ability, potential, condition, morale and the
+apps/goals/assists columns.
+
+**Trap:** the First Team page renders **empty on a first load** — "0 Players", "No registered
+players found". The API returns all 13 and a re-render is correct. It is stale first-load state, not
+a data problem, so **reload before capturing** or the shot will show an empty squad. Worth checking
+whether a real user can hit that empty first paint, because it looks like a broken page.
+
+**2 and 3 — the CSS changes needed.** In `build_manual.py`:
+
+- `h2 { break-before: page; }` for the numbered sections.
+- `figure { break-inside: avoid; }` plus an image height cap, because a figure taller than the page
+  content height *will* split no matter what `break-inside` says. The visual movement editor shot
+  is 780×1262 and is the one that forces this — either cap it and let it scale down, or give tall
+  figures their own page.
+- Note: `loading="lazy"` had to be removed from the `<img>` tags for the same underlying reason —
+  Chrome's `--print-to-pdf` does not reliably trigger lazy loading, so images can be missing from
+  the PDF while looking fine in a browser.
+
+**4 — top scorers cannot be filled by simulating more matches.** This is the one to read before
+planning. The endpoint does not read player statistics; it reads a `goal_event` table:
+
+```
+StatsController:93  goalEventRepository
+                    .findByMatchCompetitionIdAndMatchSeasonYearAndScoredTrue(...)
+```
+
+and **`goal_event` has 0 rows** — as do all 23 `*_event` tables. The goals themselves are not lost:
+the `match` rows carry **412 goals across 142 matches**, and `match_player_stats` has 3,410 rows
+with 306 players on non-zero goals. So the top-scorer and top-assist pages read an empty table while
+the data sits elsewhere. Filling item 4 is therefore blocked on a backend decision about where goals
+should be read from, **not** on generating more fixtures. Flagged, not actioned.
+
+For reference, `POST /simulation/current-round/simulate-all` does work and played 5 fixtures, but
+that changed the league table the manual already photographed — so re-shooting after it is expected.
