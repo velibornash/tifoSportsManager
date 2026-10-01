@@ -224,6 +224,63 @@ Clicking the row opens **Match Details · OFK Omladinac 3 - 4 OFK Mladost Niš**
 **No test on the row order or on `wasHome`.** The endpoint is verified live and in the browser, but neither
 rule is protected against a regression. Worth adding before anyone changes the query.
 
+## `629a0f5` — Club Milestones were answering a league question
+
+**Task:** owner, from the app: *"na Club - First team, Club milestones top scorers i assists moraju da budu iz
+tima usera a ne lige!"* — plus, in the same report, goals and assists shown as the app's own icons rather
+than as the words "goals" and "assists", and a question about a flat line under the Top Scorers / Top
+Assists titles.
+
+### The bug
+
+`buildTeamMilestones` read **every goal in the season, in every competition, by every club in the world** —
+it called `findByMatchSeasonYearAndScoredTrue(seasonYear)`, which is the *league* query with no team filter
+at all. So OFK Omladinac's Club Milestones named **TSK Surdulica's** top scorer.
+
+The giveaway was in the method itself: the `playedMatches` list directly above it *was* filtered to the club,
+which is why **biggest loss and attendance were right and only the two leaders were not**. A page that is
+half right is harder to spot than one that is wholly wrong.
+
+Both leaders are now filtered to players of that club. The club's players are read **once per call**, not
+once per goal — the same discipline as the club-name lookup beside it, which had already been written to
+avoid loading every player in the world.
+
+**The league path is untouched and still league-wide**, which is correct. Verified: league 1's top scorer is
+Goy Negovanović (3, TSK Surdulica), matching the league top scorers list exactly, and the biggest win and
+loss are each other's mirror (Vranje Sport 4-0 Mlava).
+
+### Two things that nearly shipped broken
+
+**`buildMilestoneBoardHtml` exists in two files.** The club page imports the copy in `views/utils.js`;
+`pages-renderers.js` carries its own. The first attempt edited the copy that nothing calls, and the page did
+not change. **`node --check` passed both times** — both copies are valid syntax. Only loading the page in a
+browser caught it.
+
+**Not consolidated here.** Two live copies of one renderer is a standing hazard and the right fix is to
+delete one, but which one is a decision rather than a cleanup, so it is left open rather than done silently.
+
+**The card escapes its meta argument wholesale** — correct, and it would have rendered the new `<span>`
+icons as visible tags. The meta is now passed as `{ club, icons }`: the club escaped, the icons markup the
+file built itself. Never caller markup in `meta`.
+
+### Verification
+
+Browser, Club → First team:
+
+```
+Top scorer   OFK Omladinac · ⚽     Borislav Negovanović
+Top assist   OFK Omladinac · 🅰️     Ivica Tomić
+```
+
+League page column headers are now `⚽` and `🅰️`.
+
+### Not done, deliberately
+
+**The flat line under the titles.** Measured rather than guessed at: it is the table's own `thead th` border
+(`1px rgba(255,255,255,0.08)`), and the titles are already left-aligned at every width — `text-align: start`,
+no pseudo-element, `justify-content: space-between` on a flex head with a single child. So it is the header
+rule of the table, not part of the heading. Left alone until the owner says which they want.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
