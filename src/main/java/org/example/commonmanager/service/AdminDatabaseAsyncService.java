@@ -30,6 +30,7 @@ public class AdminDatabaseAsyncService {
     private final org.example.footballmanager.newLogic.util.SimulatedWorldSeeder simulatedWorldSeeder;
     private final org.example.footballmanager.newLogic.repository.CompetitionRepository competitionRepository;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teamRepository;
+    private final org.example.footballmanager.newLogic.service.ClubRatingService clubRatingService;
 
     private final AtomicLong jobSequence = new AtomicLong(0L);
     private final AtomicReference<AdminDatabaseSnapshot> currentSnapshot = new AtomicReference<>(
@@ -125,8 +126,12 @@ public class AdminDatabaseAsyncService {
                 bbDataInitializer.initBasketballData();
                 afDataInitializer.initAmericanFootballData();
                 verifyFootballWorldWasBuilt();
+                seedClubRatings();
             }
-            case "seed-other-nations" -> seedOtherNations();
+            case "seed-other-nations" -> {
+                seedOtherNations();
+                seedClubRatings();
+            }
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
     }
@@ -175,6 +180,31 @@ public class AdminDatabaseAsyncService {
     private void seedOtherNations() {
         int seasonYear = databaseInitializer.currentSeasonYear();
         simulatedWorldSeeder.seedAllSimulated(seasonYear);
+    }
+
+    /**
+     * Gives every club a starting Elo rating, from its own division's tier.
+     *
+     * <p>Called after both world-building buttons, because a club with no rating is a club the ranking
+     * tables cannot sort and the cup qualification cannot weigh. Tier 1 starts at 1500 and each tier
+     * below is 100 lower, so a freshly built world comes up with a ladder rather than a row of zeroes.
+     *
+     * <p>A replay rather than an increment, so this is a plain call rather than a backfill that has to
+     * be careful about which rows it touches — and it is also what re-seeds a world whose ratings have
+     * gone stale. Runs here rather than on boot because boot no longer writes anything.
+     *
+     * <p>Best-effort, unlike the rest of the job: a club rating is one column, and failing the whole
+     * Initialise over it would undo a pyramid that is already built.
+     */
+    private void seedClubRatings() {
+        try {
+            var rated = clubRatingService.recomputeDurably();
+            log.info("Club Elo seeded: {} club(s) rated from their tier, {} off their seed "
+                            + "(range {}–{}).",
+                    rated.clubsRated(), rated.clubsMoved(), rated.highest(), rated.lowest());
+        } catch (RuntimeException e) {
+            log.warn("Could not seed club Elo ratings: {}", e.getMessage());
+        }
     }
 
     private int stepsFor(String action) {

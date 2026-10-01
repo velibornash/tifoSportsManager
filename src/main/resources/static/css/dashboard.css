@@ -1468,16 +1468,22 @@ button.training-week-item {
      * never moves. Verified: at scroll 700 with `position: sticky` the button measured top: -587, and
      * the same button with `position: fixed` measured top: 0.
      *
-     * Scoped to the world page rather than to `.fm-page-toolbar` generally, because a fixed bar on
-     * every page in the game is a change nobody asked for and would need its own review.
+     * Scoped to the world page rather than to the shared header, because a fixed bar on every page in
+     * the game is a change nobody asked for and would need its own review.
+     *
+     * It follows the header element, not the toolbar class: the World page's header was rebuilt to
+     * look like the Country tab (title left, Back hard right), which replaced `.fm-page-toolbar` with
+     * `.fm-country-header`. Retargeting rather than deleting is the whole point — leaving the old
+     * selector in place would have kept this rule alive against nothing and quietly reintroduced the
+     * off-screen button the owner reported.
      */
-    .fm-page--world .fm-page-toolbar {
+    .fm-page--world .fm-country-header {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         z-index: 30;
-        padding: 10px 14px;
+        border-radius: 0;
         /* Solid, not a gradient fading to transparent. The fading version let the page title and the
            competition hint scroll up *through* the bar and collide with the button text, which looked
            worse than the bar it replaced. The colour is the page's own body background, taken from the
@@ -1488,18 +1494,20 @@ button.training-week-item {
     }
 
     /* The bar itself must not eat taps meant for the content behind it; the button must still work. */
-    .fm-page--world .fm-page-toolbar > * {
+    .fm-page--world .fm-country-header > * {
         pointer-events: auto;
     }
 
-    .fm-page--world .fm-page-toolbar .back-to-dashboard {
-        flex: 0 0 auto;
-    }
-
     /* Room for the fixed bar, so the title underneath is not hidden by it and the first panel does
-       not start underneath the button. */
+       not start underneath the button.
+       240px, and it is deliberately generous rather than tight. The header grew from a one-line toolbar
+       to a card carrying a title, the Back button and a wrapping row of five facts; at 390px those facts
+       wrap to two rows, which puts the header at roughly 210-220px. The two errors are not symmetric:
+       too much padding is whitespace at the top of a scrolling page, and too little hides the first
+       panel behind the bar. **This is the one number on the World page that was reasoned about rather
+       than measured — check it at 390x844 and correct it if it is wrong.** */
     .fm-page--world {
-        padding-top: 78px;
+        padding-top: 240px;
     }
 }
 

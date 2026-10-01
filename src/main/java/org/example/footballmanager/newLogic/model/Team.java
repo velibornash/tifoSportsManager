@@ -38,8 +38,58 @@ public class Team {
     @JsonBackReference
     private Stadium stadium;
     private Double budget;
+
+    /**
+     * The club's standing on the economy's 0-100 scale — attendance, wages, sponsor money, transfer
+     * pulling. <b>Not an Elo number</b>, and it must never be made into one.
+     *
+     * <p>Eight services read this column and four of them clamp it to 0-100. A country's rating lives
+     * in a column also called {@code reputation} on a 1500 scale, and that collision has already cost
+     * once: {@code NationalRatingService} overwrote Serbia's economy figure with 1500, and it took a
+     * session to notice. The Elo gets its own columns below for the same reason.
+     */
     private Double reputation;
     private Integer juniorCoachSkill;
+
+    /**
+     * The club's Elo rating (owner, 2026-10-01).
+     *
+     * <p>Every match counts — league, cup and international club cup alike — and a tier or a knockout
+     * weighs more than an ordinary league game, which is
+     * {@link org.example.footballmanager.newLogic.service.RatingEngine}'s arithmetic rather than
+     * anything decided here.
+     *
+     * <p>Seeded from the club's own division: tier 1 starts at 1500 and each tier below is 100 lower.
+     * A world of unrated clubs would otherwise start every ranking level, and the ladder is the whole
+     * point of having tiers.
+     *
+     * <p><b>Nullable means never rated.</b> A club that has just been activated has no history, and
+     * that is different from a club rated at exactly its seed.
+     */
+    @Column(name = "elo_rating")
+    private Double eloRating;
+
+    /**
+     * The rating this club held immediately before its most recent rated match.
+     *
+     * <p>Kept beside the current value rather than recomputed on the page, because it is what makes
+     * "+3" or "-11" a fact about the world rather than a difference between two requests.
+     *
+     * <p>A club that has not played carries its own seed here, so the delta below reads zero and the
+     * page can say "no change" without also having to say "never measured". Null means the replay has
+     * never run — which on a settled world is only true before the first one does.
+     */
+    @Column(name = "elo_previous_rating")
+    private Double eloPreviousRating;
+
+    /**
+     * Movement since the previous value: {@code eloRating - eloPreviousRating}.
+     *
+     * <p>Zero for a club that has not played, positive for one whose last result beat an expectation,
+     * negative for one whose did not. Null only before the first replay.
+     */
+    @Column(name = "elo_delta")
+    private Double eloDelta;
 
     /**
      * Whether this club runs a junior school (Sprint 5.3a, owner 2026-09-27).

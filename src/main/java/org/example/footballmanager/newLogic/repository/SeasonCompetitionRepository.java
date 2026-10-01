@@ -14,6 +14,15 @@ public interface SeasonCompetitionRepository extends JpaRepository<SeasonCompeti
     Optional<SeasonCompetition> findByCompetitionAndSeasonYear(Competition league, Integer seasonYear);
     List<SeasonCompetition> findBySeasonYear(Integer seasonYear);
 
+    /**
+     * The season's row for many competitions at once.
+     *
+     * <p>One query where {@code findByCompetitionAndSeasonYear} is one per competition. Tier 5 has
+     * sixteen divisions in each of forty-eight countries, so the World page was asking 768 times for
+     * the same answer before the three cups of that tier multiplied it by three.
+     */
+    List<SeasonCompetition> findByCompetitionInAndSeasonYear(List<Competition> competitions, Integer seasonYear);
+
     /** The season competitions of one competition, newest season first. */
     List<SeasonCompetition> findByCompetitionOrderBySeasonYearDesc(Competition competition);
 

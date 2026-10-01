@@ -45,6 +45,28 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     long countByCompetition(Competition league);
 
+    /**
+     * Every club that plays in a league division, with its division fetched.
+     *
+     * <p>For the Elo replay, which needs two things per club and must not ask the database for either
+     * of them fifteen thousand times.
+     *
+     * <p><b>Membership is the division, not the type flag.</b> A national side is
+     * {@code type = NATIONAL_TEAM} and has <em>no competition at all</em> — see
+     * {@code NationalTeamSeeder}, "no club, no competition, no budget". So a club is anything whose
+     * division is a league, and the join below rules out every national side for free. Relying on
+     * {@code type} instead would quietly drop clubs: {@code PyramidBuilder} creates every club in the
+     * world and <b>never sets {@code type}</b>, so fifteen thousand of them are null.
+     *
+     * <p>The fetch join is not decoration either. {@code Team.competition} is LAZY, so a plain
+     * {@code findAll()} plus a {@code getTier()} call is one extra query per distinct division — about
+     * 1,500 of them, every time the replay runs.
+     */
+    @Query("SELECT t FROM Team t LEFT JOIN FETCH t.competition c "
+            + "WHERE c.type = org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE "
+            + "ORDER BY t.id ASC")
+    List<Team> findAllClubsWithDivision();
+
     List<Team> findAllByTypeOrderByIdAsc(CompetitionTeamType type);
 
     List<Team> findByCompetitionId(Long competitionId);

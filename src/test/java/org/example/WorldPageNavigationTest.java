@@ -112,9 +112,17 @@ class WorldPageNavigationTest {
         // scroll 700: sticky gave top: -587, fixed gave top: 0.
         assertTrue(css.contains("position: fixed"),
                 "nothing on the world page is fixed, so the only exit scrolls out of reach");
-        assertTrue(css.contains(".fm-page--world .fm-page-toolbar"),
+        // Retargeted 2026-10-01, and the reason matters. The World page's header was rebuilt to match
+        // the Country tab — title left, Back hard right — which replaced `.fm-page-toolbar` with
+        // `.fm-country-header`. This assertion was on the old class name and failed, which is the whole
+        // point of it: a dead selector on a dead element is how the off-screen button came back once.
+        //
+        // It must therefore name the header the page now uses, and still assert the scoping, because
+        // scoping is the part that protects every other page in the game.
+        assertTrue(css.contains(".fm-page--world .fm-country-header"),
                 "the fixed bar must be scoped to the world page. A fixed bar on every page in the game "
-                        + "is a change nobody asked for");
+                        + "is a change nobody asked for, and this selector no longer matches anything "
+                        + "the world page renders");
         assertTrue(css.contains("max-height"),
                 "the 48-row list is not capped, so the page is 3,000px tall and the exit is a scroll "
                         + "away even when it is fixed");
@@ -122,5 +130,11 @@ class WorldPageNavigationTest {
         // The bar must not eat taps meant for the page behind it.
         assertTrue(css.contains("pointer-events: none"),
                 "a fixed bar across the top of the page will swallow taps on whatever is under it");
+
+        // And the markup has to use that header, or the rule above styles nothing at all.
+        assertTrue(read(PAGES_JS).contains("fm-page--world"),
+                "the world page is not tagged fm-page--world, so no world-scoped rule can reach it");
+        assertTrue(read(PAGES_JS).contains("fm-country-header-back"),
+                "the world page's header has no back button, so the exit this whole test defends is gone");
     }
 }

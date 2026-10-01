@@ -34,4 +34,14 @@ public interface CompetitionEntryRepository extends JpaRepository<CompetitionEnt
 
     // Svi timovi u određenoj sezoni (nebitno koja liga)
     List<CompetitionEntry> findBySeasonCompetition(SeasonCompetition sc);
+
+    /**
+     * Every table row for many seasons' competitions at once.
+     *
+     * <p>The bulk form of {@link #findBySeasonCompetition}, for the same reason: the World page read
+     * one division's table per query and a tier of the world has sixteen divisions in each of
+     * forty-eight countries. {@code team} is EAGER on the entity and is joined anyway, because the
+     * caller ranks by a club's reputation and that is the point of the read.
+     */
+    List<CompetitionEntry> findBySeasonCompetitionIn(List<SeasonCompetition> seasonCompetitions);
 }

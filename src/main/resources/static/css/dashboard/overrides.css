@@ -1109,8 +1109,11 @@
 /* Title left, Back hard right on the same row, facts on one line underneath.
    Previously Back sat in its own first column, which pushed the flag and title sideways and
    left the header reading as two unrelated blocks. */
-.fm-page--country .fm-country-header,
-.fm-page--national-team .fm-country-header {
+/* Scoped to the class, not to the pages that use it. This header is now shared by three pages —
+   Country, National Team and World — and the owner asked for the World page to look like the
+   Country tab, which is only true if they are the same component rather than two copies. The
+   page-specific rules below stay scoped: a season grid is not part of this header. */
+.fm-country-header {
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
@@ -1121,23 +1124,20 @@
     border: 1px solid rgba(120, 150, 210, 0.22);
 }
 
-.fm-page--country .fm-country-header-back,
-.fm-page--national-team .fm-country-header-back {
+.fm-country-header-back {
     grid-column: 2;
     grid-row: 1;
     justify-self: end;
 }
 
-.fm-page--country .fm-country-header-main,
-.fm-page--national-team .fm-country-header-main {
+.fm-country-header-main {
     display: flex;
     align-items: center;
     gap: 16px;
     min-width: 0;
 }
 
-.fm-page--country .fm-country-header-title,
-.fm-page--national-team .fm-country-header-title {
+.fm-country-header-title {
     margin: 2px 0 0;
     font-size: 30px;
     line-height: 1.15;
@@ -1146,8 +1146,7 @@
 
 /* Facts as a definition list running along the header. Compact, one line, and
    they wrap instead of stretching to fill whatever height the title needs. */
-.fm-page--country .fm-country-facts,
-.fm-page--national-team .fm-country-facts {
+.fm-country-facts {
     /* Spans under both columns. The facts stay on ONE line and each label/value pair stays on one
        line: as a bare <dl> the browser put every dt and dd on its own row, which read as a column
        of ten loose words. */
@@ -1161,8 +1160,7 @@
     border-top: 1px solid rgba(120, 150, 210, 0.16);
 }
 
-.fm-page--country .fm-country-fact,
-.fm-page--national-team .fm-country-fact {
+.fm-country-fact {
     display: inline-flex;
     flex-direction: row;
     align-items: baseline;
@@ -1172,16 +1170,14 @@
     white-space: nowrap;
 }
 
-.fm-page--country .fm-country-fact dt,
-.fm-page--national-team .fm-country-fact dt {
+.fm-country-fact dt {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--fm-subtle, #93a1bd);
 }
 
-.fm-page--country .fm-country-fact dd,
-.fm-page--national-team .fm-country-fact dd {
+.fm-country-fact dd {
     margin: 0;
     font-size: 15px;
     font-weight: 700;
@@ -1478,17 +1474,14 @@
 }
 
 @media (max-width: 780px) {
-    .fm-page--country .fm-country-header,
-    .fm-page--national-team .fm-country-header {
+    .fm-country-header {
         grid-template-columns: 1fr;
         padding: 16px;
     }
 
-    .fm-page--country .fm-country-facts,
-    .fm-page--national-team .fm-country-facts { grid-column: 1; }
+    .fm-country-facts { grid-column: 1; }
 
-    .fm-page--country .fm-country-header-title,
-    .fm-page--national-team .fm-country-header-title { font-size: 24px; }
+    .fm-country-header-title { font-size: 24px; }
 
     .fm-page--country .fm-season-grid,
     .fm-page--country .fm-week-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }

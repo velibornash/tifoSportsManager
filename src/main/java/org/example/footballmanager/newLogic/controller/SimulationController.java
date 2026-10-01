@@ -45,6 +45,7 @@ public class SimulationController {
     private final TrainingProgressionService trainingProgressionService;
     private final AsyncSimulationRunner asyncSimulationRunner;
     private final SimMatchService simMatchService;
+    private final ClubRatingService clubRatingService;
 
     @Transactional
     @PostMapping("/current-round/prepare")
@@ -316,7 +317,27 @@ public class SimulationController {
                 // The snapshots go with it, so the zone load can be read off the match that was played.
                 ? simMatchService.persist(fixture, sim.outcome(), replayId, sim.snapshots())
                 : simMatchService.persist(fixture, null, replayId, sim.snapshots());
+        rateClubsAfterAMatch(matchId);
         return matchId;
+    }
+
+    /**
+     * Rates the clubs after a single match, which is this path's batch of one.
+     *
+     * <p>A manager watching their own match should see their club's new rating and its +/- without
+     * waiting for the next matchday or a restart, and this is the only place one match is played
+     * outside the background runner. A replay rather than an increment, so it is harmless if something
+     * else already moved the column; own transaction, so a failure here cannot cost the match that was
+     * just saved.
+     */
+    private void rateClubsAfterAMatch(Long matchId) {
+        try {
+            ClubRatingService.Result rated = clubRatingService.recomputeDurably();
+            log.info("Club Elo after match {}: {} match(es) replayed, {} club(s) rated, {} off their seed.",
+                    matchId, rated.matchesReplayed(), rated.clubsRated(), rated.clubsMoved());
+        } catch (RuntimeException e) {
+            log.warn("Could not recompute club Elo after match {}: {}", matchId, e.getMessage());
+        }
     }
 
     private PreparedMatchContext resolvePreparedMatch(@AuthenticationPrincipal User user) {

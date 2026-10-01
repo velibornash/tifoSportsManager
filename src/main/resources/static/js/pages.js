@@ -787,13 +787,22 @@ import {
 
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--world">
-                    <div class="fm-page-toolbar">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back to dashboard</button>
-                        <div class="fm-page-title-block">
-                            <div class="fm-eyebrow">World</div>
-                            <h2>Every country in the game</h2>
+                    <header class="fm-country-header">
+                        <div class="fm-country-header-main">
+                            <div>
+                                <div class="fm-eyebrow">World</div>
+                                <h2 class="fm-country-header-title">Every country in the game</h2>
+                            </div>
                         </div>
-                    </div>
+                        <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
+                        <dl class="fm-country-facts">
+                            <div class="fm-country-fact"><dt>Countries</dt><dd>${world.totalCountries}</dd></div>
+                            <div class="fm-country-fact"><dt>Active</dt><dd>${world.activeCountries}</dd></div>
+                            <div class="fm-country-fact"><dt>Registered</dt><dd>${world.registeredPlayers ?? '-'}</dd></div>
+                            <div class="fm-country-fact"><dt>Online now</dt><dd>${world.onlinePlayers ?? '-'}</dd></div>
+                            <div class="fm-country-fact"><dt>Starting rating</dt><dd>${world.startRating}</dd></div>
+                        </dl>
+                    </header>
 
                     ${!world.complete ? `<div class="fm-callout fm-callout--warn">
                         The world holds ${countries.length} of ${world.expectedCountries} countries.
@@ -803,18 +812,6 @@ import {
                     <section class="fm-panel">
                         <div class="fm-panel-head">
                             <h3>General</h3>
-                        </div>
-                        <div class="fm-stats">
-                            <div class="fm-stat"><span class="fm-stat-label">Countries</span>
-                                <span class="fm-stat-value">${world.totalCountries}</span></div>
-                            <div class="fm-stat"><span class="fm-stat-label">Active</span>
-                                <span class="fm-stat-value">${world.activeCountries}</span></div>
-                            <div class="fm-stat"><span class="fm-stat-label">Registered players</span>
-                                <span class="fm-stat-value">${world.registeredPlayers ?? '-'}</span></div>
-                            <div class="fm-stat"><span class="fm-stat-label">Online now</span>
-                                <span class="fm-stat-value">${world.onlinePlayers ?? '-'}</span></div>
-                            <div class="fm-stat"><span class="fm-stat-label">Starting rating</span>
-                                <span class="fm-stat-value">${world.startRating}</span></div>
                         </div>
                         <p class="fm-hint">Every country starts on ${world.startRating} and earns its rating
                             from results. This world is not a replica of the real one.

@@ -1,1059 +1,350 @@
 # AGENTS.md
 
-This file provides guidance to WARP (warp.dev) when working with code in this repository.
+Guidance for AI agents (and for Warp) working in this repository.
 
-## Agent Working Rules (na snazi svake sesije)
-
-> ### 🔴 ABSOLUTNE PROMENLJIVE — NIKADA NE MENJAJ OVE RULOVE
-> 1. **📢 TI UVIJEK ODGOVARAS NA ENGLESKOM. UVEK. NIJEDAN IZUZETAK.**
->    Korisnik pise na srpskom, ali svaki tvoj odgovor, svaka poruka, svaki
->    komentar u kodu — NA ENGLESKOM. Ako si napisao/la ista na srpskom van
->    koda, to je greska — prepravi odmah. Ovaj pravilo je vazno za sva
->    vremena i ne sme se prevideti ni u jednoj sesiji.
-
-1. **Jezici:** korisnik razgovara na srpskom; TI odgovaraš **na engleskom**
-   (korisnik ima 100% engleski, samo mu je lakše da piše srpski — nemoj
-   da se mučiš da prevodiš svoje odgovore na srpski).
-2. **Ponašaj se kao profesionalni senior fullstack developer:** piši čist,
-   jednostavan kod bez overengineering-a. Ako imaš bilo kakvu nedoumicu —
-   **pitaj korisnika umesto da se vrtiš u krug**. Taskovi su mali i jasni,
-   ne bi smeo da gubiš vreme kružeći kao junior. Ako nešto ne koristiš —
-   ne pravi to zasebnim helperom; slimming je po backlog-u, ne po ličnom
-   nagonu.
-3. **Testiranje:** testiraj kao profesionalni senior QA — kratko, jasno,
-   profesionalno. Nema zvrckanja, nema lažnih `[x]` checkbox-eva.
-4. **Feature thinking:** razmišljaj o feature-ima kao profesionalni Product
-   Owner + fudbalski trener/analitičar — šta je realno potrebno igri, ne šta
-   je tehnički zanimljivo.
-> 5. Piši kod po čistim SOLID i OOP principima — jedna odgovornost po klasi,
->    čitljivo, bez overengineering-a.
-> 6. Svi fajlovi koje koristiš ili menjaš su unutar `proposal` podfoldera. Ako
->    postoje dva fajla sa istim imenom (ili dva paketa koji liče) — **uvek koristi
->    onaj iz `proposal`**; drugi je legacy i ne dira se.
-
-
-## Project Summary
-
-TIFO Sports Manager is a multi-sport club management simulation game. The backend is a Spring Boot 3.3.3 REST API (Java 21) and the frontend is vanilla JS (ES6 modules) served as static files from the same Spring Boot app. PostgreSQL is the production database; H2 in-memory is used for tests. Main class: `org.example.footballmanager.SportsManagerApplication`.
-
-## Build & Run Commands
-
-```bash
-# Build (skip tests)
-mvn clean package -DskipTests
-
-# Run locally from a SHELL (dev profile, requires PostgreSQL on localhost:5432)
-# Use ./run-app.sh, NOT `mvn spring-boot:run` - see the browser rule below.
-./run-app.sh
-
-# Running main() from the IDE is fine and opens the browser normally.
-
-# Run all tests (uses H2 in-memory via test profile)
-mvn test
-
-# Run a single test class
-mvn test -Dtest=RealisticMatchEngineTest
-
-# Run a single test method
-mvn test -Dtest=RealisticMatchEngineTest#testSomeMethod
-
-# Build Docker image (uses image.dockerfile, not Dockerfile)
-docker build -f image.dockerfile -t tifo-manager .
-
-# Export match for web viewer (no Spring Boot needed)
-mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchSnapshotExporter -Dexec.args=42
-```
-
-> **Note:** The compiler is configured with `--enable-preview` for Java 21. If invoking `javac` directly outside Maven, include this flag.
-
-### Playwright UI Tests (TifoUITest)
-
-Before running UI tests for the first time, install Playwright browsers:
-```bash
-mvn exec:java -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install"
-```
-
-UI tests (`TifoUITest`) require a running application on `http://localhost:8080`. They are `setHeadless(false)` by default — set to `true` for CI. Run separately:
-```bash
-mvn test -Dtest=TifoUITest
-```
-
-## Environment & Configuration
-
-| Profile | Activated by | Database |
-|---------|-------------|----------|
-| `dev` (default) | `application.properties` sets `spring.profiles.active=dev` | PostgreSQL `localhost:5432/sokker_db`, user `postgres` |
-| `prod` | Deploy env vars | `SPRING_DATASOURCE_URL/USERNAME/PASSWORD` env vars |
-| `test` | `@ActiveProfiles("test")` in test classes | H2 in-memory (`jdbc:h2:mem:testdb`) |
-
-The JWT secret and expiration for tests are hardcoded in `src/test/resources/application-test.properties`.
-
-## 🔴 Standing rule: never start the app from a shell without `--app.open-browser=false`
-
-`BrowserLauncher` opens `http://localhost:8080/login.html` on every startup. That is correct when the
-owner runs `main()` from the IDE, and wrong for any shell start — the page pops up over the terminal,
-every time.
-
-**The application cannot tell the two cases apart.** An IDE start and a shell start are the same JVM
-with the same properties, so from inside the app they are indistinguishable. The default therefore
-cannot be right for both; it stays `true` for the IDE, and **every shell start must opt out.**
-
-- Shell start → **`./run-app.sh`**, never `mvn spring-boot:run` directly
-- `./run-app.sh --with-browser` if a browser is genuinely wanted for one run
-- Playwright is unaffected — it launches its own dedicated Chrome and never used this launcher
-
-Do not "fix" this by flipping the default off. It was briefly opt-in before, and the owner's IDE
-start silently did nothing with no explanation, which is the confusing case this launcher exists to
-avoid.
+> **Rewritten 2026-10-01.** The previous version of this file described a codebase that no longer
+> exists. It named `RealisticMatchEngine`, `SimulationService`, `RuntimeSaveToDB`,
+> `RoundSimulationAsyncService` and `ZoxReplayService` as the primary match path, documented a
+> `cleanSheet/` package, an `old/` package, a `newLogic/engine/` package and a Swing `demo/` grid
+> simulator, and listed test classes that are not in the repository. All of it has been deleted or
+> renamed. **If a claim here contradicts the code, the code is the bug — report it rather than working
+> around it.**
 
 ---
 
-## Backend Architecture
+## 📌 Where the state of this project actually lives
 
-**Base package:** `org.example.footballmanager`
+**Read these two files first. This one is orientation; they are the truth.**
 
-### Layer Overview
+| File | What it is |
+|---|---|
+| **[`kanban.md`](kanban.md)** | **The board.** What is open, what is done, what order, and the agreed specifications. Everything still open that was in the old `sprintBacklog.md` is here. |
+| **[`kanbanProgress.md`](kanbanProgress.md)** | **The append-only log.** One entry per task, newest first, each carrying the commit that landed it. This file holds no history; that one does. |
 
-```
-controller/   → REST controllers (one per domain, see routes below)
-service/      → Business logic
-engines/      → Match simulation engines
-model/        → JPA entities
-  model/event/    → MatchEvent hierarchy (Goal, Card, Injury, Sub, VAR, etc.)
-  model/tactics/  → Tactics/formation models
-repository/   → Spring Data JPA repositories
-config/       → SecurityConfig, JwtAuthenticationFilter, WebSocketConfig, AppConfig
-dto/          → Request/response DTOs
-  dto/junior/
-  dto/training/
-  dto/transfer/
-util/         → Stateless helpers
-  util/match/     → MatchRatingCalculator, MatchContext, MatchReplayService, MatchAnalyticsService
-  util/CPlayers/
-  util/teams/     → TeamStrengthCalculator
-  util/events/    → MatchEventMapper
-  util/websocket/
-zox/          → ZoxReplayService (serves tick chunks for realistic match viewer)
-cleanSheet/   → Legacy/alternative match engine (not the primary path)
-old/          → Legacy controllers/services/simulators (do not extend)
-exception/    → ApiExceptionHandler (global @ControllerAdvice)
-```
+> The board is currently referred to as `kanban.md` / `kanbanProgress.md`. If you are following a
+> document that calls them `backlog.md` / `backlogProgress.md`, they are the same pair.
 
-**`demo/` package** — standalone Swing football grid simulation (not part of the Spring app). Composition root is `TacticalGridDemo` (`main()`), which wires:
+**Do not treat the other root `*.md` files as current.** They are kept as history and several are
+actively misleading — `sprintBacklog.md` still claims five stub services were deleted (they exist) and
+still prints "Sprint 5 ◀ CURRENT" twice; `expertAudit.md` (2026-09-26) is superseded by
+`experAudit01102026.md`; the `PROPOSAL_*` calibration documents are three generations behind. The
+audit's own verdict is that the documentation is now the largest single liability, and its
+recommendation is to consolidate on the kanban pair.
 
-The detailed current architecture, rules, limitations and extension points are
-maintained in [DEMO_SIMULATION_PROGRESS.md](DEMO_SIMULATION_PROGRESS.md).
+---
 
-```
-TacticalGridDemo          → composition root (main, static test delegates)
-  ├── DemoScenario        → grid config, colors, teams, 22 player defs, ball start
-  ├── DemoPlayerFactory   → PlayerDef → Player objects (random skills 1–20 per role)
-  ├── DemoSimulationFactory → assembles SimulationEngine (+ TacticsRules)
-  ├── DemoScenarioValidator → validateGrid / validatePlayers
-  └── DemoUI              → all Swing rendering + interaction (speaks to engine API only)
-```
+## 🔴 Agent Working Rules (non-negotiable)
 
-Simulation core: `SimulationEngine` (orchestrator facade) → `SimulationState` (mutable state),
-`SimulationStepEngine` (decisions), `ActionEngine`/`Action` (PASS/CARRY/PASS/SHOT/CHASE lifecycle),
-`ExecutionQuality` (skill-based deviation for PASS/SHOT),
-`MovementEngine`/`BallMovementEngine` (geometry), `TacticalIntentEngine` + `TacticsRules`
-(DB-loaded tactical rules), `PlayerSelectionEngine` (closest/nearest selection).
+> 1. **You always answer in English. Always.** The user writes in Serbian; every reply, message and code
+>    comment is in English. Writing a reply in Serbian is a mistake — fix it immediately. This holds for
+>    every session and must not be forgotten.
+> 2. **Languages:** the user converses in Serbian; you answer in English. They have 100% English and find
+>    it easier to type Serbian — do not make them translate your answers.
+> 3. **Behave as a professional senior fullstack developer:** clean, simple code without overengineering.
+>    If you have any doubt, **ask the user rather than going in circles.** Tasks are small and clear; you
+>    should not lose time spinning like a junior. If you do not use something, do not build a separate
+>    helper for it — slimming is on the backlog, not a personal instinct.
+> 4. **Testing:** test like a professional senior QA — short, clear, professional. No fiddling, no fake
+>    `[x]` checkboxes.
+> 5. **Feature thinking:** think like a Product Owner *and* a football coach/analyst — what the game
+>    realistically needs, not what is technically interesting.
+> 6. Write code to clean SOLID and OOP principles — one responsibility per class, readable, no
+>    overengineering.
+> 7. If two files share a name (or two similar packages), **use the one the task names**; the other is
+>    legacy and is not to be touched.
 
-**Decision quality layer** (playmaking): `PlaymakingDecisionEngine` delegates to
-`VisionFilter` (PM vision tiers — which action types are visible) and
-`OptionSelector` (PM decision-accuracy table + weighted-random fallback).
-`DecisionContext` / `DecisionOption` / `DecisionType` are the immutable data
-model passed between them. See `DEMO_SIMULATION_PROGRESS.md` for full details.
+### The standing rules that matter most
 
-### Demo duel architecture
+**A green status is not evidence.** The recurring failure shape in this codebase is code that reports
+success while doing nothing. Four separate bugs had it in one session alone: a seeding job that caught
+its own failure and returned normally, a pyramid builder that gave up before the first league and still
+reported a clean rebuild, a Back button with a `dataset` and no listener, and an `escapeHtml` used in a
+`catch` and never imported. **Three of the four could only be found by opening the app, not by reading
+the code.**
 
-`DuelEngine` detects one deterministic active opponent contest using continuous
-coordinates and a configurable 0.5-cell radius. It supports `CHASE_BALL`,
-`DRIBBLE`, `RECEIVE_PASS`, and `SHOT`, and logs lifecycle events. `DuelResolver`
-is a side-effect-free resolution layer: it maps `PlayerSkills` fields
-(`pace`, `technique`, `striker`, `defender`, `keeper`) to the relevant skill,
-adds only `random(0..5)`, and returns `DuelResult` with winner, outcome, ball
-state, possession, and power values.
+**A job is not done until it has been seen to change data.** Not logged as done — observed in the
+database afterwards.
 
-`DuelResolutionCoordinator` is the boundary between detection/resolution and
-match consequences. It applies the shared duel calculation log and loser
-cooldown exactly once, while `SimulationEngine` remains responsible for the
-resulting possession, clearance, carry, pass, save, or shot consequence.
+**Never hand back a half-built world.** Every seeding path must end in a world that passes the integrity
+check. Two sessions were lost to this.
 
-`PlayerSkills` has 8 football-relevant fields (each 1–20):
-`pace`, `stamina`, `keeper`, `technique`, `playmaking`, `passing`, `striker`, `defender`.
-`DemoPlayerFactory` generates random skills per role via `PlayerSkills.randomForRole()`.
-`SimulationEngine` applies the result after execution: Chase/Carry/Receive can
-change the carrier, while a goalkeeper can save a good shot. Poor shot
-execution remains a miss and does not create a duel result. The resolver itself
-never mutates state; consequences are centralized in `ActionEngine`.
+**A test that cannot fail proves less than no test.** This is not theoretical here: a rating guard was
+written and commented as protection against needless writes, and comparing two boxed `Double`s with `==`
+meant it never worked. A test written to catch it passed anyway, because Hibernate statistics were off
+and it was comparing two zeroes. **When you write a guard test, break the code deliberately and watch it
+fail.** Three tests in this repository were green while measuring nothing before they were fixed.
 
-The demo action lifecycle has no artificial post-action hold, and PASS/SHOT
-completion is checked only after the ball reaches its exact animation target.
-Duel losers are blocked for 3 seconds;
-the goalkeeper is exempt when the goalkeeper wins a shot duel. All action and
-duel lifecycle/calculation messages are appended to the Action Log and mirrored
-to the App log.
+**Measure, don't assume.** `position: sticky` silently does nothing in this app's shell, and the obvious
+fix has to be measured at 390×844 rather than reasoned about. A 1-1 with 38-4 shots needs a real event
+dump before it can be diagnosed.
 
-Shots have three result families: GOAL, MISS, and SAVE. A save continues as a
-smooth field rebound or corner rebound. Corner rebounds travel through row 0,
-hold for 3 seconds, return to the exact top corner point (row 7, column 1 or 6),
-then the side-specific ML/MR taker holds for 2 seconds and passes into the box.
-The receiver is still subject to the normal RECEIVE_PASS duel flow. Coordinates
-printed in demo logs are formatted to two decimal places.
+**Verify against a live database, not the shape of the log.** The log said `healthy=true` in a boot that
+then rolled everything back.
 
-**Playmaking** is implemented as a decision-quality layer
-(`PlaymakingDecisionEngine`). PM determines (1) which action types a player
-*can see* via `VisionFilter` (vision tiers by PM bracket), and (2) the
-probability of selecting the highest-scoring visible option via
-`OptionSelector` (PM→accuracy table with linear interpolation, plus
-weighted-random fallback for character). PLAYMAKING ≠ PASSING: passing controls
-execution quality, playmaking controls decision quality. `PlayerSelectionEngine.selectBestCandidate()`
-and `ActionCandidate` remain INERT — next sprint introduces real positioning
-selection logic there.
+---
 
-### Mid-Action Movement (All Actions)
+## Project Summary
 
-During ANY action (PASS, SHOT, CARRY, CHASE), every `advance()` tick:
-1. `TacticalIntentEngine.refreshTargetsIfBallStateChanged()` — when ball crosses a new grid cell,
-   all non-carrier players (both teams) recalculate their tactical desired position from `TacticsRules`.
-2. `MovementEngine.moveAllTowardTargets()` — players move toward their recalculated targets.
+TIFO Sports Manager is a multi-sport club management simulation. The football game is a Spring Boot 3.3.3
+REST API (Java 21) with a vanilla-JS ES6-module frontend served from the same app. PostgreSQL in
+production, H2 in-memory under the `test` profile. Main class:
+`org.example.SportsManagerApplication`.
 
-This means players reposition dynamically during ball flight AND during carrier movement.
+**Scale, because most of the current work is a consequence of it:** 48 countries × 31 divisions × 10
+clubs ≈ **14,880 clubs**, 96 national sides, a promotion ladder per country, and three tiers of
+international club cups. That world grew roughly **48× in five days** and the code that schedules it was
+written for one country. See cluster A in `kanban.md`.
 
-**Design principle — three-phase action lifecycle:**
-1. **Decision** (once, at `step()`) — playmaking decision engine chooses PASS/CARRY/SHOT/CLEAR/THRU/CROSS/CENTER; does NOT change during action
-2. **Movement** (every `advance()` tick) — players reposition relative to ball; updates mid-action
-3. **Outcome** — result of the action (pass received/loose, shot goal/miss)
+---
 
-The decision is fixed for the action's duration. Movement reacts to ball trajectory.
-When the action completes (regardless of outcome), a new action starts with the same principles.
+## Build & Run
 
-### Execution Quality (PASS / SHOT)
-
-Every PASS and SHOT generates a temporary demo skill (`random.nextInt(20) + 1`, value 1–20).
-This skill determines how accurately the ball reaches its intended target:
-
-- **PASS**: `maxDeviation = (20 - skill) * 0.15` cells. Skill 1 → up to 2.85 cells off, skill 20 → perfect.
-  - If actual target is within 1.5 cells of receiver → **RECEIVED** (receiver gets ball)
-  - If further → **LOOSE BALL** (ball free, triggers automatic CHASE recovery)
-- **SHOT**: `maxDeviation = (20 - skill) * 0.12` cells. Goal at (7, 3.5).
-  - If actual target is within 1.0 cells of goal → **GOAL** (celebration)
-  - If further → **MISS — LOOSE BALL** (ball resets to center)
-
-`ExecutionQuality` class encapsulates all deviation logic. `Action` stores skill, intendedTarget,
-actualTarget, goodExecution for logging and result evaluation.
-
-### Ball States
-
-`Ball.BallState` — derived from carrier/target fields:
-- **IN_POSSESSION** — `carrier != null` (ball controlled by player)
-- **IN_TRANSITION** — `target != null, carrier == null` (ball flying: PASS/SHOT)
-- **LOOSE** — `carrier == null && target == null` (free ball, triggers CHASE)
-
-### Loose Ball Recovery
-
-When PASS/SHOT results in LOOSE ball:
-1. `carrier = null` (cleared in `passFailed()`/`shotMissed()`)
-2. Next `step()` finds closest HOME and closest AWAY player via `PlayerSelectionEngine.closestTeamTo()`
-3. Both chase the ball; whichever reaches first becomes carrier (all others get tactical targets)
-4. The carrier chooses a normal action: PASS, CARRY, or SHOT
-5. Both teams play by the same principles — AWAY tactical positions are mirrored via `TacticalPerspectiveTransformer`
-
-SHOT miss additionally resets ball position to initial center.
-
-### Collision Avoidance (Wall Behavior)
-
-Players act as **walls** — cannot pass through each other. When blocked:
-1. Try perpendicular slide (left/right relative to movement direction)
-2. Try component-only fallback (X only, Y only)
-3. If all blocked, stay in place
-
-When a carrier is stuck (can't move at all), target is cleared so the action completes.
-When a CHASE stalls with zero progress, a blocked chaser may hand off via
-`CHASE_CONTINUE`; timeout/no-progress guards force resolution before match hang.
-This prevents simulation freezes from deadlocks.
-
-### Movement Constraints
-
-- **1-cell round limit**: non-carrier players cannot move more than 1 cell from their round-start position
-- **Carrier**: moves directly toward target (no inertia) — action completion depends on carrier reaching destination
-- **Speed**: `PLAYER_SPEED = 0.03` cells/tick (non-carrier), carrier speed varies by action type
-
-### Ball Speed
-
-- `BALL_SPEED = 0.094` cells/tick (pass/shot flight)
-- `CARRIER_FOLLOW_SPEED = 0.11` cells/tick (ball follows carrier)
-
-### Action Constraints
-
-- **No backward carry**: carrier cannot dribble backward; if `weightedForwardDr()` would return -1, it rerolls until forward (+1) or lateral (0). Result: ~67% forward, ~33% lateral.
-- **No backward pass in final 2 rows**: in rows 6–7 (HOME attacking away goal) or rows 1–2 (AWAY attacking home goal), PASS is removed from action options. Carrier can only SHOT or CARRY (dribble).
-- **Both teams play by the same principles**: AWAY team chooses PASS/CARRY/SHOT just like HOME when they have the ball. Tactical positions are mirrored via `TacticalPerspectiveTransformer` (both axes: `8-row, 7-col`).
-- **Loose ball**: both teams chase equally — closest HOME and closest AWAY pursue; all other players get tactical targets.
-- **CHASE pickup**: possession radius 0.5 cells (not exact coordinate); progress guard + 600-tick safety timeout prevent deadlocks when chasers collide.
-
-### UI Circle Sizes
-
-Player radius: 18px, ball radius: 12px. Carrier ring: 26px outer. Select radius: 25px.
-Fan-stack rendering removed — players overlap directly on same cell.
-
-### `demo/service/` Engine — Service-Oriented Match Simulation
-
-Standalone service-engine under `org.example.footballmanager.demo.service`.
-**Zero dependency on `demo/`, `newLogic/`, or any other package outside `demo/service/`.**
-Source of truth for architecture: `corePrinciples.md` (inside this package).
-
-Progression tracker: `demoServiceProgression.md`.
-
-```
-demo/service/
-  ├── corePrinciples.md              → authoritative design specification (§1-48)
-  ├── demoServiceProgression.md      → current status, what's done, what's next
-  ├── MatchState.java                → authoritative match state container
-  ├── MatchRunner.java               → orchestrates simulation from initial state
-  ├── MatchBatchRunner.java          → main() — 10-match batch diagnostic
-  ├── MatchChainTrace.java           → main() — first 10-minute chain trace
-  ├── engine/
-  │   ├── PlaymakingDecisionEngine   → action scoring & selection (PASS/CARRY/SHOT/THRU/CROSS/CLEAR)
-  │   ├── VisionFilter               → PM-based action visibility tiers
-  │   ├── OptionSelector             → weighted random among close options (§9.4)
-  │   ├── ActionEngine               → PASS/CARRY/SHOT/THRU/CROSS/CLEAR execution
-  │   ├── ExecutionQuality           → pass/shot deviation based on skill
-  │   ├── MovementEngine             → tactical targets + collision avoidance + fatigue speed
-  │   ├── BallMovementEngine         → ball transit & carrier following
-  │   ├── TacticalIntentEngine       → tactical targets from TacticsRules
-  │   ├── DuelEngine                 → DRIBBLE/RECEIVE/SHOT/CHASE_BALL duel detection
-  │   ├── DuelResolver               → skill-based duel resolution
-  │   ├── FootballRulesService       → offside, fouls, cards, corners, goal kicks, throw-ins
-  │   ├── VARService                 → VAR reviews (offside, goal, red, penalty) with frequency gates
-  │   ├── RestartManager             → kickoff, corners, goal kicks, throw-ins (§37 extraction)
-  │   ├── OffsideService             → offside checks + VAR review + free kick awarding (§37 extraction)
-  │   ├── DisciplineService          → foul→card→VAR→penalty/free-kick decisions (§37 extraction)
-  │   ├── ThreatAssessmentService    → danger evaluation for defensive overrides
-  │   ├── PlayerPerceptionService    → awareness-based perception
-  │   ├── PlayerSelectionEngine      → nearest/closest player queries
-  │   ├── FatigueService             → stamina drain + speed multiplier
-  │   ├── TransitionService          → possession change transitions
-  │   ├── SimUtils                   → clamp, distance, helpers
-  │   ├── SimulationRandom           → seeded random source
-  │   └── DecisionTraceService       → structured decision debug output
-  ├── model/
-  │   ├── Player, Ball, Position, Action, ActionType, DecisionType, DecisionOption,
-  │   │   DecisionContext, DuelType, DuelOutcome, PlayerSkills, MatchPhase, etc.
-  ├── tactics/
-  │   ├── TacticsRules               → tactical target resolution from config
-  │   ├── TacticalPerspectiveTransformer → mirrors AWAY tactical positions
-  │   ├── FormationSlotCatalog       → formation slot definitions
-  │   └── TacticsSlotDTO/TacticsRuleDTO → tactical configuration DTOs
-  ├── result/
-  │   ├── MatchSimulator             → tick-based simulation loop (§19)
-  │   ├── MatchStatsCollector        → statistics derivation from events (§32)
-  │   ├── ActionLogService           → structured action/decision logging
-  │   └── MatchReport/MatchResult/PlayerMatchStats/TeamMatchStats → result models
-  ├── recording/
-  │   ├── MatchRecorder              → event & snapshot recording
-  │   ├── MatchEvent, MatchSnapshot, MatchRecording, PlayerSnapshot
-  ├── ui/
-  │   └── MatchSnapshotExporter      → headless exporter: runs match → writes match.json
-  └── controller/
-      └── MatchSimulationController  → REST API for match simulation
+```bash
+mvn clean package -DskipTests      # build
+./run-app.sh                       # run locally (dev profile, needs PostgreSQL on :5432)
+mvn test                           # full suite (H2, ~6 min)
+mvn test -Dtest=RatingEngineTest   # one class
+mvn test -Dtest=RatingEngineTest#theSeedIsTheOwnersScale   # one method
 ```
 
-### `demo/service/ui/` — Match Viewer (Web)
+> The compiler runs with `--enable-preview` for Java 21. If you invoke `javac` directly, include the flag.
 
-Canvas-based horizontal pitch viewer at `/demo/service/ui/index.html`.
+### 🔴 Never start the app from a shell without `--app.open-browser=false`
+
+`BrowserLauncher` opens `http://localhost:8080/login.html` on every startup. That is correct when the owner
+runs `main()` from the IDE and wrong for any shell start — the page pops up over the terminal, every time.
+
+**The application cannot tell the two cases apart.** An IDE start and a shell start are the same JVM with
+the same properties. The default therefore cannot be right for both; it stays `true` for the IDE and
+**every shell start must opt out.**
+
+- Shell start → **`./run-app.sh`**, never `mvn spring-boot:run` directly
+- `./run-app.sh --with-browser` to opt in for one run
+- Playwright is unaffected — it launches its own Chrome and never used this launcher
+
+Do not "fix" this by flipping the default off. It was briefly opt-in, and the owner's IDE start then did
+nothing with no explanation, which is the confusing case the launcher exists to avoid.
+
+### Boot writes nothing
+
+Starting the application starts the application. **No seeding, no backfills, no repair, no catalogue.**
+This is deliberate: the seeding used to run on every boot before the app was usable, so a cold start on a
+small server looked like a hang, and there was no way to look at a world before it was changed underneath
+you. World building moved to the admin buttons.
+
+| Button | What it does |
+|---|---|
+| **Reset DB** | Clears the football data. Keeps user accounts and tactic-editor setups. Rebuilds nothing. |
+| **Initialize DB** | The **Serbian** structure: 31 divisions, fixture list, players, owner. |
+| **Repair world** | Rebuilds anything missing: countries, national squads, legacy rows. |
+| **Re-seed national teams** | A 25-player squad for any national side that has none. |
+| **Seed other nations** | Every country that is not activated: divisions, clubs, ratings, standing table. **No players, no matches.** Idempotent. |
+| **Re-draw the cup** | Any cup round that never got drawn. |
+
+**Neither boot nor "Initialize DB" is a world builder any more.** `ensureBaselineDataOnStartup()` has no
+caller; do not add one without a decision, because three separate seeding steps were lost to that
+transaction before.
+
+---
+
+## Architecture
+
+**Base package:** `org.example.footballmanager.newLogic`. There are exactly two packages under
+`org.example.footballmanager`: **`newLogic`** (the product) and **`demo`** (a frozen reference engine,
+below).
 
 ```
-static/demo/service/ui/
-  ├── index.html                → viewer page (LED scoreboard + canvas pitch + event sidebar)
-  ├── css/pitch.css             → dark theme, LED scoreboard, pitch, timeline styling
-  ├── js/viewer.js              → PitchRenderer (canvas) + MatchViewer controller + event display
-  └── match.json                → exported match data (generated by MatchSnapshotExporter)
+newLogic/
+  sim/          → the match engine. The heart of the game.
+  service/      → business logic (78 classes)
+  controller/   → REST (27)
+  model/        → JPA entities
+  repository/   → Spring Data JPA
+  dto/          → request/response DTOs
+  jobs/         → the day/hour job framework (DayJob, JobRunner, JobContext)
+  util/         → seeders, backfills, integrity repair
+  config/       → security, JWT, scheduling
+  exception/    → ApiExceptionHandler
+  store/, tools/
 ```
 
-**Pitch orientation:** horizontal — HOME left (row 1.0), AWAY right (row 8.0). Opposite of SwingUI vertical layout.
-- **Coordinate convention (authoritative):** rows 1–7 playable (cell centre at row+0.5), cols 1–6 playable (cell centre at col+0.5). HOME goal line at row 1.0, AWAY goal line at row 8.0. Goal mouth 1 cell wide (col 3.0–4.0, centred at col 3.5). OOB: row ≤ 0.99 (behind HOME), row ≥ 8.01 (behind AWAY), col ≤ 0.99 (left touchline), col ≥ 7.01 (right touchline).
-- **Tactical perspective:** `TacticalPerspectiveTransformer.toPhysical()` uses 9-row mirror — HOME row n → AWAY row 9−n. So AWAY GK at row 1.5 mirrors to row 7.5 (just in front of AWAY goal at row 8.0).
-**Data sources:** `POST /api/generate` (MatchViewerLauncher) or load `match.json` file (standalone).
-**Events displayed:** ALL events — merged feed from MatchRecorder events + ActionLogService logs (DECISION, ACTION, OUTCOME, DUEL, CHASE, FOUL, CARD, etc.) with team/player attribution.
-**Timeline cap:** 200 entries max in DOM (prevents Firefox freeze at high event counts). Verbose engine logs (DECISION, ACTION_*) are kept in the Java app log but excluded from the side panel.
-**Controls:** Play/Pause, seek bar, speed slider (0.25x–8x), keyboard (Space/arrows).
-**Export:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchSnapshotExporter -Dexec.args=42`
-**Launcher:** `mvn exec:java -Dexec.mainClass=org.example.footballmanager.demo.service.ui.MatchViewerLauncher` (port 8765)
+### The match engine — `newLogic/sim/`
 
-### `newLogic/sim/` — Standalone Proposal Engine
+**One engine, one entry point.** `ProposalEngineIsTheOnlyFixtureProducerTest` exists to keep it that way:
+exactly one production site builds a football `Match`, and it is `SimMatchService`. That test exists
+because a previous audit was **retracted** for claiming AI-vs-AI matches came from a Poisson dice roll.
 
-Clean-engine variant of demo/service, focused on responsibility separation.
-Base package: `org.example.footballmanager.newLogic.sim`. This is the engine used by the
-dashboard "Watch Your Match" flow (`prepare → SimMatchService.simulate → SimReplayStore →
-proposal viewer replay → persisted Match`).
+- `SimMatchService` — the official path: simulate a fixture, persist score, events, player stats, zone load,
+  Elo, league table, replay
+- `MatchOrchestrator` — the tick loop; coordinates the engines, holds almost no logic itself
+- `engine/` — `MovementEngine`, `BallPhysicsEngine`, `TacticalIntentEngine`, `DuelEngine`,
+  `ExecutionQuality`, `ActionExecutor`, `ThreatOverrideEngine`, `decision/CleanDecisionEngine`
+- `rules/` — `FootballRules` (offside), `VARService`, `DisciplineService`, `OffsideService`
+- `tactics/TacticsRules` — formation targets
+- `recording/` — `MatchRecorder`, `SimReplayView` (down-sampled replay, stride 10)
+- `result/` — `ProposalMatchOutcome`, `ProposalStatsCollector`, `SimReportMapper`
+- Diagnostics, each with a `main()`: `ProposalBatchDiag`, `ProposalSeasonDiag`,
+  `ProposalPhysicsDiagnostic`, `ProposalPassFailDiag`, `MatchSimulationLauncher`
 
-```
-newLogic/sim/
-  ├── PROPOSAL_PROGRESS.md          → session log + current state + plan
-  ├── PROPOSAL_CURRENT_STATE.md     → current state snapshot
-  ├── backlog.md                    → prioritized tasks (all engines, stats, physics)
-  ├── MatchSimulationLauncher.java  → main() — single-match headless runner
-  ├── SimMatchRunner.java           → main() — runs full 3600-tick match, returns orchestrator
-  ├── SimMatchService.java          → simulate + persist (dashboard path)
-  ├── SimReplayStore.java           → @Component in-memory replay store (AtomicLong ids)
-  ├── ProposalBatchDiag.java        → 10/50/100-match aggregate diagnostic
-  ├── controller/
-  │   ├── ProposalMatchController   → /proposal/api/simulate, /proposal/api/generate
-  │   └── SimReplayController       → /api/sim/replay/{id}, /api/sim/replay/by-match/{matchId}
-  ├── engine/
-  │   ├── EngineInterfaces.java     → core engine interfaces (single-responsibility contract)
-  │   ├── MatchOrchestrator.java    → tick loop coordinator (thin — delegates to engines)
-  │   ├── MatchClockService.java    → tick counter, halftime pause (1800/3600)
-  │   ├── MovementEngine.java       → pace-capped A→B movement, collision avoidance
-  │   │   NOTE: NO sprint/chase/press multiplier — ALL players pace-capped
-  │   │   except carrier (0.90) and celebration (not part of play)
-  │   ├── BallPhysicsEngine.java    → velocity-based ball, collisions, OOB, goal plane
-  │   ├── TacticalIntentEngine.java → tactical targets from formation + defensive constraints
-  │   ├── DuelEngine.java           → duel detection + skill-based resolution
-  │   ├── ExecutionQuality.java     → pass/shot deviation, on-target probability
-  │   ├── ActionExecutor.java       → PASS/SHOT/DRIBBLE/CLEAR execution, opening-target
-  │   ├── ThreatOverrideEngine.java → TYPE A (press carrier), TYPE B (press isolated),
-  │   │                              TYPE C (offside retreat) — stub, logic per backlog
-  │   └── decision/
-  │       └── CleanDecisionEngine.java → action scoring + selection (5 actions)
-  ├── rules/
-  │   ├── FootballRules.java        → offside check + offside restart (active)
-  │   ├── VARService.java           → VAR review — port done (P7#2) — 9/9 @Override, compile-green, logic per backlog
-  │   ├── DisciplineService.java    → fouls/cards — stub, logic per backlog
-  │   └── OffsideService.java       → continuous tracking + per-pass check —— port done (P7#1, 4/4 @Override, compile-green)
-  ├── model/
-  │   ├── MatchState.java           → single source of truth (ball, players, actions, stats)
-  │   ├── Player.java               → includes offside/consecutiveOffside/threatOverride flags
-  │   ├── Ball.java                 → physics model (position, velocity, launchSpeed, spin)
-  │   ├── Position.java, Action.java, ActionType.java, DecisionType.java,
-  │   │   DecisionOption.java, DecisionContext.java, MatchPhase.java, etc.
-  ├── tactics/
-  │   └── TacticsRules.java         → formation tactical targets from config
-  ├── recording/
-  │   ├── MatchRecorder.java        → events + snapshots for match.json
-  │   ├── MatchEvent.java, MatchSnapshot.java
-  │   └── SimReplayView.java        → downsampled replay view (SNAPSHOT_STRIDE=10)
-  ├── result/
-  │   ├── ProposalMatchOutcome.java, ProposalMatchOutcomeBuilder.java, ProposalStatsCollector.java
-  │   └── SimReportMapper.java      → statsMap/eventJson/lineupJson for Match persistence
-  └── ui/
-      ├── ProposalViewerLauncher.java → port 8766
-      ├── ProposalMatchExporter.java  → headless match.json generator
-      └── (static) static/demo/service/ui/proposal/js/viewer.js → canvas pitch, LED scoreboard, timeline, controls
-```
+**A fixture is seeded by its own id**, which is what makes the engine's output worth trusting for a league
+table: a fixture cannot be re-rolled.
 
-**Key differences from demo/service:**
-- No God-classes: orchestrator is thin, each engine has single responsibility
-- `EngineInterfaces` defines contracts for every engine
-- All placeholder stubs (VARService, DisciplineService, OffsideService, ThreatOverrideEngine)
-  already exist as compilable classes with TODO methods — logic filled per backlog
-- MovementEngine: NO chase sprint multiplier (user rule 2026-09-14)
-- `backlog.md` tracks all work (stats, physics, movement, rules, fatigue, transitions)
+**Determinism is a development moat.** Every calibration is a committed seeded run, and a replay
+regenerated from a seed is reproducible. Neither browser competitor can offer that — so it is worth
+protecting, and `SimulationRandom.seed()` is the place that guarantees it.
 
-**Key design per corePrinciples:**
-- Decision engine scores actions → football rules override illegal actions (§15)
-- Kickoff is special center positioning event, not from TacticalEditor (§20)
-- Threat override modifies movement targets, not the decision (§6) — TYPE A (carrier ≤ 1.0 cell, defender presses from ~14 m so DRIBBLE duel fires at 0.15 cells), TYPE B (opponent in defensive third, no defender within 0.5 cells); resolver `isClosestEligibleDefender` ensures only ONE defender claims the threat (no swarm)
-- Controlled randomness via seeded Random (§9-10)
-- Movement: every player moves at `(pace/20) * 0.75` cells/tick at 40 TPM (pace 20 = 7 m/s = 0.5 cells/s match time = 0.75 cells/tick) — NO speed boosts (pure pace-driven); carrier at `* 0.90`; collision avoidance (§11)
-- Ball: POSSESSION / IN_TRANSITION / LOOSE states (§12) — **speed Specification in §49**: max ball speed = 14 m/s = 1.5 cells/tick at 40 TPM; player `maxReliableSpeed = 7.0 + (skill/20)*7.0` m/s (skill 20 → 1.5 cells/tick); the engine-chosen desired power per action (SHORT 1.05 / LONG 1.30 / THRU 1.35 / CLEAR 1.40 / SHOT 1.40 cells/tick) is capped at MAX_BALL_SPEED and checked against the player's skill (§49.6 error bonus `(desired−max)*2.0`); free-ball min 0.5 cells/s (0.75 cells/tick) with ×0.8 braking to stop, ballistic A→B traversal per tick at the ball's own `speed` (no per-tick action read), trajectory collision → received/intercept/deflection, loose-ball rolling along stored rollDirection (§49.5). **Strict path-only collision radii** (user rule): deflection only within 0.5 m (0.035 cells), interception only within 1 m (0.07 cells) of the ball's flight segment — a defender 2+ m off the line never touches the ball. Active chasers sprint at ×1.30 (`CHASE_SPRINT_MULTIPLIER`); ball pickup distance 0.6; regular-pass receiver grace ~0.9. **Pass accuracy = overshoot-only**: `maxDeviation = 0.02 + overspeed*2.0` — a pass played at a speed the passer's skill can handle never scatters (length/height/skill multipliers removed). Passer aims at `openingTarget` (receiver nudged up to 0.5 cells away from its nearest opponent); the receiver runs onto the pass during flight (pass-flight guard in `TacticalIntentEngine` keeps that opening target). **Free player = 2 m (0.14 cell)** of space (receiver-openness / receiver-pressure / freeTeammatePenalty yardsticks; interception only needs 1 m). Wide players (ML/MR/DL/DR + DDL/DDR/WBL/WBR/AML/AMR) hold their own flank cell (anchor 1.5/5.5, band ±0.5, drift ≤ ±0.35 inside the cell). **Batch runner is fully DETERMINISTIC** — `MatchState.activeChasers` is a `LinkedHashSet` (a plain `HashSet` iterated in identity order made seeded runs diverge); two identical batch runs produce identical totals.
-- Offside: second-to-last defender, checked EVERY tick for ALL attackers on both teams (§16)
-- Duel cooldown: loser blocked for 60 ticks after duel loss
-- Duel radii: 0.2 cells (~2.8 m) for RECEIVE_PASS / CHASE; 0.15 cells (~2 m) for DRIBBLE — tight, realistic (cell is 14 m × 10 m); 0.3 for SHOT block
+### `demo/service/` — frozen reference module
 
-### API Route Prefixes
+A second, older service-oriented engine (97 classes) with its own `corePrinciples.md` as its source of
+truth, plus a batch runner and a chain trace.
+
+**It is not the product path and must not be extended.** It is kept as a reference. Do not port from it
+into `newLogic`, do not add features to it, and do not treat it as the architecture.
+
+---
+
+## The day/hour job framework — `newLogic/jobs/`
+
+A scheduled game clock drives the season. `GameClockService` steps hours; `JobRunner` dispatches `DayJob`s
+at their `(week, day, hour)`.
+
+Four matchdays are registered in `MatchdayJobsConfig`:
+
+| Key | Type | Day | Hour |
+|---|---|---:|---:|
+| `matchday-international` | INTERNATIONAL | 1 | 20 |
+| `matchday-league-a` | LEAGUE | 3 | 19 |
+| `matchday-cup` | CUP | 5 | 18 |
+| `matchday-league-b` | LEAGUE | 7 | 16 |
+
+**A season is twelve weeks.** There is no calendar year anywhere — `BASE_SEASON_YEAR` was deleted and every
+`BASE_SEASON_YEAR + (season - 1)` site removed. A season is a *number counted from 1*. Any code or test
+that passes 2024/2025/2026 as a season value is wrong, even if it is self-consistent and passes.
+
+> **This framework has the highest-priority open defects in the project** — the guard row is written after
+> the job body, `FAILED` is terminal with no re-queue, the season counter is incremented twice so every
+> rollover skips a season, and any authenticated user can advance the world. See cluster A in `kanban.md`
+> before changing anything here.
+
+---
+
+## API route prefixes
 
 | Controller | Prefix |
 |---|---|
 | `UserController` | `/auth` (register, login) |
-| `APIController` | `/api` |
+| `AdminController` | `/admin` |
+| `APIController` | `/api` (clock, jobs, server-time) |
 | `TeamController` | `/teams` |
-| `PlayerController` | `/CPlayers` |
+| `PlayerController` | `/players` |
 | `MatchController` | `/matches` |
-| `SimulationController` | (top-level) `/start-demo`, `/start-realistic-demo`, `/simulation/*` |
+| `SimulationController` | `/simulation` |
+| `LineupController` | `/lineups` |
 | `TrainingController` | `/training` |
 | `TransferController` | `/transfers` |
-| `LineupController` | `/lineups` |
+| `ScoutingController` | `/scouting` |
+| `JuniorController` · `JuniorSchoolController` | `/juniors` · `/juniors/school` |
+| `CountryController` | `/countries` |
+| `SeasonController` | `/seasons` |
+| `CommunityController` | `/community` |
+| `CalendarController` | `/calendar` |
 | `StatsController` | `/stats` |
 | `MatchPlayerStatsController` | `/match-stats` |
-| `CompetitionController` | *(check class)* |
-| `JuniorController` | `/juniors` |
-| `CommunityController` | `/community` |
-| `SeasonController` | `/seasons` |
-| `CountryController` | `/countries` |
-| `StadiumController` | `/stadiums` |
-| `ZoxViewController` | `/zox` |
-| `AdminController` | `/admin` |
-| `DummyDataController` | `/demo` |
+| `StadiumController` · `StadiumSettingsController` | `/stadiums` · `/api/teams/{teamId}/stadium` |
+| `StaffDirectoryController` | `/api/teams/{teamId}` |
+| `FinanceController` | `/api/teams/{teamId}/finances` |
+| `FriendlyController` | `/api/season/friendlies` |
+| `ProposalMatchController` | `/api/proposal` **and** `/proposal/api` — both are mapped; the second is what the frontend and the standalone viewer launcher use |
+| `SimReplayController` | `/api/sim/replay` |
+| `SubstitutionPlanController` | `/api/sim/matches/{matchId}/substitution-plan` |
+| `ZoxApiController` · `ZoxReplayController` · `ZoxViewController` | `/api/zox` · `/api/zox/replay` · `/zox` |
+| `AfController` · `BbController` | `/api/af` · `/api/bb` (other sports) |
+| `CleanSheetController` | `/api/cs` (text-based mode) |
+| `DummyDataController` | `/demo` — **fake data, hardcoded to team 1, 0 DB access. Awaiting an owner decision; do not wire it to anything.** |
+| `CompetitionController` | *empty stub, 0 routes* |
 
-All routes except `/auth/**` are protected by JWT. The `JwtAuthenticationFilter` validates the `Authorization: Bearer <token>` header on every request.
+Everything except `/auth/**` and the small explicit permit list requires a JWT.
 
-### Match Simulation Flow
+---
 
-The primary match path (triggered from the dashboard):
+## Frontend
 
-1. `GET /start-realistic-demo` → `SimulationController` finds the user's scheduled fixture
-2. `SimulationService` runs `RealisticMatchEngine` (tick-based, CSPosition-aware)
-3. `RuntimeSaveToDB` persists ticks, match events, and CPlayer stats
-4. `ZoxReplayService` exposes replay metadata and tick chunks
-5. `realisticDemo.html` (frontend) fetches and replays the match
+All under `src/main/resources/static/`.
 
-Supporting engine classes: `AIDecisionMaker`, `DuelResolver`, `DuelCalculator`, `PositionalDefense`, `RealisticEventGenerator`, `BroadcastEngine`, `MatchStatisticEngine`.
+**Entry points:** `login.html` · `register.html` → auth → `home.html` (game-mode picker) →
+`dashboard.html` (the SPA).
 
-`MatchEngine.java` handles match creation and fallback/non-realistic simulation. `cleanSheet/` contains an older simulation path — prefer `RealisticMatchEngine` for all new work.
-
-### Season & Round Progression
-
-`AdvanceWeekAsyncService` and `RoundSimulationAsyncService` run asynchronously. The simulation endpoints `/simulation/current-round/simulate-all` and `/simulation/week/advance` poll status via corresponding GET endpoints. Live match finalization can affect week/round state — ensure `RuntimeSaveToDB` completes before advancing.
-
-### WebSocket
-
-`WebSocketConfig` enables STOMP over WebSocket for community chat (`CommunityController`).
-
-## Frontend Architecture
-
-All frontend files live under `src/main/resources/static/`.
-
-**Primary entry points:**
-- `login.html` / `register.html` → auth
-- `dashboard.html` → main SPA shell (loads sidebar, clock, pages router)
-- `realisticDemo.html` → live/replay match viewer (standalone page)
-- `zox-match-preview.html` → pre-match analysis
-
-**JS module dependency chain (SPA):**
 ```
 dashboard.html
-  └── app.js          (DOM init, sidebar bootstrap)
-  └── dashboard.js    (state management, section switching)
-  └── pages.js        (page router — 5200+ lines, routes all feature views)
-        ├── pages-renderers.js  (HTML generation helpers)
-        ├── auth.js             (JWT storage, authFetch wrapper)
-        └── pages/             (feature modules: academy, CTeam, matches,
-                                club-management, community, training,
-                                staff-directory)
+  └── app.js · dashboard.js
+  └── pages.js                 → the page router; imports every feature module
+        ├── pages-renderers.js
+        ├── auth.js            → JWT storage + authFetch wrapper
+        └── pages/views/       → club, country, league, match, player, training, …
 ```
 
-**`auth.js`** exports `authFetch` — use this for all authenticated API calls from the frontend (it injects the `Authorization` header and handles 401 redirects).
+**Use `authFetch`** for every authenticated call — it injects the `Authorization` header and handles 401.
+`escapeHtml` lives in `ui/escape.js` and is the only copy; do not redefine it.
 
-**`pages.js`** is the central router; it imports all feature modules and calls their render functions when the user navigates. When adding new pages, register them here.
+**Always check `response.ok`.** Several loaders `await response.json()` without it, so a 404 escapes to the
+router and the page becomes a generic "API Error" card. A menu entry pointing at an error card is worse
+than no entry.
 
-**`realisticDemo.js`** is standalone and communicates directly with `/zox` replay endpoints — it does not go through the `pages.js` router.
+---
 
-## Testing Layout
+## Testing
 
 ```
 src/test/java/org/example/footballmanager/
-  BaseTest.java                    → Abstract base; @SpringBootTest + @ActiveProfiles("test")
-  config/TestConfig.java           → Provides Faker bean
-  controller/                      → MockMvc / REST Assured controller tests
-  engines/                         → Unit tests for RealisticMatchEngine, MatchEngine, AIDecisionMaker, DuelResolver
-  service/                         → Unit tests for services
-  util/                            → Unit tests for utilities
-  demo/                            → Unit tests for SimulationArchitectureTest, ChaseDeadlockTest, ExecutionQualityTest, etc.
-  integration/
-    TifoBackendIntegrationTest     → REST Assured integration tests against H2
-    TifoE2ETest                    → REST Assured E2E flows (auth → CTeam → match)
-  ui/
-    TifoUITest                     → Playwright browser tests (needs running app)
-  zox/
-    ZoxReplayServiceTest           → Replay service tests
+  BaseTest.java          → @SpringBootTest + @ActiveProfiles("test")
+  newLogic/              → service, util, sim and controller tests, mirroring src/main
+  demo/service/          → engine tests for the frozen reference module
+  integration/           → REST Assured integration and E2E flows
+  ui/                    → Playwright, needs a running app on :8080
 ```
 
-Controller and integration tests extend `BaseTest`. Unit tests for engines/services/utils generally do not (they mock dependencies directly with Mockito).
+116 test files, 879 `@Test` methods. **879 is an annotation count, not a passing count** — run `mvn test`
+and write the real number into `kanban.md`.
 
-## Home Page (Game Mode Selector)
+**Playwright** (`ui/TifoUITest`) needs `mvn exec:java -Dexec.mainClass=com.microsoft.playwright.CLI
+-Dexec.args="install"` once, a running app, and `setHeadless(true)` for CI.
 
-After login, users land on `/home.html` — a standalone page (not SPA) with 4 game-mode cards:
-- **TIFO UI MANAGER** → `/dashboard.html` (full SPA)
-- **TIFO TEXT BASED** → `/tifo.html` (text-based simulation)
-- **AMERICAN FOOTBALL** / **BASKETBALL** → "soon" placeholders
+### What the suite does not cover
 
-`home.html` has its own auth guard (redirects to login if no JWT). All other pages have "← Back to Home" navigation. Static files: `home.html`, `css/home.css`.
+**Nine controllers have no tests at all** — `Lineup`, `Player`, `Team`, `User`, `Admin`, `Community`,
+`DummyData`, `Competition`, `Stadium` — and only three tests exercise any controller. **So the entire
+security surface is untested**, which is why cluster C and the controller tests in `kanban.md` are meant to
+be done in one pass.
 
-## New Match Engine (`newLogic/`)
+---
 
-A fresh, zero-dependency match simulation under `org.example.footballmanager.newLogic`. No imports from outside the package. REST endpoints at `/api/v2/match/` (start, status, replay metadata/chunks).
+## Known hotspots
 
-### Key Design Principles
-- **NIKAD teleportacija** — no CPlayer CSPosition snapping; movement blends over multiple ticks
-- Speed capped by pace skill (PACE_STEP_MIN=0.04 → PACE_STEP_MAX=0.33 per tick, linear 1-20, calibrated for 120 ticks/min)
-- Zone-based 5×5 grid tactical positioning (ZonePositionCalculator)
-- Passes have duration, offside only on forward passes, goals only from shots
-- **Possession chains** — every event tagged with chainId for causal tracking
+- **`GameClockService` / `JobRunner`** — the scheduler. See the warning above; this is where the P0s are.
+- **`pages.js`** — a large single router; every feature module is imported from it.
+- **`PyramidBuilder`** — creates every club in the world and **never sets `Team.type`**, which is why
+  "is this a club?" cannot be answered from that flag. A club is anything whose `competition` is a LEAGUE.
+- **`Team.reputation` is the economy's 0–100 scale, not an Elo.** Eight services read it and four clamp it.
+  Club Elo lives in `eloRating` / `eloPreviousRating` / `eloDelta`. `Country.reputation` is a *different*
+  scale again on a column of the same name — that collision has already cost a session.
+- **`DummyDataController`** — fake data, 18 routes, all hardcoded to team 1, zero DB access. Five frontend
+  files still fetch it (`pages.js`, `club-management.js`, `staff-directory.js`, `fixture-view.js`,
+  `stats-view.js`). Awaiting an owner decision; do not wire it to anything.
+- **`AdvanceWeekAsyncService`** — 186 orphaned lines, zero callers, and the last holder of a hardcoded
+  `findById(1L)`. Delete it.
+- **`demo/service/`** — frozen. Reference only.
 
-### Simulation Flow (`MatchSimulator.java`)
-1. 90-minute loop (120 ticks/min = 10,800 base ticks + injury time)
-2. Each tick: decision (8 actions) → transit → movement
-3. Duels resolve tackles, fouls, penalties via skill-weighted probability
-4. Set pieces: corners (header duel with GK punch), free kicks, penalties, goal kicks, throw-ins
-5. GK reacts to crosses: moves towards landing zone during CROSS/CORNER transit
-6. Injury time added at end of both halves based on stoppage ticks
-7. Ball out-of-bounds detection triggers corner/goal kick/throw-in
-8. **Possession chain tracking**: start/end events, pass count, causal relationships
+---
 
-### Key Engine Classes
-- `DecisionEngine` — 8-action AI decision system:
-  - **PASS_SHORT** (3-15m): base 0.85, boosted by playmaking (×0.40) and passing (×0.25), penalized by pressure (×0.30). Phase multipliers: BUILD_UP ×1.8, PROGRESSION ×1.2, FINAL_THIRD ×0.7, BOX_CHAOS ×0.3
-  - **PASS_LONG** (15-35m): base 0.25, boosted by playmaking (×0.30) and passing (×0.35). Bonus +0.3 if free teammate on other side
-  - **THROUGH_BALL** (behind defense): only in FINAL_THIRD/BOX_CHAOS, requires playmaking ×0.55. Only if attacker running behind defense within 8m of offside line
-  - **CROSS** (from wing): only if carrier is wide (|y-50| ≥ 24) and in opponent half. Boosted by passing ×0.30 and technique ×0.25
-  - **SHOT**: base 0.0, boosted by shooting ×0.45 and technique ×0.20. Distance tiers: <8m +0.35, <14m +0.22, <20m +0.12, <28m +0.05. Phase multipliers: BUILD_UP ×0.0, PROGRESSION ×0.15, FINAL_THIRD ×0.8, BOX_CHAOS ×1.8
-  - **DRIBBLE**: base 0.15, boosted by technique ×0.40 and pace ×0.30, penalized by playmaking ×0.20. Bonus +0.4 if no defenders nearby, +0.2 for WNG/ATT
-  - **CLEARANCE**: only for DEF in own third (x < 33) under pressure > 0.5
-  - **GK_DISTRIBUTE**: only for goalkeepers after save/catch, prefers nearby DEF/MID
-- `MovementEngine` — blend system, zone-based tactical movement, pace-capped velocity (calibrated: ~40 units/min max for pace=20)
-- `DuelResolver` — xG shots, tackle, penalty, foul/card with penalty box detection
-- `PhysicsEngine` — ball transit, clearance, deflection, CROSS mode parabolic arc
-- `SetPieceHandler` — restart positions for all set pieces, corner delivery with GK punch. **Smart taker selection**: corners/free kicks prefer highest passing+technique, penalties prefer highest shooting+technique
-- `FatigueSystem` — fatigue progression, injuries, auto-subs (72% min movement)
-- `OffsideTracker` — offside line from **second-to-last defender** (not last, per FIFA rules)
-- `PossessionChainTracker` — tracks possession chains with chainId, pass count, start/end events
+## Related documents
 
-### Event System (~35 event types)
-
-All events are sealed records implementing `MatchEvent` interface. Each event carries `minute()`, `tick()`, `type()`, and event-specific data.
-
-**Possession events:**
-- `PossessionStartEvent` — team gains possession (chainId, teamSide, description)
-- `PossessionEndEvent` — team loses possession (chainId, passCount, reason)
-
-**Pass events:**
-- `PassEvent` — completed pass (passerId, receiverId, completed, intercepted)
-- `PassInterceptedEvent` — pass intercepted by defender
-- `PassIncompleteEvent` — pass incomplete (out of play, wrong direction)
-- `ThroughBallEvent` — pass behind defense (distance, receiver)
-- `LongBallEvent` — long pass (15-35m, distance, receiver)
-
-**Shot events:**
-- `ShotEvent` — shot attempt (onTarget, saved, isGoal, xG). **Fixed bug**: isGoal flag added to distinguish goals from saved shots
-- `ShotSavedEvent` — goalkeeper saves shot
-- `ShotBlockedEvent` — defender blocks shot
-- `ShotMissedEvent` — shot off target
-
-**Dribble events:**
-- `DribbleEvent` — successful dribble past defender
-- `DribbleLostEvent` — lost ball during dribble
-
-**Tackle events:**
-- `TackleEvent` — tackle duel (success/failure)
-- `TackleFoulEvent` — tackle resulted in foul
-
-**Cross events:**
-- `CrossEvent` — cross from wing
-- `CrossClearedEvent` — defender clears cross
-- `CrossHeaderEvent` — header from cross (onTarget, xG)
-
-**Goalkeeper events:**
-- `GkSaveEvent` — goalkeeper saves shot
-- `GkCatchEvent` — goalkeeper catches cross/corner
-- `GkPunchEvent` — goalkeeper punches ball away
-- `GkDistributionEvent` — goalkeeper distributes after save/catch
-
-**Other events:**
-- `ClearanceEvent` — defender clears ball under pressure
-- `GoalEvent`, `FoulEvent`, `CardEvent`, `OffsideEvent`, `SetPieceEvent`, `PenaltyEvent`, `InjuryEvent`, `SubstitutionEvent`, `DuelEvent`, `MatchStartEvent`, `MatchEndEvent`
-
-**Event statistics:**
-- Typical match: ~2400 events (90 minutes)
-- Passes: ~800-1200 per match
-- Duels: ~200-400 per match
-- Shots: ~15-25 per match (calibrated from previous 5-8)
-
-### Match Stats Tracked
-- Goals, shots (on/off target), fouls, corners, yellow/red cards, possession, pass completion, avg rating
-- Passing accuracy tracked internally (successful vs total passes per CTeam)
-- **Possession chains**: pass count per possession, chain duration, causal relationships
-
-### Disciplinary System
-- **Yellow cards** tracked per CPlayer in `state.playerYellowCards`
-- **Second yellow → red**: when a yellow-worthy foul is committed and the defender already has a yellow, auto-upgrade to red
-- **Straight red**: dangerous tackles (last-man foul, penalty-box, or 15% random) have a 40% chance of direct red. **Fixed bug**: straight red no longer also counts as yellow
-- **10v11**: red-carded CPlayer removed from `startingXI()` and `playerSnapshots`; remaining CPlayers blend to adjusted formation
-- **Substitution snapshot fix**: old CPlayer's snapshot removed when substitute enters (prevents "12 CPlayers on pitch" bug)
-
-### Bug Fixes (2026-07-25)
-- **Offside line**: now uses second-to-last defender (per FIFA rules), not last defender
-- **Kickoff after goal**: team that conceded gets kickoff, not always HOME
-- **Shot event type**: added `isGoal` flag to distinguish goals from saved shots (was incorrectly classifying goals as off-target)
-- **Red card counting**: straight red no longer also increments yellow card counter
-- **Set piece taker selection**: corners/free kicks now prefer player with highest passing+technique (was first outfield player)
-- **Penalty taker selection**: now prefers highest shooting+technique (was only shooting)
-- **Pace calibration**: reduced PACE_STEP_MIN from 0.07 to 0.04, PACE_STEP_MAX from 0.84 to 0.33 (realistic ~40 units/min max instead of 100)
-- **Duel frequency**: added 15-tick cooldown (`lastDuelTick`), reduced proximity from 3.0 to 2.0, added 6% random gate — prevents excessive duel triggers every tick
-- **Offside check frequency**: offside tracker now checks every 60 ticks instead of every tick — reduces false offside flags from 155+ to reasonable levels
-- **Support target rewriting**: attackers now stay forward in support stance instead of all converging on the ball carrier
-- **Pass forward bias**: +0.5 forward, -0.2 backward, with skill-based pass quality
-- **Duel frequency**: added 15-tick cooldown (`lastDuelTick`), reduced proximity from 3.0 to 2.0, added 6% random gate
-- **Offside check frequency**: offside tracker now checks every 60 ticks instead of every tick
-- **Persistence Layer**: new `MatchPersistenceService` saves match stats (goals, shots, passes, fouls, cards, ratings), match events, tick snapshots for replay, and player season stats to DB; `MatchOrchestrator.simulate()` calls persistence after simulation
-- **MatchOrchestrator** updated: optional `MatchPersistenceService` parameter for DB persistence; `MatchStore` still used for in-memory caching
-
-### Bug Fixes (2026-07-26)
-- **checkBallOutOfBounds**: corners now fire 100% (was using goal kick for both sides); throw-ins properly assigned to defending team
-- **checkCorner**: removed 15% random chance - corners now always fire when ball enters corner zone
-- **checkFoul**: penalty box fouls now always produce penalty (was 8% chance); outside box fouls now produce free kick stoppage (25% chance)
-- **releaseBallAfterStoppage**: ball now properly positioned at corner flag (x=95, y=7/93) for corners, at sideline for throw-ins
-
-### Bug Fixes & Tuning (2026-08-31) — demo/service engine
-- **Coordinate system alignment**: `corePrinciples.md` updated to match engine — HOME goal at row 1.0, AWAY goal at row 8.0 (was incorrectly row 1/row 7). Goal width 1 cell (col 3.0–4.0, centred 3.5).
-- **TacticalPerspectiveTransformer 9-row mirror**: HOME GK at row 1.5 → AWAY GK at row 7.5 (just in front of AWAY goal at row 8.0).
-- **AWAY goalkeeper positioning fix**: `GoalkeeperMovementEngine.goalLineRow` 7.0 → **8.0**, `AWAY_ROW_MIN` 6.0 → **6.86** (16 m from AWAY goal), `AWAY_ROW_MAX` 6.9 → **7.9**. Was clamping AWAY GK to midfield rows 6.0–6.9 (1.5–2.8 rows from AWAY goal); now correctly in front of goal.
-- **AWAY restart / goal kick fix**: `RestartManager.gkRow` AWAY 6.5 → **7.5**; AWAY opponent clearance clamped to row [1.0, 7.9] (was [1.0, 7.0]).
-- **Offside retreat threshold 2 → 3** (`OFFSIDE_RETREAT_THRESHOLD`), per user rule "3 uzastopne offside pozicije".
-- **Offside retreat AWAY clamp** `Math.min(7.0, retreatRow)` → **`Math.min(7.9, retreatRow)`**.
-- **Universal offside tracking**: `OffsideService.trackOffsidePositions()` rewritten to fire on EVERY tick (not just at forward-pass moments) and check BOTH teams' attackers. Main `MatchSimulator.simulate()` loop now calls it at tick start.
-- **Duel radii tightened**: 1 cell = 14 m, so duels only fire within ~2.8 m. `DEFAULT_DUEL_RADIUS` 1.0 → **0.2**, `DRIBBLE_DUEL_RADIUS` 1.2 → **0.15** (tighter), `RECEIVE_PASS_RADIUS` 0.7 → **0.2**, SHOT block 1.5 → **0.3**.
-- **Interception lane-strict**: `findPassInterceptor()` now requires defender to be on the LINE SEGMENT between ball and receiver (perpendicular ≤ 0.5 cells ground / 0.4 air), not just "nearby". Triangle check excludes players behind passer/receiver.
-- **Threat override rewrite**: TYPE A = isolated ball carrier anywhere (≤ 0.2 cells); TYPE B = opponent in defensive third, no defender within 0.5 cells. Resolver `isClosestEligibleDefender` ensures only ONE defender claims (no 3-player swarm). Non-defenders no longer contest.
-- **TYPE A radius widened**: TYPE A radius 0.2 → **1.0 cell** (~14 m). Defenders now press ball carrier from 1.0 cell away, closing the gap before the carrier can slip past. `DRIBBLE_DUEL_RADIUS` tightened 0.2 → **0.15 cells** (~2 m) for tighter tackle trigger. `DRIBBLE_DUEL_COOLDOWN_TICKS` 8 → **7** ticks.
-- **Carry target 1 → 3-4 cells**: `executeCarry()` sets target 3-4 cells ahead instead of 1, so the carrier moves continuously for several seconds instead of jumping 1 cell at a time. Per-tick `re-decide()` preserved — carrier switches to better option (shoot/pass) when it appears.
-- **Pass speed from skill**: `executePassTo()` sets `action.passSpeed` based on passer passing skill (1.0–3.0 cells/tick, +0.2 long). `BallMovementEngine` reads it — faster balls move faster, deflect more, intercept less.
-- **Far-post shot aim**: `evaluateShot()` aims at far post when GK is off-centre (GK col ≈ 3 → shot col ≈ 4, clamped to goal mouth [3.0, 4.0]). `handleShotArrival` re-evaluates `gkInLane` against actual shot target so GK on near post correctly fails to save far-post shot.
-- **Empty-goal line check**: `executeShot()` treats goal as empty if GK > 2 cells from goal OR if GK within 2 cells but **off the shot lane** (perpendicular > 1.2 cells). A GK on wrong post no longer covers the shot.
-- **Duel-before-yellow guard**: `DisciplineService.evaluateFoul(hadDuel)` — if no duel was active, no card issued (free kick only). VAR yellow/red logic preserved but only fires after genuine duel resolution.
-- **Timeline DOM cap 200**: `viewer.js` `_addTimelineEvent` prunes oldest entries beyond 200 to prevent Firefox freeze. Compact timeline events only; verbose engine logs in app log but not in side panel.
-- **MatchViewer default skill 14**: `MatchSimulationController.randomSkills()` baseline 14 with ±2 variation plus role bonuses (GK better at keeper, ATT better at striker).
-- **Tactical rules as source of truth**: `TacticalIntentEngine.applyDefensivePositionConstraint` restored to pre-override behaviour — engine does NOT override tactical rules from DB / bundled JSON with code clamps. Per user: "NE SMES DA PREGAZIS tactical rules".
-- **Debug helper**: `TacticsRules.dumpLoadedRules(path)` writes resolved tactical targets to JSON for verification; `MatchSimulator.simulate()` logs the loaded source.
-- **Carry drives toward goal centre (no more corner runs)**: `ActionEngine.executeCarry()` now biases carry column toward 3.5 when the lane to goal centre is open (new helper `isCarryLaneOpen` uses `SimUtils.pointSegmentDistance`). Prevents wingers running into the corner when goal is in clear sight.
-- **16 m open-lane SHOT override**: `PlaymakingDecisionEngine.decide()` new trigger `closeWithOpenLane` (lane open + no defender within 1 cell + `distToGoal ≤ 1.2`) forces SHOT — wingers with clear sight now shoot at 17 m instead of carrying.
-- **GK stays close to goal line**: `GoalkeeperMovementEngine` `MAX_ADVANCE` 0.7 → 1.0 (14 m cap). Non-threat pull 0.05–0.30 cells (~7 m typical), threat pull 0.25–1.0 cells (only steps out when shot is imminent).
-- **Top-2 box attacker priority in final 2 rows**: `scorePassOptions()` adds +80 to the two teammates closest to opponent goal inside the box — carrier prefers box attackers over 20 m pass back.
-- **1.5-cell rule (21 m no backward pass)**: in the same `scorePassOptions()`, when carrier within 1.5 cells (21 m) of goal, all PASS options to receivers NOT in box AND NOT forward of carrier are filtered out — only SHOT / CARRY forward / pass forward / pass into box remain.
-- **CENTER target restricted in final 2 rows**: `ActionEngine.selectCenterTarget()` picks from top-2 box attackers closest to goal; best aerial among them wins.
-- **Match Viewer side panel**: `viewer.js` `TIMELINE_EVENTS` now includes `DUEL_START`, `DUEL_RESOLVED`, `CHASE_POSSESSION` (per-tick `CHASE` progress logs stay excluded).
-
-### Bug Fixes & Tuning (Session 2026-08-31) — demo/service engine — pass 3
-- **Side panel timeline — OFFSIDE + shot epilogue**: `viewer.js` `TIMELINE_EVENTS` extended with `OFFSIDE`, `SHOT_BLOCKED`, `SHOT_POST` so the side panel always shows the shot outcome chain between SHOT and the next restart, and offside calls appear inline.
-- **Tighter offside filter on passes**: `PlaymakingDecisionEngine.isClearlyOffsideAtPass()` margin **0.5 → 0.2 cells** (~2.8 m). Receiver > 0.2 cells offside is hard-filtered out — marginal offside (≤ 0.2) still goes through for referee/VAR.
-- **Restart walk fast-path**: `MatchSimulator` `RESTART_WALK_SPEED` 0.4 → **0.7** cells/tick. New `RESTART_TELEPORT_DISTANCE = 4.0` cells — any taker further than 4 cells from the ball is snapped to a spot 0.6 cells behind it, then walks normally. Prevents "taker not arriving" freeze.
-- **Unified pushback for all restarts**: `RestartManager.pushOpponentsAwayFromBall()` new helper, called from CORNER + GOAL_KICK + THROW_IN. Previously only GOAL_KICK pushed opponents back from the ball — corners and throw-ins could be contested from inside 1 cell.
-
-### Bug Fixes & Tuning (2026-08-31 — user reported) — demo/service engine — pass 5
-- **CRITICAL — shot miss direction bug (shot fired toward OWN goal)**: after the coordinate-system pass moved `GOAL_POSITION` to row 8.0, three stale end-line checks still read `== 7.0`, so a HOME shot miss pushed the ball to row **-0.5 (behind HOME's OWN goal)** instead of row 8.5 → a "SHOT by Home" became a CORNER for the opposition at the wrong end. Fixed `logicalGoal.getRow() == 7.0 → 8.0` (`ActionEngine.shotMissed()`) and `goal.getRow() == 7.0 → 8.0` (two sites in `MatchSimulator`).
-- **DRIBBLE duel radius 0.15 → 0.5 cells (~7 m)**: user override. At 0.15 the defender had to be almost on top of the carrier, so a pressing defender and carrier just ran overlapped in the same cell with no tackle, and the carrier looked stopped. With 0.5 the defender who has closed via TYPE A engages as soon as they come alongside, and `snapPlayersForDuel` pulls both to the contest point; winner takes the ball, loser gets the 6-tick block.
-- **CENTER/cross never targets a clearly-offside attacker**: `ActionEngine.selectCenterTarget()` now skips any receiver `isClearlyOffside(passer, receiver)` (margin > 0.2 cells beyond second-to-last defender — matches the PASS decision filter). The execution-time whistle (`checkOffside`) remains a backstop for marginal ≤ 0.2 cases.
-
-### Bug Fixes & Tuning (2026-09-01 — user reported) — demo/service engine — pass 6
-- **Pass scoring rebalanced (lane no longer dominant)**: `PlaymakingDecisionEngine.scorePassOptions()` lane weight **±150 → ±80**. Previously a clean-laned backward pass scored ~150 and beat every other factor; the carrier recycled to a "safe" defender even when a free forward attacker was available. Re-balanced so forward bias + receiver openness + goal proximity can tip the decision.
-- **Forward bias added**: forward pass **+50**, lateral **-10**, backward **-80**. This is the deciding factor when multiple receivers have a clean lane — the ball must move toward the opponent goal, not back. A backward pass to an isolated fullback (35×25 m of space, openness ≥ 2 cells) is still viable — `openScore` adds ~20 so the total stays positive. Per user clarification: "nije problem da izabere pass unazad ako je bas bas sam igrac... samo nikako ne stoperu koji je pod pritiskom".
-- **Receiver-pressure penalty**: a receiver with an opponent within 0.5 cells gets a flat **-40** score (previously only reduced the openness component, capped at 40). A pressured center-back can no longer beat a free forward attacker.
-- **Goal-proximity weight 1.5 → 3.5** for forward passes only (backward/lateral passes don't collect proximity points). A pass to row 7 (HOME) now scores +21 vs row 3.5's +8.75 — real bite.
-- **Shot: GK-on-wrong-post boost +45**: `scoreShot()` now detects when the GK is close to the goal line but off-centre (col ≤ 3.1 or ≥ 3.9) — the far post is wide open. Combined with `ActionEngine.executeShot()`'s existing far-post aim, even an average finisher puts the ball in the empty corner. The carrier now takes the shot instead of recycling a backward pass with GK glued to the wrong post.
-
-### Bug Fixes & Tuning (2026-09-01 — user reported) — demo/service engine — pass 7
-- **Shot outcome chain always shown in sidebar + JSON**: `ActionEngine.start()` and `shotMissed()` / `shotSaved()` now use the enriched `MatchRecorder.appendEvent(..., MatchState)` overload which populates **team, playerId, playerName, targetPlayerId, positionRow, positionColumn, skill, outcome** in the JSON event. Previously all of these were null because the basic 5-arg overload didn't pull from the live state.
-- **SHOT_BLOCKED event always emitted**: when a SHOT duel is resolved with `DEFENDER_WINS`, `MatchSimulator.recordDuelStats()` now emits a `SHOT_BLOCKED` (outfield defender) or `SHOT_SAVED` (GK) event so the sidebar shows the full shot outcome chain: `SHOT → BLOCKED / SAVED / MISSED / GOAL`. Previously the sidebar jumped from `SHOT by X` straight to `Away United 2 wins | intercepted pass` with no shot outcome.
-- **Far-post threshold `> 0.5 → ≥ 0.5`**: `ExecutionQuality.evaluateShot()` far-post aim now triggers when the GK is at col 3.0 (exactly on the post) instead of requiring |offset| > 0.5 (which excluded col 3.0 itself).
-- **Execution logic bug — miss scatter was inside onTarget branch**: the miss scatter code was running only when `onTarget = true`, making on-frame shots scatter off frame at random. Rewritten: when the shot is **onTarget**, `actualTarget = far-post aim` (inside goal mouth); when **off-target**, `actualTarget = miss scatter` (off frame). The geometric-miss safety check still runs to guarantee the scatter doesn't accidentally land in the net.
-- **GK on wrong post → onTargetProb ≥ 0.85**: when the GK is clearly off-centre (`|colOffset| ≥ 0.5`) and not in the lane (`gkInLaneFactor < 0.6`) within 2.5 cells, the on-target probability is raised to at least 0.85. A 16m shot with the GK hugging the wrong post used to miss 60% of the time (base onTargetProb ~0.40 for medium range); it now scores ~85% of the time even with the existing 60% far-post scatter — well above the realistic ~70-75% for a clear shot at the empty corner.
-- **`recordDuelStats()` and `resolveChase()` and `executeDecision()` now take MatchRecorder**: required to emit enriched events from these helper methods that previously only logged via `ActionLogService`.
-
-### Bug Fixes & Tuning (2026-09-01 — user reported) — demo/service engine — pass 8
-- **Extended shooting zone — strikers can try from row 5.5–6 with mispositioned GK**: real football has top strikers occasionally testing the keeper from 28-35 m when the GK is clearly off their line. Added `canLongShot` to `DecisionContext` — true when carrier is in row ≥ 5.5 (HOME) / ≤ 2.5 (AWAY), striker skill ≥ 12, GK is > ~10 m off their line AND > 0.3 cells off-centre. Gated by a 15% random frequency inside `decide()` so it fires rarely; scored with a flat -35 penalty so it only wins when the situation is genuinely begging for a strike.
-- **Long-range empty-goal guard**: `scoreShot()` no longer forces `score = 100` (empty-goal guarantee) when `distanceToGoal > 2.0`. The empty-goal rule still applies inside the regular zone (≤ 28 m), but a 30m attempt must still clear the bar.
-
-### Bug Fixes & Tuning (2026-09-01 — user reported) — demo/service engine — pass 9
-- **VAR overlay freeze fix**: `.overlay.visible` `pointer-events` no longer blocks controls underneath — the dim backdrop is `pointer-events:none` and only the inner content (text + skip button) catches clicks. The overlay can be dismissed by clicking it, pressing ESC, or pressing Space. Full-time overlay stays non-dismissible (match is over).
-- **All event types emit structured fields**: every call site that used the 5-arg `MatchRecorder.appendEvent(...)` (including `DUEL_START`, `DUEL_RESOLVED`, `VAR_IN_PROGRESS`, `VAR_*_CONFIRMED`, `VAR_*_OVERTURNED`, `POSSESSION_CHANGE`, etc.) now uses the 6-arg `..., state)` overload so the JSON export populates team / playerId / playerName / targetPlayerId / positionRow / positionColumn / skill / outcome. The 5-arg overload stays for backward compatibility (returns null fields) but every internal call site has been migrated.
-- **Hard rule: carry ≤ 1 cell along same row**: `ActionEngine.executeCarry()` caps `carryDistance = 1` when the carry direction is purely lateral (`dr == 0`). Forward / diagonal carries keep the 3-4 cell range. Prevents wingers from shuffling the entire sideline in one carry.
-- **Threat override — defend isolated attacker in final 2.5 rows**: `TacticalIntentEngine.applyThreatOverride()` TYPE B now checks `isInFinalQuarter()` (rows 1-2.5 for HOME defending / rows 5.5-7 for AWAY defending) instead of the defensive third, with distance threshold raised to 2.0 cells. Defender presses the isolated attacker all the way to duel range.
-- **Duel visualisation — loser shows cooldown ring**: `viewer.js` tracks the loser of each DUEL_RESOLVED event for 6 ticks and renders a faint pulsing red ring on them. Both duelists highlight in yellow while the duel is active; only the winner keeps the carrier ring.
-- **Mobile / iPhone-14-Pro landscape layout**: `pitch.css` adds a landscape breakpoint (`max-height: 500px`) that makes the pitch fill the entire screen, hides the sidebar by default, and shows a slim 28px live ticker above the pitch with the most recent event. The ticker has a "LOG" button that slides the full sidebar up over the pitch on tap. Portrait phones keep the original stacked layout. iOS viewport uses `100dvh` to handle the Safari URL bar.
-- **Timeline pre-populated on load**: the side-panel timeline now shows ALL events from minute 0 onward, not just events from the current playback position. The user can scroll up to inspect earlier events immediately. `_timelineShownIdx` tracks which events are already in the DOM to prevent double-rendering during playback. **(REVERTED in pass 10 — see below; user rejected this.)**
-
-### Bug Fixes & Tuning (2026-09-01 — user reported) — demo/service engine — pass 10
-- **INSTANT RESTARTS (spec in `corePrinciples.md` §48)**: goal kick / corner / throw-in / free kick / penalty / VAR-overturned-goal now **teleport the ball instantly** to its in-play restart spot — NO OOB animation, NO `OOB_HOLD_TICKS` freeze, the clock never stops. The taker (nearest same-team non-GK) walks smoothly at `RESTART_WALK_SPEED` (0.7) with the `RESTART_TELEPORT_DISTANCE` (4.0) fast-path + `RESTART_WALK_MAX_TICKS` (15) guard.
-- **`RestartManager.handleBallOutOfBounds(...)`** is the single instant-restart entry point. It now calls `state.clearBallOOBPending()` + `setActionDelayTicks(0)` internally; every OOB call site in `MatchSimulator` (SHOT_BLOCKED→corner, SHOT_SAVED→corner rebound, VAR-overturned-goal→goal kick, shot miss→goal kick, deflection OOB) is converted to call it directly. The main-loop `isBallOOBPending()` block is reduced to a thin safety net.
-- **`MatchState.OOB_HOLD_TICKS` deprecated** (no longer set anywhere).
-- **REVERTED timeline pre-populate (pass 9)**: `viewer.js` timeline is dynamic again — events appear as the playhead reaches them and auto-scroll to the latest. Removed the pre-populate-on-load + `_timelineShownIdx` logic per user request.
-
-### Bug Fixes & Tuning (2026-08-23) — demo/service engine
-- **VAR offside for AWAY**: `VARService.checkOffside()` was always confirming AWAY offside (Double.MAX_VALUE bug). Fixed to compute correct offside line per team
-- **AWAY penalty kick**: `ActionEngine.executePenaltyKick()` used `GOAL_POSITION` (7, 3.5) for both teams. Fixed: AWAY aims at `new Position(1, 3.5)`
-- **Miss ball reset**: shot miss now resets ball to center (4, 3.5) instead of goal position
-- **CROSS/CENTER inFinalThird bug**: `inFinalThird = row >= 6` and `inTheBox = row >= 6` were identical, making CROSS/CENTER impossible. Fixed: `inFinalThird = row >= 5` (HOME) / `row <= 3` (AWAY)
-- **Balanced team generation**: `MatchSimulationController.generateTeam()` now accepts `skillSeed` parameter; batch runner uses same seed for both teams, eliminating skill asymmetry (was: `"Home".hashCode()` vs `"Away".hashCode()` producing 17:1 home bias)
-- **VAR frequency gates**: offside 20%, goal 15%, penalty 25%, red 40%, yellow 10% — reduces VAR reviews from ~14/match
-- **Pass lateral deviation**: 0.15 → 0.40 → 1.20 → 3.0 → 6.0 → 3.5 (final value)
-- **Row clamping**: 0.7-7.3 → 0.85-7.15 → 0.92-7.08 → 0.0-8.0 (allows ball past end lines for goal kicks)
-- **Column clamping**: 0.0-7.0 → -0.5-7.5 → -0.5-8.5 (allows ball past sidelines for throw-ins)
-- **Penalty box foul bonus**: reduced from 0.02 to 0.005
-- **Penalty box dimensions**: narrowed from rows 6-7, cols 1-6 to row 7 only, cols 2-5, plus 15% random gate
-- **Foul probability**: base 0.04 → 0.06, skill modifier 0.04 → 0.05, attacker bonus 0.02 → 0.03
-- **Offside tolerance**: 0.05 → 0.20 cells (~2.8m real-world)
-- **Corner chance**: 0.60 → 0.40 (defender clearance over end line)
-- **Cross frequency gate**: 50% random gate added
-- **Center scoring weights**: boxPresence 8.0→5.0, crossingQuality 0.5→0.35, progression 0.5→0.35
-- **VAR batch runner bug fixed**: `ComprehensiveBatchRunner` L200 now counts VAR events from `result.events()` (MatchRecorder), not `result.logs()` (ActionLogService) — channels are `VAR_OFFSIDE_CONFIRMED` etc., not `VAR`
-
-### Match Viewer UI (2026-08-23)
-- **New web-based viewer** at `static/demo/service/ui/index.html`
-- Horizontal pitch: HOME left (row 1), AWAY right (row 7) — opposite of SwingUI vertical layout
-- LED scoreboard with team names, score, match clock
-- Canvas pitch with player dots, ball, carrier highlight
-- Event timeline sidebar: GOAL, SHOT, SHOT_SAVED, PENALTY_*, VAR_*, CROSS
-- Playback: Play/Pause, seek bar, speed slider (0.25x–8x), keyboard shortcuts
-- Data: `POST /api/service/match/simulate` (live) or load `match.json` (standalone)
-- Export: `MatchSnapshotExporter` runs headless simulation, writes `match.json` to static resources
-
-### Frontend Match Viewer (`/newLogic/index.html`)
-- Dark-themed UI, responsive (mobile + desktop)
-- Fields for home/away CTeam names, "Play Match" button
-- Calls `POST /api/v2/match/start` → displays score, goals, stats grid, event timeline
-- Replay slider: seeks through tick snapshots, shows ball CSPosition on a pitch
-- All events grouped by type: goals, cards, subs, injuries
-- **Event timeline**: displays all ~35 event types with icons and descriptions
-
-## Documentation Files
-
-| File | Purpose |
+| File | What it is |
 |---|---|
-| `AGENTS.md` | (this file) — technical architecture & conventions |
-| `UI_FOOTBALL_MANAGER.md` | Agent instructions — UI Football SPA (what's done, what needs work) |
-| `BASKETBALL_PROGRESS.md` | Agent instructions — Basketball |
-| `AMERICAN_FOOTBALL_PROGRESS.md` | Agent instructions — American Football |
-| `TIFO_TEXT_MANAGER_PROGRESS.md` | Agent instructions — TIFO Text mode |
-| `TIFO_SPORTS_MANAGER_GUIDE.md` | **User-facing guide** in English — all sports explained for end users |
-| `demo/service/demoServiceProgression.md` | Agent instructions — demo/service engine (what's done, what's next) |
-| `newLogic/sim/PROPOSAL_PROGRESS.md` | Agent instructions — proposal engine (current state, analysis, plan) |
-| `newLogic/sim/backlog.md` | Prioritized tasks for proposal engine (P0-P7, stats, physics, rules) |
-
-The 4 sport-specific `.md` files are written as instructions for AI agents — they describe what's implemented and what's pending. The `TIFO_SPORTS_MANAGER_GUIDE.md` is a user manual written in English.
-
-## Feature Audit: Old UI vs New SPA
-
-**Tactic Editor**: ✅ Already in the SPA — `pages/views/tactic-editor-view.js` (advanced) + `pages/views/formations-view.js` (basic). Routes: `formations`, `tacticEditor`. Accessible via Club → Tactics / Tactic Editor.
-
-**Admin Features**: ✅ Already in the SPA:
-- Registration approve/reject in Community chat (`features/community.js`)
-- DB Init/Reset in Community admin section
-- Advance Week button on dashboard (admin-only)
-- All guarded by `isAdminViewer()` checks
-
-**No missing features found** — the old `old/` package contains only legacy demo/visualization code (canvas test, socket demo, old match controller) which has been fully replaced by the SPA.
-
-## Known Hotspots
-
-- `pages.js` (5200+ lines) — large single file; exercise care with imports and state mutations
-- `RealisticMatchEngine.java` — core simulation; changes here affect match realism and replay correctness
-- Round/week advancement is stateful and async — changes to `SimulationController`, `AdvanceWeekAsyncService`, or `RuntimeSaveToDB` can cause inconsistent season state
-- `cleanSheet/` and `old/` packages are legacy — do not add new features there
-- `newLogic/` — self-contained; coordinate via `/api/v2/match/` endpoints; test via `NewMatchSimulatorTest` and `NewMatchControllerTest`
-- **demo/service/** — self-contained service engine; source of truth is `corePrinciples.md`; only modify files under `demo/service/`; test via `MatchBatchRunner` and `MatchChainTrace`
-- **newLogic/sim/** — self-contained clean-engine variant (dashboard "Watch Your Match" path: `SimMatchService.simulate` → `SimReplayStore` → proposal viewer → persisted Match); `backlog.md` tracks all tasks; VAR/Discipline/Offside/ThreatOverride all have real wired bodies (offside retreat, press→duel, shot on-target calibrated, carry = 3-cell run); `ProposalBatchDiag` + `ProposalPhysicsDiagnostic` for verification
-- **demo/service/ui/** — web-based match viewer; pitch rendering in `PitchRenderer`, playback in `MatchViewer`
-- **AF match engine balance**: too many yards per game (1310 passing yds in 1 match) — first down resets downs, drives continue indefinitely
-- **AF event storage**: separator changed to `||` (was `|`); old matches in DB have broken events
-
-## Match Engine Architecture (`newLogic/engine/`)
-
-The simulation engine follows a tick-based pipeline with these core classes:
-
-```
-Simulation Tick Pipeline (each tick):
-  MatchState → TacticalEditor → AwarenessEngine → IntentEngine →
-  MovementEngine → DecisionEngine → ActionCommitment → BallEngine →
-  InteractionEngine → RulesEngine → EventBus → StatisticsEngine
-```
-
-### Core Engine Classes
-
-| Class | Responsibility |
-|---|---|
-| `MatchPhase` | `BUILD_UP`, `PROGRESSION`, `FINAL_THIRD`, `FINISHING` — phase based on ball position |
-| `BallState` | `POSSESSION`, `IN_FLIGHT`, `ROLLING`, `DEFLECTED`, `LOOSE` |
-| `PlayerIntent` | `RETURN_TO_SHAPE`, `PRESS`, `MARK`, `INTERCEPT`, `CHASE_BALL`, `SUPPORT`, `OVERLAP`, `UNDERLAP`, `MAKE_RUN`, `HOLD_POSITION` |
-| `PossessionContext` | Tracks ball owner, possession duration, phase, pass count, chain ID |
-| `CurrentAction` | Tracks action type and remaining execution time (commitment duration) |
-| `ActionCommitment` | Prevents decision changes while action is in progress |
-| `SpaceInfo` | Pressure, openness, pass lane score, shot lane score, threat status |
-| `SpaceAnalyzer` | Real-time spatial analysis for each player |
-| `UtilityScorer` | Functional interface per scoring strategy (Carry, Shoot, Pass, Cross, etc.) |
-| `MatchMetrics` | Live match statistics (shots, passes, tackles, corners, etc.) |
-| `MatchEventBus` | Decoupled event publishing — stats, replay, and reporting subscribe independently |
-| `StatisticsEngine` | Consumes events and produces `MatchMetrics` |
-| `SimulationDebugger` | Produces "Simulation Health Report" with possession analysis |
-
-### Decision Engine Architecture (refactored)
-
-The `DecisionEngine` now uses:
-- `UtilityScorer` interface — each action type has its own scorer class
-- `SpaceInfo` from `SpaceAnalyzer` — decisions use real-time spatial data, not computed values
-- `ActionCommitment` — prevents action switching mid-animation, creates realistic action durations
-- `PlayerIntent` — intent drives movement, not the decision
-
-### Simulation Debug HUD
-
-After each match, the simulation prints a health report:
-```
-=== Simulation Health Report ===
-Possession switches: N
-Average possession: X.Xs
-Longest possession: X.Xs [WARNING if >5s]
-
-Shots: N | Passes: N | Tackles: N | Corners: N
-Through balls: N | Crosses: N | Offsides: N
-Loose ball time: X% | Ball in flight: X%
-
-Warnings:
-⚠️  Carry selected N% of all actions.
-⚠️  No throw-ins detected.
-⚠️  No shots from Team B.
-```
-
----
-
-### Bug Fixes & Tuning (2026-09-04 — user reported) — demo/service engine — offside restart QA
-- **Offside restart walk starvation at goal-line spots**: when ball was at row 7.80 (near AWAY goal at 8.0), the walk-clamp `clamp(movedRow, 0.5, 7.5)` stopped taker at row 7.5 — 0.3 cells short of the ball. Removed the row clamp during the taker walk in `MatchSimulator` (kept column clamp). Taker now walks all the way to ball at goal line.
-- **Taker walks freely from current position — no teleport**: per user clarification "nije bitno da li je najblizi igrac ispred ili iza lopte, bitno je da sa svoje trenutne pozicije ode na poziciju lopte". Removed the teleport-to-behind-ball fast-path entirely. Taker now walks from wherever they are to the ball, collision-avoiding opponents via `enforceRestartPushback` + the existing `blockedByOpponent` check (opponent within 0.3 cells blocks the taker until they move out of the way).
-- **Offside team assignment correct**: `defendingTeam` = opposite of `carrierTeam`. The carrier/passer is the ATTACKING team; the offside-positioned receiver is on the same attacking team; the free kick goes to the DEFENDING team. Example: HOME carrier → HOME receiver offside → AWAY takes the FK. Pre-existing code was already correct (opposite of carrier) — confusion stemmed from misreading the diagnostic output where "Omladinac" = HOME and "Partizan" = AWAY (taker of a HOME offside was Partizan = AWAY = correct).
-- **OffsideService setActionDelayTicks**: 5 → 15 ticks — gives taker enough time to walk to the spot before action-phase claim.
-- **OffsideRestartDiagnostic arrival filter bug fix**: the diagnostic was filtering for `setPiece=true` (i.e. `setPiecePending=true`) when looking for taker arrival. But `setPiecePending` is set to `false` the moment the taker receives the ball (at the very tick of arrival), so the filter excluded the actual arrival tick. Removed the `setPiece` filter from the arrival check — the diagnostic now correctly finds the defending taker regardless of phase. After fix: 8/8 confirmed offsides PASS on seed 42.
-
----
-
-### Bug Fixes & Tuning (2026-09-04 — user reported) — demo/service engine — threat override QA + shot quality calibration
-
-#### Threat override (task 4)
-- **`TacticalIntentEngine.applyThreatOverride()` — TYPE B distance 3.5 → 1.5 cells (per `THREAT_OVERRIDE_SPEC.md` §7)**: the spec requires the TYPE B "isolated attacker in final 2.5 rows" band to be within 1.5 cells; the code had drifted to 3.5. After fix, TYPE_B activations drop from 1353 → 475 per match — midfielders no longer chase isolated attackers 3+ cells away.
-- **`ThreatOverrideDiagnostic`** at `diagnosticsAndTests/ThreatOverrideDiagnostic.java` counts THREAT log lines (TYPE_A / TYPE_B split, by role, by team) per match. PASS: 0 → 0 anomaly, 3352 assignments per match on seed 42 (before the 1.5-cell fix).
-
-#### Shot quality (task 1)
-- **`ShotQualityDiagnostic`** at `diagnosticsAndTests/ShotQualityDiagnostic.java` parses every `DECISION: SHOT` log entry, captures its scoreShot, then matches each to a `GOAL / SHOT_SAVED / SHOT_BLOCKED / SHOT_MISSED` outcome within ±5 s window. Buckets by scoreShot: EMPTY (≥100, forced empty-goal), HIGH (70-99), MID (40-69), LOW (<40). Reports on-target and goal rate per bucket.
-- **Calibration finding (2026-09-04)**: pre-calibration scores showed INVERTED correlation — EMPTY bucket (≥150) scored 0% goals while LOW bucket (<25) scored 12.8% goals. Root cause: flat `threatShotBoost = +90/+50`, `gkWrongPostBoost = +45`, and `gkOutOfLane` cap of +20 all pushed contested long-shots into the EMPTY/HIGH buckets purely from absence of defenders, even when distance/angle were poor.
-- **`PlaymakingDecisionEngine.scoreShot()` calibration**:
-  - `threatShotBoost` flat +90/+50 → **distance-scaled +50×distFactor / +25×distFactor** (max 50 at dist=0, 25 at dist=1, 0 at dist≥2.15)
-  - `gkWrongPostBoost` flat +45 → **+30** (was inflating 0-defender shots into HIGH bucket)
-  - `gkOutOfLane` cap +20 → **+18**, scaling 15×dist → **10×dist** (less aggressive)
-  - Empty-goal forced-shot (score=100) **kept as-is** per user rule (no goal-rate tuning)
-- **Result after calibration** (seed 42, 134 shots, 6 goals, 14 on-target): MID 10.5% on-target, LOW 10.1% on-target — quality respected (no inversion). All 5 seeds tested (42, 100, 200, 7, 999, 1234) now show HIGH/MID/LOW buckets with on-target rates that don't decrease with score (the old inversion is gone).
-
----
-
-### Bug Fixes & Tuning (2026-09-05 — user reported) — demo/service engine — carry boundary freeze + duel trigger radius
-
-#### CARRY boundary freeze
-- **Symptom**: carrier dribbles into the final third (rows 6-7 for HOME, 1-2 for AWAY), at the goal line `executeCarry()` computes a target equal to the carrier's current position (clamp to row 1 / row 8 = same row, with a column drift that also clamps to 1 / 6). The action completes every tick but `reDecide()` returns CARRY (all other options negative in the final third), so the action never terminates. Carrier stays at boundary, **no decision log fires for 20+ seconds**, the viewer shows a frozen stretch.
-- **Root cause**: `executeCarry()` blindly sets `carrier.setTarget(carryTarget)` even when carryTarget == carrier.position. The carrier has no movement, the next decision stays CARRY, the loop runs forever.
-- **Fix 1 — `ActionEngine.executeCarry()` boundary guard**: if `dist(position, carryTarget) < 0.05`, do NOT set the target and do NOT start a new CARRY. The action completes normally, the next decision re-evaluates and finds SHOT or PASS viable (the engine already picks SHOT when in the box).
-- **Fix 2 — `ActionEngine.computeCarryTarget()` always biases dc toward goal centre** when in the attacking half. The previous `random.nextInt(3) - 1` produced corners like `(1.0, 1.0)` (AWAY's bottom-left corner) — a dead end. Now the column always moves toward 3.5 unless the carrier is already there. Eliminates "carrier runs into corner and dies" loops.
-- **Fix 3 — `MatchSimulator` CARRY no-op heartbeat**: when the per-tick re-decide keeps CARRY, log a heartbeat every 3 ticks (`CARRY: <player> at (r,c) — re-decide kept CARRY (tickNoOp=N)`) and force-complete the action after 3 consecutive no-op ticks. This guarantees that if the boundary guard somehow misses an edge case, the simulation never shows a 5+ second silent stretch — the gap detector stays clean.
-- **Fix 4 — `init dc = 0`**: previous code declared `int dc;` and assigned only in one branch, which the compiler now rejects after refactoring. Initialize to 0 in the carry-target computation.
-- **Fix 5 — `checkActionCompletion()` after movement in main loop**: previously the CARRY action completion check ran BEFORE movement, so the carrier hadn't reached the target yet when checked — the action never completed naturally. Added `actionEngine.checkActionCompletion()` call after `movementEngine.moveAllTowardTargets()` in the main loop (line ~1042). Now the carrier reaches the target, the completion check fires, and `reDecide()` → SHOT.
-
-#### Defensive override — stoppers central press
-- **Symptom**: stoppers (DCL/DCR) anchored at cols 1 and 6 stayed wide even when the ball was in central columns (2-5). They never shifted toward the carrier.
-- **Fix in `TacticalIntentEngine.applyDefensivePositionConstraint()`**: added a stopper-column-shift block — when `isStopper` (DCL/DCR) and ball column is in [2.0, 5.0], the desired column shifts fully toward the ball column (no per-tick limit, the MovementEngine handles actual speed). This lets stoppers cover the central zone and press carriers in cols 2-5.
-- **Effect**: DCL/DCR now track the ball's column when it's central, moving from wide positions toward the danger zone.
-
-#### Duel trigger radius
-- **Symptom**: DRIBBLE duel fires when the defender is 0.2 cells (~2.8m) from the carrier. The user reported circles need to overlap more before the tackle fires.
-- **Fix — `DuelEngine.DRIBBLE_DUEL_RADIUS` 0.2 → 0.15 cells (~2.1m)**: tighter overlap. At 0.15 the circle centres are ~10.5px apart on a 70px/cell canvas with 18px player radius (36px sum) → ~25px overlap. The TYPE A threat-override already closes the defender to ~1.0 cell of the carrier before the duel fires, so 0.15 is reachable in the same press.
-- All other radii unchanged (RECEIVE_PASS 0.2, AERIAL 0.5, SHOT block 0.3).
-
-#### Carry toward corner — SHOT hard override in final 2 rows
-- **Symptom**: carrier dribbles toward the corner instead of shooting when near the goal.
-- **Fix in `PlaymakingDecisionEngine.decide()`**: added HARD RULE — when carrier is in final 2 rows (HOME: row ≥ 6, AWAY: row ≤ 2) and the decision is CARRY, force SHOT instead. The shot action evaluates range/angle from the current position.
-
-#### Firefox freeze — viewer.js performance fixes
-- **Symptom**: page slows down at 1:01 — O(n²) DOM and lookup operations causing Firefox to freeze.
-- **Fix 1 — snapshot find → O(1) Map**: `SHOTT_BLOCKED/SHOTT_SAVED` event handler used `this.snapshots.find(s => s.tick === ev.tick)` which is O(n) per event × 2400 events = 24M operations per seek. Replaced with `this._snapIndex.get(ev.tick)` (O(1) Map lookup). The `_snapIndex` was already built at load time.
-- **Fix 2 — player interpolation**: `_getInterpolatedPlayers()` built a fresh `new Map()` for every frame. Kept the Map approach but ensured it's only created once per frame. (The old `find()` was also O(n²) per frame — 22×22 = 484 ops — but the real cost was GC pressure; the Map is more efficient.)
-- **Fix 3 — timeline batching**: `_addTimelineEvent` did `appendChild` + `removeChild` per event, triggering layout reflow on every call. At 60fps with event bursts this killed Firefox. Replaced with a `_pendingTimelineEvents` buffer — events are collected per RAF tick and flushed in one `DocumentFragment.appendChild` call (single DOM mutation). Old `_addTimelineEvent` removed (dead code).
-
-#### Viewer
-- **Cell-coordinate labels disabled** in `viewer.js`. The "r.c" labels in every cell centre were useful for tuning the tactical engine but clutter the match view. Wrapped in `if (false) { ... }` so it can be re-enabled for diagnostics.
-
-#### Verification
-- **`OffsideRestartDiagnostic`**: 5/5 PASS on seed 42 (and 100, 200, 7, 999, 1234 — all 0 fail).
-- **`GapLogDiagnostic`**: 0 mystery gaps on seeds 42, 100, 200, 7, 1234; 1 chase-related gap on seed 999 (unrelated — long loose-ball chase).
-- **Goal count**: HOME 350 / AWAY 484 across 42 matches on seed 42 (was HOME 192 / AWAY 471). Carrier now reaches the box more often with the tighter duel radius, which raises HOME scoring significantly.
-
-### Bug Fixes & Tuning (2026-09-11 — user reported) — demo/service engine — kickoff center, shooting rows, OOB visual, interception
-
-#### Kickoff center & formation
-- **Symptom**: kickoff show both teams on the wrong half / attackers over the center line; the kicker and ball were not on the authoritative center (4.5, 4.0).
-- **Center coordinate (authoritative)**: field center row **4.5**, col **4.0** (cols 1-6, touchlines 1.0-7.0). Goal-mouth center col **3.5** is unchanged. All prior code used the field center row 4.0 / ball center col 3.5 (that col is the goal centre).
-- **Kickoff position**: `MatchSimulator.kickoffPos` → `(4.5, 4.0)`; `MatchState.resetPositionsForKickoff` ball + roundStart/roundEnd/tactical snapshots → `(4.5, 4.0)`; `RestartManager.handleKickoff` + `handleKickoffPreMatch` centerSpot → `(4.5, 4.0)` (+ status strings updated); `ActionEngine` penalty-miss ball reset → `(4.5, 4.0)`; `MatchDetailedAnalyzer` kickoffPos → `(4.5, 4.0)` (2 sites).
-- **Own-half clamp in `MatchState.resetPositionsForKickoff`**: HOME players clamped to row ≤ 4.0, AWAY to row ≥ 5.0 (HOME half is 1.0-4.5, AWAY half is 4.5-8.0), so both teams start on their own half regardless of the generated formation (attackers originally at row 5.5/3.5). The kicker is then placed at exactly (4.5, 4.0). This is the chosen fix for the "away attackers on home half" report — `generateTeam` attacker rows were intentionally NOT changed.
-- **Kickoff detection compatibility**: `PlaymakingDecisionEngine` + `ActionEngine.executePass` detect kickoff by kicker position `row == 4.5 && col == 4.0`; kickoff-candidate forward-row checks now `< 4.5` (HOME) / `> 4.5` (AWAY); `generateKickoffPass` backward-row checks 4 → 4.5.
-
-#### Half-boundary checks 4.0 → 4.5
-- `PlaymakingDecisionEngine` (lines 90, 265, 416, 418, 628-629, 707, 743, 768, 922, 1113, 1139, 1783), `ActionEngine.isClearlyOffside` (41), `OffsideService` (122-123), `FootballRulesService` (41-42), `TransitionService` (127-128). All opponent-half / attacking-half / offside-eligibility checks pivot on 4.5 now, matching the corrected geometry.
-
-#### CLEAR in attack → force SHOT in final rows
-- **Symptom**: a carrier deep in the attacking third with no visible pass receiver CLEARED backward.
-- **Fix in `MatchSimulator.executeDecision` PASS fallback (`receiver == null`)**: when carrier is in shooting rows (HOME row ≥ `ActionEngine.SHOOT_MIN_ROW` = 6, AWAY row ≤ 8 − 6 = 2) → `executeShot(false)` (+ `stats.onShot`); otherwise CLEAR (`executeClearance` + `stats.onClearance`). A forward in the box with no pass never clears; clearance is still the fallback in midfield/defence.
-
-#### Miss scatter must visibly cross the end line (OOB visual)
-- **Symptom**: off-target shots didn't visually leave the pitch — ball stayed floating near the frame, so restarts looked wrong on screen.
-- **Fix in `ExecutionQuality.evaluateShot`**: off-target scatter target is now forced PAST the end line (row > 8.0 for HOME goal at 8.0 / < 1.0 for AWAY), or past a sideline — the ball flight segment crosses the OOB band during animation, matching the instant-restart spec (§48). Miss scatter margins enlarged (0.9 + rand vs 0.45+), column clamp 0.5-7.5, `SHOT_GOAL_THRESHOLD` geometric-miss safety push raised 0.5 → 0.6 so the safety net can't pull the ball back on frame.
-
-#### Pass interceptions actually fire
-- **Symptom**: a 30 m pass through two defenders at 0:04 was never intercepted; recorded matches showed ZERO INTERCEPT/DEFLECT events.
-- **`resolveMidPathCollision`/`findPassInterceptor` interception lane 0.07 → 0.14 cells (2 m)**: defenders now reach balls passing 2 m away (AGENTS.md prior text said 1 m — superseded). Layered with the existing 0.035 deflection lane and §49 lane-strict rules: a defender 2 m off the line can intercept, but only a defender ≤ 0.5 m can deflect.
-- **Skill floor `pm >= 12` → `pm >= 8`** (was `pm < 12 || def < 12` skip) and `interceptChance = (pm+def)/50 * speedModifier` (was `/40`); mid-path intercept probability threshold `pm+def > 18` with `(0.25 + (pm+def−18)/30) * speedFactor`, cap 0.45.
-- **Result**: 22.3 interceptions/match in the initial 200-match batch (was 0, pre-double-count-fix; post-fix figure: 10.95/match) — interceptions reclaim clearly-visible lanes without breaking passing.
-
-#### Offside called at CROSS execution
-- **Symptom**: crosses could be received by attackers standing in offside position (offside only checked at pass/THRU, not CROSS).
-- **`ActionEngine.executeCross` now calls `selectCrossTarget()`** — new public method that filters the receiver via `isClearlyOffside` (margin > 0.2 cells beyond second-to-last defender), corner-exempt (`state.isCornerActive()` skips the filter — FIFA Rule 11: no offside from corners).
-- **`MatchSimulator` CROSS branch**: `trackOffsidePositions` + `checkOffside` before `executeCross` (unless corner active). Execution-time whistle is the backstop for marginal ≤ 0.2 cases.
-
-#### Verification
-- `mvn compile -q` clean. 200-match batch (`MatchBatchRunner 200`) post-fix: **goals 2.38** (HOME 1.14 / AWAY 1.24), **shots 53.8** (11% on target), **passes 98%** accuracy (154108/156736), **fouls 1.17**, Y 0.28, R 0.005, **corners 2.67**, offsides 0.87, **interceptions 10.95**, goal kicks 17.38, throw-ins 4.94. **Possession HOME 63%** (was 75% before mirror fix). HOME/AWAY goal ratio 0.92 (was 0.59).
-- Carries remain ~631/match pair-output (zone 6-8/3-5 dominates, PASS alternatives avg −113) — carried over from the pre-fix analysis; rerun recommended after the SHOT-override changes settle.
-
-### Bug Fixes & Tuning (2026-09-11 — pass 2) — AWAY-goal-line mirror fix (PRIMARY asymmetry fix)
-
-Root cause of the 75/25 possession imbalance: dozens of row-comparison literals
-in `PlaymakingDecisionEngine.java`, `ActionEngine.java`, `MatchSimulator.java`,
-`TacticalIntentEngine.java`, `ThreatAssessmentService.java`,
-`CornerArrangementEngine.java`, `OffsideService.java`, and `RestartManager.java`
-used the OLD geometry (AWAY goal at row 7.0, mirror axis 4.0) while the
-authoritative coordinate system is AWAY goal at row 8.0, mirror axis 4.5
-(HOME row n → AWAY row 9−n).
-
-#### Decision layer (PlaymakingDecisionEngine.java) — PRIMARY driver
-- **PASS goal-proximity** (line 813): `(7.0 - receiverRow)` → `(8.0 - receiverRow)` — AWAY forward passes were scored ~1.5 points lower than HOME equivalents at the mirror position.
-- **CARRY scoring** (lines 1079/1088/1104/1575): all `(7.0 - row)` → `(8.0 - row)` — AWAY carry-to-goal scored lower; backward-carry penalty fired at wrong boundary.
-- **Shooting-zone band** (lines 413/821-822): `8 - SHOOT_MIN_ROW` → `9 - SHOOT_MIN_ROW` — AWAY shooting zone was 1 cell deep vs HOME's 2 cells.
-- **inFinalThird** (lines 414/1086): AWAY third boundary `row <= 3` → `row <= 4` (mirror of 5.0 = 4.0).
-- **15+ additional row mirrors** across box detection, long-shot zone, corner-line detection, inDefensiveThird, inFinalTwoRows, nearGoal, isDeepAttacker, countBoxAttackers — all corrected to `9-K`.
-
-#### Tactical layer (TacticalIntentEngine.java)
-- **Threat override TYPE A** (line 402): AWAY carrier-in-final-third `<= 2.0` → `<= 3.0` (mirror of 6.0).
-- **isInFinalQuarter** (line 493): AWAY `>= 5.5` → `>= 6.5` (mirror of 2.5).
-- **isDefensiveThird** (line 475): AWAY `>= 5.0` → `>= 6.0` (mirror of 3.0).
-
-#### Threat assessment (ThreatAssessmentService.java) — swapped + stale
-- **evaluateBallThreat**: HOME `(ballRow - 1.0)/6.0` → `(8.0 - ballRow)/7.0` (ball near own goal now = HIGH threat, not inverted). AWAY mirror-corrected.
-- **evaluateOpponentProximityThreat**: DANGER_ZONE constants swapped + comparison operators inverted; HOME near goal = `row <= 2.0`, AWAY = `row >= 6.0`.
-- **evaluateDangerZoneThreat**: center 4.0 → 4.5, span 4.0 → 3.5, mirrored.
-- **evaluateNumericalThreat**: defensive third checks corrected (HOME `row <= 3`, AWAY `row >= 6`).
-
-#### Geometry / set pieces
-- **ActionEngine:995** pass reception OOB check: `row > 7.0` → `> 8.0`, `col > 6.0` → `> 7.0`.
-- **MatchSimulator blocked-shot corner band**: distance-to-end-line `7.5`/`0.5` → `8.0`/`1.0`.
-- **MatchSimulator finalThirdRow**: AWAY 3.0 → 4.0 (mirror of 5.0).
-- **MatchSimulator shooting range**: AWAY `8 - SHOOT_MIN_ROW` → `9 - SHOOT_MIN_ROW`.
-- **OffsideService:402-413**: own-goal-row inverted (HOME↔AWAY swapped) + stale 7.0; clamp 7.0 → 8.0.
-- **CornerArrangementEngine**: AWAY_BOX rows corrected from `8-K` to `9-K`; marker-band mMax 5.5 → 6.5; unmarked hold-row 0.4 → 1.4.
-- **RestartManager throw-in**: row clamp 1..7 → 0..8; col 6.0 → 7.0.
-- **TacticalIntentEngine carrier final-third**: AWAY `<= 2.0` → `<= 3.0`.
-
-#### Verification
-- `mvn compile -q` clean. 200-match batch post-mirror-fix: **goals 2.38** (HOME 1.14 / AWAY 1.24), **shots 53.8** (11% on target), **passes 98%** accuracy, **fouls 1.17**, Y 0.28, R 0.005, **corners 2.67**, offsides 0.87, **interceptions 10.95**, goal kicks 17.38, throw-ins 4.94. **Possession HOME 63%** (was 75% before fix). HOME/AWAY goal ratio 0.92 (was 0.59 before fix). Significant convergence toward balance but still slight HOME possession bias.
-
-### Bug Fixes & Tuning (2026-09-12 — user reported) — demo/service engine — reDecide VAR deadlock, final-row hard rules, press duels
-
-User rules (authoritative): (1) app log must never go silent > 5 s — 4-tick (6 s) celebration heartbeats are fine; (2) during a carry teammates reposition every tick; the carrier MUST shoot inside ~16 m and never dribble to the goal line; the ball/player must NEVER freeze ON the goal line; (3) Threat Override MUST end in a duel; (4) QA before implementing.
-
-- **ROOT CAUSE — pending VAR blocked reDecide**: `MatchSimulator.canReDecide` contained `!state.hasPendingVARReview()`. A *held-live* review (close ONSIDE_CHECK / marginal offside, `varDelayTicks == 0`, play continues until the shot resolves) froze the per-tick re-decision for the whole carry → corridor/final-row SHOT override could never fire → carrier dribbled to row 7.94 (probe: `var=true` every tick, ticks 7-26). **Fix**: guard now `!state.isVARReviewActive()` (blocks only `varDelayTicks > 0`). Probe removed.
-- **FINAL-ROW HARD RULES** (`PlaymakingDecisionEngine.decide`, before the corner-carry rule): row ≥ 7.0 (HOME) / ≤ 1.0 (AWAY): central cols (1.5..5.5) → **MANDATORY SHOT** (score 200); flank cols (≤1.5 / ≥5.5) → **MANDATORY DELIVERY INTO THE BOX** (best CENTER / CROSS / THRU / pass-to-box-player; forced SHOT only if no box target).
-- **No stop on the goal line** (`ActionEngine.computeCarryTarget`): row clamp `1..8` → HOME `1..7.5` / AWAY `1.5..8` — the carry target is capped half a cell before the line; the re-decision fires SHOT/delivery on-pitch.
-- **Press must end in a duel** — `MovementEngine.MIN_PLAYER_DISTANCE = 0.35` (wall) + `DRIBBLE_DUEL_RADIUS = 0.10` meant a pressing defender NEVER triggered the tackle (gap floor ~0.40). **Fix**: `DuelEngine.PRESS_DRIB_DUEL_RADIUS = 0.50` when `defender.isThreatOverrideActive()` (non-press contact stays 0.10); `TacticalIntentEngine.applyThreatOverride` press point = attacker's EXACT position (removed the goal-side ±0.08 offset that forced the presser through the carrier's wall).
-- **Verification**: export seed 459920804855 → **score 2-1**; old frozen window 0:07-0:41 now: CHASE_BALL duel (Away), DRIBBLE duel (Home), SHOT (row 6.62 goodExec=false, miss crosses the line), SHOT→GOAL (1-0, t=36). 17 duels / 30 duel-wins / THREAT COVER 36; no carrier past ~row 6.65 in attack (final-row rule unused — carriers re-decide earlier); teammates move 5-11/22 during carries; **GapLogDiagnostic: Mystery gaps (none)** on seeds 42 + 459920804855 (gaps ≥ 4 ticks only in GOAL CELEBRATION heartbeats — user-confirmed acceptable). `MatchBatchRunner 50`: goals 3.3/match, SOT 8%, passes 98%, interceptions 17.18, possession HOME 61%. `mvn compile` clean.
+| [`kanban.md`](kanban.md) · [`kanbanProgress.md`](kanbanProgress.md) | **The board and its log. Read these first.** |
+| `experAudit01102026.md` | The 2026-10-01 audit. Its §0 retracts three earlier claims; its Appendix B lists what it did not do, which is five items and matters. |
+| `COMPETITIVE_ANALYSIS.md` | Product/architecture review against Sokker, Hattrick and FM. Its §10 intake list is the roadmap ordering. |
+| `dataFixSuggestions.md` | Correctness and scale suggestions. **§1.1 is wrong** and is settled — read the kanban entry before touching anything here. |
+| `ENGINE.md` | Short description of the live match path. |
+| `TIFO_SPORTS_MANAGER_GUIDE.md` | User-facing manual, in English. |
+| `BASKETBALL_PROGRESS.md` · `AMERICAN_FOOTBALL_PROGRESS.md` · `TIFO_TEXT_MANAGER_PROGRESS.md` | Per-mode agent notes for the other sports. |
+| `sprintBacklog.md` · `sprintProgress.md` · `expertAudit.md` | **History. Superseded — see the warning at the top.** |

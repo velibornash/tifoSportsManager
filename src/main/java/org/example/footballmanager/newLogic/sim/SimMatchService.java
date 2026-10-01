@@ -275,6 +275,11 @@ public class SimMatchService {
             // it here means the column is right the moment the matchday finishes rather than at the
             // next restart. A replay, not an increment, so running it for every match of a matchday is
             // harmless - and if it throws, the match is still saved and the next boot catches up.
+            //
+            // Club Elo is deliberately NOT here. Its replay is world-wide - every club and every match
+            // it has played - and this runs once per fixture, so a 155-match matchday would replay the
+            // whole world 155 times. It is called once per batch instead, at the end of
+            // AsyncSimulationRunner and after a single match in SimulationController.
             if (match.getCompetition() != null
                     && match.getCompetition().getType() == CompetitionType.INTERNATIONAL) {
                 try {

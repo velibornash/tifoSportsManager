@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,9 +165,7 @@ public class InternationalClubCups {
     }
 
     private Optional<Competition> findByName(String name) {
-        return competitions.findAll().stream()
-                .filter(c -> name.equals(c.getName()))
-                .findFirst();
+        return competitions.findAllByName(name).stream().findFirst();
     }
 
     /**
@@ -184,18 +183,96 @@ public class InternationalClubCups {
      * breaks under a read-only transaction, and it means the page only works if it is the thing that
      * happens to run first. The competitions are created on boot instead, and a cup that is somehow
      * missing is reported as missing rather than conjured by a page view.
+     *
+     * <h2>Why the tables are read once per tier and not once per cup</h2>
+     *
+     * <p>This was the World page's lag, and it was arithmetic rather than anything subtle. The three
+     * cups of a tier are read from <b>the same tables</b>, so asking fifteen cups read them fifteen
+     * times: thirty full scans of the competition table, and two queries for every division in the
+     * world — 768 in tier 5 alone — repeated three times over.
+     *
+     * <p>That is about <b>nine thousand queries for one page view</b>, on a server reached over a
+     * network where every one of them is a round trip. It did not look slow while reading it; it was
+     * slow because of what it did to the wire.
+     *
+     * <p>So a tier's tables are loaded once and its three cups are selected from them. The selection
+     * itself is untouched — same comparator, same pools, same bands — because {@link #qualifyFrom} is
+     * the old body, moved rather than rewritten.
      */
     @Transactional(readOnly = true)
     public List<CupSummary> summarise(int finishedSeason) {
         List<CupSummary> summaries = new ArrayList<>();
-        for (Cup cup : cups()) {
-            List<Team> qualified = qualifiedFor(cup, finishedSeason);
-            summaries.add(new CupSummary(cup.fullName(), cup.tier(),
-                    findByName(cup.fullName()).map(Competition::getId).orElse(null),
-                    qualified.size(),
-                    qualified.stream().map(Team::getName).sorted().toList()));
+        for (int tier = 1; tier <= 5; tier++) {
+            Map<Long, List<List<CompetitionEntry>>> tables = tierTables(tier, finishedSeason);
+            for (Cup cup : cups()) {
+                if (cup.tier() != tier) {
+                    continue;
+                }
+                List<Team> qualified = qualifyFrom(tables, cup);
+                summaries.add(new CupSummary(cup.fullName(), cup.tier(),
+                        findByName(cup.fullName()).map(Competition::getId).orElse(null),
+                        qualified.size(),
+                        qualified.stream().map(Team::getName).sorted().toList()));
+            }
         }
         return summaries;
+    }
+
+    /**
+     * Every division of one tier's finished-season table, grouped by country.
+     *
+     * <p>Three queries for the tier whatever its size: the divisions, their season rows, and every
+     * table row in one go. It was two queries <em>per division</em>, which is where the page load went.
+     *
+     * <p>A division with no row for the season is left out, so a tier nobody has finished yet reports
+     * an honest zero rather than a club at the top of an empty table.
+     */
+    private Map<Long, List<List<CompetitionEntry>>> tierTables(int tier, int finishedSeason) {
+        Map<Long, List<List<CompetitionEntry>>> byCountry = new LinkedHashMap<>();
+
+        List<Competition> divisions = divisionsInTier(tier).stream()
+                .filter(division -> division.getCountry() != null)
+                .toList();
+        if (divisions.isEmpty()) {
+            return byCountry;
+        }
+
+        Map<Long, SeasonCompetition> seasonRowByDivision = new HashMap<>();
+        for (SeasonCompetition seasonCompetition
+                : seasonCompetitions.findByCompetitionInAndSeasonYear(divisions, finishedSeason)) {
+            if (seasonCompetition.getCompetition() != null) {
+                seasonRowByDivision.put(seasonCompetition.getCompetition().getId(), seasonCompetition);
+            }
+        }
+        if (seasonRowByDivision.isEmpty()) {
+            return byCountry;
+        }
+
+        Map<Long, List<CompetitionEntry>> rowsBySeasonRow = new HashMap<>();
+        for (CompetitionEntry row : entries.findBySeasonCompetitionIn(
+                new ArrayList<>(seasonRowByDivision.values()))) {
+            if (row.getSeasonCompetition() != null) {
+                rowsBySeasonRow.computeIfAbsent(row.getSeasonCompetition().getId(), key -> new ArrayList<>())
+                        .add(row);
+            }
+        }
+
+        for (Competition division : divisions) {
+            SeasonCompetition seasonRow = seasonRowByDivision.get(division.getId());
+            if (seasonRow == null) {
+                continue;
+            }
+            List<CompetitionEntry> rows = rowsBySeasonRow.get(seasonRow.getId());
+            if (rows == null) {
+                continue;
+            }
+            // Sorted here rather than in the query: LeagueTableOrder is the one comparator in the
+            // codebase, and a table that was also ordered in SQL would be a second ordering waiting to
+            // disagree with it.
+            byCountry.computeIfAbsent(division.getCountry().getId(), key -> new ArrayList<>())
+                    .add(LeagueTableOrder.sort(rows));
+        }
+        return byCountry;
     }
 
     /**
@@ -228,18 +305,18 @@ public class InternationalClubCups {
      */
     @Transactional(readOnly = true)
     public List<Team> qualifiedFor(Cup cup, int finishedSeason) {
-        Map<Long, List<List<CompetitionEntry>>> byCountry = new LinkedHashMap<>();
-        for (Competition league : divisionsInTier(cup.tier())) {
-            Optional<SeasonCompetition> seasonCompetition =
-                    seasonCompetitions.findByCompetitionAndSeasonYear(league, finishedSeason);
-            if (seasonCompetition.isEmpty() || league.getCountry() == null) {
-                continue;
-            }
-            List<CompetitionEntry> table = LeagueTableOrder.sort(
-                    entries.findBySeasonCompetition(seasonCompetition.get()));
-            byCountry.computeIfAbsent(league.getCountry().getId(), key -> new ArrayList<>()).add(table);
-        }
+        return qualifyFrom(tierTables(cup.tier(), finishedSeason), cup);
+    }
 
+    /**
+     * The selection rules, over tables somebody else has already read.
+     *
+     * <p>Separate from {@link #tierTables} so the World page can read a tier's tables once and run
+     * three cups over them. The rules are the owner's and unchanged: Champions takes the better of the
+     * divisions' winners, Masters the best two of the pooled seconds and thirds, Challenge the best of
+     * the pooled fourths.
+     */
+    private List<Team> qualifyFrom(Map<Long, List<List<CompetitionEntry>>> byCountry, Cup cup) {
         Map<Long, Team> chosen = new LinkedHashMap<>();
         for (List<List<CompetitionEntry>> divisions : byCountry.values()) {
             // Pool per finishing place, across all of the country's divisions in this tier.
@@ -293,9 +370,10 @@ public class InternationalClubCups {
     /** Every club division in one tier, in ladder order. */
     @Transactional(readOnly = true)
     public List<Competition> divisionsInTier(int tier) {
-        return competitions.findAll().stream()
-                .filter(c -> c.getType() == CompetitionType.LEAGUE)
-                .filter(c -> c.getTier() != null && c.getTier() == tier)
+        // Sorted in Java rather than by the query, and deliberately: a division with no level has to
+        // sort last, and NULL ordering differs between H2 and Postgres, so asking the database to do it
+        // would give the same query two different answers in the two places this runs.
+        return competitions.findByTypeAndTier(CompetitionType.LEAGUE, tier).stream()
                 .sorted(java.util.Comparator
                         .comparing((Competition c) -> c.getDivisionLevel() == null ? Integer.MAX_VALUE : c.getDivisionLevel())
                         .thenComparing(Competition::getId))

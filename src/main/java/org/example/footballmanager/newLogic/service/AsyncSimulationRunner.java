@@ -21,6 +21,7 @@ public class AsyncSimulationRunner {
     private final MatchFixtureRepository matchFixtureRepository;
     private final TransactionTemplate transactionTemplate;
     private final SimMatchService simMatchService;
+    private final ClubRatingService clubRatingService;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicInteger simulatedCount = new AtomicInteger(0);
@@ -63,8 +64,30 @@ public class AsyncSimulationRunner {
             }
             log.info("Background simulation complete: {} fixtures", simulatedCount.get());
         } finally {
+            rateClubs();
             running.set(false);
             log.info("Background simulation runner stopped");
+        }
+    }
+
+    /**
+     * Rates the clubs once the batch is over.
+     *
+     * <p>This is the batch boundary, and it is the reason club Elo is not recomputed per match inside
+     * {@code SimMatchService.persist}. The replay reads every club in the world and every match it has
+     * played, so a matchday of 155 fixtures run that way would replay the world 155 times — and the
+     * cost would grow with the world rather than with the batch.
+     *
+     * <p>Its own transaction, and it cannot fail the batch: the football is already saved by the time
+     * this runs, and the next matchday or restart would catch up anyway.
+     */
+    private void rateClubs() {
+        try {
+            ClubRatingService.Result rated = clubRatingService.recomputeDurably();
+            log.info("Club Elo after the batch: {} match(es) replayed, {} club(s) rated, {} off their seed.",
+                    rated.matchesReplayed(), rated.clubsRated(), rated.clubsMoved());
+        } catch (RuntimeException e) {
+            log.warn("Could not recompute club Elo after the batch: {}", e.getMessage());
         }
     }
 }
