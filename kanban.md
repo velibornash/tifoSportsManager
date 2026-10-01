@@ -174,7 +174,7 @@ season number after the first rollover is wrong, and no later fix can recover th
 
 | # | Task | State | Note |
 |---|---|---|---|
-| **B1** | **The national cup draw has no randomness at all.** `DRAW_SEED` is declared, assigned and **never read**; clubs are paired by list index after sorting by strength, so **the strongest club is drawn against the weakest in every round, for ever** | not started | `CupFixtureSeeder.java:62` (seed), `:98`/`:105`/`:115` (declared/assigned), `:394-436` (`drawRound`), pairing at `:412-414`. **Three javadocs describe a shuffle the code does not perform.** `Collections.shuffle` *is* used in `InternationalClubCupDraw:293-294`, which is why the international cups are random and the national one is not |
+| **B1** | **The national cup draw has no randomness at all.** `DRAW_SEED` is declared, assigned and **never read**; clubs are paired by list index after sorting by strength, so **the strongest club is drawn against the weakest in every round, for ever** | **diagnosed, fix written, BLOCKED on B2** | `CupFixtureSeeder.java:62` (seed), `:98`/`:105`/`:115` (declared/assigned), `:394-436` (`drawRound`), pairing at `:412-414`. **Three javadocs describe a shuffle the code does not perform.** `Collections.shuffle` *is* used in `InternationalClubCupDraw:293-294`, which is why the international cups are random and the national one is not.<br><br>**The fix is six lines and is ready**: shuffle within each half using `new Random(DRAW_SEED + cupId * 1000 + round)`, which keeps the favourite-v-non-favourite split, keeps the non-favourite at home, and keeps the draw reproducible — the three properties the design depends on. **It was written, then reverted rather than committed, because it could not be tested.** See below |
 | **B2** | ~~The cup is hardwired to the lowest-id club's country~~ **PARTLY FIXED** — the draw now names the domestic cup instead of "the first CUP row" | **half done** | `drawRoundForWeek` was `findAll().filter(type == CUP).findFirst()`. With **sixteen** CUP competitions, "the first" is whichever comes back, so the job could draw the Champions Cup on the national cup's week map with the national cup never drawn at all. It now filters on `scope != INTERNATIONAL`, which is the one column that says a cup is domestic. **Still open:** `rankedClubs:178-190` still takes the country from the first club the repository returns, and `ENTRY_ROUND_TEAMS = 108` / `MAIN_DRAW_TEAMS = 256` only close because a country has exactly 310 clubs — **any country under 256 has no cup at all** |
 | **B3** | **The international fixture seeder creates the competition, then gives up — and reports success.** It persists the row at `:75` and only checks `entrants.size() < 2` at `:99`; the guard is "does any INTERNATIONAL competition exist" | not started | `InternationalFixtureSeeder:66-103`. So the first boot creates it, draws nothing, and can never run again. `MatchdayJob` then finds it, finds no fixtures, logs at debug and is **marked DONE** — every week records a successful international matchday that played nothing |
 | **B4** | **Cup and international fixtures are dated 2026-07-01**, hardcoded, with no season offset | not started | `InternationalFixtureSeeder:49`, `CupFixtureSeeder:56, 71-74`. Every season's round 1 gets the same date. The recovery window is `currentDate − 2 days` (`ZoneLoadService:69, 127`), so once the clock passes 2026-07-06 **no cup or international fixture ever falls inside it** — loads are written and never read, and `RecoveryJob` reports zero forever |
@@ -335,6 +335,31 @@ superior"* or *"matured game, capitalising on counter-attacks"* without reading 
    disagree about whether they know anything.
 4. The post-match prose is cosmetic next to #1 and **should not be touched until #1 is settled** — a
    wrong number dressed up is worse than a missing one.
+
+### Why B1 is blocked rather than fixed — and this is the interesting part
+
+B1's fix is six lines and I wrote it. I did not commit it, because **I could not make a test that
+proves it, and a test that cannot fail proves less than no test.**
+
+The reason is B2's open half, and it is worth more than B1:
+
+**`survivorsOf(cup, round)` calls `rankedClubs()` with no argument.** It scans **every club in the world**,
+sorts them, and takes the bottom 108 — so the round-1 field is the world's 108 weakest clubs, not the
+cup's. It never asks which cup it is drawing for. `rankedClubs` takes the country from the first club
+the repository returns and discards the rest: "a Serbia dependency expressed as a `continue`".
+
+So every attempt to test the shuffle failed the same way, and the failures are the finding:
+
+- a fixture with **32 clubs** drew nothing findable, because the draw went into a *different* cup's
+  field — `nationalCup()` picks the domestic cup by lowest id, so once several tests had each created
+  one, the draw went into the oldest and every assertion aimed at the wrong competition;
+- with **8 clubs** it "passed", which was worse: the draw succeeded into some cup using the global
+  bottom-108, and the test proved nothing about the cup it had just built.
+
+**Fix B2's remaining half first — `rankedClubs` must belong to the cup it is drawing for — and B1 falls
+out as a two-minute change with a testable field.** Doing B1 first means shipping a fix into a code path
+with no coverage, in a method whose input is not the one its name implies. That is the shape of defect
+this board exists to stop.
 
 ### Two findings from these documents that are **wrong**, and should not be re-"fixed"
 
