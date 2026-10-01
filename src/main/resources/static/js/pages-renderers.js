@@ -157,7 +157,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
         ? `<div class="fx-h2h"><strong>${safe(h2h.summary || 'H2H')}</strong>${h2h.lastMeetingSummary ? `<span>${safe(h2h.lastMeetingSummary)}</span>` : ''}</div>`
         : '';
 
-    if (resultHidden) {
+    if (match?.resultHidden) {
         // No score, no W/D/L badge and no click-through to the match: any one of them alone gives the
         // result away, and the badge is the quietest leak of the three.
         return `

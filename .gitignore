@@ -52,3 +52,8 @@ src/main/resources/static/demo/service/ui/match.json
 
 # Simulated replay blobs (S1.10) - runtime data, not source
 replay-data/
+
+# Manual screenshots: regenerable with manual/capture.sh (see manual/README.md)
+manual/img/
+manual/index.html
+manual/manifest-*.txt
