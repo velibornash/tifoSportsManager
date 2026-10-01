@@ -1,10 +1,21 @@
 package org.example.footballmanager.newLogic.util;
 
 import org.example.footballmanager.BaseTest;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionScope;
+import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.CountryState;
+import org.example.footballmanager.newLogic.repository.CountryRepository;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.service.SeasonService;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,6 +49,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CupDrawSeedingTest extends BaseTest {
 
     @Autowired private CupFixtureSeeder seeder;
+    @Autowired private CompetitionRepository competitions;
+    @Autowired private MatchFixtureRepository fixtures;
+    @Autowired private InternationalClubCups cups;
+    @Autowired private SeasonService seasons;
+    @Autowired private CountryRepository countries;
+    @Autowired private TeamRepository teams;
 
     /** Descending by name, so the order is the ranking and does not depend on a real squad. */
     private static List<Team> ranked(int count) {
@@ -182,5 +199,72 @@ class CupDrawSeedingTest extends BaseTest {
             ties.add(upper.get(i).getName() + " v " + lower.get(i).getName());
         }
         return ties;
+    }
+
+    /**
+     * The draw must target the country's own cup.
+     *
+     * <p>It used to take {@code findAll().filter(type == CUP).findFirst()} — the first cup row the
+     * database returned. That was harmless with one cup and is not now: there are sixteen CUP
+     * competitions, so "the first" is whichever comes back, and the job could draw the Champions Cup on
+     * the national cup's week map with the national cup never drawn at all. Neither symptom is visible
+     * from a single competition in the fixture, so the international cups have to be in this test.
+     *
+     * <p><b>Built here rather than found</b>, because the H2 profile has no national cup at all — every
+     * other test in this class exercises {@code splitForDraw}, which is pure arithmetic and never touches
+     * a competition. So "the draw was not wired" was true here too, and a test written against the seeded
+     * world would have measured the seeder rather than the draw.
+     */
+    @Test
+    @DisplayName("the draw ignores the international cups and picks the domestic one")
+    void theDrawTargetsTheNationalCup() {
+        cups.ensureCompetitionsDurably();
+        Competition international = competitions.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.CUP)
+                .filter(c -> c.getScope() == CompetitionScope.INTERNATIONAL)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no international cup exists, so this test proves nothing"));
+
+        Competition national = aNationalCupWithClubs(8);
+        int season = seasons.getActiveSeasonYear();
+
+        int drawn = seeder.drawRoundForWeek(1);
+
+        assertTrue(drawn > 0, "round 1 of an eight-club national cup was not drawn, so this test proves nothing");
+        assertTrue(fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        national.getId(), season).size() > 0,
+                "the national cup holds no fixtures after a successful draw");
+        assertEquals(0, fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        international.getId(), season).size(),
+                "fixtures were drawn into " + international.getName() + ", which has its own draw, its own "
+                        + "week map and its own format - the national cup's round-for-week arithmetic does "
+                        + "not apply to it");
+    }
+
+    /** A domestic cup with {@code clubCount} clubs in it, which is what the draw reads. */
+    private Competition aNationalCupWithClubs(int clubCount) {
+        Country country = new Country();
+        country.setName("ZZ Cup " + System.nanoTime());
+        country.setIsoCode("CU" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        country.setState(CountryState.SIMULATED);
+        country = countries.save(country);
+
+        Competition cup = new Competition();
+        cup.setName("ZZ National Cup " + System.nanoTime());
+        cup.setType(CompetitionType.CUP);
+        cup.setScope(CompetitionScope.NATIONAL);
+        cup.setCountry(country);
+        cup = competitions.save(cup);
+
+        for (int i = 1; i <= clubCount; i++) {
+            Team club = new Team();
+            club.setName(String.format("ZZ Cup FC%02d", i));
+            club.setCountry(country);
+            club.setCompetition(cup);
+            club.setHumanControlled(false);
+            club.setReputation(50.0);
+            teams.save(club);
+        }
+        return cup;
     }
 }

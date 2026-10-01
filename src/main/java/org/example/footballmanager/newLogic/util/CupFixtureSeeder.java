@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.util;
 
 import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Team;
@@ -238,11 +239,30 @@ public class CupFixtureSeeder {
      * half-drawn tournament is worse than an obviously empty one.
      */
     @Transactional
-    public int drawRoundForWeek(int week) {
-        Competition cup = competitions.findAll().stream()
+    /**
+     * The country's own cup, by what it is rather than by where it sits in a list.
+     *
+     * <p>This used to be {@code findAll().stream().filter(type == CUP).findFirst()} — the first cup row
+     * the database happened to return. With one national cup that was fine. It is not fine now: there are
+     * sixteen CUP competitions, and "the first" is whichever one comes back, so the draw job could be
+     * drawing the Champions Cup on the national cup's calendar, with the national cup never drawn at all.
+     * A "find first" over a growing table is a silent coupling to insertion order.
+     *
+     * <p>The discriminator is {@code scope}. A domestic cup is {@code NATIONAL}; the Champions, Masters
+     * and Challenge cups are {@code INTERNATIONAL}, which is the only column that says the entrants come
+     * from several countries — and they have their own draw, their own week map and their own format, so
+     * running the national cup's round-for-week arithmetic over them was never going to be right.
+     */
+    private Competition nationalCup() {
+        return competitions.findAll().stream()
                 .filter(c -> c.getType() == CompetitionType.CUP)
-                .findFirst()
+                .filter(c -> c.getScope() != CompetitionScope.INTERNATIONAL)
+                .min(Comparator.comparing(Competition::getId))
                 .orElse(null);
+    }
+
+    public int drawRoundForWeek(int week) {
+        Competition cup = nationalCup();
         if (cup == null) {
             return 0;
         }
