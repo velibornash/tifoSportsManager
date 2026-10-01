@@ -134,7 +134,7 @@ public class CupFixtureSeeder {
             return;
         }
 
-        List<Team> ranked = rankedClubs();
+        List<Team> ranked = rankedClubs(cup);
         log.info("Cup {}: {} clubs ranked, need {}.", cup.getName(), ranked.size(), MAIN_DRAW_TEAMS);
         if (ranked.size() < MAIN_DRAW_TEAMS) {
             log.warn("Only {} clubs available; a {}-team draw needs {}. Cup {} left empty.",
@@ -176,18 +176,23 @@ public class CupFixtureSeeder {
      * but nothing persists a club rating — so squad strength is the only honest ordering available.
      * Ties break on name rather than on iteration order so two boots produce the same draw.
      */
-    private List<Team> rankedClubs() {
-        List<Team> clubs = new ArrayList<>();
-        for (Team team : teams.findClubTeamsForOperations()) {
-            if (team.getId() == null || team.getCountry() == null) {
-                continue;
-            }
-            if (!clubs.isEmpty() && !clubs.get(0).getCountry().getId().equals(team.getCountry().getId())) {
-                continue;
-            }
-            clubs.add(team);
+    private List<Team> rankedClubs(Competition cup) {
+        // **The cup's own country, not the first club the repository happens to return.**
+        //
+        // It used to take the country from `clubs.get(0)` and `continue` past every team whose country
+        // did not match it - "a Serbia dependency expressed as a continue". Two things were wrong with
+        // that. It scanned every club in the world to answer a question about one country, and the
+        // country it settled on was whichever came first from an unordered query, so the draw silently
+        // depended on database row order. `nationalCup()` picks the lowest-id domestic cup, so once more
+        // than one country had a cup the field went to the wrong country's clubs.
+        if (cup == null || cup.getCountry() == null || cup.getCountry().getId() == null) {
+            log.warn("Cup {} has no country; nothing to rank.", cup == null ? "null" : cup.getName());
+            return new ArrayList<>();
         }
-        return sortByStrength(clubs, strengthOf(clubs));
+        List<Team> clubs = teams.findByCountryId(cup.getCountry().getId()).stream()
+                .filter(team -> team.getId() != null && team.getCountry() != null)
+                .toList();
+        return sortByStrength(new ArrayList<>(clubs), strengthOf(clubs));
     }
 
     /**
@@ -291,7 +296,9 @@ public class CupFixtureSeeder {
      * ties are unplayed yields no draw rather than a draw against teams that have not qualified.
      */
     private List<Team> survivorsOf(Competition cup, int round) {
-        List<Team> ranked = rankedClubs();
+        // The cup it is drawing for. This called rankedClubs() with no argument, so round 1's field was
+        // the world's bottom 108 clubs rather than this cup's - it never asked which cup it was drawing.
+        List<Team> ranked = rankedClubs(cup);
         if (round == 1) {
             // The bottom 108, for the same reason the seeder draws the bottom 108: the preliminary is
             // for the clubs that have to earn their place, and taking the top 108 here inverted the
