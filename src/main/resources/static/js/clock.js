@@ -114,15 +114,34 @@ setInterval(updateLiveClock, 1000);
 function isWatchable(clock) {
     if (!clock || clock.matchDay !== true) return false;
     if (clock.kickoffHour === null || clock.kickoffHour === undefined) return false;
-    return Number(clock.hour) >= Number(clock.kickoffHour);
+    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined
+        ? 0 : Number(clock.kickoffMinute);
+    // The clock counts whole hours on purpose, so a slot inside an hour (day 1 is 20:45) becomes
+    // available on the next hour tick rather than pretending it can be resolved to the minute.
+    return kickoffMinute === 0
+        ? Number(clock.hour) >= Number(clock.kickoffHour)
+        : Number(clock.hour) > Number(clock.kickoffHour);
+}
+
+/** The template's kickoff as HH:MM. Day 1 is a 20:45 slot and printing ":00" said 20:00. */
+function kickoffLabel(clock) {
+    const minute = clock.kickoffMinute === null || clock.kickoffMinute === undefined ? 0 : Number(clock.kickoffMinute);
+    return `${String(clock.kickoffHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 function watchReason(clock) {
     if (!clock) return 'The game clock is not available.';
     if (clock.matchDay !== true) return 'Not a match day.';
     if (clock.kickoffHour === null || clock.kickoffHour === undefined) return 'No kickoff on this day.';
-    if (Number(clock.hour) < Number(clock.kickoffHour)) {
-        return `Kickoff is at ${String(clock.kickoffHour).padStart(2, '0')}:00.`;
+    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined
+        ? 0 : Number(clock.kickoffMinute);
+    const minute = Number(clock.minute || 0);
+    const hour = Number(clock.hour);
+    const beforeKickoff = !(kickoffMinute === 0
+        ? hour >= Number(clock.kickoffHour)
+        : hour > Number(clock.kickoffHour));
+    if (beforeKickoff) {
+        return `Kickoff is at ${kickoffLabel(clock)}.`;
     }
     return 'Your match is ready to watch.';
 }

@@ -67,6 +67,17 @@ public enum GameDay {
     }
 
     /**
+     * The minutes part of the template's kickoff.
+     *
+     * <p>Day 1 is a 20:45 slot, and {@link #kickoffHour()} alone turns that into 20:00 — which is what
+     * the dashboard showed the owner, and what let "Watch your match" unlock three quarters of an hour
+     * early. The hour and the minute have to travel together or the slot lies.
+     */
+    public Integer kickoffMinute() {
+        return kind.kickoff() == null ? null : kind.kickoff().getMinute();
+    }
+
+    /**
      * The day for a 1..7 value.
      *
      * <p>Out-of-range input falls back to day 1 rather than throwing: a corrupt clock value should

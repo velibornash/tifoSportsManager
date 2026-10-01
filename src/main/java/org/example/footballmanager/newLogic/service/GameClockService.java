@@ -112,6 +112,7 @@ public class GameClockService {
         out.put("dayKind", gameDay.kind().name());
         out.put("matchDay", gameDay.isMatchDay());
         out.put("kickoffHour", gameDay.kickoffHour());
+        out.put("kickoffMinute", gameDay.kickoffMinute());
         out.put("hour", hour);
         out.put("gameTime", gameTime().toString());
         out.put("advanceOffsetSeconds", offsetOf(clock));

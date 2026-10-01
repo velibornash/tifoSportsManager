@@ -239,17 +239,30 @@ public class APIController {
             return out;
         }
         int kickoffHour = ((Number) kickoff).intValue();
+        // The international slot is 20:45, not 20:00. Truncating to the hour both misreported the time
+        // and let the match unlock 45 minutes early.
+        int kickoffMinute = ((Number) clock.getOrDefault("kickoffMinute", 0)).intValue();
         out.put("kickoffHour", kickoffHour);
+        out.put("kickoffMinute", kickoffMinute);
+        String kickoffAt = String.format("%02d:%02d", kickoffHour, kickoffMinute);
 
-        if (hour < kickoffHour) {
+        // **The clock counts whole hours on purpose** - `hour` is an explicit counter, decoupled from the
+        // wall clock so a job fires the same way whatever time the manager pressed the button. So the
+        // gate cannot express 20:45, and the honest reading of "not yet" is the top of the hour *before*
+        // the one containing kickoff. On the exact slots (19:00, 18:00, 16:00) this is plain
+        // `hour >= kickoffHour`; only the 20:45 international moves.
+        boolean kickedOff = kickoffMinute == 0 ? hour >= kickoffHour : hour > kickoffHour;
+        boolean beforeKickoff = !kickedOff;
+
+        if (beforeKickoff) {
             out.put("available", false);
-            out.put("reason", "Kickoff is at " + String.format("%02d:00", kickoffHour)
+            out.put("reason", "Kickoff is at " + kickoffAt
                     + ". It is now " + String.format("%02d:00", hour) + ".");
             return out;
         }
 
         out.put("available", true);
-        out.put("reason", "Kickoff is " + String.format("%02d:00", kickoffHour) + " - your match is ready to watch.");
+        out.put("reason", "Kickoff is " + kickoffAt + " - your match is ready to watch.");
         out.put("week", week);
         out.put("day", day);
         return out;
