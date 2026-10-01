@@ -281,6 +281,77 @@ League page column headers are now `⚽` and `🅰️`.
 no pseudo-element, `justify-content: space-between` on a flex head with a single child. So it is the header
 rule of the table, not part of the heading. Left alone until the owner says which they want.
 
+## `eaedd92`, `2763bbf` — B2 closed, B1's shuffle landed, and a bug only the test could find
+
+**Task:** the board's Cluster B, in the order it says B1 depends on B2. Both are now closed.
+
+### B2 — the cup drew the world's clubs, or one country by accident
+
+`rankedClubs()` **took no argument**. It asked for every club in the world and kept the ones whose country
+matched *whichever club the unordered query returned first* — the board's phrase, "a Serbia dependency
+expressed as a `continue`". Two things wrong: it scanned every club on Earth for a question about one
+country, and the answer depended on database row order.
+
+`survivorsOf(cup, round)` has the cup in hand and called it with nothing, so **round 1's field was the
+world's bottom 108 clubs** rather than this cup's. It now takes the cup and reads
+`teams.findByCountryId(cup.country.id)` — a direct indexed query.
+
+**The test matters more than the fix, because the first version of it was green against the buggy code.**
+`findClubTeamsForOperations` returns clubs in id order, so a test that creates Serbia first makes "the first
+club returned" Serbian and the old code passes it. The test now populates **Hungary first** and asserts the
+lowest-id club really is Hungarian, so the trap cannot silently disarm. Verified both ways:
+
+```
+old code  ->  a round-1 tie has a home club that is not Serbian: 54   FAILS
+fixed     ->  6/6 green
+```
+
+That is also **why the bug survived in production**: on a fresh database Serbia is often seeded first, so
+the draw looked right until another country landed ahead of it in id order.
+
+### B1 — the draw paired the strongest club with the weakest, for ever
+
+`favourites.get(i)` against `nonFavourites.get(i)`, over a list sorted strongest first. `DRAW_SEED` was
+declared, assigned to a `Random` and **never read**, and three javadocs described a shuffle the code did not
+perform.
+
+Both halves are now shuffled, seeded `DRAW_SEED + cupId * 1000 + round`. The split is untouched: a favourite
+still meets a non-favourite and the non-favourite still hosts.
+
+**The dead `random` field was deleted rather than used.** Shuffling from one shared instance gives different
+answers depending on how many times it has already been used, so the draw would change between boots — which
+for a cup is worse than not shuffling at all.
+
+**The B1 assertion is about order, not about one unlucky tie.** "The strongest club did not meet the
+weakest" is a coin flip across 54 ties. Index pairing leaves the favourites in strictly descending strength
+because they are walked in the order they were sorted, and a shuffle does not — so that is what the test
+asks. Removing the shuffle fails it with `[147, 146, 145, 144, ...]`, which is the bug printed.
+
+### A second bug the test found, not the reading
+
+The idempotency guard counted unplayed fixtures by `(season, week, day)` with **no competition filter**. So
+one country's round-1 ties stopped every other cup from ever drawing its own: in a 48-country world exactly
+one cup could ever be drawn, and it did so silently. Added a competition-scoped count.
+
+### Three of my own assertions were wrong before the code was
+
+Worth recording, because all three failed on correct code and would have been "fixed" by breaking it:
+
+- "a small country gets no draw" — false. Week 1 is the preliminary and legitimately draws whatever clubs
+  exist; 40 clubs gave 20 ties. The real constraint is `MAIN_DRAW_TEAMS`, so the test now asserts week 2 is
+  left empty.
+- "the preliminary holds the highest indexes" — backwards. Club `i` is created with rating `40 + i`, so low
+  indexes are **weak**, and the weakest 108 are indexes 0..107.
+- "the favourites are the top half in creation order" — creation order is index order; strength order runs
+  the other way. Replaced with the property that holds however the halves are shuffled: **the away side is
+  stronger than the home side in every tie**.
+
+### Found, not fixed — a design decision
+
+`nationalCup()` returns the lowest-id domestic cup, so `drawRoundForWeek` **only ever draws one country's
+cup** however many exist. The shuffle is correct; the *selection* is not. Fixing it means deciding whether
+one job draws 48 cups or each country gets its own, and that is the owner's call.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
