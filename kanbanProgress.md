@@ -100,6 +100,74 @@ a re-read caught it.
 - **The Matches tab** is an acknowledged stub needing a real player match log. That is new work.
 - **B9** — the dashboard says `Kickoff is at 20:00` and the calendar says day 1 is 20:45.
 
+## `1f90a82`, `37115b0`, `874a38e` — the appearances counter, the 20:45 kickoff, and a table repair that was never needed
+
+**Task 1 — "MC 0 matches".** Owner, from the app: Ivica Tomić's profile showed `MC 0 matches` and `Apps 0`
+while the same page showed his 1 goal and his 1 assist, and his match page showed him starting at 84
+minutes with a goal, an assist, a yellow and a red.
+
+**`37115b0`.** `fetchPlayerRatingSummary(playerId, authFetch)` takes two arguments. Both call sites passed
+one — `player-view.js:610` and `league-view.js:453` — so `authFetch` was `undefined`, the call threw a
+`TypeError`, and the function's own `catch` returned `matchesPlayed: 0`. **The count was never fetched.**
+Goals and assists come from different columns, which is why the page contradicted itself and why this
+survived being looked at twice.
+
+`matchesPlayed` is now `null` on failure rather than `0`, and the UI prints an em dash. Zero means "played no
+matches", which is a fact about the player; null means "we could not find out", and a caller printing null
+is visibly broken instead of confidently wrong.
+
+**`874a38e` — my regression, in the very next commit.** `appearancesText` was a local const inside
+`buildPlayerProfileHeroHtml` and I used it in `buildPlayerProfileHtml`, which cannot see it. The profile
+threw `ReferenceError: appearancesText is not defined`, so it never rendered and **no player was
+clickable**. `node --check` passed: both functions are valid syntax alone. Only running it found this.
+Replaced with one `appearanceCount(ratingSummary, player)` helper used by both.
+
+Verified in a browser, Club → First team → Ivica Tomić:
+
+| | before | after |
+|---|---|---|
+| Match rating | 0.0 | **10.0** |
+| MC | 0 matches | **1 matches** |
+| Apps | 0 | **1** |
+| Statistics | Apps 0, Goals 1, Assists 1 | **Apps 1, Goals 1, Assists 1** |
+
+Zero console errors on a clean load.
+
+**Task 2 — B9, the 20:45 kickoff.** The dashboard said `Kickoff is at 20:00` on a day the owner specified as
+20:45. `GameDay.kickoffHour()` returned `kind.kickoff().getHour()`, and `WeekTemplate` has always held a
+`LocalTime` — so the template was right and 45 minutes were discarded on the way to the screen.
+
+**On the gate, deliberately not given a minute.** A comment in `GameClockService` says `hour` is an explicit
+counter, decoupled from the wall clock so a job fires the same way whatever time the manager pressed the
+button. That is load-bearing, so the first attempt at this — reading the minute from `Instant.now()` —
+was reverted: it reintroduces exactly that coupling, and it then failed to parse `gameTime`, which is an
+`Instant`. With whole-hour ticks, an exact slot (19:00, 18:00, 16:00) opens at its own hour and a slot
+inside an hour (20:45) opens on the next tick. Verified live: `Kickoff is at 20:45. It is now 09:00.`
+
+**Task 3 — the league table does not need a button.** The board listed "no local button" as open. **Closed
+without writing one**, because the owner asked whether the table already updates after matches and the
+answer is yes.
+
+`SimMatchService:525-535` adds points, wins and draws inside the same transaction that saves the score, so
+the table is correct the moment a manager watches his own match. Measured on the live database: **155 played
+matches across 31 leagues, zero disagreements** in points, goals for or goals conceded.
+
+That check was proven able to fail first — `+7 points` was injected into league 1 and the identical query
+reported the gap (`1|7|0`), then was undone. A clean result from a query that cannot return a dirty one is
+worth nothing. (Two earlier versions of that SQL were wrong and would have reported catastrophic drift;
+they summed a league total once per match row.)
+
+So the button is off the board: the 1 AM job already covers the only case the incremental path cannot — a
+replayed or interrupted fixture double-applying a result — and a manual button would be a second way to do
+something the schedule already does correctly.
+
+**What did land for it: `61a172a`, the test.** `reconcile` had no coverage, and its two reasons to exist
+(idempotent, convergent from any state) are exactly what a happy-path test cannot check. Every test corrupts
+the table first; the idempotency test demands a **second** run correct nothing. 4/4 green, and verified the
+guard can fail by rewriting the rebuild into an add — it failed with `expected: <0> but was: <2>`.
+
+**Still open:** the Matches tab remains a stub — *"player-by-player match log can be wired later"*.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
