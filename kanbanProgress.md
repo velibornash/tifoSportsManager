@@ -20,6 +20,86 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `17c05c1`, `dc8ed66`, `97595ae` — four tables that were empty, and two id-space bugs behind them
+
+**Task:** the owner reported from the app that the league top scorers, the league top assists and the
+club milestones' top scorer and top assist were all blank, while the match view showed every goal
+correctly. He also reported his own player page reading `MC 0 matches` and a Matches tab saying it was
+"UI ready, match log can be wired later".
+
+That last detail was the useful clue: the match view was fine. So this was never a data problem. The
+goals had been written correctly all along, into `match.event_json`, and three separate readers of that
+column were not reading it.
+
+### The first bug: a repository whose methods all returned nothing
+
+`GoalEventRepository` is a `@Component`, not a Spring Data interface — it looks like a repository, sits
+next to the real ones, and takes `MatchRepository` and `ObjectMapper` as constructor arguments it never
+used. All three of its methods returned `Collections.emptyList()`. Every blank table the owner saw came
+out of it: `StatsController.getTopScorers`, `getTopAssists`, and `LeagueMilestoneService`, whose top
+scorer and top assist are the club milestones.
+
+`17c05c1` reads the goals out of the event log instead. Deliberately **not** by writing them into a
+`goal_event` table: the log is the record, and a second table is a second thing to keep in step, which is
+how a page ends up showing a goal the match view says was never scored.
+
+### The second bug, and the reason the first fix appeared not to work
+
+With the repository returning real goals, all four tables were **still empty**. `StatsController` filtered
+them like this:
+
+```java
+List<Long> teamIds = entries.stream().map(e -> e.getTeam().getId()).toList();  // club ids
+...
+.filter(g -> teamIds.contains(g.scorerId()))                                    // a player id
+```
+
+Two unrelated id spaces. It can never legitimately match, so every goal was discarded at the last step.
+Player 2409 belongs to team 1, and no team 2409 exists.
+
+**This is the same mistake as the fixture/match id collision, in the reader instead of the frontend.**
+It survived the first fix untouched, and it is why the tables stayed blank after it. Two bugs stacked —
+which is worth recording, because the first fix looked wrong for a full session until the second was
+found.
+
+`97595ae` resolves the club from the player, in one bulk read rather than a query per goal, and drops a
+goal by somebody outside the league instead of crediting it to the wrong table.
+
+### Two more errors that were invisible only because the rows were empty
+
+- Every row sent the literal string `"Team"` as the club name. There was no club name to send.
+- The club milestones' leader took `goal.teamSide()` as the club name — `"HOME"` or `"AWAY"`. The top
+  scorer of your club was credited to a side of the pitch.
+
+### Verification
+
+`GoalEventRepositoryTest`, **4/4**. Its event JSON is copied from a real played match rather than tidied:
+`playerId` and `assistantId` arrive as **strings**, the second goal has no assistant keys at all, and
+non-goal entries are the bulk of the array. A fixture built from clean data would have passed against an
+implementation that cannot read what the engine writes. It also rejects the engine's synthetic `"HOME-1"`
+placeholders, which would otherwise put a row in the top-scorer table for somebody who cannot be clicked
+through to.
+
+Live against the local database, league 1: **top scorers 0 → 10 rows** (Goy Negovanović 3 goals, TSK
+Surdulica), **top assists 0 → 10 rows** (Draža Đetić 2, TSK Partizan Inđija), **club milestones 0 goals
+→ Goy Negovanović 3 and Draža Đetić 2**, both now carrying a real club name.
+
+### What `dc8ed66` is
+
+The test, committed separately and one commit after the implementation. It exists because **the
+implementation was committed before it had been run**, and saying so is the point: at that moment
+`target/classes/.../newLogic/sim/` was empty, because two Maven builds had been writing the same output
+directory and unrelated test classes would not compile against missing classes. The first attempt at this
+test had already been lost that way — the file silently reverted to the 22-line stub mid-edit, and only
+a re-read caught it.
+
+### Still open, from the same report
+
+- **`MC 0 matches`.** The same repository, so the count is fixed by `17c05c1` — but not verified in a
+  browser, only through the endpoints the two tables use.
+- **The Matches tab** is an acknowledged stub needing a real player match log. That is new work.
+- **B9** — the dashboard says `Kickoff is at 20:00` and the calendar says day 1 is 20:45.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
