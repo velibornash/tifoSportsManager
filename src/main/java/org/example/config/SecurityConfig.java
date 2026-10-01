@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,6 +29,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import java.time.LocalDateTime;
 
 @Configuration
+// @PreAuthorize is inert without this. APIController's world-advance endpoints carry it, and an
+// absent @EnableMethodSecurity means the annotation is read by nobody and every manager can still
+// move the world - a green build and a security hole.
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);

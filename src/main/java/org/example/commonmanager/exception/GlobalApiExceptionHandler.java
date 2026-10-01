@@ -82,6 +82,48 @@ public class GlobalApiExceptionHandler {
         return ResponseEntity.status(ex.getStatus()).body(body);
     }
 
+    /**
+     * A caller sent something the server refuses to act on — an unknown unit, an advance of
+     * {@code amount = 2147483647} hours, a negative count.
+     *
+     * <p>Without this it fell into the catch-all below and arrived as a <b>500</b>, so a manager who typed
+     * something unreasonable was told the server had broken. That is the same failure
+     * {@code ApiExceptionStatusTest} exists for on the other side: a refusal the game decided on is a 4xx,
+     * and reporting it as a server fault sends people looking in the wrong place.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleIllegalArgument(IllegalArgumentException ex,
+                                                                     HttpServletRequest request) {
+        log.warn("Rejected request to {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiErrorResponseDTO(
+                HttpStatus.BAD_REQUEST.value(),
+                "INVALID_REQUEST",
+                ex.getMessage() != null ? ex.getMessage() : "The request was not valid.",
+                request.getRequestURI(),
+                java.time.LocalDateTime.now()));
+    }
+
+    /**
+     * Anything the game decided not to allow — a role that may not advance the world, a player who does not
+     * own the thing they asked about.
+     *
+     * <p><b>These are re-thrown, not handled.</b> A {@code @PreAuthorize} denial throws
+     * {@code AuthorizationDeniedException} (Spring Security 6) from the method-security proxy, and without
+     * this it fell into the catch-all below and arrived as a <b>500</b>: a manager who was correctly refused
+     * was told the server had broken, and the real refusal was logged as an unhandled exception. Security
+     * exceptions belong to the filter chain, which turns them into a proper 401 or 403.
+     *
+     * <p>This is why {@code @PreAuthorize} was chosen over throwing from inside the controller body: both
+     * arrive here, and both need this.
+     */
+    @ExceptionHandler({
+            org.springframework.security.authorization.AuthorizationDeniedException.class,
+            org.springframework.security.access.AccessDeniedException.class,
+            org.springframework.security.core.AuthenticationException.class})
+    public void rethrowSecurityException(RuntimeException ex) {
+        throw ex;
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponseDTO> handleUnhandledException(Exception ex, HttpServletRequest request, HttpServletResponse response) {
         if (response.isCommitted()) {

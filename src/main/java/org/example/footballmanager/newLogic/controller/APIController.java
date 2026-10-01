@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.example.footballmanager.newLogic.service.GameClockService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,6 +24,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api")
@@ -56,18 +58,58 @@ public class APIController {
      * ticking at one game second per real second and the advance is permanent. A stored hour that
      * the real clock immediately overwrites cannot work, which is what the first cut did.
      */
+    /**
+     * The largest advance one request may ask for.
+     *
+     * <p>{@code amount = 2147483647} ran a two-billion-iteration loop, and {@code amount * 24} overflows
+     * int above 89,478,485 — so a large enough "days" asked the clock to go <b>backwards</b>. A week is the
+     * most a single click ever needs; a season is 84.
+     */
+    private static final int MAX_ADVANCE_HOURS = 24 * 7;
+
+    /**
+     * Reject an advance that is negative, zero, or large enough to overflow the hour arithmetic.
+     *
+     * <p>{@code amount * 24} in the caller is plain {@code int} multiplication, so a "days" request above
+     * 89,478,485 wraps negative and the clock moves backwards.
+     */
+    private int checkedAmount(int amount) {
+        if (amount < 1 || amount > MAX_ADVANCE_HOURS) {
+            throw new IllegalArgumentException(
+                    "amount must be between 1 and " + MAX_ADVANCE_HOURS + " hours, was " + amount + ".");
+        }
+        return amount;
+    }
+
+    /**
+     * Advancing the world is an administrator action, and the server says so.
+     *
+     * <p><b>This check belongs here.</b> The admin buttons were hidden in the browser and that was the
+     * whole of the protection, which is the mistake this codebase already writes down: *"a hidden button
+     * is not a permission"* ({@code CountryController}). Any logged-in manager could move the world by
+     * calling the endpoint directly — not just his own club, every club in every country.
+     *
+     * <p>{@code @PreAuthorize} rather than a thrown {@code AccessDeniedException}: an exception raised
+     * inside a controller body falls through to the catch-all exception handler and arrives as a **500**,
+     * which tells a manager the server broke. The security filter chain turns this into a proper 403.
+     *
+     * <p>The three roles are the same set {@code PlusFeatureService} already treats as privileged, so
+     * "who is an administrator" has one answer in this codebase.
+     */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @PostMapping("/game-clock/advance")
     public Map<String, Object> advanceGameClock(
             @RequestParam(defaultValue = "hour") String unit,
             @RequestParam(defaultValue = "1") int amount) {
         return switch (unit.toLowerCase(Locale.ROOT)) {
-            case "hour", "hours" -> gameClockService.advanceHours(amount);
-            case "day", "days" -> gameClockService.advanceHours(amount * 24);
+            case "hour", "hours" -> gameClockService.advanceHours(checkedAmount(amount));
+            case "day", "days" -> gameClockService.advanceHours(checkedAmount(amount) * 24);
             default -> throw new IllegalArgumentException("Unknown unit: " + unit);
         };
     }
 
     /** Straight to a kickoff hour, e.g. 20 for day 1 internationals. Never moves backwards. */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @PostMapping("/game-clock/advance-to-hour")
     public Map<String, Object> advanceToHour(@RequestParam int hour) {
         return gameClockService.advanceToHour(hour);
@@ -80,6 +122,7 @@ public class APIController {
      * and has been re-queued, and for seeing the outcome of a scan without an advance. It is safe to
      * call repeatedly: a job with a DONE record is skipped.
      */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @PostMapping("/jobs/run-due")
     public Map<String, Object> runDueJobs() {
         Map<String, Object> snapshot = gameClockService.snapshot();
