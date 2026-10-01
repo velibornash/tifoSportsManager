@@ -536,6 +536,32 @@ now.
 These tests share one database and `@BeforeEach` does not roll back, so fixed ISO codes collided on the unique
 index across methods. **A random two-character code collides too** — the space is only 676 — so it is a counter.
 
+## `e693fa3` — the job schedule is not a manager's view, and the board was wrong about how open it was
+
+**Task (C5):** *"GET `/api/jobs` and `/api/jobs/runs` are **world-readable** with no role check."*
+
+**They were never world-readable.** `/api/jobs` is not on the permit list, so it was already
+`authenticated()` — any logged-in manager, not the public. The board's wording implies an open endpoint;
+it was a closed one with the wrong audience.
+
+Both now require the same three roles as the world-advance endpoints, and the tests sit with A3's because it
+is the same rule.
+
+What they returned is the game's machinery rather than the game: every registered job with its week, day, hour
+and ordering, and — through `/jobs/runs` — **the status and message of every job that ran, including the ones
+that failed and why.** `/jobs/runs` is the more sensitive half. That belongs to whoever is diagnosing the
+game, not to a manager running a club.
+
+`WorldAdvanceAuthorizationTest` is 9/9 and **verified in both directions**: with the guards removed, all five
+authorization assertions fail.
+
+### Two board corrections now on the record
+
+C1 blamed an EAGER `Country.clubs` that is LAZY (the two `@OneToOne` national sides are the eager ones), and
+C5 called an `authenticated()` endpoint world-readable. Neither was a code defect, but both would have sent
+whoever picked them up looking in the wrong place. **The board describes intent more often than it describes
+code**, and reading the code is still the faster route to the truth.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
