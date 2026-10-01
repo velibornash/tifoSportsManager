@@ -814,6 +814,29 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         return '';
     }
 
+    /**
+     * The rating movement, signed, and honest about not having one.
+     *
+     * <p>Three states and all three are real: a club that has been rated and moved (+3 / -11), a club that
+     * has been rated and has not moved since its last match (0, shown as a dash rather than a "+0" that
+     * reads as a gain), and a club nobody has rated yet — which is what every club looks like on a world
+     * whose replay has not run.
+     *
+     * <p>Unsigned movement is the point of the column, so the sign is always printed rather than carried
+     * by colour alone.
+     */
+    function formatRatingDelta(delta) {
+        if (typeof delta !== 'number' || !Number.isFinite(delta)) return '—';
+        if (delta === 0) return '–';
+        return delta > 0 ? `+${Math.round(delta)}` : String(Math.round(delta));
+    }
+
+    /** The class is decoration on top of the sign, never the only carrier of the meaning. */
+    function ratingDeltaClass(delta) {
+        if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0) return 'is-flat';
+        return delta > 0 ? 'is-up' : 'is-down';
+    }
+
     function ownershipBadgeHtml(humanControlled) {
         if (typeof humanControlled !== 'boolean') return '';
         return `<span class="fm-badge ${humanControlled ? 'fm-badge-owner' : 'fm-badge-ai'}">${humanControlled ? 'PLAYER' : 'AI'}</span>`;
@@ -840,6 +863,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     <td>${CTeam.goalsConceded ?? 0}</td>
                     <td class="st-gd">${formatGoalDiff(gd)}</td>
                     <td class="st-pts">${CTeam.points ?? 0}</td>
+                    <td class="st-rating">${CTeam.rating ?? '—'}</td>
+                    <td class="st-delta ${ratingDeltaClass(CTeam.ratingDelta)}">${formatRatingDelta(CTeam.ratingDelta)}</td>
                 </tr>`;
         }).join('');
     }
@@ -1042,6 +1067,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                             <th>GA</th>
                             <th>GD</th>
                             <th class="st-pts">Pts</th>
+                            <th class="st-rating" title="Club Elo. Every match counts - league, cup and international club cup.">Elo</th>
+                            <th class="st-delta" title="Movement since this club's previous rating.">&plusmn;</th>
                         </tr>
                     </thead>
                     <tbody>${standingsRowsHtml()}</tbody>

@@ -137,4 +137,48 @@ class WorldPageNavigationTest {
         assertTrue(read(PAGES_JS).contains("fm-country-header-back"),
                 "the world page's header has no back button, so the exit this whole test defends is gone");
     }
+
+    @Test
+    @DisplayName("the country list is ranked and the whole row is the link")
+    void theCountryListIsRankedAndTheRowIsTheLink() {
+        String pages = read(PAGES_JS);
+
+        // The ordinal is the reason this table exists. Without it the list is 48 names in alphabetical
+        // order beside a column of ratings, which is a list and not a ranking.
+        assertTrue(pages.contains("const ranked = [...countries].sort"),
+                "the country list is not sorted by rating, so the position column would be arbitrary");
+        assertTrue(pages.contains("<td class=\"st-pos\">${index + 1}</td>"),
+                "no ordinal in the row: the country ranking has no position column");
+
+        // The row carries the target, not a button wrapped around the name. A button inside the name is
+        // what made this read as a list of names, and it is also why the row could not be tabbed to.
+        assertTrue(pages.contains("js-load-world-country"),
+                "the country row is not marked as the clickable row");
+        assertFalse(pages.contains("<button type=\"button\" class=\"fm-link\" data-world-country="),
+                "the country name is wrapped in a button again, so the row is a list of names rather than "
+                        + "a ranking table");
+        assertTrue(pages.contains("tabindex=\"0\" role=\"link\""),
+                "the country row is not reachable by keyboard, so it is clickable but not operable");
+
+        // And the keyboard case has to actually do something, or the tabindex is decoration.
+        assertTrue(pages.contains("event.key === 'Enter'"),
+                "the country row handles no key, so tabbing to it and pressing Enter does nothing");
+    }
+
+    @Test
+    @DisplayName("the league table shows a rating and its movement")
+    void theLeagueTableShowsRatingAndMovement() {
+        String renderers = read(STATIC.resolve("js/pages-renderers.js"));
+
+        // Headers and cells, or one of them is a column of nothing. `node --check` cannot see this and a
+        // MockMvc test cannot either - they both pass with a header and no <td>.
+        assertTrue(renderers.contains("<th class=\"st-rating\""),
+                "the league table has no Elo header");
+        assertTrue(renderers.contains("<th class=\"st-delta\""),
+                "the league table has no movement header");
+        assertTrue(renderers.contains("<td class=\"st-rating\">${CTeam.rating"),
+                "the league table row does not render the rating");
+        assertTrue(renderers.contains("formatRatingDelta(CTeam.ratingDelta)"),
+                "the league table row does not render the movement");
+    }
 }

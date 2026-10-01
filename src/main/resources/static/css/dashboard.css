@@ -1846,6 +1846,26 @@ button.training-week-item {
     font-weight: 800;
 }
 
+/* Club Elo and its movement. Kept visually quieter than Pts, because Pts is what a manager is actually
+   playing for and the rating is context for it — two equally loud gold columns would make the table
+   harder to read, not easier. The colour is the same up/down pair the fixture cards use, so "rose" and
+   "fell" mean one thing across the page. */
+.st-rating {
+    width: 56px;
+    color: #c8d3e6;
+    font-variant-numeric: tabular-nums;
+}
+
+.st-delta {
+    width: 48px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.st-delta.is-up { color: #7fd98f; }
+.st-delta.is-down { color: #ef8a80; }
+.st-delta.is-flat { color: #6f7c93; font-weight: 500; }
+
 .fm-legend {
     display: flex;
     flex-wrap: wrap;
@@ -2129,6 +2149,40 @@ button.training-week-item {
         background: #0b101a;
         z-index: 2;
     }
+}
+
+/* The whole row is the link to a country now, so it has to say so.
+
+   A button wrapped around the name made the row read as a list of names rather than a table, and the
+   hit area was the text alone. The trade is that a plain <tr> gives no affordance at all, so it gets
+   one: pointer, a focus ring that is visible rather than the browser default, and a hover that moves
+   the whole row. The focus rule matters most — a keyboard user tabbing the world list has to be able to
+   see where they are, and the default outline on a table row is easy to miss. */
+.fm-world-row {
+    cursor: pointer;
+}
+
+.fm-world-row:hover {
+    background: rgba(120, 150, 210, 0.09);
+}
+
+.fm-world-row:focus-visible {
+    outline: 2px solid #7ea6e8;
+    outline-offset: -2px;
+}
+
+.fm-world-row--active {
+    background: rgba(76, 175, 80, 0.10);
+}
+
+.fm-world-country {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-world-country-name {
+    font-weight: 600;
 }
 
 .fm-badge-deck {

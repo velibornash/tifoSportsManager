@@ -616,7 +616,9 @@ public class CountryController {
                     e.getDraws() != null ? e.getDraws() : 0,
                     e.getLosses() != null ? e.getLosses() : 0,
                     i + 1,
-                    e.getTeam().isHumanControlled()
+                    e.getTeam().isHumanControlled(),
+                    e.getTeam().getEloRating(),
+                    e.getTeam().getEloDelta()
             ));
         }
 

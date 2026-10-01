@@ -70,15 +70,35 @@ lines) and `A5` (168 transactions that should be one).
 Five reachable defects and nine untested controllers. Doing them in one pass is the only way the tests can
 be written against the fixes rather than after them.
 
-### 3. Club ratings — the two ranking tables
+### 3. Club ratings — the two ranking tables ✅ **done**
 
-The columns, the replay and the seeding are **done**. What is left is the two tables that read them, and it
-is small:
+The columns, the replay and the seeding landed in `c46786f`. The two tables that read them landed after it,
+and both are now live:
 
-- **Serbia / Country tab, club list** — position, clickable club name, rating points, and +/− against the
-  previous entry
-- **Country ranking list** — a plain ordinal in the table row, clickable, instead of the country name being
-  trapped inside a button
+| Table | What it shows |
+|---|---|
+| **League table** | `Elo` and `±` columns after Pts. `±` is signed and always printed — `+12`, `−17`, `–` for no movement, `—` for never rated |
+| **Country ranking list** (World) | A plain ordinal in the row, sorted by rating, and **the whole row is the link** |
+
+**The country row is no longer a button wrapped around the name.** It was the reason the list read as 48
+names rather than a ranking: no position column anywhere, a hit area of the text alone, and a row that
+could not be tabbed to. Now the row carries the target, has `tabindex`/`role="link"`, **and handles Enter
+and Space** — a `<tr>` with `role="link"` does not get that for free, and a row that looks clickable but
+cannot be reached from the keyboard is a worse regression than the one it replaced.
+
+**One honest state worth naming:** on a world whose replay has not run, every club reads `—`. That is
+deliberate — **zero is a rating a club can legitimately hold**, so printing 0 would invent one. It also
+means the columns are empty until the first matchday after the upgrade, because boot writes nothing and
+there is no admin button for club Elo specifically. Whether that wants a button is an owner call.
+
+**Verified:** `LeagueTableEloColumnsTest` 2 — real JWT, real league, asserts **values not keys**, because a
+test checking `rating` exists passes happily with it permanently null. Plus `WorldPageNavigationTest` +2
+static guards, both of which were **broken deliberately and watched fail** before being restored.
+
+**Live, in the running app:** league table headers `# Club P W D L GF GA GD Pts Elo ±`, row 1 rendering
+`… 3 1543 +12`, and the unrated clubs beside it rendering `— —`. The World list rendering 48 rows with
+`1 | Australia | 1506 | Simulated` at the top. The ratings were then reverted, because hand-setting an
+Elo in the owner's database is the same fabrication the ZOX page commits.
 
 ### 4. The international cup — data but no matches
 

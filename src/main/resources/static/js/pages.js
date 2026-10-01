@@ -768,17 +768,38 @@ import {
             const world = await res.json();
             const countries = Array.isArray(world.countries) ? world.countries : [];
 
-            const rows = countries.map(country => {
+            // Ranked by rating, because the column beside the name is a rating and a ranking table with no
+            // order is just a list. Every country starts level, so this is alphabetical until anything has
+            // been played - which is the honest state, not a tie to be broken arbitrarily.
+            const ranked = [...countries].sort((a, b) => {
+                const left = Number(a.reputation ?? 0);
+                const right = Number(b.reputation ?? 0);
+                if (right !== left) return right - left;
+                return String(a.name || '').localeCompare(String(b.name || ''));
+            });
+
+            const rows = ranked.map((country, index) => {
                 const active = country.state === 'ACTIVE';
+                // The whole row is the link, and the name is plain text inside it.
+                //
+                // It was a button wrapped around the country name, so the row read as one name-shaped
+                // target: no position, so no way to see where a country sits in the field, and the ordinal
+                // - the one piece of information a ranking table exists to carry - had nowhere to go.
+                // The button also could not be reached by keyboard row selection, and its hit area was the
+                // text alone rather than the row.
                 return `
-                    <tr class="fm-world-row${active ? ' fm-world-row--active' : ''}">
+                    <tr class="fm-world-row${active ? ' fm-world-row--active' : ''} js-load-world-country"
+                        data-world-country="${escapeHtml(country.isoCode || '')}"
+                        data-world-state="${escapeHtml(country.state || '')}"
+                        tabindex="0" role="link">
+                        <td class="st-pos">${index + 1}</td>
                         <td class="sq-name">
-                            <button type="button" class="fm-link" data-world-country="${escapeHtml(country.isoCode || '')}" data-world-state="${escapeHtml(country.state || '')}">
+                            <span class="fm-world-country">
                                 ${country.flagImagePath ? `<img class="fm-world-flag" src="${escapeHtml(country.flagImagePath)}" alt="" />` : ''}
-                                ${escapeHtml(country.name || '')}
-                            </button>
+                                <span class="fm-world-country-name">${escapeHtml(country.name || '')}</span>
+                            </span>
                         </td>
-                        <td>${country.reputation ?? '-'}</td>
+                        <td class="st-rating">${country.reputation ?? '—'}</td>
                         <td>${active
                             ? '<span class="fm-badge fm-badge--ok">Active</span>'
                             : '<span class="fm-badge">Simulated</span>'}</td>
@@ -856,27 +877,41 @@ import {
                             <table class="fm-squad fm-world-table">
                                 <thead>
                                     <tr>
+                                        <th class="st-pos">#</th>
                                         <th class="sq-name">Country</th>
-                                        <th>Rating</th>
+                                        <th class="st-rating">Rating</th>
                                         <th>State</th>
                                     </tr>
                                 </thead>
-                                <tbody>${rows || '<tr><td colspan="3">No countries yet.</td></tr>'}</tbody>
+                                <tbody>${rows || '<tr><td colspan="4">No countries yet.</td></tr>'}</tbody>
                             </table>
                         </div>
                     </section>
                 </div>`;
 
-            mainContent.querySelectorAll('[data-world-country]').forEach(link => {
-                link.addEventListener('click', () => {
-                    const iso = String(link.dataset.worldCountry || '').toUpperCase();
-                    // A simulated country has no clubs, so its page is the national-team record and
-                    // nothing else. Saying so is better than showing an empty divisions table that reads
-                    // as a broken page.
-                    const isSimulated = link.dataset.worldState !== 'ACTIVE';
-                    setSelectedCountry(iso);
-                    setActiveLeagueContext({ countryIsoCode: iso, backTarget: 'world' });
-                    loadPage('country', { simulatedCountry: isSimulated ? iso : '' });
+            const openCountry = row => {
+                const iso = String(row.dataset.worldCountry || '').toUpperCase();
+                if (!iso) return;
+                // A simulated country has no clubs, so its page is the national-team record and
+                // nothing else. Saying so is better than showing an empty divisions table that reads
+                // as a broken page.
+                const isSimulated = row.dataset.worldState !== 'ACTIVE';
+                setSelectedCountry(iso);
+                setActiveLeagueContext({ countryIsoCode: iso, backTarget: 'world' });
+                loadPage('country', { simulatedCountry: isSimulated ? iso : '' });
+            };
+
+            // The row is the link now, not the button inside it, so the keyboard case has to be handled
+            // here: a <tr> with role="link" and tabindex does not get Enter or Space for free, and a row
+            // that looks clickable but cannot be reached from the keyboard is a worse regression than the
+            // button-in-a-name it replaced.
+            mainContent.querySelectorAll('[data-world-country]').forEach(row => {
+                row.addEventListener('click', () => openCountry(row));
+                row.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openCountry(row);
+                    }
                 });
             });
         } catch (err) {
