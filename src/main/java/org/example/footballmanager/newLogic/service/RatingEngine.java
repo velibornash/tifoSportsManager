@@ -152,8 +152,18 @@ public final class RatingEngine {
         if (tier < 1) {
             tier = 1;
         }
-        int worst = Math.max(tier, highestTier);
-        double base = 1500.0 + (worst - tier) * 200.0;
+        // Anchored at the TOP, not the bottom, and in steps of 100 (owner, 2026-10-01):
+        // tier 1 starts at 1500 and every tier below is 100 lower.
+        //
+        // This was 1500 + (worst - tier) * 200, which anchored the *worst* tier at 1500 and put a
+        // first-tier club at 2300. Two things wrong with that against the owner's scale: tier 1 was not
+        // 1500, and the gap between tiers was double what was asked for, so a fifth-tier club needed
+        // to outperform its own division by twice as much to climb.
+        //
+        // `highestTier` is kept in the signature because it is what makes the ladder checkable and
+        // because changing a public signature to drop one is not worth the churn; it no longer moves
+        // the number, which is deliberate - a club's rating now depends only on its own tier.
+        double base = 1500.0 - (tier - 1) * 100.0;
         return base;
     }
 }

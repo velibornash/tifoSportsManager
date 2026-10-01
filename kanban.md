@@ -846,6 +846,38 @@ simulation should be cancellable and waited on. Neither is obvious from the outs
 
 ---
 
+## 📈 Club ratings — agreed specification (owner, 2026-10-01)
+
+Worked out and recorded before building, because this feature was specified wrong twice already.
+
+**Every match counts.** League, cup and international alike. Not only the internationals — but certain
+matches and tiers carry **more rating points**, which is what `RatingEngine.clubK(MatchValue)` already
+does: a cup tie or an international outweighs a league game, and a bigger rating gap moves a number
+further.
+
+**The seed is a ladder from the top.** Tier 1 starts at **1500** and every tier below is **100 lower**:
+
+| Tier | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Starts | 1500 | 1400 | 1300 | 1200 | 1100 |
+
+This was `1500 + (worst - tier) * 200`, which anchored the *worst* tier at 1500 and put tier 1 at 2300.
+So tier 1 was not 1500 and the step was double what was asked for. Fixed, and the seed is now pinned
+exactly in `RatingEngineTest` rather than left as "tier 1 is above tier 3", which is the assertion that
+let both wrong versions through.
+
+**The delta is stored against the previous value.** When a rating moves, how much it moved — up or
+down — is kept, so a ranking list can show +/- rather than only the current number. Same as the national
+teams, which already do this.
+
+**Entering a group stage counts.** `RatingEngine.qualificationBonus()` already exists for exactly this.
+
+**Not yet built:** the club rating column and its previous-value/delta columns, the replay from match
+history, seeding it at initialisation, and the two ranking tables that read it. `RatingEngine` has the
+arithmetic — this is storage and wiring, not a new formula.
+
+---
+
 ## 🧩 Lazy squads for the simulated clubs
 
 The simulated countries are seeded with clubs, ratings and a standing table but **no players** —

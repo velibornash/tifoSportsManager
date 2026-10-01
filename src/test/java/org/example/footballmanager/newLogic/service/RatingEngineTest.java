@@ -184,7 +184,8 @@ class RatingEngineTest {
         @DisplayName("the gap is a real gap, not a rounding artefact")
         void tierGapIsMeaningful() {
             double gap = RatingEngine.clubStartRating(1, 5) - RatingEngine.clubStartRating(2, 5);
-            assertTrue(gap >= 150, "a one-tier step should be worth about two-to-one, was " + gap);
+            assertEquals(100.0, gap, TOLERANCE,
+                    "a one-tier step is 100 points (owner, 2026-10-01), was " + gap);
 
             // Which means the favourite really is the favourite: the two sides' expectations are
             // complements, so they must sum to 1 - the favourite expects ~0.67 of a 2:1 shot.
@@ -195,6 +196,23 @@ class RatingEngineTest {
             assertTrue(RatingEngine.expected(1500 + gap, 1500) > 0.6,
                     "200 points should make the stronger side a clear favourite, was "
                             + RatingEngine.expected(1500 + gap, 1500));
+        }
+
+        @Test
+        @DisplayName("tier 1 starts at 1500 and each tier below is 100 lower")
+        void theSeedIsTheOwnersScale() {
+            // Pinned exactly, because this is the owner's number and it was wrong twice: the seed was
+            // once anchored at the worst tier, and once stepped by 200.
+            assertEquals(1500.0, RatingEngine.clubStartRating(1, 5), TOLERANCE);
+            assertEquals(1400.0, RatingEngine.clubStartRating(2, 5), TOLERANCE);
+            assertEquals(1300.0, RatingEngine.clubStartRating(3, 5), TOLERANCE);
+            assertEquals(1200.0, RatingEngine.clubStartRating(4, 5), TOLERANCE);
+            assertEquals(1100.0, RatingEngine.clubStartRating(5, 5), TOLERANCE);
+
+            // And the ladder must not depend on the highest tier in the world, or adding a sixth tier
+            // would silently re-rate every club in the game.
+            assertEquals(RatingEngine.clubStartRating(1, 5), RatingEngine.clubStartRating(1, 1), TOLERANCE,
+                    "a club's rating moved because an unrelated tier was added");
         }
 
         @Test
