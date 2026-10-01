@@ -854,9 +854,26 @@ The failure mode to watch for is the opposite one: adding an explicit `saveAll` 
 checking is harmless, but "fixing" this by adding saves would be fixing nothing and would hide the
 real question.
 
-**How to settle it cheaply:** run the recovery, then read a player's morale before and after in the
-database. That is the standing rule applied — a green `job_run` row is not evidence, and neither is
-this document.
+**SETTLED — and the document is wrong.** `ZoneLoadRecoveryPersistenceTest` runs
+`applyDailyRecovery()`, then **clears the persistence context and re-reads** morale from the database,
+so the only way the assertion can pass is if the write was committed. It passes.
+
+Hibernate's dirty checking does the save that the missing `save()` seemed to require. The players are
+read inside the method's own transaction, so they are managed and their dirtied fields are flushed at
+commit. **Daily morale recovery has been working.**
+
+Three things had to be true before that test measured anything, and each one silently measured nothing
+if missed:
+
+- the player needs **`lastPlayedAt`** — recovery keys off that, not off having zone-load rows;
+- the load needs a **zone** and a **match** — the window query joins the match and reads its date;
+- the load must be dated on the **game clock**, not `now()`, or on a world whose season runs to a
+  different date it falls outside the window.
+
+That last one is worth keeping in mind for the rest of this document's findings: several of them may
+well be this same shape — a claim about a write that never checked whether the write was needed.
+
+**Do not "fix" §1.1 by adding `saveAll`.** It would fix nothing and would bury the question.
 
 The rest of Section 1 (§1.2 simulate-all silently dropping a league, §1.3 `@Transactional` on the
 wrong method in `NationalTeamSeeder`, §1.4 dead `MatchPersistenceService`, §1.5 a `*Repository`
