@@ -352,6 +352,60 @@ Worth recording, because all three failed on correct code and would have been "f
 cup** however many exist. The shuffle is correct; the *selection* is not. Fixing it means deciding whether
 one job draws 48 cups or each country gets its own, and that is the owner's call.
 
+## `4b8077b` — the world could be advanced by anyone, and the guard did nothing until three things were fixed
+
+**Task (A3):** *"Any authenticated user can advance the whole world, and `amount` is unvalidated."*
+
+`/api/game-clock/advance`, `/api/game-clock/advance-to-hour` and `/api/jobs/run-due` all took
+`.anyRequest().authenticated()` with no role. The only protection was `dashboard.js` hiding the buttons — which
+this codebase already writes down as the mistake to avoid: **"a hidden button is not a permission"**
+(`CountryController`). Any logged-in manager could move every club in every country.
+
+All three now carry `@PreAuthorize("hasAnyRole('OWNER','DEV','ADMIN')")` — deliberately the same three roles
+`PlusFeatureService` already treats as privileged, so "who is an administrator" has one answer in the codebase.
+
+### Three things had to be fixed before the guard did anything
+
+**None of them would show on a green build**, which is the whole reason they are written down:
+
+1. **`@EnableMethodSecurity` was absent from `SecurityConfig`.** Without it `@PreAuthorize` is read by nobody:
+   the annotation compiles, the build is green, and the hole is exactly as open as before. Only a test that
+   asserts the denial notices.
+2. **A denial arrives as `AuthorizationDeniedException`** (Spring Security 6) from the method-security proxy, and
+   it fell into the catch-all `GlobalApiExceptionHandler` and arrived as a **500**. A manager who was correctly
+   refused was told the server had broken, and the real refusal was logged as an unhandled exception. Security
+   exceptions are now re-thrown so the filter chain can turn them into a 403. This also affects every other
+   `@PreAuthorize` in the codebase, not just this one.
+3. **`amount` was unvalidated.** `2147483647` ran a two-billion-iteration loop, and `amount * 24` overflows `int`
+   above 89,478,485 — so a large `days` request asked the clock to go **backwards**. Now bounded to 168 hours,
+   and `IllegalArgumentException` maps to **400** rather than 500.
+
+A hand-thrown `AccessDeniedException` from a controller body was tried first and rejected for the same reason as
+(2): it also lands in the catch-all and becomes a 500.
+
+### Verification
+
+Live: the owner still advances his world (**200**), and `amount=2147483647` now returns
+**400 INVALID_REQUEST** — "amount must be between 1 and 168 hours" — instead of hanging or reversing the clock.
+
+`WorldAdvanceAuthorizationTest`, **6/6**, and **verified it can fail**: with the three guards removed a
+`REGULAR` manager gets **200** and moves the world.
+
+### Two of my own mistakes, both failing on correct code first
+
+- The test looked up a **seeded account** (`kecko@example.com`) that does not exist on the H2 test profile. It now
+  creates its own users — **a test about a role should build the role, not find it**, and depending on a
+  particular row in a particular database passes on one machine and fails in CI for unrelated reasons.
+- A **fixed email per role** meant the third test method's lookup returned two users, because
+  `@SpringBootTest` does not roll back between methods. Every test then failed at 401 for a reason that had
+  nothing to do with authorization. The address is now unique per call.
+
+### Standing note
+
+There are **two `UserRole` enums** in this codebase — `commonmanager` and `newLogic` — and the compiler picked
+the wrong one on the first attempt. Not consolidated here; it is the same duplicate-definition hazard as
+`buildMilestoneBoardHtml`.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
