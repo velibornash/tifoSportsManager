@@ -129,8 +129,7 @@ public class CSMatchSimulator {
         // after the score had already been fixed, so a converted penalty did not make it onto
         // the scoreline and a missed one did nothing at all. Now each converted penalty adds a
         // goal to the score, a GOAL event to the timeline, and the taker's goal tally.
-        PenaltyGoals penalties = generatePenalties(events, home, homeOnField, away, awayOnField,
-                homeGoals, awayGoals);
+        PenaltyGoals penalties = generatePenalties(events, home, homeOnField, away, awayOnField);
         homeGoals += penalties.homeGoals();
         awayGoals += penalties.awayGoals();
 
@@ -143,6 +142,21 @@ public class CSMatchSimulator {
                 .build());
 
         events.sort((a, b) -> Integer.compare(a.getMinute(), b.getMinute()));
+
+        // Rezultat se dodeljuje TEK OVDE, posle sortiranja po minuti — nikada u trenutku
+        // upisa. To je jedina mesto koje zna pravi redosled kretanja po terenu.
+        //
+        // Pre ovoga se scoreAfterGoal racunao dok su se dogadjaji dodavali, sto je
+        // pogresno u dva pravca. Kazneni udarci se biraju nezavisno po minuti i mogu
+        // pasti PRE nekog gola iz otvorene igre, pa bi gol u 29' mogao da broji udarac
+        // iz 80' i prikaze 2:0 posle 1:0. Ako se to radi u vremenu upisa, redosled
+        // upisa i redosled na teletekstu su razliciti, pa rezultat nikad nije mogao
+        // da bude tacan — pomeranje te izmene tamo-amo samo otkriva sledeci simptom.
+        //
+        // Cak i sa ispravnim redosledom upisa, prvi gol bi prikazao 0:0 jer sam
+        // brojac vec video prethodne golove ali ne i ovaj. Zato ovde brojmo
+        // UKUPNO kroz listu: posle sortiranja redosled je tacan, pa nema off-by-one.
+        stampTimelineScores(events, home.getName(), away.getName());
 
         // Create full player lists for rating assignment (includes bench players who never played)
         List<CSPlayer> homeAll = new ArrayList<>(homePlayers);
@@ -603,8 +617,6 @@ public class CSMatchSimulator {
         int remainingHome = homeGoals;
         int remainingAway = awayGoals;
         int lastMinute = 0;
-        int currentHomeScore = 0;
-        int currentAwayScore = 0;
 
         while (remainingHome > 0 || remainingAway > 0) {
             boolean isHome;
@@ -637,11 +649,13 @@ public class CSMatchSimulator {
                 assist = null;
             }
 
-            if (isHome) { remainingHome--; currentHomeScore++; }
-            else { remainingAway--; currentAwayScore++; }
+            if (isHome) remainingHome--;
+            else remainingAway--;
 
-            String scoreAfter = currentHomeScore + ":" + currentAwayScore;
-
+            // scoreAfterGoal se NE racuna ovde. Vreme upisa nije vreme na koje se
+            // teletext gleda: kazneni udarci se biraju nezavisno po minuti, pa se
+            // rezultat mora racunati tek kada je lista sortirana po minuti. Vidi
+            // stampTimelineScores.
             scorer.setGoals(scorer.getGoals() + 1);
             if (assist != null) assist.setAssists(assist.getAssists() + 1);
 
@@ -656,8 +670,7 @@ public class CSMatchSimulator {
                     .assistName(assist != null ? assist.getName() : null)
                     .teamName(scoringTeam.getName())
                     .description(describeGoal(scoringTeam.getName(), scorer.getName(),
-                            assist != null ? assist.getName() : null, scoreAfter, goalType))
-                    .scoreAfterGoal(scoreAfter)
+                            assist != null ? assist.getName() : null, null, goalType))
                     .build());
 
             lastMinute = minute;
@@ -761,11 +774,9 @@ public class CSMatchSimulator {
      */
     private PenaltyGoals generatePenalties(List<CSMatchEvent> events,
                                            CSTeam home, List<CSPlayer> homePlayers,
-                                           CSTeam away, List<CSPlayer> awayPlayers,
-                                           int homeGoals, int awayGoals) {
-        int homePenaltyGoals = addPenalty(events, home, homePlayers, true, homeGoals, awayGoals);
-        int awayPenaltyGoals = addPenalty(events, away, awayPlayers, false,
-                homeGoals + homePenaltyGoals, awayGoals);
+                                           CSTeam away, List<CSPlayer> awayPlayers) {
+        int homePenaltyGoals = addPenalty(events, home, homePlayers, true);
+        int awayPenaltyGoals = addPenalty(events, away, awayPlayers, false);
         return new PenaltyGoals(homePenaltyGoals, awayPenaltyGoals);
     }
 
@@ -777,7 +788,7 @@ public class CSMatchSimulator {
      * @return 1 ako je kazneni udarac realizovan, inače 0
      */
     private int addPenalty(List<CSMatchEvent> events, CSTeam team, List<CSPlayer> players,
-                           boolean isHome, int homeGoals, int awayGoals) {
+                           boolean isHome) {
         if (rnd().nextDouble() >= 0.12) return 0;
 
         CSPlayer taker = pickScorer(players);
@@ -800,8 +811,6 @@ public class CSMatchSimulator {
         // Pored PENALTY događaja ide i GOL događaj, jer se golovi svuda drugim računaju iz
         // GOAL događaja (assignRatings, Golden Boot, izveštaj meča). Sam PENALTY bi ostao
         // nevidljiv u svemu osim u tekstu.
-        int newHome = isHome ? homeGoals + 1 : homeGoals;
-        int newAway = isHome ? awayGoals : awayGoals + 1;
         if (taker != null) taker.setGoals(taker.getGoals() + 1);
 
         events.add(CSMatchEvent.builder()
@@ -811,9 +820,7 @@ public class CSMatchSimulator {
                 .playerId(taker != null ? taker.getId() : null)
                 .playerName(takerName)
                 .teamName(team.getName())
-                .scoreAfterGoal(newHome + ":" + newAway)
-                .description("Penalty: " + takerName + " converts from the spot for " + team.getName()
-                        + " (" + newHome + ":" + newAway + ").")
+                .description("Penalty: " + takerName + " converts from the spot for " + team.getName() + ".")
                 .build());
 
         return 1;
@@ -978,6 +985,42 @@ public class CSMatchSimulator {
                     "Devastating on the break — " + scorerName + " slots home after a quick transition");
         };
         return base + "." + assistText + scoreText;
+    }
+
+    /**
+     * Dodeljuje {@code scoreAfterGoal} svakom GOAL dogadjaju, hodajuci kroz listu u redosledu
+     * u kom je teletext prikazan.
+     *
+     * <p>Uslov je da je lista vec sortirana po minuti. Poziva se tacno jednom, posle
+     * {@code events.sort(...)} — vidi napomenu na mestu poziva.
+     *
+     * <p>Opis se prepisuje sa istim rezultatom. {@code describeGoal} se zove sa {@code null}
+     * score-om i zato u opis uopste ne upisuje rezultat; ovde ga se dodaje na kraj, posle
+     * eventualnog asista, da bi format ostao isti kao ranije ({@code "..." [2:1]}) i da opis
+     * nikad ne kaze jedno a prikazuje drugo.
+     */
+    private void stampTimelineScores(List<CSMatchEvent> events, String homeName, String awayName) {
+        int home = 0;
+        int away = 0;
+
+        for (CSMatchEvent e : events) {
+            if (e.getEventType() != CSEventType.GOAL) continue;
+
+            if (homeName.equals(e.getTeamName())) home++;
+            else if (awayName.equals(e.getTeamName())) away++;
+            else continue; // nepoznati tim — ne diramo, da ne upisemo pogresan rezultat
+
+            String score = home + ":" + away;
+            e.setScoreAfterGoal(score);
+
+            String description = e.getDescription();
+            if (description == null || description.isBlank()) continue;
+
+            // Vec stampiran ovaj gol? Ne moze se desiti sa ovim pozivom, ali opis se
+            // prepisuje bezbedno: stari "[h:a]" se uklanja pre dodavanja novog.
+            String cleaned = description.replaceAll("\\s*\\[\\d+:\\d+\\]$", "");
+            e.setDescription(cleaned + " [" + score + "]");
+        }
     }
 
     private String describeSubstitution(String teamName, String playerOut, String playerIn) {

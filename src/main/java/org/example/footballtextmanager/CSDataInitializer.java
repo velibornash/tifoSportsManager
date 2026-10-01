@@ -38,38 +38,49 @@ public class CSDataInitializer {
         "Tadić", "Ivanović", "Sekulić", "Vuković", "Gajić", "Miljković", "Ristić"
     };
 
+    /**
+     * Popravlja šta fali u tekst-svetu, pri svakom bootu.
+     *
+     * <p>Ovdje je bila provera {@code isSeeded()} sa {@code return}-om, i to je bila druga
+     * iteracija iste greške: prvi guard je gledao zemlju, ovaj gleda ligu, ali oba su
+     * <b>short-circuit</b> i zato se nikad ne dolazi do popravka. Svaki od njih je mogao da
+     * preskoči ceo seeding na delimičnom svetu — liga postoji, a igrača ili tabela nemа, i
+     * tada je {@code return} bez ikakve poruke o tome šta nedostaje.
+     *
+     * <p>Zato je provera uklonjena, a ne popravljena. {@link #seed()} je vec idempotentan
+     * korak po korak — svaka zemlja, liga, sezona, stadion, unos i igrač se traži pre
+     * kreiranja ({@code findByName(...).orElseGet(...)}, {@code if (getCsStadium() == null)},
+     * {@code if (existingEntry.isEmpty())}, {@code if (countByCTeam >= 15) continue}). Zato
+     * poziv na zdravom svetu ne menja nista, a na delimičnom dopunjuje tačno ono što
+     * nedostaje. To je jedini iskren oblik "seed": pokreni, i neka svaki korak sam odluči.
+     *
+     * <p>Log prijavljuje <b>delte</b>, ne apsolutne brojeve. Raniji log je uvek ispisivao
+     * "1 country, N competitions, M teams" i izgledao je kao dokaz da je posao uradjen, bez
+     * obaveštenja da je za 0.5 sekunde ništa napravljeno. Broj koji raste za vreme poziva
+     * je jedini koji govori da li se nešto desilo.
+     */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void ensureCSDataOnStartup() {
-        if (isSeeded()) {
-            log.info("CS data already seeded: 1 country, {} competitions, {} teams, {} players",
-                    csCompetitionRepository.count(), csTeamRepository.count(), csPlayerRepository.count());
-            return;
-        }
+        long competitionsBefore = csCompetitionRepository.count();
+        long teamsBefore = csTeamRepository.count();
+        long playersBefore = csPlayerRepository.count();
 
-        log.info("Seeding CS (text manager) data...");
         seed();
-    }
 
-    /**
-     * Da li je tekst-svet već izgrađen.
-     *
-     * <p>Ranije je ovde stajalo {@code csCountryRepository.count() > 0}, i to je bio kvar koji
-     * je tiho ubio ceo mod. {@code CSCountry} red NE stvara samo ovaj seeder — stvaraju ga i
-     * {@code DatabaseInitializer.buildSerbianStructure()} i {@code seedOwnerAfterReset()}, preko
-     * {@code csTeamNamed() -> serbiaForTextManager()}, a to se desi kad se klikne admin
-     * dugme "Initialize DB". Taj klik ne seje tekst-ligu, ali ostavlja zemlju u bazi.
-     *
-     * <p>Posledica: prvi boot posle tog klika je video {@code count() == 1}, preskocio
-     * seedovanje i logovao "already seeded" — a lige, unosa takmičarske tabele i igrača
-     * nije bilo. {@code /api/cs/start} je padao na "League not found", a dugme nije prijavilo
-     * ništa. Pogresan proxy: zemlja postoji, ali svet oko nje ne.
-     *
-     * <p>Zato se sada gleda na ligu, koju stvara isključivo ovaj seeder.
-     */
-    private boolean isSeeded() {
-        return csCompetitionRepository.findAll().stream()
-                .anyMatch(c -> c.getType() == CSCompetitionType.LEAGUE && c.getCsCountry() != null);
+        long newCompetitions = csCompetitionRepository.count() - competitionsBefore;
+        long newTeams = csTeamRepository.count() - teamsBefore;
+        long newPlayers = csPlayerRepository.count() - playersBefore;
+
+        if (newCompetitions == 0 && newTeams == 0 && newPlayers == 0) {
+            log.info("CS world already complete: {} competitions, {} teams, {} players — nothing created",
+                    csCompetitionRepository.count(), csTeamRepository.count(), csPlayerRepository.count());
+        } else {
+            log.info("CS world repaired: +{} competitions, +{} teams, +{} players "
+                            + "(now {} competitions, {} teams, {} players)",
+                    newCompetitions, newTeams, newPlayers,
+                    csCompetitionRepository.count(), csTeamRepository.count(), csPlayerRepository.count());
+        }
     }
 
     private void seed() {

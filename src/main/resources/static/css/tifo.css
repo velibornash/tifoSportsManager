@@ -1,23 +1,32 @@
 /* TIFO – Clean Sheet Text Mode (Teletext Edition) */
 
 :root {
-    --cs-bg-1: #0a0a0a;
-    --cs-bg-2: #141108;
-    --cs-panel: rgba(10, 8, 4, 0.92);
-    --cs-panel-2: rgba(20, 17, 8, 0.96);
-    --cs-border: rgba(212, 160, 23, 0.20);
-    --cs-accent: #d4a017;
-    --cs-accent-2: #b8860b;
-    --cs-text-main: #f0e6c5;
-    --cs-text-muted: #a8976a;
-    --cs-text-soft: #7a6b48;
-    --cs-amber-bright: #ffcc00;
-    --cs-amber-dim: #8b6914;
-    --cs-paper: rgba(30, 26, 16, 0.85);
+    --cs-bg-1: #191308;
+    --cs-bg-2: #2b1f0d;
+    --cs-panel: rgba(48, 35, 14, 0.92);
+    --cs-panel-2: rgba(58, 43, 18, 0.96);
+    --cs-border: rgba(240, 198, 92, 0.30);
+    --cs-accent: #f0c65c;
+    --cs-accent-2: #d9a72c;
+    --cs-text-main: #f7efdc;
+    --cs-text-muted: #cfc2a4;
+    --cs-text-soft: #a8977a;
+    --cs-amber-bright: #ffe08a;
+    --cs-amber-dim: #b8912f;
+    --cs-paper: rgba(64, 48, 21, 0.85);
 }
 
 /* Teletext base font */
-body { font-family: "Lucida Console", "Courier New", monospace; }
+body {
+    font-family: "Lucida Console", "Courier New", monospace;
+
+    /* dashboard.css:3584 postavlja tamnoplavu #071018 na body, a .tifo-sidebar koristi
+       --cs-bg-2. Bez ovog override-a modul se prikazuje kao tamnoplava na tamnocrnoj —
+       sidebar i sadrzaj nisu u istom svetlu, a amber tekst stoji na plavom. Ovo je jedina
+       sprega sa dashboard.css koju tifo.css sme da preuzme; ostalo je preko promenljivih. */
+    background: var(--cs-bg-1);
+    color: var(--cs-text-main);
+}
 
 /* Permanent sidebar layout */
 .tifo-layout { display: flex; min-height: 100vh; }

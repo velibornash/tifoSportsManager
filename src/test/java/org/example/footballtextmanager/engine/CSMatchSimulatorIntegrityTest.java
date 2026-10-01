@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -93,6 +94,64 @@ class CSMatchSimulatorIntegrityTest {
         assertTrue(convertedPenalties > 0,
                 "Ni jedan kazneni udarac nije realizovan u 200 kola (" + penaltyEvents
                         + " izvedenih), pa se ne moze proveriti da se gol penalti vidi u timeline-u.");
+    }
+
+    /**
+     * Rezultat prikazan uz svaki gol mora da raste za jedan i da se na kraju poklopi sa
+     * završnim rezultatom meča.
+     *
+     * <p>Ovaj test postoji zbog baga koji je pronađen gledanjem stvarnog teletexta, a ne
+     * čitanjem koda: kazneni udarci su se generisali posle golova iz otvorene igre, pa je GOAL
+     * događaj kaznenog udarca nosio <b>završni</b> rezultat. Jedan meč se stvarno prikazao ovako:
+     *
+     * <pre>
+     *   64'  Penalty: ... (3:1)
+     *   66'  ... rolls it into ... [1:0]
+     *   83'  ... from outside ... [2:0]
+     *   90'  Sweet volley ... [3:0]
+     * </pre>
+     *
+     * <p>Rezultat je skakao unazad u sredini meča, a postojeći test
+     * {@code scoreAlwaysEqualsNumberOfGoalEvents} je to propustio jer je brojao samo <i>koliko
+     * ima</i> golova, nikada <i>šta piše uz njih</i>. Broj je bio tačan; redosled nije.
+     */
+    @Test
+    @DisplayName("Rezultat uz svaki gol raste za jedan i zavrsava na punom rezultatu")
+    void runningScoreNeverGoesBackwards() {
+        for (int round = 1; round <= 200; round++) {
+            CSMatchResult r = play(12, round);
+            List<CSMatchEvent> events = r.getEvents() == null ? List.of() : r.getEvents();
+
+            int expectedHome = 0;
+            int expectedAway = 0;
+            String home = r.getHomeTeamName();
+            String away = r.getAwayTeamName();
+
+            for (CSMatchEvent e : events) {
+                if (e.getEventType() != org.example.footballtextmanager.model.CSEventType.GOAL) continue;
+
+                if (home.equals(e.getTeamName())) expectedHome++;
+                else if (away.equals(e.getTeamName())) expectedAway++;
+                else continue;
+
+                String shown = e.getScoreAfterGoal();
+                assertNotNull(shown,
+                        "Gol u " + e.getMinute() + "' nema prikazani rezultat, pa teletext pokazuje gol bez rezultata");
+
+                assertEquals(expectedHome + ":" + expectedAway, shown,
+                        "Kolo " + round + ": u " + e.getMinute()
+                                + "' prikazano je " + shown + ", a do tada je bilo "
+                                + expectedHome + ":" + expectedAway
+                                + " — rezultat ne sme da se vraca unazad");
+            }
+
+            assertEquals(r.getHomeGoals(), expectedHome,
+                    "Kolo " + round + ": završni rezultat " + r.getHomeGoals()
+                            + " se ne poklapa sa poslednjim prikazanim stanjem " + expectedHome);
+            assertEquals(r.getAwayGoals(), expectedAway,
+                    "Kolo " + round + ": završni rezultat gostiju " + r.getAwayGoals()
+                            + " se ne poklapa sa poslednjim prikazanim stanjem " + expectedAway);
+        }
     }
 
     @Test

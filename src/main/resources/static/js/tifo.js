@@ -1210,7 +1210,7 @@ function injectEntityLinks(rawText) {
     for (const teamName of teamNames) {
         const teamId = csTeamNameToId.get(teamName);
         const rx = new RegExp(`\\b${escapeRegExp(teamName)}\\b`, 'g');
-        html = html.replace(rx, `<a href="#" class="cs-inline-link" data-kind="team" data-id="${teamId}">${teamName}</a>`);
+        html = html.replace(rx, `<a href="#" class="cs-inline-link" data-kind="team" data-id="${teamId}">${escapeHtml(teamName)}</a>`);
     }
 
     if (csPlayerIndexLoaded) {
@@ -1508,7 +1508,7 @@ function renderLeagueTable(el) {
         const gd = t.goalsScored - t.goalsConceded;
         const gdColor = gd > 0 ? '#4caf50' : gd < 0 ? '#f44336' : '#aaa';
         html += `<tr class="${isUser ? 'user-row' : ''} cs-clickable" onclick="tifoTeamDetail(${t.teamId})">
-            <td>${i + 1}</td><td>${t.teamName}</td><td>${t.played}</td>
+            <td>${i + 1}</td><td>${escapeHtml(t.teamName)}</td><td>${t.played}</td>
             <td>${t.wins}</td><td>${t.draws}</td><td>${t.losses}</td>
             <td>${t.goalsScored}</td><td>${t.goalsConceded}</td>
             <td style="color:${gdColor};font-weight:bold;">${gd > 0 ? '+' : ''}${gd}</td>
@@ -1649,12 +1649,12 @@ async function renderSchedule(el) {
             const bg = isUserMatch ? 'rgba(212, 160, 23, 0.12)' : '';
             if (f.played && f.result) {
                 html += `<div class="cs-match-card cs-clickable" style="background:${bg}" onclick="tifoFixtureDetail(${f.round}, ${f.homeTeamId}, ${f.awayTeamId})">
-                    <div class="cs-match-teams">${f.homeTeamName} vs ${f.awayTeamName}</div>
+                    <div class="cs-match-teams">${escapeHtml(f.homeTeamName)} vs ${escapeHtml(f.awayTeamName)}</div>
                     <div class="cs-match-score">${f.result.homeGoals} : ${f.result.awayGoals}</div>
                 </div>`;
             } else {
-                html += `<div class="cs-match-card cs-clickable" style="background:${bg}" onclick="tifoFixturePreview(${f.round}, '${esc(f.homeTeamName)}', ${f.homeTeamId}, '${esc(f.awayTeamName)}', ${f.awayTeamId})">
-                    <div class="cs-match-teams">${f.homeTeamName} vs ${f.awayTeamName}</div>
+                html += `<div class="cs-match-card cs-clickable" style="background:${bg}" data-fixture-preview data-round="${f.round}" data-home-name="${escapeHtml(f.homeTeamName)}" data-home-id="${f.homeTeamId}" data-away-name="${escapeHtml(f.awayTeamName)}" data-away-id="${f.awayTeamId}">
+                    <div class="cs-match-teams">${escapeHtml(f.homeTeamName)} vs ${escapeHtml(f.awayTeamName)}</div>
                     <div class="cs-match-score" style="color:#666;">-:-</div>
                 </div>`;
             }
@@ -1662,13 +1662,50 @@ async function renderSchedule(el) {
         html += `</div>`;
     }
     el.innerHTML = html;
+    attachTifoDelegatedClicks(el);
     setTimeout(() => {
         const anchor = document.querySelector('[data-next="1"]');
         if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
 }
 
-function esc(str) { return (str || '').replace(/'/g, "\\'"); }
+/**
+ * Klikovi na kartice fikstura i rang-liste, jedan delegirani listener umesto `onclick` u
+ * markup-u.
+ *
+ * <p>Ranije se svaki klik pisao kao `onclick="tifoFixturePreview(3, '${esc(name)}', ...)"`,
+ * a `esc` je bio `(str || '').replace(/'/g, "\\'")` — escape-uje samo apostrof. Ime kluba sa
+ * dvostrukim navodnikom je zato razbijalo HTML atribut i izvršavalo markup umesto imena tima.
+ * Uz to, imena klubova i igrača su u `<div>` tekst idla bez ikakvog escape-a, sto je bio
+ * drugi, nezavisni XSS: naziv kluba se nije morao ni pojaviti u `onclick` da bi se izvrsio.
+ *
+ * <p>Oba su resena na istom mestu i na nacin koji ne zavisi od pazljivosti: podaci se vise
+ * ne interpoliraju u izvrsni kod, vec u `data-` atribute (gde ih `escapeHtml` pokriva isto
+ * kao i element tekst), a click se hvata jednom ovde i cita iz `dataset`. Time nijedna
+ * vrednost iz baze ne moze da postane JavaScript, pa nema ni jednog mesta koje bi kasnije
+ * moglo da se zaboravi.
+ */
+function attachTifoDelegatedClicks(root) {
+    if (!root || root.dataset.tifoClicksAttached === '1') return;
+    root.dataset.tifoClicksAttached = '1';
+    root.addEventListener('click', (event) => {
+        const preview = event.target.closest('[data-fixture-preview]');
+        if (preview) {
+            fixturePreview(
+                Number(preview.dataset.round),
+                preview.dataset.homeName,
+                Number(preview.dataset.homeId),
+                preview.dataset.awayName,
+                Number(preview.dataset.awayId)
+            );
+            return;
+        }
+        const ranked = event.target.closest('[data-ranked-player]');
+        if (ranked) {
+            openRankedPlayer(Number(ranked.dataset.playerId), ranked.dataset.teamName);
+        }
+    });
+}
 
 function getFormStrip(teamId, n = 5) {
     const matches = gameState?.matchHistory || [];
@@ -1696,18 +1733,18 @@ function fixturePreview(round, homeName, homeId, awayName, awayId) {
         : ch === 'L' ? '<span style="color:#f44336;font-weight:800;">L</span>'
         : '<span style="color:#ff9800;font-weight:800;">D</span>';
 
-    let body = `<p style="text-align:center;font-size:1.2em;"><strong>${homeName}</strong> vs <strong>${awayName}</strong></p>
+    let body = `<p style="text-align:center;font-size:1.2em;"><strong>escapeHtml(homeName)</strong> vs <strong>escapeHtml(awayName)</strong></p>
         <p style="text-align:center;color:var(--cs-text-soft);">Round ${round} — Preview</p>`;
 
     if (homeForm || awayForm) {
         body += `<div class="tifo-preview-form">
             <div class="tifo-preview-side">
-                <div class="team-name">${homeName}</div>
+                <div class="team-name">escapeHtml(homeName)</div>
                 <div class="form-strip">${homeForm ? homeForm.split('').map(f => formIcon(f)).join('') : '—'}</div>
             </div>
             <div class="tifo-preview-vs">VS</div>
             <div class="tifo-preview-side">
-                <div class="team-name">${awayName}</div>
+                <div class="team-name">escapeHtml(awayName)</div>
                 <div class="form-strip">${awayForm ? awayForm.split('').map(f => formIcon(f)).join('') : '—'}</div>
             </div>
         </div>`;
@@ -1715,7 +1752,7 @@ function fixturePreview(round, homeName, homeId, awayName, awayId) {
 
     if (homeTable && awayTable) {
         body += `<table class="cs-table" style="margin-top:16px;">
-            <thead><tr><th></th><th>${homeName}</th><th>${awayName}</th></tr></thead>
+            <thead><tr><th></th><th>escapeHtml(homeName)</th><th>escapeHtml(awayName)</th></tr></thead>
             <tbody>
                 <tr><td>Position</td><td>${getPosition(homeId)}</td><td>${getPosition(awayId)}</td></tr>
                 <tr><td>Points</td><td>${homeTable.points}</td><td>${awayTable.points}</td></tr>
@@ -1726,9 +1763,9 @@ function fixturePreview(round, homeName, homeId, awayName, awayId) {
         const homePts = homeTable.points || 0;
         const awayPts = awayTable.points || 0;
         if (homePts > awayPts) {
-            body += `<div class="tifo-preview-prediction">Prediction: <strong>${homeName}</strong> advantage (${homePts - awayPts} pts)</div>`;
+            body += `<div class="tifo-preview-prediction">Prediction: <strong>escapeHtml(homeName)</strong> advantage (${homePts - awayPts} pts)</div>`;
         } else if (awayPts > homePts) {
-            body += `<div class="tifo-preview-prediction">Prediction: <strong>${awayName}</strong> advantage (${awayPts - homePts} pts)</div>`;
+            body += `<div class="tifo-preview-prediction">Prediction: <strong>escapeHtml(awayName)</strong> advantage (${awayPts - homePts} pts)</div>`;
         } else {
             body += `<div class="tifo-preview-prediction">Prediction: <strong>Too close to call</strong></div>`;
         }
@@ -1814,7 +1851,7 @@ function renderMatchDetailFull(match, backFn) {
             </div>
             <div class="cs-match-scoreboard">
                 <div class="cs-match-side">
-                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${homeTeamId})">${homeName}</span></div>
+                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${homeTeamId})">${escapeHtml(homeName)}</span></div>
                     <div class="cs-match-side-label">Home</div>
                 </div>
                 <div class="cs-match-score-core">
@@ -1822,7 +1859,7 @@ function renderMatchDetailFull(match, backFn) {
                     <div class="cs-match-mini-note">${reportReady ? 'Detailed report filed' : 'Result recorded in the club ledger'}</div>
                 </div>
                 <div class="cs-match-side">
-                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${awayTeamId})">${awayName}</span></div>
+                    <div class="cs-match-team"><span class="cs-clickable" onclick="tifoTeamDetail(${awayTeamId})">${escapeHtml(awayName)}</span></div>
                     <div class="cs-match-side-label">Away</div>
                 </div>
             </div>
@@ -1980,7 +2017,7 @@ function buildLineupsHtml(match) {
             const ratingValue = Number(p.rating);
             const ratingColor = ratingValue >= 7.5 ? '#4caf50' : ratingValue >= 6.5 ? '#ffd700' : ratingValue >= 5.5 ? '#ff9800' : '#f44336';
             const clickableName = p.playerId
-                ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${p.playerId}, ${teamId})">${p.playerName}</span>`
+                ? `<span class="cs-clickable" onclick="tifoOpenMatchPlayer(${p.playerId}, ${teamId})">${escapeHtml(p.playerName)}</span>`
                 : escapeHtml(p.playerName || '?');
             const tags = [];
             if (!p.isStarter) tags.push('<span style="color:#d5b36a;">SUB</span>');
@@ -2113,7 +2150,7 @@ function buildStatsHtml(match) {
             </div>
         </div>
         <table class="cs-table">
-            <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${homeName}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${awayName}</span></th></tr></thead>
+            <thead><tr><th>Stat</th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.homeTeamId})">${escapeHtml(homeName)}</span></th><th><span class="cs-clickable" onclick="tifoTeamDetail(${match.awayTeamId})">${escapeHtml(awayName)}</span></th></tr></thead>
             <tbody>
                 <tr><td>Goals</td><td>${match.homeGoals}</td><td>${match.awayGoals}</td></tr>
                 <tr><td>Total shots</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], homeName)}</td><td>${combinedCountFor(['SHOT_ON_TARGET', 'SHOT_OFF_TARGET'], awayName)}</td></tr>
@@ -2436,14 +2473,15 @@ async function renderTopScorers(el) {
     if (data.length === 0) { html += '<p style="color:#aaa;">No goals this season.</p>'; }
     else {
         data.forEach((p, i) => {
-            html += `<div class="cs-rank-row cs-clickable" onclick="tifoOpenRankedPlayer(${p.playerId}, '${esc(p.teamName)}')">
+            html += `<div class="cs-rank-row cs-clickable" data-ranked-player data-player-id="${p.playerId}" data-team-name="${escapeHtml(p.teamName)}">
                 <div class="cs-rank-num">${i + 1}</div>
-                <div class="cs-rank-name">${p.name} <span class="cs-rank-team">${p.teamName} (${p.position})</span></div>
+                <div class="cs-rank-name">${escapeHtml(p.name)} <span class="cs-rank-team">${escapeHtml(p.teamName)} (${escapeHtml(p.position)})</span></div>
                 <div class="cs-rank-val">&#9917; ${p.goals}</div>
             </div>`;
         });
     }
     el.innerHTML = html;
+    attachTifoDelegatedClicks(el);
 }
 
 // --- Top Assists ---
@@ -2459,14 +2497,15 @@ async function renderTopAssists(el) {
     if (data.length === 0) { html += '<p style="color:#aaa;">No assists this season.</p>'; }
     else {
         data.forEach((p, i) => {
-            html += `<div class="cs-rank-row cs-clickable" onclick="tifoOpenRankedPlayer(${p.playerId}, '${esc(p.teamName)}')">
+            html += `<div class="cs-rank-row cs-clickable" data-ranked-player data-player-id="${p.playerId}" data-team-name="${escapeHtml(p.teamName)}">
                 <div class="cs-rank-num">${i + 1}</div>
-                <div class="cs-rank-name">${p.name} <span class="cs-rank-team">${p.teamName} (${p.position})</span></div>
+                <div class="cs-rank-name">${escapeHtml(p.name)} <span class="cs-rank-team">${escapeHtml(p.teamName)} (${escapeHtml(p.position)})</span></div>
                 <div class="cs-rank-val">🅰️ ${p.assists}</div>
             </div>`;
         });
     }
     el.innerHTML = html;
+    attachTifoDelegatedClicks(el);
 }
 
 function openRankedPlayer(playerId, teamName) {
